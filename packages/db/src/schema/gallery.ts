@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { index, jsonb, numeric, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
-import { profiles } from './workspaces.js'
-import { projects } from './projects.js'
-import { files } from './files.js'
+import { profiles } from './workspaces'
+import { projects } from './projects'
+import { files } from './files'
 
 export const galleryItems = pgTable(
   'gallery_items',

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { boolean, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
-import { workspaceRoleEnum } from './enums.js'
+import { workspaceRoleEnum } from './enums'
 
 export const profiles = pgTable('profiles', {
   id: uuid('id').primaryKey(),

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { boolean, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { aiScopeEnum } from './enums.js'
-import { profiles, workspaces } from './workspaces.js'
-import { projects } from './projects.js'
+import { aiScopeEnum } from './enums'
+import { profiles, workspaces } from './workspaces'
+import { projects } from './projects'
 
 export const aiAgents = pgTable('ai_agents', {
   id: uuid('id').primaryKey().defaultRandom(),

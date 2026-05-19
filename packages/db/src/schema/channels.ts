@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { index, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
-import { messageTypeEnum } from './enums.js'
-import { profiles } from './workspaces.js'
-import { projects } from './projects.js'
+import { messageTypeEnum } from './enums'
+import { profiles } from './workspaces'
+import { projects } from './projects'
 
 export const channels = pgTable('channels', {
   id: uuid('id').primaryKey().defaultRandom(),
