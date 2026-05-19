@@ -37,6 +37,20 @@ packages/config/   tsconfig / ESLint の共有設定
 - MVP では Write DB / Read DB を分離しない
 
 
+## ローカル開発環境
+
+- **Supabase CLI + Docker** を使う。`supabase start` で PostgreSQL / Auth / Storage / Realtime / Studio が一括起動する
+- 環境変数は `apps/web/.env.local.example` をコピーして使う。`supabase start` のデフォルトキーが事前入力済み
+- DBスキーマは `packages/db/src/schema/` で管理（Drizzle が正）→ `pnpm db:generate` で `supabase/migrations/` にSQLを生成 → `supabase db reset` でローカルに適用
+
+起動順序:
+```bash
+supabase start
+cp apps/web/.env.local.example apps/web/.env.local
+pnpm dev
+```
+
+
 ## 決定済みの技術判断
 
 - **tsconfig の extends は相対パス**で書く（`../../packages/config/tsconfig/base.json`）
