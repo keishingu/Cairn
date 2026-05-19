@@ -49,6 +49,12 @@ create type task_status as enum (
   'done'
 );
 
+create type task_priority as enum (
+  'high',
+  'medium',
+  'low'
+);
+
 create type ai_scope as enum (
   'workspace',
   'project'
@@ -208,6 +214,7 @@ create table tasks (
   title text not null,
   description text,
   status task_status not null default 'todo',
+  priority task_priority not null default 'medium',
   assignee_id uuid references profiles(id),
   due_date date,
   created_by uuid not null references profiles(id),
