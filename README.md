@@ -1,5 +1,61 @@
 # Cairn
 
+## 開発者向けセットアップ
+
+### 必要な環境
+
+- Node.js 20+
+- pnpm 9+
+
+### セットアップ
+
+```bash
+pnpm install
+```
+
+### 主なコマンド
+
+```bash
+pnpm dev        # 開発サーバー起動 (apps/web)
+pnpm build      # 全パッケージビルド
+pnpm typecheck  # 型チェック
+pnpm lint       # Lint
+pnpm test       # テスト
+pnpm format     # コードフォーマット
+```
+
+### DBマイグレーション
+
+```bash
+cd packages/db
+pnpm db:generate  # スキーマからマイグレーションファイル生成
+pnpm db:push      # DBに直接反映 (開発用)
+pnpm db:studio    # Drizzle Studio 起動
+```
+
+### 環境変数
+
+`.env.example` をコピーして `.env.local` を作成し、各値を設定する。
+
+```bash
+cp .env.example apps/web/.env.local
+```
+
+### リポジトリ構成
+
+```
+cairn/
+  apps/
+    web/                # Next.js 15 (メインWebアプリ)
+  packages/
+    core/               # ドメイン / ユースケース / ポート定義
+    db/                 # Drizzle ORM スキーマ・クライアント
+    shared/             # 共有型・Zodスキーマ
+    config/             # tsconfig・ESLint共有設定
+```
+
+---
+
 ## 1. 概要
 
 山岳部の山行計画を起点とした、プロジェクト管理・チャット・カレンダー・ファイル管理・ギャラリー・AIアシスタントを統合したコラボレーションアプリケーション。
