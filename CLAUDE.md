@@ -25,6 +25,7 @@ packages/config/   tsconfig / ESLint の共有設定
 - **状態管理**: TanStack Query (サーバー状態), Zustand (グローバルUI), nuqs (URL状態)
 - **DB**: Supabase PostgreSQL + Drizzle ORM + pgvector
 - **認証・リアルタイム・ストレージ**: Supabase Auth / Realtime / Storage
+- ただし MVP のチャット同期は、まず TanStack Query のポーリングで実装し、必要に応じて Supabase Realtime へ段階移行する
 - **AI**: Vercel AI SDK + OpenAI API (gpt-4o / gpt-4o-mini)
 - **非同期ジョブ**: Inngest
 

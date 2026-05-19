@@ -22,8 +22,14 @@ export interface MessageDto {
 // Placeholder sender used until auth is wired up
 const DEV_SENDER_ID = '00000000-0000-0000-0000-000000000001'
 
-// In-memory store for mock mode (no DATABASE_URL) — keyed by channelId
-const mockStore = new Map<string, MessageDto[]>()
+declare global {
+  var __cairnMockMessageStore: Map<string, MessageDto[]> | undefined
+}
+
+function getMockStore() {
+  globalThis.__cairnMockMessageStore ??= new Map<string, MessageDto[]>()
+  return globalThis.__cairnMockMessageStore
+}
 
 type RouteContext = { params: Promise<{ channelId: string }> }
 
@@ -31,7 +37,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
   const { channelId } = await params
 
   if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(mockStore.get(channelId) ?? [] satisfies MessageDto[])
+    return NextResponse.json(getMockStore().get(channelId) ?? [] satisfies MessageDto[])
   }
 
   try {
@@ -119,9 +125,10 @@ export async function POST(req: Request, { params }: RouteContext) {
       createdAt: new Date().toISOString(),
       reactions: [],
     }
+    const mockStore = getMockStore()
     const prev = mockStore.get(channelId) ?? []
     mockStore.set(channelId, [...prev, newMsg])
-    return NextResponse.json(newMsg)
+    return NextResponse.json(newMsg, { status: 201 })
   }
 
   try {
