@@ -1,10 +1,11 @@
 'use client'
 
 import React from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
 import { MEMBERS, STATUS, type StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 
 interface PageProjectsProps {
   openPanel: () => void
@@ -25,10 +26,150 @@ async function fetchProjects(): Promise<ProjectDto[]> {
   return res.json() as Promise<ProjectDto[]>
 }
 
+async function fetchStatuses(): Promise<ProjectStatusDto[]> {
+  const res = await fetch('/api/projects/statuses')
+  if (!res.ok) throw new Error('fetch failed')
+  return res.json() as Promise<ProjectStatusDto[]>
+}
+
+async function createProject(body: {
+  title: string
+  description?: string | undefined
+  statusId?: string | undefined
+  startDate?: string | undefined
+  endDate?: string | undefined
+}): Promise<ProjectDto> {
+  const res = await fetch('/api/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error('プロジェクトの作成に失敗しました')
+  return res.json() as Promise<ProjectDto>
+}
+
+interface CreateProjectModalProps {
+  onClose: () => void
+  onCreated: (project: ProjectDto) => void
+}
+
+const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => {
+  const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
+  const [title, setTitle] = React.useState('')
+  const [description, setDescription] = React.useState('')
+  const [statusId, setStatusId] = React.useState('')
+  const [startDate, setStartDate] = React.useState('')
+  const [endDate, setEndDate] = React.useState('')
+  const [error, setError] = React.useState('')
+
+  React.useEffect(() => {
+    if (statuses.length > 0 && !statusId) setStatusId(statuses[0]!.id)
+  }, [statuses, statusId])
+
+  const mutation = useMutation({
+    mutationFn: createProject,
+    onSuccess: (project) => {
+      onCreated(project)
+      onClose()
+    },
+    onError: (err: Error) => setError(err.message),
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!title.trim()) { setError('タイトルを入力してください'); return }
+    mutation.mutate({
+      title: title.trim(),
+      description: description.trim() || undefined,
+      statusId: statusId || undefined,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+    })
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '8px 10px', borderRadius: 8,
+    border: '1px solid var(--border-2)', background: 'var(--card-2)',
+    color: 'var(--text)', fontSize: 13.5, fontFamily: 'inherit',
+    outline: 'none', boxSizing: 'border-box',
+  }
+  const labelStyle: React.CSSProperties = {
+    fontSize: 12, fontWeight: 600, color: 'var(--text-3)',
+    display: 'block', marginBottom: 5,
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000, backdropFilter: 'blur(2px)',
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: 'var(--card)', borderRadius: 16, width: 480, maxWidth: '90vw',
+        boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)',
+      }}>
+        <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>新規プロジェクト</h2>
+          <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-3)', padding: 4 }}>
+            <Icon name="x" size={16}/>
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} style={{ padding: '18px 20px' }}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>タイトル <span style={{ color: 'var(--accent)' }}>*</span></label>
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="例: 夏山合宿計画" style={inputStyle} autoFocus/>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>説明</label>
+            <textarea value={description} onChange={e => setDescription(e.target.value)}
+              placeholder="プロジェクトの概要を入力..."
+              rows={3} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}/>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>ステータス</label>
+            <select value={statusId} onChange={e => setStatusId(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+              {statuses.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+            <div>
+              <label style={labelStyle}>開始日</label>
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputStyle}/>
+            </div>
+            <div>
+              <label style={labelStyle}>終了日</label>
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inputStyle}/>
+            </div>
+          </div>
+          {error && (
+            <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 12.5 }}>
+              {error}
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" onClick={onClose} className="btn" disabled={mutation.isPending}>キャンセル</button>
+            <button type="submit" className="btn btn-primary" disabled={mutation.isPending}>
+              {mutation.isPending ? '作成中...' : 'プロジェクトを作成'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export const PageProjects = ({ openPanel }: PageProjectsProps) => {
+  const queryClient = useQueryClient()
   const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
   const [view, setView] = React.useState<'grid' | 'table'>('grid')
   const [filter, setFilter] = React.useState('all')
+  const [showCreate, setShowCreate] = React.useState(false)
+
+  const handleCreated = (project: ProjectDto) => {
+    queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
+  }
 
   const counts = {
     all:      projects.length,
@@ -81,7 +222,7 @@ export const PageProjects = ({ openPanel }: PageProjectsProps) => {
             ))}
           </div>
           <button className="btn"><Icon name="filter" size={13}/> フィルター</button>
-          <button className="btn btn-primary"><Icon name="plus" size={13}/> 新規プロジェクト</button>
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={13}/> 新規プロジェクト</button>
         </div>
       </div>
 
@@ -152,6 +293,7 @@ export const PageProjects = ({ openPanel }: PageProjectsProps) => {
           })}
         </div>
       )}
+      {showCreate && <CreateProjectModal onClose={() => setShowCreate(false)} onCreated={handleCreated}/>}
     </div>
   )
 }
