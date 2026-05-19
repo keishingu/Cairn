@@ -22,19 +22,22 @@ export interface MessageDto {
 // Placeholder sender used until auth is wired up
 const DEV_SENDER_ID = '00000000-0000-0000-0000-000000000001'
 
+// In-memory store for mock mode (no DATABASE_URL) — keyed by channelId
+const mockStore = new Map<string, MessageDto[]>()
+
 type RouteContext = { params: Promise<{ channelId: string }> }
 
 export async function GET(_req: Request, { params }: RouteContext) {
   const { channelId } = await params
 
   if (!process.env['DATABASE_URL']) {
-    return NextResponse.json([] satisfies MessageDto[])
+    return NextResponse.json(mockStore.get(channelId) ?? [] satisfies MessageDto[])
   }
 
   try {
     const { db } = await import('@cairn/db')
     const { messages, profiles, messageReactions } = await import('@cairn/db')
-    const { eq, isNull, inArray } = await import('drizzle-orm')
+    const { eq, isNull, inArray, and } = await import('drizzle-orm')
 
     const rows = await db
       .select({
@@ -46,7 +49,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       })
       .from(messages)
       .innerJoin(profiles, eq(messages.senderId, profiles.id))
-      .where(eq(messages.channelId, channelId) && isNull(messages.deletedAt) as never)
+      .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
       .orderBy(messages.createdAt)
       .limit(100)
 
@@ -108,15 +111,17 @@ export async function POST(req: Request, { params }: RouteContext) {
   }
 
   if (!process.env['DATABASE_URL']) {
-    const now = new Date().toISOString()
-    return NextResponse.json({
+    const newMsg: MessageDto = {
       id: crypto.randomUUID(),
       content: parsed.data.content,
       senderId: DEV_SENDER_ID,
       senderName: '山田 太郎',
-      createdAt: now,
+      createdAt: new Date().toISOString(),
       reactions: [],
-    } satisfies MessageDto)
+    }
+    const prev = mockStore.get(channelId) ?? []
+    mockStore.set(channelId, [...prev, newMsg])
+    return NextResponse.json(newMsg)
   }
 
   try {
