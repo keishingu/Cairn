@@ -176,6 +176,30 @@ export const MountainPhoto = ({ idx = 0, height = 200, flat = false, radius }: M
   }}/>
 )
 
+// ─── TopBar search box ────────────────────────────────────────────
+export const TopBarSearch = () => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '0 10px', height: 32, width: 280 }}>
+    <Icon name="search" size={14} color="var(--text-3)"/>
+    <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-4)' }}>プロジェクト・人・ファイルを検索</span>
+    <span className="kbd">⌘K</span>
+  </div>
+)
+
+// ─── Placeholder page ─────────────────────────────────────────────
+export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) => (
+  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
+    <div style={{ maxWidth: 360, textAlign: 'center' }}>
+      <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+        <Icon name={icon} size={26}/>
+      </div>
+      <h2 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700 }}>{name}</h2>
+      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6 }}>
+        このセクションはサイドバーから他のページへ移動できることを示すプレースホルダーです。実装時にはここに専用のビューが表示されます。
+      </p>
+    </div>
+  </div>
+)
+
 // ─── Typing dots animation ────────────────────────────────────────
 export const TypingDots = () => (
   <span style={{ display: 'inline-flex', gap: 3 }}>
