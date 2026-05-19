@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { boolean, date, index, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
-import { attendanceStatusEnum, projectMemberRoleEnum } from './enums.js'
-import { profiles, projectStatuses, tags, workspaces } from './workspaces.js'
+import { attendanceStatusEnum, projectMemberRoleEnum } from './enums'
+import { profiles, projectStatuses, tags, workspaces } from './workspaces'
 
 export const projects = pgTable(
   'projects',

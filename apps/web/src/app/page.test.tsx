@@ -1,10 +1,12 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
-import HomePage from './page'
+import { describe, expect, it, vi } from 'vitest'
 
-describe('HomePage', () => {
-  it('準備中のメッセージを表示する', () => {
-    render(<HomePage />)
-    expect(screen.getByText('Cairn — 準備中')).toBeInTheDocument()
+const mockRedirect = vi.fn()
+vi.mock('next/navigation', () => ({ redirect: mockRedirect }))
+
+describe('RootPage', () => {
+  it('/projects にリダイレクトする', async () => {
+    const { default: RootPage } = await import('./page')
+    RootPage()
+    expect(mockRedirect).toHaveBeenCalledWith('/projects')
   })
 })

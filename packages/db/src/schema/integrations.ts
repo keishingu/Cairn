@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { boolean, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { profiles, workspaces } from './workspaces.js'
-import { projects } from './projects.js'
+import { profiles, workspaces } from './workspaces'
+import { projects } from './projects'
 
 export const connectedAccounts = pgTable('connected_accounts', {
   id: uuid('id').primaryKey().defaultRandom(),
