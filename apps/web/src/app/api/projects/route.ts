@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { createProjectSchema } from '@cairn/shared'
 import { PROJECTS, STATUS, type StatusKey } from '@/components/app/data'
 
 export interface ProjectDto {
@@ -66,5 +67,66 @@ export async function GET() {
   } catch (err) {
     console.error('[/api/projects] DB query failed, using mock data:', err)
     return NextResponse.json(mockProjects())
+  }
+}
+
+// Placeholder IDs used until auth + workspace context are wired up
+const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
+const DEV_CREATED_BY   = '00000000-0000-0000-0000-000000000001'
+
+export async function POST(req: Request) {
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const parsed = createProjectSchema.safeParse({ ...(body as object), workspaceId: DEV_WORKSPACE_ID })
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
+  }
+
+  if (!process.env['DATABASE_URL']) {
+    return NextResponse.json({
+      id: crypto.randomUUID(),
+      title: parsed.data.title,
+      statusName: 'plan' as StatusKey,
+      startDate: parsed.data.startDate ?? null,
+      endDate: parsed.data.endDate ?? null,
+      memberCount: 1,
+    } satisfies ProjectDto, { status: 201 })
+  }
+
+  try {
+    const { db } = await import('@cairn/db')
+    const { projects } = await import('@cairn/db')
+
+    const [inserted] = await db
+      .insert(projects)
+      .values({
+        workspaceId: DEV_WORKSPACE_ID,
+        title: parsed.data.title,
+        description: parsed.data.description ?? null,
+        statusId: parsed.data.statusId ?? null,
+        startDate: parsed.data.startDate ?? null,
+        endDate: parsed.data.endDate ?? null,
+        createdBy: DEV_CREATED_BY,
+      })
+      .returning({ id: projects.id, title: projects.title, startDate: projects.startDate, endDate: projects.endDate })
+
+    if (!inserted) throw new Error('Insert returned no rows')
+
+    return NextResponse.json({
+      id: inserted.id,
+      title: inserted.title,
+      statusName: 'plan' as StatusKey,
+      startDate: inserted.startDate,
+      endDate: inserted.endDate,
+      memberCount: 1,
+    } satisfies ProjectDto, { status: 201 })
+  } catch (err) {
+    console.error('[/api/projects POST] DB query failed:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -1,20 +1,13 @@
 'use client'
 
 import React from 'react'
-import { Icon, Avatar, AvatarStack, StatusChip, MountainPhoto, TypingDots } from './primitives'
-import { MEMBERS, STATUS_COL } from './data'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Icon, Avatar, AvatarStack, StatusChip, MountainPhoto } from './primitives'
+import { MEMBERS } from './data'
+import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
+import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 
 // ─── Chat message ─────────────────────────────────────────────────
-interface ChatMsg {
-  n?: string
-  t?: string
-  x?: string
-  f?: { name: string; size: string }
-  r?: Array<{ emoji: string; count: number; me?: boolean }>
-  divider?: string
-  mine?: boolean
-}
-
 const ChatMessage = ({ name, time, text, file, reactions = [] }: {
   name: string; time: string; text: string
   file?: { name: string; size: string }
@@ -56,40 +49,91 @@ const ChatMessage = ({ name, time, text, file, reactions = [] }: {
   </div>
 )
 
-const INITIAL_CHAT: ChatMsg[] = [
-  { n: '山田 太郎', t: '5/20 18:30', x: '北アルプス縦走の計画書をアップしました。\n日程やルート、装備リストを確認して、意見をお願いします！', f: { name: '北アルプス縦走計画書_v1.pdf', size: '2.4MB' }, r: [{ emoji: '👍', count: 3, me: true }] },
-  { n: '佐藤 花子', t: '5/20 19:15', x: '日程はこのままで大丈夫そうです！\n1日目のテント場はもう少し標高を下げた方が安全かも？', r: [{ emoji: '👍', count: 2 }] },
-  { n: '鈴木 健',   t: '5/20 19:45', x: '装備リスト確認しました。ガス缶は予備も含めてもう1個ずつ追加した方が良いかと思います。', r: [{ emoji: '👍', count: 1 }] },
-  { n: '山田 太郎', t: '5/20 20:10', x: 'ありがとうございます！\n計画書を更新して、明日のミーティングで審議に回します。' },
-  { divider: '5月21日 (火)' },
-  { n: '田中 陽子', t: '5/21 08:30', x: '最新版の計画書をアップしました！', f: { name: '北アルプス縦走計画書_v2.pdf', size: '2.7MB' }, r: [{ emoji: '👍', count: 2 }, { emoji: '🎉', count: 1 }] },
-]
+const PROJECT_TITLE = '北アルプス縦走計画'
 
-const nowStamp = () => {
-  const d = new Date()
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+function formatTime(iso: string) {
+  const source = new Date(iso)
+  return `${source.getMonth() + 1}/${source.getDate()} ${String(source.getHours()).padStart(2, '0')}:${String(source.getMinutes()).padStart(2, '0')}`
+}
+
+async function fetchProjectChannels(): Promise<ProjectChannelDto[]> {
+  const res = await fetch('/api/projects/channels')
+  if (!res.ok) throw new Error('チャンネルの取得に失敗しました')
+  return res.json()
+}
+
+async function fetchMessages(channelId: string): Promise<MessageDto[]> {
+  const res = await fetch(`/api/channels/${channelId}/messages`)
+  if (!res.ok) throw new Error('メッセージの取得に失敗しました')
+  return res.json()
+}
+
+async function postMessage(channelId: string, content: string): Promise<MessageDto> {
+  const res = await fetch(`/api/channels/${channelId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+  if (!res.ok) throw new Error('メッセージの送信に失敗しました')
+  return res.json()
 }
 
 const ChatTabContent = () => {
-  const [msgs, setMsgs] = React.useState(INITIAL_CHAT)
   const [draft, setDraft] = React.useState('')
+  const [sendError, setSendError] = React.useState<string | null>(null)
+  const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
+  const queryClient = useQueryClient()
+
+  const { data: projectChannels = [] } = useQuery({
+    queryKey: ['project-channels'],
+    queryFn: fetchProjectChannels,
+  })
+
+  const activeChannel = React.useMemo(
+    () => projectChannels.find((channel) => channel.projectTitle === PROJECT_TITLE) ?? projectChannels[0] ?? null,
+    [projectChannels],
+  )
+
+  const { data: messages = [], isLoading, isError } = useQuery({
+    queryKey: ['project-panel-messages', activeChannel?.channelId],
+    queryFn: () => fetchMessages(activeChannel!.channelId),
+    enabled: !!activeChannel?.channelId,
+    refetchInterval: 5000,
+  })
+
+  const sendMutation = useMutation({
+    mutationFn: (content: string) => postMessage(activeChannel!.channelId, content),
+    onSuccess: (newMsg) => {
+      setSendError(null)
+      queryClient.setQueryData<MessageDto[]>(
+        ['project-panel-messages', activeChannel?.channelId],
+        (prev) => [...(prev ?? []), newMsg],
+      )
+    },
+    onError: (err: Error) => {
+      setSendError(err.message)
+      setDraft(pendingDraftRef.current)
+    },
+  })
 
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [msgs.length])
+  }, [messages.length])
 
   const send = () => {
     const text = draft.trim()
-    if (!text) return
-    setMsgs(prev => [...prev, { n: '山田 太郎', t: nowStamp(), x: text, mine: true }])
+    if (!text || !activeChannel) return
+    pendingDraftRef.current = text
+    setSendError(null)
     setDraft('')
+    sendMutation.mutate(text)
   }
 
   return (
     <>
       <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}># 北アルプス縦走計画</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}># {activeChannel?.projectTitle ?? PROJECT_TITLE}</span>
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--text-3)' }}>
           <Icon name="users" size={13}/> 8
         </span>
@@ -97,19 +141,36 @@ const ChatTabContent = () => {
         <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}><Icon name="more" size={14}/></button>
       </div>
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '8px 0 16px' }}>
-        {msgs.map((m, i) => m.divider ? (
-          <div key={i} style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ flex: 1, height: 1, background: 'var(--divider)' }}/>
-            <span style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>{m.divider}</span>
-            <div style={{ flex: 1, height: 1, background: 'var(--divider)' }}/>
+        {isLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>
+            読み込み中...
+          </div>
+        ) : isError ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--red-text)', fontSize: 13 }}>
+            メッセージの取得に失敗しました
+          </div>
+        ) : messages.length === 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>
+            まだメッセージはありません。最初のメッセージを送ってみましょう！
           </div>
         ) : (
-          <ChatMessage key={i} name={m.n!} time={m.t!} text={m.x!}
-            {...(m.f !== undefined ? { file: m.f } : {})}
-            reactions={m.r?.map(r => ({ emoji: r.emoji, count: r.count, ...(r.me !== undefined ? { me: r.me } : {}) })) || []}/>
-        ))}
+          messages.map((message) => (
+            <ChatMessage
+              key={message.id}
+              name={message.senderName}
+              time={formatTime(message.createdAt)}
+              text={message.content}
+              reactions={message.reactions.map((reaction) => ({ emoji: reaction.emoji, count: reaction.count, me: reaction.mine }))}
+            />
+          ))
+        )}
       </div>
       <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--divider)' }}>
+        {sendError && (
+          <div style={{ marginBottom: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)', fontSize: 12 }}>
+            {sendError}
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px' }}>
           <input
             value={draft}
@@ -121,9 +182,9 @@ const ChatTabContent = () => {
           <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}><Icon name="smile" size={15}/></button>
           <button onClick={send} style={{
             width: 28, height: 28, borderRadius: 8, border: 'none',
-            background: draft.trim() ? 'var(--accent)' : 'var(--border-2)',
-            color: draft.trim() ? 'var(--on-accent)' : 'var(--text-4)',
-            cursor: draft.trim() ? 'pointer' : 'default',
+            background: draft.trim() && !sendMutation.isPending ? 'var(--accent)' : 'var(--border-2)',
+            color: draft.trim() && !sendMutation.isPending ? 'var(--on-accent)' : 'var(--text-4)',
+            cursor: draft.trim() && !sendMutation.isPending ? 'pointer' : 'default',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             transition: 'background .12s',
           }}><Icon name="send" size={13}/></button>

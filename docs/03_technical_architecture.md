@@ -60,6 +60,12 @@ Phase 2以降でHono APIを追加する。
 - Supabase Realtime
 - Supabase Storage
 
+補足:
+
+- リアルタイム基盤の第一候補は Supabase Realtime とする
+- ただし MVP のチャット更新は、まず TanStack Query のポーリングで実装する
+- Realtime は未読・リアクション・presence・メンション通知の即時同期が必要になった段階で段階導入する
+
 ### AI
 
 - Vercel AI SDK
@@ -259,7 +265,15 @@ Reduxは採用しない。
 - 軽いUI状態: useState / useReducer
 - グローバルUI状態: Zustand
 - テーマ状態: next-themes
-- リアルタイム状態: Supabase Realtime + TanStack Query更新
+- リアルタイム状態: 当面は TanStack Query のポーリング、将来は Supabase Realtime + TanStack Query更新
+
+### チャット同期方針
+
+- 現在のチャット UI は `GET /api/channels/[channelId]/messages` を TanStack Query で定期再取得する
+- 自分の投稿は mutation 成功時に即時反映し、他ユーザーの投稿はポーリングで追随する
+- 現時点では、大学山岳部向け MVP として 3〜5 秒程度の反映遅延を許容する
+- WebSocket を独自実装する優先度は低く、リアルタイム化する場合は Supabase Realtime を優先する
+- Realtime 導入時は、購読イベントを受けて `invalidateQueries` または `setQueryData` で既存キャッシュを更新する
 
 ---
 
