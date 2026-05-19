@@ -136,6 +136,8 @@ const FullChatMessage = ({ m, onReact }: { m: MessageDto; onReact: (messageId: s
 export const PageChat = () => {
   const [channelId, setChannelId] = React.useState<string | null>(null)
   const [draft, setDraft] = React.useState('')
+  const [sendError, setSendError] = React.useState<string | null>(null)
+  const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
 
@@ -165,7 +167,12 @@ export const PageChat = () => {
   const sendMutation = useMutation({
     mutationFn: (content: string) => postMessage(channelId!, content),
     onSuccess: (newMsg) => {
+      setSendError(null)
       queryClient.setQueryData<MessageDto[]>(['messages', channelId], prev => [...(prev ?? []), newMsg])
+    },
+    onError: (err: Error) => {
+      setSendError(err.message)
+      setDraft(pendingDraftRef.current)
     },
   })
 
@@ -179,6 +186,8 @@ export const PageChat = () => {
   const send = () => {
     const text = draft.trim()
     if (!text || !channelId) return
+    pendingDraftRef.current = text
+    setSendError(null)
     setDraft('')
     sendMutation.mutate(text)
   }
@@ -265,7 +274,13 @@ export const PageChat = () => {
         </div>
 
         <div style={{ padding: '8px 24px 18px', background: 'var(--bg)' }}>
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border-2)', borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+          {sendError && (
+            <div style={{ marginBottom: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>⚠️ {sendError}</span>
+              <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'transparent', color: 'var(--red-text)', cursor: 'pointer', fontSize: 12, padding: '0 4px' }}>✕</button>
+            </div>
+          )}
+          <div style={{ background: 'var(--card)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--divider)' }}>
               {[
                 { i: 'paperclip', l: '添付' },
