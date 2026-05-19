@@ -1,10 +1,12 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { PCApp } from '@/components/app/pc-app'
+
 export default function HomePage() {
   return (
-    <main className="flex min-h-screen items-center justify-center">
-      <p className="text-muted-foreground">Cairn — 準備中</p>
-    </main>
+    <div className="app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      <PCApp theme="light"/>
+    </div>
   )
 }
