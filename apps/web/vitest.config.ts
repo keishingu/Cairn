@@ -11,8 +11,6 @@ export default defineConfig({
         target: 'ES2017',
         strict: true,
         jsx: 'react-jsx',
-        moduleResolution: 'bundler',
-        esModuleInterop: true,
       },
     },
   },
