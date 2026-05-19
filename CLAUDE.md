@@ -57,6 +57,15 @@ pnpm dev
   - Vite/Vitest の `tsconfck` が workspace パッケージ参照を解決できないため
 - **AIモデルは OpenAI**（gpt-4o / gpt-4o-mini）。Claude は使用しない
 - Mobile (Expo) は Phase 2 以降のため、現時点では実装しない
+- **UA ベースのデバイス出し分け**: middleware で `x-device` ヘッダーをセットし、`app/(app)/layout.tsx` で PC シェル / モバイルシェルを切り替える。レスポンシブ CSS は使わない
+
+
+## モバイルコンポーネントの方針
+
+`src/components/app/mobile/` 配下のコンポーネントは、モバイルブラウザ向けだけでなく、**PC 版の「サイドキック」ペイン（副画面・ウィジェット等）でも再利用する前提**で設計する。
+
+- モバイルコンポーネントは PC シェルへの依存（`AppShellContext` の `openPanel` 等）を持たないよう設計する
+- PC 固有の機能が必要な場合はモバイルコンポーネントに直接実装せず、props や Context 経由で注入する
 
 
 ## テスト
