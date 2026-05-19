@@ -1,0 +1,50 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+import { boolean, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { aiScopeEnum } from './enums.js'
+import { profiles, workspaces } from './workspaces.js'
+import { projects } from './projects.js'
+
+export const aiAgents = pgTable('ai_agents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  scope: aiScopeEnum('scope').notNull(),
+  name: text('name').notNull(),
+  description: text('description'),
+  model: text('model').notNull(),
+  systemPrompt: text('system_prompt'),
+  agentsMd: text('agents_md'),
+  htmlTemplate: text('html_template'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => profiles.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const aiConversations = pgTable('ai_conversations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  agentId: uuid('agent_id')
+    .notNull()
+    .references(() => aiAgents.id, { onDelete: 'cascade' }),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => profiles.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const aiMessages = pgTable('ai_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  conversationId: uuid('conversation_id')
+    .notNull()
+    .references(() => aiConversations.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(),
+  content: text('content').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})

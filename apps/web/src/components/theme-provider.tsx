@@ -1,0 +1,11 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+'use client'
+
+import { ThemeProvider as NextThemesProvider } from 'next-themes'
+import type { ComponentProps } from 'react'
+
+export function ThemeProvider({ children, ...props }: ComponentProps<typeof NextThemesProvider>) {
+  return <NextThemesProvider {...props}>{children}</NextThemesProvider>
+}
