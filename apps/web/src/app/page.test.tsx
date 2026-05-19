@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import HomePage from './page'
 
 describe('HomePage', () => {
-  it('準備中のメッセージを表示する', () => {
+  it('アプリのルート要素を描画する', () => {
     render(<HomePage />)
-    expect(screen.getByText('Cairn — 準備中')).toBeInTheDocument()
+    expect(document.querySelector('.app-root')).toBeInTheDocument()
   })
 })
