@@ -4,8 +4,16 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 
+function detectMobile(ua: string): boolean {
+  return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
+}
+
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
+  const ua = request.headers.get('user-agent') ?? ''
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-device', detectMobile(ua) ? 'mobile' : 'desktop')
+
+  let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
 
   const supabase = createServerClient(
     process.env['NEXT_PUBLIC_SUPABASE_URL']!,
@@ -17,7 +25,7 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({ request })
+          supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options),
           )
@@ -37,6 +45,8 @@ export async function middleware(request: NextRequest) {
   // if (user && isAuthRoute) {
   //   return NextResponse.redirect(new URL('/dashboard', request.url))
   // }
+
+  void supabase
 
   return supabaseResponse
 }
