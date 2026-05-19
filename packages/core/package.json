@@ -11,8 +11,14 @@
   "dependencies": {
     "@cairn/shared": "workspace:*"
   },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
   "devDependencies": {
     "@cairn/config": "workspace:*",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
   }
 }
