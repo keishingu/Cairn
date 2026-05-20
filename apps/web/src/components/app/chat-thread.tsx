@@ -10,6 +10,7 @@ import { Icon } from './primitives'
 import {
   formatChatMessageTime,
   useChannelMessages,
+  useCurrentUser,
   useSendChannelMessage,
   useToggleMessageReaction,
 } from '@/lib/chat/client'
@@ -187,8 +188,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
+  const { data: currentUser } = useCurrentUser()
   const { data: messages = [], isLoading, isError } = useChannelMessages(channelId)
-  const sendMutation = useSendChannelMessage(channelId)
+  const sendMutation = useSendChannelMessage(channelId, currentUser)
   const reactMutation = useToggleMessageReaction(channelId)
 
   React.useEffect(() => {
