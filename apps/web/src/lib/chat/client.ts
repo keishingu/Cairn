@@ -128,6 +128,7 @@ export function useChannelMessages(channelId: string | null) {
     queryFn: () => fetchChannelMessages(channelId!),
     enabled: !!channelId,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   })
 }
 
