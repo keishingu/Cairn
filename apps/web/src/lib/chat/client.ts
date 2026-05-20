@@ -1,9 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
+import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
+import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 
 export const chatQueryKeys = {
   projectChannels: ['project-channels'] as const,
+  workspaceChannels: ['workspace-channels'] as const,
+  workspaceMembers: ['workspace-members'] as const,
   messages: (channelId: string | null) => ['messages', channelId] as const,
 }
 
@@ -22,6 +26,18 @@ export function findProjectChannelByTitle(
 async function fetchProjectChannels(): Promise<ProjectChannelDto[]> {
   const res = await fetch('/api/projects/channels')
   if (!res.ok) throw new Error('チャンネルの取得に失敗しました')
+  return res.json()
+}
+
+async function fetchWorkspaceChannels(): Promise<WorkspaceChannelDto[]> {
+  const res = await fetch('/api/workspaces/channels')
+  if (!res.ok) throw new Error('チャンネルの取得に失敗しました')
+  return res.json()
+}
+
+async function fetchWorkspaceMembers(): Promise<WorkspaceMemberDto[]> {
+  const res = await fetch('/api/workspaces/members')
+  if (!res.ok) throw new Error('メンバーの取得に失敗しました')
   return res.json()
 }
 
@@ -54,6 +70,20 @@ export function useProjectChannels() {
   return useQuery({
     queryKey: chatQueryKeys.projectChannels,
     queryFn: fetchProjectChannels,
+  })
+}
+
+export function useWorkspaceChannels() {
+  return useQuery({
+    queryKey: chatQueryKeys.workspaceChannels,
+    queryFn: fetchWorkspaceChannels,
+  })
+}
+
+export function useWorkspaceMembers() {
+  return useQuery({
+    queryKey: chatQueryKeys.workspaceMembers,
+    queryFn: fetchWorkspaceMembers,
   })
 }
 

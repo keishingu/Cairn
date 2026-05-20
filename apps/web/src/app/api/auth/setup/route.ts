@@ -35,7 +35,7 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { profiles, workspaces, workspaceMembers } = await import('@cairn/db')
+    const { profiles, workspaces, workspaceMembers, channels } = await import('@cairn/db')
     const serviceClient = await createServiceClient()
 
     // createServiceClient is used to bypass RLS for initial profile creation
@@ -75,6 +75,11 @@ export async function POST(req: Request) {
           userId: user.id,
           role: 'owner',
         })
+
+        await db.insert(channels).values([
+          { workspaceId: ws.id, name: '雑談',     isPrivate: false },
+          { workspaceId: ws.id, name: '連絡事項', isPrivate: false },
+        ])
       }
     }
 
