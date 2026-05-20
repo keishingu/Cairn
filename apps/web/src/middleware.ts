@@ -34,23 +34,23 @@ export async function middleware(request: NextRequest) {
     },
   )
 
-  // 認証実装前は全ルートをパブリックとして扱う
-  // TODO: 認証実装後に下記を有効化する
-  // const { data: { user } } = await supabase.auth.getUser()
-  // const isAuthRoute = request.nextUrl.pathname.startsWith('/auth')
-  // const isPublicRoute = request.nextUrl.pathname === '/'
-  // if (!user && !isAuthRoute && !isPublicRoute) {
-  //   return NextResponse.redirect(new URL('/auth/login', request.url))
-  // }
-  // if (user && isAuthRoute) {
-  //   return NextResponse.redirect(new URL('/dashboard', request.url))
-  // }
+  // DATABASE_URL が未設定のときは Supabase なし開発モードとみなし認証をスキップする
+  if (process.env['DATABASE_URL']) {
+    const { data: { user } } = await supabase.auth.getUser()
+    const { pathname } = request.nextUrl
+    const isAuthRoute = pathname.startsWith('/auth')
 
-  void supabase
+    if (!user && !isAuthRoute) {
+      return NextResponse.redirect(new URL('/auth/login', request.url))
+    }
+    if (user && isAuthRoute) {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
+  }
 
   return supabaseResponse
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/).*)'],
 }

@@ -3,18 +3,18 @@
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { getAuthContext } from '@/lib/get-auth-context'
 
 const toggleSchema = z.object({
   emoji: z.string().min(1).max(10),
 })
 
-// Placeholder user until auth is wired up
-const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
-
 type RouteContext = { params: Promise<{ messageId: string }> }
 
 export async function POST(req: Request, { params }: RouteContext) {
   const { messageId } = await params
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
 
   let body: unknown
   try {
@@ -45,7 +45,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       .where(
         and(
           eq(messageReactions.messageId, messageId),
-          eq(messageReactions.userId, DEV_USER_ID),
+          eq(messageReactions.userId, ctx.userId),
           eq(messageReactions.emoji, emoji),
         ),
       )
@@ -53,7 +53,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     if (existing) {
       await db.delete(messageReactions).where(eq(messageReactions.id, existing.id))
     } else {
-      await db.insert(messageReactions).values({ messageId, userId: DEV_USER_ID, emoji })
+      await db.insert(messageReactions).values({ messageId, userId: ctx.userId, emoji })
     }
 
     const countResult = await db

@@ -1,8 +1,10 @@
 'use client'
 
 import React from 'react'
+import { useRouter } from 'next/navigation'
 import { Icon } from './primitives'
 import { Avatar } from './primitives'
+import { createClient } from '@/lib/supabase/client'
 
 export type PageId =
   | 'dashboard' | 'projects' | 'calendar' | 'kanban'
@@ -192,15 +194,68 @@ export const Sidebar = ({ page, setPage }: SidebarProps) => {
         ))}
       </nav>
 
-      <div style={{ padding: '10px 12px', borderTop: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Avatar name="山田 太郎" size={32}/>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2 }}>山田 太郎</div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3 }}>部長 · オンライン</div>
-        </div>
-        <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-3)', padding: 4, borderRadius: 6 }}><Icon name="more" size={16}/></button>
-      </div>
+      <SidebarUserFooter />
     </aside>
+  )
+}
+
+function SidebarUserFooter() {
+  const router = useRouter()
+  const [menuOpen, setMenuOpen] = React.useState(false)
+  const menuRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    if (!menuOpen) return
+    function close(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [menuOpen])
+
+  async function handleLogout() {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/auth/login')
+    router.refresh()
+  }
+
+  return (
+    <div style={{ padding: '10px 12px', borderTop: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }} ref={menuRef}>
+      <Avatar name="山田 太郎" size={32}/>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2 }}>山田 太郎</div>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3 }}>オンライン</div>
+      </div>
+      <button
+        onClick={() => setMenuOpen(v => !v)}
+        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-3)', padding: 4, borderRadius: 6 }}
+      >
+        <Icon name="more" size={16}/>
+      </button>
+      {menuOpen && (
+        <div style={{
+          position: 'absolute', bottom: '100%', right: 12, left: 12,
+          background: 'var(--card)', border: '1px solid var(--border)',
+          borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 100,
+        }}>
+          <button
+            onClick={handleLogout}
+            style={{
+              width: '100%', padding: '8px 10px', borderRadius: 7, border: 'none',
+              background: 'transparent', color: 'var(--red-text)', fontSize: 13,
+              fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
+            }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--red-soft)'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+          >
+            <Icon name="logout" size={14}/>
+            ログアウト
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
