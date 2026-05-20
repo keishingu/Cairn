@@ -42,3 +42,13 @@ next-env.d.ts
 
 # drizzle
 drizzle/meta
+
+# claude
+.claude/
+
+# pnpm
+.pnpm-store/
+
+# supabase
+supabase/.branches/
+supabase/.temp/
