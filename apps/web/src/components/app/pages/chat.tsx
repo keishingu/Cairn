@@ -65,6 +65,7 @@ const ChatSidebarItem = ({ active, onClick, prefix, avatar, dot, label, badge }:
 
 const FullChatMessage = ({ m, onReact }: { m: MessageDto; onReact: (messageId: string, emoji: string) => void }) => {
   const [showPicker, setShowPicker] = React.useState(false)
+  const addBtnRef = React.useRef<HTMLButtonElement>(null)
 
   return (
     <div style={{ display: 'flex', gap: 12, padding: '6px 24px', alignItems: 'flex-start' }}
@@ -91,21 +92,20 @@ const FullChatMessage = ({ m, onReact }: { m: MessageDto; onReact: (messageId: s
                 cursor: 'pointer', fontFamily: 'inherit',
               }}>{r.emoji} {r.count}</button>
             ))}
-            <div style={{ position: 'relative' }}>
-              <button onClick={() => setShowPicker(p => !p)} style={{
-                width: 24, height: 24, borderRadius: 12,
-                background: 'var(--card-2)', border: '1px solid var(--border)',
-                fontSize: 13, color: 'var(--text-3)',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', fontFamily: 'inherit',
-              }}>+</button>
-              {showPicker && (
-                <EmojiPicker
-                  onSelect={(emoji) => onReact(m.id, emoji)}
-                  onClose={() => setShowPicker(false)}
-                />
-              )}
-            </div>
+            <button ref={addBtnRef} onClick={() => setShowPicker(p => !p)} style={{
+              width: 24, height: 24, borderRadius: 12,
+              background: 'var(--card-2)', border: '1px solid var(--border)',
+              fontSize: 13, color: 'var(--text-3)',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}>+</button>
+            {showPicker && (
+              <EmojiPicker
+                anchorRef={addBtnRef}
+                onSelect={(emoji) => onReact(m.id, emoji)}
+                onClose={() => setShowPicker(false)}
+              />
+            )}
           </div>
         )}
       </div>
@@ -119,6 +119,7 @@ export const PageChat = () => {
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [isComposing, setIsComposing] = React.useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = React.useState(false)
+  const emojiPickerBtnRef = React.useRef<HTMLButtonElement>(null)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
@@ -319,17 +320,16 @@ export const PageChat = () => {
                   <Icon name={b.i} size={13}/> {b.l}
                 </button>
               ))}
-              <div style={{ position: 'relative' }}>
-                <button
-                  onClick={() => setShowEmojiPicker(p => !p)}
-                  style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}
-                >
-                  <Icon name="smile" size={13}/> 絵文字
-                </button>
-                {showEmojiPicker && (
-                  <EmojiPicker onSelect={insertEmoji} onClose={() => setShowEmojiPicker(false)}/>
-                )}
-              </div>
+              <button
+                ref={emojiPickerBtnRef}
+                onClick={() => setShowEmojiPicker(p => !p)}
+                style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}
+              >
+                <Icon name="smile" size={13}/> 絵文字
+              </button>
+              {showEmojiPicker && (
+                <EmojiPicker anchorRef={emojiPickerBtnRef} onSelect={insertEmoji} onClose={() => setShowEmojiPicker(false)}/>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, padding: '10px 14px 12px' }}>
               <textarea
