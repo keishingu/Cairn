@@ -9,6 +9,7 @@ import { MobileHeader } from '../mobile-header'
 import { Icon, StatusChip } from '../../primitives'
 import { STATUS, type StatusKey } from '../../data'
 import type { ProjectDto } from '@/app/api/projects/route'
+import { MobileProjectScreen } from '../../mobile/project-screen'
 
 async function fetchProjects(): Promise<ProjectDto[]> {
   const res = await fetch('/api/projects')
@@ -32,6 +33,7 @@ export function MobileProjects() {
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
   const [filter, setFilter] = React.useState<'all' | 'active' | 'mine'>('all')
   const [search, setSearch] = React.useState('')
+  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
 
   const filtered = projects.filter(p => {
     if (filter === 'active' && p.statusName === 'done') return false
@@ -41,6 +43,9 @@ export function MobileProjects() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, background: 'var(--bg)' }}>
+      {selectedProject && (
+        <MobileProjectScreen project={selectedProject} onBack={() => setSelectedProject(null)}/>
+      )}
       <MobileHeader title="プロジェクト" right={
         <button style={{ border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Icon name="plus" size={13}/> 新規
@@ -74,7 +79,7 @@ export function MobileProjects() {
               const cfg = STATUS[p.statusName as StatusKey]
               const accent = cfg?.dot ?? 'var(--text-3)'
               return (
-                <div key={p.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px', cursor: 'pointer', transition: 'transform .15s' }}>
+                <div key={p.id} onClick={() => setSelectedProject(p)} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px', cursor: 'pointer', transition: 'transform .15s' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
                     <div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
                       <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 4, lineHeight: 1.3 }}>{p.title}</div>

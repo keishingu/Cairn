@@ -10,7 +10,7 @@ import {
 } from '@/lib/chat/client'
 import { ChatThread } from './chat-thread'
 
-const ChatTabContent = ({ project }: { project: ProjectDto }) => {
+export const ChatTabContent = ({ project }: { project: ProjectDto }) => {
   const { data: projectChannels, isLoading, isError } = useProjectChannels()
 
   const activeChannel = React.useMemo(
@@ -47,7 +47,7 @@ const ChatTabContent = ({ project }: { project: ProjectDto }) => {
   )
 }
 
-function formatDateRange(start: string | null, end: string | null): string {
+export function formatDateRange(start: string | null, end: string | null): string {
   if (!start) return '—'
   const fmt = (d: string) => {
     const [, m, day] = d.split('-')
@@ -56,7 +56,7 @@ function formatDateRange(start: string | null, end: string | null): string {
   return end && end !== start ? `${fmt(start)} ~ ${fmt(end)}` : fmt(start)
 }
 
-const OverviewTab = ({ project }: { project: ProjectDto }) => (
+export const OverviewTab = ({ project }: { project: ProjectDto }) => (
   <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
@@ -95,7 +95,7 @@ const OverviewTab = ({ project }: { project: ProjectDto }) => (
   </div>
 )
 
-const FilesTab = () => (
+export const FilesTab = () => (
   <div style={{ flex: 1, overflow: 'auto', padding: '12px 12px 16px' }}>
     {[
       { name: '北アルプス縦走計画書_v2.pdf', size: '2.7MB · 5/21 08:30', kind: 'PDF', latest: true },
@@ -124,7 +124,7 @@ const FilesTab = () => (
   </div>
 )
 
-const TasksTab = () => {
+export const TasksTab = () => {
   const tasks = [
     { d: '6/5',  t: '計画書を最新版に更新する', p: '高', done: false, a: '山田' },
     { d: '6/6',  t: '装備リストを確定する',     p: '中', done: false, a: '佐藤' },
@@ -161,7 +161,7 @@ const TasksTab = () => {
   )
 }
 
-const MembersTab = () => {
+export const MembersTab = () => {
   const list = [
     { n: '山田 太郎', r: 'リーダー',   c: 'var(--accent-text)', bg: 'var(--accent-soft)' },
     { n: '佐藤 花子', r: 'サブリーダー', c: 'var(--violet-text)', bg: 'var(--violet-soft)' },
