@@ -7,24 +7,25 @@ import React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Sidebar, type PageId } from '@/components/app/sidebar'
 import { ProjectPanel } from '@/components/app/project-panel'
+import type { ProjectDto } from '@/app/api/projects/route'
 import { PageNotifications } from '@/components/app/pages/notifications'
 import { AppShellContext } from '@/components/app/app-shell-context'
 
 export function PCShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const [panel, setPanel] = React.useState(false)
+  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
   const [notifOpen, setNotifOpen] = React.useState(false)
 
   const page = (pathname.slice(1) || 'projects') as PageId
 
   React.useEffect(() => {
-    setPanel(false)
+    setSelectedProject(null)
     setNotifOpen(false)
   }, [pathname])
 
   return (
-    <AppShellContext.Provider value={{ openPanel: () => setPanel(true), openNotif: () => setNotifOpen(true) }}>
+    <AppShellContext.Provider value={{ openPanel: (project) => setSelectedProject(project ?? null), openNotif: () => setNotifOpen(true) }}>
       <div className="app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
         <div className="app" data-theme="light" style={{ width: '100%', height: '100%', display: 'flex', background: 'var(--bg)', overflow: 'hidden' }}>
           <Sidebar page={page} setPage={(p) => router.push(`/${p}`)}/>
@@ -33,7 +34,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
                 {children}
               </div>
-              {panel && <ProjectPanel onClose={() => setPanel(false)}/>}
+              {selectedProject && <ProjectPanel project={selectedProject} onClose={() => setSelectedProject(null)}/>}
               {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)}/>}
             </div>
           </main>

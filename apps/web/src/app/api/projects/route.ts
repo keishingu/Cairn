@@ -100,7 +100,7 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects } = await import('@cairn/db')
+    const { projects, channels } = await import('@cairn/db')
 
     const [inserted] = await db
       .insert(projects)
@@ -116,6 +116,12 @@ export async function POST(req: Request) {
       .returning({ id: projects.id, title: projects.title, startDate: projects.startDate, endDate: projects.endDate })
 
     if (!inserted) throw new Error('Insert returned no rows')
+
+    await db.insert(channels).values({
+      workspaceId: ctx.workspaceId,
+      projectId: inserted.id,
+      type: 'project',
+    })
 
     return NextResponse.json({
       id: inserted.id,
