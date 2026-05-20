@@ -34,7 +34,9 @@ export function MobileProjects() {
   const [search, setSearch] = React.useState('')
 
   const filtered = projects.filter(p => {
+    if (p.archived) return false
     if (filter === 'active' && p.statusName === 'done') return false
+    if (filter === 'mine' && !p.isMember) return false
     if (search && !p.title.includes(search)) return false
     return true
   })
@@ -70,9 +72,10 @@ export function MobileProjects() {
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>プロジェクトが見つかりません</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {filtered.map((p, i) => {
+            {filtered.map(p => {
               const cfg = STATUS[p.statusName as StatusKey]
               const accent = cfg?.dot ?? 'var(--text-3)'
+              const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
               return (
                 <div key={p.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px', cursor: 'pointer', transition: 'transform .15s' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -82,12 +85,16 @@ export function MobileProjects() {
                     </div>
                     <StatusChip s={p.statusName as StatusKey}/>
                   </div>
-                  <div style={{ height: 4, borderRadius: 2, background: 'var(--divider)', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${30 + (i * 9) % 60}%`, background: accent, borderRadius: 2 }}/>
-                  </div>
+                  {p.taskCount > 0 && (
+                    <div style={{ height: 4, borderRadius: 2, background: 'var(--divider)', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${progress}%`, background: accent, borderRadius: 2 }}/>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 10, gap: 12, fontSize: 12, color: 'var(--text-3)' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="users" size={12}/> {p.memberCount}</span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="chat" size={12}/> 0</span>
+                    {p.taskCount > 0 && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={12}/> {p.completedTaskCount}/{p.taskCount}</span>
+                    )}
                   </div>
                 </div>
               )

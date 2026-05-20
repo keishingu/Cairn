@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { getAuthContext } from '@/lib/get-auth-context'
 
 export interface ProjectStatusDto {
   id: string
@@ -10,8 +11,6 @@ export interface ProjectStatusDto {
   sortOrder: string
   isFinal: boolean
 }
-
-const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
 function mockStatuses(): ProjectStatusDto[] {
   return [
@@ -25,6 +24,9 @@ function mockStatuses(): ProjectStatusDto[] {
 }
 
 export async function GET() {
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
+
   if (!process.env['DATABASE_URL']) {
     return NextResponse.json(mockStatuses())
   }
@@ -43,7 +45,7 @@ export async function GET() {
         isFinal: projectStatuses.isFinal,
       })
       .from(projectStatuses)
-      .where(eq(projectStatuses.workspaceId, DEV_WORKSPACE_ID))
+      .where(eq(projectStatuses.workspaceId, ctx.workspaceId))
       .orderBy(asc(projectStatuses.sortOrder))
 
     return NextResponse.json(rows satisfies ProjectStatusDto[])
