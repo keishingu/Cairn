@@ -35,7 +35,7 @@ supabase db reset
 pnpm dev
 ```
 
-ブラウザで http://localhost:3000 を開く。
+ブラウザで http://localhost:3128 を開く。
 
 ### Supabase ローカル環境の確認
 

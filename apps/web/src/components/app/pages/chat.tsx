@@ -1,11 +1,17 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MEMBERS } from '../data'
-import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
+import {
+  formatChatMessageTime,
+  useChannelMessages,
+  useProjectChannels,
+  useSendChannelMessage,
+  useToggleMessageReaction,
+} from '@/lib/chat/client'
+import { isImeConfirmingEnter } from '@/lib/chat/ime'
 
 const GENERAL_CHANNELS = [
   { id: 'g1', name: '雑談',       unread: 3, online: 12, private: false },
@@ -20,37 +26,6 @@ const DMS = [
   { id: 'd3', name: '田中 陽子', online: false, unread: 0 },
   { id: 'd4', name: '伊藤 翔',   online: false, unread: 0 },
 ]
-
-async function fetchProjectChannels(): Promise<ProjectChannelDto[]> {
-  const res = await fetch('/api/projects/channels')
-  if (!res.ok) throw new Error('チャンネルの取得に失敗しました')
-  return res.json()
-}
-
-async function fetchMessages(channelId: string): Promise<MessageDto[]> {
-  const res = await fetch(`/api/channels/${channelId}/messages`)
-  if (!res.ok) throw new Error('メッセージの取得に失敗しました')
-  return res.json()
-}
-
-async function postMessage(channelId: string, content: string): Promise<MessageDto> {
-  const res = await fetch(`/api/channels/${channelId}/messages`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
-  })
-  if (!res.ok) throw new Error('メッセージの送信に失敗しました')
-  return res.json()
-}
-
-async function toggleReaction(messageId: string, emoji: string): Promise<void> {
-  const res = await fetch(`/api/messages/${messageId}/reactions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ emoji }),
-  })
-  if (!res.ok) throw new Error('リアクションの更新に失敗しました')
-}
 
 const ChatSidebarSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <div style={{ marginBottom: 10 }}>
@@ -97,11 +72,6 @@ const ChatSidebarItem = ({ active, onClick, prefix, avatar, dot, label, badge }:
   </button>
 )
 
-function formatTime(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
 const FullChatMessage = ({ m, onReact }: { m: MessageDto; onReact: (messageId: string, emoji: string) => void }) => (
   <div style={{ display: 'flex', gap: 12, padding: '6px 24px', alignItems: 'flex-start' }}
     onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
@@ -111,7 +81,7 @@ const FullChatMessage = ({ m, onReact }: { m: MessageDto; onReact: (messageId: s
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{m.senderName}</span>
-        <span style={{ fontSize: 11.5, color: 'var(--text-4)' }}>{formatTime(m.createdAt)}</span>
+        <span style={{ fontSize: 11.5, color: 'var(--text-4)' }}>{formatChatMessageTime(m.createdAt)}</span>
       </div>
       <div style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.6, whiteSpace: 'pre-line' }}>{m.content}</div>
       {m.reactions.length > 0 && (
@@ -137,14 +107,11 @@ export const PageChat = () => {
   const [channelId, setChannelId] = React.useState<string | null>(null)
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
+  const [isComposing, setIsComposing] = React.useState(false)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
-  const queryClient = useQueryClient()
 
-  const { data: projectChannels = [] } = useQuery({
-    queryKey: ['project-channels'],
-    queryFn: fetchProjectChannels,
-  })
+  const { data: projectChannels = [] } = useProjectChannels()
 
   // Default to first project channel when data loads
   React.useEffect(() => {
@@ -153,35 +120,26 @@ export const PageChat = () => {
     }
   }, [channelId, projectChannels])
 
-  const { data: messages = [], isLoading: messagesLoading } = useQuery({
-    queryKey: ['messages', channelId],
-    queryFn: () => fetchMessages(channelId!),
-    enabled: !!channelId,
-    refetchInterval: 5000,
-  })
+  const { data: messages = [], isLoading: messagesLoading } = useChannelMessages(channelId)
 
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length])
 
-  const sendMutation = useMutation({
-    mutationFn: (content: string) => postMessage(channelId!, content),
-    onSuccess: (newMsg) => {
-      setSendError(null)
-      queryClient.setQueryData<MessageDto[]>(['messages', channelId], prev => [...(prev ?? []), newMsg])
-    },
-    onError: (err: Error) => {
-      setSendError(err.message)
-      setDraft(pendingDraftRef.current)
-    },
-  })
+  const sendMutation = useSendChannelMessage(channelId)
+  const reactMutation = useToggleMessageReaction(channelId)
 
-  const reactMutation = useMutation({
-    mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) => toggleReaction(messageId, emoji),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['messages', channelId] })
-    },
-  })
+  React.useEffect(() => {
+    if (!sendMutation.isError) return
+    setSendError(sendMutation.error.message)
+    setDraft(pendingDraftRef.current)
+  }, [sendMutation.error, sendMutation.isError])
+
+  React.useEffect(() => {
+    if (sendMutation.isSuccess) {
+      setSendError(null)
+    }
+  }, [sendMutation.isSuccess])
 
   const send = () => {
     const text = draft.trim()
@@ -297,7 +255,14 @@ export const PageChat = () => {
               <textarea
                 value={draft}
                 onChange={e => setDraft(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+                onCompositionStart={() => setIsComposing(true)}
+                onCompositionEnd={() => setIsComposing(false)}
+                onKeyDown={e => {
+                  if (e.key !== 'Enter' || e.shiftKey) return
+                  if (isImeConfirmingEnter(e, isComposing)) return
+                  e.preventDefault()
+                  send()
+                }}
                 placeholder={channelName ? `${isPrivate ? '🔒' : '#'} ${channelName} にメッセージ送信` : 'メッセージを入力...'}
                 rows={1}
                 style={{ flex: 1, border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160 }}/>
