@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { createProjectSchema } from '@cairn/shared'
-import { PROJECTS, STATUS, type StatusKey } from '@/components/app/data'
+import { PROJECTS, MEMBERS, STATUS, type StatusKey } from '@/components/app/data'
 import { getAuthContext } from '@/lib/get-auth-context'
 
 export interface ProjectDto {
@@ -13,28 +13,44 @@ export interface ProjectDto {
   startDate: string | null
   endDate: string | null
   memberCount: number
+  memberNames: string[]
+  taskCount: number
+  completedTaskCount: number
+  isOwner: boolean
+  isMember: boolean
+  archived: boolean
 }
 
 function mockProjects(): ProjectDto[] {
-  return PROJECTS.map(p => ({
+  return PROJECTS.map((p, i) => ({
     id: p.id,
     title: p.name,
     statusName: p.status,
     startDate: null,
     endDate: null,
     memberCount: p.members,
+    memberNames: MEMBERS.slice(0, Math.min(p.members, 4)),
+    taskCount: 5 + (i * 3) % 8,
+    completedTaskCount: 1 + (i * 2) % 5,
+    isOwner: i % 3 === 0,
+    isMember: true,
+    archived: false,
   }))
 }
 
 export async function GET() {
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
+
   if (!process.env['DATABASE_URL']) {
     return NextResponse.json(mockProjects())
   }
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers } = await import('@cairn/db')
-    const { eq, count } = await import('drizzle-orm')
+    const { projects, projectStatuses, projectMembers, tasks, profiles } = await import('@cairn/db')
+    const { eq, count, and } = await import('drizzle-orm')
+    const { sql } = await import('drizzle-orm')
 
     const rows = await db
       .select({
@@ -43,17 +59,49 @@ export async function GET() {
         statusName: projectStatuses.name,
         startDate: projects.startDate,
         endDate: projects.endDate,
+        archived: projects.archived,
+        createdBy: projects.createdBy,
       })
       .from(projects)
       .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
-      .where(eq(projects.archived, false))
+      .where(eq(projects.workspaceId, ctx.workspaceId))
 
     const counts = await db
       .select({ projectId: projectMembers.projectId, n: count() })
       .from(projectMembers)
       .groupBy(projectMembers.projectId)
-
     const countMap = new Map(counts.map(r => [r.projectId, Number(r.n)]))
+
+    const memberRows = await db
+      .select({
+        projectId: projectMembers.projectId,
+        displayName: profiles.displayName,
+      })
+      .from(projectMembers)
+      .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
+      .orderBy(projectMembers.createdAt)
+    const memberNamesMap = new Map<string, string[]>()
+    for (const row of memberRows) {
+      const names = memberNamesMap.get(row.projectId) ?? []
+      if (names.length < 4) names.push(row.displayName)
+      memberNamesMap.set(row.projectId, names)
+    }
+
+    const userMemberRows = await db
+      .select({ projectId: projectMembers.projectId })
+      .from(projectMembers)
+      .where(eq(projectMembers.userId, ctx.userId))
+    const userProjectIds = new Set(userMemberRows.map(r => r.projectId))
+
+    const taskRows = await db
+      .select({
+        projectId: tasks.projectId,
+        total: count(),
+        completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
+      })
+      .from(tasks)
+      .groupBy(tasks.projectId)
+    const taskMap = new Map(taskRows.map(r => [r.projectId, { total: Number(r.total), completed: Number(r.completed) }]))
 
     const result: ProjectDto[] = rows.map(r => ({
       id: r.id,
@@ -61,7 +109,13 @@ export async function GET() {
       statusName: (r.statusName as StatusKey | null) ?? 'plan',
       startDate: r.startDate,
       endDate: r.endDate,
+      archived: r.archived,
       memberCount: countMap.get(r.id) ?? 0,
+      memberNames: memberNamesMap.get(r.id) ?? [],
+      taskCount: taskMap.get(r.id)?.total ?? 0,
+      completedTaskCount: taskMap.get(r.id)?.completed ?? 0,
+      isOwner: r.createdBy === ctx.userId,
+      isMember: userProjectIds.has(r.id),
     }))
 
     return NextResponse.json(result)
@@ -95,6 +149,12 @@ export async function POST(req: Request) {
       startDate: parsed.data.startDate ?? null,
       endDate: parsed.data.endDate ?? null,
       memberCount: 1,
+      memberNames: [],
+      taskCount: 0,
+      completedTaskCount: 0,
+      isOwner: true,
+      isMember: true,
+      archived: false,
     } satisfies ProjectDto, { status: 201 })
   }
 
@@ -130,6 +190,12 @@ export async function POST(req: Request) {
       startDate: inserted.startDate,
       endDate: inserted.endDate,
       memberCount: 1,
+      memberNames: [],
+      taskCount: 0,
+      completedTaskCount: 0,
+      isOwner: true,
+      isMember: true,
+      archived: false,
     } satisfies ProjectDto, { status: 201 })
   } catch (err) {
     console.error('[/api/projects POST] DB query failed:', err)
