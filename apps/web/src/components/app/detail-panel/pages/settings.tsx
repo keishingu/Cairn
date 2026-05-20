@@ -3,6 +3,8 @@
 
 'use client'
 
+import React from 'react'
+import { useTheme } from 'next-themes'
 import { MobileHeader } from '../mobile-header'
 import { Icon, Avatar } from '../../primitives'
 
@@ -37,7 +39,19 @@ const SECTIONS = [
   },
 ]
 
+type ThemeValue = 'light' | 'dark' | 'system'
+
+const THEME_OPTIONS: { value: ThemeValue; label: string; icon: string }[] = [
+  { value: 'light',  label: 'ライト',   icon: 'sun' },
+  { value: 'system', label: 'システム', icon: 'monitor' },
+  { value: 'dark',   label: 'ダーク',   icon: 'moon' },
+]
+
 export function MobileSettings() {
+  const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => setMounted(true), [])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
       <MobileHeader title="設定"/>
@@ -77,6 +91,35 @@ export function MobileSettings() {
             </div>
           </div>
         ))}
+
+        <div style={{ margin: '16px 16px 0' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 4 }}>外観</div>
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>テーマ</div>
+            {mounted && (
+              <div style={{ display: 'flex', gap: 6 }}>
+                {THEME_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setTheme(opt.value)}
+                    style={{
+                      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                      padding: '10px 6px', borderRadius: 10,
+                      border: `2px solid ${theme === opt.value ? 'var(--accent)' : 'var(--border)'}`,
+                      background: theme === opt.value ? 'var(--accent-soft)' : 'var(--card-2)',
+                      color: theme === opt.value ? 'var(--accent-text)' : 'var(--text-3)',
+                      fontWeight: theme === opt.value ? 700 : 500,
+                      fontSize: 12, fontFamily: 'inherit', cursor: 'pointer',
+                    }}
+                  >
+                    <Icon name={opt.icon} size={18} color={theme === opt.value ? 'var(--accent-text)' : 'var(--text-3)'}/>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
 
         <div style={{ margin: '24px 16px 0' }}>
           <button style={{ width: '100%', padding: '15px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--rose)', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>

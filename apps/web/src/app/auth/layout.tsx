@@ -8,8 +8,7 @@ export const metadata: Metadata = { title: 'Cairn - ログイン' }
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="app"
-      data-theme="light"
+      className="app app-root"
       style={{
         minHeight: '100vh',
         display: 'flex',

@@ -37,7 +37,7 @@ export function MobileShell() {
   return (
     <AppShellContext.Provider value={{ openPanel: () => {}, openNotif: () => {} }}>
       <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden' }}>
-        <div className="app" data-theme="light" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
+        <div className="app" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
             <MobilePage page={page} />
           </div>
