@@ -4,6 +4,7 @@ import React from 'react'
 import { createPortal } from 'react-dom'
 import Picker from '@emoji-mart/react'
 import data from '@emoji-mart/data'
+import { useTheme } from 'next-themes'
 
 const MARGIN = 6
 // emoji-mart デフォルトサイズ
@@ -19,6 +20,7 @@ interface EmojiPickerProps {
 export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) => {
   const containerRef = React.useRef<HTMLDivElement>(null)
   const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null)
+  const { resolvedTheme } = useTheme()
 
   React.useLayoutEffect(() => {
     if (!anchorRef.current) return
@@ -57,7 +59,7 @@ export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) 
         data={data}
         onEmojiSelect={(e: { native: string }) => { onSelect(e.native); onClose() }}
         locale="ja"
-        theme="light"
+        theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
         previewPosition="none"
         skinTonePosition="none"
         maxFrequentRows={1}

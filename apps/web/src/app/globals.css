@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ── Design tokens (山岳部SaaS) ─────────────────────────────────── */
-.app-root, .app-root [data-theme="light"] {
+.app-root {
   --bg:            #F8FAFC;
   --bg-elev:       #F1F5F9;
   --card:          #FFFFFF;
@@ -64,7 +64,7 @@
   --selection:   #C7F0DC;
 }
 
-.app-root [data-theme="dark"] {
+[data-theme="dark"] .app-root {
   --bg:            #0B0F14;
   --bg-elev:       #0F141B;
   --card:          #111827;
