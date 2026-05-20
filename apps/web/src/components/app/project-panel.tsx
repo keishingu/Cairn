@@ -156,7 +156,7 @@ export const ProjectPanel = ({ project, onClose }: ProjectPanelProps) => {
       {tab === 'chat'     && <ChatTab project={project}/>}
       {tab === 'overview' && <OverviewTab project={project}/>}
       {tab === 'files'    && <FilesTab/>}
-      {tab === 'tasks'    && <TasksTab/>}
+      {tab === 'tasks'    && <TasksTab project={project}/>}
       {tab === 'members'  && <MembersTab/>}
       {tab === 'gallery'  && <PanelGalleryTab/>}
       {tab === 'ai'       && <PanelAITab/>}

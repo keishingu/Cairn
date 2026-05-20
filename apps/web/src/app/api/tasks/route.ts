@@ -1,0 +1,96 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+import { NextResponse } from 'next/server'
+import { getAuthContext } from '@/lib/get-auth-context'
+
+export interface TaskDto {
+  id: string
+  projectId: string
+  projectTitle: string
+  title: string
+  status: 'todo' | 'in_progress' | 'done'
+  priority: 'high' | 'medium' | 'low'
+  dueDate: string | null
+  assigneeName: string | null
+}
+
+const MOCK_TASKS: TaskDto[] = [
+  { id: 'tk1',  projectId: 'p1', projectTitle: '北アルプス縦走計画', title: '計画書を最新版に更新する',     status: 'todo',        priority: 'high',   dueDate: '2026-05-28', assigneeName: '山田 太郎' },
+  { id: 'tk2',  projectId: 'p1', projectTitle: '北アルプス縦走計画', title: '装備リストを確定する',         status: 'todo',        priority: 'medium', dueDate: '2026-05-25', assigneeName: '佐藤 花子' },
+  { id: 'tk3',  projectId: 'p1', projectTitle: '北アルプス縦走計画', title: 'テント場を予約する',           status: 'in_progress', priority: 'medium', dueDate: '2026-05-22', assigneeName: '鈴木 健' },
+  { id: 'tk4',  projectId: 'p1', projectTitle: '北アルプス縦走計画', title: '緊急連絡先を最新化する',       status: 'done',        priority: 'low',    dueDate: '2026-05-18', assigneeName: '田中 陽子' },
+  { id: 'tk5',  projectId: 'p2', projectTitle: '夏山合宿計画',       title: '宿泊施設を確認する',           status: 'todo',        priority: 'high',   dueDate: '2026-05-30', assigneeName: '田中 陽子' },
+  { id: 'tk6',  projectId: 'p2', projectTitle: '夏山合宿計画',       title: '参加者確認メールを送る',       status: 'done',        priority: 'low',    dueDate: '2026-05-15', assigneeName: '山田 太郎' },
+  { id: 'tk7',  projectId: 'p3', projectTitle: 'クライミング講習会', title: '講師との打ち合わせ',           status: 'in_progress', priority: 'high',   dueDate: '2026-05-21', assigneeName: '伊藤 翔' },
+  { id: 'tk8',  projectId: 'p3', projectTitle: 'クライミング講習会', title: '会場の予約確認',               status: 'todo',        priority: 'medium', dueDate: '2026-05-23', assigneeName: '高橋 美咲' },
+  { id: 'tk9',  projectId: 'p6', projectTitle: '春山合宿',           title: '反省会の議事録を作成',         status: 'todo',        priority: 'low',    dueDate: '2026-05-23', assigneeName: '高橋 美咲' },
+  { id: 'tk10', projectId: 'p4', projectTitle: '雪山訓練',           title: '必要装備リストの作成',         status: 'done',        priority: 'medium', dueDate: '2026-05-18', assigneeName: '中村 拓也' },
+  { id: 'tk11', projectId: 'p4', projectTitle: '雪山訓練',           title: 'ルート確認と地図の準備',       status: 'todo',        priority: 'medium', dueDate: '2026-05-27', assigneeName: '小林 大地' },
+  { id: 'tk12', projectId: 'p7', projectTitle: '沢登り練習会',       title: '安全講習の資料を作成する',     status: 'in_progress', priority: 'high',   dueDate: '2026-05-22', assigneeName: '鈴木 健' },
+]
+
+function mockTasks(projectId?: string): TaskDto[] {
+  return projectId ? MOCK_TASKS.filter(t => t.projectId === projectId) : MOCK_TASKS
+}
+
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url)
+  const projectId = searchParams.get('projectId') ?? undefined
+
+  if (!process.env['DATABASE_URL']) {
+    return NextResponse.json(mockTasks(projectId))
+  }
+
+  try {
+    const { ctx, error } = await getAuthContext()
+    if (error) return error
+
+    const { db } = await import('@cairn/db')
+    const { tasks, projects, profiles } = await import('@cairn/db')
+    const { eq, inArray } = await import('drizzle-orm')
+
+    const projectRows = await db
+      .select({ id: projects.id, title: projects.title })
+      .from(projects)
+      .where(eq(projects.workspaceId, ctx.workspaceId))
+
+    const projectIds = projectId
+      ? [projectId]
+      : projectRows.map(p => p.id)
+
+    if (projectIds.length === 0) return NextResponse.json([])
+
+    const taskRows = await db
+      .select({
+        id: tasks.id,
+        projectId: tasks.projectId,
+        title: tasks.title,
+        status: tasks.status,
+        priority: tasks.priority,
+        dueDate: tasks.dueDate,
+        assigneeName: profiles.displayName,
+      })
+      .from(tasks)
+      .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
+      .where(inArray(tasks.projectId, projectIds))
+
+    const projectMap = new Map(projectRows.map(p => [p.id, p.title]))
+
+    const result: TaskDto[] = taskRows.map(r => ({
+      id: r.id,
+      projectId: r.projectId,
+      projectTitle: projectMap.get(r.projectId) ?? '',
+      title: r.title,
+      status: r.status,
+      priority: r.priority,
+      dueDate: r.dueDate,
+      assigneeName: r.assigneeName ?? null,
+    }))
+
+    return NextResponse.json(result)
+  } catch (err) {
+    console.error('[GET /api/tasks] DB query failed:', err)
+    return NextResponse.json(mockTasks(projectId))
+  }
+}

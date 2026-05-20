@@ -95,7 +95,7 @@ export function MobileProjectScreen({ project, onBack }: MobileProjectScreenProp
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         {tab === 'overview' && <OverviewTab project={project}/>}
         {tab === 'chat'     && <ChatTab project={project}/>}
-        {tab === 'tasks'    && <TasksTab/>}
+        {tab === 'tasks'    && <TasksTab project={project}/>}
         {tab === 'files'    && <FilesTab/>}
         {tab === 'members'  && <MembersTab/>}
       </div>
