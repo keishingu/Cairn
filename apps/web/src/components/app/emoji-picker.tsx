@@ -2,18 +2,13 @@
 
 import React from 'react'
 import { createPortal } from 'react-dom'
+import Picker from '@emoji-mart/react'
+import data from '@emoji-mart/data'
 
-const EMOJIS = [
-  '👍', '❤️', '😄', '🎉', '🔥', '👏',
-  '🙏', '💪', '✅', '⭐', '🏔️', '🎯',
-  '😊', '😂', '🤔', '😮', '😢', '😡',
-  '🌟', '💡', '📸', '🏕️', '⛰️', '🧗',
-  '🚵', '🌿', '☀️', '🌧️', '❄️', '🍡',
-]
-
-const PICKER_WIDTH = 204  // 6 * 32 + 2 * 5 (gap) + 8 * 2 (padding)
-const PICKER_HEIGHT = 136 // 5 rows * 32 + 4 * 2 (gap) + 8 * 2 (padding)
 const MARGIN = 6
+// emoji-mart デフォルトサイズ
+const PICKER_HEIGHT = 435
+const PICKER_WIDTH = 352
 
 interface EmojiPickerProps {
   anchorRef: React.RefObject<HTMLElement | null>
@@ -22,7 +17,7 @@ interface EmojiPickerProps {
 }
 
 export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) => {
-  const pickerRef = React.useRef<HTMLDivElement>(null)
+  const containerRef = React.useRef<HTMLDivElement>(null)
   const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null)
 
   React.useLayoutEffect(() => {
@@ -35,10 +30,7 @@ export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) 
       ? rect.bottom + MARGIN
       : rect.top - PICKER_HEIGHT - MARGIN
 
-    const left = Math.min(
-      rect.left,
-      window.innerWidth - PICKER_WIDTH - MARGIN,
-    )
+    const left = Math.min(rect.left, window.innerWidth - PICKER_WIDTH - MARGIN)
 
     setPos({ top, left })
   }, [anchorRef])
@@ -47,7 +39,7 @@ export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) 
     const handler = (e: MouseEvent) => {
       const target = e.target as Node
       if (
-        pickerRef.current && !pickerRef.current.contains(target) &&
+        containerRef.current && !containerRef.current.contains(target) &&
         anchorRef.current && !anchorRef.current.contains(target)
       ) {
         onClose()
@@ -60,37 +52,16 @@ export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) 
   if (!pos) return null
 
   return createPortal(
-    <div ref={pickerRef} style={{
-      position: 'fixed',
-      top: pos.top,
-      left: pos.left,
-      background: 'var(--card)',
-      border: '1px solid var(--border)',
-      borderRadius: 10,
-      boxShadow: 'var(--shadow-md)',
-      padding: 8,
-      display: 'grid',
-      gridTemplateColumns: 'repeat(6, 32px)',
-      gap: 2,
-      zIndex: 9999,
-    }}>
-      {EMOJIS.map((emoji) => (
-        <button
-          key={emoji}
-          onClick={() => { onSelect(emoji); onClose() }}
-          style={{
-            width: 32, height: 32, borderRadius: 6,
-            border: 'none', background: 'transparent',
-            fontSize: 18, cursor: 'pointer', display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            lineHeight: 1,
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-        >
-          {emoji}
-        </button>
-      ))}
+    <div ref={containerRef} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}>
+      <Picker
+        data={data}
+        onEmojiSelect={(e: { native: string }) => { onSelect(e.native); onClose() }}
+        locale="ja"
+        theme="light"
+        previewPosition="none"
+        skinTonePosition="none"
+        maxFrequentRows={1}
+      />
     </div>,
     document.body,
   )
