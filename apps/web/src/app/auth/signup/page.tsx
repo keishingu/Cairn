@@ -26,7 +26,14 @@ export default function SignupPage() {
     setError(null)
 
     const supabase = createClient()
-    const { data, error: authError } = await supabase.auth.signUp({ email, password })
+    const { data, error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/api/auth/callback`,
+        data: { display_name: displayName },
+      },
+    })
 
     if (authError) {
       setError(authError.message)
@@ -37,6 +44,12 @@ export default function SignupPage() {
     if (!data.user) {
       setError('アカウントの作成に失敗しました')
       setLoading(false)
+      return
+    }
+
+    // メール確認が必要な場合はそのまま待機画面へ、確認不要なら即セットアップ
+    if (!data.session) {
+      router.push('/auth/verify-email')
       return
     }
 
