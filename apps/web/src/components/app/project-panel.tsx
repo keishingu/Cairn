@@ -1,11 +1,16 @@
 'use client'
 
 import React from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar, AvatarStack, StatusChip, MountainPhoto } from './primitives'
 import { MEMBERS } from './data'
-import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
-import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
+import {
+  findProjectChannelByTitle,
+  formatChatMessageTime,
+  useChannelMessages,
+  useProjectChannels,
+  useSendChannelMessage,
+} from '@/lib/chat/client'
+import { isImeConfirmingEnter } from '@/lib/chat/ime'
 
 // ─── Chat message ─────────────────────────────────────────────────
 const ChatMessage = ({ name, time, text, file, reactions = [] }: {
@@ -51,71 +56,34 @@ const ChatMessage = ({ name, time, text, file, reactions = [] }: {
 
 const PROJECT_TITLE = '北アルプス縦走計画'
 
-function formatTime(iso: string) {
-  const source = new Date(iso)
-  return `${source.getMonth() + 1}/${source.getDate()} ${String(source.getHours()).padStart(2, '0')}:${String(source.getMinutes()).padStart(2, '0')}`
-}
-
-async function fetchProjectChannels(): Promise<ProjectChannelDto[]> {
-  const res = await fetch('/api/projects/channels')
-  if (!res.ok) throw new Error('チャンネルの取得に失敗しました')
-  return res.json()
-}
-
-async function fetchMessages(channelId: string): Promise<MessageDto[]> {
-  const res = await fetch(`/api/channels/${channelId}/messages`)
-  if (!res.ok) throw new Error('メッセージの取得に失敗しました')
-  return res.json()
-}
-
-async function postMessage(channelId: string, content: string): Promise<MessageDto> {
-  const res = await fetch(`/api/channels/${channelId}/messages`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
-  })
-  if (!res.ok) throw new Error('メッセージの送信に失敗しました')
-  return res.json()
-}
-
 const ChatTabContent = () => {
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
+  const [isComposing, setIsComposing] = React.useState(false)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
-  const queryClient = useQueryClient()
 
-  const { data: projectChannels = [] } = useQuery({
-    queryKey: ['project-channels'],
-    queryFn: fetchProjectChannels,
-  })
+  const { data: projectChannels = [] } = useProjectChannels()
 
   const activeChannel = React.useMemo(
-    () => projectChannels.find((channel) => channel.projectTitle === PROJECT_TITLE) ?? projectChannels[0] ?? null,
+    () => findProjectChannelByTitle(projectChannels, PROJECT_TITLE) ?? projectChannels[0] ?? null,
     [projectChannels],
   )
 
-  const { data: messages = [], isLoading, isError } = useQuery({
-    queryKey: ['project-panel-messages', activeChannel?.channelId],
-    queryFn: () => fetchMessages(activeChannel!.channelId),
-    enabled: !!activeChannel?.channelId,
-    refetchInterval: 5000,
-  })
+  const { data: messages = [], isLoading, isError } = useChannelMessages(activeChannel?.channelId ?? null)
+  const sendMutation = useSendChannelMessage(activeChannel?.channelId ?? null)
 
-  const sendMutation = useMutation({
-    mutationFn: (content: string) => postMessage(activeChannel!.channelId, content),
-    onSuccess: (newMsg) => {
+  React.useEffect(() => {
+    if (!sendMutation.isError) return
+    setSendError(sendMutation.error.message)
+    setDraft(pendingDraftRef.current)
+  }, [sendMutation.error, sendMutation.isError])
+
+  React.useEffect(() => {
+    if (sendMutation.isSuccess) {
       setSendError(null)
-      queryClient.setQueryData<MessageDto[]>(
-        ['project-panel-messages', activeChannel?.channelId],
-        (prev) => [...(prev ?? []), newMsg],
-      )
-    },
-    onError: (err: Error) => {
-      setSendError(err.message)
-      setDraft(pendingDraftRef.current)
-    },
-  })
+    }
+  }, [sendMutation.isSuccess])
 
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -158,7 +126,7 @@ const ChatTabContent = () => {
             <ChatMessage
               key={message.id}
               name={message.senderName}
-              time={formatTime(message.createdAt)}
+              time={formatChatMessageTime(message.createdAt)}
               text={message.content}
               reactions={message.reactions.map((reaction) => ({ emoji: reaction.emoji, count: reaction.count, me: reaction.mine }))}
             />
@@ -175,7 +143,14 @@ const ChatTabContent = () => {
           <input
             value={draft}
             onChange={e => setDraft(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={() => setIsComposing(false)}
+            onKeyDown={e => {
+              if (e.key !== 'Enter' || e.shiftKey) return
+              if (isImeConfirmingEnter(e, isComposing)) return
+              e.preventDefault()
+              send()
+            }}
             placeholder="メッセージを入力…"
             style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}/>
           <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}><Icon name="paperclip" size={15}/></button>
