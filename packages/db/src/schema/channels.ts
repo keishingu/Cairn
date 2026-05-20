@@ -6,15 +6,22 @@ import { channelTypeEnum, messageTypeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
 
-export const channels = pgTable('channels', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
-  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
-  type: channelTypeEnum('type').notNull().default('project'),
-  name: text('name'),
-  isPrivate: boolean('is_private').notNull().default(false),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+export const channels = pgTable(
+  'channels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    type: channelTypeEnum('type').notNull().default('project'),
+    name: text('name'),
+    isPrivate: boolean('is_private').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('idx_channels_workspace_type').on(t.workspaceId, t.type),
+    index('idx_channels_project').on(t.projectId),
+  ],
+)
 
 export const channelMembers = pgTable(
   'channel_members',

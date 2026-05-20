@@ -45,6 +45,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const { messages, profiles, messageReactions } = await import('@cairn/db')
     const { eq, isNull, inArray, and } = await import('drizzle-orm')
 
+    const { desc } = await import('drizzle-orm')
+
     const rows = await db
       .select({
         id: messages.id,
@@ -56,8 +58,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .from(messages)
       .innerJoin(profiles, eq(messages.senderId, profiles.id))
       .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
-      .orderBy(messages.createdAt)
+      .orderBy(desc(messages.createdAt))
       .limit(100)
+
+    rows.reverse()
 
     const messageIds = rows.map(r => r.id)
     const reactionRows = messageIds.length > 0
