@@ -3,52 +3,70 @@
 import React from 'react'
 import { Icon, Avatar, AvatarStack, StatusChip, MountainPhoto } from './primitives'
 import { MEMBERS } from './data'
+import type { ProjectDto } from '@/app/api/projects/route'
 import {
-  findProjectChannelByTitle,
+  findProjectChannelById,
   useProjectChannels,
 } from '@/lib/chat/client'
 import { ChatThread } from './chat-thread'
 
-const PROJECT_TITLE = '北アルプス縦走計画'
-
-const ChatTabContent = () => {
-  const { data: projectChannels = [] } = useProjectChannels()
+const ChatTabContent = ({ project }: { project: ProjectDto }) => {
+  const { data: projectChannels, isLoading, isError } = useProjectChannels()
 
   const activeChannel = React.useMemo(
-    () => findProjectChannelByTitle(projectChannels, PROJECT_TITLE) ?? projectChannels[0] ?? null,
-    [projectChannels],
+    () => projectChannels ? findProjectChannelById(projectChannels, project.id) : undefined,
+    [projectChannels, project.id],
   )
+
+  if (isLoading) {
+    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
+  }
+  if (isError) {
+    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red-text)', fontSize: 13 }}>チャンネルの取得に失敗しました</div>
+  }
+  if (!activeChannel) {
+    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>チャンネルが見つかりません</div>
+  }
 
   return (
     <>
       <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}># {activeChannel?.projectTitle ?? PROJECT_TITLE}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}># {activeChannel.projectTitle}</span>
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--text-3)' }}>
-          <Icon name="users" size={13}/> 8
+          <Icon name="users" size={13}/> {project.memberCount}
         </span>
         <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}><Icon name="search" size={14}/></button>
         <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}><Icon name="more" size={14}/></button>
       </div>
       <ChatThread
-        channelId={activeChannel?.channelId ?? null}
-        {...(activeChannel?.projectTitle ? { channelName: activeChannel.projectTitle } : {})}
+        channelId={activeChannel.channelId}
+        channelName={activeChannel.projectTitle}
         compact={true}
       />
     </>
   )
 }
 
-const OverviewTab = () => (
+function formatDateRange(start: string | null, end: string | null): string {
+  if (!start) return '—'
+  const fmt = (d: string) => {
+    const [, m, day] = d.split('-')
+    return `${Number(m)}/${Number(day)}`
+  }
+  return end && end !== start ? `${fmt(start)} ~ ${fmt(end)}` : fmt(start)
+}
+
+const OverviewTab = ({ project }: { project: ProjectDto }) => (
   <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>日程</div>
-        <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>6/12 (水) ~ 6/16 (日)</div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>4泊5日 · あと23日</div>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{formatDateRange(project.startDate, project.endDate)}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{project.memberCount}人参加</div>
       </div>
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>ステータス</div>
-        <StatusChip s="plan"/>
+        <StatusChip s={project.statusName}/>
       </div>
     </div>
     <div style={{ padding: 14, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
@@ -249,10 +267,11 @@ const PanelSettingsTab = () => (
 
 // ─── Project Panel ─────────────────────────────────────────────────
 interface ProjectPanelProps {
+  project: ProjectDto
   onClose: () => void
 }
 
-export const ProjectPanel = ({ onClose }: ProjectPanelProps) => {
+export const ProjectPanel = ({ project, onClose }: ProjectPanelProps) => {
   const [tab, setTab] = React.useState('chat')
   const tabs = [
     { id: 'overview', label: '概要',     icon: 'book' },
@@ -278,7 +297,7 @@ export const ProjectPanel = ({ onClose }: ProjectPanelProps) => {
         <MountainPhoto idx={0} height={180} flat/>
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.45), transparent 40%, rgba(0,0,0,0.55))' }}/>
         <div style={{ position: 'absolute', top: 14, left: 16, right: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>北アルプス縦走計画</span>
+          <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{project.title}</span>
           <button style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="more" size={14}/>
           </button>
@@ -287,21 +306,16 @@ export const ProjectPanel = ({ onClose }: ProjectPanelProps) => {
           </button>
         </div>
         <div style={{ position: 'absolute', left: 18, right: 18, bottom: 14, color: '#fff' }}>
-          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>6/12 (水) ~ 6/16 (日)</div>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>{formatDateRange(project.startDate, project.endDate)}</div>
           <div style={{ fontSize: 12.5, opacity: 0.95, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span>4泊5日</span><span>·</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="users" size={12}/> 8人参加</span>
-            <span>·</span><span>あと23日</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="users" size={12}/> {project.memberCount}人参加</span>
           </div>
         </div>
       </div>
 
       <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button style={{ padding: '4px 10px', borderRadius: 999, border: 'none', background: 'var(--blue-soft)', color: 'var(--blue-text)', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--blue)' }}/>
-          計画中 <Icon name="chevDown" size={11}/>
-        </button>
-        <AvatarStack names={MEMBERS} size={22} max={5}/>
+        <StatusChip s={project.statusName}/>
+        <AvatarStack names={MEMBERS.slice(0, Math.min(project.memberCount, 5))} size={22} max={5}/>
         <button className="btn btn-ghost" style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}>
           <Icon name="arrowRight" size={11}/> 詳細を開く
         </button>
@@ -321,8 +335,8 @@ export const ProjectPanel = ({ onClose }: ProjectPanelProps) => {
         ))}
       </div>
 
-      {tab === 'chat' && <ChatTabContent/>}
-      {tab === 'overview' && <OverviewTab/>}
+      {tab === 'chat' && <ChatTabContent project={project}/>}
+      {tab === 'overview' && <OverviewTab project={project}/>}
       {tab === 'files' && <FilesTab/>}
       {tab === 'tasks' && <TasksTab/>}
       {tab === 'members' && <MembersTab/>}
