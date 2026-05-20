@@ -10,17 +10,13 @@ import {
   useProjectChannels,
   useWorkspaceChannels,
   useWorkspaceMembers,
+  useWorkspaceDms,
+  useCreateDm,
   useSendChannelMessage,
   useToggleMessageReaction,
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 
-const DMS = [
-  { id: 'd1', name: '佐藤 花子', online: true,  unread: 0 },
-  { id: 'd2', name: '鈴木 健',   online: true,  unread: 2 },
-  { id: 'd3', name: '田中 陽子', online: false, unread: 0 },
-  { id: 'd4', name: '伊藤 翔',   online: false, unread: 0 },
-]
 
 const ChatSidebarSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <div style={{ marginBottom: 10 }}>
@@ -126,9 +122,24 @@ export const PageChat = () => {
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
+  const [showMemberPicker, setShowMemberPicker] = React.useState(false)
+  const memberPickerRef = React.useRef<HTMLDivElement>(null)
+
   const { data: projectChannels = [] } = useProjectChannels()
   const { data: workspaceChannels = [] } = useWorkspaceChannels()
   const { data: members = [] } = useWorkspaceMembers()
+  const { data: dms = [] } = useWorkspaceDms()
+  const createDmMutation = useCreateDm()
+
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (memberPickerRef.current && !memberPickerRef.current.contains(e.target as Node)) {
+        setShowMemberPicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   React.useEffect(() => {
     if (!channelId && projectChannels.length > 0) {
@@ -169,11 +180,21 @@ export const PageChat = () => {
     setShowEmojiPicker(false)
   }
 
+  const startDm = (targetUserId: string) => {
+    setShowMemberPicker(false)
+    createDmMutation.mutate(targetUserId, {
+      onSuccess: (data) => setChannelId(data.id),
+    })
+  }
+
   const currentChannel = projectChannels.find(c => c.channelId === channelId)
   const currentGeneral = workspaceChannels.find(c => c.id === channelId)
+  const currentDm = dms.find(d => d.id === channelId)
   const isProject = !!currentChannel
   const isPrivate = !!(currentGeneral?.isPrivate)
-  const channelName = currentChannel?.projectTitle ?? currentGeneral?.name ?? ''
+  const isDm = !!currentDm
+  const channelName = currentChannel?.projectTitle ?? currentGeneral?.name ?? currentDm?.participantName ?? ''
+
   const memberNames = members.map(m => m.displayName)
 
   return (
@@ -192,16 +213,41 @@ export const PageChat = () => {
           <ChatSidebarSection title="チャンネル">
             {workspaceChannels.map(c => (
               <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => setChannelId(c.id)}
-                prefix={c.isPrivate ? 'lock' : '#'} label={c.name}/>
+                prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''}/>
             ))}
           </ChatSidebarSection>
-          <ChatSidebarSection title="ダイレクトメッセージ">
-            {DMS.map(d => (
-              <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => setChannelId(d.id)}
-                avatar={d.name} dot={d.online ? 'var(--accent)' : 'var(--text-4)'}
-                label={d.name} badge={d.unread}/>
-            ))}
-          </ChatSidebarSection>
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>ダイレクトメッセージ</span>
+              <div style={{ position: 'relative' }} ref={memberPickerRef}>
+                <button
+                  onClick={() => setShowMemberPicker(p => !p)}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-4)', padding: 2, lineHeight: 1 }}
+                >
+                  <Icon name="plus" size={11} color="var(--text-4)"/>
+                </button>
+                {showMemberPicker && (
+                  <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 50, minWidth: 160, overflow: 'hidden' }}>
+                    {members.map(m => (
+                      <button key={m.userId} onClick={() => startDm(m.userId)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                      >
+                        <Avatar name={m.displayName} size={20}/>
+                        <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{m.displayName}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              {dms.map(d => (
+                <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => setChannelId(d.id)}
+                  avatar={d.participantName} label={d.participantName}/>
+              ))}
+            </div>
+          </div>
           <ChatSidebarSection title="アプリ">
             <ChatSidebarItem prefix="✨" label="AIアシスタント"/>
           </ChatSidebarSection>
@@ -213,7 +259,11 @@ export const PageChat = () => {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                {isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
+                {isDm
+                  ? <Avatar name={channelName} size={20}/>
+                  : isPrivate
+                    ? <Icon name="lock" size={13} color="var(--text-3)"/>
+                    : <span style={{ color: 'var(--text-3)' }}>#</span>}
                 {channelName}
               </h2>
               {isProject && <StatusChip s="plan"/>}
@@ -224,7 +274,7 @@ export const PageChat = () => {
               )}
             </div>
             <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-              {isProject ? '参加メンバー' : isPrivate ? '招待制' : '全体チャンネル'}
+              {isProject ? '参加メンバー' : isDm ? 'ダイレクトメッセージ' : isPrivate ? '招待制' : '全体チャンネル'}
             </div>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -306,7 +356,7 @@ export const PageChat = () => {
 
       <aside style={{ width: 280, background: 'var(--card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
-          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{isProject ? 'このプロジェクトについて' : 'このチャンネルについて'}</h3>
+          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{isProject ? 'このプロジェクトについて' : isDm ? 'ダイレクトメッセージ' : 'このチャンネルについて'}</h3>
         </div>
         {isProject ? (
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
