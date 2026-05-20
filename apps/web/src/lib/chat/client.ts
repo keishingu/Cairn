@@ -18,11 +18,11 @@ export function formatChatMessageTime(iso: string): string {
   return `${source.getMonth() + 1}/${source.getDate()} ${String(source.getHours()).padStart(2, '0')}:${String(source.getMinutes()).padStart(2, '0')}`
 }
 
-export function findProjectChannelByTitle(
+export function findProjectChannelById(
   channels: ProjectChannelDto[],
-  projectTitle: string,
+  projectId: string,
 ): ProjectChannelDto | null {
-  return channels.find((channel) => channel.projectTitle === projectTitle) ?? null
+  return channels.find((channel) => channel.projectId === projectId) ?? null
 }
 
 async function fetchProjectChannels(): Promise<ProjectChannelDto[]> {
