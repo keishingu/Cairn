@@ -38,7 +38,7 @@ export function MobileAI() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
       <MobileHeader title="AIアシスタント" right={
         <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}>
           <Icon name="plus" size={20}/>

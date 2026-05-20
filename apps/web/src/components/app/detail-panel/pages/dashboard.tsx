@@ -16,7 +16,7 @@ const STATS = [
 
 export function MobileDashboard() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
       <MobileHeader title="ダッシュボード" right={
         <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}>
           <Icon name="bell" size={20}/>

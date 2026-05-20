@@ -42,7 +42,7 @@ export function MobileProjects() {
   })
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
       {selectedProject && (
         <MobileProjectScreen project={selectedProject} onBack={() => setSelectedProject(null)}/>
       )}
