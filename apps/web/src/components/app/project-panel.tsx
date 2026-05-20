@@ -9,36 +9,45 @@ import {
   useChannelMessages,
   useProjectChannels,
   useSendChannelMessage,
+  useToggleMessageReaction,
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { EmojiPicker } from './emoji-picker'
 
 // ─── Chat message ─────────────────────────────────────────────────
-const ChatMessage = ({ name, time, text, file, reactions = [] }: {
-  name: string; time: string; text: string
+const ChatMessage = ({ messageId, name, time, text, file, reactions = [], onReact }: {
+  messageId: string; name: string; time: string; text: string
   file?: { name: string; size: string }
   reactions?: Array<{ emoji: string; count: number; me?: boolean }>
-}) => (
-  <div style={{ display: 'flex', gap: 10, padding: '8px 16px', position: 'relative' }}>
-    <Avatar name={name} size={32}/>
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{name}</span>
-        <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{time}</span>
-      </div>
-      <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55, whiteSpace: 'pre-line' }}>{text}</div>
-      {file && (
-        <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, maxWidth: 280 }}>
-          <div style={{ width: 32, height: 36, borderRadius: 4, background: 'var(--red-soft)', color: 'var(--red-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700 }}>PDF</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)' }}>PDF · {file.size}</div>
-          </div>
+  onReact: (messageId: string, emoji: string) => void
+}) => {
+  const [showPicker, setShowPicker] = React.useState(false)
+  const addBtnRef = React.useRef<HTMLButtonElement>(null)
+
+  return (
+    <div style={{ display: 'flex', gap: 10, padding: '8px 16px', position: 'relative' }}
+      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
+      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+    >
+      <Avatar name={name} size={32}/>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{name}</span>
+          <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{time}</span>
         </div>
-      )}
-      {reactions.length > 0 && (
-        <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
+        <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55, whiteSpace: 'pre-line' }}>{text}</div>
+        {file && (
+          <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, maxWidth: 280 }}>
+            <div style={{ width: 32, height: 36, borderRadius: 4, background: 'var(--red-soft)', color: 'var(--red-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700 }}>PDF</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)' }}>PDF · {file.size}</div>
+            </div>
+          </div>
+        )}
+        <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
-            <button key={i} style={{
+            <button key={i} onClick={() => onReact(messageId, r.emoji)} style={{
               height: 22, padding: '0 7px', borderRadius: 12,
               background: r.me ? 'var(--accent-soft)' : 'var(--card-2)',
               border: `1px solid ${r.me ? 'var(--accent)' : 'var(--border)'}`,
@@ -48,11 +57,21 @@ const ChatMessage = ({ name, time, text, file, reactions = [] }: {
               cursor: 'pointer', fontFamily: 'inherit',
             }}>{r.emoji} {r.count}</button>
           ))}
+          <button ref={addBtnRef} onClick={() => setShowPicker(p => !p)} style={{
+            width: 22, height: 22, borderRadius: 12,
+            background: 'var(--card-2)', border: '1px solid var(--border)',
+            fontSize: 12, color: 'var(--text-3)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}>+</button>
+          {showPicker && (
+            <EmojiPicker anchorRef={addBtnRef} onSelect={emoji => { onReact(messageId, emoji) }} onClose={() => setShowPicker(false)}/>
+          )}
         </div>
-      )}
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 const PROJECT_TITLE = '北アルプス縦走計画'
 
@@ -60,6 +79,8 @@ const ChatTabContent = () => {
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [isComposing, setIsComposing] = React.useState(false)
+  const [showEmojiPicker, setShowEmojiPicker] = React.useState(false)
+  const emojiPickerBtnRef = React.useRef<HTMLButtonElement>(null)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
@@ -70,8 +91,10 @@ const ChatTabContent = () => {
     [projectChannels],
   )
 
-  const { data: messages = [], isLoading, isError } = useChannelMessages(activeChannel?.channelId ?? null)
-  const sendMutation = useSendChannelMessage(activeChannel?.channelId ?? null)
+  const channelId = activeChannel?.channelId ?? null
+  const { data: messages = [], isLoading, isError } = useChannelMessages(channelId)
+  const sendMutation = useSendChannelMessage(channelId)
+  const reactMutation = useToggleMessageReaction(channelId)
 
   React.useEffect(() => {
     if (!sendMutation.isError) return
@@ -125,10 +148,12 @@ const ChatTabContent = () => {
           messages.map((message) => (
             <ChatMessage
               key={message.id}
+              messageId={message.id}
               name={message.senderName}
               time={formatChatMessageTime(message.createdAt)}
               text={message.content}
               reactions={message.reactions.map((reaction) => ({ emoji: reaction.emoji, count: reaction.count, me: reaction.mine }))}
+              onReact={(messageId, emoji) => reactMutation.mutate({ messageId, emoji })}
             />
           ))
         )}
@@ -154,7 +179,8 @@ const ChatTabContent = () => {
             placeholder="メッセージを入力…"
             style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}/>
           <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}><Icon name="paperclip" size={15}/></button>
-          <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}><Icon name="smile" size={15}/></button>
+          <button ref={emojiPickerBtnRef} onClick={() => setShowEmojiPicker(p => !p)} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}><Icon name="smile" size={15}/></button>
+          {showEmojiPicker && <EmojiPicker anchorRef={emojiPickerBtnRef} onSelect={emoji => { setDraft(d => d + emoji); setShowEmojiPicker(false) }} onClose={() => setShowEmojiPicker(false)}/>}
           <button onClick={send} style={{
             width: 28, height: 28, borderRadius: 8, border: 'none',
             background: draft.trim() && !sendMutation.isPending ? 'var(--accent)' : 'var(--border-2)',
