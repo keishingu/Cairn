@@ -4,6 +4,8 @@ import React from 'react'
 import { useTheme } from 'next-themes'
 import { Icon } from '../primitives'
 import { STATUS_COL } from '../data'
+import { useAccentColor } from '@/components/accent-color-provider'
+import { ACCENT_PRESETS } from '@/lib/accent-presets'
 
 const Toggle = ({ on }: { on: boolean }) => (
   <div style={{
@@ -27,6 +29,7 @@ const THEME_OPTIONS: { value: ThemeValue; label: string; icon: string }[] = [
 
 const SettingsGeneral = () => {
   const { theme, setTheme } = useTheme()
+  const { accentId, setAccentId } = useAccentColor()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
 
@@ -37,33 +40,60 @@ const SettingsGeneral = () => {
 
       <section style={{ marginBottom: 24 }}>
         <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>外観</h2>
-        <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>テーマ</div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>ライト・ダーク・システム設定に従う</div>
-          </div>
-          {mounted && (
-            <div style={{ display: 'flex', gap: 4, background: 'var(--bg-elev)', borderRadius: 10, padding: 4 }}>
-              {THEME_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setTheme(opt.value)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '6px 12px', borderRadius: 7, border: 'none',
-                    background: theme === opt.value ? 'var(--card)' : 'transparent',
-                    color: theme === opt.value ? 'var(--text)' : 'var(--text-3)',
-                    fontWeight: theme === opt.value ? 600 : 500,
-                    fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer',
-                    boxShadow: theme === opt.value ? 'var(--shadow-sm)' : 'none',
-                    transition: 'all .12s',
-                  }}
-                >
-                  <Icon name={opt.icon} size={13}/> {opt.label}
-                </button>
-              ))}
+        <div className="card" style={{ padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>テーマ</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>ライト・ダーク・システム設定に従う</div>
             </div>
-          )}
+            {mounted && (
+              <div style={{ display: 'flex', gap: 4, background: 'var(--bg-elev)', borderRadius: 10, padding: 4 }}>
+                {THEME_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setTheme(opt.value)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '6px 12px', borderRadius: 7, border: 'none',
+                      background: theme === opt.value ? 'var(--card)' : 'transparent',
+                      color: theme === opt.value ? 'var(--text)' : 'var(--text-3)',
+                      fontWeight: theme === opt.value ? 600 : 500,
+                      fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer',
+                      boxShadow: theme === opt.value ? 'var(--shadow-sm)' : 'none',
+                      transition: 'all .12s',
+                    }}
+                  >
+                    <Icon name={opt.icon} size={13}/> {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>ハイライトカラー</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>ボタン・アクティブ状態などのアクセントカラー</div>
+            </div>
+            {mounted && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                {ACCENT_PRESETS.map(preset => (
+                  <button
+                    key={preset.id}
+                    title={preset.label}
+                    onClick={() => setAccentId(preset.id)}
+                    style={{
+                      width: 26, height: 26, borderRadius: '50%',
+                      background: preset.swatch, border: 'none', cursor: 'pointer', padding: 0,
+                      outline: accentId === preset.id ? `3px solid ${preset.swatch}` : '3px solid transparent',
+                      outlineOffset: 2,
+                      transition: 'outline .12s',
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </section>
     </div>
