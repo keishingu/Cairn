@@ -153,6 +153,12 @@ export async function POST(req: Request) {
 - `packages/db` のテストはDB接続が必要なため原則書かない
 
 
+## ブランチ運用
+
+- 実装を始める前に必ずフィーチャーブランチを切る（`main` に直接コミットしない）
+- ブランチ名は `feat/`, `fix/`, `refactor/` などのプレフィックスを付ける
+
+
 ## コミットメッセージ
 
 - `feat:`, `fix:`, `chore:`, `docs:` などの Conventional Commits のプレフィックスを使う
