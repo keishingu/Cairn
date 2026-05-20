@@ -16,7 +16,10 @@ function getCalendarStart(year: number, month: number): Date {
 }
 
 function daysBetween(a: Date, b: Date): number {
-  return Math.floor((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24))
+  // Use UTC date components to avoid DST-induced hour differences
+  const aUTC = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())
+  const bUTC = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate())
+  return Math.round((bUTC - aUTC) / 86400000)
 }
 
 function formatYM(year: number, month: number): string {
@@ -106,8 +109,7 @@ function buildEvents(projects: ProjectDto[], year: number, month: number): CalEv
 
 // ─── Calendar grid ─────────────────────────────────────────────────
 
-const ROW_HEIGHT = 96 // px per week row
-const DATE_AREA = 28  // px reserved for date number
+const DATE_AREA = 28  // px reserved for date number at top of each row
 const EVENT_H = 22    // event bar height
 const EVENT_GAP = 2   // gap between event bars
 const MAX_ROWS = 3    // max visible events per cell
@@ -140,7 +142,7 @@ const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: Calendar
       {/* Grid rows */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         {/* Date cells */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: `repeat(6, ${ROW_HEIGHT}px)`, height: '100%' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: 'repeat(6, 1fr)', height: '100%' }}>
           {cells.flat().map((cell, i) => {
             const week = Math.floor(i / 7)
             const day = i % 7
@@ -180,7 +182,7 @@ const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: Calendar
               <div key={i} style={{
                 position: 'absolute',
                 left: `calc(${((i * 2) % 7 / 7) * 100}% + 4px)`,
-                top: `calc(${(Math.floor(i / 3) * ROW_HEIGHT) + DATE_AREA}px)`,
+                top: `calc(${Math.floor(i / 3)} / 6 * 100% + ${DATE_AREA}px)`,
                 width: `calc(${(2 / 7) * 100}% - 8px)`,
                 height: EVENT_H, borderRadius: 5,
                 background: 'var(--card-2)', animation: 'pulse 1.5s infinite',
@@ -192,7 +194,9 @@ const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: Calendar
               const colW = 100 / 7
               const left = `calc(${e.day * colW}% + 4px)`
               const width = `calc(${e.span * colW}% - 8px)`
-              const top = e.week * ROW_HEIGHT + DATE_AREA + e.row * (EVENT_H + EVENT_GAP)
+              // CSS calc: row fraction (%) + pixel offset within row
+              const topOffset = DATE_AREA + e.row * (EVENT_H + EVENT_GAP)
+              const top = `calc(${e.week} / 6 * 100% + ${topOffset}px)`
               return (
                 <button
                   key={i}
