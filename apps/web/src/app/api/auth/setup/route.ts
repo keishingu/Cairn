@@ -52,35 +52,44 @@ export async function POST(req: Request) {
       })
     }
 
-    const existingWorkspace = await db
+    const { eq } = await import('drizzle-orm')
+
+    const existingMembership = await db
       .select({ workspaceId: workspaceMembers.workspaceId })
       .from(workspaceMembers)
-      .where((await import('drizzle-orm')).eq(workspaceMembers.userId, user.id))
+      .where(eq(workspaceMembers.userId, user.id))
       .limit(1)
 
-    if (existingWorkspace.length === 0) {
-      const slug = `workspace-${user.id.slice(0, 8)}`
-      const [ws] = await db
-        .insert(workspaces)
-        .values({
-          name: `${parsed.data.displayName}のワークスペース`,
-          slug,
-          createdBy: user.id,
-        })
-        .returning({ id: workspaces.id })
+    if (existingMembership.length === 0) {
+      // 既存ワークスペースがあれば参加、なければ新規作成
+      const anyWorkspace = await db
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .limit(1)
 
-      if (ws) {
-        await db.insert(workspaceMembers).values({
-          workspaceId: ws.id,
-          userId: user.id,
-          role: 'owner',
-        })
+      let workspaceId: string
+
+      if (anyWorkspace.length > 0) {
+        workspaceId = anyWorkspace[0]!.id
+      } else {
+        const [ws] = await db
+          .insert(workspaces)
+          .values({ name: '山岳部', slug: 'sangakubu', createdBy: user.id })
+          .returning({ id: workspaces.id })
+        if (!ws) throw new Error('workspace insert failed')
+        workspaceId = ws.id
 
         await db.insert(channels).values([
-          { workspaceId: ws.id, name: '雑談',     isPrivate: false },
-          { workspaceId: ws.id, name: '連絡事項', isPrivate: false },
+          { workspaceId, type: 'workspace' as const, name: '雑談' },
+          { workspaceId, type: 'workspace' as const, name: '連絡事項' },
         ])
       }
+
+      await db.insert(workspaceMembers).values({
+        workspaceId,
+        userId: user.id,
+        role: 'member',
+      })
     }
 
     return NextResponse.json({ ok: true })

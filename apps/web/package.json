@@ -16,6 +16,8 @@
     "@cairn/core": "workspace:*",
     "@cairn/db": "workspace:*",
     "@cairn/shared": "workspace:*",
+    "@emoji-mart/data": "^1.2.1",
+    "@emoji-mart/react": "^1.1.1",
     "@inngest/middleware-encryption": "^0.1.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",

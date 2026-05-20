@@ -37,6 +37,8 @@ pnpm dev
 
 ブラウザで http://localhost:3128 を開く。
 
+> **初回のみ**: `/auth/signup` でアカウントを作成する。ローカル Supabase ではメール確認が不要なため、登録直後にダッシュボードへ遷移する。
+
 ### Supabase ローカル環境の確認
 
 `supabase start` 後に表示されるキーは `.env.local.example` にあらかじめ設定済み。

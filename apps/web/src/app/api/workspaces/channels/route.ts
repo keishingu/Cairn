@@ -6,7 +6,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 
 export interface WorkspaceChannelDto {
   id: string
-  name: string
+  name: string | null
   isPrivate: boolean
 }
 
@@ -28,12 +28,12 @@ export async function GET() {
   try {
     const { db } = await import('@cairn/db')
     const { channels } = await import('@cairn/db')
-    const { and, eq, isNull } = await import('drizzle-orm')
+    const { and, eq } = await import('drizzle-orm')
 
     const rows = await db
       .select({ id: channels.id, name: channels.name, isPrivate: channels.isPrivate })
       .from(channels)
-      .where(and(eq(channels.workspaceId, ctx.workspaceId), isNull(channels.projectId)))
+      .where(and(eq(channels.workspaceId, ctx.workspaceId), eq(channels.type, 'workspace')))
       .orderBy(channels.createdAt)
 
     return NextResponse.json(rows satisfies WorkspaceChannelDto[])
