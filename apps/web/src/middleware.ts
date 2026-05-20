@@ -15,10 +15,12 @@ export async function middleware(request: NextRequest) {
 
   let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
 
-  const supabase = createServerClient(
-    process.env['NEXT_PUBLIC_SUPABASE_URL']!,
-    process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']!,
-    {
+  const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL']
+  const supabaseAnonKey = process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']
+
+  // Supabase 環境変数が揃っているときのみ認証チェックを行う
+  if (supabaseUrl && supabaseAnonKey) {
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
         getAll() {
           return request.cookies.getAll()
@@ -31,11 +33,8 @@ export async function middleware(request: NextRequest) {
           )
         },
       },
-    },
-  )
+    })
 
-  // DATABASE_URL が未設定のときは Supabase なし開発モードとみなし認証をスキップする
-  if (process.env['DATABASE_URL']) {
     const { data: { user } } = await supabase.auth.getUser()
     const { pathname } = request.nextUrl
     const isAuthRoute = pathname.startsWith('/auth')
