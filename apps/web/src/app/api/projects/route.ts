@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createProjectSchema } from '@cairn/shared'
 import { PROJECTS, STATUS, type StatusKey } from '@/components/app/data'
+import { getAuthContext } from '@/lib/get-auth-context'
 
 export interface ProjectDto {
   id: string
@@ -70,11 +71,10 @@ export async function GET() {
   }
 }
 
-// Placeholder IDs used until auth + workspace context are wired up
-const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
-const DEV_CREATED_BY   = '00000000-0000-0000-0000-000000000001'
-
 export async function POST(req: Request) {
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
+
   let body: unknown
   try {
     body = await req.json()
@@ -82,7 +82,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const parsed = createProjectSchema.safeParse({ ...(body as object), workspaceId: DEV_WORKSPACE_ID })
+  const parsed = createProjectSchema.safeParse({ ...(body as object), workspaceId: ctx.workspaceId })
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
@@ -105,13 +105,13 @@ export async function POST(req: Request) {
     const [inserted] = await db
       .insert(projects)
       .values({
-        workspaceId: DEV_WORKSPACE_ID,
+        workspaceId: ctx.workspaceId,
         title: parsed.data.title,
         description: parsed.data.description ?? null,
         statusId: parsed.data.statusId ?? null,
         startDate: parsed.data.startDate ?? null,
         endDate: parsed.data.endDate ?? null,
-        createdBy: DEV_CREATED_BY,
+        createdBy: ctx.userId,
       })
       .returning({ id: projects.id, title: projects.title, startDate: projects.startDate, endDate: projects.endDate })
 

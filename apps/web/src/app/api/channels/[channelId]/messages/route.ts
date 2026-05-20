@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { postMessageSchema } from '@cairn/shared'
+import { getAuthContext } from '@/lib/get-auth-context'
 
 export interface ReactionDto {
   emoji: string
@@ -19,9 +20,6 @@ export interface MessageDto {
   reactions: ReactionDto[]
 }
 
-// Placeholder sender used until auth is wired up
-const DEV_SENDER_ID = '00000000-0000-0000-0000-000000000001'
-
 declare global {
   var __cairnMockMessageStore: Map<string, MessageDto[]> | undefined
 }
@@ -35,6 +33,8 @@ type RouteContext = { params: Promise<{ channelId: string }> }
 
 export async function GET(_req: Request, { params }: RouteContext) {
   const { channelId } = await params
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
 
   if (!process.env['DATABASE_URL']) {
     return NextResponse.json(getMockStore().get(channelId) ?? [] satisfies MessageDto[])
@@ -78,9 +78,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
       const existing = reactionMap.get(r.messageId)!.find(x => x.emoji === r.emoji)
       if (existing) {
         existing.count++
-        if (r.userId === DEV_SENDER_ID) existing.mine = true
+        if (r.userId === ctx.userId) existing.mine = true
       } else {
-        reactionMap.get(r.messageId)!.push({ emoji: r.emoji, count: 1, mine: r.userId === DEV_SENDER_ID })
+        reactionMap.get(r.messageId)!.push({ emoji: r.emoji, count: 1, mine: r.userId === ctx.userId })
       }
       void key
     }
@@ -103,6 +103,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
 export async function POST(req: Request, { params }: RouteContext) {
   const { channelId } = await params
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
 
   let body: unknown
   try {
@@ -120,7 +122,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     const newMsg: MessageDto = {
       id: crypto.randomUUID(),
       content: parsed.data.content,
-      senderId: DEV_SENDER_ID,
+      senderId: ctx.userId,
       senderName: '山田 太郎',
       createdAt: new Date().toISOString(),
       reactions: [],
@@ -140,7 +142,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       .insert(messages)
       .values({
         channelId,
-        senderId: DEV_SENDER_ID,
+        senderId: ctx.userId,
         content: parsed.data.content,
         messageType: parsed.data.messageType ?? 'text',
         parentMessageId: parsed.data.parentMessageId ?? null,
