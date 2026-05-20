@@ -1,17 +1,17 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { index, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { messageTypeEnum } from './enums'
-import { profiles } from './workspaces'
+import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
 
 export const channels = pgTable('channels', {
   id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id')
-    .notNull()
-    .references(() => projects.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
   name: text('name').notNull().default('general'),
+  isPrivate: boolean('is_private').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

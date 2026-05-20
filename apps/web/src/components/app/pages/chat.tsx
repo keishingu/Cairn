@@ -2,24 +2,19 @@
 
 import React from 'react'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
-import { MEMBERS } from '../data'
+import { EmojiPicker } from '../emoji-picker'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 import {
   formatChatMessageTime,
   useChannelMessages,
   useProjectChannels,
+  useWorkspaceChannels,
+  useWorkspaceMembers,
   useSendChannelMessage,
   useToggleMessageReaction,
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 
-const GENERAL_CHANNELS = [
-  { id: 'g1', name: '雑談',       unread: 3, online: 12, private: false },
-  { id: 'g2', name: '連絡事項',   unread: 1, online: 8,  private: false },
-  { id: 'g3', name: 'OB会',       unread: 0, online: 5,  private: false },
-  { id: 'g4', name: 'コーチ専用', unread: 2, online: 3,  private: true },
-  { id: 'g5', name: '部長会',     unread: 0, online: 4,  private: true },
-]
 const DMS = [
   { id: 'd1', name: '佐藤 花子', online: true,  unread: 0 },
   { id: 'd2', name: '鈴木 健',   online: true,  unread: 2 },
@@ -72,48 +67,69 @@ const ChatSidebarItem = ({ active, onClick, prefix, avatar, dot, label, badge }:
   </button>
 )
 
-const FullChatMessage = ({ m, onReact }: { m: MessageDto; onReact: (messageId: string, emoji: string) => void }) => (
-  <div style={{ display: 'flex', gap: 12, padding: '6px 24px', alignItems: 'flex-start' }}
-    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-  >
-    <Avatar name={m.senderName} size={36}/>
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{m.senderName}</span>
-        <span style={{ fontSize: 11.5, color: 'var(--text-4)' }}>{formatChatMessageTime(m.createdAt)}</span>
-      </div>
-      <div style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.6, whiteSpace: 'pre-line' }}>{m.content}</div>
-      {m.reactions.length > 0 && (
-        <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {m.reactions.map((r, i) => (
-            <button key={i} onClick={() => onReact(m.id, r.emoji)} style={{
-              height: 24, padding: '0 8px', borderRadius: 12,
-              background: r.mine ? 'var(--accent-soft)' : 'var(--card-2)',
-              border: `1px solid ${r.mine ? 'var(--accent)' : 'var(--border)'}`,
-              fontSize: 11.5, fontWeight: 600,
-              color: r.mine ? 'var(--accent-text)' : 'var(--text-2)',
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}>{r.emoji} {r.count}</button>
-          ))}
+const FullChatMessage = ({ m, onReact }: { m: MessageDto; onReact: (messageId: string, emoji: string) => void }) => {
+  const [showPicker, setShowPicker] = React.useState(false)
+
+  return (
+    <div style={{ display: 'flex', gap: 12, padding: '6px 24px', alignItems: 'flex-start' }}
+      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
+      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+    >
+      <Avatar name={m.senderName} size={36}/>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{m.senderName}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--text-4)' }}>{formatChatMessageTime(m.createdAt)}</span>
         </div>
-      )}
+        <div style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.6, whiteSpace: 'pre-line' }}>{m.content}</div>
+        {(m.reactions.length > 0 || true) && (
+          <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+            {m.reactions.map((r, i) => (
+              <button key={i} onClick={() => onReact(m.id, r.emoji)} style={{
+                height: 24, padding: '0 8px', borderRadius: 12,
+                background: r.mine ? 'var(--accent-soft)' : 'var(--card-2)',
+                border: `1px solid ${r.mine ? 'var(--accent)' : 'var(--border)'}`,
+                fontSize: 11.5, fontWeight: 600,
+                color: r.mine ? 'var(--accent-text)' : 'var(--text-2)',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>{r.emoji} {r.count}</button>
+            ))}
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setShowPicker(p => !p)} style={{
+                width: 24, height: 24, borderRadius: 12,
+                background: 'var(--card-2)', border: '1px solid var(--border)',
+                fontSize: 13, color: 'var(--text-3)',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>+</button>
+              {showPicker && (
+                <EmojiPicker
+                  onSelect={(emoji) => onReact(m.id, emoji)}
+                  onClose={() => setShowPicker(false)}
+                />
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 export const PageChat = () => {
   const [channelId, setChannelId] = React.useState<string | null>(null)
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [isComposing, setIsComposing] = React.useState(false)
+  const [showEmojiPicker, setShowEmojiPicker] = React.useState(false)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
   const { data: projectChannels = [] } = useProjectChannels()
+  const { data: workspaceChannels = [] } = useWorkspaceChannels()
+  const { data: members = [] } = useWorkspaceMembers()
 
-  // Default to first project channel when data loads
   React.useEffect(() => {
     if (!channelId && projectChannels.length > 0) {
       setChannelId(projectChannels[0]!.channelId)
@@ -136,9 +152,7 @@ export const PageChat = () => {
   }, [sendMutation.error, sendMutation.isError])
 
   React.useEffect(() => {
-    if (sendMutation.isSuccess) {
-      setSendError(null)
-    }
+    if (sendMutation.isSuccess) setSendError(null)
   }, [sendMutation.isSuccess])
 
   const send = () => {
@@ -150,11 +164,17 @@ export const PageChat = () => {
     sendMutation.mutate(text)
   }
 
+  const insertEmoji = (emoji: string) => {
+    setDraft(prev => prev + emoji)
+    setShowEmojiPicker(false)
+  }
+
   const currentChannel = projectChannels.find(c => c.channelId === channelId)
-  const currentGeneral = GENERAL_CHANNELS.find(c => c.id === channelId)
+  const currentGeneral = workspaceChannels.find(c => c.id === channelId)
   const isProject = !!currentChannel
-  const isPrivate = !!(currentGeneral?.private)
+  const isPrivate = !!(currentGeneral?.isPrivate)
   const channelName = currentChannel?.projectTitle ?? currentGeneral?.name ?? ''
+  const memberNames = members.map(m => m.displayName)
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
@@ -170,9 +190,9 @@ export const PageChat = () => {
             ))}
           </ChatSidebarSection>
           <ChatSidebarSection title="チャンネル">
-            {GENERAL_CHANNELS.map(c => (
+            {workspaceChannels.map(c => (
               <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => setChannelId(c.id)}
-                prefix={c.private ? 'lock' : '#'} label={c.name} badge={c.unread}/>
+                prefix={c.isPrivate ? 'lock' : '#'} label={c.name}/>
             ))}
           </ChatSidebarSection>
           <ChatSidebarSection title="ダイレクトメッセージ">
@@ -208,7 +228,7 @@ export const PageChat = () => {
             </div>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <AvatarStack names={MEMBERS} size={26} max={5}/>
+            <AvatarStack names={memberNames} size={26} max={5}/>
             <button className="btn"><Icon name="search" size={13}/></button>
             <button className="btn"><Icon name="bell" size={13}/></button>
             <button className="btn"><Icon name="more" size={14}/></button>
@@ -239,17 +259,27 @@ export const PageChat = () => {
             </div>
           )}
           <div style={{ background: 'var(--card)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--divider)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--divider)', position: 'relative' }}>
               {[
                 { i: 'paperclip', l: '添付' },
                 { i: 'image',     l: '画像' },
                 { i: 'sparkles',  l: '@AI', accent: true },
-                { i: 'smile',     l: '絵文字' },
               ].map((b, j) => (
                 <button key={j} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: b.accent ? 'var(--accent)' : 'var(--text-3)', fontSize: 11.5, fontWeight: b.accent ? 600 : 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
                   <Icon name={b.i} size={13}/> {b.l}
                 </button>
               ))}
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setShowEmojiPicker(p => !p)}
+                  style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}
+                >
+                  <Icon name="smile" size={13}/> 絵文字
+                </button>
+                {showEmojiPicker && (
+                  <EmojiPicker onSelect={insertEmoji} onClose={() => setShowEmojiPicker(false)}/>
+                )}
+              </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, padding: '10px 14px 12px' }}>
               <textarea
@@ -303,13 +333,13 @@ export const PageChat = () => {
         </div>
         <div style={{ padding: '12px 16px' }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>メンバー</div>
-          {MEMBERS.slice(0, 6).map((m, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
+          {members.slice(0, 6).map((m, i) => (
+            <div key={m.userId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
               <div style={{ position: 'relative' }}>
-                <Avatar name={m} size={24}/>
+                <Avatar name={m.displayName} size={24}/>
                 <span style={{ position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%', background: i < 3 ? 'var(--accent)' : 'var(--text-4)', border: '2px solid var(--card)' }}/>
               </div>
-              <span style={{ fontSize: 12.5, color: 'var(--text-2)', flex: 1 }}>{m}</span>
+              <span style={{ fontSize: 12.5, color: 'var(--text-2)', flex: 1 }}>{m.displayName}</span>
             </div>
           ))}
         </div>
