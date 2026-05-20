@@ -4,6 +4,7 @@
 import type { Metadata } from 'next'
 import { Inter, Noto_Sans_JP } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
+import { AccentColorProvider } from '@/components/accent-color-provider'
 import { QueryProvider } from '@/components/query-provider'
 import './globals.css'
 
@@ -24,7 +25,9 @@ export default function RootLayout({
     <html lang="ja" suppressHydrationWarning>
       <body className={`${inter.variable} ${notoSansJP.variable}`} style={{ margin: 0, padding: 0, height: '100%' }}>
         <ThemeProvider attribute={['class', 'data-theme']} defaultTheme="system" enableSystem disableTransitionOnChange>
-          <QueryProvider>{children}</QueryProvider>
+          <AccentColorProvider>
+            <QueryProvider>{children}</QueryProvider>
+          </AccentColorProvider>
         </ThemeProvider>
       </body>
     </html>

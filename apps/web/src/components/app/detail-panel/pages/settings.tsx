@@ -7,6 +7,8 @@ import React from 'react'
 import { useTheme } from 'next-themes'
 import { MobileHeader } from '../mobile-header'
 import { Icon, Avatar } from '../../primitives'
+import { useAccentColor } from '@/components/accent-color-provider'
+import { ACCENT_PRESETS } from '@/lib/accent-presets'
 
 const SECTIONS = [
   {
@@ -49,6 +51,7 @@ const THEME_OPTIONS: { value: ThemeValue; label: string; icon: string }[] = [
 
 export function MobileSettings() {
   const { theme, setTheme } = useTheme()
+  const { accentId, setAccentId } = useAccentColor()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
 
@@ -115,6 +118,25 @@ export function MobileSettings() {
                     <Icon name={opt.icon} size={18} color={theme === opt.value ? 'var(--accent-text)' : 'var(--text-3)'}/>
                     {opt.label}
                   </button>
+                ))}
+              </div>
+            )}
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginTop: 16, marginBottom: 10 }}>ハイライトカラー</div>
+            {mounted && (
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {ACCENT_PRESETS.map(preset => (
+                  <button
+                    key={preset.id}
+                    title={preset.label}
+                    onClick={() => setAccentId(preset.id)}
+                    style={{
+                      width: 36, height: 36, borderRadius: '50%',
+                      background: preset.swatch, border: 'none', cursor: 'pointer', padding: 0,
+                      outline: accentId === preset.id ? `3px solid ${preset.swatch}` : '3px solid transparent',
+                      outlineOffset: 2,
+                      transition: 'outline .12s',
+                    }}
+                  />
                 ))}
               </div>
             )}
