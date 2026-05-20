@@ -4,6 +4,7 @@ import React from 'react'
 import { Sidebar, TopBar, PageId } from './sidebar'
 import { Icon } from './primitives'
 import { ProjectPanel } from './project-panel'
+import type { ProjectDto } from '@/app/api/projects/route'
 import { PageDashboard } from './pages/dashboard'
 import { PageProjects } from './pages/projects'
 import { PageCalendar } from './pages/calendar'
@@ -34,11 +35,11 @@ interface PCAppProps {
 
 export const PCApp = ({ theme = 'light' }: PCAppProps) => {
   const [page, setPage] = React.useState<PageId>('projects')
-  const [panel, setPanel] = React.useState(false)
+  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
   const [notifOpen, setNotifOpen] = React.useState(false)
 
-  const onSetPage = (p: PageId) => { setPage(p); setPanel(false); setNotifOpen(false) }
-  const openPanel = () => setPanel(true)
+  const onSetPage = (p: PageId) => { setPage(p); setSelectedProject(null); setNotifOpen(false) }
+  const openPanel = (project?: ProjectDto) => setSelectedProject(project ?? null)
 
   const pageTitle: Record<PageId, string> = {
     dashboard: 'ダッシュボード',
@@ -96,7 +97,7 @@ export const PCApp = ({ theme = 'light' }: PCAppProps) => {
             {page === 'files'     && <PlaceholderPage name="ファイル"   icon="file"/>}
             {page === 'members'   && <PlaceholderPage name="メンバー"   icon="users"/>}
           </div>
-          {panel && <ProjectPanel onClose={() => setPanel(false)}/>}
+          {selectedProject && <ProjectPanel project={selectedProject} onClose={() => setSelectedProject(null)}/>}
           {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)}/>}
         </div>
       </main>

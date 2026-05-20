@@ -4,9 +4,10 @@
 'use client'
 
 import { createContext, useContext } from 'react'
+import type { ProjectDto } from '@/app/api/projects/route'
 
 interface AppShellContextValue {
-  openPanel: () => void
+  openPanel: (project?: ProjectDto) => void
   openNotif: () => void
 }
 

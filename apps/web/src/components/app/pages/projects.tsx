@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { chatQueryKeys } from '@/lib/chat/client'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
 import { MEMBERS, STATUS, type StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -214,7 +215,7 @@ const TagPicker = ({ value, onChange, available = TAG_PRESETS }: TagPickerProps)
 }
 
 interface PageProjectsProps {
-  openPanel: () => void
+  openPanel: (project?: ProjectDto) => void
 }
 
 function formatDates(start: string | null, end: string | null): string {
@@ -462,6 +463,7 @@ export const PageProjects = ({ openPanel }: PageProjectsProps) => {
 
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
+    void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
   }
 
   const counts = {
@@ -524,7 +526,7 @@ export const PageProjects = ({ openPanel }: PageProjectsProps) => {
           {projects.map((p, i) => {
             const accent = STATUS[p.statusName as StatusKey]?.dot ?? 'var(--text-3)'
             return (
-              <div key={p.id} onClick={() => openPanel()} style={{
+              <div key={p.id} onClick={() => openPanel(p)} style={{
                 background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12,
                 overflow: 'hidden', cursor: 'pointer', boxShadow: 'var(--shadow-sm)',
                 transition: 'transform .15s, box-shadow .15s',
@@ -564,7 +566,7 @@ export const PageProjects = ({ openPanel }: PageProjectsProps) => {
           {projects.map((p, i) => {
             const accent = STATUS[p.statusName as StatusKey]?.dot ?? 'var(--text-3)'
             return (
-              <div key={p.id} onClick={() => openPanel()} style={{
+              <div key={p.id} onClick={() => openPanel(p)} style={{
                 display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px',
                 gap: 16, padding: '12px 16px', borderBottom: i < projects.length - 1 ? '1px solid var(--divider)' : 'none',
                 alignItems: 'center', cursor: 'pointer',
