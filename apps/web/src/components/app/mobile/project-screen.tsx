@@ -4,14 +4,11 @@ import React from 'react'
 import { Icon, MountainPhoto, StatusChip } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { StatusKey } from '../data'
-import {
-  ChatTabContent,
-  OverviewTab,
-  FilesTab,
-  TasksTab,
-  MembersTab,
-  formatDateRange,
-} from '../project-panel'
+import { ChatTab } from '../detail-panel/tabs/chat-tab'
+import { OverviewTab, formatDateRange } from '../detail-panel/tabs/overview-tab'
+import { FilesTab } from '../detail-panel/tabs/files-tab'
+import { TasksTab } from '../detail-panel/tabs/tasks-tab'
+import { MembersTab } from '../detail-panel/tabs/members-tab'
 
 const TABS = [
   { id: 'overview', label: '概要',     icon: 'book' },
@@ -97,7 +94,7 @@ export function MobileProjectScreen({ project, onBack }: MobileProjectScreenProp
       {/* Tab content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         {tab === 'overview' && <OverviewTab project={project}/>}
-        {tab === 'chat'     && <ChatTabContent project={project}/>}
+        {tab === 'chat'     && <ChatTab project={project}/>}
         {tab === 'tasks'    && <TasksTab/>}
         {tab === 'files'    && <FilesTab/>}
         {tab === 'members'  && <MembersTab/>}
