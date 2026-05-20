@@ -33,13 +33,13 @@ export async function GET() {
   try {
     const { db } = await import('@cairn/db')
     const { profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { and, eq, ne } = await import('drizzle-orm')
 
     const rows = await db
       .select({ userId: profiles.id, displayName: profiles.displayName })
       .from(workspaceMembers)
       .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
-      .where(eq(workspaceMembers.workspaceId, ctx.workspaceId))
+      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), ne(workspaceMembers.userId, ctx.userId)))
       .orderBy(profiles.displayName)
 
     return NextResponse.json(rows satisfies WorkspaceMemberDto[])
