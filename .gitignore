@@ -42,6 +42,7 @@ next-env.d.ts
 
 # drizzle
 drizzle/meta
+supabase/migrations/meta/
 
 # claude
 .claude/
