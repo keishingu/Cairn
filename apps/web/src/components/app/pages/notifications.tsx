@@ -41,19 +41,24 @@ interface PageNotificationsProps {
 
 export const PageNotifications = ({ onClose }: PageNotificationsProps) => {
   const [filter, setFilter] = React.useState('all')
+  const [readIds, setReadIds] = React.useState<Set<string>>(new Set())
   const filters = [
     { id: 'all',     l: 'すべて' },
     { id: 'mention', l: '@メンション' },
     { id: 'ai',      l: 'AI' },
     { id: 'unread',  l: '未読' },
   ]
-  const filtered = ITEMS.filter(it =>
+
+  const items = ITEMS.map(it => ({ ...it, unread: it.unread && !readIds.has(it.k + it.t) }))
+
+  const filtered = items.filter(it =>
     filter === 'all' ? true :
     filter === 'unread' ? it.unread :
     filter === 'mention' ? it.k === 'mention' :
     filter === 'ai' ? it.k === 'ai' : true
   )
-  const unreadCount = ITEMS.filter(i => i.unread).length
+  const unreadCount = items.filter(i => i.unread).length
+  const markAllRead = () => setReadIds(new Set(ITEMS.filter(i => i.unread).map(i => i.k + i.t)))
 
   return (
     <>
@@ -67,8 +72,13 @@ export const PageNotifications = ({ onClose }: PageNotificationsProps) => {
                 <span style={{ background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999 }}>{unreadCount}</span>
               )}
             </h2>
-            <button className="btn btn-ghost" style={{ height: 28, fontSize: 12, padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Icon name="check" size={12}/> すべて既読
+            <button
+              className="btn btn-ghost"
+              style={{ height: 28, fontSize: 12, padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4, opacity: unreadCount === 0 ? 0.4 : 1 }}
+              onClick={markAllRead}
+              disabled={unreadCount === 0}
+            >
+              <Icon name="check" size={12} /> すべて既読
             </button>
             <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="close" size={15}/>
@@ -86,7 +96,9 @@ export const PageNotifications = ({ onClose }: PageNotificationsProps) => {
           ) : filtered.map((it, i) => {
             const cfg = KIND_MAP[it.k] ?? KIND_MAP['file']!
             return (
-              <div key={i} style={{ display: 'flex', gap: 12, padding: '12px 18px', borderBottom: '1px solid var(--divider)', background: it.unread ? 'var(--accent-soft)' : 'transparent', cursor: 'pointer', position: 'relative' }}
+              <div key={i}
+                style={{ display: 'flex', gap: 12, padding: '12px 18px', borderBottom: '1px solid var(--divider)', background: it.unread ? 'var(--accent-soft)' : 'transparent', cursor: 'pointer', position: 'relative' }}
+                onClick={() => it.unread && setReadIds(prev => new Set([...prev, it.k + it.t]))}
                 onMouseEnter={e => { if (!it.unread) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
                 onMouseLeave={e => { if (!it.unread) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
               >

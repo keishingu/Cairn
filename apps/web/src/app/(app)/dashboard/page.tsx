@@ -12,7 +12,7 @@ export default function DashboardPage() {
   const { openPanel, openNotif } = useAppShell()
   return (
     <>
-      <TopBar title="ダッシュボード" subtitle="2024 Q2" onBell={openNotif}>
+      <TopBar title="ダッシュボード" onBell={openNotif}>
         <TopBarSearch/>
       </TopBar>
       <PageDashboard openPanel={openPanel}/>

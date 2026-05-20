@@ -7,18 +7,20 @@ import { getAuthContext } from '@/lib/get-auth-context'
 export interface WorkspaceMemberDto {
   userId: string
   displayName: string
+  role: 'owner' | 'admin' | 'member' | 'guest'
+  joinedAt: string
 }
 
 function mockMembers(): WorkspaceMemberDto[] {
   return [
-    { userId: 'm1', displayName: '山田 太郎' },
-    { userId: 'm2', displayName: '佐藤 花子' },
-    { userId: 'm3', displayName: '鈴木 健' },
-    { userId: 'm4', displayName: '田中 陽子' },
-    { userId: 'm5', displayName: '伊藤 翔' },
-    { userId: 'm6', displayName: '高橋 美咲' },
-    { userId: 'm7', displayName: '中村 拓也' },
-    { userId: 'm8', displayName: '小林 大地' },
+    { userId: 'm1', displayName: '山田 太郎', role: 'owner',  joinedAt: '2026-01-01' },
+    { userId: 'm2', displayName: '佐藤 花子', role: 'admin',  joinedAt: '2026-01-05' },
+    { userId: 'm3', displayName: '鈴木 健',   role: 'member', joinedAt: '2026-01-10' },
+    { userId: 'm4', displayName: '田中 陽子', role: 'member', joinedAt: '2026-01-12' },
+    { userId: 'm5', displayName: '伊藤 翔',   role: 'member', joinedAt: '2026-02-01' },
+    { userId: 'm6', displayName: '高橋 美咲', role: 'member', joinedAt: '2026-02-14' },
+    { userId: 'm7', displayName: '中村 拓也', role: 'member', joinedAt: '2026-03-05' },
+    { userId: 'm8', displayName: '小林 大地', role: 'guest',  joinedAt: '2026-04-20' },
   ]
 }
 
@@ -36,13 +38,25 @@ export async function GET() {
     const { eq } = await import('drizzle-orm')
 
     const rows = await db
-      .select({ userId: profiles.id, displayName: profiles.displayName })
+      .select({
+        userId: profiles.id,
+        displayName: profiles.displayName,
+        role: workspaceMembers.role,
+        joinedAt: workspaceMembers.joinedAt,
+      })
       .from(workspaceMembers)
       .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
       .where(eq(workspaceMembers.workspaceId, ctx.workspaceId))
       .orderBy(profiles.displayName)
 
-    return NextResponse.json(rows satisfies WorkspaceMemberDto[])
+    const result: WorkspaceMemberDto[] = rows.map(r => ({
+      userId: r.userId,
+      displayName: r.displayName,
+      role: r.role,
+      joinedAt: r.joinedAt.toISOString().slice(0, 10),
+    }))
+
+    return NextResponse.json(result)
   } catch (err) {
     console.error('[/api/workspaces/members] DB query failed, using mock data:', err)
     return NextResponse.json(mockMembers())

@@ -5,14 +5,17 @@
 
 import { useAppShell } from '@/components/app/app-shell-context'
 import { TopBar } from '@/components/app/sidebar'
-import { PlaceholderPage } from '@/components/app/primitives'
+import { TopBarSearch } from '@/components/app/primitives'
+import { PageTasks } from '@/components/app/pages/tasks'
 
 export default function TasksPage() {
   const { openNotif } = useAppShell()
   return (
     <>
-      <TopBar title="マイタスク" onBell={openNotif}/>
-      <PlaceholderPage name="マイタスク" icon="check"/>
+      <TopBar title="マイタスク" onBell={openNotif}>
+        <TopBarSearch />
+      </TopBar>
+      <PageTasks />
     </>
   )
 }

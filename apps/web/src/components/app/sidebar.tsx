@@ -2,9 +2,11 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { Icon } from './primitives'
 import { Avatar } from './primitives'
 import { createClient } from '@/lib/supabase/client'
+import type { CurrentUserDto } from '@/app/api/me/route'
 
 export type PageId =
   | 'dashboard' | 'projects' | 'calendar' | 'kanban'
@@ -204,6 +206,13 @@ function SidebarUserFooter() {
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
 
+  const { data: me } = useQuery<CurrentUserDto>({
+    queryKey: ['me'],
+    queryFn: () => fetch('/api/me').then(r => r.json()),
+    staleTime: 60_000,
+  })
+  const displayName = me?.displayName ?? '…'
+
   React.useEffect(() => {
     if (!menuOpen) return
     function close(e: MouseEvent) {
@@ -222,9 +231,9 @@ function SidebarUserFooter() {
 
   return (
     <div style={{ padding: '10px 12px', borderTop: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }} ref={menuRef}>
-      <Avatar name="山田 太郎" size={32}/>
+      <Avatar name={displayName} size={32}/>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2 }}>山田 太郎</div>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2 }}>{displayName}</div>
         <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3 }}>オンライン</div>
       </div>
       <button
