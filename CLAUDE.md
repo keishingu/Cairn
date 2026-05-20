@@ -104,6 +104,42 @@ components/app/
 - 野良も含めた全体一覧は `pages/chat.tsx` / `pages/tasks.tsx`（PC メイン用）と、必要なら `mobile/pages/chat.tsx` 等（モバイル個別実装）に分離する
 
 
+## 認証・API ルート実装規約
+
+### 二つの動作モード
+
+| 条件 | 動作 |
+|------|------|
+| `DATABASE_URL` 未設定 | Supabase なし開発モード。認証スキップ、モックデータを使用 |
+| `DATABASE_URL` あり | 認証必須。未認証は `/auth/login` へリダイレクト |
+
+ミドルウェア（`apps/web/src/middleware.ts`）が `DATABASE_URL` の有無を見てガードを切り替えるため、`supabase start` なしでも `pnpm dev` 単体で動く。
+
+### API ルートでのユーザー取得
+
+新しい API ルートを作るときは、必ず `getAuthContext()` を使ってユーザー ID とワークスペース ID を取得する。`DEV_*` のハードコード ID は書かない。
+
+```ts
+import { getAuthContext } from '@/lib/get-auth-context'
+
+export async function POST(req: Request) {
+  const { ctx, error } = await getAuthContext()
+  if (error) return error  // 未認証なら 401 を返す
+
+  // ctx.userId, ctx.workspaceId が使える
+}
+```
+
+`DATABASE_URL` 未設定時はモック ID が自動的に返るため、両モードで動作する。
+
+### サインアップフロー
+
+1. `/auth/signup` でメール・パスワード・表示名を入力
+2. Supabase Auth でユーザー作成（`auth.users`）
+3. `/api/auth/setup` を呼び出し、`profiles` テーブルへのプロフィール作成とデフォルトワークスペースの作成を行う
+4. `/dashboard` へリダイレクト
+
+
 ## テスト
 
 - `test(...)` や `describe(...)` の説明文は日本語で書く
