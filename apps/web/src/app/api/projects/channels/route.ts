@@ -33,10 +33,11 @@ export async function GET() {
     const { channels, projects } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
 
+    const { sql } = await import('drizzle-orm')
     const rows = await db
       .select({
         channelId: channels.id,
-        channelName: channels.name,
+        channelName: sql<string>`coalesce(${channels.name}, 'general')`,
         projectId: projects.id,
         projectTitle: projects.title,
       })

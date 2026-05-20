@@ -2,18 +2,34 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { boolean, index, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
-import { messageTypeEnum } from './enums'
+import { channelTypeEnum, messageTypeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
 
 export const channels = pgTable('channels', {
   id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
   workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
-  name: text('name').notNull().default('general'),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  type: channelTypeEnum('type').notNull().default('project'),
+  name: text('name'),
   isPrivate: boolean('is_private').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+export const channelMembers = pgTable(
+  'channel_members',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    channelId: uuid('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique().on(t.channelId, t.userId)],
+)
 
 export const messages = pgTable(
   'messages',

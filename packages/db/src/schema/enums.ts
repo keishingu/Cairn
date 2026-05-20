@@ -39,3 +39,5 @@ export const taskStatusEnum = pgEnum('task_status', ['todo', 'in_progress', 'don
 export const taskPriorityEnum = pgEnum('task_priority', ['high', 'medium', 'low'])
 
 export const aiScopeEnum = pgEnum('ai_scope', ['workspace', 'project'])
+
+export const channelTypeEnum = pgEnum('channel_type', ['workspace', 'project', 'dm'])
