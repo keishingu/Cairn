@@ -7,6 +7,8 @@ export interface Project {
   name: string
   status: StatusKey
   dates: string
+  startDate: string | null
+  endDate: string | null
   members: number
   unread: number
   accent: string
@@ -47,14 +49,14 @@ export const STATUS_COL: Record<StatusKey, StatusColConfig> = {
 }
 
 export const PROJECTS: Project[] = [
-  { id: 'p1', name: '北アルプス縦走計画', status: 'plan',   dates: '6/12–6/16', members: 8,  unread: 5, accent: 'var(--blue)',     bg: 'var(--col-plan-bg)' },
-  { id: 'p2', name: '夏山合宿計画',       status: 'review', dates: '7/20–7/23', members: 10, unread: 7, accent: 'var(--amber)',   bg: 'var(--col-review-bg)' },
-  { id: 'p3', name: 'クライミング講習会', status: 'review', dates: '6/9',       members: 5,  unread: 2, accent: 'var(--amber)',   bg: 'var(--col-review-bg)' },
-  { id: 'p4', name: '雪山訓練',           status: 'wait',   dates: '6/16–6/17', members: 6,  unread: 2, accent: 'var(--emerald)', bg: 'var(--col-wait-bg)' },
-  { id: 'p5', name: '秋山ハイキング',     status: 'wait',   dates: '9/14',      members: 4,  unread: 0, accent: 'var(--emerald)', bg: 'var(--col-wait-bg)' },
-  { id: 'p6', name: '春山合宿',           status: 'doing',  dates: '5/18–5/20', members: 9,  unread: 4, accent: 'var(--violet)',  bg: 'var(--col-doing-bg)' },
-  { id: 'p7', name: '沢登り練習会',       status: 'plan',   dates: '6/8',       members: 6,  unread: 0, accent: 'var(--blue)',    bg: 'var(--col-plan-bg)' },
-  { id: 'p8', name: '最終ハイキング',     status: 'retro',  dates: '4/27',      members: 7,  unread: 0, accent: 'var(--rose)',    bg: 'var(--col-retro-bg)' },
+  { id: 'p1', name: '北アルプス縦走計画', status: 'plan',   dates: '5/18–5/22', startDate: '2026-05-18', endDate: '2026-05-22', members: 8,  unread: 5, accent: 'var(--blue)',     bg: 'var(--col-plan-bg)' },
+  { id: 'p2', name: '夏山合宿計画',       status: 'review', dates: '6/15–6/18', startDate: '2026-06-15', endDate: '2026-06-18', members: 10, unread: 7, accent: 'var(--amber)',   bg: 'var(--col-review-bg)' },
+  { id: 'p3', name: 'クライミング講習会', status: 'review', dates: '5/25',      startDate: '2026-05-25', endDate: null,         members: 5,  unread: 2, accent: 'var(--amber)',   bg: 'var(--col-review-bg)' },
+  { id: 'p4', name: '雪山訓練',           status: 'wait',   dates: '5/30–5/31', startDate: '2026-05-30', endDate: '2026-05-31', members: 6,  unread: 2, accent: 'var(--emerald)', bg: 'var(--col-wait-bg)' },
+  { id: 'p5', name: '秋山ハイキング',     status: 'wait',   dates: '8/10',      startDate: '2026-08-10', endDate: null,         members: 4,  unread: 0, accent: 'var(--emerald)', bg: 'var(--col-wait-bg)' },
+  { id: 'p6', name: '春山合宿',           status: 'doing',  dates: '5/10–5/12', startDate: '2026-05-10', endDate: '2026-05-12', members: 9,  unread: 4, accent: 'var(--violet)',  bg: 'var(--col-doing-bg)' },
+  { id: 'p7', name: '沢登り練習会',       status: 'plan',   dates: '5/23',      startDate: '2026-05-23', endDate: null,         members: 6,  unread: 0, accent: 'var(--blue)',    bg: 'var(--col-plan-bg)' },
+  { id: 'p8', name: '最終ハイキング',     status: 'retro',  dates: '4/25',      startDate: '2026-04-25', endDate: null,         members: 7,  unread: 0, accent: 'var(--rose)',    bg: 'var(--col-retro-bg)' },
 ]
 
 export const PHOTO_IDS = [

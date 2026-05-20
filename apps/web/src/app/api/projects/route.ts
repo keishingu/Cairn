@@ -20,8 +20,8 @@ function mockProjects(): ProjectDto[] {
     id: p.id,
     title: p.name,
     statusName: p.status,
-    startDate: null,
-    endDate: null,
+    startDate: p.startDate,
+    endDate: p.endDate,
     memberCount: p.members,
   }))
 }

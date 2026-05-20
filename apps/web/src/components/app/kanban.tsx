@@ -1,19 +1,32 @@
 'use client'
 
 import React from 'react'
-import { Icon, Avatar, AvatarStack } from './primitives'
-import { PROJECTS, MEMBERS, STATUS, STATUS_COL, Project, StatusKey } from './data'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Icon, AvatarStack } from './primitives'
+import { MEMBERS, STATUS, STATUS_COL, type StatusKey } from './data'
+import type { ProjectDto } from '@/app/api/projects/route'
+
+function formatDateRange(start: string | null, end: string | null): string {
+  if (!start) return ''
+  const fmt = (s: string) => {
+    const d = new Date(s + 'T00:00:00')
+    return `${d.getMonth() + 1}/${d.getDate()}`
+  }
+  if (!end || end === start) return fmt(start)
+  return `${fmt(start)}–${fmt(end)}`
+}
 
 interface KanbanCardProps {
-  p: Project
+  project: ProjectDto
   onClick: () => void
   onDragStart: () => void
   onDragEnd: () => void
   dragging: boolean
 }
 
-const KanbanCard = ({ p, onClick, onDragStart, onDragEnd, dragging }: KanbanCardProps) => {
-  const cfg = STATUS_COL[p.status]
+const KanbanCard = ({ project, onClick, onDragStart, onDragEnd, dragging }: KanbanCardProps) => {
+  const cfg = STATUS_COL[project.statusName]
+  const dateStr = formatDateRange(project.startDate, project.endDate)
   return (
     <div
       draggable
@@ -29,35 +42,64 @@ const KanbanCard = ({ p, onClick, onDragStart, onDragEnd, dragging }: KanbanCard
         boxShadow: 'var(--shadow-sm)',
         opacity: dragging ? 0.4 : 1,
       }}
-      onMouseEnter={e => { if (!dragging) { (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)' } }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(0)' }}
+      onMouseEnter={e => {
+        if (!dragging) {
+          (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)'
+          ;(e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'
+        }
+      }}
+      onMouseLeave={e => {
+        ;(e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)'
+        ;(e.currentTarget as HTMLElement).style.transform = 'translateY(0)'
+      }}
     >
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3, marginBottom: 4 }}>{p.name}</div>
-      <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 10 }}>{p.dates}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3, marginBottom: 4 }}>
+        {project.title}
+      </div>
+      {dateStr && (
+        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 10 }}>{dateStr}</div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <AvatarStack names={MEMBERS.slice(0, Math.min(p.members, 4))} size={20} max={4}/>
+        <AvatarStack names={MEMBERS.slice(0, Math.min(project.memberCount, 4))} size={20} max={4} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--text-3)' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="chat" size={11.5}/>{p.unread || Math.floor(p.members / 2) + 1}</span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="paperclip" size={11.5}/>{p.unread ? p.unread - 1 : 2}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <Icon name="users" size={11.5} />
+            {project.memberCount}
+          </span>
         </div>
       </div>
     </div>
   )
 }
 
+const KanbanCardSkeleton = () => (
+  <div style={{
+    background: 'var(--card)', border: '1px solid var(--border)',
+    borderRadius: 8, padding: '10px 12px', borderLeft: '3px solid var(--border)',
+  }}>
+    <div style={{ height: 13, width: '70%', borderRadius: 4, background: 'var(--card-2)', marginBottom: 8 }} />
+    <div style={{ height: 11, width: '40%', borderRadius: 4, background: 'var(--card-2)', marginBottom: 10 }} />
+    <div style={{ height: 20, width: '50%', borderRadius: 10, background: 'var(--card-2)' }} />
+  </div>
+)
+
 interface KanbanColumnProps {
   status: StatusKey
-  items: Project[]
-  onCardClick: () => void
+  items: ProjectDto[]
+  onCardClick: (project: ProjectDto) => void
   onDragStart: (id: string) => void
   onDragEnd: () => void
   draggingId: string | null
   onDrop: (status: StatusKey) => void
   dropTarget: StatusKey | null
   onDragOver: (status: StatusKey | null) => void
+  isLoading?: boolean
 }
 
-const KanbanColumn = ({ status, items, onCardClick, onDragStart, onDragEnd, draggingId, onDrop, dropTarget, onDragOver }: KanbanColumnProps) => {
+const KanbanColumn = ({
+  status, items, onCardClick, onDragStart, onDragEnd,
+  draggingId, onDrop, dropTarget, onDragOver, isLoading,
+}: KanbanColumnProps) => {
   const cfg = STATUS_COL[status]
   const isTarget = dropTarget === status
   return (
@@ -75,17 +117,27 @@ const KanbanColumn = ({ status, items, onCardClick, onDragStart, onDragEnd, drag
       }}
     >
       <div style={{ padding: '12px 14px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: cfg.text, letterSpacing: '0.01em' }}>{STATUS[status].label}</span>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: cfg.text, opacity: 0.7 }}>{items.length}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: cfg.text, letterSpacing: '0.01em' }}>
+          {STATUS[status].label}
+        </span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: cfg.text, opacity: 0.7 }}>
+          {isLoading ? '…' : items.length}
+        </span>
       </div>
       <div style={{ padding: '0 8px 8px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1, overflow: 'auto' }}>
-        {items.map(p => (
-          <KanbanCard key={p.id} p={p}
-            onClick={onCardClick}
-            onDragStart={() => onDragStart(p.id)}
-            onDragEnd={onDragEnd}
-            dragging={draggingId === p.id}/>
-        ))}
+        {isLoading
+          ? Array.from({ length: 2 }).map((_, i) => <KanbanCardSkeleton key={i} />)
+          : items.map(p => (
+            <KanbanCard
+              key={p.id}
+              project={p}
+              onClick={() => onCardClick(p)}
+              onDragStart={() => onDragStart(p.id)}
+              onDragEnd={onDragEnd}
+              dragging={draggingId === p.id}
+            />
+          ))
+        }
         <button style={{
           border: 'none', background: 'transparent',
           padding: '8px 6px', fontSize: 12, fontWeight: 500,
@@ -93,7 +145,7 @@ const KanbanColumn = ({ status, items, onCardClick, onDragStart, onDragEnd, drag
           display: 'flex', alignItems: 'center', gap: 6,
           fontFamily: 'inherit', textAlign: 'left',
         }}>
-          <Icon name="plus" size={13}/> カードを追加
+          <Icon name="plus" size={13} /> カードを追加
         </button>
       </div>
     </div>
@@ -101,22 +153,60 @@ const KanbanColumn = ({ status, items, onCardClick, onDragStart, onDragEnd, drag
 }
 
 interface KanbanBoardProps {
-  onCardClick: () => void
+  onCardClick: (project: ProjectDto) => void
 }
 
 export const KanbanBoard = ({ onCardClick }: KanbanBoardProps) => {
   const cols: StatusKey[] = ['plan', 'review', 'wait', 'doing', 'retro']
-  const [items, setItems] = React.useState(PROJECTS)
+  const queryClient = useQueryClient()
+
+  const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
+    queryKey: ['projects'],
+    queryFn: () => fetch('/api/projects').then(r => r.json()),
+  })
+
+  const updateStatus = useMutation({
+    mutationFn: async ({ id, statusName }: { id: string; statusName: StatusKey }) => {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statusName }),
+      })
+      if (!res.ok) throw new Error('Failed to update status')
+    },
+    onMutate: async ({ id, statusName }) => {
+      await queryClient.cancelQueries({ queryKey: ['projects'] })
+      const prev = queryClient.getQueryData<ProjectDto[]>(['projects'])
+      queryClient.setQueryData<ProjectDto[]>(
+        ['projects'],
+        old => old?.map(p => p.id === id ? { ...p, statusName } : p) ?? [],
+      )
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['projects'], ctx.prev)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+
   const [draggingId, setDraggingId] = React.useState<string | null>(null)
   const [dropTarget, setDropTarget] = React.useState<StatusKey | null>(null)
-  const groups = Object.fromEntries(cols.map(c => [c, items.filter(p => p.status === c)])) as Record<StatusKey, Project[]>
+
+  const groups = Object.fromEntries(
+    cols.map(c => [c, projects.filter(p => p.statusName === c)]),
+  ) as Record<StatusKey, ProjectDto[]>
 
   const onDragStart = (id: string) => setDraggingId(id)
   const onDragEnd = () => { setDraggingId(null); setDropTarget(null) }
   const onDragOver = (status: StatusKey | null) => setDropTarget(status)
   const onDrop = (status: StatusKey) => {
     if (!draggingId) return
-    setItems(prev => prev.map(p => p.id === draggingId ? { ...p, status } : p))
+    const project = projects.find(p => p.id === draggingId)
+    if (project && project.statusName !== status) {
+      updateStatus.mutate({ id: draggingId, statusName: status })
+    }
     setDraggingId(null)
     setDropTarget(null)
   }
@@ -124,7 +214,8 @@ export const KanbanBoard = ({ onCardClick }: KanbanBoardProps) => {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, height: '100%' }}>
       {cols.map(c => (
-        <KanbanColumn key={c}
+        <KanbanColumn
+          key={c}
           status={c}
           items={groups[c]}
           onCardClick={onCardClick}
@@ -133,7 +224,9 @@ export const KanbanBoard = ({ onCardClick }: KanbanBoardProps) => {
           onDragOver={onDragOver}
           onDrop={onDrop}
           draggingId={draggingId}
-          dropTarget={dropTarget}/>
+          dropTarget={dropTarget}
+          isLoading={isLoading}
+        />
       ))}
     </div>
   )
