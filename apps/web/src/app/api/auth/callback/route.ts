@@ -10,8 +10,17 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient()
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (!error) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+    if (!error && data.user) {
+      const displayName =
+        (data.user.user_metadata?.['display_name'] as string | undefined) ??
+        data.user.email ??
+        'ユーザー'
+      await fetch(`${origin}/api/auth/setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName }),
+      })
       return NextResponse.redirect(`${origin}/dashboard`)
     }
   }
