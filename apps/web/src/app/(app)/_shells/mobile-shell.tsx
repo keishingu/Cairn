@@ -5,12 +5,12 @@
 
 import React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { MobileNav } from '@/components/app/sidekick/mobile-nav'
-import { MobileDashboard } from '@/components/app/sidekick/pages/dashboard'
-import { MobileProjects } from '@/components/app/sidekick/pages/projects'
-import { MobileChat } from '@/components/app/sidekick/pages/chat'
-import { MobileAI } from '@/components/app/sidekick/pages/ai'
-import { MobileSettings } from '@/components/app/sidekick/pages/settings'
+import { MobileNav } from '@/components/app/detail-panel/mobile-nav'
+import { MobileDashboard } from '@/components/app/detail-panel/pages/dashboard'
+import { MobileProjects } from '@/components/app/detail-panel/pages/projects'
+import { MobileChat } from '@/components/app/detail-panel/pages/chat'
+import { MobileAI } from '@/components/app/detail-panel/pages/ai'
+import { MobileSettings } from '@/components/app/detail-panel/pages/settings'
 import { AppShellContext } from '@/components/app/app-shell-context'
 
 function pageFromPathname(pathname: string): string {

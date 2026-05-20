@@ -61,12 +61,12 @@ pnpm dev
 - **UA ベースのデバイス出し分け**: middleware で `x-device` ヘッダーをセットし、`app/(app)/layout.tsx` で PC シェル / モバイルシェルを切り替える。レスポンシブ CSS は使わない
 
 
-## サイドキックコンポーネントの方針
+## Detail Panel コンポーネントの方針
 
-`src/components/app/sidekick/` 配下のコンポーネントは、**PC 版の「サイドキック」ペイン（副画面・ウィジェット等）向けに設計し、モバイルブラウザの詳細画面でも同じコンポーネントを再利用する**前提で開発する。
+`src/components/app/detail-panel/` 配下のコンポーネントは、**PC 版の右側 Detail Panel（Inspector）向けに設計し、モバイルでも同じコンポーネントを再利用する**前提で開発する。
 
-- サイドキックコンポーネントは PC シェルへの依存（`AppShellContext` の `openPanel` 等）を持たないよう設計する
-- PC 固有の機能が必要な場合はサイドキックコンポーネントに直接実装せず、props や Context 経由で注入する
+- Detail Panel コンポーネントは PC シェルへの依存（`AppShellContext` の `openPanel` 等）を持たないよう設計する
+- PC 固有の機能が必要な場合は props や Context 経由で注入する
 - `MobileShell` / `MobileNav` はモバイルブラウザ専用のラッパーのため `_shells/` 配下に残す
 
 
@@ -74,34 +74,32 @@ pnpm dev
 
 ```
 components/app/
-  pages/             PC メインビュー（ワイドレイアウト）
-                     PC とモバイルで「同じ情報を密度だけ変えて見せる」場合は
-                     ここに置いてレスポンシブ CSS で対応し、モバイルからも直接 import する
+  pages/             PC・モバイル共通のメインビュー
+                     isMobile prop で1ペイン／多ペインを切り替える
+                     （例: pages/chat.tsx は PC で3カラム、モバイルで1カラム遷移）
 
-  sidekick/          PC サイドキック（狭幅）の中身
+  detail-panel/      PC 右側 Detail Panel（Inspector）の中身
                      モバイルのプロジェクト詳細画面でも同じコンポーネントを再利用する
-                     panel.tsx        … PC サイドキックのシェル（420px 固定パネル）
+                     panel.tsx        … PC Detail Panel のシェル（420px 固定パネル）
                      tabs/            … プロジェクト詳細のタブ内容（chat / tasks / files など）
+                     pages/           … モバイルナビバーの行き先ページ（暫定置き場）
 
-  mobile/            モバイルブラウザ専用 UI
-                     mobile-nav.tsx / mobile-header.tsx … モバイル共通パーツ
-                     project-screen.tsx                 … モバイル用プロジェクト詳細シェル
-                                                          （中身は sidekick/tabs/* を使用）
-                     pages/                             … モバイルナビバーの行き先で
-                                                          PC とは見た目が違う画面のみ置く
+  mobile/            モバイルブラウザ専用 UI（PC とナビゲーション構造が根本的に違う場合のみ）
+                     project-screen.tsx … モバイル用プロジェクト詳細シェル
+                                          （中身は detail-panel/tabs/* を使用）
 ```
 
 ### コンポーネントを「共用」「個別」のどちらにするかの判断基準
 
-- **同じコンポーネント（レスポンシブ対応あり）** で済むもの: タスク一覧、プロジェクト一覧、メンバー、ギャラリーなど「同じ情報を密度だけ変えて見せる」ケース
-- **別コンポーネントが必要** なもの: チャット一覧のように PC（2 ペイン）とモバイル（1 ペイン）でナビゲーション構造そのものが違うケース
+- **`pages/` で共用（isMobile prop）**: PC とモバイルでレイアウト・ペイン数が違うが、ロジックは同じケース（チャット、タスク一覧等）
+- **`mobile/` で個別実装**: ナビゲーション構造そのものが根本的に異なり、共用コンポーネントに isMobile を足しても複雑になりすぎるケース
 
-「シェル全体は UA で切り分け、個々のコンポーネント内ではメディアクエリで密度を調整する」のが基本方針。
+「シェル全体は UA で切り分け、コンポーネント内は isMobile prop またはメディアクエリで密度・レイアウトを調整する」のが基本方針。
 
 ### チャットとタスクの「プロジェクト紐付け」「野良」の扱い
 
-- プロジェクト紐付けのチャット / タスクは `sidekick/tabs/chat-tab.tsx` / `sidekick/tabs/tasks-tab.tsx` で扱う（単一プロジェクトスコープ）
-- 野良も含めた全体一覧は `pages/chat.tsx` / `pages/tasks.tsx`（PC メイン用）と、必要なら `mobile/pages/chat.tsx` 等（モバイル個別実装）に分離する
+- プロジェクト紐付けのチャット / タスクは `detail-panel/tabs/chat-tab.tsx` / `detail-panel/tabs/tasks-tab.tsx` で扱う（単一プロジェクトスコープ）
+- 野良も含めた全体一覧は `pages/chat.tsx` / `pages/tasks.tsx`（PC・モバイル共通、isMobile prop で切り替え）
 
 
 ## テスト
