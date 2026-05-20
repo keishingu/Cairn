@@ -3,7 +3,8 @@ import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { DmChannelDto } from '@/app/api/workspaces/dms/route'
-import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { MessageDto, ReactionDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { CurrentUserDto } from '@/app/api/me/route'
 
 export const chatQueryKeys = {
   projectChannels: ['project-channels'] as const,
@@ -11,6 +12,7 @@ export const chatQueryKeys = {
   workspaceMembers: ['workspace-members'] as const,
   dms: ['dms'] as const,
   messages: (channelId: string | null) => ['messages', channelId] as const,
+  currentUser: ['current-user'] as const,
 }
 
 export function formatChatMessageTime(iso: string): string {
@@ -84,6 +86,12 @@ async function toggleMessageReaction(messageId: string, emoji: string): Promise<
   if (!res.ok) throw new Error('リアクションの更新に失敗しました')
 }
 
+async function fetchCurrentUser(): Promise<CurrentUserDto> {
+  const res = await fetch('/api/me')
+  if (!res.ok) throw new Error('ユーザー情報の取得に失敗しました')
+  return res.json()
+}
+
 export function useProjectChannels() {
   return useQuery({
     queryKey: chatQueryKeys.projectChannels,
@@ -122,6 +130,14 @@ export function useCreateDm() {
   })
 }
 
+export function useCurrentUser() {
+  return useQuery({
+    queryKey: chatQueryKeys.currentUser,
+    queryFn: fetchCurrentUser,
+    staleTime: Infinity,
+  })
+}
+
 export function useChannelMessages(channelId: string | null) {
   return useQuery({
     queryKey: chatQueryKeys.messages(channelId),
@@ -132,15 +148,45 @@ export function useChannelMessages(channelId: string | null) {
   })
 }
 
-export function useSendChannelMessage(channelId: string | null) {
+export function useSendChannelMessage(
+  channelId: string | null,
+  currentUser: CurrentUserDto | undefined,
+) {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (content: string) => postChannelMessage(channelId!, content),
-    onSuccess: (newMessage) => {
+    onMutate: async (content) => {
+      await queryClient.cancelQueries({ queryKey: chatQueryKeys.messages(channelId) })
+      const prev = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
+
+      if (currentUser) {
+        const optimisticMsg: MessageDto = {
+          id: `optimistic-${crypto.randomUUID()}`,
+          content,
+          senderId: currentUser.id,
+          senderName: currentUser.displayName,
+          createdAt: new Date().toISOString(),
+          reactions: [],
+        }
+        queryClient.setQueryData<MessageDto[]>(
+          chatQueryKeys.messages(channelId),
+          (old) => [...(old ?? []), optimisticMsg],
+        )
+        return { prev, optimisticId: optimisticMsg.id }
+      }
+
+      return { prev, optimisticId: null }
+    },
+    onError: (_err, _content, context) => {
+      if (context?.prev !== undefined) {
+        queryClient.setQueryData(chatQueryKeys.messages(channelId), context.prev)
+      }
+    },
+    onSuccess: (newMessage, _content, context) => {
       queryClient.setQueryData<MessageDto[]>(
         chatQueryKeys.messages(channelId),
-        (prev) => [...(prev ?? []), newMessage],
+        (old) => (old ?? []).map((m) => m.id === context?.optimisticId ? newMessage : m),
       )
     },
   })
@@ -152,8 +198,38 @@ export function useToggleMessageReaction(channelId: string | null) {
   return useMutation({
     mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
       toggleMessageReaction(messageId, emoji),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
+    onMutate: async ({ messageId, emoji }) => {
+      await queryClient.cancelQueries({ queryKey: chatQueryKeys.messages(channelId) })
+      const prev = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
+
+      queryClient.setQueryData<MessageDto[]>(
+        chatQueryKeys.messages(channelId),
+        (old) => (old ?? []).map((m) => {
+          if (m.id !== messageId) return m
+          const existing = m.reactions.find((r) => r.emoji === emoji)
+          let newReactions: ReactionDto[]
+          if (existing) {
+            if (existing.mine) {
+              const newCount = existing.count - 1
+              newReactions = newCount > 0
+                ? m.reactions.map((r) => r.emoji === emoji ? { ...r, count: newCount, mine: false } : r)
+                : m.reactions.filter((r) => r.emoji !== emoji)
+            } else {
+              newReactions = m.reactions.map((r) => r.emoji === emoji ? { ...r, count: r.count + 1, mine: true } : r)
+            }
+          } else {
+            newReactions = [...m.reactions, { emoji, count: 1, mine: true }]
+          }
+          return { ...m, reactions: newReactions }
+        }),
+      )
+
+      return { prev }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prev !== undefined) {
+        queryClient.setQueryData(chatQueryKeys.messages(channelId), context.prev)
+      }
     },
   })
 }

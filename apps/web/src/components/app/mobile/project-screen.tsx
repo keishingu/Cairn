@@ -26,7 +26,7 @@ interface MobileProjectScreenProps {
 }
 
 export function MobileProjectScreen({ project, onBack }: MobileProjectScreenProps) {
-  const [tab, setTab] = React.useState<TabId>('overview')
+  const [tab, setTab] = React.useState<TabId>('chat')
 
   return (
     <div style={{

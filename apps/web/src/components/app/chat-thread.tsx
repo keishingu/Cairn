@@ -10,10 +10,21 @@ import { Icon } from './primitives'
 import {
   formatChatMessageTime,
   useChannelMessages,
+  useCurrentUser,
   useSendChannelMessage,
   useToggleMessageReaction,
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+
+function isEmojiOnly(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed) return false
+  const stripped = trimmed
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .replace(/[‍️⃣]/gu, '')
+    .trim()
+  return stripped.length === 0
+}
 
 // ─── Message ──────────────────────────────────────────────────────
 
@@ -30,6 +41,7 @@ const ChatMessage = ({ messageId, senderName, createdAt, content, reactions, onR
   const addBtnRef = React.useRef<HTMLButtonElement>(null)
   const avatarSize = compact ? 30 : 36
   const px = compact ? '8px 14px' : '6px 16px'
+  const emojiOnly = isEmojiOnly(content)
 
   return (
     <div
@@ -43,7 +55,7 @@ const ChatMessage = ({ messageId, senderName, createdAt, content, reactions, onR
           <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
         </div>
-        <div style={{ fontSize: compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: 1.6, whiteSpace: 'pre-line' }}>{content}</div>
+        <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6, whiteSpace: 'pre-line' }}>{content}</div>
         <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
             <button key={i} onClick={() => onReact(messageId, r.emoji)} style={{
@@ -187,8 +199,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
+  const { data: currentUser } = useCurrentUser()
   const { data: messages = [], isLoading, isError } = useChannelMessages(channelId)
-  const sendMutation = useSendChannelMessage(channelId)
+  const sendMutation = useSendChannelMessage(channelId, currentUser)
   const reactMutation = useToggleMessageReaction(channelId)
 
   React.useEffect(() => {

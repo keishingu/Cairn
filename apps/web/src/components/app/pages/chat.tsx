@@ -182,7 +182,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       )
     }
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 60px)' }}>
         <MobileHeader
           title={channelName}
           onBack={() => setActivePane('list')}
