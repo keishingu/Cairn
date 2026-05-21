@@ -24,6 +24,8 @@ const ROLE_STYLE: { [key: string]: { c: string; bg: string } } = {
 
 const DEFAULT_ROLE_STYLE = { c: 'var(--text-3)', bg: 'var(--card-2)' }
 
+// ─── Member row ───────────────────────────────────────────────────
+
 interface MemberRowProps {
   member: ProjectMemberDto
   onRemove: () => void
@@ -32,7 +34,6 @@ interface MemberRowProps {
 
 const MemberRow = ({ member, onRemove, removing }: MemberRowProps) => {
   const style = ROLE_STYLE[member.role] ?? DEFAULT_ROLE_STYLE
-
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10,
@@ -68,8 +69,15 @@ const MemberRow = ({ member, onRemove, removing }: MemberRowProps) => {
   )
 }
 
-interface InviteModalProps {
+// ─── Invite panel (absolutely positioned within the tab) ──────────
+
+const WS_ROLE_LABEL: Record<string, string> = {
+  owner: 'オーナー', admin: '管理者', member: 'メンバー', guest: 'ゲスト',
+}
+
+interface InvitePanelProps {
   inviteable: WorkspaceMemberDto[]
+  isLoadingMembers: boolean
   selectedUserId: string
   selectedRole: string
   onSelectUser: (id: string) => void
@@ -80,101 +88,163 @@ interface InviteModalProps {
   error?: string | undefined
 }
 
-const InviteModal = ({
-  inviteable, selectedUserId, selectedRole,
-  onSelectUser, onSelectRole, onConfirm, onClose,
+const InvitePanel = ({
+  inviteable, isLoadingMembers,
+  selectedUserId, selectedRole,
+  onSelectUser, onSelectRole,
+  onConfirm, onClose,
   isLoading, error,
-}: InviteModalProps) => (
-  <>
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 200,
-        background: 'rgba(0,0,0,0.35)',
-      }}
-    />
+}: InvitePanelProps) => (
+  <div style={{
+    position: 'absolute', inset: 0, zIndex: 10,
+    background: 'var(--card)',
+    display: 'flex', flexDirection: 'column',
+    animation: 'slideUpSheet .18s cubic-bezier(.2,.7,.3,1)',
+  }}>
+    {/* Header */}
     <div style={{
-      position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 201,
-      background: 'var(--card)',
-      borderTopLeftRadius: 16, borderTopRightRadius: 16,
-      padding: '20px 16px calc(20px + env(safe-area-inset-bottom))',
-      boxShadow: '0 -4px 24px rgba(0,0,0,0.15)',
-      display: 'flex', flexDirection: 'column', gap: 12,
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '12px 12px 10px',
+      borderBottom: '1px solid var(--divider)',
+      flexShrink: 0,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>メンバーを追加</span>
-        <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-3)', padding: 4 }}>
-          <Icon name="close" size={16}/>
-        </button>
-      </div>
+      <button
+        onClick={onClose}
+        style={{
+          width: 28, height: 28, borderRadius: 7,
+          border: 'none', background: 'var(--card-2)',
+          color: 'var(--text-3)', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        <Icon name="chevLeft" size={14}/>
+      </button>
+      <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>メンバーを追加</span>
+    </div>
 
-      {inviteable.length === 0 ? (
-        <p style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center', padding: '12px 0' }}>
+    {/* Scrollable content */}
+    <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px' }}>
+      {isLoadingMembers ? (
+        <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>
+          読み込み中…
+        </div>
+      ) : inviteable.length === 0 ? (
+        <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>
           追加できるメンバーがいません
-        </p>
+        </div>
       ) : (
         <>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)' }}>メンバーを選択</label>
-            <select
-              value={selectedUserId}
-              onChange={e => onSelectUser(e.target.value)}
-              style={{
-                width: '100%', padding: '9px 10px', borderRadius: 8,
-                border: '1px solid var(--border)', background: 'var(--card-2)',
-                color: 'var(--text)', fontSize: 13, fontFamily: 'inherit',
-                outline: 'none', cursor: 'pointer',
-              }}
-            >
-              <option value="">選択してください</option>
-              {inviteable.map(m => (
-                <option key={m.userId} value={m.userId}>{m.displayName}</option>
-              ))}
-            </select>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
+            ワークスペースメンバー
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)' }}>役割</label>
-            <select
-              value={selectedRole}
-              onChange={e => onSelectRole(e.target.value)}
-              style={{
-                width: '100%', padding: '9px 10px', borderRadius: 8,
-                border: '1px solid var(--border)', background: 'var(--card-2)',
-                color: 'var(--text)', fontSize: 13, fontFamily: 'inherit',
-                outline: 'none', cursor: 'pointer',
-              }}
-            >
-              {Object.entries(ROLE_LABEL).map(([val, label]) => (
-                <option key={val} value={val}>{label}</option>
-              ))}
-            </select>
+          {/* Avatar list */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 18 }}>
+            {inviteable.map(m => {
+              const selected = selectedUserId === m.userId
+              return (
+                <button
+                  key={m.userId}
+                  type="button"
+                  onClick={() => onSelectUser(selected ? '' : m.userId)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 10px', borderRadius: 9,
+                    border: `1.5px solid ${selected ? 'var(--accent)' : 'transparent'}`,
+                    background: selected ? 'var(--accent-soft)' : 'transparent',
+                    cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                    transition: 'background .1s, border-color .1s',
+                  }}
+                >
+                  {/* Selection indicator */}
+                  <div style={{
+                    width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
+                    border: `2px solid ${selected ? 'var(--accent)' : 'var(--border-2)'}`,
+                    background: selected ? 'var(--accent)' : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all .1s',
+                  }}>
+                    {selected && <Icon name="check" size={9} color="var(--on-accent)"/>}
+                  </div>
+
+                  <Avatar name={m.displayName} size={32}/>
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: selected ? 'var(--accent-text)' : 'var(--text)' }}>
+                      {m.displayName}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 1 }}>
+                      {WS_ROLE_LABEL[m.role] ?? m.role}
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Role picker */}
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+            役割
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {Object.entries(ROLE_LABEL).map(([val, label]) => {
+              const rs = ROLE_STYLE[val] ?? DEFAULT_ROLE_STYLE
+              const sel = selectedRole === val
+              return (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => onSelectRole(val)}
+                  style={{
+                    padding: '5px 12px', borderRadius: 999,
+                    border: `1.5px solid ${sel ? rs.c : 'var(--border)'}`,
+                    background: sel ? rs.bg : 'transparent',
+                    color: sel ? rs.c : 'var(--text-3)',
+                    fontSize: 12, fontWeight: sel ? 700 : 500,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                    transition: 'all .1s',
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            })}
           </div>
 
           {error && (
-            <p style={{ fontSize: 12, color: 'var(--red)', margin: 0 }}>{error}</p>
+            <p style={{ fontSize: 12, color: 'var(--red)', marginTop: 10, marginBottom: 0 }}>{error}</p>
           )}
-
-          <button
-            onClick={onConfirm}
-            disabled={!selectedUserId || isLoading}
-            style={{
-              width: '100%', padding: '11px',
-              borderRadius: 10, border: 'none',
-              background: selectedUserId && !isLoading ? 'var(--accent)' : 'var(--card-2)',
-              color: selectedUserId && !isLoading ? 'var(--on-accent)' : 'var(--text-4)',
-              fontSize: 13.5, fontWeight: 700,
-              cursor: selectedUserId && !isLoading ? 'pointer' : 'not-allowed',
-              fontFamily: 'inherit', transition: 'background 0.15s',
-            }}
-          >
-            {isLoading ? '追加中…' : '追加する'}
-          </button>
         </>
       )}
     </div>
-  </>
+
+    {/* Footer */}
+    <div style={{
+      padding: '10px 12px',
+      borderTop: '1px solid var(--divider)',
+      flexShrink: 0,
+    }}>
+      <button
+        onClick={onConfirm}
+        disabled={!selectedUserId || isLoading}
+        style={{
+          width: '100%', padding: '10px',
+          borderRadius: 9, border: 'none',
+          background: selectedUserId && !isLoading ? 'var(--accent)' : 'var(--card-2)',
+          color: selectedUserId && !isLoading ? 'var(--on-accent)' : 'var(--text-4)',
+          fontSize: 13.5, fontWeight: 700,
+          cursor: selectedUserId && !isLoading ? 'pointer' : 'not-allowed',
+          fontFamily: 'inherit', transition: 'background 0.15s',
+        }}
+      >
+        {isLoading ? '追加中…' : '追加する'}
+      </button>
+    </div>
+  </div>
 )
+
+// ─── Main tab ─────────────────────────────────────────────────────
 
 interface MembersTabProps {
   projectId: string
@@ -192,7 +262,7 @@ export const MembersTab = ({ projectId }: MembersTabProps) => {
     queryFn: () => fetch(`/api/projects/${projectId}/members`).then(r => r.json()),
   })
 
-  const { data: wsMembers = [] } = useQuery<WorkspaceMemberDto[]>({
+  const { data: wsMembers = [], isLoading: isLoadingWs } = useQuery<WorkspaceMemberDto[]>({
     queryKey: ['workspace-members'],
     queryFn: () => fetch('/api/workspaces/members').then(r => r.json()),
     enabled: showInvite,
@@ -252,67 +322,73 @@ export const MembersTab = ({ projectId }: MembersTabProps) => {
   }
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '12px 12px 16px' }}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+    // position: relative + overflow: hidden so InvitePanel can overlay within this area
+    <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Scrollable main content */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '12px 12px 16px' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <button
+            onClick={() => setTab('attending')}
+            style={{
+              flex: 1, padding: '6px 10px', borderRadius: 7,
+              border: `1px solid ${tab === 'attending' ? 'var(--accent)' : 'var(--border)'}`,
+              background: tab === 'attending' ? 'var(--accent-soft)' : 'transparent',
+              color: tab === 'attending' ? 'var(--accent-text)' : 'var(--text-3)',
+              fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            参加中 ({attending.length})
+          </button>
+          <button
+            onClick={() => setTab('tentative')}
+            style={{
+              flex: 1, padding: '6px 10px', borderRadius: 7,
+              border: `1px solid ${tab === 'tentative' ? 'var(--amber)' : 'var(--border)'}`,
+              background: tab === 'tentative' ? 'var(--amber-soft)' : 'transparent',
+              color: tab === 'tentative' ? 'var(--amber-text)' : 'var(--text-3)',
+              fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            未確定 ({tentative.length})
+          </button>
+        </div>
+
+        {isLoading ? (
+          <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>
+            読み込み中…
+          </div>
+        ) : list.length === 0 ? (
+          <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>
+            {tab === 'attending' ? 'まだメンバーがいません' : '未確定メンバーはいません'}
+          </div>
+        ) : list.map(m => (
+          <MemberRow
+            key={m.userId}
+            member={m}
+            onRemove={() => removeMutation.mutate(m.userId)}
+            removing={removeMutation.isPending && removeMutation.variables === m.userId}
+          />
+        ))}
+
         <button
-          onClick={() => setTab('attending')}
+          onClick={() => setShowInvite(true)}
           style={{
-            flex: 1, padding: '6px 10px', borderRadius: 7,
-            border: `1px solid ${tab === 'attending' ? 'var(--accent)' : 'var(--border)'}`,
-            background: tab === 'attending' ? 'var(--accent-soft)' : 'transparent',
-            color: tab === 'attending' ? 'var(--accent-text)' : 'var(--text-3)',
-            fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            marginTop: 12, width: '100%', padding: '10px',
+            borderRadius: 8, border: '1px dashed var(--border-2)',
+            background: 'transparent', color: 'var(--text-3)',
+            fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+            fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}
         >
-          参加中 ({attending.length})
-        </button>
-        <button
-          onClick={() => setTab('tentative')}
-          style={{
-            flex: 1, padding: '6px 10px', borderRadius: 7,
-            border: `1px solid ${tab === 'tentative' ? 'var(--amber)' : 'var(--border)'}`,
-            background: tab === 'tentative' ? 'var(--amber-soft)' : 'transparent',
-            color: tab === 'tentative' ? 'var(--amber-text)' : 'var(--text-3)',
-            fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          未確定 ({tentative.length})
+          <Icon name="plus" size={13}/> メンバーを招待
         </button>
       </div>
 
-      {isLoading ? (
-        <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>
-          読み込み中…
-        </div>
-      ) : list.length === 0 ? (
-        <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>
-          {tab === 'attending' ? 'まだメンバーがいません' : '未確定メンバーはいません'}
-        </div>
-      ) : list.map(m => (
-        <MemberRow
-          key={m.userId}
-          member={m}
-          onRemove={() => removeMutation.mutate(m.userId)}
-          removing={removeMutation.isPending && removeMutation.variables === m.userId}
-        />
-      ))}
-
-      <button
-        onClick={() => setShowInvite(true)}
-        style={{
-          marginTop: 12, width: '100%', padding: '10px',
-          borderRadius: 8, border: '1px dashed var(--border-2)',
-          background: 'transparent', color: 'var(--text-3)',
-          fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-          fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-        }}
-      >
-        <Icon name="plus" size={13}/> メンバーを招待
-      </button>
-
+      {/* Invite panel — overlays within this tab only */}
       {showInvite && (
-        <InviteModal
+        <InvitePanel
           inviteable={inviteable}
+          isLoadingMembers={isLoadingWs}
           selectedUserId={selectedUserId}
           selectedRole={selectedRole}
           onSelectUser={setSelectedUserId}
