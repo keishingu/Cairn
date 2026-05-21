@@ -252,7 +252,6 @@ interface MembersTabProps {
 
 export const MembersTab = ({ projectId }: MembersTabProps) => {
   const queryClient = useQueryClient()
-  const [tab, setTab] = React.useState<'attending' | 'tentative'>('attending')
   const [showInvite, setShowInvite] = React.useState(false)
   const [selectedUserId, setSelectedUserId] = React.useState('')
   const [selectedRole, setSelectedRole] = React.useState('member')
@@ -267,10 +266,6 @@ export const MembersTab = ({ projectId }: MembersTabProps) => {
     queryFn: () => fetch('/api/workspaces/members').then(r => r.json()),
     enabled: showInvite,
   })
-
-  const attending = members.filter(m => m.attendance === 'attending')
-  const tentative  = members.filter(m => m.attendance === 'tentative')
-  const list = tab === 'attending' ? attending : tentative
 
   const memberUserIds = new Set(members.map(m => m.userId))
   const inviteable = wsMembers.filter(m => !memberUserIds.has(m.userId))
@@ -296,7 +291,6 @@ export const MembersTab = ({ projectId }: MembersTabProps) => {
       setShowInvite(false)
       setSelectedUserId('')
       setSelectedRole('member')
-      setTab('attending')
     },
   })
 
@@ -326,42 +320,15 @@ export const MembersTab = ({ projectId }: MembersTabProps) => {
     <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Scrollable main content */}
       <div style={{ flex: 1, overflow: 'auto', padding: '12px 12px 16px' }}>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-          <button
-            onClick={() => setTab('attending')}
-            style={{
-              flex: 1, padding: '6px 10px', borderRadius: 7,
-              border: `1px solid ${tab === 'attending' ? 'var(--accent)' : 'var(--border)'}`,
-              background: tab === 'attending' ? 'var(--accent-soft)' : 'transparent',
-              color: tab === 'attending' ? 'var(--accent-text)' : 'var(--text-3)',
-              fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >
-            参加中 ({attending.length})
-          </button>
-          <button
-            onClick={() => setTab('tentative')}
-            style={{
-              flex: 1, padding: '6px 10px', borderRadius: 7,
-              border: `1px solid ${tab === 'tentative' ? 'var(--amber)' : 'var(--border)'}`,
-              background: tab === 'tentative' ? 'var(--amber-soft)' : 'transparent',
-              color: tab === 'tentative' ? 'var(--amber-text)' : 'var(--text-3)',
-              fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >
-            未確定 ({tentative.length})
-          </button>
-        </div>
-
         {isLoading ? (
           <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>
             読み込み中…
           </div>
-        ) : list.length === 0 ? (
+        ) : members.length === 0 ? (
           <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>
-            {tab === 'attending' ? 'まだメンバーがいません' : '未確定メンバーはいません'}
+            まだメンバーがいません
           </div>
-        ) : list.map(m => (
+        ) : members.map(m => (
           <MemberRow
             key={m.userId}
             member={m}
