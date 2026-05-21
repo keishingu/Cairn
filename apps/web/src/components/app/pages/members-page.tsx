@@ -207,53 +207,30 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
           ))}
         </div>
 
-        {/* List */}
-        <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+        {/* 2-column card grid */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '12px', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
           {isLoading ? (
-            Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
-                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--card-2)', flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ height: 13, width: '55%', borderRadius: 4, background: 'var(--card-2)', marginBottom: 7 }} />
-                  <div style={{ height: 11, width: '35%', borderRadius: 4, background: 'var(--card-2)' }} />
-                </div>
-              </div>
-            ))
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+              {Array.from({ length: 6 }).map((_, i) => <MemberCardSkeleton key={i} />)}
+            </div>
           ) : filtered.length === 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 16px', color: 'var(--text-4)' }}>
               <Icon name="users" size={32} />
               <span style={{ fontSize: 14 }}>メンバーが見つかりません</span>
             </div>
-          ) : filtered.map(m => {
-            const role = ROLE_STYLE[m.role]
-            return (
-              <button
-                key={m.userId}
-                onClick={() => setMobileDetailMember(m)}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '14px 16px', border: 'none', borderBottom: '1px solid var(--divider)',
-                  background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                }}
-              >
-                <Avatar name={m.displayName} size={44} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {m.displayName}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: role.c, background: role.bg, padding: '1px 7px', borderRadius: 4 }}>
-                      {ROLE_LABEL[m.role]}
-                    </span>
-                    <span style={{ fontSize: 12, color: 'var(--text-4)' }}>
-                      {formatJoinedAt(m.joinedAt)}
-                    </span>
-                  </div>
-                </div>
-                <Icon name="chevRight" size={14} color="var(--text-4)" />
-              </button>
-            )
-          })}
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+              {filtered.map((m, i) => (
+                <MemberCard
+                  key={m.userId}
+                  member={m}
+                  projectCount={Math.max(1, 5 - i % 4)}
+                  selected={false}
+                  onClick={() => setMobileDetailMember(m)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     )
