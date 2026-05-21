@@ -41,13 +41,8 @@ export default function SignupPage() {
       return
     }
 
-    if (!data.user) {
-      setError('アカウントの作成に失敗しました')
-      setLoading(false)
-      return
-    }
-
-    // メール確認が必要な場合はそのまま待機画面へ、確認不要なら即セットアップ
+    // セッションがない = メール確認待ち（data.user が null のケースも含む。
+    // Supabase は登録済みメールへの再送時も同じ挙動をとる）
     if (!data.session) {
       router.push('/auth/verify-email')
       return
