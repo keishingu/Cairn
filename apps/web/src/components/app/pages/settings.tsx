@@ -6,6 +6,7 @@ import { Icon } from '../primitives'
 import { STATUS_COL } from '../data'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
+import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
 
 const Toggle = ({ on }: { on: boolean }) => (
   <div style={{
@@ -234,6 +235,66 @@ const SettingsAI = () => (
   </div>
 )
 
+const SettingsWorkspaceGeneral = () => {
+  const { data } = useWorkspaceSettings()
+  const update = useUpdateWorkspaceSettings()
+  const [label, setLabel] = React.useState('')
+  const [saved, setSaved] = React.useState(false)
+
+  React.useEffect(() => {
+    if (data !== undefined) setLabel(data.projectLabel ?? '')
+  }, [data])
+
+  const handleSave = async () => {
+    await update.mutateAsync({ projectLabel: label })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  return (
+    <div style={{ maxWidth: 780 }}>
+      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>ワークスペース設定</h1>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>ワークスペース全体の表示・動作に関する設定です。</p>
+
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>用語のカスタマイズ</h2>
+        <div className="card" style={{ padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>プロジェクトの呼び名</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+                ナビゲーションやページタイトルに表示される名称。空欄の場合は「プロジェクト」が使われます。
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="text"
+                value={label}
+                onChange={e => setLabel(e.target.value)}
+                placeholder="プロジェクト"
+                style={{
+                  padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 7,
+                  background: 'var(--card-2)', color: 'var(--text)', fontSize: 13,
+                  fontFamily: 'inherit', outline: 'none', width: 160,
+                }}
+                onKeyDown={e => e.key === 'Enter' && handleSave()}
+              />
+              <button
+                onClick={handleSave}
+                disabled={update.isPending}
+                className="btn btn-primary"
+                style={{ height: 32, padding: '0 14px', fontSize: 12.5 }}
+              >
+                {saved ? '保存済み' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 const NAV_GROUPS = [
   {
     label: '個人',
@@ -245,11 +306,12 @@ const NAV_GROUPS = [
   {
     label: 'ワークスペース',
     items: [
-      { id: 'workflow',     l: 'ワークフロー',   i: 'flag' },
-      { id: 'ai',           l: 'AIエージェント', i: 'sparkles' },
-      { id: 'members',      l: 'メンバー',       i: 'users' },
-      { id: 'integrations', l: '連携',           i: 'layers' },
-      { id: 'billing',      l: '請求',           i: 'archive' },
+      { id: 'general',      l: 'ワークスペース設定', i: 'settings' },
+      { id: 'workflow',     l: 'ワークフロー',       i: 'flag' },
+      { id: 'ai',           l: 'AIエージェント',     i: 'sparkles' },
+      { id: 'members',      l: 'メンバー',           i: 'users' },
+      { id: 'integrations', l: '連携',               i: 'layers' },
+      { id: 'billing',      l: '請求',               i: 'archive' },
     ],
   },
 ]
@@ -283,9 +345,10 @@ export const PageSettings = () => {
       <div style={{ flex: 1, overflow: 'auto', padding: '32px 40px' }}>
         {section === 'account'    && <SettingsAccount/>}
         {section === 'appearance' && <SettingsAppearance/>}
+        {section === 'general'    && <SettingsWorkspaceGeneral/>}
         {section === 'workflow'   && <SettingsWorkflow/>}
         {section === 'ai'         && <SettingsAI/>}
-        {section !== 'account' && section !== 'appearance' && section !== 'workflow' && section !== 'ai' && (
+        {section !== 'account' && section !== 'appearance' && section !== 'general' && section !== 'workflow' && section !== 'ai' && (
           <div>
             <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
               {{ members: 'メンバー', integrations: '連携', billing: '請求' }[section] ?? section}

@@ -19,6 +19,7 @@ export const workspaces = pgTable('workspaces', {
   slug: text('slug').notNull().unique(),
   description: text('description'),
   logoUrl: text('logo_url'),
+  projectLabel: text('project_label'),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => profiles.id),
