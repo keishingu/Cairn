@@ -26,7 +26,11 @@ export async function getAuthContext(): Promise<AuthResult> {
   }
 
   const supabase = await createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  // getSession はクッキーの JWT をローカルで検証するだけでネットワーク往復が発生しない。
+  // ミドルウェアが API ルートをスキップしているため、ここが唯一の認証チェックになる。
+  // JWT の署名と有効期限（デフォルト1時間）が安全性の担保。
+  const { data: { session }, error: authError } = await supabase.auth.getSession()
+  const user = session?.user
 
   if (authError || !user) {
     return { ctx: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
