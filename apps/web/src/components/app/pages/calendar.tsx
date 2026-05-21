@@ -666,26 +666,24 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               </button>
             </div>
           }
-          tabs={
-            <div style={{ display: 'flex' }}>
-              {CAL_VIEWS.map(v => (
-                <button
-                  key={v}
-                  onClick={() => setCalView(v)}
-                  style={{
-                    flex: 1, padding: '8px 4px', border: 'none', background: 'transparent',
-                    fontSize: 13, fontWeight: calView === v ? 700 : 500,
-                    color: calView === v ? 'var(--accent)' : 'var(--text-3)',
-                    borderBottom: `2px solid ${calView === v ? 'var(--accent)' : 'transparent'}`,
-                    cursor: 'pointer', fontFamily: 'inherit', transition: 'color .12s',
-                  }}
-                >
-                  {CAL_VIEW_LABELS[v]}
-                </button>
-              ))}
-            </div>
-          }
         />
+        <div style={{ display: 'flex', background: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
+          {CAL_VIEWS.map(v => (
+            <button
+              key={v}
+              onClick={() => setCalView(v)}
+              style={{
+                flex: 1, padding: '8px 4px', border: 'none', background: 'transparent',
+                fontSize: 13, fontWeight: calView === v ? 700 : 500,
+                color: calView === v ? 'var(--accent)' : 'var(--text-3)',
+                borderBottom: `2px solid ${calView === v ? 'var(--accent)' : 'transparent'}`,
+                cursor: 'pointer', fontFamily: 'inherit', transition: 'color .12s',
+              }}
+            >
+              {CAL_VIEW_LABELS[v]}
+            </button>
+          ))}
+        </div>
         {calView === 'month' && (
           <>
             <MobileCalendarGrid
