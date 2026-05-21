@@ -7,6 +7,10 @@ import { createClient } from '@/lib/supabase/server'
 const DEV_USER_ID      = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
+// サーバーレス関数インスタンス内でワークスペース ID をキャッシュし、
+// warm リクエストでの DB 往復を省く（TTL: 5分）
+const workspaceCache = new Map<string, { workspaceId: string; expiresAt: number }>()
+
 export interface AuthContext {
   userId: string
   workspaceId: string
@@ -22,10 +26,19 @@ export async function getAuthContext(): Promise<AuthResult> {
   }
 
   const supabase = await createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  // getSession はクッキーの JWT をローカルで検証するだけでネットワーク往復が発生しない。
+  // ミドルウェアが API ルートをスキップしているため、ここが唯一の認証チェックになる。
+  // JWT の署名と有効期限（デフォルト1時間）が安全性の担保。
+  const { data: { session }, error: authError } = await supabase.auth.getSession()
+  const user = session?.user
 
   if (authError || !user) {
     return { ctx: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  }
+
+  const cached = workspaceCache.get(user.id)
+  if (cached && cached.expiresAt > Date.now()) {
+    return { ctx: { userId: user.id, workspaceId: cached.workspaceId }, error: null }
   }
 
   try {
@@ -43,9 +56,11 @@ export async function getAuthContext(): Promise<AuthResult> {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
+    workspaceCache.set(user.id, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)
     return { ctx: null, error: NextResponse.json({ error: 'Internal server error' }, { status: 500 }) }
   }
 }
+
