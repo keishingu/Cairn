@@ -11,11 +11,11 @@ interface MobileNavProps {
 }
 
 const TABS = [
-  { id: 'dashboard', path: '/dashboard', icon: 'home',     label: 'ホーム' },
-  { id: 'projects',  path: '/projects',  icon: 'folder',   label: 'プロジェクト' },
-  { id: 'chats',     path: '/chats',     icon: 'chat',     label: 'チャット' },
-  { id: 'ai',        path: '/ai',        icon: 'sparkles', label: 'AI' },
-  { id: 'settings',  path: '/settings',  icon: 'gear',     label: '設定' },
+  { id: 'dashboard', path: '/dashboard', icon: 'home',   label: 'ホーム' },
+  { id: 'projects',  path: '/projects',  icon: 'kanban', label: 'プロジェクト' },
+  { id: 'chats',     path: '/chats',     icon: 'chat',   label: 'チャット' },
+  { id: 'tasks',     path: '/tasks',     icon: 'check',  label: 'タスク' },
+  { id: 'menu',      path: '/settings',  icon: 'list',   label: 'メニュー' },
 ] as const
 
 export function MobileNav({ page, onNavigate }: MobileNavProps) {
