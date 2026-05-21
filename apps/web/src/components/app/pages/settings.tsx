@@ -27,7 +27,34 @@ const THEME_OPTIONS: { value: ThemeValue; label: string; icon: string }[] = [
   { value: 'dark',   label: 'ダーク',   icon: 'moon' },
 ]
 
-const SettingsGeneral = () => {
+const SettingsAccount = () => (
+  <div style={{ maxWidth: 780 }}>
+    <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>アカウント</h1>
+    <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>プロフィールや通知などの個人設定です。</p>
+
+    <section style={{ marginBottom: 24 }}>
+      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>プロフィール</h2>
+      <div className="card" style={{ padding: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>表示名</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>チームメンバーに表示される名前</div>
+          </div>
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>山田 太郎</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>メールアドレス</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>ログインに使用するアドレス</div>
+          </div>
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>yamada@example.com</span>
+        </div>
+      </div>
+    </section>
+  </div>
+)
+
+const SettingsAppearance = () => {
   const { theme, setTheme } = useTheme()
   const { accentId, setAccentId } = useAccentColor()
   const [mounted, setMounted] = React.useState(false)
@@ -35,11 +62,11 @@ const SettingsGeneral = () => {
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>一般</h1>
-      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>アプリの外観や動作に関する設定です。</p>
+      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>外観</h1>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>テーマやカラーなど、表示に関する個人設定です。</p>
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>外観</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>テーマ・カラー</h2>
         <div className="card" style={{ padding: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
             <div style={{ flex: 1 }}>
@@ -207,37 +234,58 @@ const SettingsAI = () => (
   </div>
 )
 
+const NAV_GROUPS = [
+  {
+    label: '個人',
+    items: [
+      { id: 'account',    l: 'アカウント',    i: 'user' },
+      { id: 'appearance', l: '外観',          i: 'sun' },
+    ],
+  },
+  {
+    label: 'ワークスペース',
+    items: [
+      { id: 'workflow',     l: 'ワークフロー',   i: 'flag' },
+      { id: 'ai',           l: 'AIエージェント', i: 'sparkles' },
+      { id: 'members',      l: 'メンバー',       i: 'users' },
+      { id: 'integrations', l: '連携',           i: 'layers' },
+      { id: 'billing',      l: '請求',           i: 'archive' },
+    ],
+  },
+]
+
 export const PageSettings = () => {
-  const [section, setSection] = React.useState('workflow')
+  const [section, setSection] = React.useState('account')
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={{ width: 220, borderRight: '1px solid var(--border)', padding: '20px 14px', background: 'var(--card)' }}>
         <h2 style={{ margin: '0 8px 14px', fontSize: 16, fontWeight: 700 }}>設定</h2>
-        {[
-          { id: 'general',      l: '一般',         i: 'settings' },
-          { id: 'workflow',     l: 'ワークフロー',  i: 'flag' },
-          { id: 'ai',           l: 'AIエージェント', i: 'sparkles' },
-          { id: 'members',      l: 'メンバー',     i: 'users' },
-          { id: 'integrations', l: '連携',         i: 'layers' },
-          { id: 'billing',      l: '請求',         i: 'archive' },
-        ].map(s => (
-          <button key={s.id} onClick={() => setSection(s.id)} style={{
-            display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-            padding: '8px 10px', borderRadius: 7, border: 'none',
-            background: section === s.id ? 'var(--card-hover)' : 'transparent',
-            color: section === s.id ? 'var(--text)' : 'var(--text-2)',
-            fontWeight: section === s.id ? 600 : 500,
-            fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left',
-          }}>
-            <Icon name={s.i} size={14}/> {s.l}
-          </button>
+        {NAV_GROUPS.map((group, gi) => (
+          <div key={group.label} style={{ marginBottom: gi < NAV_GROUPS.length - 1 ? 16 : 0 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0 10px', marginBottom: 4 }}>
+              {group.label}
+            </div>
+            {group.items.map(s => (
+              <button key={s.id} onClick={() => setSection(s.id)} style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                padding: '8px 10px', borderRadius: 7, border: 'none',
+                background: section === s.id ? 'var(--card-hover)' : 'transparent',
+                color: section === s.id ? 'var(--text)' : 'var(--text-2)',
+                fontWeight: section === s.id ? 600 : 500,
+                fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left',
+              }}>
+                <Icon name={s.i} size={14}/> {s.l}
+              </button>
+            ))}
+          </div>
         ))}
       </aside>
       <div style={{ flex: 1, overflow: 'auto', padding: '32px 40px' }}>
-        {section === 'general'  && <SettingsGeneral/>}
-        {section === 'workflow' && <SettingsWorkflow/>}
-        {section === 'ai'       && <SettingsAI/>}
-        {section !== 'general' && section !== 'workflow' && section !== 'ai' && (
+        {section === 'account'    && <SettingsAccount/>}
+        {section === 'appearance' && <SettingsAppearance/>}
+        {section === 'workflow'   && <SettingsWorkflow/>}
+        {section === 'ai'         && <SettingsAI/>}
+        {section !== 'account' && section !== 'appearance' && section !== 'workflow' && section !== 'ai' && (
           <div>
             <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
               {{ members: 'メンバー', integrations: '連携', billing: '請求' }[section] ?? section}

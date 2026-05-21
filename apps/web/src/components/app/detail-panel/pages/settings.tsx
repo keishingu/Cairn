@@ -10,7 +10,7 @@ import { Icon, Avatar } from '../../primitives'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 
-const SECTIONS = [
+const PERSONAL_SECTIONS = [
   {
     title: 'アカウント',
     items: [
@@ -18,6 +18,9 @@ const SECTIONS = [
       { icon: 'bell',     label: '通知設定',         value: 'オン' },
     ],
   },
+]
+
+const WORKSPACE_SECTIONS = [
   {
     title: 'ワークスペース',
     items: [
@@ -49,6 +52,33 @@ const THEME_OPTIONS: { value: ThemeValue; label: string; icon: string }[] = [
   { value: 'dark',   label: 'ダーク',   icon: 'moon' },
 ]
 
+const SectionList = ({ sections }: { sections: typeof PERSONAL_SECTIONS }) => (
+  <>
+    {sections.map(section => (
+      <div key={section.title} style={{ margin: '16px 16px 0' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 4 }}>{section.title}</div>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+          {section.items.map((item, i) => (
+            <button key={item.label} style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+              padding: '15px 16px', border: 'none', background: 'transparent',
+              borderTop: i > 0 ? '1px solid var(--divider)' : 'none',
+              cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+            }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon name={item.icon} size={16} color="var(--text-2)"/>
+              </div>
+              <span style={{ flex: 1, fontSize: 14.5, color: 'var(--text)', fontWeight: 500 }}>{item.label}</span>
+              {item.value && <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{item.value}</span>}
+              <Icon name="chevRight" size={14} color="var(--text-4)"/>
+            </button>
+          ))}
+        </div>
+      </div>
+    ))}
+  </>
+)
+
 export function MobileSettings() {
   const { theme, setTheme } = useTheme()
   const { accentId, setAccentId } = useAccentColor()
@@ -72,29 +102,11 @@ export function MobileSettings() {
           </div>
         </div>
 
-        {SECTIONS.map(section => (
-          <div key={section.title} style={{ margin: '16px 16px 0' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 4 }}>{section.title}</div>
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
-              {section.items.map((item, i) => (
-                <button key={item.label} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '15px 16px', border: 'none', background: 'transparent',
-                  borderTop: i > 0 ? '1px solid var(--divider)' : 'none',
-                  cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Icon name={item.icon} size={16} color="var(--text-2)"/>
-                  </div>
-                  <span style={{ flex: 1, fontSize: 14.5, color: 'var(--text)', fontWeight: 500 }}>{item.label}</span>
-                  {item.value && <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{item.value}</span>}
-                  <Icon name="chevRight" size={14} color="var(--text-4)"/>
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
+        {/* 個人設定 */}
+        <div style={{ margin: '16px 16px 0', fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 4 }}>個人</div>
+        <SectionList sections={PERSONAL_SECTIONS}/>
 
+        {/* 外観 */}
         <div style={{ margin: '16px 16px 0' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 4 }}>外観</div>
           <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px' }}>
@@ -143,6 +155,11 @@ export function MobileSettings() {
           </div>
         </div>
 
+        {/* ワークスペース設定 */}
+        <div style={{ margin: '24px 16px 0', fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 4 }}>ワークスペース</div>
+        <SectionList sections={WORKSPACE_SECTIONS}/>
+
+        {/* ログアウト */}
         <div style={{ margin: '24px 16px 0' }}>
           <button style={{ width: '100%', padding: '15px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--rose)', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             ログアウト
