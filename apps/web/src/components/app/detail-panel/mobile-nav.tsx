@@ -185,11 +185,15 @@ export function MobileNav({ page, onNavigate }: MobileNavProps) {
                 <Icon name={iconName} size={22} />
                 {tab.id === 'projects' && (
                   <span style={{
-                    position: 'absolute', right: -7, top: 0,
-                    fontSize: 8, lineHeight: 1, letterSpacing: '-1px',
+                    position: 'absolute', right: -7, top: 1,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0,
+                    fontSize: 6, lineHeight: 1,
                     color: active ? 'var(--accent)' : 'var(--text-4)',
                     userSelect: 'none',
-                  }}>▲▼</span>
+                  }}>
+                    <span>▲</span>
+                    <span>▼</span>
+                  </span>
                 )}
               </div>
               <span style={{ fontSize: 10, fontWeight: active ? 700 : 500, fontFamily: 'inherit' }}>{tab.label}</span>
