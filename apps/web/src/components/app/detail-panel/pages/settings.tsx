@@ -9,6 +9,7 @@ import { MobileHeader } from '../mobile-header'
 import { Icon, Avatar } from '../../primitives'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
+import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
 
 const PERSONAL_SECTIONS = [
   {
@@ -51,6 +52,58 @@ const THEME_OPTIONS: { value: ThemeValue; label: string; icon: string }[] = [
   { value: 'system', label: 'システム', icon: 'monitor' },
   { value: 'dark',   label: 'ダーク',   icon: 'moon' },
 ]
+
+const ProjectLabelSetting = () => {
+  const { data } = useWorkspaceSettings()
+  const update = useUpdateWorkspaceSettings()
+  const [label, setLabel] = React.useState('')
+  const [saved, setSaved] = React.useState(false)
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    if (data !== undefined) setLabel(data.projectLabel ?? '')
+  }, [data])
+
+  const handleSave = async () => {
+    await update.mutateAsync({ projectLabel: label })
+    setSaved(true)
+    inputRef.current?.blur()
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  return (
+    <div style={{ margin: '16px 16px 0' }}>
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>プロジェクトの呼び名</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12 }}>空欄の場合は「プロジェクト」が使われます</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            ref={inputRef}
+            type="text"
+            value={label}
+            onChange={e => setLabel(e.target.value)}
+            placeholder="プロジェクト"
+            style={{
+              flex: 1, padding: '10px 12px',
+              border: '1px solid var(--border)', borderRadius: 10,
+              background: 'var(--card-2)', color: 'var(--text)',
+              fontSize: 15, fontFamily: 'inherit', outline: 'none',
+            }}
+            onKeyDown={e => e.key === 'Enter' && handleSave()}
+          />
+          <button
+            onClick={handleSave}
+            disabled={update.isPending}
+            className="btn btn-primary"
+            style={{ height: 44, padding: '0 16px', fontSize: 14, borderRadius: 10 }}
+          >
+            {saved ? '保存済み' : '保存'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const SectionList = ({ sections }: { sections: typeof PERSONAL_SECTIONS }) => (
   <>
@@ -157,6 +210,7 @@ export function MobileSettings() {
 
         {/* ワークスペース設定 */}
         <div style={{ margin: '24px 16px 0', fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 4 }}>ワークスペース</div>
+        <ProjectLabelSetting/>
         <SectionList sections={WORKSPACE_SECTIONS}/>
 
         {/* ログアウト */}
