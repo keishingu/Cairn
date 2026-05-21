@@ -157,7 +157,7 @@ export const ProjectPanel = ({ project, onClose }: ProjectPanelProps) => {
       {tab === 'overview' && <OverviewTab project={project}/>}
       {tab === 'files'    && <FilesTab/>}
       {tab === 'tasks'    && <TasksTab project={project}/>}
-      {tab === 'members'  && <MembersTab/>}
+      {tab === 'members'  && <MembersTab projectId={project.id}/>}
       {tab === 'gallery'  && <PanelGalleryTab/>}
       {tab === 'ai'       && <PanelAITab/>}
       {tab === 'settings' && <PanelSettingsTab/>}
