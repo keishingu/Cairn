@@ -9,6 +9,8 @@ import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/pro
 import { MemberDetailPanel } from './member-detail-panel'
 import { ProjectPanel } from '../project-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
+import { MobileHeader } from '../detail-panel/mobile-header'
+import { MobileMemberScreen } from '../mobile/member-screen'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -93,14 +95,16 @@ const MemberCard = ({ member, projectCount, selected, onClick }: MemberCardProps
 
 interface PageMembersProps {
   initialUserId?: string
+  isMobile?: boolean
 }
 
-export const PageMembers = ({ initialUserId }: PageMembersProps) => {
+export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
   const router = useRouter()
   const [search, setSearch] = React.useState('')
   const [roleFilter, setRoleFilter] = React.useState<WorkspaceMemberDto['role'] | 'all'>('all')
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
   const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
+  const [mobileDetailMember, setMobileDetailMember] = React.useState<WorkspaceMemberDto | null>(null)
 
   const handleProjectClick = (p: MemberProjectDto) => {
     setSelectedProject({
@@ -154,6 +158,106 @@ export const PageMembers = ({ initialUserId }: PageMembersProps) => {
     { id: 'member', label: `メンバー (${counts.get('member') ?? 0})` },
     { id: 'guest',  label: 'ゲスト' },
   ]
+
+  if (isMobile) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
+        {mobileDetailMember && (
+          <MobileMemberScreen
+            member={mobileDetailMember}
+            onBack={() => setMobileDetailMember(null)}
+          />
+        )}
+        <MobileHeader title="メンバー" />
+
+        {/* Search */}
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ position: 'relative' }}>
+            <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-4)', pointerEvents: 'none' }}>
+              <Icon name="search" size={14} />
+            </div>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="メンバーを検索…"
+              style={{
+                width: '100%', height: 36, padding: '0 12px 0 32px',
+                border: '1px solid var(--border)', borderRadius: 8,
+                background: 'var(--card)', color: 'var(--text)', fontSize: 14,
+                fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Role filter chips */}
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', gap: 6, overflowX: 'auto', flexShrink: 0 }}>
+          {roleFilters.map(f => (
+            <button
+              key={f.id}
+              onClick={() => setRoleFilter(f.id)}
+              style={{
+                padding: '5px 12px', borderRadius: 999, border: 'none', whiteSpace: 'nowrap',
+                background: roleFilter === f.id ? 'var(--accent)' : 'var(--card-2)',
+                color: roleFilter === f.id ? 'var(--on-accent)' : 'var(--text-3)',
+                fontSize: 12.5, fontWeight: roleFilter === f.id ? 700 : 500,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >{f.label}</button>
+          ))}
+        </div>
+
+        {/* List */}
+        <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+          {isLoading ? (
+            Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--card-2)', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ height: 13, width: '55%', borderRadius: 4, background: 'var(--card-2)', marginBottom: 7 }} />
+                  <div style={{ height: 11, width: '35%', borderRadius: 4, background: 'var(--card-2)' }} />
+                </div>
+              </div>
+            ))
+          ) : filtered.length === 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 16px', color: 'var(--text-4)' }}>
+              <Icon name="users" size={32} />
+              <span style={{ fontSize: 14 }}>メンバーが見つかりません</span>
+            </div>
+          ) : filtered.map(m => {
+            const role = ROLE_STYLE[m.role]
+            return (
+              <button
+                key={m.userId}
+                onClick={() => setMobileDetailMember(m)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '14px 16px', border: 'none', borderBottom: '1px solid var(--divider)',
+                  background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                }}
+              >
+                <Avatar name={m.displayName} size={44} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.displayName}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: role.c, background: role.bg, padding: '1px 7px', borderRadius: 4 }}>
+                      {ROLE_LABEL[m.role]}
+                    </span>
+                    <span style={{ fontSize: 12, color: 'var(--text-4)' }}>
+                      {formatJoinedAt(m.joinedAt)}
+                    </span>
+                  </div>
+                </div>
+                <Icon name="chevRight" size={14} color="var(--text-4)" />
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
