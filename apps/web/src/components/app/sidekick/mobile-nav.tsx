@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { usePathname } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { Icon } from '../primitives'
 
 interface MobileNavProps {
@@ -21,9 +21,9 @@ const TABS = [
 ] as const
 
 const PROJECTS_VIEWS = [
-  { id: 'list',     label: '一覧',       icon: 'list',     path: '/projects' },
-  { id: 'calendar', label: 'カレンダー', icon: 'calendar', path: '/calendar' },
-  { id: 'kanban',   label: 'カンバン',   icon: 'kanban',   path: '/kanban' },
+  { id: 'list',     label: '一覧',       icon: 'list',     path: '/projects?view=list' },
+  { id: 'calendar', label: 'カレンダー', icon: 'calendar', path: '/projects?view=calendar' },
+  { id: 'kanban',   label: 'カンバン',   icon: 'kanban',   path: '/projects?view=kanban' },
 ]
 
 const MENU_ITEMS = [
@@ -35,14 +35,15 @@ const MENU_ITEMS = [
 
 const MENU_PAGES = new Set(['settings', 'files', 'gallery', 'members', 'ai'])
 
-function currentProjectsView(pathname: string): string {
-  if (pathname.startsWith('/calendar')) return 'calendar'
-  if (pathname.startsWith('/kanban')) return 'kanban'
+function currentProjectsView(searchParams: ReturnType<typeof useSearchParams>): string {
+  const view = searchParams?.get('view')
+  if (view === 'calendar') return 'calendar'
+  if (view === 'kanban') return 'kanban'
   return 'list'
 }
 
 export function MobileNav({ page, onNavigate }: MobileNavProps) {
-  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [projectsPickerOpen, setProjectsPickerOpen] = React.useState(false)
 
@@ -67,7 +68,7 @@ export function MobileNav({ page, onNavigate }: MobileNavProps) {
   }
 
   const isMenuActive = MENU_PAGES.has(page)
-  const projectsView = currentProjectsView(pathname ?? '')
+  const projectsView = currentProjectsView(searchParams)
 
   // Index of projects tab for popup positioning
   const projectsTabIndex = 1
