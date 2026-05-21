@@ -4,7 +4,10 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
+import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { MemberDetailPanel } from './member-detail-panel'
+import { ProjectPanel } from '../project-panel'
+import type { ProjectDto } from '@/app/api/projects/route'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -91,6 +94,24 @@ export const PageMembers = () => {
   const [search, setSearch] = React.useState('')
   const [roleFilter, setRoleFilter] = React.useState<WorkspaceMemberDto['role'] | 'all'>('all')
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
+  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
+
+  const handleProjectClick = (p: MemberProjectDto) => {
+    setSelectedProject({
+      id:                 p.projectId,
+      title:              p.title,
+      statusName:         p.statusName,
+      startDate:          p.startDate,
+      endDate:            p.endDate,
+      memberCount:        p.memberCount,
+      memberNames:        [],
+      taskCount:          0,
+      completedTaskCount: 0,
+      isOwner:            p.role === 'leader',
+      isMember:           true,
+      archived:           false,
+    })
+  }
 
   const { data: members = [], isLoading } = useQuery<WorkspaceMemberDto[]>({
     queryKey: ['workspace-members'],
@@ -192,13 +213,19 @@ export const PageMembers = () => {
         </div>
       </div>
 
-      {/* Right: detail panel */}
-      {selectedMember && (
+      {/* Right: detail panel — project takes priority over member */}
+      {selectedProject ? (
+        <ProjectPanel
+          project={selectedProject}
+          onClose={() => setSelectedProject(null)}
+        />
+      ) : selectedMember ? (
         <MemberDetailPanel
           member={selectedMember}
+          onProjectClick={handleProjectClick}
           onClose={() => setSelectedMember(null)}
         />
-      )}
+      ) : null}
     </div>
   )
 }

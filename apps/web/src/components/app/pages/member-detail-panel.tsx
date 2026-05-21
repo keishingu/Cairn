@@ -52,15 +52,23 @@ function formatDateRange(start: string | null, end: string | null): string {
 
 interface ProjectRowProps {
   project: MemberProjectDto
+  onClick: () => void
 }
 
-const ProjectRow = ({ project }: ProjectRowProps) => {
+const ProjectRow = ({ project, onClick }: ProjectRowProps) => {
   const rs = PROJECT_ROLE_STYLE[project.role] ?? { c: 'var(--text-3)', bg: 'var(--card-2)' }
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 10,
-      padding: '10px 0', borderBottom: '1px solid var(--divider)',
-    }}>
+    <div
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '10px 6px', borderBottom: '1px solid var(--divider)',
+        cursor: 'pointer', borderRadius: 6, margin: '0 -6px',
+        transition: 'background .1s',
+      }}
+      onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-hover)')}
+      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+    >
       <div style={{
         width: 32, height: 32, borderRadius: 8, flexShrink: 0,
         background: 'var(--card-2)', border: '1px solid var(--border)',
@@ -91,16 +99,18 @@ const ProjectRow = ({ project }: ProjectRowProps) => {
       }}>
         {PROJECT_ROLE_LABEL[project.role] ?? project.role}
       </span>
+      <Icon name="chevRight" size={12} color="var(--text-4)"/>
     </div>
   )
 }
 
 interface MemberDetailPanelProps {
   member: WorkspaceMemberDto
+  onProjectClick: (project: MemberProjectDto) => void
   onClose: () => void
 }
 
-export const MemberDetailPanel = ({ member, onClose }: MemberDetailPanelProps) => {
+export const MemberDetailPanel = ({ member, onProjectClick, onClose }: MemberDetailPanelProps) => {
   const rs = WS_ROLE_STYLE[member.role]
 
   const { data: projects = [], isLoading } = useQuery<MemberProjectDto[]>({
@@ -220,7 +230,9 @@ export const MemberDetailPanel = ({ member, onClose }: MemberDetailPanelProps) =
             <span style={{ fontSize: 12.5 }}>参加プロジェクトはありません</span>
           </div>
         ) : (
-          projects.map(p => <ProjectRow key={p.projectId} project={p}/>)
+          projects.map(p => (
+            <ProjectRow key={p.projectId} project={p} onClick={() => onProjectClick(p)}/>
+          ))
         )}
       </div>
     </aside>
