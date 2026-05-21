@@ -7,6 +7,7 @@ import * as schema from './schema/index'
 
 const connectionString = process.env['DATABASE_URL']!
 
-const client = postgres(connectionString, { prepare: false })
+// max: 1 でサーバーレス関数インスタンスあたりの接続数を抑制
+const client = postgres(connectionString, { prepare: false, max: 1 })
 
 export const db = drizzle(client, { schema })
