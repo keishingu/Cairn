@@ -4,6 +4,7 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
+import { MemberDetailPanel } from './member-detail-panel'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -39,17 +40,26 @@ const MemberCardSkeleton = () => (
 interface MemberCardProps {
   member: WorkspaceMemberDto
   projectCount: number
+  selected: boolean
+  onClick: () => void
 }
 
-const MemberCard = ({ member, projectCount }: MemberCardProps) => {
+const MemberCard = ({ member, projectCount, selected, onClick }: MemberCardProps) => {
   const role = ROLE_STYLE[member.role]
   return (
     <div
       className="card"
-      style={{ padding: '16px 18px', cursor: 'pointer', transition: 'box-shadow .12s, transform .12s' }}
+      onClick={onClick}
+      style={{
+        padding: '16px 18px', cursor: 'pointer', transition: 'box-shadow .12s, transform .12s',
+        border: selected ? '1.5px solid var(--accent)' : undefined,
+        background: selected ? 'var(--accent-soft)' : undefined,
+      }}
       onMouseEnter={e => {
-        ;(e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)'
-        ;(e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'
+        if (!selected) {
+          ;(e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)'
+          ;(e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'
+        }
       }}
       onMouseLeave={e => {
         ;(e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)'
@@ -80,6 +90,7 @@ const MemberCard = ({ member, projectCount }: MemberCardProps) => {
 export const PageMembers = () => {
   const [search, setSearch] = React.useState('')
   const [roleFilter, setRoleFilter] = React.useState<WorkspaceMemberDto['role'] | 'all'>('all')
+  const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
 
   const { data: members = [], isLoading } = useQuery<WorkspaceMemberDto[]>({
     queryKey: ['workspace-members'],
@@ -111,70 +122,83 @@ export const PageMembers = () => {
   ]
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      {/* Toolbar */}
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-          <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-4)', pointerEvents: 'none' }}>
-            <Icon name="search" size={14} />
-          </div>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="メンバーを検索…"
-            style={{
-              width: '100%', maxWidth: 280, height: 34, padding: '0 12px 0 32px',
-              border: '1px solid var(--border)', borderRadius: 8,
-              background: 'var(--card)', color: 'var(--text)', fontSize: 13,
-              fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
-            }}
-          />
-        </div>
-        <div style={{ display: 'flex', gap: 2 }}>
-          {roleFilters.map(f => (
-            <button
-              key={f.id}
-              onClick={() => setRoleFilter(f.id)}
-              style={{
-                padding: '6px 12px', borderRadius: 6, border: 'none',
-                background: roleFilter === f.id ? 'var(--card-hover)' : 'transparent',
-                color: roleFilter === f.id ? 'var(--text)' : 'var(--text-3)',
-                fontSize: 12.5, fontWeight: roleFilter === f.id ? 600 : 500,
-                cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >{f.label}</button>
-          ))}
-        </div>
-        <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
-          <Icon name="plus" size={13} strokeWidth={2.4} /> メンバーを招待
-        </button>
-      </div>
-
-      {/* Grid */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
-        {isLoading ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
-            {Array.from({ length: 8 }).map((_, i) => <MemberCardSkeleton key={i} />)}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%', gap: 12, color: 'var(--text-3)' }}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)' }}>
-              <Icon name="users" size={22} />
+    <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+      {/* Left: list */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+        {/* Toolbar */}
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-4)', pointerEvents: 'none' }}>
+              <Icon name="search" size={14} />
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>メンバーが見つかりません</div>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="メンバーを検索…"
+              style={{
+                width: '100%', maxWidth: 280, height: 34, padding: '0 12px 0 32px',
+                border: '1px solid var(--border)', borderRadius: 8,
+                background: 'var(--card)', color: 'var(--text)', fontSize: 13,
+                fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
+              }}
+            />
           </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
-            {filtered.map((m, i) => (
-              <MemberCard
-                key={m.userId}
-                member={m}
-                projectCount={Math.max(1, 5 - i % 4)}
-              />
+          <div style={{ display: 'flex', gap: 2 }}>
+            {roleFilters.map(f => (
+              <button
+                key={f.id}
+                onClick={() => setRoleFilter(f.id)}
+                style={{
+                  padding: '6px 12px', borderRadius: 6, border: 'none',
+                  background: roleFilter === f.id ? 'var(--card-hover)' : 'transparent',
+                  color: roleFilter === f.id ? 'var(--text)' : 'var(--text-3)',
+                  fontSize: 12.5, fontWeight: roleFilter === f.id ? 600 : 500,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >{f.label}</button>
             ))}
           </div>
-        )}
+          <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
+            <Icon name="plus" size={13} strokeWidth={2.4} /> メンバーを招待
+          </button>
+        </div>
+
+        {/* Grid */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+          {isLoading ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+              {Array.from({ length: 8 }).map((_, i) => <MemberCardSkeleton key={i} />)}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%', gap: 12, color: 'var(--text-3)' }}>
+              <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)' }}>
+                <Icon name="users" size={22} />
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>メンバーが見つかりません</div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+              {filtered.map((m, i) => (
+                <MemberCard
+                  key={m.userId}
+                  member={m}
+                  projectCount={Math.max(1, 5 - i % 4)}
+                  selected={selectedMember?.userId === m.userId}
+                  onClick={() => setSelectedMember(prev => prev?.userId === m.userId ? null : m)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Right: detail panel */}
+      {selectedMember && (
+        <MemberDetailPanel
+          member={selectedMember}
+          onClose={() => setSelectedMember(null)}
+        />
+      )}
     </div>
   )
 }
