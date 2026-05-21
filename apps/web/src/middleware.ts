@@ -16,11 +16,11 @@ export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
 
   const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL']
-  const supabaseAnonKey = process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']
+  const supabasePublishableKey = process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']
 
   // Supabase 環境変数が揃っているときのみ認証チェックを行う
-  if (supabaseUrl && supabaseAnonKey) {
-    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+  if (supabaseUrl && supabasePublishableKey) {
+    const supabase = createServerClient(supabaseUrl, supabasePublishableKey, {
       cookies: {
         getAll() {
           return request.cookies.getAll()

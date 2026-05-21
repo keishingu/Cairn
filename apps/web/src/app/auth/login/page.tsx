@@ -21,13 +21,25 @@ export default function LoginPage() {
     setError(null)
 
     const supabase = createClient()
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
     if (authError) {
       setError('メールアドレスまたはパスワードが正しくありません')
       setLoading(false)
       return
     }
+
+    // コールバック失敗等でセットアップが未完了のユーザーを救済するため、
+    // ログイン時に毎回 setup を呼ぶ（冪等なので既存ユーザーには影響なし）
+    const displayName =
+      (data.user?.user_metadata?.['display_name'] as string | undefined) ??
+      data.user?.email ??
+      'ユーザー'
+    await fetch('/api/auth/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName }),
+    })
 
     router.push('/dashboard')
     router.refresh()
