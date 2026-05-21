@@ -164,7 +164,7 @@ const Section = ({ label, count, tasks, onToggle, togglingId, defaultOpen = true
   )
 }
 
-export const PageTasks = () => {
+export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const queryClient = useQueryClient()
   const [filter, setFilter] = React.useState<FilterKey>('all')
   const [groupBy, setGroupBy] = React.useState<GroupKey>('project')
@@ -258,29 +258,36 @@ export const PageTasks = () => {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
       {/* Toolbar */}
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: 2 }}>
+      <div style={{
+        padding: isMobile ? '8px 12px' : '14px 20px',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+        overflowX: isMobile ? 'auto' : 'visible',
+      }}>
+        <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
           {filters.map(f => (
             <button
               key={f.id}
               onClick={() => setFilter(f.id)}
               style={{
-                padding: '6px 12px', borderRadius: 6, border: 'none',
+                padding: '6px 10px', borderRadius: 6, border: 'none',
                 background: filter === f.id ? 'var(--card-hover)' : 'transparent',
                 color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
-                fontSize: 12.5, fontWeight: filter === f.id ? 600 : 500,
-                cursor: 'pointer', fontFamily: 'inherit',
+                fontSize: isMobile ? 12 : 12.5, fontWeight: filter === f.id ? 600 : 500,
+                cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
               }}
             >{f.label}</button>
           ))}
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            グループ: {groupBy === 'project' ? 'プロジェクト' : groupBy === 'priority' ? '優先度' : 'なし'}
-            <Icon name="chevDown" size={12} />
-          </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
+          {!isMobile && (
+            <button className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              グループ: {groupBy === 'project' ? 'プロジェクト' : groupBy === 'priority' ? '優先度' : 'なし'}
+              <Icon name="chevDown" size={12} />
+            </button>
+          )}
           <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <Icon name="plus" size={13} strokeWidth={2.4} /> タスクを追加
+            <Icon name="plus" size={13} strokeWidth={2.4} />{!isMobile && ' タスクを追加'}
           </button>
         </div>
       </div>
@@ -288,7 +295,7 @@ export const PageTasks = () => {
       {/* Content */}
       <div style={{ flex: 1, overflow: 'auto' }}>
         {isLoading ? (
-          <div className="card" style={{ margin: '16px 20px', borderRadius: 10, overflow: 'hidden' }}>
+          <div className="card" style={{ margin: isMobile ? '12px' : '16px 20px', borderRadius: 10, overflow: 'hidden' }}>
             {Array.from({ length: 6 }).map((_, i) => <TaskRowSkeleton key={i} />)}
           </div>
         ) : filtered.length === 0 ? (
@@ -300,7 +307,7 @@ export const PageTasks = () => {
             <div style={{ fontSize: 12.5 }}>すべてのタスクが完了しています</div>
           </div>
         ) : (
-          <div style={{ margin: '16px 20px', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+          <div style={{ margin: isMobile ? '12px' : '16px 20px', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
             {grouped.map((g, idx) => (
               <Section
                 key={g.key}
