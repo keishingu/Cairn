@@ -31,6 +31,22 @@ function parseLocalDate(s: string): Date {
   return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]))
 }
 
+function getWeekStart(d: Date): Date {
+  const result = new Date(d)
+  result.setDate(d.getDate() - d.getDay())
+  result.setHours(0, 0, 0, 0)
+  return result
+}
+
+function formatWeekRange(start: Date): string {
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  const m1 = start.getMonth() + 1
+  const m2 = end.getMonth() + 1
+  if (m1 === m2) return `${m1}月${start.getDate()}日–${end.getDate()}日`
+  return `${m1}/${start.getDate()}–${m2}/${end.getDate()}`
+}
+
 // ─── Calendar cell data ────────────────────────────────────────────
 
 interface CalCell {
@@ -401,6 +417,159 @@ const MobileDayEvents = ({ date, projects, onProjectClick, isLoading }: MobileDa
   )
 }
 
+// ─── Mobile week strip ─────────────────────────────────────────────
+
+interface MobileWeekStripProps {
+  weekStart: Date
+  projects: ProjectDto[]
+  selectedDate: Date
+  onSelectDate: (d: Date) => void
+}
+
+const MobileWeekStrip = ({ weekStart, projects, selectedDate, onSelectDate }: MobileWeekStripProps) => {
+  const today = new Date()
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart)
+    d.setDate(d.getDate() + i)
+    return d
+  })
+
+  return (
+    <div style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', padding: '6px 0 8px', flexShrink: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+        {DOW_JP.map((d, i) => (
+          <div key={i} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, marginBottom: 4, color: i === 0 ? 'var(--red)' : i === 6 ? 'var(--blue)' : 'var(--text-3)' }}>{d}</div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+        {days.map((day, i) => {
+          const isSelected = day.toDateString() === selectedDate.toDateString()
+          const isToday = day.toDateString() === today.toDateString()
+          const dayProjects = getDateProjects(projects, day)
+          const dots = dayProjects.slice(0, 3).map(p => STATUS_COL[p.statusName as StatusKey]?.bar ?? 'var(--text-3)')
+          return (
+            <button key={i} onClick={() => onSelectDate(day)} style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+              padding: '2px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 34, height: 34, borderRadius: '50%', fontSize: 15,
+                fontWeight: isSelected || isToday ? 700 : 400,
+                background: isSelected ? 'var(--accent)' : isToday ? 'var(--accent-soft)' : 'transparent',
+                color: isSelected ? 'var(--on-accent)' : i === 0 ? 'var(--red)' : i === 6 ? 'var(--blue)' : 'var(--text)',
+              }}>
+                {day.getDate()}
+              </span>
+              <div style={{ display: 'flex', gap: 2, height: 5, alignItems: 'center' }}>
+                {dots.map((color, j) => (
+                  <span key={j} style={{ width: 5, height: 5, borderRadius: '50%', background: isSelected ? 'var(--on-accent)' : color }} />
+                ))}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Mobile timeline view ──────────────────────────────────────────
+
+interface MobileTimelineViewProps {
+  year: number
+  month: number
+  projects: ProjectDto[]
+  onProjectClick: (project: ProjectDto) => void
+  isLoading: boolean
+}
+
+const MobileTimelineView = ({ year, month, projects, onProjectClick, isLoading }: MobileTimelineViewProps) => {
+  const monthStart = new Date(year, month, 1)
+  const monthEnd = new Date(year, month + 1, 0)
+
+  const sorted = React.useMemo(() => {
+    return projects
+      .filter(p => {
+        if (!p.startDate) return false
+        const start = parseLocalDate(p.startDate)
+        const end = p.endDate ? parseLocalDate(p.endDate) : start
+        return start <= monthEnd && end >= monthStart
+      })
+      .sort((a, b) => {
+        const aMs = a.startDate ? parseLocalDate(a.startDate).getTime() : 0
+        const bMs = b.startDate ? parseLocalDate(b.startDate).getTime() : 0
+        return aMs - bMs
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, year, month])
+
+  if (isLoading) {
+    return (
+      <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }}>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} style={{ height: 60, margin: '0 16px 8px', borderRadius: 8, background: 'var(--card-2)' }} />
+        ))}
+      </div>
+    )
+  }
+
+  if (sorted.length === 0) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+        この月の予定なし
+      </div>
+    )
+  }
+
+  let lastDateLabel = ''
+  return (
+    <div style={{ flex: 1, overflow: 'auto' }}>
+      {sorted.map((p) => {
+        const cfg = STATUS_COL[p.statusName as StatusKey]
+        const dateStr = formatDateRange(p.startDate, p.endDate)
+        const startDate = p.startDate ? parseLocalDate(p.startDate) : null
+        const dateLabel = startDate ? formatDateLabel(startDate) : ''
+        const showDateHeader = dateLabel !== lastDateLabel
+        if (showDateHeader) lastDateLabel = dateLabel
+
+        return (
+          <React.Fragment key={p.id}>
+            {showDateHeader && dateLabel && (
+              <div style={{
+                padding: '10px 16px 4px', fontSize: 12, fontWeight: 700,
+                color: 'var(--text-3)', letterSpacing: '0.02em',
+                position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1,
+              }}>
+                {dateLabel}
+              </div>
+            )}
+            <button
+              onClick={() => onProjectClick(p)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                padding: '10px 16px', border: 'none', background: 'transparent',
+                borderTop: '1px solid var(--divider)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+              }}
+            >
+              <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.title}
+                </div>
+                {dateStr && (
+                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
+                )}
+              </div>
+              <StatusChip s={p.statusName as StatusKey} />
+            </button>
+          </React.Fragment>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Page ──────────────────────────────────────────────────────────
 
 interface PageCalendarProps {
@@ -408,11 +577,17 @@ interface PageCalendarProps {
   isMobile?: boolean
 }
 
+type CalView = 'month' | 'week' | 'timeline'
+
+const CAL_VIEW_LABELS: Record<CalView, string> = { month: '月', week: '週', timeline: 'タイムライン' }
+const CAL_VIEWS: CalView[] = ['month', 'week', 'timeline']
+
 export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps) => {
   const today = new Date()
   const [year, setYear] = React.useState(today.getFullYear())
   const [month, setMonth] = React.useState(today.getMonth())
   const [selectedDate, setSelectedDate] = React.useState<Date>(today)
+  const [calView, setCalView] = React.useState<CalView>('month')
 
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
@@ -424,37 +599,51 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     [projects, year, month],
   )
 
+  const weekStart = getWeekStart(selectedDate)
+
   const goToday = () => {
     setYear(today.getFullYear())
     setMonth(today.getMonth())
     setSelectedDate(today)
   }
   const goPrev = () => {
-    if (month === 0) { setYear(y => y - 1); setMonth(11) }
-    else setMonth(m => m - 1)
+    if (calView === 'week') {
+      setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n })
+    } else {
+      if (month === 0) { setYear(y => y - 1); setMonth(11) }
+      else setMonth(m => m - 1)
+    }
   }
   const goNext = () => {
-    if (month === 11) { setYear(y => y + 1); setMonth(0) }
-    else setMonth(m => m + 1)
+    if (calView === 'week') {
+      setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n })
+    } else {
+      if (month === 11) { setYear(y => y + 1); setMonth(0) }
+      else setMonth(m => m + 1)
+    }
   }
 
-  const isCurrentMonth = year === today.getFullYear() && month === today.getMonth()
+  const isCurrentPeriod = calView === 'week'
+    ? weekStart.toDateString() === getWeekStart(today).toDateString()
+    : year === today.getFullYear() && month === today.getMonth()
+
+  const periodLabel = calView === 'week' ? formatWeekRange(weekStart) : formatYM(year, month)
 
   // ── Mobile layout ──────────────────────────────────────────────
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
         <MobileHeader
-          title={formatYM(year, month)}
+          title="カレンダー"
           right={
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              {!isCurrentMonth && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {!isCurrentPeriod && (
                 <button
                   onClick={goToday}
                   style={{
                     border: '1px solid var(--border)', borderRadius: 7, background: 'transparent',
-                    color: 'var(--accent)', fontSize: 12.5, fontWeight: 600,
-                    padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit',
+                    color: 'var(--accent)', fontSize: 12, fontWeight: 600,
+                    padding: '3px 8px', cursor: 'pointer', fontFamily: 'inherit', marginRight: 4,
                   }}
                 >
                   今日
@@ -462,32 +651,83 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               )}
               <button
                 onClick={goPrev}
-                style={{ width: 32, height: 32, border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}
+                style={{ width: 30, height: 30, border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}
               >
-                <Icon name="chevLeft" size={18} />
+                <Icon name="chevLeft" size={16} />
               </button>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', minWidth: calView === 'week' ? 100 : 72, textAlign: 'center' }}>
+                {periodLabel}
+              </span>
               <button
                 onClick={goNext}
-                style={{ width: 32, height: 32, border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}
+                style={{ width: 30, height: 30, border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}
               >
-                <Icon name="chevRight" size={18} />
+                <Icon name="chevRight" size={16} />
               </button>
             </div>
           }
+          tabs={
+            <div style={{ display: 'flex' }}>
+              {CAL_VIEWS.map(v => (
+                <button
+                  key={v}
+                  onClick={() => setCalView(v)}
+                  style={{
+                    flex: 1, padding: '8px 4px', border: 'none', background: 'transparent',
+                    fontSize: 13, fontWeight: calView === v ? 700 : 500,
+                    color: calView === v ? 'var(--accent)' : 'var(--text-3)',
+                    borderBottom: `2px solid ${calView === v ? 'var(--accent)' : 'transparent'}`,
+                    cursor: 'pointer', fontFamily: 'inherit', transition: 'color .12s',
+                  }}
+                >
+                  {CAL_VIEW_LABELS[v]}
+                </button>
+              ))}
+            </div>
+          }
         />
-        <MobileCalendarGrid
-          year={year}
-          month={month}
-          projects={projects}
-          selectedDate={selectedDate}
-          onSelectDate={setSelectedDate}
-        />
-        <MobileDayEvents
-          date={selectedDate}
-          projects={projects}
-          onProjectClick={openPanel}
-          isLoading={isLoading}
-        />
+        {calView === 'month' && (
+          <>
+            <MobileCalendarGrid
+              year={year}
+              month={month}
+              projects={projects}
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+            />
+            <MobileDayEvents
+              date={selectedDate}
+              projects={projects}
+              onProjectClick={openPanel}
+              isLoading={isLoading}
+            />
+          </>
+        )}
+        {calView === 'week' && (
+          <>
+            <MobileWeekStrip
+              weekStart={weekStart}
+              projects={projects}
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+            />
+            <MobileDayEvents
+              date={selectedDate}
+              projects={projects}
+              onProjectClick={openPanel}
+              isLoading={isLoading}
+            />
+          </>
+        )}
+        {calView === 'timeline' && (
+          <MobileTimelineView
+            year={year}
+            month={month}
+            projects={projects}
+            onProjectClick={openPanel}
+            isLoading={isLoading}
+          />
+        )}
       </div>
     )
   }
@@ -500,9 +740,9 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
             className="btn"
-            style={{ height: 32, opacity: isCurrentMonth ? 0.5 : 1 }}
+            style={{ height: 32, opacity: isCurrentPeriod ? 0.5 : 1 }}
             onClick={goToday}
-            disabled={isCurrentMonth}
+            disabled={isCurrentPeriod}
           >
             今日
           </button>
