@@ -4,6 +4,7 @@
 'use client'
 
 import React from 'react'
+import { usePathname } from 'next/navigation'
 import { Icon } from '../primitives'
 
 interface MobileNavProps {
@@ -19,6 +20,12 @@ const TABS = [
   { id: 'menu',      path: null,         icon: 'list',   label: 'メニュー' },
 ] as const
 
+const PROJECTS_VIEWS = [
+  { id: 'list',     label: '一覧',       icon: 'list',     path: '/projects' },
+  { id: 'calendar', label: 'カレンダー', icon: 'calendar', path: '/calendar' },
+  { id: 'kanban',   label: 'カンバン',   icon: 'kanban',   path: '/kanban' },
+]
+
 const MENU_ITEMS = [
   { label: 'ファイル',   icon: 'file',   path: '/files' },
   { label: 'ギャラリー', icon: 'image',  path: '/gallery' },
@@ -28,69 +35,128 @@ const MENU_ITEMS = [
 
 const MENU_PAGES = new Set(['settings', 'files', 'gallery', 'members', 'ai'])
 
+function currentProjectsView(pathname: string): string {
+  if (pathname.startsWith('/calendar')) return 'calendar'
+  if (pathname.startsWith('/kanban')) return 'kanban'
+  return 'list'
+}
+
 export function MobileNav({ page, onNavigate }: MobileNavProps) {
+  const pathname = usePathname()
   const [menuOpen, setMenuOpen] = React.useState(false)
+  const [projectsPickerOpen, setProjectsPickerOpen] = React.useState(false)
+
+  const closeAll = () => { setMenuOpen(false); setProjectsPickerOpen(false) }
 
   const handleTabClick = (tab: typeof TABS[number]) => {
     if (tab.id === 'menu') {
+      setProjectsPickerOpen(false)
       setMenuOpen(o => !o)
-    } else {
+    } else if (tab.id === 'projects') {
       setMenuOpen(false)
+      if (page === 'projects') {
+        setProjectsPickerOpen(o => !o)
+      } else {
+        setProjectsPickerOpen(false)
+        onNavigate(tab.path)
+      }
+    } else {
+      closeAll()
       onNavigate(tab.path)
     }
   }
 
-  const handleMenuItemClick = (path: string) => {
-    setMenuOpen(false)
-    onNavigate(path)
-  }
-
   const isMenuActive = MENU_PAGES.has(page)
+  const projectsView = currentProjectsView(pathname ?? '')
+
+  // Index of projects tab for popup positioning
+  const projectsTabIndex = 1
+  const TAB_COUNT = TABS.length
 
   return (
     <>
-      {menuOpen && (
+      {/* Overlay backdrop for any open popup */}
+      {(menuOpen || projectsPickerOpen) && (
         <div
           style={{ position: 'fixed', inset: 0, zIndex: 49 }}
-          onClick={() => setMenuOpen(false)}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 'calc(65px + env(safe-area-inset-bottom))',
-              left: 12, right: 12,
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: 16,
-              boxShadow: 'var(--shadow-lg)',
-              overflow: 'hidden',
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            {MENU_ITEMS.map((item, i) => (
+          onClick={closeAll}
+        />
+      )}
+
+      {/* Projects view picker — positioned above the projects tab */}
+      {projectsPickerOpen && (
+        <div style={{
+          position: 'fixed',
+          bottom: 'calc(65px + env(safe-area-inset-bottom))',
+          left: `calc(${(projectsTabIndex / TAB_COUNT) * 100}% - 8px)`,
+          zIndex: 50,
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
+          borderRadius: 14,
+          boxShadow: 'var(--shadow-lg)',
+          overflow: 'hidden',
+          minWidth: 160,
+        }}>
+          {PROJECTS_VIEWS.map((v, i) => {
+            const active = v.id === projectsView
+            return (
               <button
-                key={item.path}
-                onClick={() => handleMenuItemClick(item.path)}
+                key={v.path}
+                onClick={() => { closeAll(); onNavigate(v.path) }}
                 style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 14,
-                  padding: '16px 20px', border: 'none', background: 'transparent',
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '13px 16px', border: 'none',
+                  background: active ? 'var(--accent-soft)' : 'transparent',
                   borderTop: i > 0 ? '1px solid var(--divider)' : 'none',
                   cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                  color: 'var(--text)',
+                  color: active ? 'var(--accent-text)' : 'var(--text)',
                 }}
               >
-                <div style={{
-                  width: 36, height: 36, borderRadius: 10,
-                  background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  <Icon name={item.icon} size={18} color="var(--text-2)" />
-                </div>
-                <span style={{ fontSize: 15, fontWeight: 500 }}>{item.label}</span>
-                <Icon name="chevRight" size={14} color="var(--text-4)" style={{ marginLeft: 'auto' }} />
+                <Icon name={v.icon} size={16} color={active ? 'var(--accent-text)' : 'var(--text-3)'} />
+                <span style={{ flex: 1, fontSize: 14, fontWeight: active ? 700 : 500 }}>{v.label}</span>
+                {active && <Icon name="check" size={14} color="var(--accent-text)" strokeWidth={2.5} />}
               </button>
-            ))}
-          </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Menu popup — full width above nav */}
+      {menuOpen && (
+        <div style={{
+          position: 'fixed',
+          bottom: 'calc(65px + env(safe-area-inset-bottom))',
+          left: 12, right: 12,
+          zIndex: 50,
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
+          borderRadius: 16,
+          boxShadow: 'var(--shadow-lg)',
+          overflow: 'hidden',
+        }}>
+          {MENU_ITEMS.map((item, i) => (
+            <button
+              key={item.path}
+              onClick={() => { closeAll(); onNavigate(item.path) }}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 14,
+                padding: '16px 20px', border: 'none', background: 'transparent',
+                borderTop: i > 0 ? '1px solid var(--divider)' : 'none',
+                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                color: 'var(--text)',
+              }}
+            >
+              <div style={{
+                width: 36, height: 36, borderRadius: 10,
+                background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <Icon name={item.icon} size={18} color="var(--text-2)" />
+              </div>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{item.label}</span>
+              <Icon name="chevRight" size={14} color="var(--text-4)" style={{ marginLeft: 'auto' }} />
+            </button>
+          ))}
         </div>
       )}
 
@@ -100,7 +166,10 @@ export function MobileNav({ page, onNavigate }: MobileNavProps) {
         display: 'flex', paddingBottom: 'env(safe-area-inset-bottom)',
       }}>
         {TABS.map(tab => {
-          const active = tab.id === 'menu' ? (menuOpen || isMenuActive) : page === tab.id
+          const active =
+            tab.id === 'menu' ? (menuOpen || isMenuActive) :
+            tab.id === 'projects' ? (projectsPickerOpen || page === 'projects') :
+            page === tab.id
           return (
             <button key={tab.id} onClick={() => handleTabClick(tab)} style={{
               flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',

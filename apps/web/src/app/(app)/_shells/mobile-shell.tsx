@@ -12,12 +12,14 @@ import { MobileChat } from '@/components/app/detail-panel/pages/chat'
 import { MobileAI } from '@/components/app/detail-panel/pages/ai'
 import { MobileSettings } from '@/components/app/detail-panel/pages/settings'
 import { MobileTasks } from '@/components/app/detail-panel/pages/tasks'
+import { MobileCalendar } from '@/components/app/detail-panel/pages/calendar'
+import { MobileKanban } from '@/components/app/detail-panel/pages/kanban'
 import { MobileHeader } from '@/components/app/detail-panel/mobile-header'
 import { Icon } from '@/components/app/primitives'
 import { AppShellContext } from '@/components/app/app-shell-context'
 
 function pageFromPathname(pathname: string): string {
-  if (pathname.startsWith('/projects')) return 'projects'
+  if (pathname.startsWith('/projects') || pathname.startsWith('/calendar') || pathname.startsWith('/kanban')) return 'projects'
   if (pathname.startsWith('/chats') || pathname.startsWith('/chat')) return 'chats'
   if (pathname.startsWith('/tasks')) return 'tasks'
   if (pathname.startsWith('/ai')) return 'ai'
@@ -49,8 +51,12 @@ function MobilePlaceholder({ title }: { title: string }) {
   )
 }
 
-function MobilePage({ page }: { page: string }) {
-  if (page === 'projects') return <MobileProjects />
+function MobilePage({ page, pathname }: { page: string; pathname: string }) {
+  if (page === 'projects') {
+    if (pathname.startsWith('/calendar')) return <MobileCalendar />
+    if (pathname.startsWith('/kanban')) return <MobileKanban />
+    return <MobileProjects />
+  }
   if (page === 'chats') return <MobileChat />
   if (page === 'tasks') return <MobileTasks />
   if (page === 'ai') return <MobileAI />
@@ -69,7 +75,7 @@ export function MobileShell() {
       <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden' }}>
         <div className="app" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-            <MobilePage page={page} />
+            <MobilePage page={page} pathname={pathname} />
           </div>
           <MobileNav page={page} onNavigate={(path) => router.push(path)} />
         </div>
