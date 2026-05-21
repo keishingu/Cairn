@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
 import { Icon, Avatar } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
@@ -90,7 +91,12 @@ const MemberCard = ({ member, projectCount, selected, onClick }: MemberCardProps
   )
 }
 
-export const PageMembers = () => {
+interface PageMembersProps {
+  initialUserId?: string
+}
+
+export const PageMembers = ({ initialUserId }: PageMembersProps) => {
+  const router = useRouter()
   const [search, setSearch] = React.useState('')
   const [roleFilter, setRoleFilter] = React.useState<WorkspaceMemberDto['role'] | 'all'>('all')
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
@@ -117,6 +123,13 @@ export const PageMembers = () => {
     queryKey: ['workspace-members'],
     queryFn: () => fetch('/api/workspaces/members').then(r => r.json()),
   })
+
+  // initialUserId が指定されている場合、メンバーデータ読み込み後に自動選択
+  React.useEffect(() => {
+    if (!initialUserId || members.length === 0) return
+    const m = members.find(m => m.userId === initialUserId)
+    if (m) setSelectedMember(m)
+  }, [initialUserId, members])
 
   const filtered = React.useMemo(() => {
     return members.filter(m => {
@@ -205,7 +218,15 @@ export const PageMembers = () => {
                   member={m}
                   projectCount={Math.max(1, 5 - i % 4)}
                   selected={selectedMember?.userId === m.userId}
-                  onClick={() => setSelectedMember(prev => prev?.userId === m.userId ? null : m)}
+                  onClick={() => {
+                    if (selectedMember?.userId === m.userId) {
+                      setSelectedMember(null)
+                      router.push('/members')
+                    } else {
+                      setSelectedMember(m)
+                      router.push(`/members/${m.userId}`)
+                    }
+                  }}
                 />
               ))}
             </div>
@@ -223,7 +244,7 @@ export const PageMembers = () => {
         <MemberDetailPanel
           member={selectedMember}
           onProjectClick={handleProjectClick}
-          onClose={() => setSelectedMember(null)}
+          onClose={() => { setSelectedMember(null); router.push('/members') }}
         />
       ) : null}
     </div>

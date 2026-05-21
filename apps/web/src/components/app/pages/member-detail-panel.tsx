@@ -121,7 +121,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose }: MemberDet
 
   return (
     <aside style={{
-      width: 380, flexShrink: 0,
+      width: 420, flexShrink: 0,
       background: 'var(--card)',
       borderLeft: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column',
