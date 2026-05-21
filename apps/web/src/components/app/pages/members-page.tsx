@@ -2,8 +2,15 @@
 
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
 import { Icon, Avatar } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
+import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
+import { MemberDetailPanel } from './member-detail-panel'
+import { ProjectPanel } from '../project-panel'
+import type { ProjectDto } from '@/app/api/projects/route'
+import { MobileHeader } from '../detail-panel/mobile-header'
+import { MobileMemberScreen } from '../mobile/member-screen'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -39,17 +46,26 @@ const MemberCardSkeleton = () => (
 interface MemberCardProps {
   member: WorkspaceMemberDto
   projectCount: number
+  selected: boolean
+  onClick: () => void
 }
 
-const MemberCard = ({ member, projectCount }: MemberCardProps) => {
+const MemberCard = ({ member, projectCount, selected, onClick }: MemberCardProps) => {
   const role = ROLE_STYLE[member.role]
   return (
     <div
       className="card"
-      style={{ padding: '16px 18px', cursor: 'pointer', transition: 'box-shadow .12s, transform .12s' }}
+      onClick={onClick}
+      style={{
+        padding: '16px 18px', cursor: 'pointer', transition: 'box-shadow .12s, transform .12s',
+        border: selected ? '1.5px solid var(--accent)' : undefined,
+        background: selected ? 'var(--accent-soft)' : undefined,
+      }}
       onMouseEnter={e => {
-        ;(e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)'
-        ;(e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'
+        if (!selected) {
+          ;(e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)'
+          ;(e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'
+        }
       }}
       onMouseLeave={e => {
         ;(e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)'
@@ -77,14 +93,47 @@ const MemberCard = ({ member, projectCount }: MemberCardProps) => {
   )
 }
 
-export const PageMembers = () => {
+interface PageMembersProps {
+  initialUserId?: string
+  isMobile?: boolean
+}
+
+export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
+  const router = useRouter()
   const [search, setSearch] = React.useState('')
   const [roleFilter, setRoleFilter] = React.useState<WorkspaceMemberDto['role'] | 'all'>('all')
+  const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
+  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
+  const [mobileDetailMember, setMobileDetailMember] = React.useState<WorkspaceMemberDto | null>(null)
+
+  const handleProjectClick = (p: MemberProjectDto) => {
+    setSelectedProject({
+      id:                 p.projectId,
+      title:              p.title,
+      statusName:         p.statusName,
+      startDate:          p.startDate,
+      endDate:            p.endDate,
+      memberCount:        p.memberCount,
+      memberNames:        [],
+      taskCount:          0,
+      completedTaskCount: 0,
+      isOwner:            p.role === 'leader',
+      isMember:           true,
+      archived:           false,
+    })
+  }
 
   const { data: members = [], isLoading } = useQuery<WorkspaceMemberDto[]>({
     queryKey: ['workspace-members'],
     queryFn: () => fetch('/api/workspaces/members').then(r => r.json()),
   })
+
+  // initialUserId が指定されている場合、メンバーデータ読み込み後に自動選択
+  React.useEffect(() => {
+    if (!initialUserId || members.length === 0) return
+    const m = members.find(m => m.userId === initialUserId)
+    if (m) setSelectedMember(m)
+  }, [initialUserId, members])
 
   const filtered = React.useMemo(() => {
     return members.filter(m => {
@@ -110,71 +159,175 @@ export const PageMembers = () => {
     { id: 'guest',  label: 'ゲスト' },
   ]
 
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      {/* Toolbar */}
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-          <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-4)', pointerEvents: 'none' }}>
-            <Icon name="search" size={14} />
-          </div>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="メンバーを検索…"
-            style={{
-              width: '100%', maxWidth: 280, height: 34, padding: '0 12px 0 32px',
-              border: '1px solid var(--border)', borderRadius: 8,
-              background: 'var(--card)', color: 'var(--text)', fontSize: 13,
-              fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
-            }}
+  if (isMobile) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
+        {mobileDetailMember && (
+          <MobileMemberScreen
+            member={mobileDetailMember}
+            onBack={() => setMobileDetailMember(null)}
           />
+        )}
+        <MobileHeader title="メンバー" />
+
+        {/* Search */}
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ position: 'relative' }}>
+            <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-4)', pointerEvents: 'none' }}>
+              <Icon name="search" size={14} />
+            </div>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="メンバーを検索…"
+              style={{
+                width: '100%', height: 36, padding: '0 12px 0 32px',
+                border: '1px solid var(--border)', borderRadius: 8,
+                background: 'var(--card)', color: 'var(--text)', fontSize: 14,
+                fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
+              }}
+            />
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 2 }}>
+
+        {/* Role filter chips */}
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', gap: 6, overflowX: 'auto', flexShrink: 0 }}>
           {roleFilters.map(f => (
             <button
               key={f.id}
               onClick={() => setRoleFilter(f.id)}
               style={{
-                padding: '6px 12px', borderRadius: 6, border: 'none',
-                background: roleFilter === f.id ? 'var(--card-hover)' : 'transparent',
-                color: roleFilter === f.id ? 'var(--text)' : 'var(--text-3)',
-                fontSize: 12.5, fontWeight: roleFilter === f.id ? 600 : 500,
+                padding: '5px 12px', borderRadius: 999, border: 'none', whiteSpace: 'nowrap',
+                background: roleFilter === f.id ? 'var(--accent)' : 'var(--card-2)',
+                color: roleFilter === f.id ? 'var(--on-accent)' : 'var(--text-3)',
+                fontSize: 12.5, fontWeight: roleFilter === f.id ? 700 : 500,
                 cursor: 'pointer', fontFamily: 'inherit',
               }}
             >{f.label}</button>
           ))}
         </div>
-        <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
-          <Icon name="plus" size={13} strokeWidth={2.4} /> メンバーを招待
-        </button>
-      </div>
 
-      {/* Grid */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
-        {isLoading ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
-            {Array.from({ length: 8 }).map((_, i) => <MemberCardSkeleton key={i} />)}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%', gap: 12, color: 'var(--text-3)' }}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)' }}>
-              <Icon name="users" size={22} />
+        {/* 2-column card grid */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '12px', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+          {isLoading ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+              {Array.from({ length: 6 }).map((_, i) => <MemberCardSkeleton key={i} />)}
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>メンバーが見つかりません</div>
+          ) : filtered.length === 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 16px', color: 'var(--text-4)' }}>
+              <Icon name="users" size={32} />
+              <span style={{ fontSize: 14 }}>メンバーが見つかりません</span>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+              {filtered.map((m, i) => (
+                <MemberCard
+                  key={m.userId}
+                  member={m}
+                  projectCount={Math.max(1, 5 - i % 4)}
+                  selected={false}
+                  onClick={() => setMobileDetailMember(m)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+      {/* Left: list */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+        {/* Toolbar */}
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-4)', pointerEvents: 'none' }}>
+              <Icon name="search" size={14} />
+            </div>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="メンバーを検索…"
+              style={{
+                width: '100%', maxWidth: 280, height: 34, padding: '0 12px 0 32px',
+                border: '1px solid var(--border)', borderRadius: 8,
+                background: 'var(--card)', color: 'var(--text)', fontSize: 13,
+                fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
+              }}
+            />
           </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
-            {filtered.map((m, i) => (
-              <MemberCard
-                key={m.userId}
-                member={m}
-                projectCount={Math.max(1, 5 - i % 4)}
-              />
+          <div style={{ display: 'flex', gap: 2 }}>
+            {roleFilters.map(f => (
+              <button
+                key={f.id}
+                onClick={() => setRoleFilter(f.id)}
+                style={{
+                  padding: '6px 12px', borderRadius: 6, border: 'none',
+                  background: roleFilter === f.id ? 'var(--card-hover)' : 'transparent',
+                  color: roleFilter === f.id ? 'var(--text)' : 'var(--text-3)',
+                  fontSize: 12.5, fontWeight: roleFilter === f.id ? 600 : 500,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >{f.label}</button>
             ))}
           </div>
-        )}
+          <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
+            <Icon name="plus" size={13} strokeWidth={2.4} /> メンバーを招待
+          </button>
+        </div>
+
+        {/* Grid */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+          {isLoading ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+              {Array.from({ length: 8 }).map((_, i) => <MemberCardSkeleton key={i} />)}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%', gap: 12, color: 'var(--text-3)' }}>
+              <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)' }}>
+                <Icon name="users" size={22} />
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>メンバーが見つかりません</div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+              {filtered.map((m, i) => (
+                <MemberCard
+                  key={m.userId}
+                  member={m}
+                  projectCount={Math.max(1, 5 - i % 4)}
+                  selected={selectedMember?.userId === m.userId}
+                  onClick={() => {
+                    if (selectedMember?.userId === m.userId) {
+                      setSelectedMember(null)
+                      router.push('/members')
+                    } else {
+                      setSelectedMember(m)
+                      router.push(`/members/${m.userId}`)
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Right: detail panel — project takes priority over member */}
+      {selectedProject ? (
+        <ProjectPanel
+          project={selectedProject}
+          onClose={() => setSelectedProject(null)}
+        />
+      ) : selectedMember ? (
+        <MemberDetailPanel
+          member={selectedMember}
+          onProjectClick={handleProjectClick}
+          onClose={() => { setSelectedMember(null); router.push('/members') }}
+        />
+      ) : null}
     </div>
   )
 }

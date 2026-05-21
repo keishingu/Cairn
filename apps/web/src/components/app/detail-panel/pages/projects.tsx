@@ -10,6 +10,7 @@ import { Icon, StatusChip } from '../../primitives'
 import { STATUS, type StatusKey } from '../../data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileProjectScreen } from '../../mobile/project-screen'
+import { CreateProjectSheet } from '../../mobile/create-project-sheet'
 
 async function fetchProjects(): Promise<ProjectDto[]> {
   const res = await fetch('/api/projects')
@@ -34,6 +35,7 @@ export function MobileProjects() {
   const [filter, setFilter] = React.useState<'all' | 'active' | 'mine'>('all')
   const [search, setSearch] = React.useState('')
   const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
+  const [showCreate, setShowCreate] = React.useState(false)
 
   const filtered = projects.filter(p => {
     if (p.archived) return false
@@ -48,8 +50,14 @@ export function MobileProjects() {
       {selectedProject && (
         <MobileProjectScreen project={selectedProject} onBack={() => setSelectedProject(null)}/>
       )}
+      {showCreate && (
+        <CreateProjectSheet
+          onClose={() => setShowCreate(false)}
+          onCreated={(project) => setSelectedProject(project)}
+        />
+      )}
       <MobileHeader title="プロジェクト" right={
-        <button style={{ border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <button onClick={() => setShowCreate(true)} style={{ border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Icon name="plus" size={13}/> 新規
         </button>
       }/>

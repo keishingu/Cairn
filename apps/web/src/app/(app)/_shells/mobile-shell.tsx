@@ -17,6 +17,7 @@ import { MobileKanban } from '@/components/app/detail-panel/pages/kanban'
 import { MobileHeader } from '@/components/app/detail-panel/mobile-header'
 import { Icon } from '@/components/app/primitives'
 import { AppShellContext } from '@/components/app/app-shell-context'
+import { PageMembers } from '@/components/app/pages/members-page'
 
 const MOBILE_STORAGE_KEY = 'cairn:projects_view_mobile'
 type ProjectsView = 'list' | 'calendar' | 'kanban'
@@ -74,6 +75,7 @@ function MobilePage({ page, projectsView }: { page: string; projectsView: Projec
   if (page === 'tasks') return <MobileTasks />
   if (page === 'ai') return <MobileAI />
   if (page === 'settings') return <MobileSettings />
+  if (page === 'members') return <PageMembers isMobile />
   if (page in MENU_PAGE_LABELS) return <MobilePlaceholder title={MENU_PAGE_LABELS[page]!} />
   return <MobileDashboard />
 }
