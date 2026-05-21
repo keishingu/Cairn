@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { MobileNav } from '@/components/app/detail-panel/mobile-nav'
 import { MobileDashboard } from '@/components/app/detail-panel/pages/dashboard'
 import { MobileProjects } from '@/components/app/detail-panel/pages/projects'
@@ -17,6 +17,19 @@ import { MobileKanban } from '@/components/app/detail-panel/pages/kanban'
 import { MobileHeader } from '@/components/app/detail-panel/mobile-header'
 import { Icon } from '@/components/app/primitives'
 import { AppShellContext } from '@/components/app/app-shell-context'
+
+const MOBILE_STORAGE_KEY = 'cairn:projects_view_mobile'
+type ProjectsView = 'list' | 'calendar' | 'kanban'
+
+function isValidView(v: string | null | undefined): v is ProjectsView {
+  return v === 'list' || v === 'calendar' || v === 'kanban'
+}
+
+function loadStoredView(): ProjectsView {
+  if (typeof window === 'undefined') return 'list'
+  const saved = localStorage.getItem(MOBILE_STORAGE_KEY)
+  return isValidView(saved) ? saved : 'list'
+}
 
 function pageFromPathname(pathname: string): string {
   if (pathname.startsWith('/projects')) return 'projects'
@@ -51,10 +64,10 @@ function MobilePlaceholder({ title }: { title: string }) {
   )
 }
 
-function MobilePage({ page, pathname, view }: { page: string; pathname: string; view: string }) {
+function MobilePage({ page, projectsView }: { page: string; projectsView: ProjectsView }) {
   if (page === 'projects') {
-    if (view === 'calendar') return <MobileCalendar />
-    if (view === 'kanban') return <MobileKanban />
+    if (projectsView === 'calendar') return <MobileCalendar />
+    if (projectsView === 'kanban') return <MobileKanban />
     return <MobileProjects />
   }
   if (page === 'chats') return <MobileChat />
@@ -65,47 +78,28 @@ function MobilePage({ page, pathname, view }: { page: string; pathname: string; 
   return <MobileDashboard />
 }
 
-const MOBILE_STORAGE_KEY = 'cairn:projects_view_mobile'
-type ProjectsView = 'list' | 'calendar' | 'kanban'
-
-function isValidView(v: string | null | undefined): v is ProjectsView {
-  return v === 'list' || v === 'calendar' || v === 'kanban'
-}
-
 export function MobileShell() {
   const pathname = usePathname()
   const router = useRouter()
-  const searchParams = useSearchParams()
   const page = pageFromPathname(pathname)
+  const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
 
-  const viewParam = searchParams?.get('view')
-  const view: ProjectsView = React.useMemo(() => {
-    if (isValidView(viewParam)) return viewParam
-    if (page === 'projects' && typeof window !== 'undefined') {
-      const saved = localStorage.getItem(MOBILE_STORAGE_KEY)
-      if (isValidView(saved)) return saved
-    }
-    return 'list'
-  }, [viewParam, page])
-
-  React.useEffect(() => {
-    if (page === 'projects') {
-      localStorage.setItem(MOBILE_STORAGE_KEY, view)
-    }
-  }, [view, page])
+  const setProjectsView = React.useCallback((view: string) => {
+    if (!isValidView(view)) return
+    localStorage.setItem(MOBILE_STORAGE_KEY, view)
+    setProjectsViewState(view)
+  }, [])
 
   return (
-    <React.Suspense fallback={null}>
-      <AppShellContext.Provider value={{ openPanel: () => {}, openNotif: () => {} }}>
-        <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden' }}>
-          <div className="app" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-              <MobilePage page={page} pathname={pathname} view={view} />
-            </div>
-            <MobileNav page={page} onNavigate={(path) => router.push(path)} />
+    <AppShellContext.Provider value={{ openPanel: () => {}, openNotif: () => {}, projectsView, setProjectsView }}>
+      <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden' }}>
+        <div className="app" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+            <MobilePage page={page} projectsView={projectsView} />
           </div>
+          <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
         </div>
-      </AppShellContext.Provider>
-    </React.Suspense>
+      </div>
+    </AppShellContext.Provider>
   )
 }

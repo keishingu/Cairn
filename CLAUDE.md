@@ -59,7 +59,7 @@ pnpm dev
 - **AIモデルは OpenAI**（gpt-4o / gpt-4o-mini）。Claude は使用しない
 - Mobile (Expo) は Phase 2 以降のため、現時点では実装しない
 - **UA ベースのデバイス出し分け**: middleware で `x-device` ヘッダーをセットし、`app/(app)/layout.tsx` で PC シェル / モバイルシェルを切り替える。レスポンシブ CSS は使わない
-- **プロジェクトビューは `/projects?view=list|calendar|kanban`**: 旧 `/calendar` `/kanban` は Server Component でリダイレクト済み。`?view=` 未指定時は localStorage から前回のビューを復元（PCキー: `cairn:projects_view_pc`、モバイルキー: `cairn:projects_view_mobile`）。`/projects/[id]` はプロジェクト詳細（現在は `/projects?open={id}` にリダイレクト）
+- **プロジェクトビューは localStorage で管理**: 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクト済み。ビュー切替（一覧 / カレンダー / カンバン）はURLパラメータを使わず localStorage のみで永続化（PCキー: `cairn:projects_view_pc`、モバイルキー: `cairn:projects_view_mobile`）。`/projects/[id]` はプロジェクト詳細（現在は `/projects?open={id}` にリダイレクト）
 
 
 ## Detail Panel コンポーネントの方針

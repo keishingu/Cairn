@@ -4,12 +4,13 @@
 'use client'
 
 import React from 'react'
-import { useSearchParams } from 'next/navigation'
 import { Icon } from '../primitives'
 
 interface MobileNavProps {
   page: string
+  projectsView: string
   onNavigate: (path: string) => void
+  onChangeView: (view: string) => void
 }
 
 const TABS = [
@@ -21,9 +22,9 @@ const TABS = [
 ] as const
 
 const PROJECTS_VIEWS = [
-  { id: 'list',     label: '一覧',       icon: 'list',     path: '/projects?view=list' },
-  { id: 'calendar', label: 'カレンダー', icon: 'calendar', path: '/projects?view=calendar' },
-  { id: 'kanban',   label: 'カンバン',   icon: 'kanban',   path: '/projects?view=kanban' },
+  { id: 'list',     label: '一覧',       icon: 'list'    },
+  { id: 'calendar', label: 'カレンダー', icon: 'calendar' },
+  { id: 'kanban',   label: 'カンバン',   icon: 'kanban'  },
 ]
 
 const MENU_ITEMS = [
@@ -35,15 +36,7 @@ const MENU_ITEMS = [
 
 const MENU_PAGES = new Set(['settings', 'files', 'gallery', 'members', 'ai'])
 
-function currentProjectsView(searchParams: ReturnType<typeof useSearchParams>): string {
-  const view = searchParams?.get('view')
-  if (view === 'calendar') return 'calendar'
-  if (view === 'kanban') return 'kanban'
-  return 'list'
-}
-
-export function MobileNav({ page, onNavigate }: MobileNavProps) {
-  const searchParams = useSearchParams()
+export function MobileNav({ page, projectsView, onNavigate, onChangeView }: MobileNavProps) {
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [projectsPickerOpen, setProjectsPickerOpen] = React.useState(false)
 
@@ -68,7 +61,6 @@ export function MobileNav({ page, onNavigate }: MobileNavProps) {
   }
 
   const isMenuActive = MENU_PAGES.has(page)
-  const projectsView = currentProjectsView(searchParams)
 
   // Index of projects tab for popup positioning
   const projectsTabIndex = 1
@@ -102,8 +94,8 @@ export function MobileNav({ page, onNavigate }: MobileNavProps) {
             const active = v.id === projectsView
             return (
               <button
-                key={v.path}
-                onClick={() => { closeAll(); onNavigate(v.path) }}
+                key={v.id}
+                onClick={() => { closeAll(); onChangeView(v.id); onNavigate('/projects') }}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 10,
                   padding: '13px 16px', border: 'none',
