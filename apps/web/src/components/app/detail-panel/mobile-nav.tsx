@@ -5,6 +5,7 @@
 
 import React from 'react'
 import { Icon } from '../primitives'
+import { useProjectLabel } from '@/lib/use-workspace-settings'
 
 interface MobileNavProps {
   page: string
@@ -13,9 +14,9 @@ interface MobileNavProps {
   onChangeView: (view: string) => void
 }
 
-const TABS = [
+const BASE_TABS = [
   { id: 'dashboard', path: '/dashboard', icon: 'home',   label: 'ホーム' },
-  { id: 'projects',  path: '/projects',  icon: 'kanban', label: 'プロジェクト' },
+  { id: 'projects',  path: '/projects',  icon: 'kanban', label: null },
   { id: 'chats',     path: '/chats',     icon: 'chat',   label: 'チャット' },
   { id: 'tasks',     path: '/tasks',     icon: 'check',  label: 'タスク' },
   { id: 'menu',      path: null,         icon: 'list',   label: 'メニュー' },
@@ -39,6 +40,8 @@ const MENU_PAGES = new Set(['settings', 'files', 'gallery', 'members', 'ai'])
 export function MobileNav({ page, projectsView, onNavigate, onChangeView }: MobileNavProps) {
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [projectsPickerOpen, setProjectsPickerOpen] = React.useState(false)
+  const projectLabel = useProjectLabel()
+  const TABS = BASE_TABS.map(t => ({ ...t, label: t.label ?? projectLabel }))
 
   const closeAll = () => { setMenuOpen(false); setProjectsPickerOpen(false) }
 
