@@ -170,6 +170,9 @@ export function MobileNav({ page, onNavigate }: MobileNavProps) {
             tab.id === 'menu' ? (menuOpen || isMenuActive) :
             tab.id === 'projects' ? (projectsPickerOpen || page === 'projects') :
             page === tab.id
+          const iconName = tab.id === 'projects'
+            ? (projectsView === 'calendar' ? 'calendar' : 'kanban')
+            : tab.icon
           return (
             <button key={tab.id} onClick={() => handleTabClick(tab)} style={{
               flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -178,7 +181,17 @@ export function MobileNav({ page, onNavigate }: MobileNavProps) {
               color: active ? 'var(--accent)' : 'var(--text-3)',
               transition: 'color .15s',
             }}>
-              <Icon name={tab.icon} size={22} />
+              <div style={{ position: 'relative', display: 'inline-flex' }}>
+                <Icon name={iconName} size={22} />
+                {tab.id === 'projects' && (
+                  <span style={{
+                    position: 'absolute', right: -7, top: 0,
+                    fontSize: 8, lineHeight: 1, letterSpacing: '-1px',
+                    color: active ? 'var(--accent)' : 'var(--text-4)',
+                    userSelect: 'none',
+                  }}>▲▼</span>
+                )}
+              </div>
               <span style={{ fontSize: 10, fontWeight: active ? 700 : 500, fontFamily: 'inherit' }}>{tab.label}</span>
             </button>
           )
