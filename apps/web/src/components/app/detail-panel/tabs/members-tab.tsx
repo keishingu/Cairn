@@ -30,9 +30,10 @@ interface MemberRowProps {
   member: ProjectMemberDto
   onRemove: () => void
   removing: boolean
+  onMemberClick?: ((userId: string, displayName: string) => void) | undefined
 }
 
-const MemberRow = ({ member, onRemove, removing }: MemberRowProps) => {
+const MemberRow = ({ member, onRemove, removing, onMemberClick }: MemberRowProps) => {
   const style = ROLE_STYLE[member.role] ?? DEFAULT_ROLE_STYLE
   return (
     <div style={{
@@ -41,9 +42,20 @@ const MemberRow = ({ member, onRemove, removing }: MemberRowProps) => {
       opacity: removing ? 0.4 : 1, transition: 'opacity 0.15s',
     }}>
       <Avatar name={member.displayName} size={28}/>
-      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>
+      <button
+        onClick={() => onMemberClick?.(member.userId, member.displayName)}
+        disabled={!onMemberClick}
+        style={{
+          flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text)',
+          background: 'none', border: 'none', padding: 0, textAlign: 'left',
+          cursor: onMemberClick ? 'pointer' : 'default', fontFamily: 'inherit',
+          textDecoration: 'none',
+        }}
+        onMouseEnter={e => { if (onMemberClick) e.currentTarget.style.textDecoration = 'underline' }}
+        onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none' }}
+      >
         {member.displayName}
-      </span>
+      </button>
       <span style={{
         fontSize: 10.5, fontWeight: 700,
         color: style.c, background: style.bg,
@@ -248,9 +260,10 @@ const InvitePanel = ({
 
 interface MembersTabProps {
   projectId: string
+  onMemberClick?: ((userId: string, displayName: string) => void) | undefined
 }
 
-export const MembersTab = ({ projectId }: MembersTabProps) => {
+export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
   const queryClient = useQueryClient()
   const [showInvite, setShowInvite] = React.useState(false)
   const [selectedUserId, setSelectedUserId] = React.useState('')
@@ -334,6 +347,7 @@ export const MembersTab = ({ projectId }: MembersTabProps) => {
             member={m}
             onRemove={() => removeMutation.mutate(m.userId)}
             removing={removeMutation.isPending && removeMutation.variables === m.userId}
+            onMemberClick={onMemberClick}
           />
         ))}
 

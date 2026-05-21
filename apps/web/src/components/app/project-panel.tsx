@@ -87,9 +87,10 @@ const PanelSettingsTab = () => (
 interface ProjectPanelProps {
   project: ProjectDto
   onClose: () => void
+  onMemberClick?: ((userId: string, displayName: string) => void) | undefined
 }
 
-export const ProjectPanel = ({ project, onClose }: ProjectPanelProps) => {
+export const ProjectPanel = ({ project, onClose, onMemberClick }: ProjectPanelProps) => {
   const [tab, setTab] = React.useState('chat')
   const tabs = [
     { id: 'overview',  label: '概要',      icon: 'book' },
@@ -157,7 +158,7 @@ export const ProjectPanel = ({ project, onClose }: ProjectPanelProps) => {
       {tab === 'overview' && <OverviewTab project={project}/>}
       {tab === 'files'    && <FilesTab/>}
       {tab === 'tasks'    && <TasksTab project={project}/>}
-      {tab === 'members'  && <MembersTab projectId={project.id}/>}
+      {tab === 'members'  && <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>}
       {tab === 'gallery'  && <PanelGalleryTab/>}
       {tab === 'ai'       && <PanelAITab/>}
       {tab === 'settings' && <PanelSettingsTab/>}
