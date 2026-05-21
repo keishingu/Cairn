@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { type NextRequest, NextResponse } from 'next/server'
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createClient } from '@/lib/supabase/middleware'
 
 function detectMobile(ua: string): boolean {
   return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
@@ -13,27 +13,14 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-device', detectMobile(ua) ? 'mobile' : 'desktop')
 
-  let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
+  const supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
 
   const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL']
-  const supabaseAnonKey = process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']
+  const supabaseKey = process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']
 
   // Supabase 環境変数が揃っているときのみ認証チェックを行う
-  if (supabaseUrl && supabaseAnonKey) {
-    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
-          )
-        },
-      },
-    })
+  if (supabaseUrl && supabaseKey) {
+    const supabase = createClient(request, supabaseResponse)
 
     const { data: { user } } = await supabase.auth.getUser()
     const { pathname } = request.nextUrl
