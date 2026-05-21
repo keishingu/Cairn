@@ -3,20 +3,10 @@
 
 'use client'
 
-import { MobileHeader } from '../mobile-header'
-import { Icon } from '../../primitives'
+import { useAppShell } from '@/components/app/app-shell-context'
+import { PageKanban } from '@/components/app/pages/kanban-page'
 
 export function MobileKanban() {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-      <MobileHeader title="カンバン" />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: 'var(--text-3)' }}>
-        <div style={{ width: 56, height: 56, borderRadius: 16, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name="kanban" size={24} color="var(--text-4)" />
-        </div>
-        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-2)' }}>準備中</div>
-        <div style={{ fontSize: 13, color: 'var(--text-4)' }}>このページはモバイル版を準備中です</div>
-      </div>
-    </div>
-  )
+  const { openPanel } = useAppShell()
+  return <PageKanban openPanel={openPanel} isMobile />
 }

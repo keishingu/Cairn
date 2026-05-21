@@ -154,9 +154,10 @@ const KanbanColumn = ({
 
 interface KanbanBoardProps {
   onCardClick: (project: ProjectDto) => void
+  isMobile?: boolean
 }
 
-export const KanbanBoard = ({ onCardClick }: KanbanBoardProps) => {
+export const KanbanBoard = ({ onCardClick, isMobile = false }: KanbanBoardProps) => {
   const cols: StatusKey[] = ['plan', 'review', 'wait', 'doing', 'retro']
   const queryClient = useQueryClient()
 
@@ -209,6 +210,34 @@ export const KanbanBoard = ({ onCardClick }: KanbanBoardProps) => {
     }
     setDraggingId(null)
     setDropTarget(null)
+  }
+
+  if (isMobile) {
+    return (
+      <div style={{
+        display: 'flex', gap: 10, overflowX: 'auto', overflowY: 'hidden',
+        padding: '12px 16px', height: '100%',
+        scrollSnapType: 'x mandatory',
+      }}>
+        {cols.map(c => (
+          <div key={c} style={{ flexShrink: 0, width: 'calc(85vw)', maxWidth: 320, scrollSnapAlign: 'start', display: 'flex', flexDirection: 'column' }}>
+            <KanbanColumn
+              status={c}
+              items={groups[c]}
+              onCardClick={onCardClick}
+              onDragStart={() => {}}
+              onDragEnd={() => {}}
+              onDragOver={() => {}}
+              onDrop={() => {}}
+              draggingId={null}
+              dropTarget={null}
+              isLoading={isLoading}
+            />
+          </div>
+        ))}
+        <div style={{ flexShrink: 0, width: 6 }} />
+      </div>
+    )
   }
 
   return (

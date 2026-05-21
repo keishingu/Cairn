@@ -3,6 +3,7 @@
 
 'use client'
 
+import React from 'react'
 import { Icon } from '../primitives'
 
 interface MobileHeaderProps {
