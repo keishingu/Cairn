@@ -2,10 +2,11 @@
 
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Icon } from '../primitives'
+import { Icon, StatusChip } from '../primitives'
 import { STATUS, STATUS_COL } from '../data'
 import type { StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
+import { MobileHeader } from '@/components/app/detail-panel/mobile-header'
 
 // ─── Date helpers ──────────────────────────────────────────────────
 
@@ -16,7 +17,6 @@ function getCalendarStart(year: number, month: number): Date {
 }
 
 function daysBetween(a: Date, b: Date): number {
-  // Use UTC date components to avoid DST-induced hour differences
   const aUTC = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())
   const bUTC = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate())
   return Math.round((bUTC - aUTC) / 86400000)
@@ -26,10 +26,16 @@ function formatYM(year: number, month: number): string {
   return `${year}年${month + 1}月`
 }
 
+function parseLocalDate(s: string): Date {
+  const p = s.split('-')
+  return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]))
+}
+
 // ─── Calendar cell data ────────────────────────────────────────────
 
 interface CalCell {
   date: number
+  fullDate: Date
   isOther: boolean
   isToday: boolean
 }
@@ -43,6 +49,7 @@ function buildCells(year: number, month: number): CalCell[][] {
       d.setDate(d.getDate() + week * 7 + day)
       return {
         date: d.getDate(),
+        fullDate: new Date(d),
         isOther: d.getMonth() !== month,
         isToday: d.toDateString() === today.toDateString(),
       }
@@ -70,8 +77,8 @@ function buildEvents(projects: ProjectDto[], year: number, month: number): CalEv
   for (const project of projects) {
     if (!project.startDate) continue
 
-    const start = new Date(project.startDate + 'T00:00:00')
-    const end = project.endDate ? new Date(project.endDate + 'T00:00:00') : new Date(start)
+    const start = parseLocalDate(project.startDate)
+    const end = project.endDate ? parseLocalDate(project.endDate) : new Date(start)
 
     if (end < calStart || start > calEnd) continue
 
@@ -92,7 +99,6 @@ function buildEvents(projects: ProjectDto[], year: number, month: number): CalEv
     }
   }
 
-  // Greedy row assignment per week
   const result: CalEvent[] = []
   for (let w = 0; w < 6; w++) {
     const weekEvents = raw.filter(e => e.week === w).sort((a, b) => a.day - b.day)
@@ -107,12 +113,24 @@ function buildEvents(projects: ProjectDto[], year: number, month: number): CalEv
   return result
 }
 
-// ─── Calendar grid ─────────────────────────────────────────────────
+function getDateProjects(projects: ProjectDto[], d: Date): ProjectDto[] {
+  const ms = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())
+  return projects.filter(p => {
+    if (!p.startDate) return false
+    const start = parseLocalDate(p.startDate)
+    const end = p.endDate ? parseLocalDate(p.endDate) : start
+    const sMs = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())
+    const eMs = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate())
+    return ms >= sMs && ms <= eMs
+  })
+}
 
-const DATE_AREA = 28  // px reserved for date number at top of each row
-const EVENT_H = 22    // event bar height
-const EVENT_GAP = 2   // gap between event bars
-const MAX_ROWS = 3    // max visible events per cell
+// ─── PC Calendar grid ──────────────────────────────────────────────
+
+const DATE_AREA = 28
+const EVENT_H = 22
+const EVENT_GAP = 2
+const MAX_ROWS = 3
 
 interface CalendarGridProps {
   year: number
@@ -128,7 +146,6 @@ const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: Calendar
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      {/* Day headers */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         {days.map((d, i) => (
           <div key={d} style={{
@@ -139,9 +156,7 @@ const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: Calendar
         ))}
       </div>
 
-      {/* Grid rows */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        {/* Date cells */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: 'repeat(6, 1fr)', height: '100%' }}>
           {cells.flat().map((cell, i) => {
             const week = Math.floor(i / 7)
@@ -174,10 +189,8 @@ const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: Calendar
           })}
         </div>
 
-        {/* Event bars */}
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
           {isLoading ? (
-            // Loading skeleton bars
             Array.from({ length: 4 }).map((_, i) => (
               <div key={i} style={{
                 position: 'absolute',
@@ -194,7 +207,6 @@ const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: Calendar
               const colW = 100 / 7
               const left = `calc(${e.day * colW}% + 4px)`
               const width = `calc(${e.span * colW}% - 8px)`
-              // CSS calc: row fraction (%) + pixel offset within row
               const topOffset = DATE_AREA + e.row * (EVENT_H + EVENT_GAP)
               const top = `calc(${e.week} / 6 * 100% + ${topOffset}px)`
               return (
@@ -227,16 +239,180 @@ const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: Calendar
   )
 }
 
+// ─── Mobile Calendar ───────────────────────────────────────────────
+
+const DOW_JP = ['日', '月', '火', '水', '木', '金', '土']
+
+function formatDateLabel(d: Date): string {
+  return `${d.getMonth() + 1}月${d.getDate()}日(${DOW_JP[d.getDay()]})`
+}
+
+function formatDateRange(start: string | null, end: string | null): string {
+  if (!start) return ''
+  const fmt = (s: string) => {
+    const d = parseLocalDate(s)
+    return `${d.getMonth() + 1}/${d.getDate()}`
+  }
+  if (!end || end === start) return fmt(start)
+  return `${fmt(start)}–${fmt(end)}`
+}
+
+interface MobileCalendarGridProps {
+  year: number
+  month: number
+  projects: ProjectDto[]
+  selectedDate: Date
+  onSelectDate: (d: Date) => void
+}
+
+const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate }: MobileCalendarGridProps) => {
+  const days = ['日', '月', '火', '水', '木', '金', '土']
+  const cells = buildCells(year, month)
+
+  return (
+    <div style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      {/* Day headers */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)' }}>
+        {days.map((d, i) => (
+          <div key={d} style={{
+            padding: '6px 0', fontSize: 11, fontWeight: 600, textAlign: 'center',
+            color: i === 0 ? 'var(--red)' : i === 6 ? 'var(--blue)' : 'var(--text-3)',
+          }}>{d}</div>
+        ))}
+      </div>
+
+      {/* Grid rows */}
+      {cells.map((row, week) => (
+        <div key={week} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: week < 5 ? '1px solid var(--border)' : 'none' }}>
+          {row.map((cell, col) => {
+            const isSelected = cell.fullDate.toDateString() === selectedDate.toDateString()
+            const dayProjects = getDateProjects(projects, cell.fullDate)
+            const dots = dayProjects.slice(0, 3).map(p => STATUS_COL[p.statusName as StatusKey]?.bar ?? 'var(--text-3)')
+            const textColor = cell.isToday && !isSelected
+              ? 'var(--on-accent)'
+              : isSelected
+                ? 'var(--on-accent)'
+                : cell.isOther
+                  ? 'var(--text-4)'
+                  : col === 0
+                    ? 'var(--red)'
+                    : col === 6
+                      ? 'var(--blue)'
+                      : 'var(--text)'
+
+            return (
+              <button
+                key={col}
+                onClick={() => onSelectDate(cell.fullDate)}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  justifyContent: 'center', gap: 3, padding: '6px 2px',
+                  border: 'none', background: 'transparent', cursor: 'pointer',
+                  height: 54, fontFamily: 'inherit',
+                }}
+              >
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 28, height: 28, borderRadius: '50%', fontSize: 13,
+                  fontWeight: isSelected || cell.isToday ? 700 : 400,
+                  background: isSelected || cell.isToday ? 'var(--accent)' : 'transparent',
+                  color: textColor,
+                  transition: 'background .12s',
+                }}>
+                  {cell.date}
+                </span>
+                <div style={{ display: 'flex', gap: 2, height: 5, alignItems: 'center' }}>
+                  {dots.map((color, i) => (
+                    <span key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: isSelected ? 'var(--on-accent)' : color }} />
+                  ))}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+interface MobileDayEventsProps {
+  date: Date
+  projects: ProjectDto[]
+  onProjectClick: (project: ProjectDto) => void
+  isLoading: boolean
+}
+
+const MobileDayEvents = ({ date, projects, onProjectClick, isLoading }: MobileDayEventsProps) => {
+  const dayProjects = getDateProjects(projects, date)
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
+      <div style={{
+        padding: '12px 16px 8px',
+        fontSize: 13, fontWeight: 600, color: 'var(--text-2)',
+        borderBottom: '1px solid var(--divider)',
+        position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1,
+      }}>
+        {formatDateLabel(date)}
+      </div>
+
+      {isLoading ? (
+        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} style={{ height: 56, borderRadius: 8, background: 'var(--card-2)' }} />
+          ))}
+        </div>
+      ) : dayProjects.length === 0 ? (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+          予定なし
+        </div>
+      ) : (
+        <div style={{ padding: '8px 0' }}>
+          {dayProjects.map((p, i) => {
+            const cfg = STATUS_COL[p.statusName as StatusKey]
+            const dateStr = formatDateRange(p.startDate, p.endDate)
+            return (
+              <button
+                key={p.id}
+                onClick={() => onProjectClick(p)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '12px 16px', border: 'none', background: 'transparent',
+                  borderTop: i > 0 ? '1px solid var(--divider)' : 'none',
+                  cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                }}
+              >
+                <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.title}
+                  </div>
+                  {dateStr && (
+                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
+                  )}
+                </div>
+                <StatusChip s={p.statusName as StatusKey} />
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Page ──────────────────────────────────────────────────────────
 
 interface PageCalendarProps {
   openPanel: (project?: ProjectDto) => void
+  isMobile?: boolean
 }
 
-export const PageCalendar = ({ openPanel }: PageCalendarProps) => {
+export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps) => {
   const today = new Date()
   const [year, setYear] = React.useState(today.getFullYear())
   const [month, setMonth] = React.useState(today.getMonth())
+  const [selectedDate, setSelectedDate] = React.useState<Date>(today)
 
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
@@ -248,7 +424,11 @@ export const PageCalendar = ({ openPanel }: PageCalendarProps) => {
     [projects, year, month],
   )
 
-  const goToday = () => { setYear(today.getFullYear()); setMonth(today.getMonth()) }
+  const goToday = () => {
+    setYear(today.getFullYear())
+    setMonth(today.getMonth())
+    setSelectedDate(today)
+  }
   const goPrev = () => {
     if (month === 0) { setYear(y => y - 1); setMonth(11) }
     else setMonth(m => m - 1)
@@ -260,6 +440,59 @@ export const PageCalendar = ({ openPanel }: PageCalendarProps) => {
 
   const isCurrentMonth = year === today.getFullYear() && month === today.getMonth()
 
+  // ── Mobile layout ──────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
+        <MobileHeader
+          title={formatYM(year, month)}
+          right={
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {!isCurrentMonth && (
+                <button
+                  onClick={goToday}
+                  style={{
+                    border: '1px solid var(--border)', borderRadius: 7, background: 'transparent',
+                    color: 'var(--accent)', fontSize: 12.5, fontWeight: 600,
+                    padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  今日
+                </button>
+              )}
+              <button
+                onClick={goPrev}
+                style={{ width: 32, height: 32, border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}
+              >
+                <Icon name="chevLeft" size={18} />
+              </button>
+              <button
+                onClick={goNext}
+                style={{ width: 32, height: 32, border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}
+              >
+                <Icon name="chevRight" size={18} />
+              </button>
+            </div>
+          }
+        />
+        <MobileCalendarGrid
+          year={year}
+          month={month}
+          projects={projects}
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+        />
+        <MobileDayEvents
+          date={selectedDate}
+          projects={projects}
+          onProjectClick={openPanel}
+          isLoading={isLoading}
+        />
+      </div>
+    )
+  }
+
+  // ── PC layout ──────────────────────────────────────────────────
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px 24px', overflow: 'hidden' }}>
       {/* Toolbar */}
