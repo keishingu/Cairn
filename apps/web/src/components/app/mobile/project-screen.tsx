@@ -96,7 +96,7 @@ export function MobileProjectScreen({ project, onBack }: MobileProjectScreenProp
         {tab === 'overview' && <OverviewTab project={project}/>}
         {tab === 'chat'     && <ChatTab project={project}/>}
         {tab === 'tasks'    && <TasksTab project={project}/>}
-        {tab === 'files'    && <FilesTab/>}
+        {tab === 'files'    && <FilesTab projectId={project.id}/>}
         {tab === 'members'  && <MembersTab projectId={project.id}/>}
       </div>
     </div>

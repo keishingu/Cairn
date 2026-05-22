@@ -25,7 +25,7 @@ packages/config/   tsconfig / ESLint の共有設定
 - **状態管理**: TanStack Query (サーバー状態), Zustand (グローバルUI), nuqs (URL状態)
 - **DB**: Supabase PostgreSQL + Drizzle ORM + pgvector
 - **認証・リアルタイム・ストレージ**: Supabase Auth / Realtime / Storage
-- ただし MVP のチャット同期は、まず TanStack Query のポーリングで実装し、必要に応じて Supabase Realtime へ段階移行する
+- チャット同期は TanStack Query のポーリングで実装し、必要に応じて Supabase Realtime へ移行する
 - **AI**: Vercel AI SDK + OpenAI API (gpt-4o / gpt-4o-mini)
 - **非同期ジョブ**: Inngest
 
@@ -35,14 +35,15 @@ packages/config/   tsconfig / ESLint の共有設定
 - `packages/core` に業務ロジックを集約し、DB・フレームワークから分離する
 - ポートはインターフェース定義のみ。実装は `apps/web` 側に置く
 - CQRS をコード構造として軽量に採用（Command / Query を分けて命名する）
-- MVP では Write DB / Read DB を分離しない
+- Write DB / Read DB は分離しない
 
 
 ## ローカル開発環境
 
 - **Supabase CLI + Docker** を使う。`supabase start` で PostgreSQL / Auth / Storage / Realtime / Studio が一括起動する
 - 環境変数は `apps/web/.env.local.example` をコピーして使う。`supabase start` のデフォルトキーが事前入力済み
-- DBスキーマは `packages/db/src/schema/` で管理（Drizzle が正）→ `pnpm db:generate` で `supabase/migrations/` にSQLを生成 → `supabase db reset` でローカルに適用
+- DBスキーマは `packages/db/src/schema/` で管理（Drizzle が正）→ `pnpm db:generate` で `supabase/migrations/` にSQLを生成 → `supabase migration up` でローカルに差分適用（データを保持したまま未適用マイグレーションだけ実行）
+- `supabase db reset` はデータを全削除して再構築するため、CI や初回セットアップ専用
 
 起動順序:
 ```bash

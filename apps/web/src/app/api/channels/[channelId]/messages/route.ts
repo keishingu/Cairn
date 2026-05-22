@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { postMessageSchema } from '@cairn/shared'
+import { type AttachmentDto, postMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 
 export interface ReactionDto {
@@ -18,6 +18,7 @@ export interface MessageDto {
   senderName: string
   createdAt: string
   reactions: ReactionDto[]
+  attachments: AttachmentDto[]
 }
 
 declare global {
@@ -42,9 +43,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages, profiles, messageReactions } = await import('@cairn/db')
+    const { messages, profiles, messageReactions, messageAttachments, files } = await import('@cairn/db')
     const { eq, isNull, inArray, and } = await import('drizzle-orm')
-
     const { desc } = await import('drizzle-orm')
 
     const rows = await db
@@ -64,16 +64,35 @@ export async function GET(_req: Request, { params }: RouteContext) {
     rows.reverse()
 
     const messageIds = rows.map(r => r.id)
-    const reactionRows = messageIds.length > 0
-      ? await db
-          .select({
-            messageId: messageReactions.messageId,
-            emoji: messageReactions.emoji,
-            userId: messageReactions.userId,
-          })
-          .from(messageReactions)
-          .where(inArray(messageReactions.messageId, messageIds))
-      : []
+
+    const [reactionRows, attachmentRows] = await Promise.all([
+      messageIds.length > 0
+        ? db
+            .select({
+              messageId: messageReactions.messageId,
+              emoji: messageReactions.emoji,
+              userId: messageReactions.userId,
+            })
+            .from(messageReactions)
+            .where(inArray(messageReactions.messageId, messageIds))
+        : Promise.resolve([]),
+      messageIds.length > 0
+        ? db
+            .select({
+              id: messageAttachments.id,
+              messageId: messageAttachments.messageId,
+              fileId: messageAttachments.fileId,
+              displayOrder: messageAttachments.displayOrder,
+              fileName: files.fileName,
+              mimeType: files.mimeType,
+              fileSize: files.fileSize,
+            })
+            .from(messageAttachments)
+            .innerJoin(files, eq(messageAttachments.fileId, files.id))
+            .where(inArray(messageAttachments.messageId, messageIds))
+            .orderBy(messageAttachments.displayOrder)
+        : Promise.resolve([]),
+    ])
 
     const reactionMap = new Map<string, ReactionDto[]>()
     for (const r of reactionRows) {
@@ -89,6 +108,19 @@ export async function GET(_req: Request, { params }: RouteContext) {
       void key
     }
 
+    const attachmentMap = new Map<string, AttachmentDto[]>()
+    for (const a of attachmentRows) {
+      if (!attachmentMap.has(a.messageId)) attachmentMap.set(a.messageId, [])
+      attachmentMap.get(a.messageId)!.push({
+        id: a.id,
+        fileId: a.fileId,
+        fileName: a.fileName,
+        mimeType: a.mimeType,
+        fileSize: a.fileSize,
+        displayOrder: a.displayOrder,
+      })
+    }
+
     const result: MessageDto[] = rows.map(r => ({
       id: r.id,
       content: r.content,
@@ -96,6 +128,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       senderName: r.senderName,
       createdAt: r.createdAt.toISOString(),
       reactions: reactionMap.get(r.id) ?? [],
+      attachments: attachmentMap.get(r.id) ?? [],
     }))
 
     return NextResponse.json(result)
@@ -130,6 +163,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       senderName: '山田 太郎',
       createdAt: new Date().toISOString(),
       reactions: [],
+      attachments: [],
     }
     const mockStore = getMockStore()
     const prev = mockStore.get(channelId) ?? []
@@ -139,21 +173,37 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages, profiles } = await import('@cairn/db')
+    const { messages, profiles, messageAttachments } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
 
-    const [inserted] = await db
-      .insert(messages)
-      .values({
-        channelId,
-        senderId: ctx.userId,
-        content: parsed.data.content,
-        messageType: parsed.data.messageType ?? 'text',
-        parentMessageId: parsed.data.parentMessageId ?? null,
-      })
-      .returning({ id: messages.id, content: messages.content, senderId: messages.senderId, createdAt: messages.createdAt })
+    const attachmentFileIds = parsed.data.attachmentFileIds ?? []
 
-    if (!inserted) throw new Error('Insert returned no rows')
+    const inserted = await db.transaction(async (tx) => {
+      const [msg] = await tx
+        .insert(messages)
+        .values({
+          channelId,
+          senderId: ctx.userId,
+          content: parsed.data.content,
+          messageType: parsed.data.messageType ?? 'text',
+          parentMessageId: parsed.data.parentMessageId ?? null,
+        })
+        .returning({ id: messages.id, content: messages.content, senderId: messages.senderId, createdAt: messages.createdAt })
+
+      if (!msg) throw new Error('Insert returned no rows')
+
+      if (attachmentFileIds.length > 0) {
+        await tx.insert(messageAttachments).values(
+          attachmentFileIds.map((fileId, i) => ({
+            messageId: msg.id,
+            fileId,
+            displayOrder: i,
+          })),
+        )
+      }
+
+      return msg
+    })
 
     const [profile] = await db
       .select({ displayName: profiles.displayName })
@@ -167,6 +217,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       senderName: profile?.displayName ?? '不明',
       createdAt: inserted.createdAt.toISOString(),
       reactions: [],
+      attachments: [],
     } satisfies MessageDto, { status: 201 })
   } catch (err) {
     console.error('[/api/channels/[channelId]/messages POST] DB query failed:', err)

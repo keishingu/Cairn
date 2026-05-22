@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
 import { MEMBERS } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -51,37 +52,95 @@ const PanelAITab = () => (
   </div>
 )
 
-const PanelSettingsTab = () => (
-  <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-    <div style={{ padding: '20px 16px', borderRadius: 12, background: 'var(--card-2)', border: '1px dashed var(--border-2)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
-      <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}>
-        <Icon name="settings" size={18}/>
+const PanelSettingsTab = ({ projectId, onDeleted }: { projectId: string; onDeleted: () => void }) => {
+  const [confirmDelete, setConfirmDelete] = React.useState(false)
+  const [isDeleting, setIsDeleting] = React.useState(false)
+  const [deleteError, setDeleteError] = React.useState<string | null>(null)
+  const queryClient = useQueryClient()
+
+  const handleDelete = async () => {
+    setIsDeleting(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        setDeleteError(data.error ?? '削除に失敗しました')
+        return
+      }
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      onDeleted()
+    } catch {
+      setDeleteError('削除に失敗しました')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  return (
+    <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="card" style={{ borderRadius: 10, overflow: 'hidden' }}>
+        {[
+          { i: 'bell',     l: '通知設定',       s: 'メンション・更新・リマインド' },
+          { i: 'users',    l: '公開範囲',       s: 'メンバー・閲覧権限' },
+          { i: 'sparkles', l: 'AIアシスタント', s: '自動要約・提案の動作' },
+          { i: 'file',     l: 'エクスポート',   s: 'PDF / Markdown' },
+          { i: 'close',    l: 'アーカイブ',     s: 'プロジェクトを保管する' },
+        ].map((r, i, arr) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderBottom: i < arr.length - 1 ? '1px solid var(--divider)' : 'none', opacity: 0.7 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', flexShrink: 0 }}>
+              <Icon name={r.i} size={13}/>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{r.l}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 1 }}>{r.s}</div>
+            </div>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-4)', padding: '2px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)' }}>準備中</span>
+          </div>
+        ))}
       </div>
-      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-2)' }}>設定は準備中です</div>
-      <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5, maxWidth: 280 }}>プロジェクト固有の通知・公開範囲・アーカイブなどの設定をここで行えるようになります。</div>
-    </div>
-    <div className="card" style={{ borderRadius: 10, overflow: 'hidden' }}>
-      {[
-        { i: 'bell',     l: '通知設定',       s: 'メンション・更新・リマインド' },
-        { i: 'users',    l: '公開範囲',       s: 'メンバー・閲覧権限' },
-        { i: 'sparkles', l: 'AIアシスタント', s: '自動要約・提案の動作' },
-        { i: 'file',     l: 'エクスポート',   s: 'PDF / Markdown' },
-        { i: 'close',    l: 'アーカイブ',     s: 'プロジェクトを保管する' },
-      ].map((r, i, arr) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderBottom: i < arr.length - 1 ? '1px solid var(--divider)' : 'none', opacity: 0.7 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', flexShrink: 0 }}>
-            <Icon name={r.i} size={13}/>
+
+      <div style={{ padding: 14, borderRadius: 10, border: '1px solid var(--red)', background: 'var(--red-soft)' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--red-text)', marginBottom: 10 }}>危険な操作</div>
+        {!confirmDelete ? (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            style={{ width: '100%', padding: '8px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            プロジェクトを削除する
+          </button>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 12, color: 'var(--red-text)', lineHeight: 1.6 }}>
+              チャット・ファイル・タスクを含むすべてのデータが完全に削除されます。この操作は取り消せません。
+            </div>
+            {deleteError && (
+              <div style={{ fontSize: 12, color: 'var(--red-text)', padding: '6px 10px', borderRadius: 6, background: 'rgba(0,0,0,0.08)' }}>
+                ⚠️ {deleteError}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => { setConfirmDelete(false); setDeleteError(null) }}
+                disabled={isDeleting}
+                style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text-2)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', background: 'var(--red)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: isDeleting ? 'default' : 'pointer', fontFamily: 'inherit', opacity: isDeleting ? 0.7 : 1 }}
+              >
+                {isDeleting ? '削除中...' : '本当に削除する'}
+              </button>
+            </div>
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{r.l}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 1 }}>{r.s}</div>
-          </div>
-          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-4)', padding: '2px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)' }}>準備中</span>
-        </div>
-      ))}
+        )}
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 // ─── Project Panel ─────────────────────────────────────────────────
 interface ProjectPanelProps {
@@ -156,12 +215,12 @@ export const ProjectPanel = ({ project, onClose, onMemberClick }: ProjectPanelPr
 
       {tab === 'chat'     && <ChatTab project={project}/>}
       {tab === 'overview' && <OverviewTab project={project}/>}
-      {tab === 'files'    && <FilesTab/>}
+      {tab === 'files'    && <FilesTab projectId={project.id}/>}
       {tab === 'tasks'    && <TasksTab project={project}/>}
       {tab === 'members'  && <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>}
       {tab === 'gallery'  && <PanelGalleryTab/>}
       {tab === 'ai'       && <PanelAITab/>}
-      {tab === 'settings' && <PanelSettingsTab/>}
+      {tab === 'settings' && <PanelSettingsTab projectId={project.id} onDeleted={onClose}/>}
     </aside>
   )
 }

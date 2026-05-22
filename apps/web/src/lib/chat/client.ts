@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { AttachmentDto } from '@cairn/shared'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
@@ -67,11 +68,17 @@ async function fetchChannelMessages(channelId: string): Promise<MessageDto[]> {
   return res.json()
 }
 
-async function postChannelMessage(channelId: string, content: string): Promise<MessageDto> {
+interface SendMessageInput {
+  content: string
+  attachmentFileIds?: string[]
+  optimisticAttachments?: AttachmentDto[]
+}
+
+async function postChannelMessage(channelId: string, input: SendMessageInput): Promise<MessageDto> {
   const res = await fetch(`/api/channels/${channelId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content: input.content, attachmentFileIds: input.attachmentFileIds }),
   })
   if (!res.ok) throw new Error('メッセージの送信に失敗しました')
   return res.json()
@@ -155,19 +162,20 @@ export function useSendChannelMessage(
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (content: string) => postChannelMessage(channelId!, content),
-    onMutate: async (content) => {
+    mutationFn: (input: SendMessageInput) => postChannelMessage(channelId!, input),
+    onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: chatQueryKeys.messages(channelId) })
       const prev = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
 
       if (currentUser) {
         const optimisticMsg: MessageDto = {
           id: `optimistic-${crypto.randomUUID()}`,
-          content,
+          content: input.content,
           senderId: currentUser.id,
           senderName: currentUser.displayName,
           createdAt: new Date().toISOString(),
           reactions: [],
+          attachments: input.optimisticAttachments ?? [],
         }
         queryClient.setQueryData<MessageDto[]>(
           chatQueryKeys.messages(channelId),
@@ -178,15 +186,22 @@ export function useSendChannelMessage(
 
       return { prev, optimisticId: null }
     },
-    onError: (_err, _content, context) => {
+    onError: (_err, _input, context) => {
       if (context?.prev !== undefined) {
         queryClient.setQueryData(chatQueryKeys.messages(channelId), context.prev)
       }
     },
-    onSuccess: (newMessage, _content, context) => {
+    onSuccess: (newMessage, input, context) => {
+      // POST レスポンスの attachments は空のため、楽観的データを維持して次のポーリングまで表示を保つ
+      const finalMessage: MessageDto = {
+        ...newMessage,
+        attachments: newMessage.attachments.length > 0
+          ? newMessage.attachments
+          : (input.optimisticAttachments ?? []),
+      }
       queryClient.setQueryData<MessageDto[]>(
         chatQueryKeys.messages(channelId),
-        (old) => (old ?? []).map((m) => m.id === context?.optimisticId ? newMessage : m),
+        (old) => (old ?? []).map((m) => m.id === context?.optimisticId ? finalMessage : m),
       )
     },
   })

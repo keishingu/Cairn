@@ -17,12 +17,18 @@ export const updateProjectStatusSchema = z.object({
   statusId: z.string().uuid(),
 })
 
-export const postMessageSchema = z.object({
-  channelId: z.string().uuid(),
-  content: z.string().min(1).max(10000),
-  messageType: z.enum(['text', 'html', 'system']).default('text'),
-  parentMessageId: z.string().uuid().optional(),
-})
+export const postMessageSchema = z
+  .object({
+    channelId: z.string().uuid(),
+    content: z.string().max(10000).default(''),
+    messageType: z.enum(['text', 'html', 'system']).default('text'),
+    parentMessageId: z.string().uuid().optional(),
+    attachmentFileIds: z.array(z.string().uuid()).max(10).optional(),
+  })
+  .refine(
+    (d) => d.content.length > 0 || (d.attachmentFileIds?.length ?? 0) > 0,
+    { message: 'テキストまたは添付ファイルが必要です' },
+  )
 
 export const createTaskSchema = z.object({
   projectId: z.string().uuid(),
@@ -47,3 +53,12 @@ export type UpdateProjectStatusInput = z.infer<typeof updateProjectStatusSchema>
 export type PostMessageInput = z.infer<typeof postMessageSchema>
 export type CreateTaskInput = z.infer<typeof createTaskSchema>
 export type UploadGalleryItemInput = z.infer<typeof uploadGalleryItemSchema>
+
+export interface AttachmentDto {
+  id: string
+  fileId: string
+  fileName: string
+  mimeType: string | null
+  fileSize: number | null
+  displayOrder: number
+}
