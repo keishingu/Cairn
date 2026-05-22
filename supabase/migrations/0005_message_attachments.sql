@@ -36,5 +36,5 @@ CREATE POLICY "chat_attachments_delete"
 ON storage.objects FOR DELETE TO authenticated
 USING (
   bucket_id = 'chat-attachments'
-  AND owner_id = auth.uid()
+  AND owner_id = auth.uid()::text
 );
