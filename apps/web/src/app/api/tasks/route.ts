@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { createTaskSchema } from '@cairn/shared'
 
 export interface TaskDto {
   id: string
@@ -29,6 +30,17 @@ const MOCK_TASKS: TaskDto[] = [
   { id: 'tk11', projectId: 'p4', projectTitle: '雪山訓練',           title: 'ルート確認と地図の準備',       status: 'todo',        priority: 'medium', dueDate: '2026-05-27', assigneeName: '小林 大地' },
   { id: 'tk12', projectId: 'p7', projectTitle: '沢登り練習会',       title: '安全講習の資料を作成する',     status: 'in_progress', priority: 'high',   dueDate: '2026-05-22', assigneeName: '鈴木 健' },
 ]
+
+const MOCK_PROJECT_TITLES: Record<string, string> = {
+  p1: '北アルプス縦走計画',
+  p2: '夏山合宿計画',
+  p3: 'クライミング講習会',
+  p4: '雪山訓練',
+  p5: '秋山ハイキング',
+  p6: '春山合宿',
+  p7: '沢登り練習会',
+  p8: '最終ハイキング',
+}
 
 function mockTasks(projectId?: string): TaskDto[] {
   return projectId ? MOCK_TASKS.filter(t => t.projectId === projectId) : MOCK_TASKS
@@ -92,5 +104,82 @@ export async function GET(req: Request) {
   } catch (err) {
     console.error('[GET /api/tasks] DB query failed:', err)
     return NextResponse.json(mockTasks(projectId))
+  }
+}
+
+export async function POST(req: Request) {
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const parsed = createTaskSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
+  }
+
+  if (!process.env['DATABASE_URL']) {
+    const mock: TaskDto = {
+      id: crypto.randomUUID(),
+      projectId: parsed.data.projectId,
+      projectTitle: MOCK_PROJECT_TITLES[parsed.data.projectId] ?? 'プロジェクト',
+      title: parsed.data.title,
+      status: 'todo',
+      priority: parsed.data.priority,
+      dueDate: parsed.data.dueDate ?? null,
+      assigneeName: null,
+    }
+    return NextResponse.json(mock, { status: 201 })
+  }
+
+  try {
+    const { ctx, error } = await getAuthContext()
+    if (error) return error
+
+    const { db } = await import('@cairn/db')
+    const { tasks, projects, profiles } = await import('@cairn/db')
+    const { eq } = await import('drizzle-orm')
+
+    const [inserted] = await db
+      .insert(tasks)
+      .values({
+        projectId: parsed.data.projectId,
+        title: parsed.data.title,
+        description: parsed.data.description ?? null,
+        priority: parsed.data.priority,
+        assigneeId: parsed.data.assigneeId ?? null,
+        dueDate: parsed.data.dueDate ?? null,
+        createdBy: ctx.userId,
+      })
+      .returning()
+
+    if (!inserted) throw new Error('Insert returned no rows')
+
+    const [projectRow] = await db
+      .select({ title: projects.title })
+      .from(projects)
+      .where(eq(projects.id, inserted.projectId))
+
+    const assigneeRow = inserted.assigneeId
+      ? (await db.select({ displayName: profiles.displayName }).from(profiles).where(eq(profiles.id, inserted.assigneeId)))[0]
+      : null
+
+    const result: TaskDto = {
+      id: inserted.id,
+      projectId: inserted.projectId,
+      projectTitle: projectRow?.title ?? '',
+      title: inserted.title,
+      status: inserted.status,
+      priority: inserted.priority,
+      dueDate: inserted.dueDate,
+      assigneeName: assigneeRow?.displayName ?? null,
+    }
+
+    return NextResponse.json(result, { status: 201 })
+  } catch (err) {
+    console.error('[POST /api/tasks] DB query failed:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

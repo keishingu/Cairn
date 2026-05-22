@@ -4,6 +4,7 @@ import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
 import type { TaskDto } from '@/app/api/tasks/route'
+import type { ProjectDto } from '@/app/api/projects/route'
 
 type FilterKey = 'all' | 'todo' | 'in_progress' | 'done'
 type GroupKey = 'project' | 'priority' | 'none'
@@ -37,6 +38,8 @@ function formatDueDate(dueDate: string | null): { label: string; overdue: boolea
   return { label, overdue }
 }
 
+// ─── TaskRow ──────────────────────────────────────────────────────
+
 interface TaskRowProps {
   task: TaskDto
   onToggle: (id: string, current: TaskDto['status']) => void
@@ -48,11 +51,12 @@ const TaskRow = ({ task, onToggle, toggling }: TaskRowProps) => {
   const isDone = task.status === 'done'
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      padding: '10px 16px', borderBottom: '1px solid var(--divider)',
-      opacity: toggling ? 0.5 : 1, transition: 'opacity .15s',
-    }}
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '10px 16px', borderBottom: '1px solid var(--divider)',
+        opacity: toggling ? 0.5 : 1, transition: 'opacity .15s',
+      }}
       onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
     >
@@ -126,6 +130,8 @@ const TaskRowSkeleton = () => (
   </div>
 )
 
+// ─── Section ──────────────────────────────────────────────────────
+
 interface SectionProps {
   label: string
   count: number
@@ -164,11 +170,268 @@ const Section = ({ label, count, tasks, onToggle, togglingId, defaultOpen = true
   )
 }
 
+// ─── GroupMenu ────────────────────────────────────────────────────
+
+interface GroupMenuProps {
+  groupBy: GroupKey
+  onChange: (g: GroupKey) => void
+  isMobile: boolean
+}
+
+const GROUP_OPTIONS: { key: GroupKey; label: string }[] = [
+  { key: 'project', label: 'プロジェクト' },
+  { key: 'priority', label: '優先度' },
+  { key: 'none', label: 'なし' },
+]
+
+const GroupMenu = ({ groupBy, onChange, isMobile }: GroupMenuProps) => {
+  const [open, setOpen] = React.useState(false)
+  const ref = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const currentLabel = GROUP_OPTIONS.find(o => o.key === groupBy)?.label ?? groupBy
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        className="btn"
+        onClick={() => setOpen(o => !o)}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+      >
+        {isMobile ? <Icon name="layers" size={14} /> : `グループ: ${currentLabel}`}
+        {!isMobile && <Icon name="chevDown" size={12} />}
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', right: 0,
+          background: 'var(--card)', border: '1px solid var(--border)',
+          borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+          minWidth: 150, zIndex: 50, overflow: 'hidden',
+        }}>
+          <div style={{ padding: '6px 0' }}>
+            {GROUP_OPTIONS.map(opt => (
+              <button
+                key={opt.key}
+                onClick={() => { onChange(opt.key); setOpen(false) }}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 14px', border: 'none',
+                  background: groupBy === opt.key ? 'var(--card-hover)' : 'transparent',
+                  color: groupBy === opt.key ? 'var(--text)' : 'var(--text-2)',
+                  fontSize: 13, fontWeight: groupBy === opt.key ? 600 : 400,
+                  cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                }}
+              >
+                <span style={{ width: 14, display: 'inline-flex', alignItems: 'center' }}>
+                  {groupBy === opt.key && <Icon name="check" size={12} strokeWidth={2.5} />}
+                </span>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── CreateTaskModal ──────────────────────────────────────────────
+
+interface CreateTaskModalProps {
+  onClose: () => void
+}
+
+const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
+  const queryClient = useQueryClient()
+  const [title, setTitle] = React.useState('')
+  const [projectId, setProjectId] = React.useState('')
+  const [priority, setPriority] = React.useState<TaskDto['priority']>('medium')
+  const [dueDate, setDueDate] = React.useState('')
+
+  const { data: projects = [] } = useQuery<ProjectDto[]>({
+    queryKey: ['projects'],
+    queryFn: () => fetch('/api/projects').then(r => r.json()),
+  })
+
+  const mutation = useMutation({
+    mutationFn: async (data: { title: string; projectId: string; priority: string; dueDate?: string }) => {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error('Failed to create task')
+      return res.json() as Promise<TaskDto>
+    },
+    onSuccess: (newTask) => {
+      queryClient.setQueryData<TaskDto[]>(['tasks'], old => old ? [newTask, ...old] : [newTask])
+      onClose()
+    },
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!title.trim() || !projectId) return
+    mutation.mutate({
+      title: title.trim(),
+      projectId,
+      priority,
+      ...(dueDate ? { dueDate } : {}),
+    })
+  }
+
+  const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) onClose()
+  }
+
+  const fieldLabel: React.CSSProperties = {
+    fontSize: 12, fontWeight: 600, color: 'var(--text-3)',
+    display: 'block', marginBottom: 6,
+  }
+  const fieldInput: React.CSSProperties = {
+    width: '100%', padding: '9px 12px', borderRadius: 8,
+    border: '1.5px solid var(--border-2)', background: 'var(--bg)',
+    color: 'var(--text)', fontSize: 14, fontFamily: 'inherit',
+    boxSizing: 'border-box' as const, outline: 'none',
+  }
+
+  return (
+    <div
+      onClick={handleBackdrop}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 200,
+        background: 'rgba(0,0,0,0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0 16px',
+      }}
+    >
+      <div style={{
+        background: 'var(--card)', borderRadius: 12,
+        width: '100%', maxWidth: 480,
+        boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+        animation: 'fadeSlideIn .15s ease',
+      }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 20px', borderBottom: '1px solid var(--border)',
+        }}>
+          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>タスクを追加</span>
+          <button
+            onClick={onClose}
+            style={{
+              width: 28, height: 28, borderRadius: 6, border: 'none',
+              background: 'transparent', color: 'var(--text-3)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Icon name="close" size={15} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label style={fieldLabel}>
+              タイトル <span style={{ color: 'var(--red)' }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="タスク名を入力..."
+              required
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+              style={fieldInput}
+            />
+          </div>
+
+          <div>
+            <label style={fieldLabel}>
+              プロジェクト <span style={{ color: 'var(--red)' }}>*</span>
+            </label>
+            <select
+              value={projectId}
+              onChange={e => setProjectId(e.target.value)}
+              required
+              style={{ ...fieldInput, color: projectId ? 'var(--text)' : 'var(--text-4)' }}
+            >
+              <option value="" disabled>プロジェクトを選択...</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.title}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={fieldLabel}>優先度</label>
+              <select
+                value={priority}
+                onChange={e => setPriority(e.target.value as TaskDto['priority'])}
+                style={fieldInput}
+              >
+                <option value="high">高</option>
+                <option value="medium">中</option>
+                <option value="low">低</option>
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={fieldLabel}>期限日</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={e => setDueDate(e.target.value)}
+                style={fieldInput}
+              />
+            </div>
+          </div>
+
+          {mutation.isError && (
+            <div style={{
+              fontSize: 12.5, color: 'var(--red-text)', background: 'var(--red-soft)',
+              padding: '8px 12px', borderRadius: 6,
+            }}>
+              タスクの作成に失敗しました。もう一度お試しください。
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4 }}>
+            <button type="button" onClick={onClose} className="btn" style={{ padding: '8px 16px' }}>
+              キャンセル
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={!title.trim() || !projectId || mutation.isPending}
+              style={{ padding: '8px 16px' }}
+            >
+              {mutation.isPending ? '追加中...' : '追加'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── PageTasks ────────────────────────────────────────────────────
+
 export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const queryClient = useQueryClient()
   const [filter, setFilter] = React.useState<FilterKey>('all')
   const [groupBy, setGroupBy] = React.useState<GroupKey>('project')
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
+  const [showAddModal, setShowAddModal] = React.useState(false)
 
   const { data: tasks = [], isLoading } = useQuery<TaskDto[]>({
     queryKey: ['tasks'],
@@ -262,7 +525,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
         padding: isMobile ? '8px 12px' : '14px 20px',
         borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-        overflowX: isMobile ? 'auto' : 'visible',
+        overflowX: 'auto',
       }}>
         <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
           {filters.map(f => (
@@ -270,7 +533,8 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
               key={f.id}
               onClick={() => setFilter(f.id)}
               style={{
-                padding: '6px 10px', borderRadius: 6, border: 'none',
+                padding: isMobile ? '6px 8px' : '6px 10px',
+                borderRadius: 6, border: 'none',
                 background: filter === f.id ? 'var(--card-hover)' : 'transparent',
                 color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
                 fontSize: isMobile ? 12 : 12.5, fontWeight: filter === f.id ? 600 : 500,
@@ -280,14 +544,14 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
           ))}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
-          {!isMobile && (
-            <button className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              グループ: {groupBy === 'project' ? 'プロジェクト' : groupBy === 'priority' ? '優先度' : 'なし'}
-              <Icon name="chevDown" size={12} />
-            </button>
-          )}
-          <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <Icon name="plus" size={13} strokeWidth={2.4} />{!isMobile && ' タスクを追加'}
+          <GroupMenu groupBy={groupBy} onChange={setGroupBy} isMobile={isMobile} />
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowAddModal(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+          >
+            <Icon name="plus" size={13} strokeWidth={2.4} />
+            {!isMobile && 'タスクを追加'}
           </button>
         </div>
       </div>
@@ -304,7 +568,9 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
               <Icon name="check" size={22} />
             </div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>タスクはありません</div>
-            <div style={{ fontSize: 12.5 }}>すべてのタスクが完了しています</div>
+            <div style={{ fontSize: 12.5 }}>
+              {filter === 'all' ? 'タスクを追加してみましょう' : `「${STATUS_LABEL[filter as TaskDto['status']]}」のタスクはありません`}
+            </div>
           </div>
         ) : (
           <div style={{ margin: isMobile ? '12px' : '16px 20px', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
@@ -322,6 +588,8 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
           </div>
         )}
       </div>
+
+      {showAddModal && <CreateTaskModal onClose={() => setShowAddModal(false)} />}
     </div>
   )
 }
