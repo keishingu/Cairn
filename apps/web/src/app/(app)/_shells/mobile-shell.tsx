@@ -17,6 +17,7 @@ import { PageCalendar } from '@/components/app/pages/projects-calendar'
 import { PageKanban } from '@/components/app/pages/projects-kanban'
 import { Icon } from '@/components/app/primitives'
 import { AppShellContext } from '@/components/app/app-shell-context'
+import { NavigationProgress } from '@/components/navigation-progress'
 import { PageMembers } from '@/components/app/pages/members-page'
 
 const MOBILE_STORAGE_KEY = 'cairn:projects_view_mobile'
@@ -100,6 +101,7 @@ export function MobileShell() {
   return (
     <AppShellContext.Provider value={{ openPanel: () => {}, openNotif: () => {}, projectsView, setProjectsView }}>
       <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden' }}>
+        <NavigationProgress />
         <div className="app" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
             <MobilePage page={page} projectsView={projectsView} />

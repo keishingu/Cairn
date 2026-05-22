@@ -14,6 +14,7 @@ import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { PageNotifications } from '@/components/app/pages/notifications'
 import { AppShellContext } from '@/components/app/app-shell-context'
+import { NavigationProgress } from '@/components/navigation-progress'
 
 const PC_STORAGE_KEY = 'cairn:projects_view_pc'
 type ProjectsView = 'list' | 'calendar' | 'kanban'
@@ -95,6 +96,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
       setProjectsView,
     }}>
       <div className="app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
+        <NavigationProgress />
         <div className="app" style={{ width: '100%', height: '100%', display: 'flex', background: 'var(--bg)', overflow: 'hidden' }}>
           <Sidebar page={page} setPage={navigate}/>
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, position: 'relative' }}>
