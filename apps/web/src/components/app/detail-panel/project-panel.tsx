@@ -250,14 +250,12 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
             padding: isMobile ? '10px 12px' : '7px 10px',
             borderRadius: 6, border: 'none',
             background: tab === t.id ? 'var(--card-hover)' : 'transparent',
-            color: tab === t.id ? (isMobile ? 'var(--accent)' : 'var(--text)') : 'var(--text-3)',
+            color: tab === t.id ? 'var(--text)' : 'var(--text-3)',
             fontSize: isMobile ? 13 : 12,
-            fontWeight: tab === t.id ? (isMobile ? 700 : 600) : 500,
+            fontWeight: tab === t.id ? 600 : 500,
             cursor: 'pointer', fontFamily: 'inherit',
             display: 'inline-flex', alignItems: 'center', gap: 5,
             whiteSpace: 'nowrap', flexShrink: 0,
-            borderBottom: isMobile && tab === t.id ? '2px solid var(--accent)' : isMobile ? '2px solid transparent' : 'none',
-            marginBottom: isMobile ? -1 : 0,
           }}><Icon name={t.icon} size={isMobile ? 14 : 13}/> {t.label}</button>
         ))}
       </div>
