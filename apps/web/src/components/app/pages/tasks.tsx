@@ -175,7 +175,6 @@ const Section = ({ label, count, tasks, onToggle, togglingId, defaultOpen = true
 interface GroupMenuProps {
   groupBy: GroupKey
   onChange: (g: GroupKey) => void
-  isMobile: boolean
 }
 
 const GROUP_OPTIONS: { key: GroupKey; label: string }[] = [
@@ -184,7 +183,7 @@ const GROUP_OPTIONS: { key: GroupKey; label: string }[] = [
   { key: 'none', label: 'なし' },
 ]
 
-const GroupMenu = ({ groupBy, onChange, isMobile }: GroupMenuProps) => {
+const GroupMenu = ({ groupBy, onChange }: GroupMenuProps) => {
   const [open, setOpen] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
 
@@ -206,8 +205,8 @@ const GroupMenu = ({ groupBy, onChange, isMobile }: GroupMenuProps) => {
         onClick={() => setOpen(o => !o)}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
       >
-        {isMobile ? <Icon name="layers" size={14} /> : `グループ: ${currentLabel}`}
-        {!isMobile && <Icon name="chevDown" size={12} />}
+        {`グループ: ${currentLabel}`}
+        <Icon name="chevDown" size={12} />
       </button>
       {open && (
         <div style={{
@@ -544,7 +543,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
           ))}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
-          <GroupMenu groupBy={groupBy} onChange={setGroupBy} isMobile={isMobile} />
+          {!isMobile && <GroupMenu groupBy={groupBy} onChange={setGroupBy} />}
           <button
             className="btn btn-primary"
             onClick={() => setShowAddModal(true)}
