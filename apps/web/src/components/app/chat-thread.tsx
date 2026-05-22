@@ -17,6 +17,19 @@ import {
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 
+const ACCEPT_FILE_TYPES = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+].join(',')
+
+function isImageMime(mimeType: string | null): boolean {
+  return mimeType?.startsWith('image/') ?? false
+}
+
 function isEmojiOnly(text: string): boolean {
   const trimmed = text.trim()
   if (!trimmed) return false
@@ -70,7 +83,7 @@ const ChatMessage = ({ messageId, senderName, createdAt, content, reactions, att
         )}
         {attachments.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: content ? 8 : 4 }}>
-            {attachments.map(a => (
+            {attachments.map(a => isImageMime(a.mimeType) ? (
               <img
                 key={a.fileId}
                 src={`/api/attachments/${a.fileId}`}
@@ -86,6 +99,25 @@ const ChatMessage = ({ messageId, senderName, createdAt, content, reactions, att
                   cursor: 'pointer',
                 }}
               />
+            ) : (
+              <a
+                key={a.fileId}
+                href={`/api/attachments/${a.fileId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '8px 12px', borderRadius: 8,
+                  background: 'var(--card-2)', border: '1px solid var(--border)',
+                  color: 'var(--text-2)', textDecoration: 'none',
+                  fontSize: 12.5, maxWidth: 240,
+                }}
+              >
+                <Icon name="file" size={16}/>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {a.fileName}
+                </span>
+              </a>
             ))}
           </div>
         )}
@@ -145,7 +177,16 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: compact ? '6px 10px 0' : '6px 14px 0' }}>
       {pendingAttachments.map(a => (
         <div key={a.fileId} style={{ position: 'relative', width: 56, height: 56, flexShrink: 0 }}>
-          <img src={a.previewUrl} alt={a.fileName} style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover', display: 'block' }} />
+          {isImageMime(a.mimeType) ? (
+            <img src={a.previewUrl} alt={a.fileName} style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover', display: 'block' }} />
+          ) : (
+            <div style={{ width: 56, height: 56, borderRadius: 6, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+              <Icon name="file" size={18}/>
+              <span style={{ fontSize: 9, color: 'var(--text-4)', maxWidth: 48, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                {a.fileName.split('.').pop()?.toUpperCase()}
+              </span>
+            </div>
+          )}
           <button
             onClick={() => onRemoveAttachment(a.fileId)}
             style={{
@@ -171,7 +212,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     <input
       ref={fileInputRef}
       type="file"
-      accept="image/jpeg,image/png,image/gif,image/webp"
+      accept={ACCEPT_FILE_TYPES}
       style={{ display: 'none' }}
       onChange={e => {
         const file = e.target.files?.[0]

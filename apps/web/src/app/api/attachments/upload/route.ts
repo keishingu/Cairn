@@ -6,7 +6,26 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { createServiceClient } from '@/lib/supabase/server'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
-const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+])
+
+function resolveFileType(mimeType: string): 'image' | 'document' | 'other' {
+  if (mimeType.startsWith('image/')) return 'image'
+  if (
+    mimeType === 'application/pdf' ||
+    mimeType === 'application/msword' ||
+    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    mimeType === 'application/vnd.ms-excel' ||
+    mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  ) return 'document'
+  return 'other'
+}
 
 export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
@@ -31,7 +50,7 @@ export async function POST(req: Request) {
   }
 
   if (!ALLOWED_MIME_TYPES.has(file.type)) {
-    return NextResponse.json({ error: '対応していないファイル形式です（JPEG / PNG / GIF / WebP）' }, { status: 400 })
+    return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel）' }, { status: 400 })
   }
 
   if (file.size > MAX_FILE_SIZE) {
@@ -75,7 +94,7 @@ export async function POST(req: Request) {
         fileName: file.name,
         mimeType: file.type,
         fileSize: file.size,
-        fileType: 'image',
+        fileType: resolveFileType(file.type),
       })
       .returning()
 
