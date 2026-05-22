@@ -1,10 +1,11 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, index, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { channelTypeEnum, messageTypeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
+import { files } from './files'
 
 export const channels = pgTable(
   'channels',
@@ -72,4 +73,20 @@ export const messageReactions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.messageId, t.userId, t.emoji)],
+)
+
+export const messageAttachments = pgTable(
+  'message_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    fileId: uuid('file_id')
+      .notNull()
+      .references(() => files.id, { onDelete: 'cascade' }),
+    displayOrder: integer('display_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('idx_message_attachments_message').on(t.messageId)],
 )

@@ -73,6 +73,11 @@ file_size_limit = "50MiB"
 [storage.image_transformation]
 enabled = true
 
+[storage.buckets."chat-attachments"]
+public = false
+file_size_limit = "10MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+
 [auth]
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
