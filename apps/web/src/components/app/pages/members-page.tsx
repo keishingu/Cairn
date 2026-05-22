@@ -6,10 +6,10 @@ import { useRouter } from 'next/navigation'
 import { Icon, Avatar } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
-import { MemberDetailPanel } from '../detail-panel/member-detail-panel'
-import { ProjectPanel } from '../project-panel'
+import { MemberDetailPanel } from '../detail-panel/member-panel'
+import { ProjectPanel } from '../detail-panel/project-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
-import { MobileHeader } from '../detail-panel/mobile-header'
+import { MobileHeader } from '../mobile/header'
 import { MobileMemberScreen } from '../mobile/member-screen'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {

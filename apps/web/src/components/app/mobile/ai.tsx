@@ -4,8 +4,8 @@
 'use client'
 
 import React from 'react'
-import { MobileHeader } from '../mobile-header'
-import { Icon, TypingDots } from '../../primitives'
+import { MobileHeader } from './header'
+import { Icon, TypingDots } from '../primitives'
 
 interface Msg { role: 'user' | 'ai'; text: string }
 

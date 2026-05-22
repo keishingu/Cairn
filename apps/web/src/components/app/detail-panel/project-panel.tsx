@@ -1,14 +1,14 @@
 'use client'
 
 import React from 'react'
-import { Icon, AvatarStack, StatusChip, MountainPhoto } from './primitives'
-import { MEMBERS } from './data'
+import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
+import { MEMBERS } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
-import { ChatTab } from './detail-panel/tabs/chat-tab'
-import { OverviewTab, formatDateRange } from './detail-panel/tabs/overview-tab'
-import { FilesTab } from './detail-panel/tabs/files-tab'
-import { TasksTab } from './detail-panel/tabs/tasks-tab'
-import { MembersTab } from './detail-panel/tabs/members-tab'
+import { ChatTab } from './tabs/chat-tab'
+import { OverviewTab, formatDateRange } from './tabs/overview-tab'
+import { FilesTab } from './tabs/files-tab'
+import { TasksTab } from './tabs/tasks-tab'
+import { MembersTab } from './tabs/members-tab'
 
 const PanelGalleryTab = () => (
   <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>

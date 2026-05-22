@@ -3,7 +3,7 @@
 import React from 'react'
 import { Icon } from '../primitives'
 import { KanbanBoard } from '../kanban'
-import { MobileHeader } from '@/components/app/detail-panel/mobile-header'
+import { MobileHeader } from '@/components/app/mobile/header'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 interface PageKanbanProps {

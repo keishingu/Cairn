@@ -5,8 +5,8 @@
 
 import React from 'react'
 import { useTheme } from 'next-themes'
-import { MobileHeader } from '../mobile-header'
-import { Icon, Avatar } from '../../primitives'
+import { MobileHeader } from './header'
+import { Icon, Avatar } from '../primitives'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'

@@ -5,16 +5,16 @@
 
 import React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { MobileNav } from '@/components/app/detail-panel/mobile-nav'
-import { MobileDashboard } from '@/components/app/detail-panel/pages/dashboard'
-import { MobileProjects } from '@/components/app/detail-panel/pages/projects'
-import { MobileChat } from '@/components/app/detail-panel/pages/chat'
-import { MobileAI } from '@/components/app/detail-panel/pages/ai'
-import { MobileSettings } from '@/components/app/detail-panel/pages/settings'
-import { MobileTasks } from '@/components/app/detail-panel/pages/tasks'
-import { MobileCalendar } from '@/components/app/detail-panel/pages/calendar'
-import { MobileKanban } from '@/components/app/detail-panel/pages/kanban'
-import { MobileHeader } from '@/components/app/detail-panel/mobile-header'
+import { MobileNav } from '@/components/app/mobile/nav'
+import { MobileDashboard } from '@/components/app/mobile/dashboard'
+import { MobileProjects } from '@/components/app/mobile/projects'
+import { MobileAI } from '@/components/app/mobile/ai'
+import { MobileSettings } from '@/components/app/mobile/settings'
+import { MobileHeader } from '@/components/app/mobile/header'
+import { PageChat } from '@/components/app/pages/chat'
+import { PageTasks } from '@/components/app/pages/tasks'
+import { PageCalendar } from '@/components/app/pages/projects-calendar'
+import { PageKanban } from '@/components/app/pages/projects-kanban'
 import { Icon } from '@/components/app/primitives'
 import { AppShellContext } from '@/components/app/app-shell-context'
 import { PageMembers } from '@/components/app/pages/members-page'
@@ -67,12 +67,17 @@ function MobilePlaceholder({ title }: { title: string }) {
 
 function MobilePage({ page, projectsView }: { page: string; projectsView: ProjectsView }) {
   if (page === 'projects') {
-    if (projectsView === 'calendar') return <MobileCalendar />
-    if (projectsView === 'kanban') return <MobileKanban />
+    if (projectsView === 'calendar') return <PageCalendar openPanel={() => {}} isMobile />
+    if (projectsView === 'kanban') return <PageKanban openPanel={() => {}} isMobile />
     return <MobileProjects />
   }
-  if (page === 'chats') return <MobileChat />
-  if (page === 'tasks') return <MobileTasks />
+  if (page === 'chats') return <PageChat isMobile />
+  if (page === 'tasks') return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
+      <MobileHeader title="マイタスク" />
+      <PageTasks isMobile />
+    </div>
+  )
   if (page === 'ai') return <MobileAI />
   if (page === 'settings') return <MobileSettings />
   if (page === 'members') return <PageMembers isMobile />
