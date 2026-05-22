@@ -14,6 +14,7 @@ import { PageAI } from './pages/ai'
 import { PageSettings } from './pages/settings'
 import { PageChat } from './pages/chat'
 import { PageNotifications } from './pages/notifications'
+import { useProjectLabel } from '@/lib/use-workspace-settings'
 
 const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) => (
   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
@@ -37,13 +38,14 @@ export const PCApp = ({ theme = 'light' }: PCAppProps) => {
   const [page, setPage] = React.useState<PageId>('projects')
   const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
   const [notifOpen, setNotifOpen] = React.useState(false)
+  const projectLabel = useProjectLabel()
 
   const onSetPage = (p: PageId) => { setPage(p); setSelectedProject(null); setNotifOpen(false) }
   const openPanel = (project?: ProjectDto) => setSelectedProject(project ?? null)
 
   const pageTitle: Record<PageId, string> = {
     dashboard: 'ダッシュボード',
-    projects:  'プロジェクト',
+    projects:  projectLabel,
     calendar:  'カレンダー',
     kanban:    'カンバン',
     tasks:     'マイタスク',

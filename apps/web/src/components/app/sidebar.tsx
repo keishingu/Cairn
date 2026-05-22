@@ -7,6 +7,7 @@ import { Icon } from './primitives'
 import { Avatar } from './primitives'
 import { createClient } from '@/lib/supabase/client'
 import type { CurrentUserDto } from '@/app/api/me/route'
+import { useProjectLabel } from '@/lib/use-workspace-settings'
 
 export type PageId =
   | 'dashboard' | 'projects' | 'calendar' | 'kanban'
@@ -105,6 +106,7 @@ interface SidebarProps {
 }
 
 export const Sidebar = ({ page, setPage }: SidebarProps) => {
+  const projectLabel = useProjectLabel()
   const projectChildren: SidebarGroupItem[] = [
     { id: 'projects', icon: 'list',     label: '一覧' },
     { id: 'calendar', icon: 'calendar', label: 'カレンダー' },
@@ -158,7 +160,7 @@ export const Sidebar = ({ page, setPage }: SidebarProps) => {
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase' }}>ワークスペース</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           <SidebarItem icon="home" label="ダッシュボード" active={page === 'dashboard'} onClick={() => setPage('dashboard')}/>
-          <SidebarGroup icon="folder" label="プロジェクト" page={page} setPage={setPage} items={projectChildren}/>
+          <SidebarGroup icon="folder" label={projectLabel} page={page} setPage={setPage} items={projectChildren}/>
           <SidebarItem icon="check" label="マイタスク" badge={4} active={page === 'tasks'} onClick={() => setPage('tasks')}/>
           <SidebarItem icon="chat" label="チャット一覧" badge={12} active={page === 'chats'} onClick={() => setPage('chats')}/>
         </div>
@@ -177,7 +179,7 @@ export const Sidebar = ({ page, setPage }: SidebarProps) => {
         </div>
 
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '18px 10px 8px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>ピン留めプロジェクト</span>
+          <span>ピン留め{projectLabel}</span>
           <Icon name="plus" size={12} color="var(--text-4)"/>
         </div>
         {pinnedProjects.map((p, i) => (
