@@ -54,12 +54,22 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { db, files } = await import('@cairn/db')
+    const { db, files, channels } = await import('@cairn/db')
+    const { eq } = await import('drizzle-orm')
+
+    // プロジェクトチャンネル経由のアップロードは projectId を紐付け、
+    // プロジェクト削除時の CASCADE で files レコードも自動削除されるようにする
+    const [channel] = await db
+      .select({ projectId: channels.projectId })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1)
 
     const [inserted] = await db
       .insert(files)
       .values({
         workspaceId: ctx.workspaceId,
+        projectId: channel?.projectId ?? null,
         uploadedBy: ctx.userId,
         storagePath,
         fileName: file.name,
