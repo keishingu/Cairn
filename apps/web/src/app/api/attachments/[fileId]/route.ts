@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { createServiceClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service'
 
 type RouteContext = { params: Promise<{ fileId: string }> }
 
@@ -36,7 +36,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       return new NextResponse(null, { status: 403 })
     }
 
-    const supabase = await createServiceClient()
+    const supabase = createServiceRoleClient()
     const { data, error: storageError } = await supabase.storage
       .from('chat-attachments')
       .download(file.storagePath)
