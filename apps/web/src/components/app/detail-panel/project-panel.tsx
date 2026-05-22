@@ -215,7 +215,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick }: ProjectPanelPr
 
       {tab === 'chat'     && <ChatTab project={project}/>}
       {tab === 'overview' && <OverviewTab project={project}/>}
-      {tab === 'files'    && <FilesTab/>}
+      {tab === 'files'    && <FilesTab projectId={project.id}/>}
       {tab === 'tasks'    && <TasksTab project={project}/>}
       {tab === 'members'  && <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>}
       {tab === 'gallery'  && <PanelGalleryTab/>}
