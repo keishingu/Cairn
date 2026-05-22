@@ -546,6 +546,22 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
     if (isMobile) setSelectedProject(project)
   }
 
+  // PC用フィルター（isMobile に関わらず必ずフックを呼ぶ必要があるため上位に定義）
+  const tabFiltered = React.useMemo(() => {
+    switch (filter) {
+      case 'mine':     return projects.filter(p => p.isMember && !p.archived)
+      case 'owned':    return projects.filter(p => p.isOwner && !p.archived)
+      case 'active':   return projects.filter(p => p.statusName !== 'done' && !p.archived)
+      case 'archived': return projects.filter(p => p.archived)
+      default:         return projects.filter(p => !p.archived)
+    }
+  }, [projects, filter])
+
+  const filteredProjects = React.useMemo(() => {
+    if (statusFilter.length === 0) return tabFiltered
+    return tabFiltered.filter(p => statusFilter.includes(p.statusName as StatusKey))
+  }, [tabFiltered, statusFilter])
+
   // ─── Mobile layout ───────────────────────────────────────────────
   if (isMobile) {
     const mobileFilter = filter as 'all' | 'active' | 'mine'
@@ -631,7 +647,6 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
   }
 
   // ─── PC layout ───────────────────────────────────────────────────
-  // Tab filter counts
   const counts = {
     all:      projects.filter(p => !p.archived).length,
     mine:     projects.filter(p => p.isMember && !p.archived).length,
@@ -639,23 +654,6 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
     active:   projects.filter(p => p.statusName !== 'done' && !p.archived).length,
     archived: projects.filter(p => p.archived).length,
   }
-
-  // Apply tab filter
-  const tabFiltered = React.useMemo(() => {
-    switch (filter) {
-      case 'mine':     return projects.filter(p => p.isMember && !p.archived)
-      case 'owned':    return projects.filter(p => p.isOwner && !p.archived)
-      case 'active':   return projects.filter(p => p.statusName !== 'done' && !p.archived)
-      case 'archived': return projects.filter(p => p.archived)
-      default:         return projects.filter(p => !p.archived)
-    }
-  }, [projects, filter])
-
-  // Apply status filter from popover
-  const filteredProjects = React.useMemo(() => {
-    if (statusFilter.length === 0) return tabFiltered
-    return tabFiltered.filter(p => statusFilter.includes(p.statusName as StatusKey))
-  }, [tabFiltered, statusFilter])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px 24px', overflow: 'auto' }}>
