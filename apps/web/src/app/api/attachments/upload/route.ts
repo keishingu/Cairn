@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { createServiceClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 const ALLOWED_MIME_TYPES = new Set([
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
   const ext = file.name.split('.').pop() ?? 'bin'
   const storagePath = `${ctx.workspaceId}/${channelId}/${crypto.randomUUID()}.${ext}`
 
-  const supabase = await createServiceClient()
+  const supabase = createServiceRoleClient()
   const buffer = await file.arrayBuffer()
 
   const { error: uploadError } = await supabase.storage
