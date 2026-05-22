@@ -7,7 +7,6 @@ import type { TaskDto } from '@/app/api/tasks/route'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 type FilterKey = 'all' | 'todo' | 'in_progress' | 'done'
-type GroupKey = 'project' | 'priority' | 'none'
 
 const STATUS_LABEL: Record<TaskDto['status'], string> = {
   todo: '未着手',
@@ -166,78 +165,6 @@ const Section = ({ label, count, tasks, onToggle, togglingId, defaultOpen = true
           toggling={togglingId === t.id}
         />
       ))}
-    </div>
-  )
-}
-
-// ─── GroupMenu ────────────────────────────────────────────────────
-
-interface GroupMenuProps {
-  groupBy: GroupKey
-  onChange: (g: GroupKey) => void
-}
-
-const GROUP_OPTIONS: { key: GroupKey; label: string }[] = [
-  { key: 'project', label: 'プロジェクト' },
-  { key: 'priority', label: '優先度' },
-  { key: 'none', label: 'なし' },
-]
-
-const GroupMenu = ({ groupBy, onChange }: GroupMenuProps) => {
-  const [open, setOpen] = React.useState(false)
-  const ref = React.useRef<HTMLDivElement>(null)
-
-  React.useEffect(() => {
-    if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
-
-  const currentLabel = GROUP_OPTIONS.find(o => o.key === groupBy)?.label ?? groupBy
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button
-        className="btn"
-        onClick={() => setOpen(o => !o)}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-      >
-        {`グループ: ${currentLabel}`}
-        <Icon name="chevDown" size={12} />
-      </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', right: 0,
-          background: 'var(--card)', border: '1px solid var(--border)',
-          borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-          minWidth: 150, zIndex: 50, overflow: 'hidden',
-        }}>
-          <div style={{ padding: '6px 0' }}>
-            {GROUP_OPTIONS.map(opt => (
-              <button
-                key={opt.key}
-                onClick={() => { onChange(opt.key); setOpen(false) }}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 14px', border: 'none',
-                  background: groupBy === opt.key ? 'var(--card-hover)' : 'transparent',
-                  color: groupBy === opt.key ? 'var(--text)' : 'var(--text-2)',
-                  fontSize: 13, fontWeight: groupBy === opt.key ? 600 : 400,
-                  cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-                }}
-              >
-                <span style={{ width: 14, display: 'inline-flex', alignItems: 'center' }}>
-                  {groupBy === opt.key && <Icon name="check" size={12} strokeWidth={2.5} />}
-                </span>
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -428,7 +355,6 @@ const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
 export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const queryClient = useQueryClient()
   const [filter, setFilter] = React.useState<FilterKey>('all')
-  const [groupBy, setGroupBy] = React.useState<GroupKey>('project')
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
   const [showAddModal, setShowAddModal] = React.useState(false)
 
@@ -483,17 +409,6 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   }), [tasks])
 
   const grouped = React.useMemo(() => {
-    if (groupBy === 'none') return [{ key: 'all', label: 'すべてのタスク', tasks: filtered }]
-    if (groupBy === 'priority') {
-      return (
-        ['high', 'medium', 'low'] as const
-      ).map(p => ({
-        key: p,
-        label: `優先度: ${PRIORITY_LABEL[p]}`,
-        tasks: filtered.filter(t => t.priority === p),
-      })).filter(g => g.tasks.length > 0)
-    }
-    // group by project
     const projectOrder: string[] = []
     const projectMap = new Map<string, TaskDto[]>()
     for (const t of filtered) {
@@ -508,7 +423,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
       label: projectMap.get(pid)![0]!.projectTitle,
       tasks: projectMap.get(pid)!,
     }))
-  }, [filtered, groupBy])
+  }, [filtered])
 
   const filters: { id: FilterKey; label: string }[] = [
     { id: 'all',         label: `すべて (${counts.all})` },
@@ -543,7 +458,6 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
           ))}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
-          {!isMobile && <GroupMenu groupBy={groupBy} onChange={setGroupBy} />}
           <button
             className="btn btn-primary"
             onClick={() => setShowAddModal(true)}
