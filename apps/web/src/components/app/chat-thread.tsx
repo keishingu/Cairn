@@ -4,6 +4,7 @@
 'use client'
 
 import React from 'react'
+import type { AttachmentDto } from '@cairn/shared'
 import { Avatar } from './primitives'
 import { EmojiPicker } from './emoji-picker'
 import { Icon } from './primitives'
@@ -26,14 +27,23 @@ function isEmojiOnly(text: string): boolean {
   return stripped.length === 0
 }
 
+interface PendingAttachment {
+  fileId: string
+  fileName: string
+  mimeType: string | null
+  fileSize: number | null
+  previewUrl: string
+}
+
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = ({ messageId, senderName, createdAt, content, reactions, onReact, compact }: {
+const ChatMessage = ({ messageId, senderName, createdAt, content, reactions, attachments, onReact, compact }: {
   messageId: string
   senderName: string
   createdAt: string
   content: string
   reactions: Array<{ emoji: string; count: number; mine: boolean }>
+  attachments: AttachmentDto[]
   onReact: (messageId: string, emoji: string) => void
   compact?: boolean
 }) => {
@@ -55,7 +65,30 @@ const ChatMessage = ({ messageId, senderName, createdAt, content, reactions, onR
           <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
         </div>
-        <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6, whiteSpace: 'pre-line' }}>{content}</div>
+        {content && (
+          <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6, whiteSpace: 'pre-line' }}>{content}</div>
+        )}
+        {attachments.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: content ? 8 : 4 }}>
+            {attachments.map(a => (
+              <img
+                key={a.fileId}
+                src={`/api/attachments/${a.fileId}`}
+                alt={a.fileName}
+                style={{
+                  maxWidth: attachments.length === 1 ? 280 : 160,
+                  maxHeight: 280,
+                  width: 'auto',
+                  height: 'auto',
+                  borderRadius: 8,
+                  objectFit: 'cover',
+                  display: 'block',
+                  cursor: 'pointer',
+                }}
+              />
+            ))}
+          </div>
+        )}
         <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
             <button key={i} onClick={() => onReact(messageId, r.emoji)} style={{
@@ -86,7 +119,7 @@ const ChatMessage = ({ messageId, senderName, createdAt, content, reactions, onR
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onImageSelect, onRemoveAttachment, isUploading }: {
   placeholder: string
   draft: string
   setDraft: (v: string) => void
@@ -97,44 +130,97 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   isComposing: boolean
   setIsComposing: (v: boolean) => void
   compact?: boolean
+  pendingAttachments: PendingAttachment[]
+  onImageSelect: (file: File) => void
+  onRemoveAttachment: (fileId: string) => void
+  isUploading: boolean
 }) => {
   const [showPicker, setShowPicker] = React.useState(false)
   const smileBtnRef = React.useRef<HTMLButtonElement>(null)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  const canSend = (draft.trim().length > 0 || pendingAttachments.length > 0) && !isPending && !isUploading
+
+  const AttachmentPreviews = pendingAttachments.length > 0 || isUploading ? (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: compact ? '6px 10px 0' : '6px 14px 0' }}>
+      {pendingAttachments.map(a => (
+        <div key={a.fileId} style={{ position: 'relative', width: 56, height: 56, flexShrink: 0 }}>
+          <img src={a.previewUrl} alt={a.fileName} style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover', display: 'block' }} />
+          <button
+            onClick={() => onRemoveAttachment(a.fileId)}
+            style={{
+              position: 'absolute', top: -4, right: -4,
+              width: 16, height: 16, borderRadius: '50%',
+              background: 'var(--text-3)', border: 'none',
+              color: 'var(--bg)', fontSize: 9, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: 'inherit', lineHeight: 1,
+            }}
+          >✕</button>
+        </div>
+      ))}
+      {isUploading && (
+        <div style={{ width: 56, height: 56, borderRadius: 6, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 18, flexShrink: 0 }}>
+          ⋯
+        </div>
+      )}
+    </div>
+  ) : null
+
+  const hiddenFileInput = (
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept="image/jpeg,image/png,image/gif,image/webp"
+      style={{ display: 'none' }}
+      onChange={e => {
+        const file = e.target.files?.[0]
+        if (file) {
+          onImageSelect(file)
+          e.target.value = ''
+        }
+      }}
+    />
+  )
 
   if (compact) {
     return (
       <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--divider)' }}>
+        {hiddenFileInput}
         {sendError && (
           <div style={{ marginBottom: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)', fontSize: 11.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span>⚠️ {sendError}</span>
             <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'transparent', color: 'var(--red-text)', cursor: 'pointer', padding: '0 2px' }}>✕</button>
           </div>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, padding: '7px 10px' }}>
-          <input
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onCompositionStart={() => setIsComposing(true)}
-            onCompositionEnd={() => setIsComposing(false)}
-            onKeyDown={e => {
-              if (e.key !== 'Enter' || e.shiftKey) return
-              if (isImeConfirmingEnter(e, isComposing)) return
-              e.preventDefault()
-              send()
-            }}
-            placeholder={placeholder}
-            style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
-          />
-          <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
-            <Icon name="paperclip" size={15}/>
-          </button>
-          <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
-            <Icon name="smile" size={15}/>
-          </button>
-          {showPicker && <EmojiPicker anchorRef={smileBtnRef} onSelect={emoji => { setDraft(draft + emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>}
-          <button onClick={send} disabled={!draft.trim() || isPending} style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: draft.trim() && !isPending ? 'var(--accent)' : 'var(--border-2)', color: draft.trim() && !isPending ? 'var(--on-accent)' : 'var(--text-4)', cursor: draft.trim() && !isPending ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
-            <Icon name="send" size={13}/>
-          </button>
+        <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
+          {AttachmentPreviews}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px' }}>
+            <input
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={() => setIsComposing(false)}
+              onKeyDown={e => {
+                if (e.key !== 'Enter' || e.shiftKey) return
+                if (isImeConfirmingEnter(e, isComposing)) return
+                e.preventDefault()
+                send()
+              }}
+              placeholder={placeholder}
+              style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
+            />
+            <button onClick={() => fileInputRef.current?.click()} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
+              <Icon name="paperclip" size={15}/>
+            </button>
+            <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
+              <Icon name="smile" size={15}/>
+            </button>
+            {showPicker && <EmojiPicker anchorRef={smileBtnRef} onSelect={emoji => { setDraft(draft + emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>}
+            <button onClick={send} disabled={!canSend} style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
+              <Icon name="send" size={13}/>
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -142,6 +228,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
 
   return (
     <div style={{ padding: '8px 24px 18px', background: 'var(--bg)' }}>
+      {hiddenFileInput}
       {sendError && (
         <div style={{ marginBottom: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>⚠️ {sendError}</span>
@@ -150,8 +237,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       )}
       <div style={{ background: 'var(--card)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--divider)' }}>
-          {[{ i: 'paperclip', l: '添付' }, { i: 'image', l: '画像' }, { i: 'sparkles', l: '@AI', accent: true }].map((b, j) => (
-            <button key={j} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: (b as {accent?:boolean}).accent ? 'var(--accent)' : 'var(--text-3)', fontSize: 11.5, fontWeight: (b as {accent?:boolean}).accent ? 600 : 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+          <button onClick={() => fileInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="image" size={13}/> 画像
+          </button>
+          {[{ i: 'sparkles', l: '@AI', accent: true }].map((b, j) => (
+            <button key={j} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--accent)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
               <Icon name={b.i} size={13}/> {b.l}
             </button>
           ))}
@@ -160,6 +250,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           </button>
           {showPicker && <EmojiPicker anchorRef={smileBtnRef} onSelect={emoji => { setDraft(draft + emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>}
         </div>
+        {AttachmentPreviews}
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, padding: '10px 14px 12px' }}>
           <textarea
             value={draft}
@@ -176,7 +267,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
             rows={1}
             style={{ flex: 1, border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160 }}
           />
-          <button onClick={send} disabled={!draft.trim() || isPending} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: draft.trim() && !isPending ? 'var(--accent)' : 'var(--border-2)', color: draft.trim() && !isPending ? 'var(--on-accent)' : 'var(--text-4)', cursor: draft.trim() && !isPending ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
+          <button onClick={send} disabled={!canSend} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
             <Icon name="send" size={13}/>
           </button>
         </div>
@@ -196,6 +287,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [isComposing, setIsComposing] = React.useState(false)
+  const [pendingAttachments, setPendingAttachments] = React.useState<PendingAttachment[]>([])
+  const [isUploading, setIsUploading] = React.useState(false)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
@@ -218,13 +311,62 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length])
 
+  const handleImageSelect = async (file: File) => {
+    if (!channelId) return
+    setIsUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('channelId', channelId)
+      const res = await fetch('/api/attachments/upload', { method: 'POST', body: formData })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        setSendError(data.error ?? 'アップロードに失敗しました')
+        return
+      }
+      const data = await res.json() as { fileId: string; fileName: string; mimeType: string | null; fileSize: number | null }
+      const previewUrl = URL.createObjectURL(file)
+      setPendingAttachments(prev => [...prev, { ...data, previewUrl }])
+    } catch {
+      setSendError('アップロードに失敗しました')
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleRemoveAttachment = (fileId: string) => {
+    setPendingAttachments(prev => {
+      const removed = prev.find(a => a.fileId === fileId)
+      if (removed) URL.revokeObjectURL(removed.previewUrl)
+      return prev.filter(a => a.fileId !== fileId)
+    })
+  }
+
   const send = () => {
     const text = draft.trim()
-    if (!text || !channelId) return
+    if ((!text && pendingAttachments.length === 0) || !channelId) return
+
     pendingDraftRef.current = text
     setSendError(null)
     setDraft('')
-    sendMutation.mutate(text)
+
+    const optimisticAttachments: AttachmentDto[] = pendingAttachments.map((a, i) => ({
+      id: `optimistic-${a.fileId}`,
+      fileId: a.fileId,
+      fileName: a.fileName,
+      mimeType: a.mimeType,
+      fileSize: a.fileSize,
+      displayOrder: i,
+    }))
+
+    pendingAttachments.forEach(a => URL.revokeObjectURL(a.previewUrl))
+    setPendingAttachments([])
+
+    sendMutation.mutate({
+      content: text,
+      attachmentFileIds: optimisticAttachments.map(a => a.fileId),
+      optimisticAttachments,
+    })
   }
 
   const placeholder = channelName
@@ -249,6 +391,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
               createdAt={m.createdAt}
               content={m.content}
               reactions={m.reactions}
+              attachments={m.attachments}
               onReact={(messageId, emoji) => reactMutation.mutate({ messageId, emoji })}
               {...(compact ? { compact: true } : {})}
             />
@@ -265,6 +408,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
         setSendError={setSendError}
         isComposing={isComposing}
         setIsComposing={setIsComposing}
+        pendingAttachments={pendingAttachments}
+        onImageSelect={handleImageSelect}
+        onRemoveAttachment={handleRemoveAttachment}
+        isUploading={isUploading}
         {...(compact ? { compact: true } : {})}
       />
     </>
