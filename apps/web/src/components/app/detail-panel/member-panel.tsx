@@ -5,6 +5,8 @@ import { useQuery } from '@tanstack/react-query'
 import { Icon, Avatar, StatusChip } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
+import type { ProjectDto } from '@/app/api/projects/route'
+import { ProjectPanel } from './project-panel'
 
 const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -50,13 +52,60 @@ function formatDateRange(start: string | null, end: string | null): string {
   return end && end !== start ? `${fmt(start)}–${fmt(end)}` : fmt(start)
 }
 
+function memberProjectToProjectDto(p: MemberProjectDto): ProjectDto {
+  return {
+    id: p.projectId, title: p.title, statusName: p.statusName,
+    startDate: p.startDate, endDate: p.endDate, memberCount: p.memberCount,
+    memberNames: [], taskCount: 0, completedTaskCount: 0,
+    isOwner: p.role === 'leader', isMember: true, archived: false,
+  }
+}
+
 interface ProjectRowProps {
   project: MemberProjectDto
   onClick: () => void
+  isMobile?: boolean
 }
 
-const ProjectRow = ({ project, onClick }: ProjectRowProps) => {
+const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
   const rs = PROJECT_ROLE_STYLE[project.role] ?? { c: 'var(--text-3)', bg: 'var(--card-2)' }
+
+  if (isMobile) {
+    return (
+      <button
+        onClick={onClick}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+          padding: '14px 16px', border: 'none', borderBottom: '1px solid var(--divider)',
+          background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+        }}
+      >
+        <div style={{
+          width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+          background: 'var(--card)', border: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)',
+        }}>
+          <Icon name="folder" size={16}/>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
+            {project.title}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <StatusChip s={project.statusName}/>
+            <span style={{ fontSize: 12, color: 'var(--text-4)' }}>
+              {formatDateRange(project.startDate, project.endDate)}
+            </span>
+          </div>
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 7px', borderRadius: 4, flexShrink: 0 }}>
+          {PROJECT_ROLE_LABEL[project.role] ?? project.role}
+        </span>
+        <Icon name="chevRight" size={14} color="var(--text-4)"/>
+      </button>
+    )
+  }
+
   return (
     <div
       onClick={onClick}
@@ -108,10 +157,12 @@ interface MemberDetailPanelProps {
   member: WorkspaceMemberDto
   onProjectClick: (project: MemberProjectDto) => void
   onClose: () => void
+  isMobile?: boolean
 }
 
-export const MemberDetailPanel = ({ member, onProjectClick, onClose }: MemberDetailPanelProps) => {
+export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }: MemberDetailPanelProps) => {
   const rs = WS_ROLE_STYLE[member.role]
+  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
 
   const { data: projects = [], isLoading } = useQuery<MemberProjectDto[]>({
     queryKey: ['member-projects', member.userId],
@@ -119,104 +170,165 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose }: MemberDet
       fetch(`/api/workspaces/members/${member.userId}/projects`).then(r => r.json()),
   })
 
+  const handleProjectClick = (p: MemberProjectDto) => {
+    if (isMobile) {
+      setSelectedProject(memberProjectToProjectDto(p))
+    } else {
+      onProjectClick(p)
+    }
+  }
+
+  const containerStyle: React.CSSProperties = isMobile
+    ? {
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'var(--bg)',
+        display: 'flex', flexDirection: 'column',
+        animation: 'slideInRight .22s cubic-bezier(.2,.7,.3,1)',
+      }
+    : {
+        width: 420, flexShrink: 0,
+        background: 'var(--card)',
+        borderLeft: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column',
+        minHeight: 0,
+        boxShadow: 'var(--shadow-lg)',
+        animation: 'projectPanelIn .2s cubic-bezier(.2,.7,.3,1)',
+      }
+
   return (
-    <aside style={{
-      width: 420, flexShrink: 0,
-      background: 'var(--card)',
-      borderLeft: '1px solid var(--border)',
-      display: 'flex', flexDirection: 'column',
-      minHeight: 0,
-      boxShadow: 'var(--shadow-lg)',
-      animation: 'projectPanelIn .2s cubic-bezier(.2,.7,.3,1)',
-    }}>
-      {/* Header */}
-      <div style={{
-        padding: '16px 16px 14px',
-        borderBottom: '1px solid var(--divider)',
-        display: 'flex', alignItems: 'flex-start', gap: 12, flexShrink: 0,
-      }}>
-        <Avatar name={member.displayName} size={52}/>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
-            {member.displayName}
+    <aside style={containerStyle}>
+      {selectedProject && isMobile && (
+        <ProjectPanel project={selectedProject} onClose={() => setSelectedProject(null)} isMobile/>
+      )}
+
+      {/* Mobile header */}
+      {isMobile && (
+        <div style={{
+          background: 'var(--card)', borderBottom: '1px solid var(--border)',
+          padding: 'max(16px, env(safe-area-inset-top)) 16px 14px',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <button
+              onClick={onClose}
+              style={{
+                width: 34, height: 34, borderRadius: 10, border: 'none',
+                background: 'var(--card-2)', color: 'var(--text-2)',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}
+            >
+              <Icon name="chevLeft" size={18}/>
+            </button>
+            <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', flex: 1 }}>メンバー詳細</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{
-              fontSize: 10.5, fontWeight: 700,
-              color: rs.c, background: rs.bg,
-              padding: '2px 8px', borderRadius: 4,
-            }}>
-              {WS_ROLE_LABEL[member.role]}
-            </span>
-            <span style={{
-              fontSize: 11, color: 'var(--text-4)',
-              display: 'inline-flex', alignItems: 'center', gap: 3,
-            }}>
-              <Icon name="clock" size={10}/>
-              {formatJoinedAt(member.joinedAt)}
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <Avatar name={member.displayName} size={52}/>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
+                {member.displayName}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
+                  {WS_ROLE_LABEL[member.role]}
+                </span>
+                <span style={{ fontSize: 12, color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                  <Icon name="clock" size={11}/> {formatJoinedAt(member.joinedAt)}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          style={{
-            width: 28, height: 28, borderRadius: 7, border: 'none',
-            background: 'transparent', color: 'var(--text-3)',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-        >
-          <Icon name="close" size={15}/>
-        </button>
-      </div>
+      )}
+
+      {/* PC header */}
+      {!isMobile && (
+        <div style={{
+          padding: '16px 16px 14px',
+          borderBottom: '1px solid var(--divider)',
+          display: 'flex', alignItems: 'flex-start', gap: 12, flexShrink: 0,
+        }}>
+          <Avatar name={member.displayName} size={52}/>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
+              {member.displayName}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
+                {WS_ROLE_LABEL[member.role]}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                <Icon name="clock" size={10}/>
+                {formatJoinedAt(member.joinedAt)}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 28, height: 28, borderRadius: 7, border: 'none',
+              background: 'transparent', color: 'var(--text-3)',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <Icon name="close" size={15}/>
+          </button>
+        </div>
+      )}
 
       {/* Stats row */}
       <div style={{
         display: 'flex', gap: 0,
         borderBottom: '1px solid var(--divider)',
+        background: isMobile ? 'var(--card)' : undefined,
         flexShrink: 0,
       }}>
         <div style={{
-          flex: 1, padding: '12px 16px',
+          flex: 1, padding: isMobile ? '12px 20px' : '12px 16px',
           borderRight: '1px solid var(--divider)',
           display: 'flex', flexDirection: 'column', gap: 2,
         }}>
-          <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>
+          <span style={{ fontSize: isMobile ? 22 : 20, fontWeight: 700, color: 'var(--text)' }}>
             {isLoading ? '—' : projects.length}
           </span>
-          <span style={{ fontSize: 11, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Icon name="folder" size={11}/> 参加プロジェクト
+          <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: isMobile ? 2 : 0 }}>
+            <Icon name="folder" size={isMobile ? 12 : 11}/> 参加プロジェクト
           </span>
         </div>
-        <div style={{ flex: 1, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>
+        <div style={{ flex: 1, padding: isMobile ? '12px 20px' : '12px 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: isMobile ? 22 : 20, fontWeight: 700, color: 'var(--text)' }}>
             {isLoading ? '—' : projects.filter(p => p.role === 'leader' || p.role === 'subleader').length}
           </span>
-          <span style={{ fontSize: 11, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Icon name="users" size={11}/> リーダー経験
+          <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: isMobile ? 2 : 0 }}>
+            <Icon name="users" size={isMobile ? 12 : 11}/> リーダー経験
           </span>
         </div>
       </div>
 
       {/* Project history */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
+      <div style={{
+        flex: 1, overflow: 'auto',
+        padding: isMobile ? '0' : '12px 16px',
+        paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined,
+      }}>
         <div style={{
           fontSize: 11, fontWeight: 600, color: 'var(--text-4)',
-          letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4,
+          letterSpacing: '0.06em', textTransform: 'uppercase',
+          padding: isMobile ? '14px 16px 6px' : '0 0 4px',
         }}>
           プロジェクト履歴
         </div>
 
         {isLoading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 0 : 10, marginTop: isMobile ? 0 : 8 }}>
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--divider)' }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--card-2)', flexShrink: 0 }}/>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 10, padding: isMobile ? '14px 16px' : '10px 0', borderBottom: '1px solid var(--divider)' }}>
+                <div style={{ width: isMobile ? 38 : 32, height: isMobile ? 38 : 32, borderRadius: isMobile ? 10 : 8, background: 'var(--card-2)', flexShrink: 0 }}/>
                 <div style={{ flex: 1 }}>
-                  <div style={{ height: 12, width: '70%', borderRadius: 4, background: 'var(--card-2)', marginBottom: 6 }}/>
-                  <div style={{ height: 10, width: '40%', borderRadius: 4, background: 'var(--card-2)' }}/>
+                  <div style={{ height: isMobile ? 13 : 12, width: isMobile ? '65%' : '70%', borderRadius: 4, background: 'var(--card-2)', marginBottom: isMobile ? 7 : 6 }}/>
+                  <div style={{ height: isMobile ? 11 : 10, width: '40%', borderRadius: 4, background: 'var(--card-2)' }}/>
                 </div>
               </div>
             ))}
@@ -224,14 +336,19 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose }: MemberDet
         ) : projects.length === 0 ? (
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center',
-            gap: 8, padding: '32px 0', color: 'var(--text-4)',
+            gap: isMobile ? 10 : 8, padding: isMobile ? '40px 16px' : '32px 0', color: 'var(--text-4)',
           }}>
-            <Icon name="folder" size={28}/>
-            <span style={{ fontSize: 12.5 }}>参加プロジェクトはありません</span>
+            <Icon name="folder" size={isMobile ? 32 : 28}/>
+            <span style={{ fontSize: isMobile ? 14 : 12.5 }}>参加プロジェクトはありません</span>
           </div>
         ) : (
           projects.map(p => (
-            <ProjectRow key={p.projectId} project={p} onClick={() => onProjectClick(p)}/>
+            <ProjectRow
+              key={p.projectId}
+              project={p}
+              onClick={() => handleProjectClick(p)}
+              {...(isMobile ? { isMobile: true } : {})}
+            />
           ))
         )}
       </div>
