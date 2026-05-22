@@ -1,9 +1,9 @@
 'use client'
 
 import { useAppShell } from '@/components/app/app-shell-context'
-import { ProjectListView } from './projects-list-view'
-import { PageCalendar } from './calendar'
-import { PageKanban } from './kanban-page'
+import { ProjectListView } from './project-list'
+import { PageCalendar } from './projects-calendar'
+import { PageKanban } from './projects-kanban'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 interface PageProjectsProps {

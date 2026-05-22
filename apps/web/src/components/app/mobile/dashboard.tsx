@@ -3,9 +3,9 @@
 
 'use client'
 
-import { MobileHeader } from '../mobile-header'
-import { Icon, StatusChip } from '../../primitives'
-import { PROJECTS, STATUS, type StatusKey } from '../../data'
+import { MobileHeader } from './header'
+import { Icon, StatusChip } from '../primitives'
+import { PROJECTS, STATUS, type StatusKey } from '../data'
 
 const STATS = [
   { label: 'プロジェクト', value: '8', icon: 'folder',  color: 'var(--accent)' },

@@ -6,7 +6,7 @@ import { Icon, StatusChip } from '../primitives'
 import { STATUS, STATUS_COL } from '../data'
 import type { StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
-import { MobileHeader } from '@/components/app/detail-panel/mobile-header'
+import { MobileHeader } from '@/components/app/mobile/header'
 
 // ─── Date helpers ──────────────────────────────────────────────────
 

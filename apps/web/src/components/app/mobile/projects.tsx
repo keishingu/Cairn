@@ -5,12 +5,12 @@
 
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { MobileHeader } from '../mobile-header'
-import { Icon, StatusChip } from '../../primitives'
-import { STATUS, type StatusKey } from '../../data'
+import { MobileHeader } from './header'
+import { Icon, StatusChip } from '../primitives'
+import { STATUS, type StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
-import { MobileProjectScreen } from '../../mobile/project-screen'
-import { CreateProjectSheet } from '../../mobile/create-project-sheet'
+import { MobileProjectScreen } from './project-screen'
+import { CreateProjectSheet } from './create-project-sheet'
 
 async function fetchProjects(): Promise<ProjectDto[]> {
   const res = await fetch('/api/projects')

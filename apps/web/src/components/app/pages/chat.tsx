@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
-import { MobileHeader } from '../detail-panel/mobile-header'
+import { MobileHeader } from '../mobile/header'
 import { ChatThread } from '../chat-thread'
 import {
   useProjectChannels,
