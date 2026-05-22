@@ -168,6 +168,7 @@ export function useSendChannelMessage(
           senderName: currentUser.displayName,
           createdAt: new Date().toISOString(),
           reactions: [],
+          attachments: [],
         }
         queryClient.setQueryData<MessageDto[]>(
           chatQueryKeys.messages(channelId),
