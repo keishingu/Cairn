@@ -176,29 +176,34 @@ export async function POST(req: Request, { params }: RouteContext) {
     const { messages, profiles, messageAttachments } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
 
-    const [inserted] = await db
-      .insert(messages)
-      .values({
-        channelId,
-        senderId: ctx.userId,
-        content: parsed.data.content,
-        messageType: parsed.data.messageType ?? 'text',
-        parentMessageId: parsed.data.parentMessageId ?? null,
-      })
-      .returning({ id: messages.id, content: messages.content, senderId: messages.senderId, createdAt: messages.createdAt })
-
-    if (!inserted) throw new Error('Insert returned no rows')
-
     const attachmentFileIds = parsed.data.attachmentFileIds ?? []
-    if (attachmentFileIds.length > 0) {
-      await db.insert(messageAttachments).values(
-        attachmentFileIds.map((fileId, i) => ({
-          messageId: inserted.id,
-          fileId,
-          displayOrder: i,
-        })),
-      )
-    }
+
+    const inserted = await db.transaction(async (tx) => {
+      const [msg] = await tx
+        .insert(messages)
+        .values({
+          channelId,
+          senderId: ctx.userId,
+          content: parsed.data.content,
+          messageType: parsed.data.messageType ?? 'text',
+          parentMessageId: parsed.data.parentMessageId ?? null,
+        })
+        .returning({ id: messages.id, content: messages.content, senderId: messages.senderId, createdAt: messages.createdAt })
+
+      if (!msg) throw new Error('Insert returned no rows')
+
+      if (attachmentFileIds.length > 0) {
+        await tx.insert(messageAttachments).values(
+          attachmentFileIds.map((fileId, i) => ({
+            messageId: msg.id,
+            fileId,
+            displayOrder: i,
+          })),
+        )
+      }
+
+      return msg
+    })
 
     const [profile] = await db
       .select({ displayName: profiles.displayName })
