@@ -7,6 +7,7 @@ import { STATUS, STATUS_COL } from '../data'
 import type { StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '@/components/app/mobile/header'
+import { ProjectPanel } from '../detail-panel/project-panel'
 
 // ─── Date helpers ──────────────────────────────────────────────────
 
@@ -279,74 +280,103 @@ interface MobileCalendarGridProps {
   projects: ProjectDto[]
   selectedDate: Date
   onSelectDate: (d: Date) => void
+  onProjectClick: (project: ProjectDto) => void
 }
 
-const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate }: MobileCalendarGridProps) => {
+const MOBILE_MAX_CHIPS = 3
+
+const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate, onProjectClick }: MobileCalendarGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const cells = buildCells(year, month)
 
   return (
-    <div style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+    <div style={{ background: 'var(--card)', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {/* Day headers */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         {days.map((d, i) => (
           <div key={d} style={{
-            padding: '6px 0', fontSize: 11, fontWeight: 600, textAlign: 'center',
+            padding: '4px 0', fontSize: 10, fontWeight: 600, textAlign: 'center',
             color: i === 0 ? 'var(--red)' : i === 6 ? 'var(--blue)' : 'var(--text-3)',
           }}>{d}</div>
         ))}
       </div>
 
       {/* Grid rows */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {cells.map((row, week) => (
-        <div key={week} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: week < 5 ? '1px solid var(--border)' : 'none' }}>
+        <div key={week} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: week < 5 ? '1px solid var(--border)' : 'none', flex: 1 }}>
           {row.map((cell, col) => {
             const isSelected = cell.fullDate.toDateString() === selectedDate.toDateString()
             const dayProjects = getDateProjects(projects, cell.fullDate)
-            const dots = dayProjects.slice(0, 3).map(p => STATUS_COL[p.statusName as StatusKey]?.bar ?? 'var(--text-3)')
-            const textColor = cell.isToday && !isSelected
-              ? 'var(--on-accent)'
-              : isSelected
-                ? 'var(--on-accent)'
-                : cell.isOther
-                  ? 'var(--text-4)'
-                  : col === 0
-                    ? 'var(--red)'
-                    : col === 6
-                      ? 'var(--blue)'
-                      : 'var(--text)'
+            const visible = dayProjects.slice(0, MOBILE_MAX_CHIPS)
+            const overflow = dayProjects.length - MOBILE_MAX_CHIPS
 
             return (
               <button
                 key={col}
                 onClick={() => onSelectDate(cell.fullDate)}
                 style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  justifyContent: 'center', gap: 3, padding: '6px 2px',
-                  border: 'none', background: 'transparent', cursor: 'pointer',
-                  height: 54, fontFamily: 'inherit',
+                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                  justifyContent: 'flex-start',
+                  padding: '3px 1px 4px', gap: 2,
+                  border: 'none',
+                  background: isSelected ? 'var(--accent-soft)' : 'transparent',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  height: '100%', width: '100%', minWidth: 0, overflow: 'hidden',
                 }}
               >
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: 28, height: 28, borderRadius: '50%', fontSize: 13,
+                  width: 22, height: 22, borderRadius: '50%', fontSize: 11.5,
                   fontWeight: isSelected || cell.isToday ? 700 : 400,
                   background: isSelected || cell.isToday ? 'var(--accent)' : 'transparent',
-                  color: textColor,
-                  transition: 'background .12s',
+                  color: isSelected || cell.isToday
+                    ? 'var(--on-accent)'
+                    : cell.isOther
+                      ? 'var(--text-4)'
+                      : col === 0
+                        ? 'var(--red)'
+                        : col === 6
+                          ? 'var(--blue)'
+                          : 'var(--text)',
+                  lineHeight: 1, flexShrink: 0,
                 }}>
                   {cell.date}
                 </span>
-                <div style={{ display: 'flex', gap: 2, height: 5, alignItems: 'center' }}>
-                  {dots.map((color, i) => (
-                    <span key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: isSelected ? 'var(--on-accent)' : color }} />
-                  ))}
+                <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {visible.map(p => {
+                    const cfg = STATUS_COL[p.statusName as StatusKey]
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={(e) => { e.stopPropagation(); onProjectClick(p) }}
+                        style={{
+                          height: 13, borderRadius: 2,
+                          background: cfg.bg,
+                          borderLeft: `2px solid ${cfg.bar}`,
+                          fontSize: 9, fontWeight: 600, color: cfg.text,
+                          paddingLeft: 2,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          lineHeight: '13px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {p.title}
+                      </div>
+                    )
+                  })}
+                  {overflow > 0 && (
+                    <div style={{ fontSize: 9, color: 'var(--text-3)', paddingLeft: 2, lineHeight: '12px' }}>
+                      +{overflow}
+                    </div>
+                  )}
                 </div>
               </button>
             )
           })}
         </div>
       ))}
+      </div>
     </div>
   )
 }
@@ -588,6 +618,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const [month, setMonth] = React.useState(today.getMonth())
   const [selectedDate, setSelectedDate] = React.useState<Date>(today)
   const [calView, setCalView] = React.useState<CalView>('month')
+  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
 
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
@@ -685,21 +716,17 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           ))}
         </div>
         {calView === 'month' && (
-          <>
-            <MobileCalendarGrid
-              year={year}
-              month={month}
-              projects={projects}
-              selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
-            />
-            <MobileDayEvents
-              date={selectedDate}
-              projects={projects}
-              onProjectClick={openPanel}
-              isLoading={isLoading}
-            />
-          </>
+          <MobileCalendarGrid
+            year={year}
+            month={month}
+            projects={projects}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            onProjectClick={setSelectedProject}
+          />
+        )}
+        {selectedProject && (
+          <ProjectPanel project={selectedProject} onClose={() => setSelectedProject(null)} isMobile />
         )}
         {calView === 'week' && (
           <>
