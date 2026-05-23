@@ -59,7 +59,7 @@ const FileRow = ({ file, isMobile }: { file: FileDto; isMobile: boolean }) => {
       onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
     >
-      <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} />
+      <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontSize: 13, fontWeight: 600, color: 'var(--text)',

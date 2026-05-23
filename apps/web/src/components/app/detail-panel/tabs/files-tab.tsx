@@ -65,7 +65,7 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
             rel="noopener noreferrer"
             style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderBottom: '1px solid var(--divider)', borderRadius: 6, cursor: 'pointer', textDecoration: 'none' }}
           >
-            <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName}/>
+            <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName} fileId={f.id}/>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                 {f.fileName}

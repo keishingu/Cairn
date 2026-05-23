@@ -17,21 +17,32 @@ function fileKindColor(kind: string): { bg: string; color: string } {
   if (kind === 'PDF') return { bg: 'var(--red-soft)', color: 'var(--red-text)' }
   if (kind === 'XLS') return { bg: 'var(--emerald-soft)', color: 'var(--emerald-text)' }
   if (kind === 'DOC') return { bg: 'var(--blue-soft)', color: 'var(--blue-text)' }
-  if (kind === 'IMG') return { bg: 'var(--accent-soft)', color: 'var(--accent-text)' }
+  if (kind === 'IMG') return { bg: 'var(--violet-soft)', color: 'var(--violet-text)' }
   return { bg: 'var(--card-2)', color: 'var(--text-3)' }
 }
 
 export function FileTypeIcon({
   mimeType,
   fileName,
+  fileId,
   width = 32,
   height = 36,
 }: {
   mimeType: string | null
   fileName: string
+  fileId?: string
   width?: number
   height?: number
 }) {
+  if (mimeType?.startsWith('image/') && fileId) {
+    return (
+      <img
+        src={`/api/attachments/${fileId}`}
+        alt={fileName}
+        style={{ width, height, borderRadius: 4, objectFit: 'cover', flexShrink: 0, display: 'block' }}
+      />
+    )
+  }
   const kind = fileKindLabel(mimeType, fileName)
   const { bg, color } = fileKindColor(kind)
   return (
