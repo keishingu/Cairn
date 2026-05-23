@@ -705,21 +705,13 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           ))}
         </div>
         {calView === 'month' && (
-          <>
-            <MobileCalendarGrid
-              year={year}
-              month={month}
-              projects={projects}
-              selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
-            />
-            <MobileDayEvents
-              date={selectedDate}
-              projects={projects}
-              onProjectClick={openPanel}
-              isLoading={isLoading}
-            />
-          </>
+          <MobileCalendarGrid
+            year={year}
+            month={month}
+            projects={projects}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+          />
         )}
         {calView === 'week' && (
           <>
