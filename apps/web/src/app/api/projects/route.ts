@@ -19,6 +19,7 @@ export interface ProjectDto {
   isOwner: boolean
   isMember: boolean
   archived: boolean
+  coverPhotoIdx: number
 }
 
 function mockProjects(): ProjectDto[] {
@@ -35,7 +36,14 @@ function mockProjects(): ProjectDto[] {
     isOwner: i % 3 === 0,
     isMember: true,
     archived: false,
+    coverPhotoIdx: p.photoIdx,
   }))
+}
+
+function coverPhotoIdxFromId(id: string): number {
+  let h = 0
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) & 0xffff
+  return h
 }
 
 export async function GET() {
@@ -116,6 +124,7 @@ export async function GET() {
       completedTaskCount: taskMap.get(r.id)?.completed ?? 0,
       isOwner: r.createdBy === ctx.userId,
       isMember: userProjectIds.has(r.id),
+      coverPhotoIdx: coverPhotoIdxFromId(r.id),
     }))
 
     return NextResponse.json(result)
@@ -142,8 +151,9 @@ export async function POST(req: Request) {
   }
 
   if (!process.env['DATABASE_URL']) {
+    const newId = crypto.randomUUID()
     return NextResponse.json({
-      id: crypto.randomUUID(),
+      id: newId,
       title: parsed.data.title,
       statusName: 'plan' as StatusKey,
       startDate: parsed.data.startDate ?? null,
@@ -155,6 +165,7 @@ export async function POST(req: Request) {
       isOwner: true,
       isMember: true,
       archived: false,
+      coverPhotoIdx: coverPhotoIdxFromId(newId),
     } satisfies ProjectDto, { status: 201 })
   }
 
@@ -196,6 +207,7 @@ export async function POST(req: Request) {
       isOwner: true,
       isMember: true,
       archived: false,
+      coverPhotoIdx: coverPhotoIdxFromId(inserted.id),
     } satisfies ProjectDto, { status: 201 })
   } catch (err) {
     console.error('[/api/projects POST] DB query failed:', err)

@@ -531,16 +531,13 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<StatusKey[]>([])
   const filterBtnRef = React.useRef<HTMLDivElement>(null)
-  const [search, setSearch] = React.useState('')
   const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
-  const mobileFilter = filter as 'all' | 'active' | 'mine'
 
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
     void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
   }
 
-  // Tab filter counts
   const counts = {
     all:      projects.filter(p => !p.archived).length,
     mine:     projects.filter(p => p.isMember && !p.archived).length,
@@ -549,7 +546,14 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
     archived: projects.filter(p => p.archived).length,
   }
 
-  // Apply tab filter
+  const filterTabs = [
+    { id: 'all',      label: 'すべて',     n: counts.all },
+    { id: 'mine',     label: '参加中',     n: counts.mine },
+    { id: 'owned',    label: '主催',       n: counts.owned },
+    { id: 'active',   label: '進行中',     n: counts.active },
+    { id: 'archived', label: 'アーカイブ', n: counts.archived },
+  ]
+
   const tabFiltered = React.useMemo(() => {
     switch (filter) {
       case 'mine':     return projects.filter(p => p.isMember && !p.archived)
@@ -560,242 +564,257 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
     }
   }, [projects, filter])
 
-  // Apply status filter from popover
   const filteredProjects = React.useMemo(() => {
     if (statusFilter.length === 0) return tabFiltered
     return tabFiltered.filter(p => statusFilter.includes(p.statusName as StatusKey))
   }, [tabFiltered, statusFilter])
 
-  const mobileFiltered = React.useMemo(() => {
-    return projects.filter(p => {
-      if (p.archived) return false
-      if (mobileFilter === 'active' && p.statusName === 'done') return false
-      if (mobileFilter === 'mine' && !p.isMember) return false
-      if (search && !p.title.includes(search)) return false
-      return true
-    })
-  }, [projects, mobileFilter, search])
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      {/* Mobile: project panel overlay */}
+      {isMobile && selectedProject && (
+        <ProjectPanel project={selectedProject} onClose={() => setSelectedProject(null)} isMobile/>
+      )}
 
-  if (isMobile) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-        {selectedProject && (
-          <ProjectPanel project={selectedProject} onClose={() => setSelectedProject(null)} isMobile/>
-        )}
-        {showCreate && (
-          <CreateProjectSheet
-            onClose={() => setShowCreate(false)}
-            onCreated={(project) => { handleCreated(project); setSelectedProject(project) }}
-          />
-        )}
-        <MobileHeader title="プロジェクト" right={
-          <button onClick={() => setShowCreate(true)} style={{ border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Icon name="plus" size={13}/> 新規
-          </button>
-        }/>
+      {/* Create modal/sheet */}
+      {showCreate && (
+        isMobile
+          ? <CreateProjectSheet onClose={() => setShowCreate(false)} onCreated={(p) => { handleCreated(p); setSelectedProject(p) }}/>
+          : <CreateProjectModal onClose={() => setShowCreate(false)} onCreated={handleCreated}/>
+      )}
 
-        <div style={{ padding: '12px 16px 0' }}>
-          {/* Search */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '0 12px', height: 40, marginBottom: 12 }}>
-            <Icon name="search" size={15} color="var(--text-3)"/>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="プロジェクトを検索" style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 14, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}/>
-          </div>
-          {/* Filter tabs */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-            {([
-              { id: 'all',    label: 'すべて' },
-              { id: 'active', label: '進行中' },
-              { id: 'mine',   label: '参加中' },
-            ] as const).map(f => (
-              <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding: '6px 14px', borderRadius: 999, border: 'none', background: filter === f.id ? 'var(--accent)' : 'var(--card)', color: filter === f.id ? 'var(--on-accent)' : 'var(--text-3)', fontSize: 13, fontWeight: filter === f.id ? 600 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                {f.label}
+      {/* Mobile header */}
+      {isMobile && (
+        <MobileHeader
+          title="プロジェクト一覧"
+          right={
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
+                <Icon name="search" size={20}/>
               </button>
-            ))}
-          </div>
-        </div>
+              <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
+                <Icon name="bell" size={20}/>
+              </button>
+            </div>
+          }
+        />
+      )}
 
-        <div style={{ flex: 1, overflow: 'auto', padding: '0 16px', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
-          {isLoading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>読み込み中…</div>
-          ) : mobileFiltered.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>プロジェクトが見つかりません</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {mobileFiltered.map(p => {
-                const cfg = STATUS[p.statusName as StatusKey]
-                const accent = cfg?.dot ?? 'var(--text-3)'
+      {/* Toolbar: filter tabs + PC controls */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        borderBottom: '1px solid var(--border)',
+        flexShrink: 0,
+        padding: isMobile ? '10px 16px' : '0',
+        gap: isMobile ? 6 : 0,
+        overflowX: isMobile ? 'auto' : 'visible',
+        scrollbarWidth: 'none',
+      }}>
+        {filterTabs.map(f => (
+          <button key={f.id} onClick={() => setFilter(f.id)} style={isMobile ? {
+            padding: '6px 14px', borderRadius: 999, border: 'none', flexShrink: 0,
+            background: filter === f.id ? 'var(--accent)' : 'var(--card-2)',
+            color: filter === f.id ? 'var(--on-accent)' : 'var(--text-3)',
+            fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
+            cursor: 'pointer', fontFamily: 'inherit',
+          } : {
+            padding: '10px 14px', border: 'none', background: 'transparent',
+            color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
+            fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
+            cursor: 'pointer', fontFamily: 'inherit',
+            borderBottom: filter === f.id ? '2px solid var(--accent)' : '2px solid transparent',
+            marginBottom: -1,
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}>
+            {f.label}
+            {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>{f.n}</span>}
+          </button>
+        ))}
+
+        {/* PC only: view toggle + status filter + create button */}
+        {!isMobile && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingBottom: 8, marginLeft: 'auto' }}>
+            <div style={{ display: 'flex', background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: 2 }}>
+              {([
+                { id: 'grid'  as const, i: 'kanban', l: 'カード' },
+                { id: 'table' as const, i: 'list',   l: 'テーブル' },
+              ]).map(v => (
+                <button key={v.id} onClick={() => setView(v.id)} style={{
+                  padding: '5px 10px', borderRadius: 6, border: 'none',
+                  background: view === v.id ? 'var(--card)' : 'transparent',
+                  color: view === v.id ? 'var(--text)' : 'var(--text-3)',
+                  fontSize: 12, fontWeight: view === v.id ? 600 : 500,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  boxShadow: view === v.id ? 'var(--shadow-sm)' : 'none',
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                }}><Icon name={v.i} size={12}/> {v.l}</button>
+              ))}
+            </div>
+            <div ref={filterBtnRef} style={{ position: 'relative' }}>
+              <button
+                className="btn"
+                onClick={() => setFilterOpen(o => !o)}
+                style={statusFilter.length > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
+              >
+                <Icon name="filter" size={13}/> フィルター
+                {statusFilter.length > 0 && (
+                  <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
+                    {statusFilter.length}
+                  </span>
+                )}
+              </button>
+              {filterOpen && (
+                <FilterPopover statuses={statusFilter} onChange={setStatusFilter} onClose={() => setFilterOpen(false)}/>
+              )}
+            </div>
+            <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+              <Icon name="plus" size={13}/> 新規プロジェクト
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Content */}
+      <div style={{
+        flex: 1, overflow: 'auto',
+        padding: isMobile ? '12px 16px' : '20px 24px',
+        paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined,
+      }}>
+        {isLoading ? (
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>読み込み中…</div>
+        ) : filteredProjects.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>プロジェクトが見つかりません</div>
+        ) : view === 'table' && !isMobile ? (
+          /* PC table view */
+          <div className="card" style={{ padding: 0 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              <span/><span>プロジェクト</span><span>ステータス</span><span>日程</span><span>メンバー</span><span>進捗</span><span/>
+            </div>
+            {filteredProjects.map((p, i) => {
+              const accent = STATUS[p.statusName as StatusKey]?.dot ?? 'var(--text-3)'
+              const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
+              return (
+                <div key={p.id} onClick={() => openPanel?.(p)} style={{
+                  display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px',
+                  gap: 16, padding: '12px 16px', borderBottom: i < filteredProjects.length - 1 ? '1px solid var(--divider)' : 'none',
+                  alignItems: 'center', cursor: 'pointer',
+                }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                >
+                  <span style={{ width: 10, height: 10, borderRadius: 3, background: accent }}/>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
+                  <StatusChip s={p.statusName as StatusKey}/>
+                  <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{formatDates(p.startDate, p.endDate)}</span>
+                  <AvatarStack names={p.memberNames} size={22}/>
+                  <div style={{ height: 6, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${progress}%`, background: accent, borderRadius: 3 }}/>
+                  </div>
+                  <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}><Icon name="more" size={14}/></button>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          /* Grid (PC) / List with cover photos (mobile) */
+          <div style={{
+            display: isMobile ? 'flex' : 'grid',
+            flexDirection: 'column',
+            gridTemplateColumns: isMobile ? undefined : 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: isMobile ? 10 : 16,
+          }}>
+            {filteredProjects.map((p, i) => {
+              const accent = STATUS[p.statusName as StatusKey]?.dot ?? 'var(--text-3)'
+              const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
+
+              if (isMobile) {
                 return (
-                  <div key={p.id} onClick={() => setSelectedProject(p)} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px', cursor: 'pointer', transition: 'transform .15s' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
-                      <div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 4, lineHeight: 1.3 }}>{p.title}</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{formatDates(p.startDate, p.endDate)} · {p.memberCount}人</div>
-                      </div>
-                      <StatusChip s={p.statusName as StatusKey}/>
+                  <div key={p.id} onClick={() => setSelectedProject(p)} style={{
+                    background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14,
+                    overflow: 'hidden', cursor: 'pointer',
+                    display: 'flex', alignItems: 'stretch',
+                  }}>
+                    {/* Cover photo thumbnail */}
+                    <div style={{ width: 88, flexShrink: 0, position: 'relative' }}>
+                      <MountainPhoto idx={p.coverPhotoIdx} height={88} flat radius={0}/>
                     </div>
-                    {p.taskCount > 0 && (
-                      <div style={{ height: 4, borderRadius: 2, background: 'var(--divider)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${Math.round((p.completedTaskCount / p.taskCount) * 100)}%`, background: accent, borderRadius: 2 }}/>
+                    {/* Content */}
+                    <div style={{ flex: 1, minWidth: 0, padding: '12px 14px' }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.title}
                       </div>
-                    )}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 10, gap: 12, fontSize: 12, color: 'var(--text-3)' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="users" size={12}/> {p.memberCount}</span>
-                      {p.taskCount > 0 && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={12}/> {p.completedTaskCount}/{p.taskCount}</span>
-                      )}
+                      <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>
+                        {formatDates(p.startDate, p.endDate)}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <StatusChip s={p.statusName as StatusKey}/>
+                        <AvatarStack names={p.memberNames} size={20}/>
+                        <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 2 }}>{p.memberCount}人</span>
+                      </div>
                     </div>
                   </div>
                 )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
+              }
 
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px 24px', overflow: 'auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {[
-            { id: 'all',      l: 'すべて',     n: counts.all },
-            { id: 'mine',     l: '参加中',     n: counts.mine },
-            { id: 'owned',    l: '主催',       n: counts.owned },
-            { id: 'active',   l: '進行中',     n: counts.active },
-            { id: 'archived', l: 'アーカイブ', n: counts.archived },
-          ].map(f => (
-            <button key={f.id} onClick={() => setFilter(f.id)} style={{
-              padding: '10px 14px', border: 'none', background: 'transparent',
-              color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
-              fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
-              cursor: 'pointer', fontFamily: 'inherit',
-              borderBottom: filter === f.id ? '2px solid var(--accent)' : '2px solid transparent',
-              marginBottom: -1,
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-            }}>
-              {f.l}
-              <span style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>{f.n}</span>
-            </button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingBottom: 8 }}>
-          <div style={{ display: 'flex', background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: 2 }}>
-            {[
-              { id: 'grid' as const,  i: 'kanban', l: 'カード' },
-              { id: 'table' as const, i: 'list',   l: 'テーブル' },
-            ].map(v => (
-              <button key={v.id} onClick={() => setView(v.id)} style={{
-                padding: '5px 10px', borderRadius: 6, border: 'none',
-                background: view === v.id ? 'var(--card)' : 'transparent',
-                color: view === v.id ? 'var(--text)' : 'var(--text-3)',
-                fontSize: 12, fontWeight: view === v.id ? 600 : 500,
-                cursor: 'pointer', fontFamily: 'inherit',
-                boxShadow: view === v.id ? 'var(--shadow-sm)' : 'none',
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-              }}><Icon name={v.i} size={12}/> {v.l}</button>
-            ))}
-          </div>
-          <div ref={filterBtnRef} style={{ position: 'relative' }}>
-            <button
-              className="btn"
-              onClick={() => setFilterOpen(o => !o)}
-              style={statusFilter.length > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
-            >
-              <Icon name="filter" size={13}/> フィルター
-              {statusFilter.length > 0 && (
-                <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
-                  {statusFilter.length}
-                </span>
-              )}
-            </button>
-            {filterOpen && (
-              <FilterPopover
-                statuses={statusFilter}
-                onChange={setStatusFilter}
-                onClose={() => setFilterOpen(false)}
-              />
-            )}
-          </div>
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={13}/> 新規プロジェクト</button>
-        </div>
-      </div>
-
-      {view === 'grid' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-          {filteredProjects.map((p, i) => {
-            const accent = STATUS[p.statusName as StatusKey]?.dot ?? 'var(--text-3)'
-            const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
-            return (
-              <div key={p.id} onClick={() => openPanel?.(p)} style={{
-                background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12,
-                overflow: 'hidden', cursor: 'pointer', boxShadow: 'var(--shadow-sm)',
-                transition: 'transform .15s, box-shadow .15s',
-              }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)' }}
-              >
-                <div style={{ position: 'relative' }}>
-                  <MountainPhoto idx={i + 2} height={120} flat/>
-                  <div style={{ position: 'absolute', top: 10, left: 10 }}>
-                    <StatusChip s={p.statusName as StatusKey}/>
+              return (
+                <div key={p.id} onClick={() => openPanel?.(p)} style={{
+                  background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12,
+                  overflow: 'hidden', cursor: 'pointer', boxShadow: 'var(--shadow-sm)',
+                  transition: 'transform .15s, box-shadow .15s',
+                }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)' }}
+                >
+                  <div style={{ position: 'relative' }}>
+                    <MountainPhoto idx={p.coverPhotoIdx} height={120} flat/>
+                    <div style={{ position: 'absolute', top: 10, left: 10 }}>
+                      <StatusChip s={p.statusName as StatusKey}/>
+                    </div>
                   </div>
-                </div>
-                <div style={{ padding: '12px 14px 14px' }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>{p.title}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>{formatDates(p.startDate, p.endDate)} · {p.memberCount}人</div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <AvatarStack names={p.memberNames} size={22}/>
-                    <div style={{ display: 'flex', gap: 8, fontSize: 11.5, color: 'var(--text-3)' }}>
+                  <div style={{ padding: '12px 14px 14px' }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>{p.title}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>{formatDates(p.startDate, p.endDate)} · {p.memberCount}人</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <AvatarStack names={p.memberNames} size={22}/>
                       {p.taskCount > 0 && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11.5, color: 'var(--text-3)' }}>
                           <Icon name="check" size={12}/>{p.completedTaskCount}/{p.taskCount}
                         </span>
                       )}
                     </div>
+                    {p.taskCount > 0 && (
+                      <div style={{ marginTop: 10, height: 5, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${progress}%`, background: accent, borderRadius: 3 }}/>
+                      </div>
+                    )}
                   </div>
-                  {p.taskCount > 0 && (
-                    <div style={{ marginTop: 10, height: 5, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${progress}%`, background: accent, borderRadius: 3 }}/>
-                    </div>
-                  )}
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      ) : (
-        <div className="card" style={{ padding: 0 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-            <span/><span>プロジェクト</span><span>ステータス</span><span>日程</span><span>メンバー</span><span>進捗</span><span/>
+              )
+            })}
           </div>
-          {filteredProjects.map((p, i) => {
-            const accent = STATUS[p.statusName as StatusKey]?.dot ?? 'var(--text-3)'
-            const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
-            return (
-              <div key={p.id} onClick={() => openPanel?.(p)} style={{
-                display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px',
-                gap: 16, padding: '12px 16px', borderBottom: i < filteredProjects.length - 1 ? '1px solid var(--divider)' : 'none',
-                alignItems: 'center', cursor: 'pointer',
-              }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-              >
-                <span style={{ width: 10, height: 10, borderRadius: 3, background: accent }}/>
-                <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
-                <StatusChip s={p.statusName as StatusKey}/>
-                <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{formatDates(p.startDate, p.endDate)}</span>
-                <AvatarStack names={p.memberNames} size={22}/>
-                <div style={{ height: 6, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${progress}%`, background: accent, borderRadius: 3 }}/>
-                </div>
-                <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}><Icon name="more" size={14}/></button>
-              </div>
-            )
-          })}
-        </div>
+        )}
+      </div>
+
+      {/* Mobile FAB */}
+      {isMobile && (
+        <button
+          onClick={() => setShowCreate(true)}
+          style={{
+            position: 'fixed',
+            right: 16,
+            bottom: 'calc(80px + env(safe-area-inset-bottom) + 16px)',
+            width: 52, height: 52, borderRadius: '50%',
+            background: 'var(--accent)', color: 'var(--on-accent)',
+            border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            zIndex: 50,
+          }}
+        >
+          <Icon name="plus" size={22}/>
+        </button>
       )}
-      {showCreate && <CreateProjectModal onClose={() => setShowCreate(false)} onCreated={handleCreated}/>}
     </div>
   )
 }
