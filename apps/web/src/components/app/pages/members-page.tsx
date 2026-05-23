@@ -119,6 +119,7 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
       isOwner:            p.role === 'leader',
       isMember:           true,
       archived:           false,
+      coverPhotoIdx:      p.coverPhotoIdx,
     })
   }
 

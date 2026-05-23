@@ -54,6 +54,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
       startDate: p.startDate, endDate: p.endDate, memberCount: p.memberCount,
       memberNames: [], taskCount: 0, completedTaskCount: 0,
       isOwner: p.role === 'leader', isMember: true, archived: false,
+      coverPhotoIdx: p.coverPhotoIdx,
     })
   }, [])
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)

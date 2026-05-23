@@ -14,6 +14,13 @@ export interface MemberProjectDto {
   startDate: string | null
   endDate: string | null
   memberCount: number
+  coverPhotoIdx: number
+}
+
+function coverPhotoIdxFromId(id: string): number {
+  let h = 0
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) & 0xffff
+  return h
 }
 
 // userId → [{projectIndex, role}]
@@ -40,6 +47,7 @@ function mockMemberProjects(userId: string): MemberProjectDto[] {
       startDate:  p.startDate,
       endDate:    p.endDate,
       memberCount: p.members,
+      coverPhotoIdx: p.photoIdx,
     }
   })
 }
@@ -101,13 +109,14 @@ export async function GET(
 
     return NextResponse.json(
       rows.map(r => ({
-        projectId:   r.projectId,
-        title:       r.title,
-        statusName:  (r.statusName ?? 'plan') as StatusKey,
-        role:        r.role,
-        startDate:   r.startDate ?? null,
-        endDate:     r.endDate ?? null,
-        memberCount: countMap.get(r.projectId) ?? 0,
+        projectId:     r.projectId,
+        title:         r.title,
+        statusName:    (r.statusName ?? 'plan') as StatusKey,
+        role:          r.role,
+        startDate:     r.startDate ?? null,
+        endDate:       r.endDate ?? null,
+        memberCount:   countMap.get(r.projectId) ?? 0,
+        coverPhotoIdx: coverPhotoIdxFromId(r.projectId),
       } satisfies MemberProjectDto)),
     )
   } catch (err) {

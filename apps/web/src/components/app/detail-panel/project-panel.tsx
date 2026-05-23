@@ -196,7 +196,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
       {/* Hero image header — PC と Mobile で共通、コントロールのみ切り替え */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
         <MountainPhoto
-          idx={isMobile ? Math.abs(project.id.charCodeAt(0)) % 12 : 0}
+          idx={project.coverPhotoIdx}
           height={isMobile ? 130 : 180}
           flat
         />
