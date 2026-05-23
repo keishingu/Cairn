@@ -6,9 +6,9 @@
 import React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { MobileNav } from '@/components/app/mobile/nav'
-import { MobileDashboard } from '@/components/app/mobile/dashboard'
-import { MobileProjects } from '@/components/app/mobile/projects'
 import { MobileAI } from '@/components/app/mobile/ai'
+import { PageDashboard } from '@/components/app/pages/dashboard'
+import { ProjectListView } from '@/components/app/pages/project-list'
 import { MobileSettings } from '@/components/app/mobile/settings'
 import { MobileHeader } from '@/components/app/mobile/header'
 import { PageChat } from '@/components/app/pages/chat'
@@ -70,7 +70,7 @@ function MobilePage({ page, projectsView }: { page: string; projectsView: Projec
   if (page === 'projects') {
     if (projectsView === 'calendar') return <PageCalendar openPanel={() => {}} isMobile />
     if (projectsView === 'kanban') return <PageKanban openPanel={() => {}} isMobile />
-    return <MobileProjects />
+    return <ProjectListView isMobile />
   }
   if (page === 'chats') return <PageChat isMobile />
   if (page === 'tasks') return (
@@ -83,7 +83,7 @@ function MobilePage({ page, projectsView }: { page: string; projectsView: Projec
   if (page === 'settings') return <MobileSettings />
   if (page === 'members') return <PageMembers isMobile />
   if (page in MENU_PAGE_LABELS) return <MobilePlaceholder title={MENU_PAGE_LABELS[page]!} />
-  return <MobileDashboard />
+  return <PageDashboard isMobile />
 }
 
 export function MobileShell() {

@@ -10,6 +10,7 @@ import { OverviewTab, formatDateRange } from './tabs/overview-tab'
 import { FilesTab } from './tabs/files-tab'
 import { TasksTab } from './tabs/tasks-tab'
 import { MembersTab } from './tabs/members-tab'
+import { MobileHeader } from '../mobile/header'
 
 const PanelGalleryTab = () => (
   <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
@@ -147,80 +148,129 @@ interface ProjectPanelProps {
   project: ProjectDto
   onClose: () => void
   onMemberClick?: ((userId: string, displayName: string) => void) | undefined
+  isMobile?: boolean
 }
 
-export const ProjectPanel = ({ project, onClose, onMemberClick }: ProjectPanelProps) => {
+export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: ProjectPanelProps) => {
   const [tab, setTab] = React.useState('chat')
-  const tabs = [
-    { id: 'overview',  label: '概要',      icon: 'book' },
-    { id: 'chat',      label: 'チャット',  icon: 'chat' },
-    { id: 'files',     label: 'ファイル',  icon: 'file' },
-    { id: 'tasks',     label: 'タスク',    icon: 'check' },
-    { id: 'members',   label: 'メンバー',  icon: 'users' },
+
+  const pcTabs = [
+    { id: 'overview',  label: '概要',       icon: 'book' },
+    { id: 'chat',      label: 'チャット',   icon: 'chat' },
+    { id: 'files',     label: 'ファイル',   icon: 'file' },
+    { id: 'tasks',     label: 'タスク',     icon: 'check' },
+    { id: 'members',   label: 'メンバー',   icon: 'users' },
     { id: 'gallery',   label: 'ギャラリー', icon: 'image' },
-    { id: 'ai',        label: 'AI',        icon: 'sparkles' },
-    { id: 'settings',  label: '設定',      icon: 'settings' },
+    { id: 'ai',        label: 'AI',         icon: 'sparkles' },
+    { id: 'settings',  label: '設定',       icon: 'settings' },
   ]
+
+  const mobileTabs = [
+    { id: 'overview', label: '概要',     icon: 'book' },
+    { id: 'chat',     label: 'チャット', icon: 'chat' },
+    { id: 'tasks',    label: 'タスク',   icon: 'check' },
+    { id: 'files',    label: 'ファイル', icon: 'file' },
+    { id: 'members',  label: 'メンバー', icon: 'users' },
+  ]
+
+  const tabs = isMobile ? mobileTabs : pcTabs
+
+  const containerStyle: React.CSSProperties = isMobile
+    ? {
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'var(--bg)',
+        display: 'flex', flexDirection: 'column',
+        animation: 'slideInRight .22s cubic-bezier(.2,.7,.3,1)',
+      }
+    : {
+        width: 420, flexShrink: 0,
+        background: 'var(--card)',
+        borderLeft: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column',
+        minHeight: 0,
+        boxShadow: 'var(--shadow-lg)',
+        animation: 'projectPanelIn .2s cubic-bezier(.2,.7,.3,1)',
+      }
+
   return (
-    <aside style={{
-      width: 420, flexShrink: 0,
-      background: 'var(--card)',
-      borderLeft: '1px solid var(--border)',
-      display: 'flex', flexDirection: 'column',
-      minHeight: 0,
-      boxShadow: 'var(--shadow-lg)',
-      animation: 'projectPanelIn .2s cubic-bezier(.2,.7,.3,1)',
-    }}>
-      <div style={{ position: 'relative', flexShrink: 0 }}>
-        <MountainPhoto idx={0} height={180} flat/>
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.45), transparent 40%, rgba(0,0,0,0.55))' }}/>
-        <div style={{ position: 'absolute', top: 14, left: 16, right: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{project.title}</span>
-          <button style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="more" size={14}/>
-          </button>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="close" size={15}/>
-          </button>
-        </div>
-        <div style={{ position: 'absolute', left: 18, right: 18, bottom: 14, color: '#fff' }}>
-          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>{formatDateRange(project.startDate, project.endDate)}</div>
-          <div style={{ fontSize: 12.5, opacity: 0.95, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="users" size={12}/> {project.memberCount}人参加</span>
+    <aside style={containerStyle}>
+      {/* Mobile: use MobileHeader */}
+      {isMobile && <MobileHeader title={project.title} onBack={onClose}/>}
+
+      {/* PC: hero image header */}
+      {!isMobile && (
+        <>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <MountainPhoto idx={0} height={180} flat/>
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.45), transparent 40%, rgba(0,0,0,0.55))' }}/>
+            <div style={{ position: 'absolute', top: 14, left: 16, right: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{project.title}</span>
+              <button style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="more" size={14}/>
+              </button>
+              <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="close" size={15}/>
+              </button>
+            </div>
+            <div style={{ position: 'absolute', left: 18, right: 18, bottom: 14, color: '#fff' }}>
+              <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>{formatDateRange(project.startDate, project.endDate)}</div>
+              <div style={{ fontSize: 12.5, opacity: 0.95, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="users" size={12}/> {project.memberCount}人参加</span>
+              </div>
+            </div>
           </div>
+
+          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <StatusChip s={project.statusName}/>
+            <AvatarStack names={MEMBERS.slice(0, Math.min(project.memberCount, 5))} size={22} max={5}/>
+            <button className="btn btn-ghost" style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}>
+              <Icon name="arrowRight" size={11}/> 詳細を開く
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Mobile: project meta row */}
+      {isMobile && (
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <StatusChip s={project.statusName}/>
+          <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
+            {formatDateRange(project.startDate, project.endDate)}
+          </span>
+          <span style={{ fontSize: 12.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+            <Icon name="users" size={12}/> {project.memberCount}人
+          </span>
         </div>
-      </div>
+      )}
 
-      <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <StatusChip s={project.statusName}/>
-        <AvatarStack names={MEMBERS.slice(0, Math.min(project.memberCount, 5))} size={22} max={5}/>
-        <button className="btn btn-ghost" style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}>
-          <Icon name="arrowRight" size={11}/> 詳細を開く
-        </button>
-      </div>
-
-      <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', gap: 2, overflowX: 'auto' }}>
+      {/* Tabs */}
+      <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', gap: 2, overflowX: 'auto', flexShrink: 0 }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
-            padding: '7px 10px', borderRadius: 6, border: 'none',
+            padding: isMobile ? '10px 12px' : '7px 10px',
+            borderRadius: 6, border: 'none',
             background: tab === t.id ? 'var(--card-hover)' : 'transparent',
             color: tab === t.id ? 'var(--text)' : 'var(--text-3)',
-            fontSize: 12, fontWeight: tab === t.id ? 600 : 500,
+            fontSize: isMobile ? 13 : 12,
+            fontWeight: tab === t.id ? 600 : 500,
             cursor: 'pointer', fontFamily: 'inherit',
             display: 'inline-flex', alignItems: 'center', gap: 5,
             whiteSpace: 'nowrap', flexShrink: 0,
-          }}><Icon name={t.icon} size={13}/> {t.label}</button>
+          }}><Icon name={t.icon} size={isMobile ? 14 : 13}/> {t.label}</button>
         ))}
       </div>
 
-      {tab === 'chat'     && <ChatTab project={project}/>}
-      {tab === 'overview' && <OverviewTab project={project}/>}
-      {tab === 'files'    && <FilesTab projectId={project.id}/>}
-      {tab === 'tasks'    && <TasksTab project={project}/>}
-      {tab === 'members'  && <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>}
-      {tab === 'gallery'  && <PanelGalleryTab/>}
-      {tab === 'ai'       && <PanelAITab/>}
-      {tab === 'settings' && <PanelSettingsTab projectId={project.id} onDeleted={onClose}/>}
+      {/* Tab content */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : 0 }}>
+        {tab === 'chat'     && <ChatTab project={project}/>}
+        {tab === 'overview' && <OverviewTab project={project}/>}
+        {tab === 'files'    && <FilesTab projectId={project.id}/>}
+        {tab === 'tasks'    && <TasksTab project={project}/>}
+        {tab === 'members'  && <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>}
+        {tab === 'gallery'  && !isMobile && <PanelGalleryTab/>}
+        {tab === 'ai'       && !isMobile && <PanelAITab/>}
+        {tab === 'settings' && !isMobile && <PanelSettingsTab projectId={project.id} onDeleted={onClose}/>}
+      </div>
     </aside>
   )
 }

@@ -10,7 +10,6 @@ import { MemberDetailPanel } from '../detail-panel/member-panel'
 import { ProjectPanel } from '../detail-panel/project-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
-import { MobileMemberScreen } from '../mobile/member-screen'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -163,9 +162,11 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
         {mobileDetailMember && (
-          <MobileMemberScreen
+          <MemberDetailPanel
             member={mobileDetailMember}
-            onBack={() => setMobileDetailMember(null)}
+            onProjectClick={handleProjectClick}
+            onClose={() => setMobileDetailMember(null)}
+            isMobile
           />
         )}
         <MobileHeader title="メンバー" />
