@@ -8,6 +8,7 @@ import type { AttachmentDto } from '@cairn/shared'
 import { Avatar } from './primitives'
 import { EmojiPicker } from './emoji-picker'
 import { Icon } from './primitives'
+import { FileTypeIcon } from './file-type-icon'
 import {
   formatChatMessageTime,
   useChannelMessages,
@@ -113,7 +114,7 @@ const ChatMessage = ({ messageId, senderName, createdAt, content, reactions, att
                   fontSize: 12.5, maxWidth: 240,
                 }}
               >
-                <Icon name="file" size={16}/>
+                <FileTypeIcon mimeType={a.mimeType} fileName={a.fileName} width={28} height={32}/>
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {a.fileName}
                 </span>
@@ -176,15 +177,13 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const AttachmentPreviews = pendingAttachments.length > 0 || isUploading ? (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: compact ? '6px 10px 0' : '6px 14px 0' }}>
       {pendingAttachments.map(a => (
-        <div key={a.fileId} style={{ position: 'relative', width: 56, height: 56, flexShrink: 0 }}>
+        <div key={a.fileId} style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
           {isImageMime(a.mimeType) ? (
             <img src={a.previewUrl} alt={a.fileName} style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover', display: 'block' }} />
           ) : (
-            <div style={{ width: 56, height: 56, borderRadius: 6, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-              <Icon name="file" size={18}/>
-              <span style={{ fontSize: 9, color: 'var(--text-4)', maxWidth: 48, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}>
-                {a.fileName.split('.').pop()?.toUpperCase()}
-              </span>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 12.5, maxWidth: 240 }}>
+              <FileTypeIcon mimeType={a.mimeType} fileName={a.fileName} width={28} height={32}/>
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.fileName}</span>
             </div>
           )}
           <button

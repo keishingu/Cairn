@@ -5,14 +5,14 @@
 
 import { useAppShell } from '@/components/app/app-shell-context'
 import { TopBar } from '@/components/app/sidebar'
-import { PlaceholderPage } from '@/components/app/primitives'
+import { PageFiles } from '@/components/app/pages/files'
 
 export default function FilesPage() {
   const { openNotif } = useAppShell()
   return (
     <>
       <TopBar title="ファイル" onBell={openNotif}/>
-      <PlaceholderPage name="ファイル" icon="file"/>
+      <PageFiles />
     </>
   )
 }
