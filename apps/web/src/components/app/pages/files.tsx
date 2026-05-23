@@ -1,0 +1,216 @@
+'use client'
+
+import React from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Icon, Avatar } from '../primitives'
+import { FileTypeIcon } from '../file-type-icon'
+import type { FileDto } from '@/app/api/files/route'
+
+type FilterKey = 'all' | 'pdf' | 'img' | 'doc'
+
+const DOC_MIME_TYPES = [
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]
+
+function formatFileSize(bytes: number | null): string {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function matchesFilter(file: FileDto, filter: FilterKey): boolean {
+  if (filter === 'all') return true
+  if (filter === 'pdf') return file.mimeType === 'application/pdf'
+  if (filter === 'img') return file.mimeType?.startsWith('image/') ?? false
+  if (filter === 'doc') return DOC_MIME_TYPES.includes(file.mimeType ?? '')
+  return true
+}
+
+// ─── FileRow ──────────────────────────────────────────────────────
+
+const FileRow = ({ file, isMobile }: { file: FileDto; isMobile: boolean }) => {
+  const sizeStr = formatFileSize(file.fileSize)
+  const dateStr = formatDate(file.createdAt)
+  const meta = [sizeStr, dateStr].filter(Boolean).join(' · ')
+
+  return (
+    <a
+      href={`/api/attachments/${file.id}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: isMobile ? '10px 12px' : '10px 16px',
+        borderBottom: '1px solid var(--divider)',
+        textDecoration: 'none', cursor: 'pointer',
+      }}
+      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
+      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+    >
+      <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 13, fontWeight: 600, color: 'var(--text)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {file.fileName}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{meta}</div>
+      </div>
+      <Avatar name={file.uploaderName} size={22} />
+    </a>
+  )
+}
+
+const FileRowSkeleton = () => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--divider)' }}>
+    <div style={{ width: 32, height: 36, borderRadius: 4, background: 'var(--card-2)', flexShrink: 0 }} />
+    <div style={{ flex: 1 }}>
+      <div style={{ height: 13, width: '50%', borderRadius: 4, background: 'var(--card-2)', marginBottom: 6 }} />
+      <div style={{ height: 11, width: '28%', borderRadius: 4, background: 'var(--card-2)' }} />
+    </div>
+    <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--card-2)', flexShrink: 0 }} />
+  </div>
+)
+
+// ─── Section ──────────────────────────────────────────────────────
+
+const Section = ({ label, files, isMobile, defaultOpen = true }: {
+  label: string
+  files: FileDto[]
+  isMobile: boolean
+  defaultOpen?: boolean
+}) => {
+  const [open, setOpen] = React.useState(defaultOpen)
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+          padding: '10px 16px', border: 'none', background: 'var(--card-2)',
+          borderBottom: '1px solid var(--divider)', cursor: 'pointer',
+          fontFamily: 'inherit', textAlign: 'left',
+        }}
+      >
+        <Icon name={open ? 'chevDown' : 'chevRight'} size={12} color="var(--text-3)" />
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', letterSpacing: '0.02em' }}>{label}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', background: 'var(--card)', border: '1px solid var(--border)', padding: '1px 6px', borderRadius: 999 }}>{files.length}</span>
+      </button>
+      {open && files.map(f => (
+        <FileRow key={f.id} file={f} isMobile={isMobile} />
+      ))}
+    </div>
+  )
+}
+
+// ─── PageFiles ────────────────────────────────────────────────────
+
+export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
+  const [filter, setFilter] = React.useState<FilterKey>('all')
+
+  const { data: files = [], isLoading } = useQuery<FileDto[]>({
+    queryKey: ['files'],
+    queryFn: () => fetch('/api/files').then(r => r.json()),
+  })
+
+  const filtered = React.useMemo(
+    () => files.filter(f => matchesFilter(f, filter)),
+    [files, filter],
+  )
+
+  const counts = React.useMemo(() => ({
+    all: files.length,
+    pdf: files.filter(f => f.mimeType === 'application/pdf').length,
+    img: files.filter(f => f.mimeType?.startsWith('image/') ?? false).length,
+    doc: files.filter(f => DOC_MIME_TYPES.includes(f.mimeType ?? '')).length,
+  }), [files])
+
+  const grouped = React.useMemo(() => {
+    const order: string[] = []
+    const map = new Map<string, { title: string; files: FileDto[] }>()
+    for (const f of filtered) {
+      const key = f.projectId ?? '__none__'
+      const title = f.projectTitle ?? '未分類'
+      if (!map.has(key)) { map.set(key, { title, files: [] }); order.push(key) }
+      map.get(key)!.files.push(f)
+    }
+    return order.map(key => ({ key, ...map.get(key)! }))
+  }, [filtered])
+
+  const filterDefs: { id: FilterKey; label: string }[] = [
+    { id: 'all', label: `すべて (${counts.all})` },
+    { id: 'pdf', label: `PDF (${counts.pdf})` },
+    { id: 'img', label: `画像 (${counts.img})` },
+    { id: 'doc', label: `ドキュメント (${counts.doc})` },
+  ]
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      {/* Toolbar */}
+      <div style={{
+        padding: isMobile ? '8px 12px' : '14px 20px',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+        overflowX: 'auto',
+      }}>
+        {filterDefs.map(f => (
+          <button
+            key={f.id}
+            onClick={() => setFilter(f.id)}
+            style={{
+              padding: isMobile ? '6px 8px' : '6px 10px',
+              borderRadius: 6, border: 'none',
+              background: filter === f.id ? 'var(--card-hover)' : 'transparent',
+              color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
+              fontSize: isMobile ? 12 : 12.5, fontWeight: filter === f.id ? 600 : 500,
+              cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+            }}
+          >{f.label}</button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        {isLoading ? (
+          <div className="card" style={{ margin: isMobile ? '12px' : '16px 20px', borderRadius: 10, overflow: 'hidden' }}>
+            {Array.from({ length: 5 }).map((_, i) => <FileRowSkeleton key={i} />)}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%', gap: 12, color: 'var(--text-3)' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)' }}>
+              <Icon name="file" size={22} />
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>ファイルはありません</div>
+            <div style={{ fontSize: 12.5 }}>
+              {filter === 'all'
+                ? 'チャットでファイルを送ると、ここに表示されます'
+                : 'このフィルターに一致するファイルはありません'}
+            </div>
+          </div>
+        ) : (
+          <div style={{ margin: isMobile ? '12px' : '16px 20px', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+            {grouped.map((g, idx) => (
+              <Section
+                key={g.key}
+                label={g.title}
+                files={g.files}
+                isMobile={isMobile}
+                defaultOpen={idx < 3}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
