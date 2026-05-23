@@ -15,6 +15,8 @@ const DOC_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ]
 
+const PAGE_SIZE = 20
+
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return ''
   if (bytes < 1024) return `${bytes}B`
@@ -40,7 +42,8 @@ function matchesFilter(file: FileDto, filter: FilterKey): boolean {
 const FileRow = ({ file, isMobile }: { file: FileDto; isMobile: boolean }) => {
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
-  const meta = [sizeStr, dateStr].filter(Boolean).join(' · ')
+  const projectLabel = file.projectTitle ?? file.channelName ?? 'チャット'
+  const metaParts = [projectLabel, sizeStr, dateStr].filter(Boolean).join(' · ')
 
   return (
     <a
@@ -64,7 +67,9 @@ const FileRow = ({ file, isMobile }: { file: FileDto; isMobile: boolean }) => {
         }}>
           {file.fileName}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{meta}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {metaParts}
+        </div>
       </div>
       <Avatar name={file.uploaderName} size={22} />
     </a>
@@ -76,47 +81,18 @@ const FileRowSkeleton = () => (
     <div style={{ width: 32, height: 36, borderRadius: 4, background: 'var(--card-2)', flexShrink: 0 }} />
     <div style={{ flex: 1 }}>
       <div style={{ height: 13, width: '50%', borderRadius: 4, background: 'var(--card-2)', marginBottom: 6 }} />
-      <div style={{ height: 11, width: '28%', borderRadius: 4, background: 'var(--card-2)' }} />
+      <div style={{ height: 11, width: '35%', borderRadius: 4, background: 'var(--card-2)' }} />
     </div>
     <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--card-2)', flexShrink: 0 }} />
   </div>
 )
 
-// ─── Section ──────────────────────────────────────────────────────
-
-const Section = ({ label, files, isMobile, defaultOpen = true }: {
-  label: string
-  files: FileDto[]
-  isMobile: boolean
-  defaultOpen?: boolean
-}) => {
-  const [open, setOpen] = React.useState(defaultOpen)
-  return (
-    <div>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-          padding: '10px 16px', border: 'none', background: 'var(--card-2)',
-          borderBottom: '1px solid var(--divider)', cursor: 'pointer',
-          fontFamily: 'inherit', textAlign: 'left',
-        }}
-      >
-        <Icon name={open ? 'chevDown' : 'chevRight'} size={12} color="var(--text-3)" />
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', letterSpacing: '0.02em' }}>{label}</span>
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', background: 'var(--card)', border: '1px solid var(--border)', padding: '1px 6px', borderRadius: 999 }}>{files.length}</span>
-      </button>
-      {open && files.map(f => (
-        <FileRow key={f.id} file={f} isMobile={isMobile} />
-      ))}
-    </div>
-  )
-}
-
 // ─── PageFiles ────────────────────────────────────────────────────
 
 export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [filter, setFilter] = React.useState<FilterKey>('all')
+  const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
+  const sentinelRef = React.useRef<HTMLDivElement>(null)
 
   const { data: files = [], isLoading } = useQuery<FileDto[]>({
     queryKey: ['files'],
@@ -128,6 +104,19 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
     [files, filter],
   )
 
+  React.useEffect(() => { setVisibleCount(PAGE_SIZE) }, [filter])
+
+  React.useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry?.isIntersecting) setVisibleCount(c => c + PAGE_SIZE) },
+      { rootMargin: '200px' },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [])
+
   const counts = React.useMemo(() => ({
     all: files.length,
     pdf: files.filter(f => f.mimeType === 'application/pdf').length,
@@ -135,17 +124,7 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
     doc: files.filter(f => DOC_MIME_TYPES.includes(f.mimeType ?? '')).length,
   }), [files])
 
-  const grouped = React.useMemo(() => {
-    const order: string[] = []
-    const map = new Map<string, { title: string; files: FileDto[] }>()
-    for (const f of filtered) {
-      const key = f.projectId ?? '__none__'
-      const title = f.projectTitle ?? '未分類'
-      if (!map.has(key)) { map.set(key, { title, files: [] }); order.push(key) }
-      map.get(key)!.files.push(f)
-    }
-    return order.map(key => ({ key, ...map.get(key)! }))
-  }, [filtered])
+  const visibleFiles = filtered.slice(0, visibleCount)
 
   const filterDefs: { id: FilterKey; label: string }[] = [
     { id: 'all', label: `すべて (${counts.all})` },
@@ -160,7 +139,7 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
       <div style={{
         padding: isMobile ? '8px 12px' : '14px 20px',
         borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0,
         overflowX: 'auto',
       }}>
         {filterDefs.map(f => (
@@ -182,9 +161,7 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
       {/* Content */}
       <div style={{ flex: 1, overflow: 'auto' }}>
         {isLoading ? (
-          <div className="card" style={{ margin: isMobile ? '12px' : '16px 20px', borderRadius: 10, overflow: 'hidden' }}>
-            {Array.from({ length: 5 }).map((_, i) => <FileRowSkeleton key={i} />)}
-          </div>
+          Array.from({ length: 8 }).map((_, i) => <FileRowSkeleton key={i} />)
         ) : filtered.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%', gap: 12, color: 'var(--text-3)' }}>
             <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)' }}>
@@ -198,17 +175,10 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
             </div>
           </div>
         ) : (
-          <div style={{ margin: isMobile ? '12px' : '16px 20px', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
-            {grouped.map((g, idx) => (
-              <Section
-                key={g.key}
-                label={g.title}
-                files={g.files}
-                isMobile={isMobile}
-                defaultOpen={idx < 3}
-              />
-            ))}
-          </div>
+          <>
+            {visibleFiles.map(f => <FileRow key={f.id} file={f} isMobile={isMobile} />)}
+            <div ref={sentinelRef} />
+          </>
         )}
       </div>
     </div>
