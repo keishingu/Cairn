@@ -316,13 +316,13 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
                 key={col}
                 onClick={() => onSelectDate(cell.fullDate)}
                 style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
                   justifyContent: 'flex-start',
                   padding: '3px 1px 4px', gap: 2,
                   border: 'none',
                   background: isSelected ? 'var(--accent-soft)' : 'transparent',
                   cursor: 'pointer', fontFamily: 'inherit',
-                  height: '100%',
+                  height: '100%', width: '100%', minWidth: 0, overflow: 'hidden',
                 }}
               >
                 <span style={{
@@ -343,7 +343,7 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
                 }}>
                   {cell.date}
                 </span>
-                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
                   {visible.map(p => {
                     const cfg = STATUS_COL[p.statusName as StatusKey]
                     return (
