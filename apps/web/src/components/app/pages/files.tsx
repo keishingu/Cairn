@@ -134,7 +134,7 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
   ]
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Toolbar */}
       <div style={{
         padding: isMobile ? '8px 12px' : '14px 20px',
@@ -159,7 +159,7 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {isLoading ? (
           Array.from({ length: 8 }).map((_, i) => <FileRowSkeleton key={i} />)
         ) : filtered.length === 0 ? (
