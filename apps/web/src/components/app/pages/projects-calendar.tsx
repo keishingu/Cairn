@@ -7,6 +7,7 @@ import { STATUS, STATUS_COL } from '../data'
 import type { StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '@/components/app/mobile/header'
+import { ProjectPanel } from '../detail-panel/project-panel'
 
 // ─── Date helpers ──────────────────────────────────────────────────
 
@@ -279,11 +280,12 @@ interface MobileCalendarGridProps {
   projects: ProjectDto[]
   selectedDate: Date
   onSelectDate: (d: Date) => void
+  onProjectClick: (project: ProjectDto) => void
 }
 
 const MOBILE_MAX_CHIPS = 3
 
-const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate }: MobileCalendarGridProps) => {
+const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate, onProjectClick }: MobileCalendarGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const cells = buildCells(year, month)
 
@@ -345,15 +347,20 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate 
                   {visible.map(p => {
                     const cfg = STATUS_COL[p.statusName as StatusKey]
                     return (
-                      <div key={p.id} style={{
-                        height: 13, borderRadius: 2,
-                        background: cfg.bg,
-                        borderLeft: `2px solid ${cfg.bar}`,
-                        fontSize: 9, fontWeight: 600, color: cfg.text,
-                        paddingLeft: 2,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        lineHeight: '13px',
-                      }}>
+                      <div
+                        key={p.id}
+                        onClick={(e) => { e.stopPropagation(); onProjectClick(p) }}
+                        style={{
+                          height: 13, borderRadius: 2,
+                          background: cfg.bg,
+                          borderLeft: `2px solid ${cfg.bar}`,
+                          fontSize: 9, fontWeight: 600, color: cfg.text,
+                          paddingLeft: 2,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          lineHeight: '13px',
+                          cursor: 'pointer',
+                        }}
+                      >
                         {p.title}
                       </div>
                     )
@@ -611,6 +618,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const [month, setMonth] = React.useState(today.getMonth())
   const [selectedDate, setSelectedDate] = React.useState<Date>(today)
   const [calView, setCalView] = React.useState<CalView>('month')
+  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
 
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
@@ -714,7 +722,11 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             projects={projects}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
+            onProjectClick={setSelectedProject}
           />
+        )}
+        {selectedProject && (
+          <ProjectPanel project={selectedProject} onClose={() => setSelectedProject(null)} isMobile />
         )}
         {calView === 'week' && (
           <>
