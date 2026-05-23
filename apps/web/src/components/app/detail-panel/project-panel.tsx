@@ -197,10 +197,10 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
       <div style={{ position: 'relative', flexShrink: 0 }}>
         <MountainPhoto
           idx={isMobile ? Math.abs(project.id.charCodeAt(0)) % 12 : 0}
-          height={isMobile ? 80 : 180}
+          height={isMobile ? 130 : 180}
           flat
         />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.45), transparent 40%, rgba(0,0,0,0.55))' }}/>
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, transparent 45%, rgba(0,0,0,0.65) 100%)' }}/>
 
         {/* Top controls */}
         <div style={{
@@ -226,36 +226,35 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
           )}
         </div>
 
-        {/* Bottom info overlay — PC only */}
-        {!isMobile && (
-          <div style={{ position: 'absolute', left: 16, right: 16, bottom: 14, color: '#fff' }}>
-            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, lineHeight: 1.2, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
-              {formatDateRange(project.startDate, project.endDate)}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, opacity: 0.95 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Icon name="users" size={12}/> {project.memberCount}人参加
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Mobile only: title + meta row below hero */}
-      {isMobile && (
-        <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--divider)', flexShrink: 0 }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', marginBottom: 8, lineHeight: 1.25 }}>
-            {project.title}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: 'var(--text-3)' }}>
-            <StatusChip s={project.statusName as StatusKey}/>
-            <span>{formatDateRange(project.startDate, project.endDate)}</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Icon name="users" size={12}/> {project.memberCount}人参加
-            </span>
-          </div>
+        {/* Bottom info overlay */}
+        <div style={{ position: 'absolute', left: 16, right: 16, bottom: 12, color: '#fff' }}>
+          {isMobile ? (
+            <>
+              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 5, lineHeight: 1.2, textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
+                {project.title}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, opacity: 0.95 }}>
+                <StatusChip s={project.statusName as StatusKey}/>
+                <span>{formatDateRange(project.startDate, project.endDate)}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                  <Icon name="users" size={11}/> {project.memberCount}人参加
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, lineHeight: 1.2, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
+                {formatDateRange(project.startDate, project.endDate)}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, opacity: 0.95 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Icon name="users" size={12}/> {project.memberCount}人参加
+                </span>
+              </div>
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {/* PC only: status + avatars + "詳細を開く" */}
       {!isMobile && (
