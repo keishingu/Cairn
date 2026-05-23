@@ -197,7 +197,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
       <div style={{ position: 'relative', flexShrink: 0 }}>
         <MountainPhoto
           idx={isMobile ? Math.abs(project.id.charCodeAt(0)) % 12 : 0}
-          height={isMobile ? 200 : 180}
+          height={isMobile ? 80 : 180}
           flat
         />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.45), transparent 40%, rgba(0,0,0,0.55))' }}/>
@@ -226,21 +226,36 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
           )}
         </div>
 
-        {/* Bottom info overlay */}
-        <div style={{ position: 'absolute', left: 16, right: 16, bottom: 14, color: '#fff' }}>
-          {/* Mobile: タイトルをここに表示、PC: 日程を大きく表示 */}
-          <div style={{ fontSize: 20, fontWeight: isMobile ? 800 : 700, marginBottom: isMobile ? 6 : 4, lineHeight: 1.2, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
-            {isMobile ? project.title : formatDateRange(project.startDate, project.endDate)}
+        {/* Bottom info overlay — PC only */}
+        {!isMobile && (
+          <div style={{ position: 'absolute', left: 16, right: 16, bottom: 14, color: '#fff' }}>
+            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, lineHeight: 1.2, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
+              {formatDateRange(project.startDate, project.endDate)}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, opacity: 0.95 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Icon name="users" size={12}/> {project.memberCount}人参加
+              </span>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, opacity: 0.95 }}>
-            {isMobile && <StatusChip s={project.statusName as StatusKey}/>}
-            {isMobile && <span>{formatDateRange(project.startDate, project.endDate)}</span>}
+        )}
+      </div>
+
+      {/* Mobile only: title + meta row below hero */}
+      {isMobile && (
+        <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--divider)', flexShrink: 0 }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', marginBottom: 8, lineHeight: 1.25 }}>
+            {project.title}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: 'var(--text-3)' }}>
+            <StatusChip s={project.statusName as StatusKey}/>
+            <span>{formatDateRange(project.startDate, project.endDate)}</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Icon name="users" size={12}/> {project.memberCount}人参加
             </span>
           </div>
         </div>
-      </div>
+      )}
 
       {/* PC only: status + avatars + "詳細を開く" */}
       {!isMobile && (
