@@ -3,14 +3,13 @@
 import React from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
-import { MEMBERS } from '../data'
+import { MEMBERS, type StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { ChatTab } from './tabs/chat-tab'
 import { OverviewTab, formatDateRange } from './tabs/overview-tab'
 import { FilesTab } from './tabs/files-tab'
 import { TasksTab } from './tabs/tasks-tab'
 import { MembersTab } from './tabs/members-tab'
-import { MobileHeader } from '../mobile/header'
 
 const PanelGalleryTab = () => (
   <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
@@ -194,16 +193,28 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
 
   return (
     <aside style={containerStyle}>
-      {/* Mobile: use MobileHeader */}
-      {isMobile && <MobileHeader title={project.title} onBack={onClose}/>}
+      {/* Hero image header — PC と Mobile で共通、コントロールのみ切り替え */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <MountainPhoto
+          idx={isMobile ? Math.abs(project.id.charCodeAt(0)) % 12 : 0}
+          height={isMobile ? 200 : 180}
+          flat
+        />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.45), transparent 40%, rgba(0,0,0,0.55))' }}/>
 
-      {/* PC: hero image header */}
-      {!isMobile && (
-        <>
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            <MountainPhoto idx={0} height={180} flat/>
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.45), transparent 40%, rgba(0,0,0,0.55))' }}/>
-            <div style={{ position: 'absolute', top: 14, left: 16, right: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Top controls */}
+        <div style={{
+          position: 'absolute',
+          top: isMobile ? 'max(14px, env(safe-area-inset-top))' : 14,
+          left: 14, right: 14,
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          {isMobile ? (
+            <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 10, border: 'none', background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="chevLeft" size={18}/>
+            </button>
+          ) : (
+            <>
               <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{project.title}</span>
               <button style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name="more" size={14}/>
@@ -211,35 +222,34 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
               <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name="close" size={15}/>
               </button>
-            </div>
-            <div style={{ position: 'absolute', left: 18, right: 18, bottom: 14, color: '#fff' }}>
-              <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>{formatDateRange(project.startDate, project.endDate)}</div>
-              <div style={{ fontSize: 12.5, opacity: 0.95, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="users" size={12}/> {project.memberCount}人参加</span>
-              </div>
-            </div>
-          </div>
+            </>
+          )}
+        </div>
 
-          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <StatusChip s={project.statusName}/>
-            <AvatarStack names={MEMBERS.slice(0, Math.min(project.memberCount, 5))} size={22} max={5}/>
-            <button className="btn btn-ghost" style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}>
-              <Icon name="arrowRight" size={11}/> 詳細を開く
-            </button>
+        {/* Bottom info overlay */}
+        <div style={{ position: 'absolute', left: 16, right: 16, bottom: 14, color: '#fff' }}>
+          {/* Mobile: タイトルをここに表示、PC: 日程を大きく表示 */}
+          <div style={{ fontSize: 20, fontWeight: isMobile ? 800 : 700, marginBottom: isMobile ? 6 : 4, lineHeight: 1.2, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
+            {isMobile ? project.title : formatDateRange(project.startDate, project.endDate)}
           </div>
-        </>
-      )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, opacity: 0.95 }}>
+            {isMobile && <StatusChip s={project.statusName as StatusKey}/>}
+            {isMobile && <span>{formatDateRange(project.startDate, project.endDate)}</span>}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Icon name="users" size={12}/> {project.memberCount}人参加
+            </span>
+          </div>
+        </div>
+      </div>
 
-      {/* Mobile: project meta row */}
-      {isMobile && (
-        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+      {/* PC only: status + avatars + "詳細を開く" */}
+      {!isMobile && (
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <StatusChip s={project.statusName}/>
-          <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
-            {formatDateRange(project.startDate, project.endDate)}
-          </span>
-          <span style={{ fontSize: 12.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
-            <Icon name="users" size={12}/> {project.memberCount}人
-          </span>
+          <AvatarStack names={MEMBERS.slice(0, Math.min(project.memberCount, 5))} size={22} max={5}/>
+          <button className="btn btn-ghost" style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}>
+            <Icon name="arrowRight" size={11}/> 詳細を開く
+          </button>
         </div>
       )}
 
