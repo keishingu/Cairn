@@ -281,6 +281,8 @@ interface MobileCalendarGridProps {
   onSelectDate: (d: Date) => void
 }
 
+const MOBILE_MAX_CHIPS = 3
+
 const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate }: MobileCalendarGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const cells = buildCells(year, month)
@@ -291,7 +293,7 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)' }}>
         {days.map((d, i) => (
           <div key={d} style={{
-            padding: '6px 0', fontSize: 11, fontWeight: 600, textAlign: 'center',
+            padding: '4px 0', fontSize: 10, fontWeight: 600, textAlign: 'center',
             color: i === 0 ? 'var(--red)' : i === 6 ? 'var(--blue)' : 'var(--text-3)',
           }}>{d}</div>
         ))}
@@ -303,18 +305,8 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate 
           {row.map((cell, col) => {
             const isSelected = cell.fullDate.toDateString() === selectedDate.toDateString()
             const dayProjects = getDateProjects(projects, cell.fullDate)
-            const dots = dayProjects.slice(0, 3).map(p => STATUS_COL[p.statusName as StatusKey]?.bar ?? 'var(--text-3)')
-            const textColor = cell.isToday && !isSelected
-              ? 'var(--on-accent)'
-              : isSelected
-                ? 'var(--on-accent)'
-                : cell.isOther
-                  ? 'var(--text-4)'
-                  : col === 0
-                    ? 'var(--red)'
-                    : col === 6
-                      ? 'var(--blue)'
-                      : 'var(--text)'
+            const visible = dayProjects.slice(0, MOBILE_MAX_CHIPS)
+            const overflow = dayProjects.length - MOBILE_MAX_CHIPS
 
             return (
               <button
@@ -322,25 +314,53 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate 
                 onClick={() => onSelectDate(cell.fullDate)}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  justifyContent: 'center', gap: 3, padding: '6px 2px',
-                  border: 'none', background: 'transparent', cursor: 'pointer',
-                  height: 54, fontFamily: 'inherit',
+                  padding: '3px 1px 4px', gap: 2,
+                  border: 'none',
+                  background: isSelected ? 'var(--accent-soft)' : 'transparent',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  minHeight: 46,
                 }}
               >
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: 28, height: 28, borderRadius: '50%', fontSize: 13,
+                  width: 22, height: 22, borderRadius: '50%', fontSize: 11.5,
                   fontWeight: isSelected || cell.isToday ? 700 : 400,
                   background: isSelected || cell.isToday ? 'var(--accent)' : 'transparent',
-                  color: textColor,
-                  transition: 'background .12s',
+                  color: isSelected || cell.isToday
+                    ? 'var(--on-accent)'
+                    : cell.isOther
+                      ? 'var(--text-4)'
+                      : col === 0
+                        ? 'var(--red)'
+                        : col === 6
+                          ? 'var(--blue)'
+                          : 'var(--text)',
+                  lineHeight: 1, flexShrink: 0,
                 }}>
                   {cell.date}
                 </span>
-                <div style={{ display: 'flex', gap: 2, height: 5, alignItems: 'center' }}>
-                  {dots.map((color, i) => (
-                    <span key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: isSelected ? 'var(--on-accent)' : color }} />
-                  ))}
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {visible.map(p => {
+                    const cfg = STATUS_COL[p.statusName as StatusKey]
+                    return (
+                      <div key={p.id} style={{
+                        height: 13, borderRadius: 2,
+                        background: cfg.bg,
+                        borderLeft: `2px solid ${cfg.bar}`,
+                        fontSize: 9, fontWeight: 600, color: cfg.text,
+                        paddingLeft: 2,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        lineHeight: '13px',
+                      }}>
+                        {p.title}
+                      </div>
+                    )
+                  })}
+                  {overflow > 0 && (
+                    <div style={{ fontSize: 9, color: 'var(--text-3)', paddingLeft: 2, lineHeight: '12px' }}>
+                      +{overflow}
+                    </div>
+                  )}
                 </div>
               </button>
             )
