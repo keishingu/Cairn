@@ -288,9 +288,9 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate 
   const cells = buildCells(year, month)
 
   return (
-    <div style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+    <div style={{ background: 'var(--card)', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {/* Day headers */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         {days.map((d, i) => (
           <div key={d} style={{
             padding: '4px 0', fontSize: 10, fontWeight: 600, textAlign: 'center',
@@ -300,8 +300,9 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate 
       </div>
 
       {/* Grid rows */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {cells.map((row, week) => (
-        <div key={week} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: week < 5 ? '1px solid var(--border)' : 'none' }}>
+        <div key={week} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: week < 5 ? '1px solid var(--border)' : 'none', flex: 1 }}>
           {row.map((cell, col) => {
             const isSelected = cell.fullDate.toDateString() === selectedDate.toDateString()
             const dayProjects = getDateProjects(projects, cell.fullDate)
@@ -314,11 +315,12 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate 
                 onClick={() => onSelectDate(cell.fullDate)}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  justifyContent: 'flex-start',
                   padding: '3px 1px 4px', gap: 2,
                   border: 'none',
                   background: isSelected ? 'var(--accent-soft)' : 'transparent',
                   cursor: 'pointer', fontFamily: 'inherit',
-                  minHeight: 46,
+                  height: '100%',
                 }}
               >
                 <span style={{
@@ -367,6 +369,7 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate 
           })}
         </div>
       ))}
+      </div>
     </div>
   )
 }
