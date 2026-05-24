@@ -90,6 +90,12 @@ export async function POST(req: Request) {
         userId: user.id,
         role: 'member',
       })
+
+      const { inngest } = await import('@/lib/inngest/client')
+      await inngest.send({
+        name: 'member/upserted',
+        data: { userId: user.id, workspaceId },
+      })
     }
 
     return NextResponse.json({ ok: true })

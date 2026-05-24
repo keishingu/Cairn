@@ -100,6 +100,20 @@ export async function POST(req: Request) {
 
     if (!inserted) throw new Error('Insert returned no rows')
 
+    const { isIndexable } = await import('@/lib/ai/extract-text')
+    if (isIndexable(file.type)) {
+      const { inngest } = await import('@/lib/inngest/client')
+      await inngest.send({
+        name: 'file/uploaded',
+        data: {
+          fileId: inserted.id,
+          workspaceId: ctx.workspaceId,
+          mimeType: file.type,
+          storagePath,
+        },
+      })
+    }
+
     return NextResponse.json(
       {
         fileId: inserted.id,

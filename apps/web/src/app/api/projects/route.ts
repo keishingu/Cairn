@@ -194,6 +194,12 @@ export async function POST(req: Request) {
       type: 'project',
     })
 
+    const { inngest } = await import('@/lib/inngest/client')
+    await inngest.send({
+      name: 'project/upserted',
+      data: { projectId: inserted.id, workspaceId: ctx.workspaceId },
+    })
+
     return NextResponse.json({
       id: inserted.id,
       title: inserted.title,
