@@ -106,6 +106,38 @@ cairn/
 
 ---
 
+## PWA アイコン
+
+アクセントカラー（7色）× テーマ（ライト/ダーク）の組み合わせで PWA アイコンを事前生成している。
+設定画面でカラーやテーマを変えると、ホーム画面アイコンに自動反映される。
+
+### アイコン生成
+
+```bash
+node scripts/generate-icons.mjs
+```
+
+`apps/web/public/` に以下のファイルを生成する:
+
+| ファイル名パターン | 用途 |
+|---|---|
+| `icon-{color}-{theme}-192.png` | Android manifest (192×192) |
+| `icon-{color}-{theme}-512.png` | Android manifest (512×512) |
+| `apple-touch-icon-{color}-{theme}.png` | iOS ホーム画面アイコン (180×180) |
+| `icon-192.png` / `icon-512.png` / `apple-touch-icon.png` | cookie 未設定時のフォールバック |
+
+`{color}`: `emerald` / `blue` / `violet` / `rose` / `pink` / `amber` / `cyan`  
+`{theme}`: `light` / `dark`
+
+### アクセントカラーを追加する手順
+
+1. `apps/web/src/lib/accent-presets.ts` の `ACCENT_PRESETS` 配列に新しいプリセットを追加する
+2. `scripts/generate-icons.mjs` の `ACCENT_PRESETS` 配列にも同じ `id` と `swatch` 色を追加する
+3. `node scripts/generate-icons.mjs` を実行して PNG を生成する
+4. 生成されたファイルをコミットする
+
+---
+
 ## ライセンス
 
 Apache License 2.0
