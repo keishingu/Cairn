@@ -74,6 +74,13 @@ export async function POST(req: Request, { params }: RouteContext) {
     ? lastUserMessage.content
     : ''
 
+  console.log('[AI chat] POST', {
+    hasDatabaseUrl: !!process.env['DATABASE_URL'],
+    hasOpenAiKey: !!process.env['OPENAI_API_KEY'],
+    lastUserContent: lastUserContent.slice(0, 80),
+    messageCount: messages.length,
+  })
+
   // RAG: 最後のユーザーメッセージに関連するチャンクを検索
   let contextSection = ''
   if (process.env['DATABASE_URL'] && lastUserContent) {
