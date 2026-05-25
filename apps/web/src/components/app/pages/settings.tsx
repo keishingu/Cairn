@@ -338,7 +338,7 @@ const SettingsIntegrations = () => {
           {feeds.map((f, i) => (
             <div key={f.scope} style={{ padding: '14px 16px', borderBottom: i === 0 ? '1px solid var(--divider)' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{f.label}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 8 }}>{f.desc}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 7, padding: '6px 10px', minWidth: 0 }}>
