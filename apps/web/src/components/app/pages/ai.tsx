@@ -4,6 +4,7 @@ import React from 'react'
 import { useChat } from 'ai/react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, TypingDots } from '../primitives'
+import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 
@@ -116,6 +117,7 @@ function ChatView({
 }) {
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
+  const [isComposing, setIsComposing] = React.useState(false)
   const { messages, input, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
@@ -214,7 +216,9 @@ function ChatView({
               <textarea
                 value={input}
                 onChange={handleInputChange}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(e as unknown as React.FormEvent) } }}
+                onCompositionStart={() => setIsComposing(true)}
+                onCompositionEnd={() => setIsComposing(false)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isImeConfirmingEnter(e, isComposing)) { e.preventDefault(); handleSubmit(e as unknown as React.FormEvent) } }}
                 placeholder="質問を入力 (Shift+Enterで改行)"
                 rows={1}
                 disabled={isLoading}

@@ -8,6 +8,7 @@ import { useChat } from 'ai/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MobileHeader } from './header'
 import { Icon, TypingDots } from '../primitives'
+import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 
@@ -16,6 +17,7 @@ const SUGGESTIONS = ['プロジェクトの進捗は？', 'メンバーのスキ
 function MobileChatView({ conversationId, initialMessages }: { conversationId: string; initialMessages: MessageDto[] }) {
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
+  const [isComposing, setIsComposing] = React.useState(false)
   const { messages, input, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
@@ -90,7 +92,9 @@ function MobileChatView({ conversationId, initialMessages }: { conversationId: s
           <input
             value={input}
             onChange={handleInputChange}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(e as unknown as React.FormEvent) } }}
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={() => setIsComposing(false)}
+            onKeyDown={e => { if (e.key === 'Enter' && !isImeConfirmingEnter(e, isComposing)) { e.preventDefault(); handleSubmit(e as unknown as React.FormEvent) } }}
             placeholder="AIに質問する…"
             disabled={isLoading}
             style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 15, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
