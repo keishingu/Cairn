@@ -31,9 +31,10 @@ const ChatSidebarSection = ({ title, children, onAdd }: { title: string; childre
   </div>
 )
 
-const ChatSidebarItem = ({ active, onClick, prefix, avatar, dot, label, badge, mobile }: {
+const ChatSidebarItem = ({ active, onClick, prefix, avatar, dot, label, badge, mobile, memberNames, memberCount }: {
   active?: boolean; onClick?: () => void; prefix?: string
   avatar?: string; dot?: string; label: string; badge?: number; mobile?: boolean
+  memberNames?: string[]; memberCount?: number
 }) => (
   <button onClick={onClick} style={{
     display: 'flex', alignItems: 'center', gap: 8, width: '100%',
@@ -70,6 +71,12 @@ const ChatSidebarItem = ({ active, onClick, prefix, avatar, dot, label, badge, m
     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
     {badge != null && badge > 0 && (
       <span style={{ background: 'var(--accent)', color: 'var(--on-accent)', fontSize: mobile ? 12 : 10, fontWeight: 700, padding: mobile ? '2px 8px' : '1px 6px', borderRadius: 999, minWidth: 20, textAlign: 'center' }}>{badge}</span>
+    )}
+    {memberNames && memberNames.length > 0 && mobile && (
+      <AvatarStack names={memberNames} size={22} max={3}/>
+    )}
+    {memberCount != null && !mobile && memberCount > 0 && (
+      <span style={{ fontSize: 10.5, color: 'var(--text-4)', fontWeight: 500, flexShrink: 0 }}>{memberCount}名</span>
     )}
     {mobile && <Icon name="chevRight" size={16} color="var(--text-4)"/>}
   </button>
@@ -127,6 +134,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const isDm = !!currentDm
   const channelName = currentChannel?.projectTitle ?? currentGeneral?.name ?? currentDm?.participantName ?? ''
   const memberNames = members.map(m => m.displayName)
+  const currentChannelMemberCount = currentGeneral?.memberCount
 
   // ─── DM メンバーピッカー ────────────────────────────────────────
   const dmPicker = (
@@ -160,7 +168,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       </ChatSidebarSection>
       <ChatSidebarSection title="チャンネル" onAdd={() => setShowCreateChannel(true)}>
         {workspaceChannels.map(c => (
-          <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => selectChannel(c.id)} prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''} mobile={isMobile}/>
+          <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => selectChannel(c.id)} prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''} mobile={isMobile} memberNames={c.memberNames} memberCount={c.memberCount}/>
         ))}
       </ChatSidebarSection>
       <div style={{ marginBottom: 10 }}>
@@ -202,6 +210,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         <MobileHeader
           title={channelName}
+          subtitle={currentChannelMemberCount != null ? `${currentChannelMemberCount}名が参加中` : undefined}
           onBack={() => setActivePane('list')}
           right={
             <div style={{ display: 'flex', gap: 4 }}>
