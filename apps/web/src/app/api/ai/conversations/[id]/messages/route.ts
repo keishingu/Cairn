@@ -66,6 +66,17 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: 'OPENAI_API_KEY が設定されていません' }, { status: 503 })
   }
 
+  if (process.env['DATABASE_URL']) {
+    const { db, aiConversations } = await import('@cairn/db')
+    const { eq, and } = await import('drizzle-orm')
+    const [conv] = await db
+      .select({ id: aiConversations.id })
+      .from(aiConversations)
+      .where(and(eq(aiConversations.id, conversationId), eq(aiConversations.workspaceId, ctx.workspaceId)))
+      .limit(1)
+    if (!conv) return new NextResponse(null, { status: 404 })
+  }
+
   const body = await req.json() as { messages: CoreMessage[] }
   const { messages } = body
 

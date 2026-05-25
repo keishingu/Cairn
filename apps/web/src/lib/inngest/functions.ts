@@ -220,7 +220,7 @@ export const indexMemberChunks = inngest.createFunction(
 
       await db
         .delete(documentChunks)
-        .where(and(eq(documentChunks.sourceType, 'member'), eq(documentChunks.sourceId, userId)))
+        .where(and(eq(documentChunks.sourceType, 'member'), eq(documentChunks.sourceId, userId), eq(documentChunks.workspaceId, workspaceId)))
 
       await db.insert(documentChunks).values({
         workspaceId,
