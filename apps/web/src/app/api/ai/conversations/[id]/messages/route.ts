@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { streamText, type CoreMessage } from 'ai'
 import { openai, DEFAULT_MODEL } from '@/lib/ai/client'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { webSearchTool } from '@/lib/ai/web-search'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -107,14 +108,17 @@ export async function POST(req: Request, { params }: RouteContext) {
     }
   }
 
+  const hasWebSearch = !!process.env['TAVILY_API_KEY']
+
   const systemPrompt = `あなたはワークスペースのAIアシスタントです。メンバーのプロジェクト管理・計画策定・情報整理を支援します。${contextSection}
 
-回答は日本語で、簡潔かつ実用的にしてください。安全に関わる内容は専門家や現地の最新情報を確認するよう促してください。参照情報がある場合はそれを積極的に活用し、ない場合は正直にその旨を伝えてください。`
+回答は日本語で、簡潔かつ実用的にしてください。安全に関わる内容は専門家や現地の最新情報を確認するよう促してください。参照情報がある場合はそれを積極的に活用してください。${hasWebSearch ? '参照情報がない場合や最新情報が必要な場合は、webSearch ツールでウェブ検索してから回答してください。' : '参照情報がない場合は正直にその旨を伝えてください。'}`
 
   const result = streamText({
     model: openai(DEFAULT_MODEL),
     system: systemPrompt,
     messages,
+    ...(hasWebSearch ? { tools: { webSearch: webSearchTool }, maxSteps: 5 } : {}),
     onFinish: async ({ text }) => {
       if (!process.env['DATABASE_URL'] || !lastUserContent) return
       try {
