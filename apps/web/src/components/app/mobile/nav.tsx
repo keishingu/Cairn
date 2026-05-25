@@ -15,11 +15,11 @@ interface MobileNavProps {
 }
 
 const BASE_TABS = [
-  { id: 'dashboard', path: '/dashboard', icon: 'home',   label: 'ホーム' },
-  { id: 'projects',  path: '/projects',  icon: 'kanban', label: null },
-  { id: 'chats',     path: '/chats',     icon: 'chat',   label: 'チャット' },
-  { id: 'tasks',     path: '/tasks',     icon: 'check',  label: 'タスク' },
-  { id: 'menu',      path: null,         icon: 'list',   label: 'メニュー' },
+  { id: 'projects',  path: '/projects',  icon: 'kanban',    label: null },
+  { id: 'chats',     path: '/chats',     icon: 'chat',      label: 'チャット' },
+  { id: 'tasks',     path: '/tasks',     icon: 'check',     label: 'タスク' },
+  { id: 'ai',        path: '/ai',        icon: 'sparkles',  label: 'AI' },
+  { id: 'menu',      path: null,         icon: 'list',      label: 'メニュー' },
 ] as const
 
 const PROJECTS_VIEWS = [
@@ -29,14 +29,13 @@ const PROJECTS_VIEWS = [
 ]
 
 const MENU_ITEMS = [
-  { label: 'AI',         icon: 'sparkles', path: '/ai' },
   { label: 'ファイル',   icon: 'file',     path: '/files' },
   { label: 'ギャラリー', icon: 'image',    path: '/gallery' },
   { label: 'メンバー',   icon: 'users',    path: '/members' },
   { label: '設定',       icon: 'gear',     path: '/settings' },
 ]
 
-const MENU_PAGES = new Set(['settings', 'files', 'gallery', 'members', 'ai'])
+const MENU_PAGES = new Set(['settings', 'files', 'gallery', 'members'])
 
 export function MobileNav({ page, projectsView, onNavigate, onChangeView }: MobileNavProps) {
   const [menuOpen, setMenuOpen] = React.useState(false)
@@ -67,7 +66,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
   const isMenuActive = MENU_PAGES.has(page)
 
   // Index of projects tab for popup positioning
-  const projectsTabIndex = 1
+  const projectsTabIndex = 0
   const TAB_COUNT = TABS.length
 
   return (

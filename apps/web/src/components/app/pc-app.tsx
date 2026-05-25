@@ -5,7 +5,6 @@ import { Sidebar, TopBar, PageId } from './sidebar'
 import { Icon } from './primitives'
 import { ProjectPanel } from './detail-panel/project-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
-import { PageDashboard } from './pages/dashboard'
 import { PageProjects } from './pages/projects'
 import { PageCalendar } from './pages/projects-calendar'
 import { PageKanban } from './pages/projects-kanban'
@@ -44,7 +43,6 @@ export const PCApp = ({ theme = 'light' }: PCAppProps) => {
   const openPanel = (project?: ProjectDto) => setSelectedProject(project ?? null)
 
   const pageTitle: Record<PageId, string> = {
-    dashboard: 'ダッシュボード',
     projects:  projectLabel,
     calendar:  'カレンダー',
     kanban:    'カンバン',
@@ -70,7 +68,6 @@ export const PCApp = ({ theme = 'light' }: PCAppProps) => {
           <TopBar
             title={pageTitle[page]}
             subtitle={
-              page === 'dashboard' ? '2024 Q2' :
               page === 'projects'  ? '8 件 · 進行中 7' :
               page === 'kanban'    ? '8 件 / 5 ステージ'
               : null
@@ -87,7 +84,6 @@ export const PCApp = ({ theme = 'light' }: PCAppProps) => {
 
         <div style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0, position: 'relative' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
-            {page === 'dashboard' && <PageDashboard openPanel={openPanel}/>}
             {page === 'projects'  && <PageProjects  openPanel={openPanel}/>}
             {page === 'calendar'  && <PageCalendar  openPanel={openPanel}/>}
             {page === 'kanban'    && <PageKanban    openPanel={openPanel}/>}

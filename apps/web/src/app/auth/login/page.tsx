@@ -41,7 +41,7 @@ export default function LoginPage() {
       body: JSON.stringify({ displayName }),
     })
 
-    router.push('/dashboard')
+    router.push('/projects')
     router.refresh()
   }
 
