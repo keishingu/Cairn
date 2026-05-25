@@ -10,7 +10,7 @@ import type { CurrentUserDto } from '@/app/api/me/route'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 
 export type PageId =
-  | 'dashboard' | 'projects' | 'calendar' | 'kanban'
+  | 'projects' | 'calendar' | 'kanban'
   | 'tasks' | 'chats' | 'files' | 'gallery' | 'ai'
   | 'members' | 'settings'
 
@@ -159,7 +159,6 @@ export const Sidebar = ({ page, setPage }: SidebarProps) => {
       <nav style={{ flex: 1, overflow: 'auto', padding: '12px 12px' }}>
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase' }}>ワークスペース</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <SidebarItem icon="home" label="ダッシュボード" active={page === 'dashboard'} onClick={() => setPage('dashboard')}/>
           <SidebarGroup icon="folder" label={projectLabel} page={page} setPage={setPage} items={projectChildren}/>
           <SidebarItem icon="check" label="マイタスク" badge={4} active={page === 'tasks'} onClick={() => setPage('tasks')}/>
           <SidebarItem icon="chat" label="チャット一覧" badge={12} active={page === 'chats'} onClick={() => setPage('chats')}/>

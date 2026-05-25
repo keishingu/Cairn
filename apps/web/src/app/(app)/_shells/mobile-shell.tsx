@@ -7,7 +7,6 @@ import React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { MobileNav } from '@/components/app/mobile/nav'
 import { MobileAI } from '@/components/app/mobile/ai'
-import { PageDashboard } from '@/components/app/pages/dashboard'
 import { ProjectListView } from '@/components/app/pages/project-list'
 import { MobileSettings } from '@/components/app/mobile/settings'
 import { MobileHeader } from '@/components/app/mobile/header'
@@ -43,7 +42,7 @@ function pageFromPathname(pathname: string): string {
   if (pathname.startsWith('/files')) return 'files'
   if (pathname.startsWith('/gallery')) return 'gallery'
   if (pathname.startsWith('/members')) return 'members'
-  return 'dashboard'
+  return 'projects'
 }
 
 const MENU_PAGE_LABELS: Record<string, string> = {
@@ -89,7 +88,7 @@ function MobilePage({ page, projectsView }: { page: string; projectsView: Projec
     </div>
   )
   if (page in MENU_PAGE_LABELS) return <MobilePlaceholder title={MENU_PAGE_LABELS[page]!} />
-  return <PageDashboard isMobile />
+  return <ProjectListView isMobile />
 }
 
 export function MobileShell() {
