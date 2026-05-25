@@ -9,6 +9,46 @@ export interface ChannelMemberDto {
   channelId: string
 }
 
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ channelId: string }> },
+) {
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
+
+  const { channelId } = await params
+
+  if (!process.env['DATABASE_URL']) {
+    return NextResponse.json([] satisfies ChannelMemberDto[])
+  }
+
+  try {
+    const { db } = await import('@cairn/db')
+    const { channels, channelMembers } = await import('@cairn/db')
+    const { and, eq } = await import('drizzle-orm')
+
+    const [channel] = await db
+      .select({ id: channels.id })
+      .from(channels)
+      .where(and(eq(channels.id, channelId), eq(channels.workspaceId, ctx.workspaceId)))
+      .limit(1)
+
+    if (!channel) {
+      return NextResponse.json({ error: 'チャンネルが見つかりません' }, { status: 404 })
+    }
+
+    const rows = await db
+      .select({ userId: channelMembers.userId, channelId: channelMembers.channelId })
+      .from(channelMembers)
+      .where(eq(channelMembers.channelId, channelId))
+
+    return NextResponse.json(rows satisfies ChannelMemberDto[])
+  } catch (err) {
+    console.error('[/api/channels/[channelId]/members GET] DB error:', err)
+    return NextResponse.json([] satisfies ChannelMemberDto[])
+  }
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ channelId: string }> },

@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { Icon, Avatar } from '../primitives'
-import { useWorkspaceMembers, useAddChannelMember } from '@/lib/chat/client'
+import { useWorkspaceMembers, useAddChannelMember, useChannelMembers } from '@/lib/chat/client'
 
 interface ChannelMemberSheetProps {
   channelId: string
@@ -11,17 +11,28 @@ interface ChannelMemberSheetProps {
 
 export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetProps) {
   const { data: members = [] } = useWorkspaceMembers()
+  const { data: existingMembers = [], isLoading: isLoadingMembers } = useChannelMembers(channelId)
   const mutation = useAddChannelMember(channelId)
-  // セッション中に追加済みのユーザーIDを追跡
-  const [addedIds, setAddedIds] = React.useState<Set<string>>(new Set())
+
+  // DBの既存メンバー + このセッション中に追加したメンバーを合算
+  const [sessionAddedIds, setSessionAddedIds] = React.useState<Set<string>>(new Set())
   const [pendingId, setPendingId] = React.useState<string | null>(null)
+
+  const existingIds = React.useMemo(
+    () => new Set(existingMembers.map(m => m.userId)),
+    [existingMembers],
+  )
+  const addedIds = React.useMemo(
+    () => new Set([...existingIds, ...sessionAddedIds]),
+    [existingIds, sessionAddedIds],
+  )
 
   const handleAdd = (userId: string) => {
     if (addedIds.has(userId) || pendingId) return
     setPendingId(userId)
     mutation.mutate(userId, {
       onSuccess: () => {
-        setAddedIds(prev => new Set([...prev, userId]))
+        setSessionAddedIds(prev => new Set([...prev, userId]))
         setPendingId(null)
       },
       onError: () => setPendingId(null),
@@ -70,7 +81,11 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
 
         {/* Member list */}
         <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
-          {members.map(m => {
+          {isLoadingMembers ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 32, color: 'var(--text-4)', fontSize: 13 }}>
+              読み込み中...
+            </div>
+          ) : members.map(m => {
             const added = addedIds.has(m.userId)
             const loading = pendingId === m.userId
             return (

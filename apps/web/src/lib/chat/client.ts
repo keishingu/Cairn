@@ -52,6 +52,12 @@ async function fetchDms(): Promise<DmChannelDto[]> {
   return res.json()
 }
 
+async function fetchChannelMembers(channelId: string): Promise<{ userId: string }[]> {
+  const res = await fetch(`/api/channels/${channelId}/members`)
+  if (!res.ok) return []
+  return res.json()
+}
+
 async function addChannelMember(channelId: string, userId: string): Promise<void> {
   const res = await fetch(`/api/channels/${channelId}/members`, {
     method: 'POST',
@@ -149,6 +155,14 @@ export function useWorkspaceDms() {
   return useQuery({
     queryKey: chatQueryKeys.dms,
     queryFn: fetchDms,
+  })
+}
+
+export function useChannelMembers(channelId: string | null) {
+  return useQuery({
+    queryKey: ['channel-members', channelId] as const,
+    queryFn: () => fetchChannelMembers(channelId!),
+    enabled: !!channelId,
   })
 }
 
