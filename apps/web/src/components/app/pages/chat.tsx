@@ -12,6 +12,7 @@ import {
   useCreateDm,
 } from '@/lib/chat/client'
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
+import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 
 // ─── Sidebar ─────────────────────────────────────────────────────
 
@@ -81,6 +82,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [activePane, setActivePane] = React.useState<'list' | 'thread'>('list')
   const [showMemberPicker, setShowMemberPicker] = React.useState(false)
   const [showCreateChannel, setShowCreateChannel] = React.useState(false)
+  const [showMemberInvite, setShowMemberInvite] = React.useState(false)
   const memberPickerRef = React.useRef<HTMLDivElement>(null)
 
   const { data: projectChannels = [] } = useProjectChannels()
@@ -204,11 +206,19 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           right={
             <div style={{ display: 'flex', gap: 4 }}>
               <button className="btn"><Icon name="search" size={16}/></button>
+              {isPrivate && (
+                <button className="btn" onClick={() => setShowMemberInvite(true)}>
+                  <Icon name="userPlus" size={16}/>
+                </button>
+              )}
               <button className="btn"><Icon name="more" size={17}/></button>
             </div>
           }
         />
         <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate}/>
+        {showMemberInvite && channelId && (
+          <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
+        )}
       </div>
     )
   }
@@ -265,10 +275,28 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
               <span style={{ fontSize: 13.5, fontWeight: 700 }}>{channelName}</span>
             </div>
             {isPrivate && (
-              <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--amber-soft)', border: '1px solid var(--amber)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Icon name="lock" size={12} color="var(--amber-text)"/>
-                <span style={{ fontSize: 11.5, color: 'var(--amber-text)', fontWeight: 600 }}>招待されたメンバーのみが閲覧できます</span>
-              </div>
+              <>
+                <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--amber-soft)', border: '1px solid var(--amber)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon name="lock" size={12} color="var(--amber-text)"/>
+                  <span style={{ fontSize: 11.5, color: 'var(--amber-text)', fontWeight: 600 }}>招待されたメンバーのみが閲覧できます</span>
+                </div>
+                <button
+                  onClick={() => setShowMemberInvite(true)}
+                  style={{
+                    marginTop: 10, width: '100%', height: 34, borderRadius: 8,
+                    border: '1px solid var(--border)', background: 'var(--card-2)',
+                    color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}
+                >
+                  <Icon name="userPlus" size={13}/>
+                  メンバーを招待
+                </button>
+                {showMemberInvite && channelId && (
+                  <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
+                )}
+              </>
             )}
           </div>
         )}

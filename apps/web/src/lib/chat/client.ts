@@ -52,6 +52,18 @@ async function fetchDms(): Promise<DmChannelDto[]> {
   return res.json()
 }
 
+async function addChannelMember(channelId: string, userId: string): Promise<void> {
+  const res = await fetch(`/api/channels/${channelId}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? 'メンバーの追加に失敗しました')
+  }
+}
+
 async function createWorkspaceChannel(body: { name: string; isPrivate: boolean }): Promise<WorkspaceChannelDto> {
   const res = await fetch('/api/workspaces/channels', {
     method: 'POST',
@@ -137,6 +149,12 @@ export function useWorkspaceDms() {
   return useQuery({
     queryKey: chatQueryKeys.dms,
     queryFn: fetchDms,
+  })
+}
+
+export function useAddChannelMember(channelId: string | null) {
+  return useMutation({
+    mutationFn: (userId: string) => addChannelMember(channelId!, userId),
   })
 }
 
