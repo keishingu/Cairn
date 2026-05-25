@@ -7,7 +7,12 @@ import { PROJECTS } from '@/components/app/data'
 const DEV_TOKEN = 'dev-ical-token-00000000000000000000000000000001'
 
 function escapeIcal(str: string): string {
-  return str.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n')
+  return str
+    .replace(/\r\n?/g, '\n')
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\n/g, '\\n')
 }
 
 function formatDate(dateStr: string): string {
@@ -89,7 +94,7 @@ export async function GET(req: NextRequest) {
   try {
     const { db } = await import('@cairn/db')
     const { profiles, projects, projectMembers, workspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, or, isNotNull } = await import('drizzle-orm')
 
     const [profile] = await db
       .select({ id: profiles.id })
@@ -120,10 +125,14 @@ export async function GET(req: NextRequest) {
         .where(and(eq(projects.workspaceId, membership.workspaceId), eq(projects.archived, false)))
     } else {
       rows = await db
-        .select({ id: projects.id, title: projects.title, startDate: projects.startDate, endDate: projects.endDate })
+        .selectDistinct({ id: projects.id, title: projects.title, startDate: projects.startDate, endDate: projects.endDate })
         .from(projects)
-        .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)))
-        .where(and(eq(projects.workspaceId, membership.workspaceId), eq(projects.archived, false)))
+        .leftJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)))
+        .where(and(
+          eq(projects.workspaceId, membership.workspaceId),
+          eq(projects.archived, false),
+          or(eq(projects.createdBy, userId), isNotNull(projectMembers.projectId)),
+        ))
     }
 
     const ical = buildIcal(rows, scope === 'workspace' ? 'Cairn（全体）' : 'Cairn（自分）')
