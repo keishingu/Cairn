@@ -3,9 +3,14 @@
 
 import { serve } from 'inngest/next'
 import { inngest } from '@/lib/inngest/client'
-import { deleteStorageObjects } from '@/lib/inngest/functions'
+import {
+  deleteStorageObjects,
+  indexFileChunks,
+  indexProjectChunks,
+  indexMemberChunks,
+} from '@/lib/inngest/functions'
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [deleteStorageObjects],
+  functions: [deleteStorageObjects, indexFileChunks, indexProjectChunks, indexMemberChunks],
 })

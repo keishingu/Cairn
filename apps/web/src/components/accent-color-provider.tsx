@@ -24,12 +24,17 @@ export function AccentColorProvider({ children }: { children: React.ReactNode })
   const [accentId, setAccentIdState] = React.useState(DEFAULT_ACCENT_ID)
 
   React.useEffect(() => {
-    const stored = localStorage.getItem(ACCENT_STORAGE_KEY) ?? DEFAULT_ACCENT_ID
+    // Cookie はブラウザと PWA スタンドアロンで共有されるため localStorage より優先する
+    const cookieMatch = document.cookie.match(/(?:^|;\s*)cairn-accent=([^;]+)/)
+    const stored = cookieMatch?.[1] ?? localStorage.getItem(ACCENT_STORAGE_KEY) ?? DEFAULT_ACCENT_ID
+    localStorage.setItem(ACCENT_STORAGE_KEY, stored)
+    document.cookie = `cairn-accent=${stored};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax`
     setAccentIdState(stored)
   }, [])
 
   function setAccentId(id: string) {
     localStorage.setItem(ACCENT_STORAGE_KEY, id)
+    document.cookie = `cairn-accent=${id};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax`
     setAccentIdState(id)
   }
 

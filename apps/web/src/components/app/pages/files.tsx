@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
 import { FileTypeIcon } from '../file-type-icon'
 import type { FileDto } from '@/app/api/files/route'
@@ -39,40 +39,56 @@ function matchesFilter(file: FileDto, filter: FilterKey): boolean {
 
 // ─── FileRow ──────────────────────────────────────────────────────
 
-const FileRow = ({ file, isMobile }: { file: FileDto; isMobile: boolean }) => {
+const FileRow = ({ file, isMobile, onDelete }: { file: FileDto; isMobile: boolean; onDelete: (id: string, name: string) => void }) => {
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
   const projectLabel = file.projectTitle ?? file.channelName ?? 'チャット'
   const metaParts = [projectLabel, sizeStr, dateStr].filter(Boolean).join(' · ')
+  const [hovered, setHovered] = React.useState(false)
 
   return (
-    <a
-      href={`/api/attachments/${file.id}`}
-      target="_blank"
-      rel="noopener noreferrer"
+    <div
       style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: isMobile ? '10px 12px' : '10px 16px',
         borderBottom: '1px solid var(--divider)',
-        textDecoration: 'none', cursor: 'pointer',
+        background: hovered ? 'var(--card-2)' : 'transparent',
       }}
-      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 13, fontWeight: 600, color: 'var(--text)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {file.fileName}
+      <a
+        href={`/api/attachments/${file.id}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, textDecoration: 'none' }}
+      >
+        <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontSize: 13, fontWeight: 600, color: 'var(--text)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {file.fileName}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {metaParts}
+          </div>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {metaParts}
-        </div>
-      </div>
+      </a>
       <Avatar name={file.uploaderName} size={22} />
-    </a>
+      <button
+        onClick={() => onDelete(file.id, file.fileName)}
+        style={{
+          border: 'none', background: 'transparent', color: 'var(--text-4)',
+          cursor: 'pointer', padding: 4, borderRadius: 4, flexShrink: 0,
+          opacity: hovered ? 1 : 0, transition: 'opacity .12s',
+        }}
+        title="削除"
+      >
+        <Icon name="trash" size={14}/>
+      </button>
+    </div>
   )
 }
 
@@ -90,6 +106,7 @@ const FileRowSkeleton = () => (
 // ─── PageFiles ────────────────────────────────────────────────────
 
 export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
+  const queryClient = useQueryClient()
   const [filter, setFilter] = React.useState<FilterKey>('all')
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
   const sentinelRef = React.useRef<HTMLDivElement>(null)
@@ -98,6 +115,22 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
     queryKey: ['files'],
     queryFn: () => fetch('/api/files').then(r => r.json()),
   })
+
+  const deleteFile = useMutation({
+    mutationFn: (fileId: string) =>
+      fetch(`/api/attachments/${fileId}`, { method: 'DELETE' }).then(r => {
+        if (!r.ok) throw new Error('削除に失敗しました')
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['files'] })
+      void queryClient.invalidateQueries({ queryKey: ['project-files'] })
+    },
+  })
+
+  const handleDelete = (fileId: string, fileName: string) => {
+    if (!confirm(`「${fileName}」を削除しますか？この操作は取り消せません。`)) return
+    deleteFile.mutate(fileId)
+  }
 
   const filtered = React.useMemo(
     () => files.filter(f => matchesFilter(f, filter)),
@@ -176,7 +209,7 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
           </div>
         ) : (
           <>
-            {visibleFiles.map(f => <FileRow key={f.id} file={f} isMobile={isMobile} />)}
+            {visibleFiles.map(f => <FileRow key={f.id} file={f} isMobile={isMobile} onDelete={handleDelete} />)}
             <div ref={sentinelRef} />
           </>
         )}
