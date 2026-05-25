@@ -29,10 +29,11 @@ const PROJECTS_VIEWS = [
 ]
 
 const MENU_ITEMS = [
-  { label: 'ファイル',   icon: 'file',   path: '/files' },
-  { label: 'ギャラリー', icon: 'image',  path: '/gallery' },
-  { label: 'メンバー',   icon: 'users',  path: '/members' },
-  { label: '設定',       icon: 'gear',   path: '/settings' },
+  { label: 'AI',         icon: 'sparkles', path: '/ai' },
+  { label: 'ファイル',   icon: 'file',     path: '/files' },
+  { label: 'ギャラリー', icon: 'image',    path: '/gallery' },
+  { label: 'メンバー',   icon: 'users',    path: '/members' },
+  { label: '設定',       icon: 'gear',     path: '/settings' },
 ]
 
 const MENU_PAGES = new Set(['settings', 'files', 'gallery', 'members', 'ai'])
