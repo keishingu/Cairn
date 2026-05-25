@@ -42,3 +42,50 @@ export async function GET() {
     return NextResponse.json(mockChannels())
   }
 }
+
+export async function POST(req: Request) {
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
+
+  const body = await req.json() as { name?: unknown; isPrivate?: unknown }
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  const isPrivate = body.isPrivate === true
+
+  if (!name) {
+    return NextResponse.json({ error: 'チャンネル名を入力してください' }, { status: 400 })
+  }
+  if (name.length > 60) {
+    return NextResponse.json({ error: '60文字以内で入力してください' }, { status: 400 })
+  }
+
+  if (!process.env['DATABASE_URL']) {
+    const mock: WorkspaceChannelDto = {
+      id: `mock-${Date.now()}`,
+      name,
+      isPrivate,
+    }
+    return NextResponse.json(mock, { status: 201 })
+  }
+
+  try {
+    const { db } = await import('@cairn/db')
+    const { channels } = await import('@cairn/db')
+
+    const rows = await db
+      .insert(channels)
+      .values({
+        workspaceId: ctx.workspaceId,
+        type: 'workspace',
+        name,
+        isPrivate,
+      })
+      .returning({ id: channels.id, name: channels.name, isPrivate: channels.isPrivate })
+
+    const inserted = rows[0]
+    if (!inserted) throw new Error('insert returned no rows')
+    return NextResponse.json(inserted satisfies WorkspaceChannelDto, { status: 201 })
+  } catch (err) {
+    console.error('[/api/workspaces/channels POST] DB error:', err)
+    return NextResponse.json({ error: 'チャンネルの作成に失敗しました' }, { status: 500 })
+  }
+}

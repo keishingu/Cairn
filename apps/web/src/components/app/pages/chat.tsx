@@ -11,14 +11,20 @@ import {
   useWorkspaceDms,
   useCreateDm,
 } from '@/lib/chat/client'
+import { CreateChannelSheet } from '../mobile/create-channel-sheet'
 
 // ─── Sidebar ─────────────────────────────────────────────────────
 
-const ChatSidebarSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
+const ChatSidebarSection = ({ title, children, onAdd }: { title: string; children: React.ReactNode; onAdd?: () => void }) => (
   <div style={{ marginBottom: 10 }}>
     <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <span>{title}</span>
-      <Icon name="plus" size={11} color="var(--text-4)"/>
+      <button
+        onClick={onAdd}
+        style={{ background: 'transparent', border: 'none', cursor: onAdd ? 'pointer' : 'default', color: 'var(--text-4)', padding: 2, lineHeight: 1 }}
+      >
+        <Icon name="plus" size={11} color="var(--text-4)"/>
+      </button>
     </div>
     <div>{children}</div>
   </div>
@@ -74,6 +80,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [channelId, setChannelId] = React.useState<string | null>(null)
   const [activePane, setActivePane] = React.useState<'list' | 'thread'>('list')
   const [showMemberPicker, setShowMemberPicker] = React.useState(false)
+  const [showCreateChannel, setShowCreateChannel] = React.useState(false)
   const memberPickerRef = React.useRef<HTMLDivElement>(null)
 
   const { data: projectChannels = [] } = useProjectChannels()
@@ -149,7 +156,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => selectChannel(c.channelId)} prefix="#" label={c.projectTitle} mobile={isMobile}/>
         ))}
       </ChatSidebarSection>
-      <ChatSidebarSection title="チャンネル">
+      <ChatSidebarSection title="チャンネル" onAdd={() => setShowCreateChannel(true)}>
         {workspaceChannels.map(c => (
           <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => selectChannel(c.id)} prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''} mobile={isMobile}/>
         ))}
@@ -171,6 +178,13 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     </div>
   )
 
+  const createChannelSheet = showCreateChannel && (
+    <CreateChannelSheet
+      onClose={() => setShowCreateChannel(false)}
+      onCreated={(channel) => selectChannel(channel.id)}
+    />
+  )
+
   // ─── モバイル ─────────────────────────────────────────────────
   if (isMobile) {
     if (activePane === 'list') {
@@ -178,6 +192,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
           <MobileHeader title="チャット"/>
           {channelList}
+          {createChannelSheet}
         </div>
       )
     }
@@ -201,6 +216,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // ─── PC（3カラム）─────────────────────────────────────────────
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      {createChannelSheet}
       <aside style={{ width: 240, background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)' }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>チャット</h2>

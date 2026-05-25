@@ -52,6 +52,19 @@ async function fetchDms(): Promise<DmChannelDto[]> {
   return res.json()
 }
 
+async function createWorkspaceChannel(body: { name: string; isPrivate: boolean }): Promise<WorkspaceChannelDto> {
+  const res = await fetch('/api/workspaces/channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? 'チャンネルの作成に失敗しました')
+  }
+  return res.json()
+}
+
 async function createDm(targetUserId: string): Promise<{ id: string }> {
   const res = await fetch('/api/workspaces/dms', {
     method: 'POST',
@@ -124,6 +137,19 @@ export function useWorkspaceDms() {
   return useQuery({
     queryKey: chatQueryKeys.dms,
     queryFn: fetchDms,
+  })
+}
+
+export function useCreateChannel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { name: string; isPrivate: boolean }) => createWorkspaceChannel(body),
+    onSuccess: (channel) => {
+      queryClient.setQueryData<WorkspaceChannelDto[]>(
+        chatQueryKeys.workspaceChannels,
+        (old) => [...(old ?? []), channel],
+      )
+    },
   })
 }
 
