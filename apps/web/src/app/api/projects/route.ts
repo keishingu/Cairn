@@ -194,11 +194,15 @@ export async function POST(req: Request) {
       type: 'project',
     })
 
-    const { inngest } = await import('@/lib/inngest/client')
-    await inngest.send({
-      name: 'project/upserted',
-      data: { projectId: inserted.id, workspaceId: ctx.workspaceId },
-    })
+    try {
+      const { inngest } = await import('@/lib/inngest/client')
+      await inngest.send({
+        name: 'project/upserted',
+        data: { projectId: inserted.id, workspaceId: ctx.workspaceId },
+      })
+    } catch (e) {
+      console.warn('[/api/projects] Inngest event send failed (indexing skipped):', e)
+    }
 
     return NextResponse.json({
       id: inserted.id,

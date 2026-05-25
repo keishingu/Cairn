@@ -91,11 +91,15 @@ export async function POST(req: Request) {
         role: 'member',
       })
 
-      const { inngest } = await import('@/lib/inngest/client')
-      await inngest.send({
-        name: 'member/upserted',
-        data: { userId: user.id, workspaceId },
-      })
+      try {
+        const { inngest } = await import('@/lib/inngest/client')
+        await inngest.send({
+          name: 'member/upserted',
+          data: { userId: user.id, workspaceId },
+        })
+      } catch (e) {
+        console.warn('[/api/auth/setup] Inngest event send failed (indexing skipped):', e)
+      }
     }
 
     return NextResponse.json({ ok: true })
