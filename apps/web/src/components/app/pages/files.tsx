@@ -192,7 +192,7 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
         {isLoading ? (
           Array.from({ length: 8 }).map((_, i) => <FileRowSkeleton key={i} />)
         ) : filtered.length === 0 ? (

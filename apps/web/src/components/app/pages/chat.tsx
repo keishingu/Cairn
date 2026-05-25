@@ -143,7 +143,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
 
   // ─── チャンネル一覧 ────────────────────────────────────────────
   const channelList = (
-    <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px' }}>
+    <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
       <ChatSidebarSection title="プロジェクト">
         {projectChannels.map(c => (
           <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => selectChannel(c.channelId)} prefix="#" label={c.projectTitle} mobile={isMobile}/>
@@ -182,7 +182,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       )
     }
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 60px)' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         <MobileHeader
           title={channelName}
           onBack={() => setActivePane('list')}
