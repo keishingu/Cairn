@@ -1,11 +1,12 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter, Noto_Sans_JP } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AccentColorProvider } from '@/components/accent-color-provider'
 import { QueryProvider } from '@/components/query-provider'
+import { ServiceWorkerRegistrar } from '@/components/service-worker-registrar'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -14,6 +15,22 @@ const notoSansJP = Noto_Sans_JP({ subsets: ['latin'], weight: ['400', '500', '60
 export const metadata: Metadata = {
   title: 'Cairn',
   description: 'プロジェクト管理・チャット・カレンダー・ギャラリー・AIを統合したコラボレーションアプリ',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Cairn',
+  },
+  icons: {
+    apple: '/apple-touch-icon.png',
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#4F8EF7' },
+    { media: '(prefers-color-scheme: dark)', color: '#0B1622' },
+  ],
 }
 
 export default function RootLayout({
@@ -29,6 +46,7 @@ export default function RootLayout({
             <QueryProvider>{children}</QueryProvider>
           </AccentColorProvider>
         </ThemeProvider>
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   )
