@@ -7,6 +7,8 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { AccentColorProvider } from '@/components/accent-color-provider'
 import { QueryProvider } from '@/components/query-provider'
 import { ServiceWorkerRegistrar } from '@/components/service-worker-registrar'
+import { ThemeCookieSync } from '@/components/theme-cookie-sync'
+import { DynamicAppleTouchIcon } from '@/components/dynamic-apple-touch-icon'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -15,14 +17,10 @@ const notoSansJP = Noto_Sans_JP({ subsets: ['latin'], weight: ['400', '500', '60
 export const metadata: Metadata = {
   title: 'Cairn',
   description: 'プロジェクト管理・チャット・カレンダー・ギャラリー・AIを統合したコラボレーションアプリ',
-  manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: 'Cairn',
-  },
-  icons: {
-    apple: '/apple-touch-icon.png',
   },
 }
 
@@ -44,6 +42,8 @@ export default function RootLayout({
         <ThemeProvider attribute={['class', 'data-theme']} defaultTheme="system" enableSystem disableTransitionOnChange>
           <AccentColorProvider>
             <QueryProvider>{children}</QueryProvider>
+            <ThemeCookieSync />
+            <DynamicAppleTouchIcon />
           </AccentColorProvider>
         </ThemeProvider>
         <ServiceWorkerRegistrar />
