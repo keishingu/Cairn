@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { useTheme } from 'next-themes'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import { STATUS_COL } from '../data'
 import { useAccentColor } from '@/components/accent-color-provider'
@@ -295,6 +296,86 @@ const SettingsWorkspaceGeneral = () => {
   )
 }
 
+const SettingsIntegrations = () => {
+  const { data, refetch } = useQuery<{ token: string }>({
+    queryKey: ['ical-token'],
+    queryFn: () => fetch('/api/calendar/token').then(r => r.json()),
+  })
+  const regenerate = useMutation({
+    mutationFn: () => fetch('/api/calendar/token', { method: 'POST' }).then(r => r.json()),
+    onSuccess: () => refetch(),
+  })
+  const [copiedScope, setCopiedScope] = React.useState<string | null>(null)
+
+  const buildUrl = (scope: 'me' | 'workspace') => {
+    if (!data?.token) return ''
+    const base = typeof window !== 'undefined' ? window.location.origin : ''
+    return `${base}/api/calendar/ical?token=${data.token}&scope=${scope}`
+  }
+
+  const copy = (scope: 'me' | 'workspace') => {
+    void navigator.clipboard.writeText(buildUrl(scope))
+    setCopiedScope(scope)
+    setTimeout(() => setCopiedScope(null), 2000)
+  }
+
+  const feeds: { scope: 'me' | 'workspace'; label: string; desc: string }[] = [
+    { scope: 'me',        label: '自分が参加しているプロジェクト', desc: 'メンバーとして参加しているプロジェクトの期間のみ' },
+    { scope: 'workspace', label: 'ワークスペース全体',             desc: 'ワークスペース内のすべてのプロジェクト期間' },
+  ]
+
+  return (
+    <div style={{ maxWidth: 780 }}>
+      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>連携</h1>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>外部サービスとの連携を設定します。</p>
+
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>Google カレンダー連携</h2>
+        <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
+          URLをコピーして Google カレンダーの「他のカレンダーを追加」→「URLで追加」に貼り付けてください。
+        </p>
+        <div className="card" style={{ padding: 0 }}>
+          {feeds.map((f, i) => (
+            <div key={f.scope} style={{ padding: '14px 16px', borderBottom: i === 0 ? '1px solid var(--divider)' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{f.label}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 8 }}>{f.desc}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 7, padding: '6px 10px' }}>
+                    <span style={{ flex: 1, fontSize: 11.5, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
+                      {data?.token ? buildUrl(f.scope) : '読み込み中…'}
+                    </span>
+                    <button
+                      onClick={() => copy(f.scope)}
+                      disabled={!data?.token}
+                      className="btn btn-ghost"
+                      style={{ height: 26, fontSize: 11.5, padding: '0 8px', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    >
+                      <Icon name={copiedScope === f.scope ? 'check' : 'copy'} size={12}/>
+                      {copiedScope === f.scope ? 'コピー済み' : 'コピー'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+          <div style={{ padding: '10px 16px', borderTop: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>URLを知っている人は誰でもカレンダーを閲覧できます。漏洩した場合は再生成してください。</span>
+            <button
+              onClick={() => regenerate.mutate()}
+              disabled={regenerate.isPending}
+              className="btn btn-ghost"
+              style={{ height: 28, fontSize: 12, padding: '0 10px', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              <Icon name="refresh" size={12}/> URL を再生成
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 const NAV_GROUPS = [
   {
     label: '個人',
@@ -343,15 +424,16 @@ export const PageSettings = () => {
         ))}
       </aside>
       <div style={{ flex: 1, overflow: 'auto', padding: '32px 40px' }}>
-        {section === 'account'    && <SettingsAccount/>}
-        {section === 'appearance' && <SettingsAppearance/>}
-        {section === 'general'    && <SettingsWorkspaceGeneral/>}
-        {section === 'workflow'   && <SettingsWorkflow/>}
-        {section === 'ai'         && <SettingsAI/>}
-        {section !== 'account' && section !== 'appearance' && section !== 'general' && section !== 'workflow' && section !== 'ai' && (
+        {section === 'account'      && <SettingsAccount/>}
+        {section === 'appearance'   && <SettingsAppearance/>}
+        {section === 'general'      && <SettingsWorkspaceGeneral/>}
+        {section === 'workflow'     && <SettingsWorkflow/>}
+        {section === 'ai'           && <SettingsAI/>}
+        {section === 'integrations' && <SettingsIntegrations/>}
+        {section !== 'account' && section !== 'appearance' && section !== 'general' && section !== 'workflow' && section !== 'ai' && section !== 'integrations' && (
           <div>
             <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-              {{ members: 'メンバー', integrations: '連携', billing: '請求' }[section] ?? section}
+              {{ members: 'メンバー', billing: '請求' }[section] ?? section}
             </h1>
             <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションの設定は準備中です。</p>
           </div>

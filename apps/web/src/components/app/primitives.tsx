@@ -62,6 +62,8 @@ const PATHS: Record<string, React.ReactNode> = {
   map:         <><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21"/><line x1="8" y1="3" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="21"/></>,
   logout:      <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
   monitor:     <><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></>,
+  refresh:     <><polyline points="23 4 23 10 17 10"/><path d="M20.5 16a9 9 0 1 1-2.5-9.4L23 10"/></>,
+  copy:        <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
 }
 
 export const Icon = ({ name, size = 18, color = 'currentColor', strokeWidth = 1.7, style }: IconProps) => (
