@@ -392,7 +392,7 @@ const MobileDayEvents = ({ date, projects, onProjectClick, isLoading }: MobileDa
   const dayProjects = getDateProjects(projects, date)
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
       <div style={{
         padding: '12px 16px 8px',
         fontSize: 13, fontWeight: 600, color: 'var(--text-2)',
@@ -536,7 +536,7 @@ const MobileTimelineView = ({ year, month, projects, onProjectClick, isLoading }
 
   if (isLoading) {
     return (
-      <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }}>
+      <div style={{ flex: 1, overflow: 'auto', padding: '8px 0', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} style={{ height: 60, margin: '0 16px 8px', borderRadius: 8, background: 'var(--card-2)' }} />
         ))}
@@ -554,7 +554,7 @@ const MobileTimelineView = ({ year, month, projects, onProjectClick, isLoading }
 
   let lastDateLabel = ''
   return (
-    <div style={{ flex: 1, overflow: 'auto' }}>
+    <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
       {sorted.map((p) => {
         const cfg = STATUS_COL[p.statusName as StatusKey]
         const dateStr = formatDateRange(p.startDate, p.endDate)
@@ -663,7 +663,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   // ── Mobile layout ──────────────────────────────────────────────
   if (isMobile) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
         <MobileHeader
           title="カレンダー"
           right={

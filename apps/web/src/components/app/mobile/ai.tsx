@@ -147,7 +147,7 @@ export function MobileAI() {
   }, [conversations, activeId])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
       <MobileHeader
         title="AIアシスタント"
         right={

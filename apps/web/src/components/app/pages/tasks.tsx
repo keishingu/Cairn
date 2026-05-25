@@ -470,7 +470,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
+      <div style={{ flex: 1, overflow: 'auto', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
         {isLoading ? (
           <div className="card" style={{ margin: isMobile ? '12px' : '16px 20px', borderRadius: 10, overflow: 'hidden' }}>
             {Array.from({ length: 6 }).map((_, i) => <TaskRowSkeleton key={i} />)}
