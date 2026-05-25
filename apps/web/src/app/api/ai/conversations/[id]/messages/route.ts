@@ -62,6 +62,10 @@ export async function POST(req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
+  if (!process.env['OPENAI_API_KEY']) {
+    return NextResponse.json({ error: 'OPENAI_API_KEY が設定されていません' }, { status: 503 })
+  }
+
   const body = await req.json() as { messages: CoreMessage[] }
   const { messages } = body
 

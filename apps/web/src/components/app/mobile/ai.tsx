@@ -16,7 +16,7 @@ const SUGGESTIONS = ['プロジェクトの進捗は？', 'メンバーのスキ
 function MobileChatView({ conversationId, initialMessages }: { conversationId: string; initialMessages: MessageDto[] }) {
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
-  const { messages, input, handleInputChange, handleSubmit, append, isLoading } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
     initialMessages: initialMessages.map(m => ({ id: m.id, role: m.role as 'user' | 'assistant', content: m.content })),
@@ -28,6 +28,11 @@ function MobileChatView({ conversationId, initialMessages }: { conversationId: s
 
   return (
     <>
+      {error && (
+        <div style={{ padding: '10px 16px', background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 12.5 }}>
+          エラー: {error.message}
+        </div>
+      )}
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {messages.length === 0 && (
           <div style={{ color: 'var(--text-4)', fontSize: 13, textAlign: 'center', paddingTop: 24 }}>

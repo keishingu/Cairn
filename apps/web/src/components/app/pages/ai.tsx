@@ -116,7 +116,7 @@ function ChatView({
 }) {
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
-  const { messages, input, handleInputChange, handleSubmit, append, isLoading } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
     initialMessages: initialMessages.map(m => ({ id: m.id, role: m.role as 'user' | 'assistant', content: m.content })),
@@ -136,6 +136,12 @@ function ChatView({
         </div>
         <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>AIアシスタント</span>
       </div>
+
+      {error && (
+        <div style={{ padding: '10px 28px', background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 12.5 }}>
+          エラー: {error.message}
+        </div>
+      )}
 
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '24px 0' }}>
         <div style={{ maxWidth: 760, margin: '0 auto', padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
