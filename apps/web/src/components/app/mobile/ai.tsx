@@ -16,12 +16,16 @@ const SUGGESTIONS = ['プロジェクトの進捗は？', 'メンバーのスキ
 
 function MobileChatView({ conversationId, initialMessages }: { conversationId: string; initialMessages: MessageDto[] }) {
   const scrollRef = React.useRef<HTMLDivElement>(null)
+  const queryClient = useQueryClient()
 
   const [isComposing, setIsComposing] = React.useState(false)
   const { messages, input, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
     initialMessages: initialMessages.map(m => ({ id: m.id, role: m.role as 'user' | 'assistant', content: m.content })),
+    onFinish: () => {
+      void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
+    },
   })
 
   React.useEffect(() => {
