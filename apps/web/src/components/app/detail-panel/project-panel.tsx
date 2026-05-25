@@ -155,11 +155,12 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
   ]
 
   const mobileTabs = [
-    { id: 'overview', label: '概要',     icon: 'book' },
-    { id: 'chat',     label: 'チャット', icon: 'chat' },
-    { id: 'tasks',    label: 'タスク',   icon: 'check' },
-    { id: 'files',    label: 'ファイル', icon: 'file' },
-    { id: 'members',  label: 'メンバー', icon: 'users' },
+    { id: 'overview', label: '概要',       icon: 'book' },
+    { id: 'chat',     label: 'チャット',   icon: 'chat' },
+    { id: 'tasks',    label: 'タスク',     icon: 'check' },
+    { id: 'files',    label: 'ファイル',   icon: 'file' },
+    { id: 'gallery',  label: 'ギャラリー', icon: 'image' },
+    { id: 'members',  label: 'メンバー',   icon: 'users' },
   ]
 
   const tabs = isMobile ? mobileTabs : pcTabs
@@ -281,7 +282,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
         {tab === 'files'    && <FilesTab projectId={project.id}/>}
         {tab === 'tasks'    && <TasksTab project={project}/>}
         {tab === 'members'  && <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>}
-        {tab === 'gallery'  && !isMobile && <GalleryTab projectId={project.id}/>}
+        {tab === 'gallery'  && <GalleryTab projectId={project.id}/>}
         {tab === 'ai'       && !isMobile && <PanelAITab/>}
         {tab === 'settings' && !isMobile && <PanelSettingsTab projectId={project.id} onDeleted={onClose}/>}
       </div>
