@@ -7,8 +7,9 @@ import { getAuthContext } from '@/lib/get-auth-context'
 const GOOGLE_DOC_RE = /https:\/\/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/
 const GOOGLE_SHEET_RE = /https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/
 const GOOGLE_SLIDE_RE = /https:\/\/docs\.google\.com\/presentation\/d\/([a-zA-Z0-9_-]+)/
+const GOOGLE_DRIVE_RE = /https:\/\/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/
 
-export type ExternalLinkDocType = 'doc' | 'sheet' | 'slide'
+export type ExternalLinkDocType = 'doc' | 'sheet' | 'slide' | 'drive'
 
 export interface ExternalLinkDto {
   fileId: string
@@ -27,6 +28,8 @@ function parseGoogleUrl(url: string): { docId: string; docType: ExternalLinkDocT
   if (sheetMatch) return { docId: sheetMatch[1]!, docType: 'sheet', label: 'Google スプレッドシート' }
   const slideMatch = GOOGLE_SLIDE_RE.exec(url)
   if (slideMatch) return { docId: slideMatch[1]!, docType: 'slide', label: 'Google スライド' }
+  const driveMatch = GOOGLE_DRIVE_RE.exec(url)
+  if (driveMatch) return { docId: driveMatch[1]!, docType: 'drive', label: 'Google Drive ファイル' }
   return null
 }
 

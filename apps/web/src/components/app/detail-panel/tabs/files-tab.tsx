@@ -6,10 +6,11 @@ import { Icon } from '../../primitives'
 import { FileTypeIcon } from '../../file-type-icon'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
 
-function googleDocsType(url: string): 'doc' | 'sheet' | 'slide' | null {
+function googleDocsType(url: string): 'doc' | 'sheet' | 'slide' | 'drive' | null {
   if (url.includes('docs.google.com/document/')) return 'doc'
   if (url.includes('docs.google.com/spreadsheets/')) return 'sheet'
   if (url.includes('docs.google.com/presentation/')) return 'slide'
+  if (url.includes('drive.google.com/file/')) return 'drive'
   return null
 }
 
@@ -17,6 +18,7 @@ const GDOC_CONFIG = {
   doc:   { label: 'GDoc',  bg: 'var(--blue-soft)',    color: 'var(--blue-text)' },
   sheet: { label: 'GSht',  bg: 'var(--emerald-soft)', color: 'var(--emerald-text)' },
   slide: { label: 'GSld',  bg: 'var(--violet-soft)',  color: 'var(--violet-text)' },
+  drive: { label: 'GDrv',  bg: 'var(--card-2)',       color: 'var(--text-3)' },
 } as const
 
 function GoogleDocsIcon({ url }: { url: string }) {
