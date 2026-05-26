@@ -115,23 +115,36 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const parsed = createTaskSchema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
-  }
-
+  // モックモードではプロジェクトIDが UUID でないため、先に分岐して UUID バリデーションを回避する
   if (!process.env['DATABASE_URL']) {
+    const data = body as Record<string, unknown>
+    const title = typeof data['title'] === 'string' ? data['title'].trim() : ''
+    const projectId = typeof data['projectId'] === 'string' ? data['projectId'] : ''
+    if (!title || !projectId) {
+      return NextResponse.json({ error: 'title and projectId are required' }, { status: 422 })
+    }
+    const validPriorities: TaskDto['priority'][] = ['high', 'medium', 'low']
+    const rawPriority = data['priority']
+    const priority: TaskDto['priority'] = validPriorities.includes(rawPriority as TaskDto['priority'])
+      ? (rawPriority as TaskDto['priority'])
+      : 'medium'
+    const rawDueDate = data['dueDate']
     const mock: TaskDto = {
       id: crypto.randomUUID(),
-      projectId: parsed.data.projectId,
-      projectTitle: MOCK_PROJECT_TITLES[parsed.data.projectId] ?? 'プロジェクト',
-      title: parsed.data.title,
+      projectId,
+      projectTitle: MOCK_PROJECT_TITLES[projectId] ?? 'プロジェクト',
+      title,
       status: 'todo',
-      priority: parsed.data.priority,
-      dueDate: parsed.data.dueDate ?? null,
+      priority,
+      dueDate: typeof rawDueDate === 'string' ? rawDueDate : null,
       assigneeName: null,
     }
     return NextResponse.json(mock, { status: 201 })
+  }
+
+  const parsed = createTaskSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
 
   try {
