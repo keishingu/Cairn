@@ -12,6 +12,7 @@ import {
   useCreateDm,
 } from '@/lib/chat/client'
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
+import { CreateChannelModal } from './create-channel-modal'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 
 // ─── Sidebar ─────────────────────────────────────────────────────
@@ -188,11 +189,10 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     </div>
   )
 
-  const createChannelSheet = showCreateChannel && (
-    <CreateChannelSheet
-      onClose={() => setShowCreateChannel(false)}
-      onCreated={(channel) => selectChannel(channel.id)}
-    />
+  const createChannelUI = showCreateChannel && (
+    isMobile
+      ? <CreateChannelSheet onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
+      : <CreateChannelModal onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
   )
 
   // ─── モバイル ─────────────────────────────────────────────────
@@ -202,7 +202,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
           <MobileHeader title="チャット"/>
           {channelList}
-          {createChannelSheet}
+          {createChannelUI}
         </div>
       )
     }
@@ -235,7 +235,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // ─── PC（3カラム）─────────────────────────────────────────────
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-      {createChannelSheet}
+      {createChannelUI}
       <aside style={{ width: 240, background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)' }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>チャット</h2>
