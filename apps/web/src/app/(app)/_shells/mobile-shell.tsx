@@ -19,6 +19,7 @@ import { AppShellContext } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { PageMembers } from '@/components/app/pages/members-page'
 import { PageFiles } from '@/components/app/pages/files'
+import { PageGallery } from '@/components/app/pages/gallery'
 
 const MOBILE_STORAGE_KEY = 'cairn:projects_view_mobile'
 type ProjectsView = 'list' | 'calendar' | 'kanban'
@@ -46,7 +47,6 @@ function pageFromPathname(pathname: string): string {
 }
 
 const MENU_PAGE_LABELS: Record<string, string> = {
-  gallery: 'ギャラリー',
   members: 'メンバー',
 }
 
@@ -85,6 +85,12 @@ function MobilePage({ page, projectsView }: { page: string; projectsView: Projec
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
       <MobileHeader title="ファイル" />
       <PageFiles isMobile />
+    </div>
+  )
+  if (page === 'gallery') return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
+      <MobileHeader title="ギャラリー" />
+      <PageGallery isMobile />
     </div>
   )
   if (page in MENU_PAGE_LABELS) return <MobilePlaceholder title={MENU_PAGE_LABELS[page]!} />

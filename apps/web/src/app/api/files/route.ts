@@ -35,8 +35,8 @@ export async function GET() {
     const { ctx, error } = await getAuthContext()
     if (error) return error
 
-    const { db, files, profiles, projects, messageAttachments, messages, channels } = await import('@cairn/db')
-    const { eq, desc, sql } = await import('drizzle-orm')
+    const { db, files, profiles, projects, messageAttachments, messages, channels, galleryItems } = await import('@cairn/db')
+    const { eq, and, desc, isNull, sql } = await import('drizzle-orm')
 
     const rows = await db
       .select({
@@ -60,7 +60,11 @@ export async function GET() {
       .from(files)
       .leftJoin(projects, eq(files.projectId, projects.id))
       .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
-      .where(eq(files.workspaceId, ctx.workspaceId))
+      .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
+      .where(and(
+        eq(files.workspaceId, ctx.workspaceId),
+        isNull(galleryItems.id),
+      ))
       .orderBy(desc(files.createdAt))
 
     // suppress unused import warnings — tables are referenced in the sql subquery
