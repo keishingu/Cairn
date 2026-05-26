@@ -166,6 +166,101 @@ export const indexProjectChunks = inngest.createFunction(
   },
 )
 
+export const indexExternalLink = inngest.createFunction(
+  { id: 'index-external-link' },
+  { event: 'link/registered' },
+  async ({ event, step }) => {
+    const { fileId, workspaceId, docId } = event.data as {
+      fileId: string
+      workspaceId: string
+      docId: string
+    }
+
+    const exportUrl = `https://docs.google.com/document/d/${docId}/export?format=txt`
+
+    const fetchResult = await step.run('fetch-text', async () => {
+      const res = await fetch(exportUrl, { redirect: 'follow' })
+      const contentType = res.headers.get('content-type') ?? ''
+
+      // 非公開ドキュメントはログインページ（text/html）が返る
+      if (!res.ok || !contentType.startsWith('text/plain')) {
+        return { ok: false as const }
+      }
+
+      const rawText = await res.text()
+
+      // Content-Disposition からドキュメントタイトルを取得
+      const cd = res.headers.get('content-disposition') ?? ''
+      const titleMatch = /filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i.exec(cd)
+      const title = titleMatch
+        ? decodeURIComponent(titleMatch[1]!.trim()).replace(/\.txt$/i, '')
+        : null
+
+      return { ok: true as const, text: rawText, title }
+    })
+
+    if (!fetchResult.ok) {
+      await step.run('mark-private', async () => {
+        const { db, files } = await import('@cairn/db')
+        const { eq } = await import('drizzle-orm')
+        const [row] = await db.select({ metadata: files.metadata }).from(files).where(eq(files.id, fileId)).limit(1)
+        if (!row) return
+        const meta = Object.assign({}, row.metadata as Record<string, unknown>)
+        await db.update(files).set({ metadata: { ...meta, indexingStatus: 'failed' } }).where(eq(files.id, fileId))
+      })
+      return { indexed: 0, reason: 'private' }
+    }
+
+    const chunks = await step.run('chunk-text', async () => {
+      const { chunkText } = await import('@/lib/ai/chunk-text')
+      return chunkText(fetchResult.text)
+    })
+
+    await step.run('save-embeddings', async () => {
+      const { db, documentChunks, files } = await import('@cairn/db')
+      const { eq, and } = await import('drizzle-orm')
+      const [row] = await db.select({ metadata: files.metadata }).from(files).where(eq(files.id, fileId)).limit(1)
+      if (!row) return
+
+      const meta = Object.assign({}, row.metadata as Record<string, unknown>)
+      const newMeta = { ...meta, indexingStatus: 'indexed' }
+
+      if (chunks.length > 0) {
+        const { embedMany } = await import('ai')
+        const { openai, EMBEDDING_MODEL } = await import('@/lib/ai/client')
+
+        const { embeddings } = await embedMany({
+          model: openai.embedding(EMBEDDING_MODEL),
+          values: chunks,
+        })
+
+        await db
+          .delete(documentChunks)
+          .where(and(eq(documentChunks.sourceType, 'file'), eq(documentChunks.sourceId, fileId)))
+
+        await db.insert(documentChunks).values(
+          chunks.map((content, i) => ({
+            workspaceId,
+            sourceType: 'file' as const,
+            sourceId: fileId,
+            chunkIndex: i,
+            content,
+            embedding: embeddings[i]!,
+          })),
+        )
+      }
+
+      if (fetchResult.title) {
+        await db.update(files).set({ fileName: fetchResult.title, metadata: newMeta }).where(eq(files.id, fileId))
+      } else {
+        await db.update(files).set({ metadata: newMeta }).where(eq(files.id, fileId))
+      }
+    })
+
+    return { indexed: chunks.length }
+  },
+)
+
 export const indexMemberChunks = inngest.createFunction(
   { id: 'index-member-chunks' },
   { event: 'member/upserted' },

@@ -5,6 +5,7 @@
 
 import React from 'react'
 import type { AttachmentDto } from '@cairn/shared'
+import { useQueryClient } from '@tanstack/react-query'
 import { Avatar } from './primitives'
 import { EmojiPicker } from './emoji-picker'
 import { Icon } from './primitives'
@@ -17,6 +18,39 @@ import {
   useToggleMessageReaction,
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+
+const GOOGLE_DOCS_URL_RE = /https:\/\/docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*/g
+const URL_RE = /https?:\/\/[^\s<>"']+/g
+
+function extractGoogleDocsUrls(text: string): string[] {
+  const matches = text.match(GOOGLE_DOCS_URL_RE) ?? []
+  return [...new Set(matches.map(u => u.replace(/[.,;:!?)>]+$/, '')))]
+}
+
+function renderTextWithLinks(text: string): React.ReactNode {
+  const nodes: React.ReactNode[] = []
+  let last = 0
+  let match: RegExpExecArray | null
+  const re = new RegExp(URL_RE.source, 'g')
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) nodes.push(text.slice(last, match.index))
+    const url = match[0].replace(/[.,;:!?)>\]]+$/, '')
+    nodes.push(
+      <a
+        key={match.index}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}
+      >
+        {url}
+      </a>,
+    )
+    last = match.index + url.length
+  }
+  if (last < text.length) nodes.push(text.slice(last))
+  return nodes.length === 1 && typeof nodes[0] === 'string' ? nodes[0] : nodes
+}
 
 const ACCEPT_FILE_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
@@ -80,7 +114,9 @@ const ChatMessage = ({ messageId, senderName, createdAt, content, reactions, att
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
         </div>
         {content && (
-          <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6, whiteSpace: 'pre-line' }}>{content}</div>
+          <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6, whiteSpace: 'pre-line' }}>
+            {emojiOnly ? content : renderTextWithLinks(content)}
+          </div>
         )}
         {attachments.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: content ? 8 : 4 }}>
@@ -345,6 +381,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
   const [isUploading, setIsUploading] = React.useState(false)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
+  const queryClient = useQueryClient()
 
   const { data: currentUser } = useCurrentUser()
   const { data: messages = [], isLoading, isError } = useChannelMessages(channelId)
@@ -396,9 +433,27 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
     })
   }
 
+  const registerGoogleDocsLinks = (text: string) => {
+    if (!channelId) return
+    const urls = extractGoogleDocsUrls(text)
+    if (urls.length === 0) return
+    for (const url of urls) {
+      void fetch('/api/external-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, channelId }),
+      }).then(() => {
+        void queryClient.invalidateQueries({ queryKey: ['project-files'] })
+      }).catch(() => {})
+    }
+  }
+
   const send = () => {
     const text = draft.trim()
     if ((!text && pendingAttachments.length === 0) || !channelId) return
+
+    // Google Docs URL を検出してファイルタブに自動登録
+    if (text) registerGoogleDocsLinks(text)
 
     pendingDraftRef.current = text
     setSendError(null)

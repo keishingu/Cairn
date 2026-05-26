@@ -36,6 +36,20 @@ export async function GET(_req: Request, { params }: RouteContext) {
       return new NextResponse(null, { status: 403 })
     }
 
+    // 外部リンクは元の URL にリダイレクト
+    if (file.fileType === 'link') {
+      const meta = (file.metadata ?? {}) as Record<string, unknown>
+      const externalUrl = meta['externalUrl']
+      if (typeof externalUrl === 'string') {
+        return NextResponse.redirect(externalUrl)
+      }
+      return new NextResponse(null, { status: 404 })
+    }
+
+    if (!file.storagePath) {
+      return new NextResponse(null, { status: 404 })
+    }
+
     const supabase = createServiceRoleClient()
     const { data, error: storageError } = await supabase.storage
       .from('chat-attachments')
@@ -74,7 +88,7 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
     const { eq, and } = await import('drizzle-orm')
 
     const [file] = await db
-      .select({ id: files.id, workspaceId: files.workspaceId, storagePath: files.storagePath, uploadedBy: files.uploadedBy })
+      .select({ id: files.id, workspaceId: files.workspaceId, storagePath: files.storagePath, uploadedBy: files.uploadedBy, fileType: files.fileType })
       .from(files)
       .where(eq(files.id, fileId))
       .limit(1)
@@ -90,12 +104,14 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
     // DB から削除（message_attachments は CASCADE で連鎖削除）
     await db.delete(files).where(eq(files.id, fileId))
 
-    // Storage オブジェクトを非同期削除
-    const { inngest } = await import('@/lib/inngest/client')
-    await inngest.send({
-      name: 'storage/objects.delete',
-      data: { bucket: 'chat-attachments', paths: [file.storagePath] },
-    })
+    // 外部リンクはストレージオブジェクトなし
+    if (file.fileType !== 'link' && file.storagePath) {
+      const { inngest } = await import('@/lib/inngest/client')
+      await inngest.send({
+        name: 'storage/objects.delete',
+        data: { bucket: 'chat-attachments', paths: [file.storagePath] },
+      })
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {

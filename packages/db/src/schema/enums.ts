@@ -32,6 +32,7 @@ export const fileTypeEnum = pgEnum('file_type', [
   'video',
   'audio',
   'other',
+  'link',
 ])
 
 export const taskStatusEnum = pgEnum('task_status', ['todo', 'in_progress', 'done'])

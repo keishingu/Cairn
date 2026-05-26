@@ -12,6 +12,8 @@ export interface ProjectFileDto {
   fileType: string
   uploaderName: string
   createdAt: string
+  externalUrl?: string
+  indexingStatus?: string
 }
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -50,6 +52,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         fileType: files.fileType,
         uploaderName: profiles.displayName,
         createdAt: files.createdAt,
+        metadata: files.metadata,
       })
       .from(files)
       .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
@@ -57,15 +60,22 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .orderBy(desc(files.createdAt))
 
     return NextResponse.json(
-      rows.map(r => ({
-        id: r.id,
-        fileName: r.fileName,
-        mimeType: r.mimeType,
-        fileSize: r.fileSize,
-        fileType: r.fileType,
-        uploaderName: r.uploaderName,
-        createdAt: r.createdAt.toISOString(),
-      })) satisfies ProjectFileDto[],
+      rows.map(r => {
+        const meta = (r.metadata ?? {}) as Record<string, unknown>
+        const externalUrl = meta['externalUrl']
+        const indexingStatus = meta['indexingStatus']
+        return {
+          id: r.id,
+          fileName: r.fileName,
+          mimeType: r.mimeType,
+          fileSize: r.fileSize,
+          fileType: r.fileType,
+          uploaderName: r.uploaderName,
+          createdAt: r.createdAt.toISOString(),
+          ...(typeof externalUrl === 'string' ? { externalUrl } : {}),
+          ...(typeof indexingStatus === 'string' ? { indexingStatus } : {}),
+        }
+      }) satisfies ProjectFileDto[],
     )
   } catch (err) {
     console.error('[/api/projects/[id]/files GET] DB query failed:', err)

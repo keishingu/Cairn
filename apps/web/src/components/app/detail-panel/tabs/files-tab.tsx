@@ -6,6 +6,53 @@ import { Icon } from '../../primitives'
 import { FileTypeIcon } from '../../file-type-icon'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
 
+function googleDocsType(url: string): 'doc' | 'sheet' | 'slide' | null {
+  if (url.includes('docs.google.com/document/')) return 'doc'
+  if (url.includes('docs.google.com/spreadsheets/')) return 'sheet'
+  if (url.includes('docs.google.com/presentation/')) return 'slide'
+  return null
+}
+
+const GDOC_CONFIG = {
+  doc:   { label: 'GDoc',  bg: 'var(--blue-soft)',    color: 'var(--blue-text)' },
+  sheet: { label: 'GSht',  bg: 'var(--emerald-soft)', color: 'var(--emerald-text)' },
+  slide: { label: 'GSld',  bg: 'var(--violet-soft)',  color: 'var(--violet-text)' },
+} as const
+
+function GoogleDocsIcon({ url }: { url: string }) {
+  const type = googleDocsType(url)
+  const cfg = type ? GDOC_CONFIG[type] : { label: 'LINK', bg: 'var(--card-2)', color: 'var(--text-3)' }
+  return (
+    <div style={{
+      width: 32, height: 36, borderRadius: 4, flexShrink: 0,
+      background: cfg.bg, color: cfg.color,
+      fontSize: 9, fontWeight: 700,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      {cfg.label}
+    </div>
+  )
+}
+
+function IndexingBadge({ status }: { status: string | undefined }) {
+  if (!status || status === 'indexed' || status === 'skipped') return null
+  if (status === 'pending') {
+    return (
+      <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--card-2)', color: 'var(--text-3)', flexShrink: 0 }}>
+        インデックス中
+      </span>
+    )
+  }
+  if (status === 'failed') {
+    return (
+      <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--red-soft)', color: 'var(--red-text)', flexShrink: 0 }}>
+        非公開
+      </span>
+    )
+  }
+  return null
+}
+
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return ''
   if (bytes < 1024) return `${bytes}B`
@@ -83,21 +130,28 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
         const meta = [sizeStr, dateStr].filter(Boolean).join(' · ')
         const isMenuOpen = menuOpenId === f.id
 
+        const isLink = f.fileType === 'link'
+        const linkHref = isLink ? f.externalUrl : `/api/attachments/${f.id}`
+
         return (
           <div key={f.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderBottom: '1px solid var(--divider)', borderRadius: 6 }}>
             <a
-              href={`/api/attachments/${f.id}`}
+              href={linkHref}
               target="_blank"
               rel="noopener noreferrer"
               style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, textDecoration: 'none', cursor: 'pointer' }}
             >
-              <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName} fileId={f.id}/>
+              {isLink && f.externalUrl
+                ? <GoogleDocsIcon url={f.externalUrl}/>
+                : <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName} fileId={f.id}/>
+              }
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {f.fileName}
                   {i === 0 && <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>最新</span>}
+                  {isLink && <IndexingBadge status={f.indexingStatus}/>}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{meta}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{isLink ? '外部リンク' : meta}</div>
               </div>
             </a>
 

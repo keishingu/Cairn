@@ -8,9 +8,10 @@ import {
   indexFileChunks,
   indexProjectChunks,
   indexMemberChunks,
+  indexExternalLink,
 } from '@/lib/inngest/functions'
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [deleteStorageObjects, indexFileChunks, indexProjectChunks, indexMemberChunks],
+  functions: [deleteStorageObjects, indexFileChunks, indexProjectChunks, indexMemberChunks, indexExternalLink],
 })
