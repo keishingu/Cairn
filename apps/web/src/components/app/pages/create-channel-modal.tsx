@@ -167,10 +167,12 @@ export function CreateChannelModal({ onClose, onCreated }: CreateChannelModalPro
 
         {/* Footer */}
         <footer style={{ padding: '12px 20px', borderTop: '1px solid var(--divider)', background: 'var(--card-2)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Icon name="users" size={12}/>
-            作成後にメンバーを招待できます
-          </span>
+          {isPrivate && (
+            <span style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="users" size={12}/>
+              作成後にメンバーを招待できます
+            </span>
+          )}
           <div style={{ flex: 1 }}/>
           <button type="button" onClick={onClose} className="btn" disabled={mutation.isPending}>キャンセル</button>
           <button type="submit" className="btn btn-primary" disabled={mutation.isPending} style={{ opacity: mutation.isPending ? 0.7 : 1 }}>
