@@ -25,7 +25,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [hoveredId, setHoveredId] = React.useState<string | null>(null)
-  const [lightboxUrl, setLightboxUrl] = React.useState<string | null>(null)
+  const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const [uploadState, setUploadState] = React.useState<UploadState | null>(null)
 
   const { data: items = [], isLoading, isError } = useQuery<GalleryItemDto[]>({
@@ -71,6 +71,21 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
   }
 
   const isUploading = uploadState !== null && uploadState.done < uploadState.total
+
+  const lightboxUrl = lightboxIndex !== null ? (items[lightboxIndex]?.publicUrl ?? null) : null
+  const goPrev = () => setLightboxIndex(i => i !== null && i > 0 ? i - 1 : i)
+  const goNext = () => setLightboxIndex(i => i !== null && i < items.length - 1 ? i + 1 : i)
+
+  React.useEffect(() => {
+    if (lightboxIndex === null) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') goPrev()
+      else if (e.key === 'ArrowRight') goNext()
+      else if (e.key === 'Escape') setLightboxIndex(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightboxIndex, items.length])
 
   if (isLoading) {
     return (
@@ -145,7 +160,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
                 style={{ position: 'relative', aspectRatio: '1/1', borderRadius: 5, overflow: 'hidden', cursor: 'pointer', background: 'var(--card-2)' }}
                 onMouseEnter={() => setHoveredId(item.id)}
                 onMouseLeave={() => setHoveredId(null)}
-                onClick={() => setLightboxUrl(item.publicUrl)}
+                onClick={() => setLightboxIndex(items.indexOf(item))}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -179,24 +194,47 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
       </div>
 
       {/* ライトボックス */}
-      {lightboxUrl && (
+      {lightboxUrl && lightboxIndex !== null && (
         <div
-          onClick={() => setLightboxUrl(null)}
+          onClick={() => setLightboxIndex(null)}
           style={{
             position: 'fixed', inset: 0, zIndex: 200,
             background: 'rgba(0,0,0,0.85)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={lightboxUrl}
-            alt=""
+          {/* 画像 + 左右タップゾーン */}
+          <div
             onClick={e => e.stopPropagation()}
-            style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8, objectFit: 'contain' }}
-          />
+            style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh', display: 'flex' }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={lightboxUrl}
+              alt=""
+              style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8, objectFit: 'contain', display: 'block' }}
+            />
+            {/* 左タップゾーン（前へ） */}
+            <div
+              onClick={e => { e.stopPropagation(); goPrev() }}
+              style={{
+                position: 'absolute', left: 0, top: 0, bottom: 0, width: '40%',
+                cursor: lightboxIndex > 0 ? 'w-resize' : 'default',
+              }}
+            />
+            {/* 右タップゾーン（次へ） */}
+            <div
+              onClick={e => { e.stopPropagation(); goNext() }}
+              style={{
+                position: 'absolute', right: 0, top: 0, bottom: 0, width: '40%',
+                cursor: lightboxIndex < items.length - 1 ? 'e-resize' : 'default',
+              }}
+            />
+          </div>
+
+          {/* 閉じるボタン */}
           <button
-            onClick={() => setLightboxUrl(null)}
+            onClick={() => setLightboxIndex(null)}
             style={{
               position: 'absolute', top: 16, right: 16,
               width: 36, height: 36, borderRadius: 10,
@@ -207,6 +245,15 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
           >
             <Icon name="close" size={18}/>
           </button>
+
+          {/* 枚数インジケーター */}
+          <div style={{
+            position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+            fontSize: 12, color: 'rgba(255,255,255,0.7)',
+            background: 'rgba(0,0,0,0.4)', padding: '4px 10px', borderRadius: 20,
+          }}>
+            {lightboxIndex + 1} / {items.length}
+          </div>
         </div>
       )}
     </>
