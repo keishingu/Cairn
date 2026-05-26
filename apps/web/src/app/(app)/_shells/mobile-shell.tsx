@@ -65,11 +65,15 @@ function MobilePlaceholder({ title }: { title: string }) {
   )
 }
 
-function MobilePage({ page, projectsView }: { page: string; projectsView: ProjectsView }) {
+function MobilePage({ page, projectsView, initialMemberId }: { page: string; projectsView: ProjectsView; initialMemberId?: string | undefined }) {
   if (page === 'projects') {
     if (projectsView === 'calendar') return <PageCalendar openPanel={() => {}} isMobile />
     if (projectsView === 'kanban') return <PageKanban openPanel={() => {}} isMobile />
-    return <ProjectListView isMobile />
+    return (
+      <React.Suspense fallback={null}>
+        <ProjectListView isMobile />
+      </React.Suspense>
+    )
   }
   if (page === 'chats') return <PageChat isMobile />
   if (page === 'tasks') return (
@@ -80,7 +84,7 @@ function MobilePage({ page, projectsView }: { page: string; projectsView: Projec
   )
   if (page === 'ai') return <MobileAI />
   if (page === 'settings') return <MobileSettings />
-  if (page === 'members') return <PageMembers isMobile />
+  if (page === 'members') return <PageMembers isMobile {...(initialMemberId ? { initialUserId: initialMemberId } : {})} />
   if (page === 'files') return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
       <MobileHeader title="ファイル" />
@@ -101,6 +105,7 @@ export function MobileShell() {
   const pathname = usePathname()
   const router = useRouter()
   const page = pageFromPathname(pathname)
+  const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
 
   const setProjectsView = React.useCallback((view: string) => {
@@ -115,7 +120,7 @@ export function MobileShell() {
         <NavigationProgress />
         <div className="app" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-            <MobilePage page={page} projectsView={projectsView} />
+            <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} />
           </div>
           <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
         </div>

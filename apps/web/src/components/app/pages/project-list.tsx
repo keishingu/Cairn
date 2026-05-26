@@ -527,6 +527,12 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
   const queryClient = useQueryClient()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
   const [view, setView] = React.useState<'grid' | 'table'>('grid')
+  const [filter, setFilter] = React.useState('all')
+  const [showCreate, setShowCreate] = React.useState(false)
+  const [filterOpen, setFilterOpen] = React.useState(false)
+  const [statusFilter, setStatusFilter] = React.useState<StatusKey[]>([])
+  const filterBtnRef = React.useRef<HTMLDivElement>(null)
+  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
   const searchParams = useSearchParams()
   const openProjectId = searchParams.get('open')
   const hasOpenedRef = React.useRef(false)
@@ -536,15 +542,19 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
     const project = projects.find(p => p.id === openProjectId)
     if (!project) return
     hasOpenedRef.current = true
-    openPanel?.(project)
-    window.history.replaceState(null, '', '/projects')
+    openPanel?.(project)        // PC: PCShell 経由
+    setSelectedProject(project) // モバイル: ローカル state 経由（PC では render 条件外）
   }, [openProjectId, projects, isLoading, openPanel])
-  const [filter, setFilter] = React.useState('all')
-  const [showCreate, setShowCreate] = React.useState(false)
-  const [filterOpen, setFilterOpen] = React.useState(false)
-  const [statusFilter, setStatusFilter] = React.useState<StatusKey[]>([])
-  const filterBtnRef = React.useRef<HTMLDivElement>(null)
-  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
+
+  // モバイル: パネル開閉に合わせて URL を同期
+  React.useEffect(() => {
+    if (!isMobile) return
+    if (selectedProject) {
+      window.history.replaceState(null, '', `/projects/${selectedProject.id}`)
+    } else {
+      window.history.replaceState(null, '', '/projects')
+    }
+  }, [isMobile, selectedProject])
 
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])

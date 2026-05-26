@@ -128,12 +128,29 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
     queryFn: () => fetch('/api/workspaces/members').then(r => r.json()),
   })
 
-  // initialUserId が指定されている場合、メンバーデータ読み込み後に自動選択
+  // PC: initialUserId が指定されている場合、メンバーデータ読み込み後に自動選択
   React.useEffect(() => {
-    if (!initialUserId || members.length === 0) return
+    if (!initialUserId || isMobile || members.length === 0) return
     const m = members.find(m => m.userId === initialUserId)
     if (m) setSelectedMember(m)
-  }, [initialUserId, members])
+  }, [initialUserId, isMobile, members])
+
+  // モバイル: initialUserId からパネルを自動オープン
+  React.useEffect(() => {
+    if (!initialUserId || !isMobile || members.length === 0) return
+    const m = members.find(m => m.userId === initialUserId)
+    if (m) setMobileDetailMember(m)
+  }, [initialUserId, isMobile, members])
+
+  // モバイル: パネル開閉に合わせて URL を同期
+  React.useEffect(() => {
+    if (!isMobile) return
+    if (mobileDetailMember) {
+      window.history.replaceState(null, '', `/members/${mobileDetailMember.userId}`)
+    } else {
+      window.history.replaceState(null, '', '/members')
+    }
+  }, [isMobile, mobileDetailMember])
 
   const filtered = React.useMemo(() => {
     return members.filter(m => {
