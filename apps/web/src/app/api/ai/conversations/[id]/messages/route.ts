@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { streamText, type CoreMessage } from 'ai'
 import { openai, DEFAULT_MODEL } from '@/lib/ai/client'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { webSearchTool } from '@/lib/ai/web-search'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -85,9 +86,12 @@ export async function POST(req: Request, { params }: RouteContext) {
     ? lastUserMessage.content
     : ''
 
+  const hasWebSearch = !!process.env['TAVILY_API_KEY']
+
   console.log('[AI chat] POST', {
     hasDatabaseUrl: !!process.env['DATABASE_URL'],
     hasOpenAiKey: !!process.env['OPENAI_API_KEY'],
+    hasTavilyKey: hasWebSearch,
     lastUserContent: lastUserContent.slice(0, 80),
     messageCount: messages.length,
   })
@@ -97,7 +101,7 @@ export async function POST(req: Request, { params }: RouteContext) {
   if (process.env['DATABASE_URL'] && lastUserContent) {
     try {
       const { searchChunks } = await import('@/lib/ai/search-chunks')
-      const chunks = await searchChunks(lastUserContent, ctx.workspaceId, { limit: 5, minSimilarity: 0.15 })
+      const chunks = await searchChunks(lastUserContent, ctx.workspaceId, { limit: 5, minSimilarity: 0.5 })
       console.log(`[AI chat] RAG: query="${lastUserContent.slice(0, 50)}" chunks=${chunks.length}`, chunks.map(c => ({ type: c.sourceType, sim: c.similarity.toFixed(3), preview: c.content.slice(0, 60) })))
       if (chunks.length > 0) {
         contextSection = `\n\n【ワークスペースの参照情報】\n${chunks.map(c => c.content).join('\n\n---\n\n')}`
@@ -107,14 +111,17 @@ export async function POST(req: Request, { params }: RouteContext) {
     }
   }
 
-  const systemPrompt = `あなたはワークスペースのAIアシスタントです。メンバーのプロジェクト管理・計画策定・情報整理を支援します。${contextSection}
+  const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'full', timeStyle: 'short' })
 
-回答は日本語で、簡潔かつ実用的にしてください。安全に関わる内容は専門家や現地の最新情報を確認するよう促してください。参照情報がある場合はそれを積極的に活用し、ない場合は正直にその旨を伝えてください。`
+  const systemPrompt = `あなたはワークスペースのAIアシスタントです。メンバーのプロジェクト管理・計画策定・情報整理を支援します。現在日時: ${now}。${contextSection}
+
+回答は日本語で、簡潔かつ実用的にしてください。安全に関わる内容は専門家や現地の最新情報を確認するよう促してください。参照情報がある場合はそれを積極的に活用してください。${hasWebSearch ? '参照情報がない場合や最新情報が必要な場合は、webSearch ツールでウェブ検索してから回答してください。' : '参照情報がない場合は正直にその旨を伝えてください。'}`
 
   const result = streamText({
     model: openai(DEFAULT_MODEL),
     system: systemPrompt,
     messages,
+    ...(hasWebSearch ? { tools: { webSearch: webSearchTool }, maxSteps: 5 } : {}),
     onFinish: async ({ text }) => {
       if (!process.env['DATABASE_URL'] || !lastUserContent) return
       try {
