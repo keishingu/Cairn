@@ -28,6 +28,8 @@ export const webSearchTool = tool({
       return { error: 'TAVILY_API_KEY が設定されていません' }
     }
 
+    console.log('[AI chat] webSearch tool called', { query })
+
     const response = await fetch('https://api.tavily.com/search', {
       method: 'POST',
       headers: {
@@ -48,12 +50,12 @@ export const webSearchTool = tool({
 
     const data = (await response.json()) as TavilyResponse
 
-    return {
-      results: (data.results ?? []).map(r => ({
-        title: r.title,
-        url: r.url,
-        content: r.content,
-      })),
-    }
+    const results = (data.results ?? []).map(r => ({
+      title: r.title,
+      url: r.url,
+      content: r.content,
+    }))
+    console.log('[AI chat] webSearch results', { query, count: results.length })
+    return { results }
   },
 })

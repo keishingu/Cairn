@@ -101,7 +101,7 @@ export async function POST(req: Request, { params }: RouteContext) {
   if (process.env['DATABASE_URL'] && lastUserContent) {
     try {
       const { searchChunks } = await import('@/lib/ai/search-chunks')
-      const chunks = await searchChunks(lastUserContent, ctx.workspaceId, { limit: 5, minSimilarity: 0.15 })
+      const chunks = await searchChunks(lastUserContent, ctx.workspaceId, { limit: 5, minSimilarity: 0.5 })
       console.log(`[AI chat] RAG: query="${lastUserContent.slice(0, 50)}" chunks=${chunks.length}`, chunks.map(c => ({ type: c.sourceType, sim: c.similarity.toFixed(3), preview: c.content.slice(0, 60) })))
       if (chunks.length > 0) {
         contextSection = `\n\n【ワークスペースの参照情報】\n${chunks.map(c => c.content).join('\n\n---\n\n')}`
