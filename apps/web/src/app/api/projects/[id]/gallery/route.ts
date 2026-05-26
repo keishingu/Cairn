@@ -7,8 +7,9 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 
 const GALLERY_BUCKET = 'gallery'
 const MAX_FILE_SIZE = 20 * 1024 * 1024
+// クライアント側で HEIC → JPEG 変換・リサイズ済みのため JPEG のみ受け付ける
 const ALLOWED_MIME_TYPES = new Set([
-  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic',
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
 ])
 
 export interface GalleryItemDto {
@@ -93,12 +94,16 @@ export async function POST(req: Request, { params }: RouteContext) {
   }
 
   if (!ALLOWED_MIME_TYPES.has(file.type)) {
-    return NextResponse.json({ error: '対応していない形式です（JPEG・PNG・GIF・WEBP・HEIC）' }, { status: 400 })
+    return NextResponse.json({ error: '対応していない形式です（JPEG・PNG・GIF・WEBP）' }, { status: 400 })
   }
 
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json({ error: 'ファイルサイズは 20MB 以下にしてください' }, { status: 400 })
   }
+
+  // クライアント側で EXIF 抽出 → Canvas 処理の順に行うため、takenAt はフォームフィールドで受け取る
+  const takenAtRaw = formData.get('takenAt')
+  const takenAt: Date | null = typeof takenAtRaw === 'string' ? new Date(takenAtRaw) : null
 
   try {
     const { db, files, galleryItems, projects } = await import('@cairn/db')
@@ -116,20 +121,6 @@ export async function POST(req: Request, { params }: RouteContext) {
     const storagePath = `${ctx.workspaceId}/${projectId}/${crypto.randomUUID()}.${ext}`
 
     const buffer = await file.arrayBuffer()
-
-    // JPEG/WEBP から撮影日時を取得
-    let takenAt: Date | null = null
-    if (file.type === 'image/jpeg' || file.type === 'image/webp') {
-      try {
-        const exifr = await import('exifr')
-        const exif = await exifr.parse(Buffer.from(buffer), ['DateTimeOriginal'])
-        if (exif?.DateTimeOriginal instanceof Date) {
-          takenAt = exif.DateTimeOriginal
-        }
-      } catch {
-        // EXIFが無い・パース失敗は無視
-      }
-    }
 
     const supabase = createServiceRoleClient()
     const { error: uploadError } = await supabase.storage
