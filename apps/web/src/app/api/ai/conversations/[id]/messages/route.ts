@@ -111,7 +111,9 @@ export async function POST(req: Request, { params }: RouteContext) {
     }
   }
 
-  const systemPrompt = `あなたはワークスペースのAIアシスタントです。メンバーのプロジェクト管理・計画策定・情報整理を支援します。${contextSection}
+  const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'full', timeStyle: 'short' })
+
+  const systemPrompt = `あなたはワークスペースのAIアシスタントです。メンバーのプロジェクト管理・計画策定・情報整理を支援します。現在日時: ${now}。${contextSection}
 
 回答は日本語で、簡潔かつ実用的にしてください。安全に関わる内容は専門家や現地の最新情報を確認するよう促してください。参照情報がある場合はそれを積極的に活用してください。${hasWebSearch ? '参照情報がない場合や最新情報が必要な場合は、webSearch ツールでウェブ検索してから回答してください。' : '参照情報がない場合は正直にその旨を伝えてください。'}`
 
