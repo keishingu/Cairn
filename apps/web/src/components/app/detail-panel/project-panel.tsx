@@ -10,18 +10,8 @@ import { OverviewTab, formatDateRange } from './tabs/overview-tab'
 import { FilesTab } from './tabs/files-tab'
 import { TasksTab } from './tabs/tasks-tab'
 import { MembersTab } from './tabs/members-tab'
+import { GalleryTab } from './tabs/gallery-tab'
 
-const PanelGalleryTab = () => (
-  <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
-      {Array.from({ length: 15 }).map((_, i) => (
-        <div key={i} style={{ aspectRatio: '1/1', borderRadius: 4, overflow: 'hidden', cursor: 'pointer' }}>
-          <MountainPhoto idx={i + 3} height={130} flat radius={4}/>
-        </div>
-      ))}
-    </div>
-  </div>
-)
 
 const PanelAITab = () => (
   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -165,11 +155,12 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
   ]
 
   const mobileTabs = [
-    { id: 'overview', label: '概要',     icon: 'book' },
-    { id: 'chat',     label: 'チャット', icon: 'chat' },
-    { id: 'tasks',    label: 'タスク',   icon: 'check' },
-    { id: 'files',    label: 'ファイル', icon: 'file' },
-    { id: 'members',  label: 'メンバー', icon: 'users' },
+    { id: 'overview', label: '概要',       icon: 'book' },
+    { id: 'chat',     label: 'チャット',   icon: 'chat' },
+    { id: 'tasks',    label: 'タスク',     icon: 'check' },
+    { id: 'files',    label: 'ファイル',   icon: 'file' },
+    { id: 'gallery',  label: 'ギャラリー', icon: 'image' },
+    { id: 'members',  label: 'メンバー',   icon: 'users' },
   ]
 
   const tabs = isMobile ? mobileTabs : pcTabs
@@ -291,7 +282,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
         {tab === 'files'    && <FilesTab projectId={project.id}/>}
         {tab === 'tasks'    && <TasksTab project={project}/>}
         {tab === 'members'  && <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>}
-        {tab === 'gallery'  && !isMobile && <PanelGalleryTab/>}
+        {tab === 'gallery'  && <GalleryTab projectId={project.id}/>}
         {tab === 'ai'       && !isMobile && <PanelAITab/>}
         {tab === 'settings' && !isMobile && <PanelSettingsTab projectId={project.id} onDeleted={onClose}/>}
       </div>
