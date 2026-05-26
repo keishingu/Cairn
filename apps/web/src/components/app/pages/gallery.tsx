@@ -10,7 +10,7 @@ function formatDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
-export const PageGallery = () => {
+export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
 
   const { data: items = [], isLoading, isError } = useQuery<WorkspaceGalleryItemDto[]>({
@@ -39,22 +39,27 @@ export const PageGallery = () => {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      {/* ヘッダー */}
-      <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em' }}>ギャラリー</h2>
-            {items.length > 0 && (
-              <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: 2 }}>
-                {items.length} 枚
-              </div>
-            )}
+      {/* PC ヘッダー */}
+      {!isMobile && (
+        <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em' }}>ギャラリー</h2>
+              {items.length > 0 && (
+                <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: 2 }}>
+                  {items.length} 枚
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* コンテンツ */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '0 24px 24px' }}>
+      <div style={{
+        flex: 1, overflow: 'auto',
+        padding: isMobile ? '8px 10px calc(80px + env(safe-area-inset-bottom))' : '0 24px 24px',
+      }}>
         {isLoading && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--text-4)', fontSize: 13 }}>
             読み込み中...
@@ -76,7 +81,7 @@ export const PageGallery = () => {
         )}
 
         {items.length > 0 && (
-          <div style={{ columnCount: 4, columnGap: 12 }}>
+          <div style={{ columnCount: isMobile ? 2 : 4, columnGap: isMobile ? 6 : 12 }}>
             {items.map((item, idx) => (
               <div
                 key={item.id}
