@@ -5,8 +5,12 @@ import { useQuery } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import type { WorkspaceGalleryItemDto } from '@/app/api/gallery/route'
 
-function formatDate(iso: string): string {
-  const d = new Date(iso)
+function formatDate(takenAt: string | null, createdAt: string): string {
+  if (takenAt) {
+    const d = new Date(takenAt)
+    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
+  const d = new Date(createdAt)
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
@@ -58,7 +62,7 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
       {/* コンテンツ */}
       <div style={{
         flex: 1, overflow: 'auto',
-        padding: isMobile ? '8px 10px calc(80px + env(safe-area-inset-bottom))' : '0 24px 24px',
+        padding: isMobile ? `0 10px calc(80px + env(safe-area-inset-bottom))` : '0 24px 24px',
       }}>
         {isLoading && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--text-4)', fontSize: 13 }}>
@@ -114,7 +118,7 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
                     {item.projectTitle}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>
-                    {formatDate(item.takenAt ?? item.createdAt)}
+                    {formatDate(item.takenAt, item.createdAt)}
                   </div>
                 </div>
               </div>
@@ -174,7 +178,7 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
               fontSize: 12, color: 'rgba(255,255,255,0.65)',
               background: 'rgba(0,0,0,0.4)', padding: '3px 10px', borderRadius: 20,
             }}>
-              {lightboxIndex + 1} / {items.length} · {formatDate(lightboxItem.takenAt ?? lightboxItem.createdAt)}
+              {lightboxIndex + 1} / {items.length} · {formatDate(lightboxItem.takenAt, lightboxItem.createdAt)}
             </div>
           </div>
 
