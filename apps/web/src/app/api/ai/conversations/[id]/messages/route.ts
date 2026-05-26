@@ -86,9 +86,12 @@ export async function POST(req: Request, { params }: RouteContext) {
     ? lastUserMessage.content
     : ''
 
+  const hasWebSearch = !!process.env['TAVILY_API_KEY']
+
   console.log('[AI chat] POST', {
     hasDatabaseUrl: !!process.env['DATABASE_URL'],
     hasOpenAiKey: !!process.env['OPENAI_API_KEY'],
+    hasTavilyKey: hasWebSearch,
     lastUserContent: lastUserContent.slice(0, 80),
     messageCount: messages.length,
   })
@@ -107,8 +110,6 @@ export async function POST(req: Request, { params }: RouteContext) {
       console.warn('[AI chat] RAG search failed, proceeding without context:', e)
     }
   }
-
-  const hasWebSearch = !!process.env['TAVILY_API_KEY']
 
   const systemPrompt = `あなたはワークスペースのAIアシスタントです。メンバーのプロジェクト管理・計画策定・情報整理を支援します。${contextSection}
 
