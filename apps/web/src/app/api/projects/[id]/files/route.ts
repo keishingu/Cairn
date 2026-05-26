@@ -26,9 +26,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
   }
 
   try {
-    const { db, files, profiles, projects } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
-    const { desc } = await import('drizzle-orm')
+    const { db, files, profiles, projects, galleryItems } = await import('@cairn/db')
+    const { eq, and, isNull, desc } = await import('drizzle-orm')
 
     // プロジェクトが同一ワークスペースに属することを確認
     const [project] = await db
@@ -53,7 +52,11 @@ export async function GET(_req: Request, { params }: RouteContext) {
       })
       .from(files)
       .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
-      .where(eq(files.projectId, projectId))
+      .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
+      .where(and(
+        eq(files.projectId, projectId),
+        isNull(galleryItems.id),
+      ))
       .orderBy(desc(files.createdAt))
 
     return NextResponse.json(
