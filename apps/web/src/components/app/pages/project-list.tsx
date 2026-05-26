@@ -547,11 +547,13 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
   }, [openProjectId, projects, isLoading, openPanel])
 
   // モバイル: パネル開閉に合わせて URL を同期
+  const hadMobileProjectOpenRef = React.useRef(false)
   React.useEffect(() => {
     if (!isMobile) return
     if (selectedProject) {
+      hadMobileProjectOpenRef.current = true
       window.history.replaceState(null, '', `/projects/${selectedProject.id}`)
-    } else {
+    } else if (hadMobileProjectOpenRef.current) {
       window.history.replaceState(null, '', '/projects')
     }
   }, [isMobile, selectedProject])

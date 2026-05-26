@@ -84,11 +84,13 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     setNotifOpen(false)
   }, [pathnameSection])
 
+  const hadProjectOpenRef = React.useRef(false)
   React.useEffect(() => {
     if (!pathname.startsWith('/projects')) return
     if (selectedProject) {
+      hadProjectOpenRef.current = true
       window.history.replaceState(null, '', `/projects/${selectedProject.id}`)
-    } else {
+    } else if (hadProjectOpenRef.current) {
       window.history.replaceState(null, '', '/projects')
     }
   }, [selectedProject, pathname])

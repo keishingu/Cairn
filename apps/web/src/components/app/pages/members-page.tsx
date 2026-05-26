@@ -143,11 +143,13 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
   }, [initialUserId, isMobile, members])
 
   // モバイル: パネル開閉に合わせて URL を同期
+  const hadMobileMemberOpenRef = React.useRef(false)
   React.useEffect(() => {
     if (!isMobile) return
     if (mobileDetailMember) {
+      hadMobileMemberOpenRef.current = true
       window.history.replaceState(null, '', `/members/${mobileDetailMember.userId}`)
-    } else {
+    } else if (hadMobileMemberOpenRef.current) {
       window.history.replaceState(null, '', '/members')
     }
   }, [isMobile, mobileDetailMember])
