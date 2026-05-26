@@ -3,6 +3,7 @@
 
 'use client'
 
+import React from 'react'
 import { useAppShell } from '@/components/app/app-shell-context'
 import { TopBar } from '@/components/app/sidebar'
 import { TopBarSearch } from '@/components/app/primitives'
@@ -15,7 +16,9 @@ export default function ProjectsPage() {
       <TopBar title="プロジェクト" subtitle="8 件 · 進行中 7" onBell={openNotif}>
         <TopBarSearch/>
       </TopBar>
-      <PageProjects openPanel={openPanel}/>
+      <React.Suspense fallback={null}>
+        <PageProjects openPanel={openPanel}/>
+      </React.Suspense>
     </>
   )
 }

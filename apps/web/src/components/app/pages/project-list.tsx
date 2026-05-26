@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
@@ -526,6 +527,18 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
   const queryClient = useQueryClient()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
   const [view, setView] = React.useState<'grid' | 'table'>('grid')
+  const searchParams = useSearchParams()
+  const openProjectId = searchParams.get('open')
+  const hasOpenedRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!openProjectId || hasOpenedRef.current || isLoading || projects.length === 0) return
+    const project = projects.find(p => p.id === openProjectId)
+    if (!project) return
+    hasOpenedRef.current = true
+    openPanel?.(project)
+    window.history.replaceState(null, '', '/projects')
+  }, [openProjectId, projects, isLoading, openPanel])
   const [filter, setFilter] = React.useState('all')
   const [showCreate, setShowCreate] = React.useState(false)
   const [filterOpen, setFilterOpen] = React.useState(false)
