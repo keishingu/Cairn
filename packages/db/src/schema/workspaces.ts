@@ -4,8 +4,16 @@
 import { boolean, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { workspaceRoleEnum } from './enums'
 
+export interface WorkspaceCoverPhoto {
+  id: string
+  url: string
+  storagePath: string
+  name: string
+}
+
 export interface WorkspaceSettings {
   projectLabel?: string | null
+  coverPhotos?: WorkspaceCoverPhoto[]
 }
 
 export const profiles = pgTable('profiles', {

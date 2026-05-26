@@ -120,6 +120,7 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
       isMember:           true,
       archived:           false,
       coverPhotoIdx:      p.coverPhotoIdx,
+      coverPhotoUrl:      null,
     })
   }
 
