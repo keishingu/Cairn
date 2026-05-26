@@ -40,7 +40,11 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
     if (!item) return new NextResponse(null, { status: 404 })
 
     const supabase = createServiceRoleClient()
-    await supabase.storage.from(GALLERY_BUCKET).remove([item.storagePath])
+    const { error: storageError } = await supabase.storage.from(GALLERY_BUCKET).remove([item.storagePath])
+    if (storageError) {
+      console.error('[/api/projects/[id]/gallery/[itemId] DELETE] Storage remove failed:', storageError)
+      return NextResponse.json({ error: 'ファイルの削除に失敗しました' }, { status: 500 })
+    }
 
     // files を削除すると gallery_items は CASCADE で削除される
     await db.delete(files).where(eq(files.id, item.fileId))

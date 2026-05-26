@@ -32,7 +32,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
   try {
     const { db, galleryItems, files, projects } = await import('@cairn/db')
-    const { eq, and, desc, isNotNull } = await import('drizzle-orm')
+    const { eq, and, desc, isNotNull, sql } = await import('drizzle-orm')
 
     const [project] = await db
       .select({ id: projects.id })
@@ -53,7 +53,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .from(galleryItems)
       .innerJoin(files, eq(galleryItems.fileId, files.id))
       .where(and(eq(galleryItems.projectId, projectId), isNotNull(files.storagePath)))
-      .orderBy(desc(galleryItems.takenAt), desc(galleryItems.createdAt))
+      .orderBy(sql`${galleryItems.takenAt} DESC NULLS LAST`, desc(galleryItems.createdAt))
 
     const supabase = createServiceRoleClient()
     const result: GalleryItemDto[] = rows.map((r: typeof rows[number]) => ({
