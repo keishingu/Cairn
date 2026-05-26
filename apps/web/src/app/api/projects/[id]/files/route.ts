@@ -27,8 +27,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
   try {
     const { db, files, profiles, projects, galleryItems } = await import('@cairn/db')
-    const { eq, and, notExists } = await import('drizzle-orm')
-    const { desc } = await import('drizzle-orm')
+    const { eq, and, isNull, desc } = await import('drizzle-orm')
 
     // プロジェクトが同一ワークスペースに属することを確認
     const [project] = await db
@@ -53,11 +52,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
       })
       .from(files)
       .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
+      .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
       .where(and(
         eq(files.projectId, projectId),
-        notExists(
-          db.select().from(galleryItems).where(eq(galleryItems.fileId, files.id))
-        ),
+        isNull(galleryItems.id),
       ))
       .orderBy(desc(files.createdAt))
 
