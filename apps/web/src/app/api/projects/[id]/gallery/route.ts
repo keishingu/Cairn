@@ -101,9 +101,14 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: 'ファイルサイズは 20MB 以下にしてください' }, { status: 400 })
   }
 
-  // クライアント側で EXIF 抽出 → Canvas 処理の順に行うため、takenAt はフォームフィールドで受け取る
+  // Canvas 処理で EXIF が剥がれるため、処理前にクライアントで抽出したものをフォームフィールドで受け取る
   const takenAtRaw = formData.get('takenAt')
   const takenAt: Date | null = typeof takenAtRaw === 'string' ? new Date(takenAtRaw) : null
+
+  const latRaw = formData.get('latitude')
+  const lngRaw = formData.get('longitude')
+  const latitude: string | null = typeof latRaw === 'string' ? latRaw : null
+  const longitude: string | null = typeof lngRaw === 'string' ? lngRaw : null
 
   try {
     const { db, files, galleryItems, projects } = await import('@cairn/db')
@@ -156,6 +161,8 @@ export async function POST(req: Request, { params }: RouteContext) {
           uploadedBy: ctx.userId,
           fileId: insertedFile.id,
           takenAt,
+          latitude,
+          longitude,
         })
         .returning()
 

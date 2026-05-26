@@ -13,10 +13,12 @@ interface UploadState {
 }
 
 async function uploadFile(projectId: string, original: File): Promise<void> {
-  const { file, takenAt } = await processImageForUpload(original)
+  const { file, takenAt, latitude, longitude } = await processImageForUpload(original)
   const fd = new FormData()
   fd.append('file', file)
   if (takenAt) fd.append('takenAt', takenAt.toISOString())
+  if (latitude !== null) fd.append('latitude', String(latitude))
+  if (longitude !== null) fd.append('longitude', String(longitude))
   const res = await fetch(`/api/projects/${projectId}/gallery`, { method: 'POST', body: fd })
   if (!res.ok) {
     const data = await res.json().catch(() => ({})) as { error?: string }

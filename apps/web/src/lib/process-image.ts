@@ -7,10 +7,15 @@ const JPEG_QUALITY = 0.85
 export interface ProcessedImage {
   file: File
   takenAt: Date | null
+  latitude: number | null
+  longitude: number | null
 }
 
 export async function processImageForUpload(original: File): Promise<ProcessedImage> {
-  const takenAt = await extractExifDate(original)
+  const [takenAt, gps] = await Promise.all([
+    extractExifDate(original),
+    extractExifGps(original),
+  ])
 
   let blob: Blob = original
   let fileName = original.name
@@ -29,6 +34,8 @@ export async function processImageForUpload(original: File): Promise<ProcessedIm
   return {
     file: new File([resized], fileName, { type: 'image/jpeg', lastModified: original.lastModified }),
     takenAt,
+    latitude: gps?.latitude ?? null,
+    longitude: gps?.longitude ?? null,
   }
 }
 
@@ -42,6 +49,20 @@ async function extractExifDate(file: File): Promise<Date | null> {
     const exifr = await import('exifr')
     const exif = await exifr.parse(file, ['DateTimeOriginal'])
     return exif?.DateTimeOriginal instanceof Date ? exif.DateTimeOriginal : null
+  } catch {
+    return null
+  }
+}
+
+async function extractExifGps(file: File): Promise<{ latitude: number; longitude: number } | null> {
+  if (file.type !== 'image/jpeg' && file.type !== 'image/webp' && !isHeic(file)) return null
+  try {
+    const exifr = await import('exifr')
+    const gps = await exifr.gps(file)
+    if (typeof gps?.latitude === 'number' && typeof gps?.longitude === 'number') {
+      return { latitude: gps.latitude, longitude: gps.longitude }
+    }
+    return null
   } catch {
     return null
   }
