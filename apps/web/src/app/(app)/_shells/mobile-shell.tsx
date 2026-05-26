@@ -4,10 +4,13 @@
 'use client'
 
 import React from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { MobileNav } from '@/components/app/mobile/nav'
 import { MobileAI } from '@/components/app/mobile/ai'
 import { ProjectListView } from '@/components/app/pages/project-list'
+import { ProjectPanel } from '@/components/app/detail-panel/project-panel'
+import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileSettings } from '@/components/app/mobile/settings'
 import { MobileHeader } from '@/components/app/mobile/header'
 import { PageChat } from '@/components/app/pages/chat'
@@ -15,7 +18,7 @@ import { PageTasks } from '@/components/app/pages/tasks'
 import { PageCalendar } from '@/components/app/pages/projects-calendar'
 import { PageKanban } from '@/components/app/pages/projects-kanban'
 import { Icon } from '@/components/app/primitives'
-import { AppShellContext } from '@/components/app/app-shell-context'
+import { AppShellContext, useAppShell } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { PageMembers } from '@/components/app/pages/members-page'
 import { PageFiles } from '@/components/app/pages/files'
@@ -65,13 +68,15 @@ function MobilePlaceholder({ title }: { title: string }) {
   )
 }
 
+// AppShellContext.Provider の内側でレンダリングされるため useAppShell() が使える
 function MobilePage({ page, projectsView, initialMemberId }: { page: string; projectsView: ProjectsView; initialMemberId?: string | undefined }) {
+  const { openPanel } = useAppShell()
   if (page === 'projects') {
-    if (projectsView === 'calendar') return <PageCalendar openPanel={() => {}} isMobile />
-    if (projectsView === 'kanban') return <PageKanban openPanel={() => {}} isMobile />
+    if (projectsView === 'calendar') return <PageCalendar openPanel={openPanel} isMobile />
+    if (projectsView === 'kanban') return <PageKanban openPanel={openPanel} isMobile />
     return (
       <React.Suspense fallback={null}>
-        <ProjectListView isMobile />
+        <ProjectListView isMobile openPanel={openPanel} />
       </React.Suspense>
     )
   }
@@ -98,12 +103,23 @@ function MobilePage({ page, projectsView, initialMemberId }: { page: string; pro
     </div>
   )
   if (page in MENU_PAGE_LABELS) return <MobilePlaceholder title={MENU_PAGE_LABELS[page]!} />
-  return <ProjectListView isMobile />
+  return (
+    <React.Suspense fallback={null}>
+      <ProjectListView isMobile openPanel={openPanel} />
+    </React.Suspense>
+  )
 }
 
-export function MobileShell() {
+async function fetchProjects(): Promise<ProjectDto[]> {
+  const res = await fetch('/api/projects')
+  if (!res.ok) throw new Error('fetch failed')
+  return res.json() as Promise<ProjectDto[]>
+}
+
+function MobileShellInner() {
   const pathname = usePathname()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const page = pageFromPathname(pathname)
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
@@ -114,10 +130,41 @@ export function MobileShell() {
     setProjectsViewState(view)
   }, [])
 
+  // /projects ページのみで ?open= を読む
+  const openProjectId = page === 'projects'
+    ? (searchParams.get('open') ?? pathname.match(/^\/projects\/([^/?#]+)/)?.[1] ?? null)
+    : null
+
+  // open project ID があるとき一覧をフェッチ（ProjectListView と同じキー → キャッシュ共有）
+  const { data: projects = [] } = useQuery<ProjectDto[]>({
+    queryKey: ['projects'],
+    queryFn: fetchProjects,
+    enabled: !!openProjectId,
+  })
+
+  const panelProject: ProjectDto | null = openProjectId
+    ? (projects.find(p => p.id === openProjectId) ?? null)
+    : null
+
+  // openPanel: URL を更新するだけ。シェルが URL を見てパネルを描画する
+  const openPanel = React.useCallback((project?: ProjectDto) => {
+    if (project) {
+      window.history.replaceState(null, '', `/projects?open=${project.id}`)
+    }
+  }, [])
+
   return (
-    <AppShellContext.Provider value={{ openPanel: () => {}, openNotif: () => {}, projectsView, setProjectsView }}>
+    <AppShellContext.Provider value={{ openPanel, openNotif: () => {}, projectsView, setProjectsView }}>
       <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden' }}>
         <NavigationProgress />
+        {/* ProjectPanel は position:fixed でフルスクリーン表示（/projects ページのみ） */}
+        {panelProject && (
+          <ProjectPanel
+            project={panelProject}
+            onClose={() => window.history.replaceState(null, '', '/projects')}
+            isMobile
+          />
+        )}
         <div className="app" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
             <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} />
@@ -126,5 +173,13 @@ export function MobileShell() {
         </div>
       </div>
     </AppShellContext.Provider>
+  )
+}
+
+export function MobileShell() {
+  return (
+    <React.Suspense>
+      <MobileShellInner />
+    </React.Suspense>
   )
 }

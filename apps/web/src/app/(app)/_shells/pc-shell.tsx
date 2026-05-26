@@ -4,8 +4,8 @@
 'use client'
 
 import React from 'react'
-import { usePathname, useRouter } from 'next/navigation'
-import { useQueryClient } from '@tanstack/react-query'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Sidebar, type PageId } from '@/components/app/sidebar'
 import { ProjectPanel } from '@/components/app/detail-panel/project-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -29,13 +29,37 @@ function loadStoredView(): ProjectsView {
   return isValidView(saved) ? saved : 'list'
 }
 
-export function PCShell({ children }: { children: React.ReactNode }) {
+async function fetchProjects(): Promise<ProjectDto[]> {
+  const res = await fetch('/api/projects')
+  if (!res.ok) throw new Error('fetch failed')
+  return res.json() as Promise<ProjectDto[]>
+}
+
+function PCShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
+  const searchParams = useSearchParams()
+
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
   const [notifOpen, setNotifOpen] = React.useState(false)
+
+  // URL から open project ID を導出（/projects ページのみ有効）
+  const onProjectsPage = pathname.startsWith('/projects')
+  const openProjectId = onProjectsPage
+    ? (searchParams.get('open') ?? pathname.match(/^\/projects\/([^/?#]+)/)?.[1] ?? null)
+    : null
+
+  // open project ID があるとき一覧をフェッチ（ProjectListView と同じキー → キャッシュ共有）
+  const { data: projects = [] } = useQuery<ProjectDto[]>({
+    queryKey: ['projects'],
+    queryFn: fetchProjects,
+    enabled: !!openProjectId,
+  })
+
+  const panelProject: ProjectDto | null = openProjectId
+    ? (projects.find(p => p.id === openProjectId) ?? null)
+    : null
 
   const handleMemberClick = React.useCallback((userId: string, displayName: string) => {
     const cached = queryClient.getQueryData<WorkspaceMemberDto[]>(['workspace-members'])
@@ -50,14 +74,9 @@ export function PCShell({ children }: { children: React.ReactNode }) {
 
   const handleMemberProjectClick = React.useCallback((p: MemberProjectDto) => {
     setSelectedMember(null)
-    setSelectedProject({
-      id: p.projectId, title: p.title, statusName: p.statusName,
-      startDate: p.startDate, endDate: p.endDate, memberCount: p.memberCount,
-      memberNames: [], taskCount: 0, completedTaskCount: 0,
-      isOwner: p.role === 'leader', isMember: true, archived: false,
-      coverPhotoIdx: p.coverPhotoIdx,
-    })
-  }, [])
+    router.push(`/projects?open=${p.projectId}`)
+  }, [router])
+
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
 
   const setProjectsView = React.useCallback((view: string) => {
@@ -76,24 +95,11 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     return base as PageId
   }, [pathname, projectsView])
 
-  // トップレベルページ間の遷移時だけパネルをリセット（/projects/[id] 内の遷移では閉じない）
   const pathnameSection = pathname.split('/')[1] ?? ''
   React.useEffect(() => {
-    setSelectedProject(null)
     setSelectedMember(null)
     setNotifOpen(false)
   }, [pathnameSection])
-
-  const hadProjectOpenRef = React.useRef(false)
-  React.useEffect(() => {
-    if (!pathname.startsWith('/projects')) return
-    if (selectedProject) {
-      hadProjectOpenRef.current = true
-      window.history.replaceState(null, '', `/projects/${selectedProject.id}`)
-    } else if (hadProjectOpenRef.current) {
-      window.history.replaceState(null, '', '/projects')
-    }
-  }, [selectedProject, pathname])
 
   const navigate = React.useCallback((p: PageId) => {
     if (p === 'calendar') { setProjectsView('calendar'); router.push('/projects') }
@@ -102,9 +108,18 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     else router.push(`/${p}`)
   }, [router, setProjectsView])
 
+  // openPanel: URL を更新するだけ。シェルが URL を見てパネルを描画する
+  const openPanel = React.useCallback((project?: ProjectDto) => {
+    if (project) {
+      window.history.replaceState(null, '', `/projects?open=${project.id}`)
+    } else {
+      window.history.replaceState(null, '', '/projects')
+    }
+  }, [])
+
   return (
     <AppShellContext.Provider value={{
-      openPanel: (project?: ProjectDto) => setSelectedProject(project ?? null),
+      openPanel,
       openNotif: () => setNotifOpen(true),
       projectsView,
       setProjectsView,
@@ -124,10 +139,10 @@ export function PCShell({ children }: { children: React.ReactNode }) {
                   onProjectClick={handleMemberProjectClick}
                   onClose={() => setSelectedMember(null)}
                 />
-              ) : selectedProject ? (
+              ) : panelProject ? (
                 <ProjectPanel
-                  project={selectedProject}
-                  onClose={() => setSelectedProject(null)}
+                  project={panelProject}
+                  onClose={() => window.history.replaceState(null, '', '/projects')}
                   onMemberClick={handleMemberClick}
                 />
               ) : null}
@@ -137,5 +152,13 @@ export function PCShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     </AppShellContext.Provider>
+  )
+}
+
+export function PCShell({ children }: { children: React.ReactNode }) {
+  return (
+    <React.Suspense>
+      <PCShellInner>{children}</PCShellInner>
+    </React.Suspense>
   )
 }

@@ -1,7 +1,6 @@
 'use client'
 
 import React from 'react'
-import { useSearchParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
@@ -10,7 +9,6 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
-import { ProjectPanel } from '../detail-panel/project-panel'
 
 // ─── Tag presets ──────────────────────────────────────────────────
 const TAG_PRESETS = [
@@ -532,31 +530,6 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<StatusKey[]>([])
   const filterBtnRef = React.useRef<HTMLDivElement>(null)
-  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
-  const searchParams = useSearchParams()
-  const openProjectId = searchParams.get('open')
-  const hasOpenedRef = React.useRef(false)
-
-  React.useEffect(() => {
-    if (!openProjectId || hasOpenedRef.current || isLoading || projects.length === 0) return
-    const project = projects.find(p => p.id === openProjectId)
-    if (!project) return
-    hasOpenedRef.current = true
-    openPanel?.(project)        // PC: PCShell 経由
-    setSelectedProject(project) // モバイル: ローカル state 経由（PC では render 条件外）
-  }, [openProjectId, projects, isLoading, openPanel])
-
-  // モバイル: パネル開閉に合わせて URL を同期
-  const hadMobileProjectOpenRef = React.useRef(false)
-  React.useEffect(() => {
-    if (!isMobile) return
-    if (selectedProject) {
-      hadMobileProjectOpenRef.current = true
-      window.history.replaceState(null, '', `/projects/${selectedProject.id}`)
-    } else if (hadMobileProjectOpenRef.current) {
-      window.history.replaceState(null, '', '/projects')
-    }
-  }, [isMobile, selectedProject])
 
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
@@ -596,15 +569,10 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      {/* Mobile: project panel overlay */}
-      {isMobile && selectedProject && (
-        <ProjectPanel project={selectedProject} onClose={() => setSelectedProject(null)} isMobile/>
-      )}
-
       {/* Create modal/sheet */}
       {showCreate && (
         isMobile
-          ? <CreateProjectSheet onClose={() => setShowCreate(false)} onCreated={(p) => { handleCreated(p); setSelectedProject(p) }}/>
+          ? <CreateProjectSheet onClose={() => setShowCreate(false)} onCreated={(p) => { handleCreated(p); openPanel?.(p) }}/>
           : <CreateProjectModal onClose={() => setShowCreate(false)} onCreated={handleCreated}/>
       )}
 
@@ -755,7 +723,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
 
               if (isMobile) {
                 return (
-                  <div key={p.id} onClick={() => setSelectedProject(p)} style={{
+                  <div key={p.id} onClick={() => openPanel?.(p)} style={{
                     background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14,
                     overflow: 'hidden', cursor: 'pointer',
                     display: 'flex', alignItems: 'stretch',
