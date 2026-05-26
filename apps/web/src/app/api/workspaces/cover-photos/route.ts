@@ -7,7 +7,7 @@ import type { WorkspaceCoverPhoto } from '@cairn/db'
 
 export type { WorkspaceCoverPhoto }
 
-const GALLERY_BUCKET = 'gallery'
+const COVERS_BUCKET = 'covers'
 const MAX_FILE_SIZE = 20 * 1024 * 1024
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic',
@@ -84,13 +84,13 @@ export async function POST(req: Request) {
 
     const ext = file.name.split('.').pop() ?? 'jpg'
     const photoId = crypto.randomUUID()
-    const storagePath = `${ctx.workspaceId}/covers/${photoId}.${ext}`
+    const storagePath = `${ctx.workspaceId}/${photoId}.${ext}`
 
     const buffer = await file.arrayBuffer()
     const supabase = createServiceRoleClient()
 
     const { error: uploadError } = await supabase.storage
-      .from(GALLERY_BUCKET)
+      .from(COVERS_BUCKET)
       .upload(storagePath, buffer, { contentType: file.type, upsert: false })
 
     if (uploadError) {
@@ -98,7 +98,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'アップロードに失敗しました' }, { status: 500 })
     }
 
-    const { data: { publicUrl } } = supabase.storage.from(GALLERY_BUCKET).getPublicUrl(storagePath)
+    const { data: { publicUrl } } = supabase.storage.from(COVERS_BUCKET).getPublicUrl(storagePath)
 
     const [ws] = await db
       .select({ settings: workspaces.settings })
@@ -167,7 +167,7 @@ export async function DELETE(req: Request) {
     }
 
     const supabase = createServiceRoleClient()
-    await supabase.storage.from(GALLERY_BUCKET).remove([target.storagePath])
+    await supabase.storage.from(COVERS_BUCKET).remove([target.storagePath])
 
     const merged = {
       ...(ws?.settings ?? {}),
