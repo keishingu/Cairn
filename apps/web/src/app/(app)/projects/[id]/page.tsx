@@ -1,15 +1,8 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { redirect } from 'next/navigation'
+'use client'
 
-interface Props {
-  params: Promise<{ id: string }>
-}
-
-export default async function ProjectDetailPage({ params }: Props) {
-  const { id } = await params
-  // TODO: open detail panel for this project
-  // For now, redirect to the projects list
-  redirect(`/projects?open=${id}`)
-}
+// /projects/{id} はプロジェクト一覧ページと同一コンポーネントを使用する。
+// PCShell / MobileShell がパスから openProjectId を読み取り、Detail Panel を描画する。
+export { default } from '../page'

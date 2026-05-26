@@ -174,7 +174,10 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
           <MemberDetailPanel
             member={mobileDetailMember}
             onProjectClick={handleProjectClick}
-            onClose={() => setMobileDetailMember(null)}
+            onClose={() => {
+              window.history.replaceState(null, '', '/members')
+              setMobileDetailMember(null)
+            }}
             isMobile
           />
         )}
@@ -236,7 +239,10 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
                   member={m}
                   projectCount={Math.max(1, 5 - i % 4)}
                   selected={false}
-                  onClick={() => setMobileDetailMember(m)}
+                  onClick={() => {
+                    window.history.replaceState(null, '', `/members/${m.userId}`)
+                    setMobileDetailMember(m)
+                  }}
                 />
               ))}
             </div>

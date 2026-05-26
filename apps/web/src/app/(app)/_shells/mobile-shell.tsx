@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { MobileNav } from '@/components/app/mobile/nav'
 import { MobileAI } from '@/components/app/mobile/ai'
@@ -119,7 +119,6 @@ async function fetchProjects(): Promise<ProjectDto[]> {
 function MobileShellInner() {
   const pathname = usePathname()
   const router = useRouter()
-  const searchParams = useSearchParams()
   const page = pageFromPathname(pathname)
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
@@ -130,9 +129,9 @@ function MobileShellInner() {
     setProjectsViewState(view)
   }, [])
 
-  // /projects ページのみで ?open= を読む
+  // /projects/{id} 形式で open project ID を導出
   const openProjectId = page === 'projects'
-    ? (searchParams.get('open') ?? pathname.match(/^\/projects\/([^/?#]+)/)?.[1] ?? null)
+    ? pathname.match(/^\/projects\/([^/?#]+)/)?.[1] ?? null
     : null
 
   // open project ID があるとき一覧をフェッチ（ProjectListView と同じキー → キャッシュ共有）
@@ -146,12 +145,12 @@ function MobileShellInner() {
     ? (projects.find(p => p.id === openProjectId) ?? null)
     : null
 
-  // openPanel: URL を更新するだけ。シェルが URL を見てパネルを描画する
+  // openPanel: router.push で URL を更新。シェルがパスから読み取ってパネルを描画する
   const openPanel = React.useCallback((project?: ProjectDto) => {
     if (project) {
-      window.history.replaceState(null, '', `/projects?open=${project.id}`)
+      router.push(`/projects/${project.id}`, { scroll: false })
     }
-  }, [])
+  }, [router])
 
   return (
     <AppShellContext.Provider value={{ openPanel, openNotif: () => {}, projectsView, setProjectsView }}>
@@ -161,7 +160,7 @@ function MobileShellInner() {
         {panelProject && (
           <ProjectPanel
             project={panelProject}
-            onClose={() => window.history.replaceState(null, '', '/projects')}
+            onClose={() => router.push('/projects', { scroll: false })}
             isMobile
           />
         )}
@@ -177,9 +176,5 @@ function MobileShellInner() {
 }
 
 export function MobileShell() {
-  return (
-    <React.Suspense>
-      <MobileShellInner />
-    </React.Suspense>
-  )
+  return <MobileShellInner />
 }
