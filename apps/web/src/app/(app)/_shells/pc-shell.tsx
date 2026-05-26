@@ -76,11 +76,13 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     return base as PageId
   }, [pathname, projectsView])
 
+  // トップレベルページ間の遷移時だけパネルをリセット（/projects/[id] 内の遷移では閉じない）
+  const pathnameSection = pathname.split('/')[1] ?? ''
   React.useEffect(() => {
     setSelectedProject(null)
     setSelectedMember(null)
     setNotifOpen(false)
-  }, [pathname])
+  }, [pathnameSection])
 
   React.useEffect(() => {
     if (!pathname.startsWith('/projects')) return
