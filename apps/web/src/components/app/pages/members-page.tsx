@@ -175,8 +175,8 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
             member={mobileDetailMember}
             onProjectClick={handleProjectClick}
             onClose={() => {
-              window.history.replaceState(null, '', '/members')
               setMobileDetailMember(null)
+              router.push('/members', { scroll: false })
             }}
             isMobile
           />
@@ -240,8 +240,8 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
                   projectCount={Math.max(1, 5 - i % 4)}
                   selected={false}
                   onClick={() => {
-                    window.history.replaceState(null, '', `/members/${m.userId}`)
                     setMobileDetailMember(m)
+                    router.push(`/members/${m.userId}`, { scroll: false })
                   }}
                 />
               ))}
