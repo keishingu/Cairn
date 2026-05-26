@@ -78,6 +78,11 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
       if (!res.ok) throw new Error('Failed to fetch files')
       return res.json() as Promise<ProjectFileDto[]>
     },
+    // pending なリンクがある間は 3 秒ごとに再フェッチして名前・ステータスを最新化
+    refetchInterval: (query) => {
+      const data = query.state.data
+      return Array.isArray(data) && data.some(f => f.indexingStatus === 'pending') ? 3000 : false
+    },
   })
 
   const deleteFile = useMutation({
