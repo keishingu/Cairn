@@ -82,6 +82,15 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     setNotifOpen(false)
   }, [pathname])
 
+  React.useEffect(() => {
+    if (!pathname.startsWith('/projects')) return
+    if (selectedProject) {
+      window.history.replaceState(null, '', `/projects/${selectedProject.id}`)
+    } else {
+      window.history.replaceState(null, '', '/projects')
+    }
+  }, [selectedProject, pathname])
+
   const navigate = React.useCallback((p: PageId) => {
     if (p === 'calendar') { setProjectsView('calendar'); router.push('/projects') }
     else if (p === 'kanban') { setProjectsView('kanban'); router.push('/projects') }
