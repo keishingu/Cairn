@@ -8,15 +8,16 @@ import { Icon } from '../primitives'
 
 interface MobileHeaderProps {
   title: string
+  subtitle?: string | undefined
   onBack?: () => void
   right?: React.ReactNode
 }
 
-export function MobileHeader({ title, onBack, right }: MobileHeaderProps) {
+export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderProps) {
   return (
     <header style={{
       display: 'flex', alignItems: 'center', gap: 8,
-      padding: '12px 16px', paddingTop: 'max(12px, env(safe-area-inset-top))',
+      padding: '10px 16px', paddingTop: 'max(10px, env(safe-area-inset-top))',
       background: 'var(--card)', borderBottom: '1px solid var(--border)',
       position: 'sticky', top: 0, zIndex: 20,
     }}>
@@ -25,7 +26,10 @@ export function MobileHeader({ title, onBack, right }: MobileHeaderProps) {
           <Icon name="chevLeft" size={18}/>
         </button>
       )}
-      <h1 style={{ flex: 1, margin: 0, fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>{title}</h1>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <h1 style={{ margin: 0, fontSize: subtitle ? 15 : 17, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h1>
+        {subtitle && <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-4)', marginTop: 1 }}>{subtitle}</p>}
+      </div>
       {right}
     </header>
   )

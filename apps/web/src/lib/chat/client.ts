@@ -52,6 +52,37 @@ async function fetchDms(): Promise<DmChannelDto[]> {
   return res.json()
 }
 
+async function fetchChannelMembers(channelId: string): Promise<{ userId: string }[]> {
+  const res = await fetch(`/api/channels/${channelId}/members`)
+  if (!res.ok) return []
+  return res.json()
+}
+
+async function addChannelMember(channelId: string, userId: string): Promise<void> {
+  const res = await fetch(`/api/channels/${channelId}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? 'メンバーの追加に失敗しました')
+  }
+}
+
+async function createWorkspaceChannel(body: { name: string; isPrivate: boolean }): Promise<WorkspaceChannelDto> {
+  const res = await fetch('/api/workspaces/channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? 'チャンネルの作成に失敗しました')
+  }
+  return res.json()
+}
+
 async function createDm(targetUserId: string): Promise<{ id: string }> {
   const res = await fetch('/api/workspaces/dms', {
     method: 'POST',
@@ -124,6 +155,36 @@ export function useWorkspaceDms() {
   return useQuery({
     queryKey: chatQueryKeys.dms,
     queryFn: fetchDms,
+  })
+}
+
+export function useChannelMembers(channelId: string | null) {
+  return useQuery({
+    queryKey: ['channel-members', channelId] as const,
+    queryFn: () => fetchChannelMembers(channelId!),
+    enabled: !!channelId,
+  })
+}
+
+export function useAddChannelMember(channelId: string | null) {
+  return useMutation({
+    mutationFn: (userId: string) => addChannelMember(channelId!, userId),
+  })
+}
+
+export function useCreateChannel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { name: string; isPrivate: boolean }) => createWorkspaceChannel(body),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: chatQueryKeys.workspaceChannels })
+    },
+    onSuccess: (channel) => {
+      queryClient.setQueryData<WorkspaceChannelDto[]>(
+        chatQueryKeys.workspaceChannels,
+        (old) => [...(old ?? []), channel],
+      )
+    },
   })
 }
 

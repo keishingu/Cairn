@@ -153,7 +153,7 @@ const ChatMessage = ({ messageId, senderName, createdAt, content, reactions, att
 // ─── Input ────────────────────────────────────────────────────────
 
 const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onImageSelect, onRemoveAttachment, isUploading }: {
-  placeholder: string
+  placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
   send: () => void
@@ -236,20 +236,27 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
           {AttachmentPreviews}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px' }}>
-            <input
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              onCompositionStart={() => setIsComposing(true)}
-              onCompositionEnd={() => setIsComposing(false)}
-              onKeyDown={e => {
-                if (e.key !== 'Enter' || e.shiftKey) return
-                if (isImeConfirmingEnter(e, isComposing)) return
-                e.preventDefault()
-                send()
-              }}
-              placeholder={placeholder}
-              style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
-            />
+            <div style={{ flex: 1, position: 'relative' }}>
+              {typeof placeholder !== 'string' && !draft && (
+                <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 13 }}>
+                  {placeholder}
+                </div>
+              )}
+              <input
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onCompositionStart={() => setIsComposing(true)}
+                onCompositionEnd={() => setIsComposing(false)}
+                onKeyDown={e => {
+                  if (e.key !== 'Enter' || e.shiftKey) return
+                  if (isImeConfirmingEnter(e, isComposing)) return
+                  e.preventDefault()
+                  send()
+                }}
+                placeholder={typeof placeholder === 'string' ? placeholder : ''}
+                style={{ width: '100%', border: 'none', background: 'transparent', fontSize: 13, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
+              />
+            </div>
             <button onClick={() => fileInputRef.current?.click()} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
               <Icon name="paperclip" size={15}/>
             </button>
@@ -292,21 +299,28 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         </div>
         {AttachmentPreviews}
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, padding: '10px 14px 12px' }}>
-          <textarea
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onCompositionStart={() => setIsComposing(true)}
-            onCompositionEnd={() => setIsComposing(false)}
-            onKeyDown={e => {
-              if (e.key !== 'Enter' || e.shiftKey) return
-              if (isImeConfirmingEnter(e, isComposing)) return
-              e.preventDefault()
-              send()
-            }}
-            placeholder={placeholder}
-            rows={1}
-            style={{ flex: 1, border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160 }}
-          />
+          <div style={{ flex: 1, position: 'relative' }}>
+            {typeof placeholder !== 'string' && !draft && (
+              <div style={{ position: 'absolute', top: 2, left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 14 }}>
+                {placeholder}
+              </div>
+            )}
+            <textarea
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={() => setIsComposing(false)}
+              onKeyDown={e => {
+                if (e.key !== 'Enter' || e.shiftKey) return
+                if (isImeConfirmingEnter(e, isComposing)) return
+                e.preventDefault()
+                send()
+              }}
+              placeholder={typeof placeholder === 'string' ? placeholder : ''}
+              rows={1}
+              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160 }}
+            />
+          </div>
           <button onClick={send} disabled={!canSend} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
             <Icon name="send" size={13}/>
           </button>
@@ -409,9 +423,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
     })
   }
 
-  const placeholder = channelName
-    ? `${isPrivate ? '🔒' : '#'} ${channelName} にメッセージ送信`
-    : 'メッセージを入力...'
+  const placeholder: React.ReactNode = channelName ? (
+    <>
+      <Icon name={isPrivate ? 'lock' : 'hash'} size={isPrivate ? 12 : 13} color="var(--text-4)" strokeWidth={2}/>
+      <span>{channelName} にメッセージ送信</span>
+    </>
+  ) : 'メッセージを入力...'
 
   return (
     <>

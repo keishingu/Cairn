@@ -11,22 +11,31 @@ import {
   useWorkspaceDms,
   useCreateDm,
 } from '@/lib/chat/client'
+import { CreateChannelSheet } from '../mobile/create-channel-sheet'
+import { CreateChannelModal } from './create-channel-modal'
+import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 
 // ─── Sidebar ─────────────────────────────────────────────────────
 
-const ChatSidebarSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
+const ChatSidebarSection = ({ title, children, onAdd }: { title: string; children: React.ReactNode; onAdd?: () => void }) => (
   <div style={{ marginBottom: 10 }}>
     <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <span>{title}</span>
-      <Icon name="plus" size={11} color="var(--text-4)"/>
+      <button
+        onClick={onAdd}
+        style={{ background: 'transparent', border: 'none', cursor: onAdd ? 'pointer' : 'default', color: 'var(--text-4)', padding: 2, lineHeight: 1 }}
+      >
+        <Icon name="plus" size={11} color="var(--text-4)"/>
+      </button>
     </div>
     <div>{children}</div>
   </div>
 )
 
-const ChatSidebarItem = ({ active, onClick, prefix, avatar, dot, label, badge, mobile }: {
+const ChatSidebarItem = ({ active, onClick, prefix, avatar, dot, label, badge, mobile, memberNames, memberCount }: {
   active?: boolean; onClick?: () => void; prefix?: string
   avatar?: string; dot?: string; label: string; badge?: number; mobile?: boolean
+  memberNames?: string[]; memberCount?: number
 }) => (
   <button onClick={onClick} style={{
     display: 'flex', alignItems: 'center', gap: 8, width: '100%',
@@ -64,6 +73,12 @@ const ChatSidebarItem = ({ active, onClick, prefix, avatar, dot, label, badge, m
     {badge != null && badge > 0 && (
       <span style={{ background: 'var(--accent)', color: 'var(--on-accent)', fontSize: mobile ? 12 : 10, fontWeight: 700, padding: mobile ? '2px 8px' : '1px 6px', borderRadius: 999, minWidth: 20, textAlign: 'center' }}>{badge}</span>
     )}
+    {memberNames && memberNames.length > 0 && mobile && (
+      <AvatarStack names={memberNames} size={22} max={3}/>
+    )}
+    {memberCount != null && !mobile && memberCount > 0 && (
+      <span style={{ fontSize: 10.5, color: 'var(--text-4)', fontWeight: 500, flexShrink: 0 }}>{memberCount}名</span>
+    )}
     {mobile && <Icon name="chevRight" size={16} color="var(--text-4)"/>}
   </button>
 )
@@ -74,6 +89,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [channelId, setChannelId] = React.useState<string | null>(null)
   const [activePane, setActivePane] = React.useState<'list' | 'thread'>('list')
   const [showMemberPicker, setShowMemberPicker] = React.useState(false)
+  const [showCreateChannel, setShowCreateChannel] = React.useState(false)
+  const [showMemberInvite, setShowMemberInvite] = React.useState(false)
   const memberPickerRef = React.useRef<HTMLDivElement>(null)
 
   const { data: projectChannels = [] } = useProjectChannels()
@@ -118,6 +135,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const isDm = !!currentDm
   const channelName = currentChannel?.projectTitle ?? currentGeneral?.name ?? currentDm?.participantName ?? ''
   const memberNames = members.map(m => m.displayName)
+  const currentChannelMemberCount = currentGeneral?.memberCount
 
   // ─── DM メンバーピッカー ────────────────────────────────────────
   const dmPicker = (
@@ -149,9 +167,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => selectChannel(c.channelId)} prefix="#" label={c.projectTitle} mobile={isMobile}/>
         ))}
       </ChatSidebarSection>
-      <ChatSidebarSection title="チャンネル">
+      <ChatSidebarSection title="チャンネル" onAdd={() => setShowCreateChannel(true)}>
         {workspaceChannels.map(c => (
-          <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => selectChannel(c.id)} prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''} mobile={isMobile}/>
+          <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => selectChannel(c.id)} prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''} mobile={isMobile} memberNames={c.memberNames} memberCount={c.memberCount}/>
         ))}
       </ChatSidebarSection>
       <div style={{ marginBottom: 10 }}>
@@ -171,6 +189,12 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     </div>
   )
 
+  const createChannelUI = showCreateChannel && (
+    isMobile
+      ? <CreateChannelSheet onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
+      : <CreateChannelModal onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
+  )
+
   // ─── モバイル ─────────────────────────────────────────────────
   if (isMobile) {
     if (activePane === 'list') {
@@ -178,6 +202,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
           <MobileHeader title="チャット"/>
           {channelList}
+          {createChannelUI}
         </div>
       )
     }
@@ -185,15 +210,24 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         <MobileHeader
           title={channelName}
+          subtitle={currentChannelMemberCount != null ? `${currentChannelMemberCount}名が参加中` : undefined}
           onBack={() => setActivePane('list')}
           right={
             <div style={{ display: 'flex', gap: 4 }}>
               <button className="btn"><Icon name="search" size={16}/></button>
+              {isPrivate && (
+                <button className="btn" onClick={() => setShowMemberInvite(true)}>
+                  <Icon name="userPlus" size={16}/>
+                </button>
+              )}
               <button className="btn"><Icon name="more" size={17}/></button>
             </div>
           }
         />
         <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate}/>
+        {showMemberInvite && channelId && (
+          <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
+        )}
       </div>
     )
   }
@@ -201,6 +235,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // ─── PC（3カラム）─────────────────────────────────────────────
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      {createChannelUI}
       <aside style={{ width: 240, background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)' }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>チャット</h2>
@@ -249,10 +284,28 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
               <span style={{ fontSize: 13.5, fontWeight: 700 }}>{channelName}</span>
             </div>
             {isPrivate && (
-              <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--amber-soft)', border: '1px solid var(--amber)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Icon name="lock" size={12} color="var(--amber-text)"/>
-                <span style={{ fontSize: 11.5, color: 'var(--amber-text)', fontWeight: 600 }}>招待されたメンバーのみが閲覧できます</span>
-              </div>
+              <>
+                <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--amber-soft)', border: '1px solid var(--amber)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon name="lock" size={12} color="var(--amber-text)"/>
+                  <span style={{ fontSize: 11.5, color: 'var(--amber-text)', fontWeight: 600 }}>招待されたメンバーのみが閲覧できます</span>
+                </div>
+                <button
+                  onClick={() => setShowMemberInvite(true)}
+                  style={{
+                    marginTop: 10, width: '100%', height: 34, borderRadius: 8,
+                    border: '1px solid var(--border)', background: 'var(--card-2)',
+                    color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}
+                >
+                  <Icon name="userPlus" size={13}/>
+                  メンバーを招待
+                </button>
+                {showMemberInvite && channelId && (
+                  <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
+                )}
+              </>
             )}
           </div>
         )}
