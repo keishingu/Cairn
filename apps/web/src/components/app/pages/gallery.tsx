@@ -1,111 +1,193 @@
 'use client'
 
 import React from 'react'
-import { Icon, Avatar, MountainPhoto } from '../primitives'
+import { useQuery } from '@tanstack/react-query'
+import { Icon } from '../primitives'
+import type { WorkspaceGalleryItemDto } from '@/app/api/gallery/route'
+
+function formatDate(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
 
 export const PageGallery = () => {
-  const photos = Array.from({ length: 14 }).map((_, i) => ({
-    h: 200 + ((i * 73) % 180),
-    g: i,
-    caption: ['槍ヶ岳山頂', '燕岳の朝焼け', '上高地・河童橋', '雷鳥との遭遇', '穂高連峰縦走', 'テント場の朝', '稜線歩き', '雪渓を渡る', '槍ヶ岳の影', '剱岳遠景'][i % 10],
-    by: (['山田 太郎', '佐藤 花子', '鈴木 健', '田中 陽子'][i % 4] as string),
-    date: ['5/12', '5/14', '5/15', '5/18', '5/20', '5/22'][i % 6],
-    likes: 4 + ((i * 7) % 18),
-    comments: ((i * 3) % 6),
-  }))
+  const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
+
+  const { data: items = [], isLoading, isError } = useQuery<WorkspaceGalleryItemDto[]>({
+    queryKey: ['workspace-gallery'],
+    queryFn: async () => {
+      const res = await fetch('/api/gallery')
+      if (!res.ok) throw new Error('Failed to fetch gallery')
+      return res.json() as Promise<WorkspaceGalleryItemDto[]>
+    },
+  })
+
+  const lightboxItem = lightboxIndex !== null ? items[lightboxIndex] ?? null : null
+  const goPrev = () => setLightboxIndex(i => i !== null && i > 0 ? i - 1 : i)
+  const goNext = () => setLightboxIndex(i => i !== null && i < items.length - 1 ? i + 1 : i)
+
+  React.useEffect(() => {
+    if (lightboxIndex === null) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') goPrev()
+      else if (e.key === 'ArrowRight') goNext()
+      else if (e.key === 'Escape') setLightboxIndex(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightboxIndex, items.length])
+
   return (
-    <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-      <div style={{ flex: 1, padding: '20px 24px', overflow: 'auto' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* ヘッダー */}
+      <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em' }}>ギャラリー</h2>
-            <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: 2 }}>248 枚 · 8 プロジェクト</div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>すべて <Icon name="chevDown" size={13}/></button>
-            <button className="btn"><Icon name="filter" size={13}/> 並べ替え</button>
-            <button className="btn btn-primary"><Icon name="plus" size={13}/> アップロード</button>
-          </div>
-        </div>
-        <div style={{ columnCount: 4, columnGap: 12 }}>
-          {photos.map((p, i) => (
-            <div key={i} style={{
-              breakInside: 'avoid', marginBottom: 12, borderRadius: 10, overflow: 'hidden',
-              background: 'var(--card)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)',
-              cursor: 'pointer', transition: 'transform .2s, box-shadow .2s',
-            }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)' }}
-            >
-              <MountainPhoto idx={p.g} height={p.h}/>
-              <div style={{ padding: '10px 12px' }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>{p.caption}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                  <Avatar name={p.by} size={16}/>
-                  <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.by} · {p.date}</span>
-                </div>
-                <div style={{ display: 'flex', gap: 10, fontSize: 11.5, color: 'var(--text-3)' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                    <Icon name="heart" size={12} color={i % 3 === 0 ? 'var(--rose)' : 'var(--text-3)'}/>{p.likes}
-                  </span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                    <Icon name="chat" size={12}/>{p.comments}
-                  </span>
-                </div>
+            {items.length > 0 && (
+              <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: 2 }}>
+                {items.length} 枚
               </div>
-            </div>
-          ))}
+            )}
+          </div>
         </div>
       </div>
-      <aside style={{ width: 320, background: 'var(--card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>選択中</h3>
-          <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}><Icon name="close" size={15}/></button>
-        </div>
-        <MountainPhoto idx={1} height={200} flat/>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 4 }}>燕岳の朝焼け</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <Avatar name="佐藤 花子" size={20}/>
-            <span style={{ fontSize: 12, color: 'var(--text-2)' }}>佐藤 花子</span>
-            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>· 5/14 05:42</span>
+
+      {/* コンテンツ */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '0 24px 24px' }}>
+        {isLoading && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--text-4)', fontSize: 13 }}>
+            読み込み中...
           </div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <button style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none', background: 'transparent', color: 'var(--rose)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600 }}>
-              <Icon name="heart" size={14} color="var(--rose)"/> 22
-            </button>
-            <button style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600 }}>
-              <Icon name="chat" size={14}/> 4
-            </button>
-            <button style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, marginLeft: 'auto' }}>
-              <Icon name="download" size={14}/>
-            </button>
+        )}
+
+        {isError && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--red-text)', fontSize: 13 }}>
+            ギャラリーの取得に失敗しました
           </div>
-        </div>
-        <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
-          {[
-            { n: '山田 太郎', t: 'すごい朝焼けですね！', d: '5/14 09:12' },
-            { n: '鈴木 健',   t: 'これは生で見たい…！', d: '5/14 12:03' },
-            { n: '田中 陽子', t: '構図がいい👏',       d: '5/14 18:50' },
-          ].map((c, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--divider)' }}>
-              <Avatar name={c.n} size={26}/>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 1 }}>{c.n} <span style={{ fontWeight: 500, color: 'var(--text-4)', fontSize: 11 }}>{c.d}</span></div>
-                <div style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{c.t}</div>
+        )}
+
+        {!isLoading && !isError && items.length === 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '80px 0', color: 'var(--text-4)' }}>
+            <Icon name="image" size={36}/>
+            <span style={{ fontSize: 14 }}>まだ写真がありません</span>
+            <span style={{ fontSize: 12.5, color: 'var(--text-4)' }}>プロジェクトのギャラリータブから写真を追加してください</span>
+          </div>
+        )}
+
+        {items.length > 0 && (
+          <div style={{ columnCount: 4, columnGap: 12 }}>
+            {items.map((item, idx) => (
+              <div
+                key={item.id}
+                style={{
+                  breakInside: 'avoid', marginBottom: 12,
+                  borderRadius: 10, overflow: 'hidden',
+                  background: 'var(--card)', border: '1px solid var(--border)',
+                  boxShadow: 'var(--shadow-sm)', cursor: 'pointer',
+                  transition: 'transform .15s, box-shadow .15s',
+                }}
+                onMouseEnter={e => {
+                  ;(e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'
+                  ;(e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)'
+                }}
+                onMouseLeave={e => {
+                  ;(e.currentTarget as HTMLElement).style.transform = 'translateY(0)'
+                  ;(e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)'
+                }}
+                onClick={() => setLightboxIndex(idx)}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={item.publicUrl}
+                  alt=""
+                  style={{ width: '100%', display: 'block' }}
+                  loading="lazy"
+                />
+                <div style={{ padding: '8px 10px' }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.projectTitle}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>
+                    {formatDate(item.takenAt ?? item.createdAt)}
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-        <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--divider)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '6px 10px' }}>
-            <input placeholder="コメントを追加…" style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 12.5, outline: 'none', fontFamily: 'inherit', color: 'var(--text)' }}/>
-            <button style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="arrowUp" size={11}/>
-            </button>
+            ))}
           </div>
+        )}
+      </div>
+
+      {/* ライトボックス */}
+      {lightboxItem && lightboxIndex !== null && (
+        <div
+          onClick={() => setLightboxIndex(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 200,
+            background: 'rgba(0,0,0,0.9)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh', display: 'flex' }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={lightboxItem.publicUrl}
+              alt=""
+              style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 10, objectFit: 'contain', display: 'block' }}
+            />
+            {/* 左タップゾーン（前へ） */}
+            <div
+              onClick={e => { e.stopPropagation(); goPrev() }}
+              style={{
+                position: 'absolute', left: 0, top: 0, bottom: 0, width: '40%',
+                cursor: lightboxIndex > 0 ? 'w-resize' : 'default',
+              }}
+            />
+            {/* 右タップゾーン（次へ） */}
+            <div
+              onClick={e => { e.stopPropagation(); goNext() }}
+              style={{
+                position: 'absolute', right: 0, top: 0, bottom: 0, width: '40%',
+                cursor: lightboxIndex < items.length - 1 ? 'e-resize' : 'default',
+              }}
+            />
+          </div>
+
+          {/* メタ情報 */}
+          <div style={{
+            position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+            pointerEvents: 'none',
+          }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+              {lightboxItem.projectTitle}
+            </div>
+            <div style={{
+              fontSize: 12, color: 'rgba(255,255,255,0.65)',
+              background: 'rgba(0,0,0,0.4)', padding: '3px 10px', borderRadius: 20,
+            }}>
+              {lightboxIndex + 1} / {items.length} · {formatDate(lightboxItem.takenAt ?? lightboxItem.createdAt)}
+            </div>
+          </div>
+
+          {/* 閉じるボタン */}
+          <button
+            onClick={() => setLightboxIndex(null)}
+            style={{
+              position: 'absolute', top: 16, right: 16,
+              width: 36, height: 36, borderRadius: 10,
+              border: 'none', background: 'rgba(255,255,255,0.15)',
+              color: '#fff', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Icon name="close" size={18}/>
+          </button>
         </div>
-      </aside>
+      )}
     </div>
   )
 }
