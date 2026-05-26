@@ -70,9 +70,18 @@ export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  const body = await req.json() as { name?: unknown; isPrivate?: unknown }
-  const name = typeof body.name === 'string' ? body.name.trim() : ''
-  const isPrivate = body.isPrivate === true
+  let rawBody: unknown
+  try {
+    rawBody = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'リクエストの形式が不正です' }, { status: 400 })
+  }
+  const body = typeof rawBody === 'object' && rawBody !== null && !Array.isArray(rawBody)
+    ? rawBody as Record<string, unknown>
+    : {}
+
+  const name = typeof body['name'] === 'string' ? body['name'].trim() : ''
+  const isPrivate = body['isPrivate'] === true
 
   if (!name) {
     return NextResponse.json({ error: 'チャンネル名を入力してください' }, { status: 400 })

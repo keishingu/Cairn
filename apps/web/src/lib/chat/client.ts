@@ -176,6 +176,9 @@ export function useCreateChannel() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (body: { name: string; isPrivate: boolean }) => createWorkspaceChannel(body),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: chatQueryKeys.workspaceChannels })
+    },
     onSuccess: (channel) => {
       queryClient.setQueryData<WorkspaceChannelDto[]>(
         chatQueryKeys.workspaceChannels,
