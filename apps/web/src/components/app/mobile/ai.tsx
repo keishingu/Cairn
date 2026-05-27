@@ -29,21 +29,35 @@ function MessageSources({ annotations, toolInvocations }: { annotations?: unknow
     <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
       {sources.map(src => {
         const icon = src.sourceType === 'file' ? 'file' : src.sourceType === 'project' ? 'folder' : 'users'
-        const href = src.sourceType === 'file'
-          ? (src.fileType === 'link' && src.externalUrl ? src.externalUrl : `/api/attachments/${src.sourceId}`)
-          : undefined
+        const href =
+          src.sourceType === 'file'
+            ? (src.fileType === 'link' && src.externalUrl ? src.externalUrl : `/api/attachments/${src.sourceId}`)
+            : src.sourceType === 'project'
+            ? `/projects?open=${src.sourceId}`
+            : `/members/${src.sourceId}`
+        const isExternal = src.sourceType === 'file' && src.fileType === 'link'
         return (
-          <a key={`${src.sourceType}:${src.sourceId}`} href={href} target={href ? '_blank' : undefined} rel={href ? 'noopener noreferrer' : undefined}
+          <a key={`${src.sourceType}:${src.sourceId}`} href={href}
+            target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11, textDecoration: 'none' }}>
             <Icon name={icon} size={10} strokeWidth={2}/>{src.name}
           </a>
         )
       })}
-      {searches.map(t => (
-        <span key={t.toolCallId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11 }}>
-          <Icon name="search" size={10} strokeWidth={2}/>{String((t.args as { query?: string }).query ?? 'Web検索')}
-        </span>
-      ))}
+      {searches.map(t => {
+        const query = String((t.args as { query?: string }).query ?? 'Web検索')
+        const firstUrl = t.state === 'result' ? ((t.result as { results?: Array<{ url: string }> })?.results?.[0]?.url) : undefined
+        return firstUrl ? (
+          <a key={t.toolCallId} href={firstUrl} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11, textDecoration: 'none' }}>
+            <Icon name="search" size={10} strokeWidth={2}/>{query}
+          </a>
+        ) : (
+          <span key={t.toolCallId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11 }}>
+            <Icon name="search" size={10} strokeWidth={2}/>{query}
+          </span>
+        )
+      })}
     </div>
   )
 }
