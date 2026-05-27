@@ -35,8 +35,10 @@ const STUB_PROJECT: ProjectDto = {
 function makeWrapper(projects: ProjectDto[] = [STUB_PROJECT]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   qc.setQueryData(['projects'], projects)
-  return ({ children }: { children: React.ReactNode }) =>
-    React.createElement(QueryClientProvider, { client: qc }, children)
+  function Wrapper({ children }: { children: React.ReactNode }) {
+    return React.createElement(QueryClientProvider, { client: qc }, children)
+  }
+  return Wrapper
 }
 
 describe('useProjectPanel — panelProject の導出', () => {
