@@ -14,6 +14,8 @@ export interface MessageDto {
   role: string
   content: string
   createdAt: string
+  annotations?: unknown[]
+  toolInvocations?: unknown[]
 }
 
 export async function GET(_req: Request, { params }: RouteContext) {
@@ -39,7 +41,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     if (!conv) return new NextResponse(null, { status: 404 })
 
     const rows = await db
-      .select({ id: aiMessages.id, role: aiMessages.role, content: aiMessages.content, createdAt: aiMessages.createdAt })
+      .select({ id: aiMessages.id, role: aiMessages.role, content: aiMessages.content, annotations: aiMessages.annotations, toolInvocations: aiMessages.toolInvocations, createdAt: aiMessages.createdAt })
       .from(aiMessages)
       .where(eq(aiMessages.conversationId, conversationId))
       .orderBy(asc(aiMessages.createdAt))
@@ -50,6 +52,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
         role: r.role,
         content: r.content,
         createdAt: r.createdAt.toISOString(),
+        ...(r.annotations ? { annotations: r.annotations } : {}),
+        ...(r.toolInvocations ? { toolInvocations: r.toolInvocations } : {}),
       })) satisfies MessageDto[],
     )
   } catch (err) {
@@ -162,14 +166,22 @@ export async function POST(req: Request, { params }: RouteContext) {
         system: systemPrompt,
         messages,
         ...(hasWebSearch ? { tools: { webSearch: webSearchTool }, maxSteps: 5 } : {}),
-        onFinish: async ({ text }) => {
+        onFinish: async ({ text, steps }) => {
           if (!process.env['DATABASE_URL'] || !lastUserContent) return
           try {
             const { db, aiMessages, aiConversations } = await import('@cairn/db')
             const { eq, and, isNull } = await import('drizzle-orm')
+            const annotations: unknown[] = ragSources.length > 0 ? [{ type: 'rag-sources', sources: ragSources }] : []
+            const toolInvocations: unknown[] = steps.flatMap(step =>
+              step.toolResults.map(r => ({ state: 'result', toolCallId: r.toolCallId, toolName: r.toolName, args: r.args, result: r.result }))
+            )
             await db.insert(aiMessages).values([
               { conversationId, role: 'user', content: lastUserContent },
-              { conversationId, role: 'assistant', content: text },
+              {
+                conversationId, role: 'assistant', content: text,
+                ...(annotations.length > 0 ? { annotations } : {}),
+                ...(toolInvocations.length > 0 ? { toolInvocations } : {}),
+              },
             ])
             // 初回メッセージでタイトルを設定
             await db
