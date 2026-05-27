@@ -7,6 +7,9 @@ import { getAuthContext } from '@/lib/get-auth-context'
 export interface CurrentUserDto {
   id: string
   displayName: string
+  avatarUrl: string | null
+  email: string | null
+  bio: string | null
 }
 
 export async function GET() {
@@ -14,16 +17,31 @@ export async function GET() {
   if (error) return error
 
   if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ id: ctx.userId, displayName: '山田 太郎' } satisfies CurrentUserDto)
+    return NextResponse.json({
+      id: ctx.userId,
+      displayName: '山田 太郎',
+      avatarUrl: null,
+      email: 'yamada@example.com',
+      bio: null,
+    } satisfies CurrentUserDto)
   }
 
   try {
-    const { db } = await import('@cairn/db')
-    const { profiles } = await import('@cairn/db')
+    const { db, profiles } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
+    const { createClient } = await import('@/lib/supabase/server')
+
+    const supabase = await createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    const email = session?.user.email ?? null
 
     const [profile] = await db
-      .select({ id: profiles.id, displayName: profiles.displayName })
+      .select({
+        id: profiles.id,
+        displayName: profiles.displayName,
+        avatarUrl: profiles.avatarUrl,
+        bio: profiles.bio,
+      })
       .from(profiles)
       .where(eq(profiles.id, ctx.userId))
 
@@ -31,9 +49,52 @@ export async function GET() {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
-    return NextResponse.json(profile satisfies CurrentUserDto)
+    return NextResponse.json({ ...profile, email } satisfies CurrentUserDto)
   } catch (err) {
     console.error('[/api/me] DB query failed:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: Request) {
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const b = body as { displayName?: string; bio?: string | null }
+  const hasDisplayName = b.displayName !== undefined
+  const hasBio = 'bio' in (b as object)
+
+  if (!hasDisplayName && !hasBio) {
+    return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
+  }
+  if (hasDisplayName && !b.displayName?.trim()) {
+    return NextResponse.json({ error: '表示名は必須です' }, { status: 422 })
+  }
+
+  if (!process.env['DATABASE_URL']) {
+    return NextResponse.json({ id: ctx.userId, ...b })
+  }
+
+  try {
+    const { db, profiles } = await import('@cairn/db')
+    const { eq } = await import('drizzle-orm')
+
+    const set: { displayName?: string; bio?: string | null; updatedAt: Date } = { updatedAt: new Date() }
+    if (hasDisplayName) set.displayName = b.displayName!.trim()
+    if (hasBio) set.bio = b.bio ?? null
+
+    await db.update(profiles).set(set).where(eq(profiles.id, ctx.userId))
+
+    return NextResponse.json({ id: ctx.userId, ...b })
+  } catch (err) {
+    console.error('[PATCH /api/me]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

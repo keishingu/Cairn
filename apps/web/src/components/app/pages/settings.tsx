@@ -8,6 +8,8 @@ import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
+import type { CurrentUserDto } from '@/app/api/me/route'
+import type { WorkspaceDto } from '@/app/api/workspaces/route'
 
 const Toggle = ({ on }: { on: boolean }) => (
   <div style={{
@@ -29,32 +31,167 @@ const THEME_OPTIONS: { value: ThemeValue; label: string; icon: string }[] = [
   { value: 'dark',   label: 'ダーク',   icon: 'moon' },
 ]
 
-const SettingsAccount = () => (
-  <div style={{ maxWidth: 780 }}>
-    <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>アカウント</h1>
-    <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>プロフィールや通知などの個人設定です。</p>
+function initials(name: string) {
+  return name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()
+}
 
-    <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>プロフィール</h2>
-      <div className="card" style={{ padding: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>表示名</div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>チームメンバーに表示される名前</div>
-          </div>
-          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>山田 太郎</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>メールアドレス</div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>ログインに使用するアドレス</div>
-          </div>
-          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>yamada@example.com</span>
-        </div>
-      </div>
-    </section>
+const AvatarCircle = ({ url, name, size = 64 }: { url?: string | null; name: string; size?: number }) => (
+  <div style={{
+    width: size, height: size, borderRadius: '50%',
+    background: url ? 'var(--border)' : 'var(--accent)',
+    flexShrink: 0, overflow: 'hidden',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: size * 0.35, fontWeight: 700, color: url ? undefined : 'var(--on-accent)',
+  }}>
+    {url
+      ? <img src={url} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+      : initials(name)
+    }
   </div>
 )
+
+const SettingsAccount = () => {
+  const queryClient = useQueryClient()
+  const { data: user, isLoading } = useQuery<CurrentUserDto>({
+    queryKey: ['me'],
+    queryFn: () => fetch('/api/me').then(r => r.json()),
+  })
+
+  const [displayName, setDisplayName] = React.useState('')
+  const [nameSaved, setNameSaved] = React.useState(false)
+  const avatarInputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    if (user?.displayName) setDisplayName(user.displayName)
+  }, [user?.displayName])
+
+  const nameMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(d.error ?? '更新に失敗しました')
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['me'] })
+      setNameSaved(true)
+      setTimeout(() => setNameSaved(false), 2000)
+    },
+  })
+
+  const avatarMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/me/avatar', { method: 'POST', body: fd })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(d.error ?? 'アップロードに失敗しました')
+      }
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['me'] }),
+  })
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) avatarMutation.mutate(file)
+    e.target.value = ''
+  }
+
+  const inputStyle: React.CSSProperties = {
+    padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 7,
+    background: 'var(--card-2)', color: 'var(--text)', fontSize: 13,
+    fontFamily: 'inherit', outline: 'none', flex: 1,
+  }
+
+  if (isLoading) return <div style={{ padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+
+  return (
+    <div style={{ maxWidth: 780 }}>
+      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>アカウント</h1>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>プロフィールや通知などの個人設定です。</p>
+
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>プロフィール</h2>
+        <div className="card" style={{ padding: 0 }}>
+
+          {/* アバター */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 16px', borderBottom: '1px solid var(--divider)' }}>
+            <AvatarCircle url={user?.avatarUrl ?? null} name={user?.displayName ?? ''} size={56}/>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{user?.displayName}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>プロフィール写真</div>
+            </div>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              style={{ display: 'none' }}
+              onChange={handleAvatarChange}
+            />
+            <button
+              className="btn btn-ghost"
+              style={{ height: 30, fontSize: 12, padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={avatarMutation.isPending}
+            >
+              <Icon name="image" size={12}/>
+              {avatarMutation.isPending ? 'アップロード中…' : '写真を変更'}
+            </button>
+          </div>
+
+          {/* 表示名 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>表示名</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>チームメンバーに表示される名前</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                value={displayName}
+                onChange={e => setDisplayName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && displayName.trim() && nameMutation.mutate()}
+                style={{ ...inputStyle, width: 180 }}
+              />
+              <button
+                onClick={() => nameMutation.mutate()}
+                disabled={nameMutation.isPending || !displayName.trim() || displayName === user?.displayName}
+                className="btn btn-primary"
+                style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0 }}
+              >
+                {nameSaved ? '保存済み' : nameMutation.isPending ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+          {nameMutation.isError && (
+            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
+              ⚠ {(nameMutation.error as Error).message}
+            </div>
+          )}
+          {avatarMutation.isError && (
+            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
+              ⚠ {(avatarMutation.error as Error).message}
+            </div>
+          )}
+
+          {/* メール（読み取り専用） */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>メールアドレス</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>ログインに使用するアドレス</div>
+            </div>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{user?.email ?? '—'}</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
 
 const SettingsAppearance = () => {
   const { theme, setTheme } = useTheme()
@@ -399,19 +536,72 @@ const SettingsAI = () => (
 )
 
 const SettingsWorkspaceGeneral = () => {
-  const { data } = useWorkspaceSettings()
-  const update = useUpdateWorkspaceSettings()
+  const queryClient = useQueryClient()
+  const { data: wsSettings } = useWorkspaceSettings()
+  const updateSettings = useUpdateWorkspaceSettings()
+
+  const { data: ws } = useQuery<WorkspaceDto>({
+    queryKey: ['workspace'],
+    queryFn: () => fetch('/api/workspaces').then(r => r.json()),
+  })
+
+  const [wsName, setWsName] = React.useState('')
+  const [nameSaved, setNameSaved] = React.useState(false)
   const [label, setLabel] = React.useState('')
-  const [saved, setSaved] = React.useState(false)
+  const [labelSaved, setLabelSaved] = React.useState(false)
+  const logoInputRef = React.useRef<HTMLInputElement>(null)
 
-  React.useEffect(() => {
-    if (data !== undefined) setLabel(data.projectLabel ?? '')
-  }, [data])
+  React.useEffect(() => { if (ws?.name) setWsName(ws.name) }, [ws?.name])
+  React.useEffect(() => { if (wsSettings !== undefined) setLabel(wsSettings.projectLabel ?? '') }, [wsSettings])
 
-  const handleSave = async () => {
-    await update.mutateAsync({ projectLabel: label })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  const nameMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/workspaces', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: wsName }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(d.error ?? '更新に失敗しました')
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace'] })
+      setNameSaved(true)
+      setTimeout(() => setNameSaved(false), 2000)
+    },
+  })
+
+  const logoMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/workspaces/logo', { method: 'POST', body: fd })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(d.error ?? 'アップロードに失敗しました')
+      }
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['workspace'] }),
+  })
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) logoMutation.mutate(file)
+    e.target.value = ''
+  }
+
+  const handleLabelSave = async () => {
+    await updateSettings.mutateAsync({ projectLabel: label })
+    setLabelSaved(true)
+    setTimeout(() => setLabelSaved(false), 2000)
+  }
+
+  const inputStyle: React.CSSProperties = {
+    padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 7,
+    background: 'var(--card-2)', color: 'var(--text)', fontSize: 13,
+    fontFamily: 'inherit', outline: 'none',
   }
 
   return (
@@ -419,6 +609,83 @@ const SettingsWorkspaceGeneral = () => {
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>ワークスペース設定</h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>ワークスペース全体の表示・動作に関する設定です。</p>
 
+      {/* ワークスペース情報 */}
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>ワークスペース情報</h2>
+        <div className="card" style={{ padding: 0 }}>
+
+          {/* ロゴ */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 16px', borderBottom: '1px solid var(--divider)' }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: 14, flexShrink: 0,
+              background: ws?.logoUrl ? 'var(--border)' : 'var(--accent)',
+              overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 22, fontWeight: 700, color: ws?.logoUrl ? undefined : 'var(--on-accent)',
+            }}>
+              {ws?.logoUrl
+                ? <img src={ws.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                : (ws?.name ? initials(ws.name) : '?')
+              }
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{ws?.name ?? '—'}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>ワークスペースのアイコン</div>
+            </div>
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              style={{ display: 'none' }}
+              onChange={handleLogoChange}
+            />
+            <button
+              className="btn btn-ghost"
+              style={{ height: 30, fontSize: 12, padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+              onClick={() => logoInputRef.current?.click()}
+              disabled={logoMutation.isPending}
+            >
+              <Icon name="image" size={12}/>
+              {logoMutation.isPending ? 'アップロード中…' : 'アイコンを変更'}
+            </button>
+          </div>
+          {logoMutation.isError && (
+            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
+              ⚠ {(logoMutation.error as Error).message}
+            </div>
+          )}
+
+          {/* ワークスペース名 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>ワークスペース名</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>ナビゲーションに表示される名称</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                value={wsName}
+                onChange={e => setWsName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && wsName.trim() && nameMutation.mutate()}
+                style={{ ...inputStyle, width: 180 }}
+              />
+              <button
+                onClick={() => nameMutation.mutate()}
+                disabled={nameMutation.isPending || !wsName.trim() || wsName === ws?.name}
+                className="btn btn-primary"
+                style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0 }}
+              >
+                {nameSaved ? '保存済み' : nameMutation.isPending ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+          {nameMutation.isError && (
+            <div style={{ padding: '6px 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
+              ⚠ {(nameMutation.error as Error).message}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* 用語のカスタマイズ */}
       <section style={{ marginBottom: 24 }}>
         <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>用語のカスタマイズ</h2>
         <div className="card" style={{ padding: 0 }}>
@@ -435,20 +702,16 @@ const SettingsWorkspaceGeneral = () => {
                 value={label}
                 onChange={e => setLabel(e.target.value)}
                 placeholder="プロジェクト"
-                style={{
-                  padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 7,
-                  background: 'var(--card-2)', color: 'var(--text)', fontSize: 13,
-                  fontFamily: 'inherit', outline: 'none', width: 160,
-                }}
-                onKeyDown={e => e.key === 'Enter' && handleSave()}
+                style={{ ...inputStyle, width: 160 }}
+                onKeyDown={e => e.key === 'Enter' && handleLabelSave()}
               />
               <button
-                onClick={handleSave}
-                disabled={update.isPending}
+                onClick={handleLabelSave}
+                disabled={updateSettings.isPending}
                 className="btn btn-primary"
                 style={{ height: 32, padding: '0 14px', fontSize: 12.5 }}
               >
-                {saved ? '保存済み' : '保存'}
+                {labelSaved ? '保存済み' : '保存'}
               </button>
             </div>
           </div>
