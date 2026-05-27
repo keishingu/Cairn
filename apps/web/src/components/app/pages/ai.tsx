@@ -2,11 +2,52 @@
 
 import React from 'react'
 import { useChat } from 'ai/react'
+import type { ToolInvocation } from 'ai'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, TypingDots } from '../primitives'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
+
+// ---- ソースチップ ----
+
+type RagSource = { sourceType: string; sourceId: string; name: string; fileType?: string; externalUrl?: string }
+
+function MessageSources({ annotations, toolInvocations }: {
+  annotations?: unknown[] | undefined
+  toolInvocations?: ToolInvocation[] | undefined
+}) {
+  const ragAnnotation = annotations?.find(
+    (a): a is { type: string; sources: RagSource[] } =>
+      typeof a === 'object' && a !== null && (a as { type?: unknown }).type === 'rag-sources',
+  )
+  const sources: RagSource[] = (ragAnnotation as { sources?: RagSource[] })?.sources ?? []
+  const searches = (toolInvocations ?? []).filter(t => t.toolName === 'webSearch' && (t.state === 'call' || t.state === 'result'))
+
+  if (sources.length === 0 && searches.length === 0) return null
+
+  return (
+    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+      {sources.map(src => {
+        const icon = src.sourceType === 'file' ? 'file' : src.sourceType === 'project' ? 'folder' : 'users'
+        const href = src.sourceType === 'file'
+          ? (src.fileType === 'link' && src.externalUrl ? src.externalUrl : `/api/attachments/${src.sourceId}`)
+          : undefined
+        return (
+          <a key={`${src.sourceType}:${src.sourceId}`} href={href} target={href ? '_blank' : undefined} rel={href ? 'noopener noreferrer' : undefined}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11, textDecoration: 'none', cursor: href ? 'pointer' : 'default' }}>
+            <Icon name={icon} size={10} strokeWidth={2}/>{src.name}
+          </a>
+        )
+      })}
+      {searches.map(t => (
+        <span key={t.toolCallId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11 }}>
+          <Icon name="search" size={10} strokeWidth={2}/>{String((t.args as { query?: string }).query ?? 'Web検索')}
+        </span>
+      ))}
+    </div>
+  )
+}
 
 // ---- 会話サイドバー ----
 
@@ -169,6 +210,7 @@ function ChatView({
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                <MessageSources annotations={m.annotations as unknown[]} toolInvocations={m.toolInvocations}/>
                 <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
                   <button
                     className="btn btn-ghost"

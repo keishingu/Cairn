@@ -5,6 +5,7 @@
 
 import React from 'react'
 import { useChat } from 'ai/react'
+import type { ToolInvocation } from 'ai'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MobileHeader } from './header'
 import { Icon, TypingDots } from '../primitives'
@@ -13,6 +14,39 @@ import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 
 const SUGGESTIONS = ['プロジェクトの進捗は？', 'メンバーのスキルを確認', '最新ファイルを要約して']
+
+type RagSource = { sourceType: string; sourceId: string; name: string; fileType?: string; externalUrl?: string }
+
+function MessageSources({ annotations, toolInvocations }: { annotations?: unknown[] | undefined; toolInvocations?: ToolInvocation[] | undefined }) {
+  const ragAnnotation = annotations?.find(
+    (a): a is { type: string; sources: RagSource[] } =>
+      typeof a === 'object' && a !== null && (a as { type?: unknown }).type === 'rag-sources',
+  )
+  const sources: RagSource[] = (ragAnnotation as { sources?: RagSource[] })?.sources ?? []
+  const searches = (toolInvocations ?? []).filter(t => t.toolName === 'webSearch' && (t.state === 'call' || t.state === 'result'))
+  if (sources.length === 0 && searches.length === 0) return null
+  return (
+    <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+      {sources.map(src => {
+        const icon = src.sourceType === 'file' ? 'file' : src.sourceType === 'project' ? 'folder' : 'users'
+        const href = src.sourceType === 'file'
+          ? (src.fileType === 'link' && src.externalUrl ? src.externalUrl : `/api/attachments/${src.sourceId}`)
+          : undefined
+        return (
+          <a key={`${src.sourceType}:${src.sourceId}`} href={href} target={href ? '_blank' : undefined} rel={href ? 'noopener noreferrer' : undefined}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11, textDecoration: 'none' }}>
+            <Icon name={icon} size={10} strokeWidth={2}/>{src.name}
+          </a>
+        )
+      })}
+      {searches.map(t => (
+        <span key={t.toolCallId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11 }}>
+          <Icon name="search" size={10} strokeWidth={2}/>{String((t.args as { query?: string }).query ?? 'Web検索')}
+        </span>
+      ))}
+    </div>
+  )
+}
 
 function MobileChatView({ conversationId, initialMessages }: { conversationId: string; initialMessages: MessageDto[] }) {
   const scrollRef = React.useRef<HTMLDivElement>(null)
@@ -46,21 +80,26 @@ function MobileChatView({ conversationId, initialMessages }: { conversationId: s
           </div>
         )}
         {messages.map(m => (
-          <div key={m.id} style={{ display: 'flex', gap: 10, justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+          <div key={m.id} style={{ display: 'flex', gap: 10, justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', flexDirection: m.role === 'assistant' ? 'row' : undefined }}>
             {m.role === 'assistant' && (
               <div style={{ width: 32, height: 32, borderRadius: 10, background: 'linear-gradient(135deg, var(--accent), var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Icon name="sparkles" size={15} color="#fff"/>
               </div>
             )}
-            <div style={{
-              maxWidth: '80%', padding: '12px 14px',
-              borderRadius: m.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-              background: m.role === 'user' ? 'var(--accent)' : 'var(--card)',
-              color: m.role === 'user' ? 'var(--on-accent)' : 'var(--text)',
-              border: m.role === 'user' ? 'none' : '1px solid var(--border)',
-              fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap',
-            }}>
-              {m.content}
+            <div style={{ maxWidth: '80%' }}>
+              <div style={{
+                padding: '12px 14px',
+                borderRadius: m.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                background: m.role === 'user' ? 'var(--accent)' : 'var(--card)',
+                color: m.role === 'user' ? 'var(--on-accent)' : 'var(--text)',
+                border: m.role === 'user' ? 'none' : '1px solid var(--border)',
+                fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap',
+              }}>
+                {m.content}
+              </div>
+              {m.role === 'assistant' && (
+                <MessageSources annotations={m.annotations as unknown[]} toolInvocations={m.toolInvocations}/>
+              )}
             </div>
           </div>
         ))}
