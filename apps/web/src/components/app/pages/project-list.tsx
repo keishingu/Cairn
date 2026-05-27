@@ -117,13 +117,9 @@ const StatusChipSelector = ({ value, onChange }: StatusChipSelectorProps) => (
 )
 
 // ─── Cover photo picker ───────────────────────────────────────────
-type CoverSelection =
-  | { type: 'preset'; idx: number }
-  | { type: 'workspace'; url: string }
-
 interface CoverPickerProps {
-  value: CoverSelection
-  onChange: (v: CoverSelection) => void
+  value: string | null
+  onChange: (v: string | null) => void
   workspacePhotos: WorkspaceCoverPhoto[]
 }
 
@@ -149,45 +145,54 @@ const CoverPickerThumb = ({ selected, children }: { selected: boolean; children:
   </button>
 )
 
-const CoverPicker = ({ value, onChange, workspacePhotos }: CoverPickerProps) => (
-  <div>
-    {workspacePhotos.length > 0 && (
-      <>
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', marginBottom: 6, letterSpacing: '0.04em' }}>ライブラリ</div>
-        <div style={{ position: 'relative', marginBottom: 10 }}>
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '2px 2px 8px', scrollbarWidth: 'thin' }}>
-            {workspacePhotos.map(photo => {
-              const selected = value.type === 'workspace' && value.url === photo.url
-              return (
-                <CoverPickerThumb key={photo.id} selected={selected}>
-                  {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
-                  <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onClick={() => onChange({ type: 'workspace', url: photo.url })}/>
-                </CoverPickerThumb>
-              )
-            })}
-          </div>
-          <div style={{ position: 'absolute', top: 0, right: 0, bottom: 8, width: 28, background: 'linear-gradient(90deg, transparent, var(--card-2))', pointerEvents: 'none' }}/>
+const CoverPicker = ({ value, onChange, workspacePhotos }: CoverPickerProps) => {
+  if (workspacePhotos.length === 0) {
+    return (
+      <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Icon name="image" size={16} color="var(--text-4)"/>
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>カバー写真は自動設定されます</div>
+          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>ワークスペース設定からアップロードすると選択できます</div>
         </div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', marginBottom: 6, letterSpacing: '0.04em' }}>プリセット</div>
-      </>
-    )}
-    <div style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '2px 2px 8px', scrollbarWidth: 'thin' }}>
-        {Array.from({ length: 12 }).map((_, i) => {
-          const selected = value.type === 'preset' && value.idx === i
-          return (
-            <CoverPickerThumb key={i} selected={selected}>
-              <div onClick={() => onChange({ type: 'preset', idx: i })} style={{ width: '100%', height: '100%' }}>
-                <MountainPhoto idx={i} height={60} flat radius={6}/>
-              </div>
-            </CoverPickerThumb>
-          )
-        })}
       </div>
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 8, width: 28, background: 'linear-gradient(90deg, transparent, var(--card-2))', pointerEvents: 'none' }}/>
+    )
+  }
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        {/* 「なし（自動）」 option */}
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          style={{
+            flexShrink: 0, width: 72, height: 48, borderRadius: 8,
+            border: `2px solid ${value === null ? 'var(--accent)' : 'var(--border)'}`,
+            background: 'var(--card-2)', color: value === null ? 'var(--accent-text)' : 'var(--text-3)',
+            cursor: 'pointer', fontSize: 10, fontWeight: 600, fontFamily: 'inherit',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+          }}
+        >
+          <Icon name="x" size={12}/>
+          自動
+        </button>
+      </div>
+      <div style={{ position: 'relative' }}>
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '2px 2px 8px', scrollbarWidth: 'thin' }}>
+          {workspacePhotos.map(photo => {
+            const selected = value === photo.url
+            return (
+              <CoverPickerThumb key={photo.id} selected={selected}>
+                {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
+                <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onClick={() => onChange(photo.url)}/>
+              </CoverPickerThumb>
+            )
+          })}
+        </div>
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 8, width: 28, background: 'linear-gradient(90deg, transparent, var(--card-2))', pointerEvents: 'none' }}/>
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 // ─── Tag picker ───────────────────────────────────────────────────
 interface TagPreset {
@@ -371,7 +376,7 @@ interface FormState {
   status: StatusKey
   startDate: string
   endDate: string
-  cover: CoverSelection
+  cover: string | null
   tags: string[]
 }
 
@@ -384,7 +389,7 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
 
   const [form, setForm] = React.useState<FormState>({
     title: '', description: '', status: 'plan',
-    startDate: '', endDate: '', cover: { type: 'preset', idx: 0 }, tags: [],
+    startDate: '', endDate: '', cover: null, tags: [],
   })
   const [errors, setErrors] = React.useState<{ title?: string; endDate?: string }>({})
   const titleRef = React.useRef<HTMLInputElement>(null)
@@ -431,7 +436,7 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
       statusId: selectedStatus?.id,
       startDate: form.startDate || undefined,
       endDate: form.endDate || undefined,
-      coverPhotoUrl: form.cover.type === 'workspace' ? form.cover.url : undefined,
+      coverPhotoUrl: form.cover ?? undefined,
     })
   }
 
@@ -534,20 +539,18 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
 
             <Field label="カバー写真" hint="一覧・パネルで表示">
               <CoverPicker value={form.cover} onChange={v => set('cover', v)} workspacePhotos={workspacePhotos}/>
-              <div style={{ marginTop: 10, position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                {form.cover.type === 'workspace' ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={form.cover.url} alt="カバー" style={{ width: '100%', height: 90, objectFit: 'cover', display: 'block' }}/>
-                ) : (
-                  <MountainPhoto idx={form.cover.idx} height={90} flat radius={0}/>
-                )}
-                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px', gap: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {form.title || 'プロジェクト名'}
-                  </span>
-                  <StatusChip s={form.status}/>
+              {form.cover !== null && (
+                <div style={{ marginTop: 10, position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={form.cover} alt="カバー" style={{ width: '100%', height: 90, objectFit: 'cover', display: 'block' }}/>
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px', gap: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {form.title || 'プロジェクト名'}
+                    </span>
+                    <StatusChip s={form.status}/>
+                  </div>
                 </div>
-              </div>
+              )}
             </Field>
           </div>
         </div>
