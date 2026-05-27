@@ -53,7 +53,7 @@ export const onMessageCreated = inngest.createFunction(
             type: 'mention' as const,
             title: `${senderName} があなたをメンションしました`,
             body: content.slice(0, 200),
-            data: { messageId, channelId },
+            data: { messageId, channelId, senderName },
           })),
         )
 
@@ -101,7 +101,7 @@ export const onMessageCreated = inngest.createFunction(
             type: 'file' as const,
             title: `${senderName} がファイルを共有しました`,
             body,
-            data: { messageId, channelId },
+            data: { messageId, channelId, senderName },
           })),
         )
       })
@@ -127,7 +127,7 @@ export const onTaskAssigned = inngest.createFunction(
         type: 'task' as const,
         title: `${assignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
-        data: {},
+        data: { assignerName, projectTitle },
       })
     })
 
