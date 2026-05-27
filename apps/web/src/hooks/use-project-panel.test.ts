@@ -30,6 +30,7 @@ const STUB_PROJECT: ProjectDto = {
   isMember: true,
   archived: false,
   coverPhotoIdx: 0,
+  coverPhotoUrl: null,
 }
 
 function makeWrapper(projects: ProjectDto[] = [STUB_PROJECT]) {

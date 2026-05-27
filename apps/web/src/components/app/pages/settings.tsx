@@ -2,12 +2,13 @@
 
 import React from 'react'
 import { useTheme } from 'next-themes'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import { STATUS_COL } from '../data'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
+import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
 
 const Toggle = ({ on }: { on: boolean }) => (
   <div style={{
@@ -296,6 +297,167 @@ const SettingsWorkspaceGeneral = () => {
   )
 }
 
+const SettingsCoverPhotos = () => {
+  const queryClient = useQueryClient()
+  const { data: photos = [], isLoading } = useQuery<WorkspaceCoverPhoto[]>({
+    queryKey: ['workspace-cover-photos'],
+    queryFn: () => fetch('/api/workspaces/cover-photos').then(r => r.json()),
+  })
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = React.useState(false)
+  const [uploadError, setUploadError] = React.useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null)
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setUploadError('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/workspaces/cover-photos', { method: 'POST', body: fd })
+      if (!res.ok) {
+        const body = await res.json() as { error?: string }
+        throw new Error(body.error ?? 'アップロードに失敗しました')
+      }
+      const newPhoto = await res.json() as WorkspaceCoverPhoto
+      queryClient.setQueryData<WorkspaceCoverPhoto[]>(['workspace-cover-photos'], old => [...(old ?? []), newPhoto])
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'エラーが発生しました')
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const deletePhoto = useMutation({
+    mutationFn: (id: string) => fetch('/api/workspaces/cover-photos', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    }).then(r => { if (!r.ok && r.status !== 204) throw new Error('削除に失敗しました') }),
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData<WorkspaceCoverPhoto[]>(['workspace-cover-photos'], old => (old ?? []).filter(p => p.id !== id))
+      setConfirmDeleteId(null)
+    },
+  })
+
+  return (
+    <div style={{ maxWidth: 780 }}>
+      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>カバー写真ライブラリ</h1>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
+        プロジェクト作成時に選択できるカバー写真をここでまとめてアップロードできます。
+      </p>
+
+      <section style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>写真一覧</h2>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="btn btn-primary"
+            style={{ height: 32, padding: '0 14px', fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <Icon name={uploading ? 'loader' : 'upload'} size={13}/>
+            {uploading ? 'アップロード中…' : '写真を追加'}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif,image/heic"
+            style={{ display: 'none' }}
+            onChange={handleUpload}
+          />
+        </div>
+
+        {uploadError && (
+          <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 12.5 }}>
+            {uploadError}
+          </div>
+        )}
+
+        {isLoading ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>読み込み中…</div>
+        ) : photos.length === 0 ? (
+          <div className="card" style={{ padding: 32, textAlign: 'center' }}>
+            <Icon name="image" size={28} color="var(--text-4)"/>
+            <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>写真がまだありません</div>
+            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-3)' }}>「写真を追加」からアップロードしてください</div>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+            {photos.map(photo => (
+              <div key={photo.id} style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', aspectRatio: '16/9', background: 'var(--card-2)' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.6) 100%)', opacity: 0, transition: 'opacity .15s' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '0' }}
+                >
+                  <button
+                    onClick={() => setConfirmDeleteId(photo.id)}
+                    style={{ position: 'absolute', top: 6, right: 6, width: 26, height: 26, borderRadius: 6, border: 'none', background: 'rgba(0,0,0,0.5)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Icon name="trash" size={13}/>
+                  </button>
+                  <div style={{ position: 'absolute', bottom: 6, left: 8, right: 8, fontSize: 11, color: '#fff', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {photo.name}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Delete confirmation dialog */}
+      {confirmDeleteId !== null && (() => {
+        const photo = photos.find(p => p.id === confirmDeleteId)
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
+            onClick={e => { if (e.target === e.currentTarget) setConfirmDeleteId(null) }}
+          >
+            <div className="card" style={{ width: 360, borderRadius: 14, padding: 20, boxShadow: 'var(--shadow-xl)' }}>
+              {photo && (
+                <div style={{ borderRadius: 8, overflow: 'hidden', marginBottom: 16, aspectRatio: '16/9' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
+                </div>
+              )}
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>写真を削除しますか？</div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginBottom: 18, lineHeight: 1.6 }}>
+                「{photo?.name ?? ''}」を削除します。この写真をカバーに設定しているプロジェクトはデフォルトの写真に戻ります。
+              </div>
+              {deletePhoto.error && (
+                <div style={{ marginBottom: 12, padding: '7px 10px', borderRadius: 7, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 12 }}>
+                  {deletePhoto.error instanceof Error ? deletePhoto.error.message : '削除に失敗しました'}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => setConfirmDeleteId(null)}
+                  disabled={deletePhoto.isPending}
+                  style={{ flex: 1, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={() => deletePhoto.mutate(confirmDeleteId)}
+                  disabled={deletePhoto.isPending}
+                  style={{ flex: 1, height: 36, borderRadius: 8, border: 'none', background: 'var(--red)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: deletePhoto.isPending ? 'default' : 'pointer', fontFamily: 'inherit', opacity: deletePhoto.isPending ? 0.7 : 1 }}
+                >
+                  {deletePhoto.isPending ? '削除中…' : '削除する'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+    </div>
+  )
+}
+
 const SettingsIntegrations = () => {
   const { data, refetch } = useQuery<{ token: string }>({
     queryKey: ['ical-token'],
@@ -387,12 +549,13 @@ const NAV_GROUPS = [
   {
     label: 'ワークスペース',
     items: [
-      { id: 'general',      l: 'ワークスペース設定', i: 'settings' },
-      { id: 'workflow',     l: 'ワークフロー',       i: 'flag' },
-      { id: 'ai',           l: 'AIエージェント',     i: 'sparkles' },
-      { id: 'members',      l: 'メンバー',           i: 'users' },
-      { id: 'integrations', l: '連携',               i: 'layers' },
-      { id: 'billing',      l: '請求',               i: 'archive' },
+      { id: 'general',       l: 'ワークスペース設定',   i: 'settings' },
+      { id: 'cover-photos',  l: 'カバー写真',           i: 'image' },
+      { id: 'workflow',      l: 'ワークフロー',         i: 'flag' },
+      { id: 'ai',            l: 'AIエージェント',       i: 'sparkles' },
+      { id: 'members',       l: 'メンバー',             i: 'users' },
+      { id: 'integrations',  l: '連携',                 i: 'layers' },
+      { id: 'billing',       l: '請求',                 i: 'archive' },
     ],
   },
 ]
@@ -424,13 +587,14 @@ export const PageSettings = () => {
         ))}
       </aside>
       <div style={{ flex: 1, overflow: 'auto', padding: '32px 40px' }}>
-        {section === 'account'      && <SettingsAccount/>}
-        {section === 'appearance'   && <SettingsAppearance/>}
-        {section === 'general'      && <SettingsWorkspaceGeneral/>}
-        {section === 'workflow'     && <SettingsWorkflow/>}
-        {section === 'ai'           && <SettingsAI/>}
-        {section === 'integrations' && <SettingsIntegrations/>}
-        {section !== 'account' && section !== 'appearance' && section !== 'general' && section !== 'workflow' && section !== 'ai' && section !== 'integrations' && (
+        {section === 'account'       && <SettingsAccount/>}
+        {section === 'appearance'    && <SettingsAppearance/>}
+        {section === 'general'       && <SettingsWorkspaceGeneral/>}
+        {section === 'cover-photos'  && <SettingsCoverPhotos/>}
+        {section === 'workflow'      && <SettingsWorkflow/>}
+        {section === 'ai'            && <SettingsAI/>}
+        {section === 'integrations'  && <SettingsIntegrations/>}
+        {section !== 'account' && section !== 'appearance' && section !== 'general' && section !== 'cover-photos' && section !== 'workflow' && section !== 'ai' && section !== 'integrations' && (
           <div>
             <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
               {{ members: 'メンバー', billing: '請求' }[section] ?? section}

@@ -1,8 +1,9 @@
 'use client'
 
 import React from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
+import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
 import { MEMBERS, type StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { ChatTab } from './tabs/chat-tab'
@@ -132,6 +133,96 @@ const PanelSettingsTab = ({ projectId, onDeleted }: { projectId: string; onDelet
   )
 }
 
+// ─── Cover photo picker (inline, used inside the panel) ───────────
+interface CoverPickerPanelProps {
+  projectId: string
+  currentCoverUrl: string | null
+  defaultIdx: number
+  onClose: () => void
+}
+
+const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, onClose }: CoverPickerPanelProps) => {
+  const queryClient = useQueryClient()
+  const [saving, setSaving] = React.useState(false)
+
+  const { data: workspacePhotos = [] } = useQuery<WorkspaceCoverPhoto[]>({
+    queryKey: ['workspace-cover-photos'],
+    queryFn: () => fetch('/api/workspaces/cover-photos').then(r => r.json()),
+  })
+
+  const apply = async (url: string | null) => {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverPhotoUrl: url }),
+      })
+      if (!res.ok) return
+      queryClient.setQueryData<ProjectDto[]>(['projects'], old =>
+        (old ?? []).map(p => p.id === projectId ? { ...p, coverPhotoUrl: url } : p),
+      )
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const thumbStyle = (selected: boolean): React.CSSProperties => ({
+    flexShrink: 0, width: 80, height: 54, padding: 0,
+    borderRadius: 7, overflow: 'hidden', cursor: saving ? 'default' : 'pointer',
+    border: `2px solid ${selected ? 'var(--accent)' : 'transparent'}`,
+    outline: selected ? 'none' : '1px solid var(--border)', outlineOffset: -1,
+    background: 'transparent', position: 'relative',
+    opacity: saving ? 0.6 : 1,
+  })
+
+  return (
+    <div style={{ padding: '10px 14px 12px', borderBottom: '1px solid var(--divider)', background: 'var(--card-2)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-2)' }}>カバー写真を変更</span>
+        <button onClick={onClose} style={{ width: 22, height: 22, borderRadius: 5, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+          <Icon name="close" size={12}/>
+        </button>
+      </div>
+
+      {workspacePhotos.length > 0 && (
+        <>
+          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>ライブラリ</div>
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, marginBottom: 6 }}>
+            {workspacePhotos.map(photo => {
+              const selected = currentCoverUrl === photo.url
+              return (
+                <button key={photo.id} type="button" style={thumbStyle(selected)} onClick={() => apply(photo.url)} disabled={saving}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
+                  {selected && (
+                    <div style={{ position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: '50%', background: 'var(--accent)', color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name="check" size={9} strokeWidth={3}/>
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>デフォルト</div>
+      <div>
+        <button type="button" style={thumbStyle(currentCoverUrl === null)} onClick={() => apply(null)} disabled={saving}>
+          <MountainPhoto idx={defaultIdx} height={50} flat radius={5}/>
+          {currentCoverUrl === null && (
+            <div style={{ position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: '50%', background: 'var(--accent)', color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="check" size={9} strokeWidth={3}/>
+            </div>
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Project Panel ─────────────────────────────────────────────────
 interface ProjectPanelProps {
   project: ProjectDto
@@ -142,6 +233,20 @@ interface ProjectPanelProps {
 
 export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: ProjectPanelProps) => {
   const [tab, setTab] = React.useState('chat')
+  const [moreOpen, setMoreOpen] = React.useState(false)
+  const [editingCover, setEditingCover] = React.useState(false)
+  const moreRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    if (!moreOpen) return
+    const handleClick = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
+        setMoreOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [moreOpen])
 
   const pcTabs = [
     { id: 'overview',  label: '概要',       icon: 'book' },
@@ -186,11 +291,10 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
     <aside style={containerStyle}>
       {/* Hero image header — PC と Mobile で共通、コントロールのみ切り替え */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
-        <MountainPhoto
-          idx={project.coverPhotoIdx}
-          height={isMobile ? 130 : 180}
-          flat
-        />
+        {project.coverPhotoUrl
+          ? <img src={project.coverPhotoUrl} alt="" style={{ width: '100%', height: isMobile ? 130 : 180, objectFit: 'cover', display: 'block' }}/>
+          : <MountainPhoto idx={project.coverPhotoIdx} height={isMobile ? 130 : 180} flat/>
+        }
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, transparent 45%, rgba(0,0,0,0.65) 100%)' }}/>
 
         {/* Top controls */}
@@ -207,9 +311,26 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
           ) : (
             <>
               <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{project.title}</span>
-              <button style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="more" size={14}/>
-              </button>
+              <div ref={moreRef} style={{ position: 'relative' }}>
+                <button
+                  onClick={() => { setMoreOpen(v => !v); setEditingCover(false) }}
+                  style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Icon name="more" size={14}/>
+                </button>
+                {moreOpen && (
+                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', zIndex: 50, minWidth: 168, padding: 4 }}>
+                    <button
+                      onClick={() => { setMoreOpen(false); setEditingCover(true) }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 6, textAlign: 'left' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                    >
+                      <Icon name="image" size={13}/> カバー写真を変更
+                    </button>
+                  </div>
+                )}
+              </div>
               <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name="close" size={15}/>
               </button>
@@ -246,6 +367,16 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
           )}
         </div>
       </div>
+
+      {/* Cover photo picker (shown when editing) */}
+      {!isMobile && editingCover && (
+        <CoverPickerPanel
+          projectId={project.id}
+          currentCoverUrl={project.coverPhotoUrl}
+          defaultIdx={project.coverPhotoIdx}
+          onClose={() => setEditingCover(false)}
+        />
+      )}
 
       {/* PC only: status + avatars + "詳細を開く" */}
       {!isMobile && (

@@ -17,6 +17,7 @@ export const projects = pgTable(
     statusId: uuid('status_id').references(() => projectStatuses.id),
     startDate: date('start_date'),
     endDate: date('end_date'),
+    coverPhotoUrl: text('cover_photo_url'),
     archived: boolean('archived').notNull().default(false),
     createdBy: uuid('created_by')
       .notNull()
