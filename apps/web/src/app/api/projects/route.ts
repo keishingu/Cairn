@@ -21,6 +21,7 @@ export interface ProjectDto {
   isMember: boolean
   archived: boolean
   coverPhotoIdx: number
+  coverPhotoUrl: string | null
 }
 
 function mockProjects(): ProjectDto[] {
@@ -39,6 +40,7 @@ function mockProjects(): ProjectDto[] {
     isMember: true,
     archived: false,
     coverPhotoIdx: p.photoIdx,
+    coverPhotoUrl: null,
   }))
 }
 
@@ -72,6 +74,7 @@ export async function GET() {
         endDate: projects.endDate,
         archived: projects.archived,
         createdBy: projects.createdBy,
+        coverPhotoUrl: projects.coverPhotoUrl,
       })
       .from(projects)
       .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
@@ -129,6 +132,7 @@ export async function GET() {
       isOwner: r.createdBy === ctx.userId,
       isMember: userProjectIds.has(r.id),
       coverPhotoIdx: coverPhotoIdxFromId(r.id),
+      coverPhotoUrl: r.coverPhotoUrl ?? null,
     }))
 
     return NextResponse.json(result)
@@ -171,6 +175,7 @@ export async function POST(req: Request) {
       isMember: true,
       archived: false,
       coverPhotoIdx: coverPhotoIdxFromId(newId),
+      coverPhotoUrl: parsed.data.coverPhotoUrl ?? null,
     } satisfies ProjectDto, { status: 201 })
   }
 
@@ -187,9 +192,10 @@ export async function POST(req: Request) {
         statusId: parsed.data.statusId ?? null,
         startDate: parsed.data.startDate ?? null,
         endDate: parsed.data.endDate ?? null,
+        coverPhotoUrl: parsed.data.coverPhotoUrl ?? null,
         createdBy: ctx.userId,
       })
-      .returning({ id: projects.id, title: projects.title, description: projects.description, startDate: projects.startDate, endDate: projects.endDate })
+      .returning({ id: projects.id, title: projects.title, description: projects.description, startDate: projects.startDate, endDate: projects.endDate, coverPhotoUrl: projects.coverPhotoUrl })
 
     if (!inserted) throw new Error('Insert returned no rows')
 
@@ -224,6 +230,7 @@ export async function POST(req: Request) {
       isMember: true,
       archived: false,
       coverPhotoIdx: coverPhotoIdxFromId(inserted.id),
+      coverPhotoUrl: inserted.coverPhotoUrl ?? null,
     } satisfies ProjectDto, { status: 201 })
   } catch (err) {
     console.error('[/api/projects POST] DB query failed:', err)

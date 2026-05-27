@@ -71,6 +71,7 @@ const STUB_PROJECT: ProjectDto = {
   isMember: true,
   archived: false,
   coverPhotoIdx: 0,
+  coverPhotoUrl: null,
 }
 
 // context 経由で openPanel を呼ぶ用ヘルパーコンポーネント

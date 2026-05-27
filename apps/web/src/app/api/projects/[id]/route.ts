@@ -89,6 +89,7 @@ export async function PATCH(
     endDate?: string | null
     statusName?: string
     archived?: boolean
+    coverPhotoUrl?: string | null
   }
   const b = body as PatchBody
   const keys = Object.keys(b as object)
@@ -116,6 +117,7 @@ export async function PATCH(
       endDate?: string | null
       statusId?: string | null
       archived?: boolean
+      coverPhotoUrl?: string | null
       updatedAt: Date
     } = { updatedAt: new Date() }
 
@@ -124,6 +126,7 @@ export async function PATCH(
     if ('startDate' in (b as object)) set.startDate = b.startDate ?? null
     if ('endDate' in (b as object)) set.endDate = b.endDate ?? null
     if (b.archived !== undefined) set.archived = b.archived
+    if ('coverPhotoUrl' in (b as object)) set.coverPhotoUrl = b.coverPhotoUrl ?? null
 
     if (b.statusName !== undefined) {
       const [status] = await db
