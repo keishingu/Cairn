@@ -389,7 +389,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     if (mobilePane === 'chat' && activeId && initialMessages) {
       const title = conversations.find(c => c.id === activeId)?.title ?? 'AIアシスタント'
       return (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
           <MobileHeader title={title} onBack={() => setMobilePane('list')} right={newButton}/>
           <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages} isMobile/>
         </div>
@@ -402,7 +402,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
         {conversations.length === 0 ? (
           <WelcomeScreen onNew={() => createConversation.mutate()} isCreating={createConversation.isPending} isMobile/>
         ) : (
-          <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+          <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
             {conversations.map(c => (
               <button
                 key={c.id}
