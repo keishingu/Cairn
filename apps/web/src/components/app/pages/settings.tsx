@@ -2,12 +2,12 @@
 
 import React from 'react'
 import { useTheme } from 'next-themes'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
-import { STATUS_COL } from '../data'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
+import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 
 const Toggle = ({ on }: { on: boolean }) => (
   <div style={{
@@ -129,55 +129,217 @@ const SettingsAppearance = () => {
   )
 }
 
+const COLOR_PRESETS = [
+  '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6',
+  '#F43F5E', '#6B7280', '#EF4444', '#EC4899',
+  '#06B6D4', '#84CC16', '#F97316', '#14B8A6',
+]
+
+async function fetchStatuses(): Promise<ProjectStatusDto[]> {
+  const res = await fetch('/api/projects/statuses')
+  if (!res.ok) throw new Error('fetch failed')
+  return res.json() as Promise<ProjectStatusDto[]>
+}
+
+const StatusRow = ({
+  status,
+  onSaved,
+  onDeleted,
+}: {
+  status: ProjectStatusDto
+  onSaved: () => void
+  onDeleted: () => void
+}) => {
+  const [editing, setEditing] = React.useState(false)
+  const [name, setName] = React.useState(status.name)
+  const [color, setColor] = React.useState(status.color)
+  const [isFinal, setIsFinal] = React.useState(status.isFinal)
+  const [confirmDel, setConfirmDel] = React.useState(false)
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/projects/statuses/${status.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), color, isFinal }),
+      })
+      if (!res.ok) throw new Error('更新に失敗しました')
+    },
+    onSuccess: () => { setEditing(false); onSaved() },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/projects/statuses/${status.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('削除に失敗しました')
+    },
+    onSuccess: onDeleted,
+  })
+
+  if (!editing) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px' }}>
+        <span style={{ width: 10, height: 10, borderRadius: '50%', background: status.color, flexShrink: 0 }}/>
+        <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{status.name}</span>
+        {status.isFinal && (
+          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-text)', padding: '2px 6px', borderRadius: 4, background: 'var(--accent-soft)', border: '1px solid var(--accent)' }}>
+            最終
+          </span>
+        )}
+        <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0 }} onClick={() => setEditing(true)}>
+          <Icon name="edit" size={12}/>
+        </button>
+        {!confirmDel ? (
+          <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0, color: 'var(--red-text)' }} onClick={() => setConfirmDel(true)}>
+            <Icon name="trash" size={12}/>
+          </button>
+        ) : (
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button className="btn btn-ghost" style={{ height: 26, fontSize: 11.5, padding: '0 8px' }} onClick={() => setConfirmDel(false)}>キャンセル</button>
+            <button
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+              style={{ height: 26, fontSize: 11.5, padding: '0 8px', borderRadius: 6, border: 'none', background: 'var(--red)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              {deleteMutation.isPending ? '削除中…' : '削除'}
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--card-2)' }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input
+          value={name}
+          onChange={e => setName(e.target.value)}
+          style={{ flex: 1, height: 32, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--card)', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', outline: 'none' }}
+        />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-3)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={isFinal} onChange={e => setIsFinal(e.target.checked)} style={{ accentColor: 'var(--accent)' }}/>
+          最終ステータス
+        </label>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {COLOR_PRESETS.map(c => (
+          <button
+            key={c}
+            onClick={() => setColor(c)}
+            style={{
+              width: 22, height: 22, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer', padding: 0,
+              outline: color === c ? `3px solid ${c}` : '3px solid transparent', outlineOffset: 2,
+            }}
+          />
+        ))}
+      </div>
+      {saveMutation.isError && <div style={{ fontSize: 11.5, color: 'var(--red-text)' }}>⚠ 更新に失敗しました</div>}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button className="btn btn-ghost" style={{ height: 28, fontSize: 12, padding: '0 10px' }} onClick={() => setEditing(false)}>キャンセル</button>
+        <button
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending || !name.trim()}
+          className="btn btn-primary"
+          style={{ height: 28, fontSize: 12, padding: '0 12px', opacity: (saveMutation.isPending || !name.trim()) ? 0.6 : 1 }}
+        >
+          {saveMutation.isPending ? '保存中…' : '保存'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 const SettingsWorkflow = () => {
-  const stages = [
-    { id: 'plan',   label: '計画中',     c: STATUS_COL.plan },
-    { id: 'review', label: '審議中',     c: STATUS_COL.review },
-    { id: 'wait',   label: '実施待ち',   c: STATUS_COL.wait },
-    { id: 'doing',  label: '実施中',     c: STATUS_COL.doing },
-    { id: 'retro',  label: '振り返り中', c: STATUS_COL.retro },
-    { id: 'done',   label: '完了',       c: STATUS_COL.done },
-  ]
+  const queryClient = useQueryClient()
+  const { data: statuses = [], isLoading } = useQuery({
+    queryKey: ['statuses'],
+    queryFn: fetchStatuses,
+  })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['statuses'] })
+
+  const [showAdd, setShowAdd] = React.useState(false)
+  const [newName, setNewName] = React.useState('')
+  const [newColor, setNewColor] = React.useState('#3B82F6')
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/projects/statuses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim(), color: newColor }),
+      })
+      if (!res.ok) throw new Error('追加に失敗しました')
+    },
+    onSuccess: () => {
+      setShowAdd(false)
+      setNewName('')
+      setNewColor('#3B82F6')
+      invalidate()
+    },
+  })
+
   return (
     <div style={{ maxWidth: 780 }}>
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>ワークフロー</h1>
-      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>プロジェクトのステータス遷移とルールを管理します。</p>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>プロジェクトのステータスを管理します。</p>
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>ステージ</h2>
-        <div className="card" style={{ padding: 6 }}>
-          {stages.map((s, i) => (
-            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderBottom: i < 5 ? '1px solid var(--divider)' : 'none' }}>
-              <Icon name="grip" size={16} color="var(--text-4)" style={{ cursor: 'grab' }}/>
-              <span style={{ width: 28, height: 6, borderRadius: 3, background: s.c.bar }}/>
-              <span style={{ fontSize: 13.5, fontWeight: 600, flex: 1 }}>{s.label}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-3)' }}>承認 必須: {['—', '部長', '—', '—', '—', '—'][i]}</span>
-              <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0 }}><Icon name="edit" size={12}/></button>
-            </div>
-          ))}
-          <button style={{ width: '100%', padding: '10px', border: 'none', background: 'transparent', color: 'var(--text-3)', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-            <Icon name="plus" size={13}/> ステージを追加
-          </button>
-        </div>
-      </section>
-
-      <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>自動化ルール</h2>
-        <div className="card" style={{ padding: 0 }}>
-          {[
-            { w: '審議中 → 実施待ち',   t: 'リーダーに通知 + チャットに自動投稿', on: true },
-            { w: '実施中 → 振り返り中', t: 'ギャラリー自動アーカイブ',           on: true },
-            { w: '完了から30日',         t: 'プロジェクトを自動アーカイブ',       on: false },
-          ].map((r, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderBottom: i < 2 ? '1px solid var(--divider)' : 'none' }}>
-              <Icon name="flag" size={15} color="var(--accent)"/>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{r.w}</div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{r.t}</div>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>ステータス一覧</h2>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          {isLoading ? (
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+          ) : (
+            statuses.map((s, i) => (
+              <div key={s.id} style={{ borderBottom: i < statuses.length - 1 ? '1px solid var(--divider)' : 'none' }}>
+                <StatusRow status={s} onSaved={invalidate} onDeleted={invalidate}/>
               </div>
-              <Toggle on={r.on}/>
+            ))
+          )}
+
+          {showAdd ? (
+            <div style={{ padding: '12px 14px', borderTop: statuses.length > 0 ? '1px solid var(--divider)' : 'none', display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--card-2)' }}>
+              <input
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder="ステータス名を入力…"
+                autoFocus
+                onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) addMutation.mutate() }}
+                style={{ height: 32, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--card)', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', outline: 'none' }}
+              />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {COLOR_PRESETS.map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setNewColor(c)}
+                    style={{
+                      width: 22, height: 22, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer', padding: 0,
+                      outline: newColor === c ? `3px solid ${c}` : '3px solid transparent', outlineOffset: 2,
+                    }}
+                  />
+                ))}
+              </div>
+              {addMutation.isError && <div style={{ fontSize: 11.5, color: 'var(--red-text)' }}>⚠ 追加に失敗しました</div>}
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="btn btn-ghost" style={{ height: 28, fontSize: 12, padding: '0 10px' }} onClick={() => { setShowAdd(false); setNewName('') }}>キャンセル</button>
+                <button
+                  onClick={() => addMutation.mutate()}
+                  disabled={addMutation.isPending || !newName.trim()}
+                  className="btn btn-primary"
+                  style={{ height: 28, fontSize: 12, padding: '0 12px', opacity: (addMutation.isPending || !newName.trim()) ? 0.6 : 1 }}
+                >
+                  {addMutation.isPending ? '追加中…' : '追加'}
+                </button>
+              </div>
             </div>
-          ))}
+          ) : (
+            <button
+              onClick={() => setShowAdd(true)}
+              style={{ width: '100%', padding: '10px', border: 'none', background: 'transparent', color: 'var(--text-3)', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderTop: statuses.length > 0 ? '1px solid var(--divider)' : 'none' }}
+            >
+              <Icon name="plus" size={13}/> ステータスを追加
+            </button>
+          )}
         </div>
       </section>
     </div>

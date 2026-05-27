@@ -54,7 +54,7 @@ function formatDateRange(start: string | null, end: string | null): string {
 
 function memberProjectToProjectDto(p: MemberProjectDto): ProjectDto {
   return {
-    id: p.projectId, title: p.title, statusName: p.statusName,
+    id: p.projectId, title: p.title, description: null, statusName: p.statusName,
     startDate: p.startDate, endDate: p.endDate, memberCount: p.memberCount,
     memberNames: [], taskCount: 0, completedTaskCount: 0,
     isOwner: p.role === 'leader', isMember: true, archived: false,

@@ -19,6 +19,7 @@ vi.mock('next/navigation', () => ({
 const STUB_PROJECT: ProjectDto = {
   id: 'proj-1',
   title: 'テストプロジェクト',
+  description: null,
   statusName: 'doing',
   startDate: '2026-01-01',
   endDate: null,

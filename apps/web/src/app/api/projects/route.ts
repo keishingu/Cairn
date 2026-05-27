@@ -9,6 +9,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 export interface ProjectDto {
   id: string
   title: string
+  description: string | null
   statusName: StatusKey
   startDate: string | null
   endDate: string | null
@@ -26,6 +27,7 @@ function mockProjects(): ProjectDto[] {
   return PROJECTS.map((p, i) => ({
     id: p.id,
     title: p.name,
+    description: null,
     statusName: p.status,
     startDate: p.startDate,
     endDate: p.endDate,
@@ -64,6 +66,7 @@ export async function GET() {
       .select({
         id: projects.id,
         title: projects.title,
+        description: projects.description,
         statusName: projectStatuses.name,
         startDate: projects.startDate,
         endDate: projects.endDate,
@@ -114,6 +117,7 @@ export async function GET() {
     const result: ProjectDto[] = rows.map(r => ({
       id: r.id,
       title: r.title,
+      description: r.description,
       statusName: (r.statusName as StatusKey | null) ?? 'plan',
       startDate: r.startDate,
       endDate: r.endDate,
@@ -155,6 +159,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       id: newId,
       title: parsed.data.title,
+      description: parsed.data.description ?? null,
       statusName: 'plan' as StatusKey,
       startDate: parsed.data.startDate ?? null,
       endDate: parsed.data.endDate ?? null,
@@ -184,7 +189,7 @@ export async function POST(req: Request) {
         endDate: parsed.data.endDate ?? null,
         createdBy: ctx.userId,
       })
-      .returning({ id: projects.id, title: projects.title, startDate: projects.startDate, endDate: projects.endDate })
+      .returning({ id: projects.id, title: projects.title, description: projects.description, startDate: projects.startDate, endDate: projects.endDate })
 
     if (!inserted) throw new Error('Insert returned no rows')
 
@@ -207,6 +212,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       id: inserted.id,
       title: inserted.title,
+      description: inserted.description,
       statusName: 'plan' as StatusKey,
       startDate: inserted.startDate,
       endDate: inserted.endDate,

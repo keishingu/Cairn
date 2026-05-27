@@ -109,6 +109,7 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
     setSelectedProject({
       id:                 p.projectId,
       title:              p.title,
+      description:        null,
       statusName:         p.statusName,
       startDate:          p.startDate,
       endDate:            p.endDate,
