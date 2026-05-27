@@ -269,7 +269,7 @@ function ChatView({
 
       <div style={{
         padding: isMobile ? '8px 16px' : '12px 28px 18px',
-        paddingBottom: isMobile ? 'calc(8px + env(safe-area-inset-bottom))' : '18px',
+        paddingBottom: isMobile ? '8px' : '18px',
         background: isMobile ? 'var(--card)' : 'var(--bg)',
         borderTop: isMobile ? '1px solid var(--border)' : undefined,
       }}>
@@ -339,6 +339,7 @@ function ChatView({
 export function PageAI({ isMobile }: { isMobile?: boolean }) {
   const queryClient = useQueryClient()
   const [activeId, setActiveId] = React.useState<string | null>(null)
+  const [mobilePane, setMobilePane] = React.useState<'list' | 'chat'>('list')
 
   const { data: conversations = [] } = useQuery<ConversationDto[]>({
     queryKey: ['ai-conversations'],
@@ -356,38 +357,78 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     onSuccess: (conv) => {
       queryClient.setQueryData<ConversationDto[]>(['ai-conversations'], prev => [conv, ...(prev ?? [])])
       setActiveId(conv.id)
+      if (isMobile) setMobilePane('chat')
     },
   })
 
+  const selectConversation = (id: string) => {
+    setActiveId(id)
+    if (isMobile) setMobilePane('chat')
+  }
+
+  // PCのみ最新会話を自動選択
   React.useEffect(() => {
-    if (!activeId && conversations.length > 0) {
+    if (!isMobile && !activeId && conversations.length > 0) {
       setActiveId(conversations[0]!.id)
     }
-  }, [conversations, activeId])
+  }, [conversations, activeId, isMobile])
+
+  // ---- モバイル ----
 
   if (isMobile) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
-        <MobileHeader
-          title="AIアシスタント"
-          right={
-            <button
-              onClick={() => createConversation.mutate()}
-              disabled={createConversation.isPending}
-              style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', opacity: createConversation.isPending ? 0.5 : 1 }}
-            >
-              <Icon name="plus" size={20}/>
-            </button>
-          }
-        />
-        {activeId && initialMessages ? (
+    const newButton = (
+      <button
+        onClick={() => createConversation.mutate()}
+        disabled={createConversation.isPending}
+        style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', opacity: createConversation.isPending ? 0.5 : 1 }}
+      >
+        <Icon name="plus" size={20}/>
+      </button>
+    )
+
+    if (mobilePane === 'chat' && activeId && initialMessages) {
+      const title = conversations.find(c => c.id === activeId)?.title ?? 'AIアシスタント'
+      return (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+          <MobileHeader title={title} onBack={() => setMobilePane('list')} right={newButton}/>
           <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages} isMobile/>
-        ) : (
+        </div>
+      )
+    }
+
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
+        <MobileHeader title="AIアシスタント" right={newButton}/>
+        {conversations.length === 0 ? (
           <WelcomeScreen onNew={() => createConversation.mutate()} isCreating={createConversation.isPending} isMobile/>
+        ) : (
+          <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+            {conversations.map(c => (
+              <button
+                key={c.id}
+                onClick={() => selectConversation(c.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+                  padding: '12px 16px', border: 'none', borderBottom: '1px solid var(--divider)',
+                  background: 'transparent', color: 'var(--text)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                }}
+              >
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Icon name="chat" size={16} color="var(--text-3)"/>
+                </div>
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 15 }}>
+                  {c.title ?? '新しい会話'}
+                </span>
+                <Icon name="chevRight" size={16} color="var(--text-4)"/>
+              </button>
+            ))}
+          </div>
         )}
       </div>
     )
   }
+
+  // ---- PC ----
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
