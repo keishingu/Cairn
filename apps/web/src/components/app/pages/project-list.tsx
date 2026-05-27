@@ -9,7 +9,6 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
-import { ProjectPanel } from '../detail-panel/project-panel'
 
 // ─── Tag presets ──────────────────────────────────────────────────
 const TAG_PRESETS = [
@@ -531,7 +530,6 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<StatusKey[]>([])
   const filterBtnRef = React.useRef<HTMLDivElement>(null)
-  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
 
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
@@ -571,15 +569,10 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      {/* Mobile: project panel overlay */}
-      {isMobile && selectedProject && (
-        <ProjectPanel project={selectedProject} onClose={() => setSelectedProject(null)} isMobile/>
-      )}
-
       {/* Create modal/sheet */}
       {showCreate && (
         isMobile
-          ? <CreateProjectSheet onClose={() => setShowCreate(false)} onCreated={(p) => { handleCreated(p); setSelectedProject(p) }}/>
+          ? <CreateProjectSheet onClose={() => setShowCreate(false)} onCreated={(p) => { handleCreated(p); openPanel?.(p) }}/>
           : <CreateProjectModal onClose={() => setShowCreate(false)} onCreated={handleCreated}/>
       )}
 
@@ -730,7 +723,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
 
               if (isMobile) {
                 return (
-                  <div key={p.id} onClick={() => setSelectedProject(p)} style={{
+                  <div key={p.id} onClick={() => openPanel?.(p)} style={{
                     background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14,
                     overflow: 'hidden', cursor: 'pointer',
                     display: 'flex', alignItems: 'stretch',

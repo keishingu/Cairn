@@ -5,7 +5,7 @@
 
 import React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Sidebar, type PageId } from '@/components/app/sidebar'
 import { ProjectPanel } from '@/components/app/detail-panel/project-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -29,13 +29,33 @@ function loadStoredView(): ProjectsView {
   return isValidView(saved) ? saved : 'list'
 }
 
+async function fetchProjects(): Promise<ProjectDto[]> {
+  const res = await fetch('/api/projects')
+  if (!res.ok) throw new Error('fetch failed')
+  return res.json() as Promise<ProjectDto[]>
+}
+
 export function PCShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
+
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
   const [notifOpen, setNotifOpen] = React.useState(false)
+
+  // URL から open project ID を導出（/projects/{id} 形式）
+  const openProjectId = pathname.match(/^\/projects\/([^/?#]+)/)?.[1] ?? null
+
+  // open project ID があるとき一覧をフェッチ（ProjectListView と同じキー → キャッシュ共有）
+  const { data: projects = [] } = useQuery<ProjectDto[]>({
+    queryKey: ['projects'],
+    queryFn: fetchProjects,
+    enabled: !!openProjectId,
+  })
+
+  const panelProject: ProjectDto | null = openProjectId
+    ? (projects.find(p => p.id === openProjectId) ?? null)
+    : null
 
   const handleMemberClick = React.useCallback((userId: string, displayName: string) => {
     const cached = queryClient.getQueryData<WorkspaceMemberDto[]>(['workspace-members'])
@@ -50,14 +70,9 @@ export function PCShell({ children }: { children: React.ReactNode }) {
 
   const handleMemberProjectClick = React.useCallback((p: MemberProjectDto) => {
     setSelectedMember(null)
-    setSelectedProject({
-      id: p.projectId, title: p.title, statusName: p.statusName,
-      startDate: p.startDate, endDate: p.endDate, memberCount: p.memberCount,
-      memberNames: [], taskCount: 0, completedTaskCount: 0,
-      isOwner: p.role === 'leader', isMember: true, archived: false,
-      coverPhotoIdx: p.coverPhotoIdx,
-    })
-  }, [])
+    router.push(`/projects/${p.projectId}`, { scroll: false })
+  }, [router])
+
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
 
   const setProjectsView = React.useCallback((view: string) => {
@@ -76,11 +91,11 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     return base as PageId
   }, [pathname, projectsView])
 
+  const pathnameSection = pathname.split('/')[1] ?? ''
   React.useEffect(() => {
-    setSelectedProject(null)
     setSelectedMember(null)
     setNotifOpen(false)
-  }, [pathname])
+  }, [pathnameSection])
 
   const navigate = React.useCallback((p: PageId) => {
     if (p === 'calendar') { setProjectsView('calendar'); router.push('/projects') }
@@ -89,9 +104,18 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     else router.push(`/${p}`)
   }, [router, setProjectsView])
 
+  // openPanel: /projects/{id} 形式で URL を更新。router.push でルートを確実に変更する
+  const openPanel = React.useCallback((project?: ProjectDto) => {
+    if (project) {
+      router.push(`/projects/${project.id}`, { scroll: false })
+    } else {
+      router.push('/projects', { scroll: false })
+    }
+  }, [router])
+
   return (
     <AppShellContext.Provider value={{
-      openPanel: (project?: ProjectDto) => setSelectedProject(project ?? null),
+      openPanel,
       openNotif: () => setNotifOpen(true),
       projectsView,
       setProjectsView,
@@ -111,10 +135,10 @@ export function PCShell({ children }: { children: React.ReactNode }) {
                   onProjectClick={handleMemberProjectClick}
                   onClose={() => setSelectedMember(null)}
                 />
-              ) : selectedProject ? (
+              ) : panelProject ? (
                 <ProjectPanel
-                  project={selectedProject}
-                  onClose={() => setSelectedProject(null)}
+                  project={panelProject}
+                  onClose={() => router.push('/projects', { scroll: false })}
                   onMemberClick={handleMemberClick}
                 />
               ) : null}

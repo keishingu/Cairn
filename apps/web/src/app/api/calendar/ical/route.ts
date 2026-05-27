@@ -26,7 +26,18 @@ interface ProjectRow {
   endDate: string | null
 }
 
-function buildIcal(projects: ProjectRow[], calendarName: string): string {
+function foldIcalLine(line: string): string {
+  if (line.length <= 75) return line
+  const result: string[] = [line.slice(0, 75)]
+  let pos = 75
+  while (pos < line.length) {
+    result.push(' ' + line.slice(pos, pos + 74))
+    pos += 74
+  }
+  return result.join('\r\n')
+}
+
+function buildIcal(projects: ProjectRow[], calendarName: string, baseUrl?: string): string {
   const lines: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -47,15 +58,19 @@ function buildIcal(projects: ProjectRow[], calendarName: string): string {
     endDate.setDate(endDate.getDate() + 1)
     const dtend = endDate.toISOString().slice(0, 10).replace(/-/g, '')
 
-    lines.push(
+    const vevent: string[] = [
       'BEGIN:VEVENT',
       `UID:project-${p.id}@cairn`,
       `DTSTART;VALUE=DATE:${dtstart}`,
       `DTEND;VALUE=DATE:${dtend}`,
       `SUMMARY:${escapeIcal(p.title)}`,
       `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
-      'END:VEVENT',
-    )
+    ]
+    if (baseUrl) {
+      vevent.push(foldIcalLine(`DESCRIPTION:${baseUrl}/projects/${p.id}`))
+    }
+    vevent.push('END:VEVENT')
+    lines.push(...vevent)
   }
 
   lines.push('END:VCALENDAR')
@@ -81,7 +96,7 @@ export async function GET(req: NextRequest) {
       startDate: p.startDate,
       endDate: p.endDate,
     }))
-    const ical = buildIcal(projects, scope === 'workspace' ? 'Cairn（全体）' : 'Cairn（自分）')
+    const ical = buildIcal(projects, scope === 'workspace' ? 'Cairn（全体）' : 'Cairn（自分）', req.nextUrl.origin)
     return new NextResponse(ical, {
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',
@@ -135,7 +150,7 @@ export async function GET(req: NextRequest) {
         ))
     }
 
-    const ical = buildIcal(rows, scope === 'workspace' ? 'Cairn（全体）' : 'Cairn（自分）')
+    const ical = buildIcal(rows, scope === 'workspace' ? 'Cairn（全体）' : 'Cairn（自分）', req.nextUrl.origin)
     return new NextResponse(ical, {
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',

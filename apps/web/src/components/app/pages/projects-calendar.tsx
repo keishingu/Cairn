@@ -7,7 +7,6 @@ import { STATUS, STATUS_COL } from '../data'
 import type { StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '@/components/app/mobile/header'
-import { ProjectPanel } from '../detail-panel/project-panel'
 
 // ─── Date helpers ──────────────────────────────────────────────────
 
@@ -618,8 +617,6 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const [month, setMonth] = React.useState(today.getMonth())
   const [selectedDate, setSelectedDate] = React.useState<Date>(today)
   const [calView, setCalView] = React.useState<CalView>('month')
-  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
-
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
     queryFn: () => fetch('/api/projects').then(r => r.json()),
@@ -722,11 +719,8 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             projects={projects}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
-            onProjectClick={setSelectedProject}
+            onProjectClick={openPanel}
           />
-        )}
-        {selectedProject && (
-          <ProjectPanel project={selectedProject} onClose={() => setSelectedProject(null)} isMobile />
         )}
         {calView === 'week' && (
           <>
