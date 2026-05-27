@@ -84,13 +84,18 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { statusName } = body as { statusName?: StatusKey }
-  if (!statusName) {
-    return NextResponse.json({ error: 'statusName is required' }, { status: 422 })
+  const { statusName, coverPhotoUrl } = body as { statusName?: StatusKey; coverPhotoUrl?: string | null }
+
+  if (statusName === undefined && coverPhotoUrl === undefined) {
+    return NextResponse.json({ error: 'statusName or coverPhotoUrl is required' }, { status: 422 })
   }
 
   if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ id, statusName } satisfies Partial<ProjectDto>)
+    return NextResponse.json({
+      id,
+      ...(statusName !== undefined && { statusName }),
+      ...(coverPhotoUrl !== undefined && { coverPhotoUrl }),
+    } satisfies Partial<ProjectDto>)
   }
 
   try {
@@ -102,23 +107,29 @@ export async function PATCH(
     const { ctx, error } = await getAuthContext()
     if (error) return error
 
-    const [status] = await db
-      .select({ id: projectStatuses.id })
-      .from(projectStatuses)
-      .where(
-        and(
-          eq(projectStatuses.workspaceId, ctx.workspaceId),
-          eq(projectStatuses.name, statusName),
-        ),
-      )
-
-    if (!status) {
-      return NextResponse.json({ error: 'Status not found' }, { status: 404 })
+    let statusId: string | undefined
+    if (statusName !== undefined) {
+      const [status] = await db
+        .select({ id: projectStatuses.id })
+        .from(projectStatuses)
+        .where(
+          and(
+            eq(projectStatuses.workspaceId, ctx.workspaceId),
+            eq(projectStatuses.name, statusName),
+          ),
+        )
+      if (!status) {
+        return NextResponse.json({ error: 'Status not found' }, { status: 404 })
+      }
+      statusId = status.id
     }
 
     const [updated] = await db
       .update(projects)
-      .set({ statusId: status.id })
+      .set({
+        ...(statusId !== undefined && { statusId }),
+        ...(coverPhotoUrl !== undefined && { coverPhotoUrl }),
+      })
       .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
       .returning({ id: projects.id })
 
@@ -126,7 +137,11 @@ export async function PATCH(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ id, statusName } satisfies Partial<ProjectDto>)
+    return NextResponse.json({
+      id,
+      ...(statusName !== undefined && { statusName }),
+      ...(coverPhotoUrl !== undefined && { coverPhotoUrl }),
+    } satisfies Partial<ProjectDto>)
   } catch (err) {
     console.error('[PATCH /api/projects/[id]]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

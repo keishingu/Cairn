@@ -306,6 +306,7 @@ const SettingsCoverPhotos = () => {
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = React.useState(false)
   const [uploadError, setUploadError] = React.useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null)
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -338,6 +339,7 @@ const SettingsCoverPhotos = () => {
     }).then(r => { if (!r.ok && r.status !== 204) throw new Error('削除に失敗しました') }),
     onSuccess: (_data, id) => {
       queryClient.setQueryData<WorkspaceCoverPhoto[]>(['workspace-cover-photos'], old => (old ?? []).filter(p => p.id !== id))
+      setConfirmDeleteId(null)
     },
   })
 
@@ -394,8 +396,7 @@ const SettingsCoverPhotos = () => {
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '0' }}
                 >
                   <button
-                    onClick={() => deletePhoto.mutate(photo.id)}
-                    disabled={deletePhoto.isPending}
+                    onClick={() => setConfirmDeleteId(photo.id)}
                     style={{ position: 'absolute', top: 6, right: 6, width: 26, height: 26, borderRadius: 6, border: 'none', background: 'rgba(0,0,0,0.5)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   >
                     <Icon name="trash" size={13}/>
@@ -409,6 +410,50 @@ const SettingsCoverPhotos = () => {
           </div>
         )}
       </section>
+
+      {/* Delete confirmation dialog */}
+      {confirmDeleteId !== null && (() => {
+        const photo = photos.find(p => p.id === confirmDeleteId)
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
+            onClick={e => { if (e.target === e.currentTarget) setConfirmDeleteId(null) }}
+          >
+            <div className="card" style={{ width: 360, borderRadius: 14, padding: 20, boxShadow: 'var(--shadow-xl)' }}>
+              {photo && (
+                <div style={{ borderRadius: 8, overflow: 'hidden', marginBottom: 16, aspectRatio: '16/9' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
+                </div>
+              )}
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>写真を削除しますか？</div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginBottom: 18, lineHeight: 1.6 }}>
+                「{photo?.name ?? ''}」を削除します。この写真をカバーに設定しているプロジェクトはデフォルトの写真に戻ります。
+              </div>
+              {deletePhoto.error && (
+                <div style={{ marginBottom: 12, padding: '7px 10px', borderRadius: 7, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 12 }}>
+                  {deletePhoto.error instanceof Error ? deletePhoto.error.message : '削除に失敗しました'}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => setConfirmDeleteId(null)}
+                  disabled={deletePhoto.isPending}
+                  style={{ flex: 1, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={() => deletePhoto.mutate(confirmDeleteId)}
+                  disabled={deletePhoto.isPending}
+                  style={{ flex: 1, height: 36, borderRadius: 8, border: 'none', background: 'var(--red)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: deletePhoto.isPending ? 'default' : 'pointer', fontFamily: 'inherit', opacity: deletePhoto.isPending ? 0.7 : 1 }}
+                >
+                  {deletePhoto.isPending ? '削除中…' : '削除する'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
