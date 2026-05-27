@@ -141,6 +141,7 @@ function MobileShellInner() {
     setSelectedMember(found ?? {
       userId,
       displayName,
+      avatarUrl: null,
       role: 'member',
       joinedAt: new Date().toISOString().slice(0, 10),
     })

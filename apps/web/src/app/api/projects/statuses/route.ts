@@ -23,6 +23,75 @@ function mockStatuses(): ProjectStatusDto[] {
   ]
 }
 
+export async function POST(req: Request) {
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const { name, color = '#6B7280', isFinal = false } = body as {
+    name?: string
+    color?: string
+    isFinal?: boolean
+  }
+
+  if (!name?.trim()) {
+    return NextResponse.json({ error: 'name is required' }, { status: 422 })
+  }
+
+  if (!process.env['DATABASE_URL']) {
+    const newId = crypto.randomUUID()
+    const existing = mockStatuses()
+    const sortOrder = String(existing.length + 1)
+    return NextResponse.json({
+      id: newId, name: name.trim(), color, sortOrder, isFinal,
+    } satisfies ProjectStatusDto, { status: 201 })
+  }
+
+  try {
+    const { db } = await import('@cairn/db')
+    const { projectStatuses } = await import('@cairn/db')
+    const { eq, max } = await import('drizzle-orm')
+    const { sql } = await import('drizzle-orm')
+
+    const [maxRow] = await db
+      .select({ m: max(sql<string>`${projectStatuses.sortOrder}::int`) })
+      .from(projectStatuses)
+      .where(eq(projectStatuses.workspaceId, ctx.workspaceId))
+
+    const nextOrder = String((Number(maxRow?.m ?? 0)) + 1)
+
+    const [inserted] = await db
+      .insert(projectStatuses)
+      .values({
+        workspaceId: ctx.workspaceId,
+        name: name.trim(),
+        color,
+        sortOrder: nextOrder,
+        isFinal,
+      })
+      .returning()
+
+    if (!inserted) throw new Error('Insert returned no rows')
+
+    return NextResponse.json({
+      id: inserted.id,
+      name: inserted.name,
+      color: inserted.color,
+      sortOrder: inserted.sortOrder,
+      isFinal: inserted.isFinal,
+    } satisfies ProjectStatusDto, { status: 201 })
+  } catch (err) {
+    console.error('[POST /api/projects/statuses]', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 export async function GET() {
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError

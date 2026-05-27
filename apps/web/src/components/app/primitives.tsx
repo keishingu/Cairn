@@ -97,23 +97,33 @@ function hashName(s: string) {
 
 interface AvatarProps {
   name?: string
+  url?: string | null
   size?: number
   ring?: boolean
   style?: React.CSSProperties
 }
 
-export const Avatar = ({ name = '', size = 28, ring = false, style }: AvatarProps) => {
+export const Avatar = ({ name = '', url, size = 28, ring = false, style }: AvatarProps) => {
   const initials = name ? name.replace(/\s/g, '').slice(0, 1).toUpperCase() : '?'
   const g = AV_GRADS[hashName(name) % AV_GRADS.length]!
+  const base: React.CSSProperties = {
+    width: size, height: size, borderRadius: '50%',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    boxShadow: ring ? '0 0 0 2px var(--card)' : 'none',
+    flexShrink: 0, overflow: 'hidden',
+    ...style,
+  }
+  if (url) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={url} alt={name} style={{ ...base, objectFit: 'cover' }}/>
+    )
+  }
   return (
     <div style={{
-      width: size, height: size, borderRadius: '50%',
+      ...base,
       background: `linear-gradient(135deg, ${g[0]}, ${g[1]})`,
       color: '#fff', fontWeight: 600, fontSize: size * 0.42,
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: ring ? '0 0 0 2px var(--card)' : 'none',
-      flexShrink: 0,
-      ...style,
     }}>{initials}</div>
   )
 }
