@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useChat } from 'ai/react'
-import type { ToolInvocation } from 'ai'
+import type { JSONValue, ToolInvocation } from 'ai'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, TypingDots } from '../primitives'
 import { MobileHeader } from '../mobile/header'
@@ -188,7 +188,13 @@ function ChatView({
   const { messages, input, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
-    initialMessages: initialMessages.map(m => ({ id: m.id, role: m.role as 'user' | 'assistant', content: m.content })),
+    initialMessages: initialMessages.map(m => ({
+      id: m.id,
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+      ...(m.annotations ? { annotations: m.annotations as JSONValue[] } : {}),
+      ...(m.toolInvocations ? { toolInvocations: m.toolInvocations as ToolInvocation[] } : {}),
+    })),
     onFinish: () => {
       void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
     },
