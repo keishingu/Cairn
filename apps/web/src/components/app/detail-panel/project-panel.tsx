@@ -186,11 +186,10 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
     <aside style={containerStyle}>
       {/* Hero image header — PC と Mobile で共通、コントロールのみ切り替え */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
-        <MountainPhoto
-          idx={project.coverPhotoIdx}
-          height={isMobile ? 130 : 180}
-          flat
-        />
+        {project.coverPhotoUrl
+          ? <img src={project.coverPhotoUrl} alt="" style={{ width: '100%', height: isMobile ? 130 : 180, objectFit: 'cover', display: 'block' }}/>
+          : <MountainPhoto idx={project.coverPhotoIdx} height={isMobile ? 130 : 180} flat/>
+        }
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, transparent 45%, rgba(0,0,0,0.65) 100%)' }}/>
 
         {/* Top controls */}

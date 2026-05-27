@@ -778,7 +778,10 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                   }}>
                     {/* Cover photo thumbnail */}
                     <div style={{ width: 88, flexShrink: 0, position: 'relative' }}>
-                      <MountainPhoto idx={p.coverPhotoIdx} height={88} flat radius={0}/>
+                      {p.coverPhotoUrl
+                        ? <img src={p.coverPhotoUrl} alt="" style={{ width: 88, height: 88, objectFit: 'cover', display: 'block' }}/>
+                        : <MountainPhoto idx={p.coverPhotoIdx} height={88} flat radius={0}/>
+                      }
                     </div>
                     {/* Content */}
                     <div style={{ flex: 1, minWidth: 0, padding: '12px 14px' }}>
@@ -808,7 +811,10 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)' }}
                 >
                   <div style={{ position: 'relative' }}>
-                    <MountainPhoto idx={p.coverPhotoIdx} height={120} flat/>
+                    {p.coverPhotoUrl
+                      ? <img src={p.coverPhotoUrl} alt="" style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }}/>
+                      : <MountainPhoto idx={p.coverPhotoIdx} height={120} flat/>
+                    }
                     <div style={{ position: 'absolute', top: 10, left: 10 }}>
                       <StatusChip s={p.statusName as StatusKey}/>
                     </div>
