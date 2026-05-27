@@ -82,6 +82,15 @@ function OpenPanelTrigger({ project }: { project?: ProjectDto }) {
   )
 }
 
+function ClosePanelTrigger() {
+  const { openPanel } = useAppShell()
+  return (
+    <button data-testid="close-btn" onClick={() => openPanel()}>
+      閉じる
+    </button>
+  )
+}
+
 function makeQC(projects: ProjectDto[] = [STUB_PROJECT]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   qc.setQueryData(['projects'], projects)
@@ -137,15 +146,15 @@ describe('PCShell — openPanel の URL 更新', () => {
   })
 
   it('openPanel() は /projects に router.push する', async () => {
-    renderShell('/projects')
+    mockPathname = '/projects'
     render(
       <QueryClientProvider client={makeQC()}>
         <PCShell>
-          <OpenPanelTrigger project={undefined} />
+          <ClosePanelTrigger />
         </PCShell>
       </QueryClientProvider>,
     )
-    await userEvent.click(screen.getAllByTestId('open-btn')[1]!)
+    await userEvent.click(screen.getByTestId('close-btn'))
     expect(mockPush).toHaveBeenCalledWith('/projects', { scroll: false })
   })
 })
