@@ -10,6 +10,7 @@ export const createProjectSchema = z.object({
   statusId: z.string().uuid().optional(),
   startDate: z.string().date().optional(),
   endDate: z.string().date().optional(),
+  coverPhotoUrl: z.string().url().optional(),
 })
 
 export const updateProjectStatusSchema = z.object({

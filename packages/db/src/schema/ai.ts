@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import { aiScopeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
@@ -48,5 +48,7 @@ export const aiMessages = pgTable('ai_messages', {
     .references(() => aiConversations.id, { onDelete: 'cascade' }),
   role: text('role').notNull(),
   content: text('content').notNull(),
+  annotations: jsonb('annotations').$type<unknown[]>(),
+  toolInvocations: jsonb('tool_invocations').$type<unknown[]>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })

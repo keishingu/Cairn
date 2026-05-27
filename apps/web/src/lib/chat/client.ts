@@ -234,6 +234,7 @@ export function useSendChannelMessage(
           content: input.content,
           senderId: currentUser.id,
           senderName: currentUser.displayName,
+          senderAvatarUrl: currentUser.avatarUrl,
           createdAt: new Date().toISOString(),
           reactions: [],
           attachments: input.optimisticAttachments ?? [],

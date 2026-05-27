@@ -180,7 +180,7 @@ const InvitePanel = ({
                     {selected && <Icon name="check" size={9} color="var(--on-accent)"/>}
                   </div>
 
-                  <Avatar name={m.displayName} size={32}/>
+                  <Avatar name={m.displayName} url={m.avatarUrl} size={32}/>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: selected ? 'var(--accent-text)' : 'var(--text)' }}>

@@ -54,11 +54,11 @@ function formatDateRange(start: string | null, end: string | null): string {
 
 function memberProjectToProjectDto(p: MemberProjectDto): ProjectDto {
   return {
-    id: p.projectId, title: p.title, statusName: p.statusName,
+    id: p.projectId, title: p.title, description: null, statusName: p.statusName,
     startDate: p.startDate, endDate: p.endDate, memberCount: p.memberCount,
     memberNames: [], taskCount: 0, completedTaskCount: 0,
     isOwner: p.role === 'leader', isMember: true, archived: false,
-    coverPhotoIdx: p.coverPhotoIdx,
+    coverPhotoIdx: p.coverPhotoIdx, coverPhotoUrl: null,
   }
 }
 
@@ -223,7 +223,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', flex: 1 }}>メンバー詳細</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <Avatar name={member.displayName} size={52}/>
+            <Avatar name={member.displayName} url={member.avatarUrl} size={52}/>
             <div>
               <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
                 {member.displayName}

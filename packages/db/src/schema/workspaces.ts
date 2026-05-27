@@ -4,8 +4,16 @@
 import { boolean, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { workspaceRoleEnum } from './enums'
 
+export interface WorkspaceCoverPhoto {
+  id: string
+  url: string
+  storagePath: string
+  name: string
+}
+
 export interface WorkspaceSettings {
   projectLabel?: string | null
+  coverPhotos?: WorkspaceCoverPhoto[]
 }
 
 export const profiles = pgTable('profiles', {
@@ -43,6 +51,7 @@ export const workspaceMembers = pgTable(
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
     role: workspaceRoleEnum('role').notNull().default('member'),
+    avatarUrl: text('avatar_url'),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.workspaceId, t.userId)],

@@ -59,6 +59,7 @@ vi.mock('@/components/navigation-progress', () => ({
 const STUB_PROJECT: ProjectDto = {
   id: 'proj-abc',
   title: 'テストプロジェクト',
+  description: null,
   statusName: 'doing',
   startDate: '2026-01-01',
   endDate: '2026-03-31',
@@ -70,6 +71,7 @@ const STUB_PROJECT: ProjectDto = {
   isMember: true,
   archived: false,
   coverPhotoIdx: 0,
+  coverPhotoUrl: null,
 }
 
 // context 経由で openPanel を呼ぶ用ヘルパーコンポーネント

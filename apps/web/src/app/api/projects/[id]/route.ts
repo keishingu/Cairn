@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import type { StatusKey } from '@/components/app/data'
-import type { ProjectDto } from '../route'
 
 export async function DELETE(
   _req: Request,
@@ -84,13 +82,23 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { statusName } = body as { statusName?: StatusKey }
-  if (!statusName) {
-    return NextResponse.json({ error: 'statusName is required' }, { status: 422 })
+  type PatchBody = {
+    title?: string
+    description?: string | null
+    startDate?: string | null
+    endDate?: string | null
+    statusName?: string
+    archived?: boolean
+    coverPhotoUrl?: string | null
+  }
+  const b = body as PatchBody
+  const keys = Object.keys(b as object)
+  if (keys.length === 0) {
+    return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
   }
 
   if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ id, statusName } satisfies Partial<ProjectDto>)
+    return NextResponse.json({ id, ...b })
   }
 
   try {
@@ -102,23 +110,43 @@ export async function PATCH(
     const { ctx, error } = await getAuthContext()
     if (error) return error
 
-    const [status] = await db
-      .select({ id: projectStatuses.id })
-      .from(projectStatuses)
-      .where(
-        and(
-          eq(projectStatuses.workspaceId, ctx.workspaceId),
-          eq(projectStatuses.name, statusName),
-        ),
-      )
+    const set: {
+      title?: string
+      description?: string | null
+      startDate?: string | null
+      endDate?: string | null
+      statusId?: string | null
+      archived?: boolean
+      coverPhotoUrl?: string | null
+      updatedAt: Date
+    } = { updatedAt: new Date() }
 
-    if (!status) {
-      return NextResponse.json({ error: 'Status not found' }, { status: 404 })
+    if (b.title !== undefined) set.title = b.title
+    if ('description' in (b as object)) set.description = b.description ?? null
+    if ('startDate' in (b as object)) set.startDate = b.startDate ?? null
+    if ('endDate' in (b as object)) set.endDate = b.endDate ?? null
+    if (b.archived !== undefined) set.archived = b.archived
+    if ('coverPhotoUrl' in (b as object)) set.coverPhotoUrl = b.coverPhotoUrl ?? null
+
+    if (b.statusName !== undefined) {
+      const [status] = await db
+        .select({ id: projectStatuses.id })
+        .from(projectStatuses)
+        .where(
+          and(
+            eq(projectStatuses.workspaceId, ctx.workspaceId),
+            eq(projectStatuses.name, b.statusName),
+          ),
+        )
+      if (!status) {
+        return NextResponse.json({ error: 'Status not found' }, { status: 404 })
+      }
+      set.statusId = status.id
     }
 
     const [updated] = await db
       .update(projects)
-      .set({ statusId: status.id })
+      .set(set)
       .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
       .returning({ id: projects.id })
 
@@ -126,7 +154,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ id, statusName } satisfies Partial<ProjectDto>)
+    return NextResponse.json({ id, ...b })
   } catch (err) {
     console.error('[PATCH /api/projects/[id]]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

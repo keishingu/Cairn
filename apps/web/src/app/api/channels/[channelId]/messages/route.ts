@@ -18,6 +18,7 @@ export interface MessageDto {
   content: string
   senderId: string
   senderName: string
+  senderAvatarUrl: string | null
   createdAt: string
   reactions: ReactionDto[]
   attachments: AttachmentDto[]
@@ -49,16 +50,24 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const { eq, isNull, inArray, and } = await import('drizzle-orm')
     const { desc } = await import('drizzle-orm')
 
+    const { workspaceMembers } = await import('@cairn/db')
+
     const rows = await db
       .select({
         id: messages.id,
         content: messages.content,
         senderId: messages.senderId,
         senderName: profiles.displayName,
+        senderGlobalAvatarUrl: profiles.avatarUrl,
+        senderWorkspaceAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: messages.createdAt,
       })
       .from(messages)
       .innerJoin(profiles, eq(messages.senderId, profiles.id))
+      .leftJoin(
+        workspaceMembers,
+        and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+      )
       .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
       .orderBy(desc(messages.createdAt))
       .limit(100)
@@ -128,6 +137,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       content: r.content,
       senderId: r.senderId,
       senderName: r.senderName,
+      senderAvatarUrl: r.senderWorkspaceAvatarUrl ?? r.senderGlobalAvatarUrl,
       createdAt: r.createdAt.toISOString(),
       reactions: reactionMap.get(r.id) ?? [],
       attachments: attachmentMap.get(r.id) ?? [],
@@ -163,6 +173,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       content: parsed.data.content,
       senderId: ctx.userId,
       senderName: '山田 太郎',
+      senderAvatarUrl: null,
       createdAt: new Date().toISOString(),
       reactions: [],
       attachments: [],
@@ -207,9 +218,20 @@ export async function POST(req: Request, { params }: RouteContext) {
       return msg
     })
 
+    const { workspaceMembers } = await import('@cairn/db')
+    const { and: and2 } = await import('drizzle-orm')
+
     const [profile] = await db
-      .select({ displayName: profiles.displayName })
+      .select({
+        displayName: profiles.displayName,
+        globalAvatarUrl: profiles.avatarUrl,
+        workspaceAvatarUrl: workspaceMembers.avatarUrl,
+      })
       .from(profiles)
+      .leftJoin(
+        workspaceMembers,
+        and2(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+      )
       .where(eq(profiles.id, inserted.senderId))
 
     const senderName = profile?.displayName ?? '不明'
@@ -232,6 +254,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       content: inserted.content,
       senderId: inserted.senderId,
       senderName,
+      senderAvatarUrl: profile?.workspaceAvatarUrl ?? profile?.globalAvatarUrl ?? null,
       createdAt: inserted.createdAt.toISOString(),
       reactions: [],
       attachments: [],

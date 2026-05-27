@@ -3,24 +3,21 @@
 import React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
-import { STATUS, type StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
-import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
+import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
 
-const STATUS_ORDER: StatusKey[] = ['plan', 'review', 'wait', 'doing', 'retro', 'done']
-
-async function fetchStatuses(): Promise<ProjectStatusDto[]> {
-  const res = await fetch('/api/projects/statuses')
-  if (!res.ok) throw new Error('fetch failed')
-  return res.json() as Promise<ProjectStatusDto[]>
+async function fetchWorkspaceCoverPhotos(): Promise<WorkspaceCoverPhoto[]> {
+  const res = await fetch('/api/workspaces/cover-photos')
+  if (!res.ok) return []
+  return res.json() as Promise<WorkspaceCoverPhoto[]>
 }
 
 async function createProject(body: {
   title: string
   description?: string | undefined
-  statusId?: string | undefined
   startDate?: string | undefined
   endDate?: string | undefined
+  coverPhotoUrl?: string | undefined
 }): Promise<ProjectDto> {
   const res = await fetch('/api/projects', {
     method: 'POST',
@@ -52,13 +49,16 @@ interface CreateProjectSheetProps {
 
 export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
-  const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
+  const { data: workspacePhotos = [] } = useQuery<WorkspaceCoverPhoto[]>({
+    queryKey: ['workspace-cover-photos'],
+    queryFn: fetchWorkspaceCoverPhotos,
+  })
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
-  const [status, setStatus] = React.useState<StatusKey>('plan')
   const [startDate, setStartDate] = React.useState('')
   const [endDate, setEndDate] = React.useState('')
+  const [selectedPhotoUrl, setSelectedPhotoUrl] = React.useState<string | null>(null)
   const [titleError, setTitleError] = React.useState('')
   const [endDateError, setEndDateError] = React.useState('')
 
@@ -95,13 +95,12 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
     }
     if (hasError) return
 
-    const selectedStatus = statuses.find(s => s.name === status)
     mutation.mutate({
       title: title.trim(),
       description: description.trim() || undefined,
-      statusId: selectedStatus?.id,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
+      coverPhotoUrl: selectedPhotoUrl ?? undefined,
     })
   }
 
@@ -188,31 +187,81 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
             />
           </div>
 
-          {/* Status */}
+          {/* Cover photo */}
           <div>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 8 }}>
-              ステータス <span style={{ color: 'var(--red)' }}>*</span>
-            </label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {STATUS_ORDER.map(s => {
-                const cfg = STATUS[s]
-                const selected = status === s
-                return (
-                  <button key={s} type="button" onClick={() => setStatus(s)} style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    padding: '7px 12px', borderRadius: 999,
-                    border: `1.5px solid ${selected ? cfg.dot : 'var(--border)'}`,
-                    background: selected ? cfg.bg : 'var(--card-2)',
-                    color: selected ? cfg.fg : 'var(--text-2)',
-                    fontSize: 12.5, fontWeight: selected ? 700 : 500,
-                    cursor: 'pointer', fontFamily: 'inherit',
-                  }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.dot, flexShrink: 0 }}/>
-                    {cfg.label}
-                  </button>
-                )
-              })}
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>カバー写真</label>
+              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>任意</span>
             </div>
+            {workspacePhotos.length === 0 ? (
+              <div style={{ padding: '14px 16px', borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)', textAlign: 'center' }}>
+                <Icon name="image" size={20} color="var(--text-4)"/>
+                <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-3)' }}>
+                  ワークスペース設定からカバー写真を追加すると<br/>ここで選べるようになります
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '2px 2px 8px', scrollbarWidth: 'none' }}>
+                  {/* 「なし」 option */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPhotoUrl(null)}
+                    style={{
+                      flexShrink: 0, width: 80, height: 56, borderRadius: 8,
+                      border: `2px solid ${selectedPhotoUrl === null ? 'var(--accent)' : 'var(--border)'}`,
+                      background: 'var(--card-2)', color: selectedPhotoUrl === null ? 'var(--accent-text)' : 'var(--text-3)',
+                      cursor: 'pointer', fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+                    }}
+                  >
+                    <Icon name="x" size={14}/>
+                    なし
+                  </button>
+
+                  {workspacePhotos.map(photo => {
+                    const selected = selectedPhotoUrl === photo.url
+                    return (
+                      <button
+                        key={photo.id}
+                        type="button"
+                        onClick={() => setSelectedPhotoUrl(photo.url)}
+                        style={{
+                          flexShrink: 0, width: 96, height: 64, padding: 0,
+                          borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
+                          border: `2px solid ${selected ? 'var(--accent)' : 'transparent'}`,
+                          outline: selected ? 'none' : '1px solid var(--border)',
+                          outlineOffset: -1,
+                          background: 'transparent', position: 'relative',
+                        }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
+                        {selected && (
+                          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 0%, rgba(16,185,129,0.45) 100%)', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', padding: 5 }}>
+                            <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--accent)', color: 'var(--on-accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Icon name="check" size={11} strokeWidth={3}/>
+                            </span>
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {selectedPhotoUrl && (
+                  <div style={{ marginTop: 4, position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={selectedPhotoUrl} alt="カバープレビュー" style={{ width: '100%', height: 80, objectFit: 'cover', display: 'block' }}/>
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.5) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px' }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {title || 'プロジェクト名'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {/* Dates */}
