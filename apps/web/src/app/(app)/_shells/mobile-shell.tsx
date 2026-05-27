@@ -5,12 +5,14 @@
 
 import React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { MobileNav } from '@/components/app/mobile/nav'
 import { MobileAI } from '@/components/app/mobile/ai'
 import { ProjectListView } from '@/components/app/pages/project-list'
 import { ProjectPanel } from '@/components/app/detail-panel/project-panel'
-import type { ProjectDto } from '@/app/api/projects/route'
+import { MemberDetailPanel } from '@/components/app/detail-panel/member-panel'
+import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
+import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { MobileSettings } from '@/components/app/mobile/settings'
 import { MobileHeader } from '@/components/app/mobile/header'
 import { PageChat } from '@/components/app/pages/chat'
@@ -23,6 +25,7 @@ import { NavigationProgress } from '@/components/navigation-progress'
 import { PageMembers } from '@/components/app/pages/members-page'
 import { PageFiles } from '@/components/app/pages/files'
 import { PageGallery } from '@/components/app/pages/gallery'
+import { useProjectPanel } from '@/hooks/use-project-panel'
 
 const MOBILE_STORAGE_KEY = 'cairn:projects_view_mobile'
 type ProjectsView = 'list' | 'calendar' | 'kanban'
@@ -110,18 +113,16 @@ function MobilePage({ page, projectsView, initialMemberId }: { page: string; pro
   )
 }
 
-async function fetchProjects(): Promise<ProjectDto[]> {
-  const res = await fetch('/api/projects')
-  if (!res.ok) throw new Error('fetch failed')
-  return res.json() as Promise<ProjectDto[]>
-}
-
 function MobileShellInner() {
   const pathname = usePathname()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const page = pageFromPathname(pathname)
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
+  const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
+
+  const { panelProject, openPanel } = useProjectPanel()
 
   const setProjectsView = React.useCallback((view: string) => {
     if (!isValidView(view)) return
@@ -129,38 +130,46 @@ function MobileShellInner() {
     setProjectsViewState(view)
   }, [])
 
-  // /projects/{id} 形式で open project ID を導出
-  const openProjectId = page === 'projects'
-    ? pathname.match(/^\/projects\/([^/?#]+)/)?.[1] ?? null
-    : null
+  // プロジェクトパネルが閉じたらメンバーパネルも閉じる
+  React.useEffect(() => {
+    if (!panelProject) setSelectedMember(null)
+  }, [panelProject])
 
-  // open project ID があるとき一覧をフェッチ（ProjectListView と同じキー → キャッシュ共有）
-  const { data: projects = [] } = useQuery<ProjectDto[]>({
-    queryKey: ['projects'],
-    queryFn: fetchProjects,
-    enabled: !!openProjectId,
-  })
+  const handleMemberClick = React.useCallback((userId: string, displayName: string) => {
+    const cached = queryClient.getQueryData<WorkspaceMemberDto[]>(['workspace-members'])
+    const found = cached?.find(m => m.userId === userId)
+    setSelectedMember(found ?? {
+      userId,
+      displayName,
+      role: 'member',
+      joinedAt: new Date().toISOString().slice(0, 10),
+    })
+  }, [queryClient])
 
-  const panelProject: ProjectDto | null = openProjectId
-    ? (projects.find(p => p.id === openProjectId) ?? null)
-    : null
-
-  // openPanel: router.push で URL を更新。シェルがパスから読み取ってパネルを描画する
-  const openPanel = React.useCallback((project?: ProjectDto) => {
-    if (project) {
-      router.push(`/projects/${project.id}`, { scroll: false })
-    }
+  const handleMemberProjectClick = React.useCallback((p: MemberProjectDto) => {
+    setSelectedMember(null)
+    router.push(`/projects/${p.projectId}`, { scroll: false })
   }, [router])
 
   return (
     <AppShellContext.Provider value={{ openPanel, openNotif: () => {}, projectsView, setProjectsView }}>
       <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden' }}>
         <NavigationProgress />
-        {/* ProjectPanel は position:fixed でフルスクリーン表示（/projects ページのみ） */}
+        {/* ProjectPanel・MemberDetailPanel は position:fixed でフルスクリーン表示 */}
         {panelProject && (
           <ProjectPanel
             project={panelProject}
             onClose={() => router.push('/projects', { scroll: false })}
+            onMemberClick={handleMemberClick}
+            isMobile
+          />
+        )}
+        {/* MemberDetailPanel は ProjectPanel の上に重なる（DOM 順で後ろ = 前面） */}
+        {selectedMember && (
+          <MemberDetailPanel
+            member={selectedMember}
+            onProjectClick={handleMemberProjectClick}
+            onClose={() => setSelectedMember(null)}
             isMobile
           />
         )}

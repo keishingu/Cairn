@@ -5,16 +5,16 @@
 
 import React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { Sidebar, type PageId } from '@/components/app/sidebar'
 import { ProjectPanel } from '@/components/app/detail-panel/project-panel'
-import type { ProjectDto } from '@/app/api/projects/route'
 import { MemberDetailPanel } from '@/components/app/detail-panel/member-panel'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { PageNotifications } from '@/components/app/pages/notifications'
 import { AppShellContext } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
+import { useProjectPanel } from '@/hooks/use-project-panel'
 
 const PC_STORAGE_KEY = 'cairn:projects_view_pc'
 type ProjectsView = 'list' | 'calendar' | 'kanban'
@@ -29,33 +29,15 @@ function loadStoredView(): ProjectsView {
   return isValidView(saved) ? saved : 'list'
 }
 
-async function fetchProjects(): Promise<ProjectDto[]> {
-  const res = await fetch('/api/projects')
-  if (!res.ok) throw new Error('fetch failed')
-  return res.json() as Promise<ProjectDto[]>
-}
-
 export function PCShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const queryClient = useQueryClient()
 
+  const { panelProject, openPanel } = useProjectPanel()
+
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
   const [notifOpen, setNotifOpen] = React.useState(false)
-
-  // URL から open project ID を導出（/projects/{id} 形式）
-  const openProjectId = pathname.match(/^\/projects\/([^/?#]+)/)?.[1] ?? null
-
-  // open project ID があるとき一覧をフェッチ（ProjectListView と同じキー → キャッシュ共有）
-  const { data: projects = [] } = useQuery<ProjectDto[]>({
-    queryKey: ['projects'],
-    queryFn: fetchProjects,
-    enabled: !!openProjectId,
-  })
-
-  const panelProject: ProjectDto | null = openProjectId
-    ? (projects.find(p => p.id === openProjectId) ?? null)
-    : null
 
   const handleMemberClick = React.useCallback((userId: string, displayName: string) => {
     const cached = queryClient.getQueryData<WorkspaceMemberDto[]>(['workspace-members'])
@@ -103,15 +85,6 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     else if (p === 'projects') { setProjectsView('list'); router.push('/projects') }
     else router.push(`/${p}`)
   }, [router, setProjectsView])
-
-  // openPanel: /projects/{id} 形式で URL を更新。router.push でルートを確実に変更する
-  const openPanel = React.useCallback((project?: ProjectDto) => {
-    if (project) {
-      router.push(`/projects/${project.id}`, { scroll: false })
-    } else {
-      router.push('/projects', { scroll: false })
-    }
-  }, [router])
 
   return (
     <AppShellContext.Provider value={{
