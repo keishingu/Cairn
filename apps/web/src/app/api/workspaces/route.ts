@@ -8,6 +8,7 @@ export interface WorkspaceDto {
   id: string
   name: string
   slug: string
+  description: string | null
   logoUrl: string | null
 }
 
@@ -20,6 +21,7 @@ export async function GET() {
       id: ctx.workspaceId,
       name: '山岳部',
       slug: 'alpine-club',
+      description: null,
       logoUrl: null,
     } satisfies WorkspaceDto)
   }
@@ -33,6 +35,7 @@ export async function GET() {
         id: workspaces.id,
         name: workspaces.name,
         slug: workspaces.slug,
+        description: workspaces.description,
         logoUrl: workspaces.logoUrl,
       })
       .from(workspaces)
@@ -58,11 +61,12 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const b = body as { name?: string; logoUrl?: string | null }
+  const b = body as { name?: string; description?: string | null; logoUrl?: string | null }
   const hasName = b.name !== undefined
+  const hasDescription = 'description' in (b as object)
   const hasLogo = 'logoUrl' in (b as object)
 
-  if (!hasName && !hasLogo) {
+  if (!hasName && !hasDescription && !hasLogo) {
     return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
   }
   if (hasName && !b.name?.trim()) {
@@ -77,8 +81,9 @@ export async function PATCH(req: Request) {
     const { db, workspaces } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
 
-    const set: { name?: string; logoUrl?: string | null; updatedAt: Date } = { updatedAt: new Date() }
+    const set: { name?: string; description?: string | null; logoUrl?: string | null; updatedAt: Date } = { updatedAt: new Date() }
     if (hasName) set.name = b.name!.trim()
+    if (hasDescription) set.description = b.description ?? null
     if (hasLogo) set.logoUrl = b.logoUrl ?? null
 
     const [updated] = await db

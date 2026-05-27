@@ -85,9 +85,10 @@ interface PendingAttachment {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = ({ messageId, senderName, createdAt, content, reactions, attachments, onReact, compact }: {
+const ChatMessage = ({ messageId, senderName, senderAvatarUrl, createdAt, content, reactions, attachments, onReact, compact }: {
   messageId: string
   senderName: string
+  senderAvatarUrl?: string | null
   createdAt: string
   content: string
   reactions: Array<{ emoji: string; count: number; mine: boolean }>
@@ -107,7 +108,7 @@ const ChatMessage = ({ messageId, senderName, createdAt, content, reactions, att
       onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
     >
-      <Avatar name={senderName} size={avatarSize}/>
+      <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
           <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
@@ -500,6 +501,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
               key={m.id}
               messageId={m.id}
               senderName={m.senderName}
+              senderAvatarUrl={m.senderAvatarUrl}
               createdAt={m.createdAt}
               content={m.content}
               reactions={m.reactions}

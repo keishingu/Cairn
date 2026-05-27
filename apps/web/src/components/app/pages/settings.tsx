@@ -95,7 +95,10 @@ const SettingsAccount = () => {
         throw new Error(d.error ?? 'アップロードに失敗しました')
       }
     },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['me'] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['me'] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+    },
   })
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -548,11 +551,14 @@ const SettingsWorkspaceGeneral = () => {
 
   const [wsName, setWsName] = React.useState('')
   const [nameSaved, setNameSaved] = React.useState(false)
+  const [wsDesc, setWsDesc] = React.useState('')
+  const [descSaved, setDescSaved] = React.useState(false)
   const [label, setLabel] = React.useState('')
   const [labelSaved, setLabelSaved] = React.useState(false)
   const logoInputRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => { if (ws?.name) setWsName(ws.name) }, [ws?.name])
+  React.useEffect(() => { if (ws !== undefined) setWsDesc(ws.description ?? '') }, [ws?.description])
   React.useEffect(() => { if (wsSettings !== undefined) setLabel(wsSettings.projectLabel ?? '') }, [wsSettings])
 
   const nameMutation = useMutation({
@@ -571,6 +577,25 @@ const SettingsWorkspaceGeneral = () => {
       void queryClient.invalidateQueries({ queryKey: ['workspace'] })
       setNameSaved(true)
       setTimeout(() => setNameSaved(false), 2000)
+    },
+  })
+
+  const descMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/workspaces', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: wsDesc || null }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(d.error ?? '更新に失敗しました')
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace'] })
+      setDescSaved(true)
+      setTimeout(() => setDescSaved(false), 2000)
     },
   })
 
@@ -679,8 +704,38 @@ const SettingsWorkspaceGeneral = () => {
             </div>
           </div>
           {nameMutation.isError && (
-            <div style={{ padding: '6px 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
+            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
               ⚠ {(nameMutation.error as Error).message}
+            </div>
+          )}
+
+          {/* 説明 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: '1px solid var(--divider)' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>説明</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>組織名・所属など。ナビゲーションのワークスペース名の下に表示されます。</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                value={wsDesc}
+                onChange={e => setWsDesc(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && descMutation.mutate()}
+                placeholder="例: 東京工科大学"
+                style={{ ...inputStyle, width: 180 }}
+              />
+              <button
+                onClick={() => descMutation.mutate()}
+                disabled={descMutation.isPending || wsDesc === (ws?.description ?? '')}
+                className="btn btn-primary"
+                style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0 }}
+              >
+                {descSaved ? '保存済み' : descMutation.isPending ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+          {descMutation.isError && (
+            <div style={{ padding: '6px 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
+              ⚠ {(descMutation.error as Error).message}
             </div>
           )}
         </div>
