@@ -3,38 +3,8 @@
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
-import { FileTypeIcon } from '../../file-type-icon'
+import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
-
-function googleDocsType(url: string): 'doc' | 'sheet' | 'slide' | 'drive' | null {
-  if (url.includes('docs.google.com/document/')) return 'doc'
-  if (url.includes('docs.google.com/spreadsheets/')) return 'sheet'
-  if (url.includes('docs.google.com/presentation/')) return 'slide'
-  if (url.includes('drive.google.com/file/')) return 'drive'
-  return null
-}
-
-const GDOC_CONFIG = {
-  doc:   { label: 'GDoc',  bg: 'var(--blue-soft)',    color: 'var(--blue-text)' },
-  sheet: { label: 'GSht',  bg: 'var(--emerald-soft)', color: 'var(--emerald-text)' },
-  slide: { label: 'GSld',  bg: 'var(--violet-soft)',  color: 'var(--violet-text)' },
-  drive: { label: 'GDrv',  bg: 'var(--card-2)',       color: 'var(--text-3)' },
-} as const
-
-function GoogleDocsIcon({ url }: { url: string }) {
-  const type = googleDocsType(url)
-  const cfg = type ? GDOC_CONFIG[type] : { label: 'LINK', bg: 'var(--card-2)', color: 'var(--text-3)' }
-  return (
-    <div style={{
-      width: 32, height: 36, borderRadius: 4, flexShrink: 0,
-      background: cfg.bg, color: cfg.color,
-      fontSize: 9, fontWeight: 700,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      {cfg.label}
-    </div>
-  )
-}
 
 function IndexingBadge({ status }: { status: string | undefined }) {
   if (!status || status === 'indexed' || status === 'skipped') return null
@@ -53,23 +23,6 @@ function IndexingBadge({ status }: { status: string | undefined }) {
     )
   }
   return null
-}
-
-function IndexDot({ status }: { status: string | undefined }) {
-  if (!status) return null
-  const bg =
-    status === 'indexed' ? '#22c55e' :
-    status === 'pending' ? '#f59e0b' :
-    status === 'failed'  ? 'var(--red)' : null
-  if (!bg) return null
-  return (
-    <span style={{
-      position: 'absolute', bottom: -1, right: -2,
-      width: 7, height: 7, borderRadius: '50%',
-      background: bg, border: '1.5px solid var(--bg)',
-      flexShrink: 0,
-    }}/>
-  )
 }
 
 function formatFileSize(bytes: number | null): string {
