@@ -189,12 +189,31 @@ export const indexExternalLink = inngest.createFunction(
 
       const rawText = await res.text()
 
-      // Content-Disposition からドキュメントタイトルを取得
+      // 1st try: Content-Disposition ヘッダーからタイトルを取得
       const cd = res.headers.get('content-disposition') ?? ''
-      const titleMatch = /filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i.exec(cd)
-      const title = titleMatch
-        ? decodeURIComponent(titleMatch[1]!.trim()).replace(/\.txt$/i, '')
+      const cdMatch = /filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i.exec(cd)
+      let title = cdMatch
+        ? decodeURIComponent(cdMatch[1]!.trim()).replace(/\.txt$/i, '')
         : null
+
+      // 2nd try: HTML export の <title> タグからタイトルを取得
+      if (!title) {
+        try {
+          const htmlRes = await fetch(
+            `https://docs.google.com/document/d/${docId}/export?format=html`,
+            { redirect: 'follow' },
+          )
+          if (htmlRes.ok) {
+            const html = await htmlRes.text()
+            const htmlMatch = /<title>([^<]+)<\/title>/i.exec(html)
+            if (htmlMatch) {
+              title = htmlMatch[1]!.trim()
+            }
+          }
+        } catch {
+          // タイトル取得失敗は無視（デフォルト名のまま）
+        }
+      }
 
       return { ok: true as const, text: rawText, title }
     })
