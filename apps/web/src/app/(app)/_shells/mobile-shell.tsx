@@ -7,7 +7,7 @@ import React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { MobileNav } from '@/components/app/mobile/nav'
-import { MobileAI } from '@/components/app/mobile/ai'
+import { PageAI } from '@/components/app/pages/ai'
 import { ProjectListView } from '@/components/app/pages/project-list'
 import { ProjectPanel } from '@/components/app/detail-panel/project-panel'
 import { MemberDetailPanel } from '@/components/app/detail-panel/member-panel'
@@ -90,7 +90,7 @@ function MobilePage({ page, projectsView, initialMemberId }: { page: string; pro
       <PageTasks isMobile />
     </div>
   )
-  if (page === 'ai') return <MobileAI />
+  if (page === 'ai') return <PageAI isMobile />
   if (page === 'settings') return <MobileSettings />
   if (page === 'members') return <PageMembers isMobile {...(initialMemberId ? { initialUserId: initialMemberId } : {})} />
   if (page === 'files') return (
