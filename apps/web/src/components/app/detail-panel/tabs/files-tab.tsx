@@ -55,6 +55,23 @@ function IndexingBadge({ status }: { status: string | undefined }) {
   return null
 }
 
+function IndexDot({ status }: { status: string | undefined }) {
+  if (!status) return null
+  const bg =
+    status === 'indexed' ? '#22c55e' :
+    status === 'pending' ? '#f59e0b' :
+    status === 'failed'  ? 'var(--red)' : null
+  if (!bg) return null
+  return (
+    <span style={{
+      position: 'absolute', bottom: -1, right: -2,
+      width: 7, height: 7, borderRadius: '50%',
+      background: bg, border: '1.5px solid var(--bg)',
+      flexShrink: 0,
+    }}/>
+  )
+}
+
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return ''
   if (bytes < 1024) return `${bytes}B`
@@ -148,10 +165,13 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
               rel="noopener noreferrer"
               style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, textDecoration: 'none', cursor: 'pointer' }}
             >
-              {isLink && f.externalUrl
-                ? <GoogleDocsIcon url={f.externalUrl}/>
-                : <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName} fileId={f.id}/>
-              }
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                {isLink && f.externalUrl
+                  ? <GoogleDocsIcon url={f.externalUrl}/>
+                  : <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName} fileId={f.id}/>
+                }
+                <IndexDot status={f.indexingStatus}/>
+              </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {f.fileName}
