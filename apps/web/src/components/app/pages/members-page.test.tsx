@@ -44,6 +44,7 @@ vi.mock('@/components/app/mobile/header', () => ({
 const STUB_MEMBER: WorkspaceMemberDto = {
   userId: 'user-1',
   displayName: '山田 太郎',
+  avatarUrl: null,
   role: 'member',
   joinedAt: '2026-01-01',
 }

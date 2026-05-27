@@ -51,6 +51,7 @@ export const workspaceMembers = pgTable(
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
     role: workspaceRoleEnum('role').notNull().default('member'),
+    avatarUrl: text('avatar_url'),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.workspaceId, t.userId)],

@@ -59,6 +59,7 @@ vi.mock('@/components/navigation-progress', () => ({
 const STUB_PROJECT: ProjectDto = {
   id: 'proj-abc',
   title: 'テストプロジェクト',
+  description: null,
   statusName: 'doing',
   startDate: '2026-01-01',
   endDate: '2026-03-31',
