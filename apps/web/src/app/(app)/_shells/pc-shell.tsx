@@ -8,13 +8,13 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { Sidebar, type PageId } from '@/components/app/sidebar'
 import { ProjectPanel } from '@/components/app/detail-panel/project-panel'
-import type { ProjectDto } from '@/app/api/projects/route'
 import { MemberDetailPanel } from '@/components/app/detail-panel/member-panel'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { PageNotifications } from '@/components/app/pages/notifications'
 import { AppShellContext } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
+import { useProjectPanel } from '@/hooks/use-project-panel'
 
 const PC_STORAGE_KEY = 'cairn:projects_view_pc'
 type ProjectsView = 'list' | 'calendar' | 'kanban'
@@ -33,7 +33,9 @@ export function PCShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
+
+  const { panelProject, openPanel } = useProjectPanel()
+
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
   const [notifOpen, setNotifOpen] = React.useState(false)
 
@@ -50,14 +52,9 @@ export function PCShell({ children }: { children: React.ReactNode }) {
 
   const handleMemberProjectClick = React.useCallback((p: MemberProjectDto) => {
     setSelectedMember(null)
-    setSelectedProject({
-      id: p.projectId, title: p.title, statusName: p.statusName,
-      startDate: p.startDate, endDate: p.endDate, memberCount: p.memberCount,
-      memberNames: [], taskCount: 0, completedTaskCount: 0,
-      isOwner: p.role === 'leader', isMember: true, archived: false,
-      coverPhotoIdx: p.coverPhotoIdx, coverPhotoUrl: null,
-    })
-  }, [])
+    router.push(`/projects/${p.projectId}`, { scroll: false })
+  }, [router])
+
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
 
   const setProjectsView = React.useCallback((view: string) => {
@@ -76,11 +73,11 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     return base as PageId
   }, [pathname, projectsView])
 
+  const pathnameSection = pathname.split('/')[1] ?? ''
   React.useEffect(() => {
-    setSelectedProject(null)
     setSelectedMember(null)
     setNotifOpen(false)
-  }, [pathname])
+  }, [pathnameSection])
 
   const navigate = React.useCallback((p: PageId) => {
     if (p === 'calendar') { setProjectsView('calendar'); router.push('/projects') }
@@ -91,7 +88,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
 
   return (
     <AppShellContext.Provider value={{
-      openPanel: (project?: ProjectDto) => setSelectedProject(project ?? null),
+      openPanel,
       openNotif: () => setNotifOpen(true),
       projectsView,
       setProjectsView,
@@ -111,10 +108,10 @@ export function PCShell({ children }: { children: React.ReactNode }) {
                   onProjectClick={handleMemberProjectClick}
                   onClose={() => setSelectedMember(null)}
                 />
-              ) : selectedProject ? (
+              ) : panelProject ? (
                 <ProjectPanel
-                  project={selectedProject}
-                  onClose={() => setSelectedProject(null)}
+                  project={panelProject}
+                  onClose={() => router.push('/projects', { scroll: false })}
                   onMemberClick={handleMemberClick}
                 />
               ) : null}

@@ -56,3 +56,55 @@ export function FileTypeIcon({
     </div>
   )
 }
+
+// ─── Google Docs ──────────────────────────────────────────────────
+
+const GDOC_CONFIG = {
+  doc:   { label: 'GDoc', bg: 'var(--blue-soft)',    color: 'var(--blue-text)' },
+  sheet: { label: 'GSht', bg: 'var(--emerald-soft)', color: 'var(--emerald-text)' },
+  slide: { label: 'GSld', bg: 'var(--violet-soft)',  color: 'var(--violet-text)' },
+  drive: { label: 'GDrv', bg: 'var(--card-2)',       color: 'var(--text-3)' },
+} as const
+
+export function googleDocsType(url: string): 'doc' | 'sheet' | 'slide' | 'drive' | null {
+  if (url.includes('docs.google.com/document/')) return 'doc'
+  if (url.includes('docs.google.com/spreadsheets/')) return 'sheet'
+  if (url.includes('docs.google.com/presentation/')) return 'slide'
+  if (url.includes('drive.google.com/file/')) return 'drive'
+  return null
+}
+
+export function GoogleDocsIcon({ url, width = 32, height = 36 }: { url: string; width?: number; height?: number }) {
+  const type = googleDocsType(url)
+  const cfg = type ? GDOC_CONFIG[type] : { label: 'LINK', bg: 'var(--card-2)', color: 'var(--text-3)' }
+  return (
+    <div style={{
+      width, height, borderRadius: 4, flexShrink: 0,
+      background: cfg.bg, color: cfg.color,
+      fontSize: 9, fontWeight: 700,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      {cfg.label}
+    </div>
+  )
+}
+
+// ─── IndexDot ─────────────────────────────────────────────────────
+
+export function IndexDot({ status }: { status: string | undefined }) {
+  if (!status) return null
+  const bg =
+    status === 'indexed' ? '#22c55e' :
+    status === 'pending' ? '#f59e0b' :
+    status === 'failed'  ? 'var(--red)' : null
+  if (!bg) return null
+  return (
+    <span style={{
+      position: 'absolute', bottom: -1, right: -2,
+      width: 7, height: 7, borderRadius: '50%',
+      background: bg, border: '1.5px solid var(--bg)',
+      flexShrink: 0,
+    }}/>
+  )
+}
+
