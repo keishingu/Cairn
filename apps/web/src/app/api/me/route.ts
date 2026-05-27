@@ -35,21 +35,35 @@ export async function GET() {
     const { data: { session } } = await supabase.auth.getSession()
     const email = session?.user.email ?? null
 
-    const [profile] = await db
+    const { workspaceMembers } = await import('@cairn/db')
+    const { and } = await import('drizzle-orm')
+
+    const [row] = await db
       .select({
         id: profiles.id,
         displayName: profiles.displayName,
-        avatarUrl: profiles.avatarUrl,
+        globalAvatarUrl: profiles.avatarUrl,
+        workspaceAvatarUrl: workspaceMembers.avatarUrl,
         bio: profiles.bio,
       })
       .from(profiles)
+      .leftJoin(
+        workspaceMembers,
+        and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+      )
       .where(eq(profiles.id, ctx.userId))
 
-    if (!profile) {
+    if (!row) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ ...profile, email } satisfies CurrentUserDto)
+    return NextResponse.json({
+      id: row.id,
+      displayName: row.displayName,
+      avatarUrl: row.workspaceAvatarUrl ?? row.globalAvatarUrl,
+      email,
+      bio: row.bio,
+    } satisfies CurrentUserDto)
   } catch (err) {
     console.error('[/api/me] DB query failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

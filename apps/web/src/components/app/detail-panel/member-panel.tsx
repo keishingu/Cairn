@@ -223,7 +223,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', flex: 1 }}>メンバー詳細</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <Avatar name={member.displayName} size={52}/>
+            <Avatar name={member.displayName} url={member.avatarUrl} size={52}/>
             <div>
               <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
                 {member.displayName}

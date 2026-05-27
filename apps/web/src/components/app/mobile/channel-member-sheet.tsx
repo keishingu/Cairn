@@ -94,7 +94,7 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
                 padding: '10px 20px',
                 borderBottom: '1px solid var(--divider)',
               }}>
-                <Avatar name={m.displayName} size={38}/>
+                <Avatar name={m.displayName} url={m.avatarUrl} size={38}/>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {m.displayName}

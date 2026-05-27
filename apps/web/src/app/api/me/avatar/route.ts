@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   }
 
   const ext = file.name.split('.').pop() ?? 'jpg'
-  const storagePath = `${ctx.userId}.${ext}`
+  const storagePath = `${ctx.workspaceId}/${ctx.userId}.${ext}`
 
   const { createServiceRoleClient } = await import('@/lib/supabase/service')
   const supabase = createServiceRoleClient()
@@ -53,13 +53,13 @@ export async function POST(req: Request) {
   const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(storagePath)
 
   try {
-    const { db, profiles } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { db, workspaceMembers } = await import('@cairn/db')
+    const { eq, and } = await import('drizzle-orm')
 
     await db
-      .update(profiles)
-      .set({ avatarUrl: publicUrl, updatedAt: new Date() })
-      .where(eq(profiles.id, ctx.userId))
+      .update(workspaceMembers)
+      .set({ avatarUrl: publicUrl })
+      .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
 
     return NextResponse.json({ avatarUrl: publicUrl })
   } catch (err) {

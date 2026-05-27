@@ -72,7 +72,7 @@ const MemberCard = ({ member, projectCount, selected, onClick }: MemberCardProps
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-        <Avatar name={member.displayName} size={44} />
+        <Avatar name={member.displayName} url={member.avatarUrl} size={44} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{member.displayName}</div>
           <span style={{ fontSize: 10.5, fontWeight: 700, color: role.c, background: role.bg, padding: '2px 8px', borderRadius: 4 }}>
