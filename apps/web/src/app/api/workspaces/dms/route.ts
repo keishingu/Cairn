@@ -9,6 +9,8 @@ export interface DmChannelDto {
   id: string
   participantId: string
   participantName: string
+  unreadCount: number
+  unreadMentionCount: number
 }
 
 const createDmSchema = z.object({ targetUserId: z.string().uuid() })
@@ -52,7 +54,35 @@ export async function GET() {
       )
       .orderBy(profiles.displayName)
 
-    return NextResponse.json(rows satisfies DmChannelDto[])
+    const channelIds = rows.map(r => r.id)
+    if (channelIds.length > 0) {
+      const { channelReadStates, messages } = await import('@cairn/db')
+      const { isNull, gt, count, sql: sql2, inArray } = await import('drizzle-orm')
+
+      const [unreadRows, mentionRows] = await Promise.all([
+        db
+          .select({ channelId: messages.channelId, cnt: count() })
+          .from(messages)
+          .leftJoin(channelReadStates, and(eq(channelReadStates.channelId, messages.channelId), eq(channelReadStates.userId, ctx.userId)))
+          .where(and(inArray(messages.channelId, channelIds), isNull(messages.deletedAt), gt(messages.createdAt, sql2`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
+          .groupBy(messages.channelId),
+        db
+          .select({ channelId: channelReadStates.channelId, cnt: channelReadStates.unreadMentionCount })
+          .from(channelReadStates)
+          .where(and(eq(channelReadStates.userId, ctx.userId), inArray(channelReadStates.channelId, channelIds))),
+      ])
+
+      const unreadMap = new Map(unreadRows.map(r => [r.channelId, r.cnt]))
+      const mentionMap = new Map(mentionRows.map(r => [r.channelId, r.cnt]))
+
+      return NextResponse.json(rows.map(r => ({
+        ...r,
+        unreadCount: unreadMap.get(r.id) ?? 0,
+        unreadMentionCount: mentionMap.get(r.id) ?? 0,
+      })) satisfies DmChannelDto[])
+    }
+
+    return NextResponse.json(rows.map(r => ({ ...r, unreadCount: 0, unreadMentionCount: 0 })) satisfies DmChannelDto[])
   } catch (err) {
     console.error('[/api/workspaces/dms GET] failed:', err)
     return NextResponse.json([] satisfies DmChannelDto[])
