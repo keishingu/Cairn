@@ -52,12 +52,24 @@ export const onMessageCreated = inngest.createFunction(
       return { mentionNotifications: 0, fileNotifications: 0, dm: true }
     }
 
-    if (members.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
-
-    // @メンション通知
+    // @メンション通知（チャンネル未参加でもワークスペースメンバーなら通知）
     const mentionedIds = extractMentionedUserIds(content)
+
+    if (members.length === 0 && mentionedIds.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
     const mentionedMembers = mentionedIds.length > 0
-      ? members.filter(m => mentionedIds.includes(m.userId))
+      ? await step.run('fetch-mentioned-members', async () => {
+          const { db, workspaceMembers, profiles } = await import('@cairn/db')
+          const { eq, inArray, and, ne } = await import('drizzle-orm')
+          return db
+            .select({ userId: workspaceMembers.userId, displayName: profiles.displayName })
+            .from(workspaceMembers)
+            .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
+            .where(and(
+              eq(workspaceMembers.workspaceId, workspaceId),
+              inArray(workspaceMembers.userId, mentionedIds),
+              ne(workspaceMembers.userId, senderId),
+            ))
+        })
       : []
 
     let mentionNotifications = 0
