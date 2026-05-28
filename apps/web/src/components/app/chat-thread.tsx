@@ -23,7 +23,8 @@ import { isImeConfirmingEnter } from '@/lib/chat/ime'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 const URL_RE = /https?:\/\/[^\s<>"']+/g
-const MENTION_RE = /@[^\s@\n、。！？]{1,40}/g
+const STRUCTURED_MENTION_RE = /<@[^|>\s]+\|[^>\n]+>/g
+const PLAIN_MENTION_RE = /@[^\s@\n、。！？]{1,40}/g
 
 function extractGoogleDocsUrls(text: string): string[] {
   const matches = text.match(GOOGLE_DOCS_URL_RE) ?? []
@@ -34,11 +35,19 @@ function renderTextWithLinks(text: string): React.ReactNode {
   const nodes: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
-  const re = new RegExp(`${URL_RE.source}|${MENTION_RE.source}`, 'g')
+  const re = new RegExp(`${STRUCTURED_MENTION_RE.source}|${URL_RE.source}|${PLAIN_MENTION_RE.source}`, 'g')
   while ((match = re.exec(text)) !== null) {
     if (match.index > last) nodes.push(text.slice(last, match.index))
-    const token = match[0]
-    if (token.startsWith('@')) {
+    const token = match[0]!
+    if (token.startsWith('<@')) {
+      const pipeIdx = token.indexOf('|')
+      const displayName = token.slice(pipeIdx + 1, -1)
+      nodes.push(
+        <span key={match.index} style={{ display: 'inline', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>
+          @{displayName}
+        </span>,
+      )
+    } else if (token.startsWith('@')) {
       nodes.push(
         <span key={match.index} style={{ display: 'inline', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>
           {token}
@@ -196,7 +205,7 @@ const ChatMessage = ({ messageId, senderName, senderAvatarUrl, createdAt, conten
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onImageSelect, onRemoveAttachment, isUploading, mentionMembers }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onImageSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -212,6 +221,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
   mentionMembers?: { userId: string; displayName: string }[]
+  onMentionInserted?: (userId: string, displayName: string) => void
 }) => {
   const [showPicker, setShowPicker] = React.useState(false)
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
@@ -239,11 +249,12 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     else { setMentionQuery(null); setMentionAnchorPos(null) }
   }
 
-  const insertMention = (displayName: string) => {
+  const insertMention = (userId: string, displayName: string) => {
     if (mentionAnchorPos === null) return
     const cursor = (textareaRef.current ?? compactInputRef.current)?.selectionStart ?? draft.length
     const newDraft = `${draft.slice(0, mentionAnchorPos)}@${displayName} ${draft.slice(cursor)}`
     setDraft(newDraft)
+    onMentionInserted?.(userId, displayName)
     setMentionQuery(null)
     setMentionAnchorPos(null)
     const targetPos = mentionAnchorPos + displayName.length + 2
@@ -256,7 +267,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const handleKeyDownWithMention = (e: React.KeyboardEvent, fallback: () => void) => {
     if (mentionCandidates.length > 0) {
       if (e.key === 'Escape') { e.preventDefault(); setMentionQuery(null); return }
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); insertMention(mentionCandidates[0]!.displayName); return }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); insertMention(mentionCandidates[0]!.userId, mentionCandidates[0]!.displayName); return }
     }
     fallback()
   }
@@ -272,7 +283,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       <div style={{ ...style, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
         {mentionCandidates.map(m => (
           <button key={m.userId}
-            onMouseDown={e => { e.preventDefault(); insertMention(m.displayName) }}
+            onMouseDown={e => { e.preventDefault(); insertMention(m.userId, m.displayName) }}
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
@@ -463,6 +474,28 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
+  // displayName → userId map for structured mention serialization
+  const mentionMapRef = React.useRef<Map<string, string>>(new Map())
+
+  const onMentionInserted = React.useCallback((userId: string, displayName: string) => {
+    mentionMapRef.current.set(displayName, userId)
+  }, [])
+
+  const transformContent = (text: string): string => {
+    const entries = [...mentionMapRef.current.entries()]
+    if (entries.length === 0) return text
+    // Longest name first to avoid partial replacements
+    entries.sort((a, b) => b[0].length - a[0].length)
+    let result = text
+    for (const [displayName, userId] of entries) {
+      const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      result = result.replace(
+        new RegExp(`@${escaped}(?=[\\s、。！？]|$)`, 'g'),
+        `<@${userId}|${displayName}>`,
+      )
+    }
+    return result
+  }
 
   const { data: currentUser } = useCurrentUser()
   const { data: messages = [], isLoading, isError } = useChannelMessages(channelId)
@@ -540,8 +573,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
   }
 
   const send = () => {
-    const text = draft.trim()
-    if ((!text && pendingAttachments.length === 0) || !channelId) return
+    const rawText = draft.trim()
+    if ((!rawText && pendingAttachments.length === 0) || !channelId) return
+    const text = transformContent(rawText)
+    mentionMapRef.current.clear()
 
     // Google Docs URL を検出してファイルタブに自動登録
     if (text) registerGoogleDocsLinks(text)
@@ -617,6 +652,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
         mentionMembers={mentionMembers}
+        onMentionInserted={onMentionInserted}
         {...(compact ? { compact: true } : {})}
       />
     </>

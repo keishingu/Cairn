@@ -6,12 +6,10 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendWebPushToUser } from '@/lib/push/send'
 
-// メッセージ内の @displayName メンションを検出する。
-// 例: "@山田 太郎" → userId にマッピングして通知を生成する。
-// NOTE: メンション形式が確定したら正規表現を更新すること。
-function extractMentionedNames(content: string): string[] {
-  const matches = content.matchAll(/@([^\s@][^@\n]{0,30}?)(?=[\s、。！？]|$)/g)
-  return [...matches].map(m => m[1]!.trim())
+// <@userId|displayName> 形式の構造化メンションから userId を抽出する
+function extractMentionedUserIds(content: string): string[] {
+  const matches = content.matchAll(/<@([^|>\s]+)\|[^>\n]+>/g)
+  return [...new Set([...matches].map(m => m[1]!))]
 }
 
 export const onMessageCreated = inngest.createFunction(
@@ -57,9 +55,9 @@ export const onMessageCreated = inngest.createFunction(
     if (members.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
 
     // @メンション通知
-    const mentionedNames = extractMentionedNames(content)
-    const mentionedMembers = mentionedNames.length > 0
-      ? members.filter(m => mentionedNames.some(name => m.displayName.includes(name)))
+    const mentionedIds = extractMentionedUserIds(content)
+    const mentionedMembers = mentionedIds.length > 0
+      ? members.filter(m => mentionedIds.includes(m.userId))
       : []
 
     let mentionNotifications = 0
