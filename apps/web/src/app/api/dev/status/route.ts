@@ -66,13 +66,43 @@ async function checkInngest(): Promise<ServiceStatus> {
 async function checkOpenAI(): Promise<ServiceStatus> {
   const key = process.env['OPENAI_API_KEY']
   if (!key) return { status: 'unconfigured', detail: 'OPENAI_API_KEY 未設定' }
-  return checkWithLatency(async () => {
-    const res = await fetch('https://api.openai.com/v1/models', {
-      headers: { Authorization: `Bearer ${key}` },
+
+  const t = Date.now()
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1,
+      }),
     })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return 'API 応答確認済み'
-  })
+    const latencyMs = Date.now() - t
+
+    if (res.ok) return { status: 'ok', latencyMs, detail: 'クレジット有効・API 正常' }
+
+    let code: string | undefined
+    try {
+      const body = await res.json() as { error?: { code?: string; type?: string; message?: string } }
+      code = body.error?.code ?? body.error?.type
+    } catch { /* ignore */ }
+
+    const detail = (() => {
+      switch (code) {
+        case 'insufficient_quota':    return 'クレジット残高なし'
+        case 'rate_limit_exceeded':   return 'レート制限中（クレジットは有効）'
+        case 'invalid_api_key':       return 'APIキーが無効'
+        case 'model_not_found':       return 'モデルが見つかりません'
+        case 'billing_hard_limit_reached': return '請求上限に達しました'
+        default: return `HTTP ${res.status}${code ? ` (${code})` : ''}`
+      }
+    })()
+
+    return { status: 'error', latencyMs, detail }
+  } catch (err) {
+    return { status: 'error', latencyMs: Date.now() - t, detail: String(err instanceof Error ? err.message : err) }
+  }
 }
 
 async function checkTavily(): Promise<ServiceStatus> {
