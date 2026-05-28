@@ -9,6 +9,8 @@ import {
   indexProjectChunks,
   indexMemberChunks,
   indexExternalLink,
+  onMessageCreated,
+  onTaskAssigned,
 } from '@/lib/inngest/functions'
 
 // デプロイ環境ごとに URL が変わる場合（Vercel preview など）に対応。
@@ -19,7 +21,15 @@ function resolveServeHost(): string | undefined {
   return undefined
 }
 
-const fns = [deleteStorageObjects, indexFileChunks, indexProjectChunks, indexMemberChunks, indexExternalLink]
+const fns = [
+  deleteStorageObjects,
+  indexFileChunks,
+  indexProjectChunks,
+  indexMemberChunks,
+  indexExternalLink,
+  onMessageCreated,
+  onTaskAssigned,
+]
 const host = resolveServeHost()
 
 export const { GET, POST, PUT } = host

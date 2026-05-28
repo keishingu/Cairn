@@ -1018,6 +1018,105 @@ const SettingsIntegrations = () => {
   )
 }
 
+// ─── Developer ────────────────────────────────────────────────────
+
+import type { DevStatusDto, ServiceStatus } from '@/app/api/dev/status/route'
+
+const STATUS_CONFIG: Record<ServiceStatus['status'], { label: string; color: string; bg: string }> = {
+  ok:           { label: '接続済み',  color: 'var(--emerald-text)', bg: 'var(--emerald-soft)' },
+  error:        { label: 'エラー',    color: 'var(--red-text)',     bg: 'var(--red-soft)' },
+  unconfigured: { label: '未設定',    color: 'var(--text-4)',       bg: 'var(--card-2)' },
+}
+
+type ServiceKey = Exclude<keyof DevStatusDto, 'env'>
+const SERVICE_META: { key: ServiceKey; label: string; icon: string }[] = [
+  { key: 'supabaseDb',      label: 'Supabase Database', icon: 'database' },
+  { key: 'supabaseStorage', label: 'Supabase Storage',  icon: 'archive' },
+  { key: 'inngest',         label: 'Inngest',            icon: 'sparkles' },
+  { key: 'openai',          label: 'OpenAI',             icon: 'sparkles' },
+  { key: 'tavily',          label: 'Tavily',             icon: 'search' },
+]
+
+const SettingsDeveloper = () => {
+  const { data, isLoading, refetch, isFetching } = useQuery<DevStatusDto>({
+    queryKey: ['dev-status'],
+    queryFn: () => fetch('/api/dev/status').then(r => r.json()),
+    staleTime: 0,
+    gcTime: 0,
+  })
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', flex: 1 }}>開発者情報</h1>
+        <button
+          className="btn"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}
+        >
+          <Icon name="refresh" size={13} style={isFetching ? { animation: 'spin 1s linear infinite' } : {}}/>
+          再チェック
+        </button>
+      </div>
+      <p style={{ color: 'var(--text-3)', fontSize: 13, marginBottom: 28 }}>外部サービスの接続状況を確認できます。</p>
+
+      <section style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>外部サービス</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+          {SERVICE_META.map(({ key, label, icon }) => {
+            const s = data?.[key]
+            const cfg = s ? STATUS_CONFIG[s.status] : null
+            return (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--card)', borderBottom: '1px solid var(--divider)' }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Icon name={icon} size={15} color="var(--text-3)"/>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{label}</div>
+                  {s?.detail && (
+                    <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>{s.detail}</div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  {s?.latencyMs != null && s.status === 'ok' && (
+                    <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{s.latencyMs}ms</span>
+                  )}
+                  {isLoading || isFetching ? (
+                    <span style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '3px 10px', borderRadius: 999, background: 'var(--card-2)' }}>確認中...</span>
+                  ) : cfg ? (
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: cfg.color, padding: '3px 10px', borderRadius: 999, background: cfg.bg }}>{cfg.label}</span>
+                  ) : (
+                    <span style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '3px 10px', borderRadius: 999, background: 'var(--card-2)' }}>-</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      {data?.env && (
+        <section>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>環境変数</div>
+          <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+            {[
+              { label: 'NODE_ENV',      value: data.env.nodeEnv },
+              { label: 'DATABASE_URL',  value: data.env.hasDatabase ? '設定済み' : '未設定（モックモード）' },
+              { label: 'VAPID',         value: data.env.hasVapid  ? '設定済み' : '未設定（Push 通知無効）' },
+            ].map(({ label, value }, i, arr) => (
+              <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: 'var(--card)', borderBottom: i < arr.length - 1 ? '1px solid var(--divider)' : 'none' }}>
+                <span style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--text-3)', width: 140, flexShrink: 0 }}>{label}</span>
+                <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{value}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
 const NAV_GROUPS = [
   {
     label: '個人',
@@ -1036,6 +1135,12 @@ const NAV_GROUPS = [
       { id: 'members',       l: 'メンバー',             i: 'users' },
       { id: 'integrations',  l: '連携',                 i: 'layers' },
       { id: 'billing',       l: '請求',                 i: 'archive' },
+    ],
+  },
+  {
+    label: '開発者',
+    items: [
+      { id: 'developer', l: '開発者情報', i: 'code' },
     ],
   },
 ]
@@ -1074,7 +1179,8 @@ export const PageSettings = () => {
         {section === 'workflow'      && <SettingsWorkflow/>}
         {section === 'ai'            && <SettingsAI/>}
         {section === 'integrations'  && <SettingsIntegrations/>}
-        {section !== 'account' && section !== 'appearance' && section !== 'general' && section !== 'cover-photos' && section !== 'workflow' && section !== 'ai' && section !== 'integrations' && (
+        {section === 'developer'     && <SettingsDeveloper/>}
+        {section !== 'account' && section !== 'appearance' && section !== 'general' && section !== 'cover-photos' && section !== 'workflow' && section !== 'ai' && section !== 'integrations' && section !== 'developer' && (
           <div>
             <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
               {{ members: 'メンバー', billing: '請求' }[section] ?? section}

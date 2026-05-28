@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
+import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
 
 export type PageId =
   | 'projects' | 'calendar' | 'kanban'
@@ -19,7 +20,7 @@ interface SidebarItemProps {
   icon?: string
   label: string
   active?: boolean
-  badge?: number
+  badge?: number | undefined
   onClick?: () => void
   indent?: boolean
 }
@@ -108,6 +109,13 @@ interface SidebarProps {
 
 export const Sidebar = ({ page, setPage }: SidebarProps) => {
   const projectLabel = useProjectLabel()
+  const { data: projectChannels = [] } = useProjectChannels()
+  const { data: workspaceChannels = [] } = useWorkspaceChannels()
+  const { data: dms = [] } = useWorkspaceDms()
+  const totalChatUnread = React.useMemo(
+    () => [...projectChannels, ...workspaceChannels, ...dms].reduce((sum, c) => sum + (c.unreadCount ?? 0), 0),
+    [projectChannels, workspaceChannels, dms],
+  )
   const { data: workspace } = useQuery<WorkspaceDto>({
     queryKey: ['workspace'],
     queryFn: () => fetch('/api/workspaces').then(r => r.json()),
@@ -175,8 +183,8 @@ export const Sidebar = ({ page, setPage }: SidebarProps) => {
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase' }}>ワークスペース</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           <SidebarGroup icon="folder" label={projectLabel} page={page} setPage={setPage} items={projectChildren}/>
-          <SidebarItem icon="check" label="マイタスク" badge={4} active={page === 'tasks'} onClick={() => setPage('tasks')}/>
-          <SidebarItem icon="chat" label="チャット一覧" badge={12} active={page === 'chats'} onClick={() => setPage('chats')}/>
+          <SidebarItem icon="check" label="マイタスク" active={page === 'tasks'} onClick={() => setPage('tasks')}/>
+          <SidebarItem icon="chat" label="チャット一覧" badge={totalChatUnread || undefined} active={page === 'chats'} onClick={() => setPage('chats')}/>
         </div>
 
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '14px 10px 6px', textTransform: 'uppercase' }}>ライブラリ</div>

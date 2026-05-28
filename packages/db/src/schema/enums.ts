@@ -42,3 +42,13 @@ export const taskPriorityEnum = pgEnum('task_priority', ['high', 'medium', 'low'
 export const aiScopeEnum = pgEnum('ai_scope', ['workspace', 'project'])
 
 export const channelTypeEnum = pgEnum('channel_type', ['workspace', 'project', 'dm'])
+
+export const notificationTypeEnum = pgEnum('notification_type', [
+  'mention',
+  'task',
+  'file',
+  'status',
+  'invite',
+  'reaction',
+  'ai',
+])

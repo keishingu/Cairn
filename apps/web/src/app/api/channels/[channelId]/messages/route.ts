@@ -4,6 +4,8 @@
 import { NextResponse } from 'next/server'
 import { type AttachmentDto, postMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { inngest } from '@/lib/inngest/client'
+import type { MessageCreatedEvent } from '@/lib/inngest/events'
 
 export interface ReactionDto {
   emoji: string
@@ -232,11 +234,26 @@ export async function POST(req: Request, { params }: RouteContext) {
       )
       .where(eq(profiles.id, inserted.senderId))
 
+    const senderName = profile?.displayName ?? '不明'
+
+    await inngest.send({
+      name: 'message/created',
+      data: {
+        messageId: inserted.id,
+        channelId,
+        workspaceId: ctx.workspaceId,
+        senderId: ctx.userId,
+        senderName,
+        content: inserted.content,
+        attachmentFileIds: parsed.data.attachmentFileIds ?? [],
+      },
+    } satisfies MessageCreatedEvent)
+
     return NextResponse.json({
       id: inserted.id,
       content: inserted.content,
       senderId: inserted.senderId,
-      senderName: profile?.displayName ?? '不明',
+      senderName,
       senderAvatarUrl: profile?.workspaceAvatarUrl ?? profile?.globalAvatarUrl ?? null,
       createdAt: inserted.createdAt.toISOString(),
       reactions: [],

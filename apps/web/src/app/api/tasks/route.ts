@@ -4,6 +4,8 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { createTaskSchema } from '@cairn/shared'
+import { inngest } from '@/lib/inngest/client'
+import type { TaskAssignedEvent } from '@/lib/inngest/events'
 
 export interface TaskDto {
   id: string
@@ -188,6 +190,26 @@ export async function POST(req: Request) {
       priority: inserted.priority,
       dueDate: inserted.dueDate,
       assigneeName: assigneeRow?.displayName ?? null,
+    }
+
+    if (inserted.assigneeId && inserted.assigneeId !== ctx.userId) {
+      const [assigner] = await db
+        .select({ displayName: profiles.displayName })
+        .from(profiles)
+        .where(eq(profiles.id, ctx.userId))
+
+      await inngest.send({
+        name: 'task/assigned',
+        data: {
+          taskId: inserted.id,
+          taskTitle: inserted.title,
+          assigneeId: inserted.assigneeId,
+          projectId: inserted.projectId,
+          projectTitle: projectRow?.title ?? '',
+          workspaceId: ctx.workspaceId,
+          assignerName: assigner?.displayName ?? '不明',
+        },
+      } satisfies TaskAssignedEvent)
     }
 
     return NextResponse.json(result, { status: 201 })

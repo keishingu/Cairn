@@ -13,14 +13,18 @@ import { FileTypeIcon } from './file-type-icon'
 import {
   formatChatMessageTime,
   useChannelMessages,
+  useChannelMembers,
   useCurrentUser,
   useSendChannelMessage,
   useToggleMessageReaction,
+  useWorkspaceMembers,
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 const URL_RE = /https?:\/\/[^\s<>"']+/g
+const STRUCTURED_MENTION_RE = /<@[^|>\s]+\|[^>\n]+>/g
+const PLAIN_MENTION_RE = /@[^\s@\n、。！？]{1,40}/g
 
 function extractGoogleDocsUrls(text: string): string[] {
   const matches = text.match(GOOGLE_DOCS_URL_RE) ?? []
@@ -31,22 +35,34 @@ function renderTextWithLinks(text: string): React.ReactNode {
   const nodes: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
-  const re = new RegExp(URL_RE.source, 'g')
+  const re = new RegExp(`${STRUCTURED_MENTION_RE.source}|${URL_RE.source}|${PLAIN_MENTION_RE.source}`, 'g')
   while ((match = re.exec(text)) !== null) {
     if (match.index > last) nodes.push(text.slice(last, match.index))
-    const url = match[0].replace(/[.,;:!?)>\]]+$/, '')
-    nodes.push(
-      <a
-        key={match.index}
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}
-      >
-        {url}
-      </a>,
-    )
-    last = match.index + url.length
+    const token = match[0]!
+    if (token.startsWith('<@')) {
+      const pipeIdx = token.indexOf('|')
+      const displayName = token.slice(pipeIdx + 1, -1)
+      nodes.push(
+        <span key={match.index} style={{ display: 'inline', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>
+          @{displayName}
+        </span>,
+      )
+    } else if (token.startsWith('@')) {
+      nodes.push(
+        <span key={match.index} style={{ display: 'inline', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>
+          {token}
+        </span>,
+      )
+    } else {
+      const url = token.replace(/[.,;:!?)>\]]+$/, '')
+      nodes.push(
+        <a key={match.index} href={url} target="_blank" rel="noopener noreferrer"
+          style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}>
+          {url}
+        </a>,
+      )
+    }
+    last = match.index + token.length
   }
   if (last < text.length) nodes.push(text.slice(last))
   return nodes.length === 1 && typeof nodes[0] === 'string' ? nodes[0] : nodes
@@ -189,7 +205,7 @@ const ChatMessage = ({ messageId, senderName, senderAvatarUrl, createdAt, conten
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onImageSelect, onRemoveAttachment, isUploading }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onImageSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -204,10 +220,81 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onImageSelect: (file: File) => void
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
+  mentionMembers?: { userId: string; displayName: string }[]
+  onMentionInserted?: (userId: string, displayName: string) => void
 }) => {
   const [showPicker, setShowPicker] = React.useState(false)
+  const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
+  const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
   const smileBtnRef = React.useRef<HTMLButtonElement>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const compactInputRef = React.useRef<HTMLInputElement>(null)
+
+  // draft がクリアされたらメンション状態もリセット
+  React.useEffect(() => {
+    if (!draft) { setMentionQuery(null); setMentionAnchorPos(null) }
+  }, [draft])
+
+  const mentionCandidates = React.useMemo(() => {
+    if (mentionQuery === null || !mentionMembers) return []
+    const q = mentionQuery.toLowerCase()
+    return mentionMembers.filter(m => m.displayName.toLowerCase().includes(q)).slice(0, 6)
+  }, [mentionQuery, mentionMembers])
+
+  const detectMention = (val: string, cursorPos: number) => {
+    const before = val.slice(0, cursorPos)
+    const m = /@([^\s@]*)$/.exec(before)
+    if (m) { setMentionQuery(m[1]!); setMentionAnchorPos(m.index) }
+    else { setMentionQuery(null); setMentionAnchorPos(null) }
+  }
+
+  const insertMention = (userId: string, displayName: string) => {
+    if (mentionAnchorPos === null) return
+    const cursor = (textareaRef.current ?? compactInputRef.current)?.selectionStart ?? draft.length
+    const newDraft = `${draft.slice(0, mentionAnchorPos)}@${displayName} ${draft.slice(cursor)}`
+    setDraft(newDraft)
+    onMentionInserted?.(userId, displayName)
+    setMentionQuery(null)
+    setMentionAnchorPos(null)
+    const targetPos = mentionAnchorPos + displayName.length + 2
+    requestAnimationFrame(() => {
+      const el = textareaRef.current ?? compactInputRef.current
+      if (el) { el.focus(); el.setSelectionRange(targetPos, targetPos) }
+    })
+  }
+
+  const handleKeyDownWithMention = (e: React.KeyboardEvent, fallback: () => void) => {
+    if (mentionCandidates.length > 0) {
+      if (e.key === 'Escape') { e.preventDefault(); setMentionQuery(null); return }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); insertMention(mentionCandidates[0]!.userId, mentionCandidates[0]!.displayName); return }
+    }
+    fallback()
+  }
+
+  const MentionPicker = (() => {
+    if (mentionCandidates.length === 0) return null
+    const el = textareaRef.current ?? compactInputRef.current
+    const rect = el?.getBoundingClientRect()
+    const style: React.CSSProperties = rect
+      ? { position: 'fixed', bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width, zIndex: 200 }
+      : { position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, zIndex: 200 }
+    return (
+      <div style={{ ...style, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+        {mentionCandidates.map(m => (
+          <button key={m.userId}
+            onMouseDown={e => { e.preventDefault(); insertMention(m.userId, m.displayName) }}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
+            <Avatar name={m.displayName} size={22}/>
+            <span style={{ fontSize: 13.5, color: 'var(--text-2)', fontWeight: 500 }}>{m.displayName}</span>
+          </button>
+        ))}
+      </div>
+    )
+  })()
 
   const canSend = (draft.trim().length > 0 || pendingAttachments.length > 0) && !isPending && !isUploading
 
@@ -274,22 +361,24 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           {AttachmentPreviews}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px' }}>
             <div style={{ flex: 1, position: 'relative' }}>
+              {MentionPicker}
               {typeof placeholder !== 'string' && !draft && (
                 <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 13 }}>
                   {placeholder}
                 </div>
               )}
               <input
+                ref={compactInputRef}
                 value={draft}
-                onChange={e => setDraft(e.target.value)}
+                onChange={e => { setDraft(e.target.value); detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={() => setIsComposing(false)}
-                onKeyDown={e => {
+                onKeyDown={e => handleKeyDownWithMention(e, () => {
                   if (e.key !== 'Enter' || e.shiftKey) return
                   if (isImeConfirmingEnter(e, isComposing)) return
                   e.preventDefault()
                   send()
-                }}
+                })}
                 placeholder={typeof placeholder === 'string' ? placeholder : ''}
                 style={{ width: '100%', border: 'none', background: 'transparent', fontSize: 13, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
               />
@@ -337,22 +426,24 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         {AttachmentPreviews}
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, padding: '10px 14px 12px' }}>
           <div style={{ flex: 1, position: 'relative' }}>
+            {MentionPicker}
             {typeof placeholder !== 'string' && !draft && (
               <div style={{ position: 'absolute', top: 2, left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 14 }}>
                 {placeholder}
               </div>
             )}
             <textarea
+              ref={textareaRef}
               value={draft}
-              onChange={e => setDraft(e.target.value)}
+              onChange={e => { setDraft(e.target.value); detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
               onCompositionStart={() => setIsComposing(true)}
               onCompositionEnd={() => setIsComposing(false)}
-              onKeyDown={e => {
+              onKeyDown={e => handleKeyDownWithMention(e, () => {
                 if (e.key !== 'Enter' || e.shiftKey) return
                 if (isImeConfirmingEnter(e, isComposing)) return
                 e.preventDefault()
                 send()
-              }}
+              })}
               placeholder={typeof placeholder === 'string' ? placeholder : ''}
               rows={1}
               style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160 }}
@@ -383,11 +474,43 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
+  // displayName → userId map for structured mention serialization
+  const mentionMapRef = React.useRef<Map<string, string>>(new Map())
+
+  const onMentionInserted = React.useCallback((userId: string, displayName: string) => {
+    mentionMapRef.current.set(displayName, userId)
+  }, [])
+
+  const transformContent = (text: string): string => {
+    const entries = [...mentionMapRef.current.entries()]
+    if (entries.length === 0) return text
+    // Longest name first to avoid partial replacements
+    entries.sort((a, b) => b[0].length - a[0].length)
+    let result = text
+    for (const [displayName, userId] of entries) {
+      const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      result = result.replace(
+        new RegExp(`@${escaped}(?=[\\s、。！？]|$)`, 'g'),
+        `<@${userId}|${displayName}>`,
+      )
+    }
+    return result
+  }
 
   const { data: currentUser } = useCurrentUser()
   const { data: messages = [], isLoading, isError } = useChannelMessages(channelId)
+  const { data: wsMembers = [] } = useWorkspaceMembers()
+  const { data: chMemberIds = [] } = useChannelMembers(channelId)
   const sendMutation = useSendChannelMessage(channelId, currentUser)
   const reactMutation = useToggleMessageReaction(channelId)
+
+  const mentionMembers = React.useMemo(() => {
+    if (chMemberIds.length > 0) {
+      const idSet = new Set(chMemberIds.map(m => m.userId))
+      return wsMembers.filter(m => idSet.has(m.userId) && m.userId !== currentUser?.id)
+    }
+    return wsMembers.filter(m => m.userId !== currentUser?.id)
+  }, [chMemberIds, wsMembers, currentUser?.id])
 
   React.useEffect(() => {
     if (!sendMutation.isError) return
@@ -450,8 +573,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
   }
 
   const send = () => {
-    const text = draft.trim()
-    if ((!text && pendingAttachments.length === 0) || !channelId) return
+    const rawText = draft.trim()
+    if ((!rawText && pendingAttachments.length === 0) || !channelId) return
+    const text = transformContent(rawText)
+    mentionMapRef.current.clear()
 
     // Google Docs URL を検出してファイルタブに自動登録
     if (text) registerGoogleDocsLinks(text)
@@ -526,6 +651,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
         onImageSelect={handleImageSelect}
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
+        mentionMembers={mentionMembers}
+        onMentionInserted={onMentionInserted}
         {...(compact ? { compact: true } : {})}
       />
     </>
