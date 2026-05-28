@@ -101,10 +101,36 @@ for (const preset of ACCENT_PRESETS) {
   }
 }
 
-// Also generate the generic fallback icons (used as default before cookie is set)
 console.log('\nfallback icons');
 generate('icon-192.png',        192, '#0B1622', '#10B981');
 generate('icon-512.png',        512, '#0B1622', '#10B981');
 generate('apple-touch-icon.png', 180, '#0B1622', '#10B981');
+
+// favicon.ico: minimal ICO wrapping a 32x32 PNG
+console.log('\nfavicon');
+{
+  const canvas = createCanvas(32, 32);
+  const ctx = canvas.getContext('2d');
+  drawIcon(ctx, 32, '#0B1622', '#10B981', 80);
+  const png = canvas.toBuffer('image/png');
+
+  // ICO = ICONDIR (6 bytes) + ICONDIRENTRY (16 bytes) + PNG data
+  const dataOffset = 22;
+  const ico = Buffer.alloc(dataOffset + png.length);
+  ico.writeUInt16LE(0, 0);           // Reserved
+  ico.writeUInt16LE(1, 2);           // Type: ICO
+  ico.writeUInt16LE(1, 4);           // Image count
+  ico.writeUInt8(32, 6);             // Width
+  ico.writeUInt8(32, 7);             // Height
+  ico.writeUInt8(0, 8);              // Colors (0 = truecolor)
+  ico.writeUInt8(0, 9);              // Reserved
+  ico.writeUInt16LE(1, 10);          // Planes
+  ico.writeUInt16LE(32, 12);         // Bit depth
+  ico.writeUInt32LE(png.length, 14); // Image data size
+  ico.writeUInt32LE(dataOffset, 18); // Image data offset
+  png.copy(ico, dataOffset);
+  writeFileSync(join(publicDir, 'favicon.ico'), ico);
+  console.log('  favicon.ico (32x32)');
+}
 
 console.log('\nDone!');
