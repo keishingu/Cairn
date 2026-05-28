@@ -24,7 +24,6 @@ import { isImeConfirmingEnter } from '@/lib/chat/ime'
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 const URL_RE = /https?:\/\/[^\s<>"']+/g
 const STRUCTURED_MENTION_RE = /<@[^|>\s]+\|[^>\n]+>/g
-const PLAIN_MENTION_RE = /@[^\s@\n、。！？]{1,40}/g
 
 function extractGoogleDocsUrls(text: string): string[] {
   const matches = text.match(GOOGLE_DOCS_URL_RE) ?? []
@@ -35,7 +34,7 @@ function renderTextWithLinks(text: string): React.ReactNode {
   const nodes: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
-  const re = new RegExp(`${STRUCTURED_MENTION_RE.source}|${URL_RE.source}|${PLAIN_MENTION_RE.source}`, 'g')
+  const re = new RegExp(`${STRUCTURED_MENTION_RE.source}|${URL_RE.source}`, 'g')
   while ((match = re.exec(text)) !== null) {
     if (match.index > last) nodes.push(text.slice(last, match.index))
     const token = match[0]!
@@ -45,12 +44,6 @@ function renderTextWithLinks(text: string): React.ReactNode {
       nodes.push(
         <span key={match.index} style={{ display: 'inline', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>
           @{displayName}
-        </span>,
-      )
-    } else if (token.startsWith('@')) {
-      nodes.push(
-        <span key={match.index} style={{ display: 'inline', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>
-          {token}
         </span>,
       )
     } else {
@@ -101,7 +94,7 @@ interface PendingAttachment {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = ({ messageId, senderName, senderAvatarUrl, createdAt, content, reactions, attachments, onReact, compact }: {
+const ChatMessage = React.memo(({ messageId, senderName, senderAvatarUrl, createdAt, content, reactions, attachments, onReact, compact }: {
   messageId: string
   senderName: string
   senderAvatarUrl?: string | null
@@ -201,7 +194,7 @@ const ChatMessage = ({ messageId, senderName, senderAvatarUrl, createdAt, conten
       </div>
     </div>
   )
-}
+})
 
 // ─── Input ────────────────────────────────────────────────────────
 
@@ -226,14 +219,21 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const [showPicker, setShowPicker] = React.useState(false)
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
   const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
+  const [selectedIdx, setSelectedIdx] = React.useState(0)
+  const [insertedMentionNames, setInsertedMentionNames] = React.useState<Set<string>>(new Set())
   const smileBtnRef = React.useRef<HTMLButtonElement>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const compactInputRef = React.useRef<HTMLInputElement>(null)
+  const overlayRef = React.useRef<HTMLDivElement>(null)
 
   // draft がクリアされたらメンション状態もリセット
   React.useEffect(() => {
-    if (!draft) { setMentionQuery(null); setMentionAnchorPos(null) }
+    if (!draft) {
+      setMentionQuery(null)
+      setMentionAnchorPos(null)
+      setInsertedMentionNames(new Set())
+    }
   }, [draft])
 
   const mentionCandidates = React.useMemo(() => {
@@ -241,6 +241,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     const q = mentionQuery.toLowerCase()
     return mentionMembers.filter(m => m.displayName.toLowerCase().includes(q)).slice(0, 6)
   }, [mentionQuery, mentionMembers])
+
+  // 候補が変わったら選択をリセット
+  React.useEffect(() => { setSelectedIdx(0) }, [mentionCandidates.length])
 
   const detectMention = (val: string, cursorPos: number) => {
     const before = val.slice(0, cursorPos)
@@ -255,6 +258,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     const newDraft = `${draft.slice(0, mentionAnchorPos)}@${displayName} ${draft.slice(cursor)}`
     setDraft(newDraft)
     onMentionInserted?.(userId, displayName)
+    setInsertedMentionNames(prev => { const next = new Set(prev); next.add(displayName); return next })
     setMentionQuery(null)
     setMentionAnchorPos(null)
     const targetPos = mentionAnchorPos + displayName.length + 2
@@ -267,7 +271,14 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const handleKeyDownWithMention = (e: React.KeyboardEvent, fallback: () => void) => {
     if (mentionCandidates.length > 0) {
       if (e.key === 'Escape') { e.preventDefault(); setMentionQuery(null); return }
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); insertMention(mentionCandidates[0]!.userId, mentionCandidates[0]!.displayName); return }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIdx(i => (i + 1) % mentionCandidates.length); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIdx(i => (i - 1 + mentionCandidates.length) % mentionCandidates.length); return }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        const m = mentionCandidates[selectedIdx] ?? mentionCandidates[0]
+        if (m) insertMention(m.userId, m.displayName)
+        return
+      }
     }
     fallback()
   }
@@ -281,12 +292,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       : { position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, zIndex: 200 }
     return (
       <div style={{ ...style, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
-        {mentionCandidates.map(m => (
+        {mentionCandidates.map((m, i) => (
           <button key={m.userId}
             onMouseDown={e => { e.preventDefault(); insertMention(m.userId, m.displayName) }}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            onMouseEnter={() => setSelectedIdx(i)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: i === selectedIdx ? 'var(--card-2)' : 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
           >
             <Avatar name={m.displayName} size={22}/>
             <span style={{ fontSize: 13.5, color: 'var(--text-2)', fontWeight: 500 }}>{m.displayName}</span>
@@ -295,6 +305,25 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       </div>
     )
   })()
+
+  // ピッカーで挿入されたメンションをテキストエリア上でハイライト表示するオーバーレイ
+  const draftOverlay = React.useMemo(() => {
+    if (insertedMentionNames.size === 0 || !draft) return null
+    const sorted = [...insertedMentionNames].sort((a, b) => b.length - a.length)
+    const escaped = sorted.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    const re = new RegExp(`@(${escaped.join('|')})(?=[\\s、。！？]|$)`, 'g')
+    const nodes: React.ReactNode[] = []
+    let last = 0
+    let match: RegExpExecArray | null
+    while ((match = re.exec(draft)) !== null) {
+      if (match.index > last) nodes.push(<span key={`t${last}`} style={{ color: 'var(--text)' }}>{draft.slice(last, match.index)}</span>)
+      nodes.push(<span key={`m${match.index}`} style={{ background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>@{match[1]}</span>)
+      last = match.index + match[0]!.length
+    }
+    if (nodes.length === 0) return null
+    if (last < draft.length) nodes.push(<span key="last" style={{ color: 'var(--text)' }}>{draft.slice(last)}</span>)
+    return nodes
+  }, [draft, insertedMentionNames])
 
   const canSend = (draft.trim().length > 0 || pendingAttachments.length > 0) && !isPending && !isUploading
 
@@ -432,6 +461,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 {placeholder}
               </div>
             )}
+            {draftOverlay && (
+              <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 14, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 160 }}>
+                {draftOverlay}
+              </div>
+            )}
             <textarea
               ref={textareaRef}
               value={draft}
@@ -444,9 +478,10 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 e.preventDefault()
                 send()
               })}
+              onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
               placeholder={typeof placeholder === 'string' ? placeholder : ''}
               rows={1}
-              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160 }}
+              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160 }}
             />
           </div>
           <button onClick={send} disabled={!canSend} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
