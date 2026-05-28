@@ -106,7 +106,62 @@ cairn/
 
 ---
 
-## PWA アイコン
+## Web Push 通知（VAPID）
+
+メンション・タスク割り当て時にブラウザへプッシュ通知を送る機能。VAPID キーが未設定の場合は通知なしで動作する。
+
+### キーの生成
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+出力例：
+```
+Public Key: BxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxA
+Private Key: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
+```
+
+### 環境変数
+
+| 変数名 | 説明 |
+|---|---|
+| `VAPID_PUBLIC_KEY` | 生成した公開鍵 |
+| `VAPID_PRIVATE_KEY` | 生成した秘密鍵（機密情報） |
+| `VAPID_SUBJECT` | 管理者連絡先。`mailto:admin@example.com` 形式推奨 |
+
+**ローカル**: `apps/web/.env.local` に追記  
+**Vercel**: Dashboard → Project → Settings → Environment Variables で追加（`VAPID_PRIVATE_KEY` は Sensitive にチェック）
+
+> **注意**: VAPID キーを変更すると既存の全購読が無効になる。生成は一度だけ行い、本番・Preview で同じキーを使い回す。
+
+### ローカルでのテスト
+
+1. `.env.local` にキーを設定して dev サーバーを再起動
+2. 通知パネル（ベルアイコン）右上の「ON」ボタンを押してブラウザ許可を与える
+3. Supabase Studio（`http://localhost:54323`）の `push_subscriptions` テーブルに行が追加されることを確認
+4. Inngest Dev UI（`http://localhost:8288`）から `message/created` イベントを送信してプッシュ通知を確認
+
+```json
+{
+  "name": "message/created",
+  "data": {
+    "messageId": "00000000-0000-0000-0000-000000000001",
+    "channelId": "<チャンネルUUID>",
+    "workspaceId": "<ワークスペースUUID>",
+    "senderId": "<別ユーザーのUUID>",
+    "senderName": "テストユーザー",
+    "content": "@<自分の表示名> テスト",
+    "attachmentFileIds": []
+  }
+}
+```
+
+> **補足**: ブラウザのタブがフォアグラウンドにある間は OS 通知が出ない（仕様）。別タブで試すこと。
+
+---
+
+
 
 アクセントカラー（7色）× テーマ（ライト/ダーク）の組み合わせで PWA アイコンを事前生成している。
 設定画面でカラーやテーマを変えると、ホーム画面アイコンに自動反映される。
