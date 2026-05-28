@@ -23,6 +23,7 @@ import { isImeConfirmingEnter } from '@/lib/chat/ime'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 const URL_RE = /https?:\/\/[^\s<>"']+/g
+const MENTION_RE = /@[^\s@\n、。！？]{1,40}/g
 
 function extractGoogleDocsUrls(text: string): string[] {
   const matches = text.match(GOOGLE_DOCS_URL_RE) ?? []
@@ -33,22 +34,26 @@ function renderTextWithLinks(text: string): React.ReactNode {
   const nodes: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
-  const re = new RegExp(URL_RE.source, 'g')
+  const re = new RegExp(`${URL_RE.source}|${MENTION_RE.source}`, 'g')
   while ((match = re.exec(text)) !== null) {
     if (match.index > last) nodes.push(text.slice(last, match.index))
-    const url = match[0].replace(/[.,;:!?)>\]]+$/, '')
-    nodes.push(
-      <a
-        key={match.index}
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}
-      >
-        {url}
-      </a>,
-    )
-    last = match.index + url.length
+    const token = match[0]
+    if (token.startsWith('@')) {
+      nodes.push(
+        <span key={match.index} style={{ display: 'inline', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>
+          {token}
+        </span>,
+      )
+    } else {
+      const url = token.replace(/[.,;:!?)>\]]+$/, '')
+      nodes.push(
+        <a key={match.index} href={url} target="_blank" rel="noopener noreferrer"
+          style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}>
+          {url}
+        </a>,
+      )
+    }
+    last = match.index + token.length
   }
   if (last < text.length) nodes.push(text.slice(last))
   return nodes.length === 1 && typeof nodes[0] === 'string' ? nodes[0] : nodes
@@ -256,21 +261,29 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     fallback()
   }
 
-  const MentionPicker = mentionCandidates.length > 0 ? (
-    <div style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', overflow: 'hidden', zIndex: 50 }}>
-      {mentionCandidates.map(m => (
-        <button key={m.userId}
-          onMouseDown={e => { e.preventDefault(); insertMention(m.displayName) }}
-          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-        >
-          <Avatar name={m.displayName} size={20}/>
-          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{m.displayName}</span>
-        </button>
-      ))}
-    </div>
-  ) : null
+  const MentionPicker = (() => {
+    if (mentionCandidates.length === 0) return null
+    const el = textareaRef.current ?? compactInputRef.current
+    const rect = el?.getBoundingClientRect()
+    const style: React.CSSProperties = rect
+      ? { position: 'fixed', bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width, zIndex: 200 }
+      : { position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, zIndex: 200 }
+    return (
+      <div style={{ ...style, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+        {mentionCandidates.map(m => (
+          <button key={m.userId}
+            onMouseDown={e => { e.preventDefault(); insertMention(m.displayName) }}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
+            <Avatar name={m.displayName} size={22}/>
+            <span style={{ fontSize: 13.5, color: 'var(--text-2)', fontWeight: 500 }}>{m.displayName}</span>
+          </button>
+        ))}
+      </div>
+    )
+  })()
 
   const canSend = (draft.trim().length > 0 || pendingAttachments.length > 0) && !isPending && !isUploading
 
