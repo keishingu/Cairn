@@ -8,6 +8,7 @@ import {
   formatRelativeTime,
   type NotificationDto,
 } from '@/lib/notifications/client'
+import { usePushNotifications } from '@/lib/push/client'
 
 const TYPE_CONFIG: Record<NotificationDto['type'], { icon: string; c: string; bg: string }> = {
   mention:  { icon: 'chat',     c: 'var(--blue)',    bg: 'var(--blue-soft)' },
@@ -34,6 +35,7 @@ export const PageNotifications = ({ onClose }: PageNotificationsProps) => {
   const [filter, setFilter] = React.useState('all')
   const { data: notifications = [], isLoading } = useNotifications(filter)
   const markRead = useMarkNotificationsRead()
+  const push = usePushNotifications()
 
   const unreadCount = React.useMemo(
     () => notifications.filter(n => n.readAt === null).length,
@@ -67,6 +69,18 @@ export const PageNotifications = ({ onClose }: PageNotificationsProps) => {
             >
               <Icon name="check" size={12} /> すべて既読
             </button>
+            {push.permission !== 'unsupported' && push.permission !== 'denied' && (
+              <button
+                className="btn btn-ghost"
+                style={{ height: 28, fontSize: 12, padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                onClick={push.permission === 'granted' ? push.unsubscribe : push.subscribe}
+                disabled={push.loading}
+                title={push.permission === 'granted' ? 'プッシュ通知を無効化' : 'プッシュ通知を有効化'}
+              >
+                <Icon name={push.permission === 'granted' ? 'bell-off' : 'bell'} size={12} />
+                {push.permission === 'granted' ? 'OFF' : 'ON'}
+              </button>
+            )}
             <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="close" size={15}/>
             </button>

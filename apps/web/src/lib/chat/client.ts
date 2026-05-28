@@ -16,6 +16,12 @@ export const chatQueryKeys = {
   currentUser: ['current-user'] as const,
 }
 
+const CHANNEL_LISTS = [
+  ['project-channels'],
+  ['workspace-channels'],
+  ['dms'],
+] as const
+
 export function formatChatMessageTime(iso: string): string {
   const source = new Date(iso)
   return `${source.getMonth() + 1}/${source.getDate()} ${String(source.getHours()).padStart(2, '0')}:${String(source.getMinutes()).padStart(2, '0')}`
@@ -265,6 +271,21 @@ export function useSendChannelMessage(
         chatQueryKeys.messages(channelId),
         (old) => (old ?? []).map((m) => m.id === context?.optimisticId ? finalMessage : m),
       )
+    },
+  })
+}
+
+export function useMarkChannelRead() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (channelId: string) =>
+      fetch(`/api/channels/${channelId}/read`, { method: 'POST' }).then(r => {
+        if (!r.ok) throw new Error('既読処理に失敗しました')
+      }),
+    onSuccess: () => {
+      for (const key of CHANNEL_LISTS) {
+        void queryClient.invalidateQueries({ queryKey: key })
+      }
     },
   })
 }

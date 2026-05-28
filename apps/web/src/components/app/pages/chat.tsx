@@ -10,6 +10,7 @@ import {
   useWorkspaceMembers,
   useWorkspaceDms,
   useCreateDm,
+  useMarkChannelRead,
 } from '@/lib/chat/client'
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
 import { CreateChannelModal } from './create-channel-modal'
@@ -97,6 +98,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const { data: workspaceChannels = [] } = useWorkspaceChannels()
   const { data: members = [] } = useWorkspaceMembers()
   const { data: dms = [] } = useWorkspaceDms()
+  const markChannelRead = useMarkChannelRead()
   const createDmMutation = useCreateDm()
 
   React.useEffect(() => {
@@ -118,6 +120,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const selectChannel = (id: string) => {
     setChannelId(id)
     if (isMobile) setActivePane('thread')
+    markChannelRead.mutate(id)
   }
 
   const startDm = (targetUserId: string) => {
@@ -164,12 +167,12 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
       <ChatSidebarSection title="プロジェクト">
         {projectChannels.map(c => (
-          <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => selectChannel(c.channelId)} prefix="#" label={c.projectTitle} mobile={isMobile}/>
+          <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => selectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
         ))}
       </ChatSidebarSection>
       <ChatSidebarSection title="チャンネル" onAdd={() => setShowCreateChannel(true)}>
         {workspaceChannels.map(c => (
-          <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => selectChannel(c.id)} prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''} mobile={isMobile} memberNames={c.memberNames} memberCount={c.memberCount}/>
+          <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => selectChannel(c.id)} prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''} badge={c.unreadCount} mobile={isMobile} memberNames={c.memberNames} memberCount={c.memberCount}/>
         ))}
       </ChatSidebarSection>
       <div style={{ marginBottom: 10 }}>
@@ -179,7 +182,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         </div>
         <div>
           {dms.map(d => (
-            <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => selectChannel(d.id)} avatar={d.participantName} label={d.participantName} mobile={isMobile}/>
+            <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => selectChannel(d.id)} avatar={d.participantName} label={d.participantName} badge={d.unreadCount} mobile={isMobile}/>
           ))}
         </div>
       </div>

@@ -4,6 +4,7 @@
 import { inngest } from './client'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
+import { sendWebPushToUser } from '@/lib/push/send'
 
 // メッセージ内の @displayName メンションを検出する。
 // 例: "@山田 太郎" → userId にマッピングして通知を生成する。
@@ -73,6 +74,18 @@ export const onMessageCreated = inngest.createFunction(
           })
       })
       mentionNotifications = mentionedMembers.length
+
+      await step.run('send-mention-push', async () => {
+        await Promise.allSettled(
+          mentionedMembers.map(m =>
+            sendWebPushToUser(m.userId, {
+              title: `${senderName} があなたをメンションしました`,
+              body: content.slice(0, 100),
+              url: `/chat?channel=${channelId}`,
+            }),
+          ),
+        )
+      })
     }
 
     // ファイル添付通知（送信者以外の全メンバーへ）
@@ -128,6 +141,14 @@ export const onTaskAssigned = inngest.createFunction(
         title: `${assignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
         data: { assignerName, projectTitle },
+      })
+    })
+
+    await step.run('send-task-push', async () => {
+      await sendWebPushToUser(assigneeId, {
+        title: `${assignerName} があなたにタスクを割り当てました`,
+        body: `「${taskTitle}」- ${projectTitle}`,
+        url: '/tasks',
       })
     })
 
