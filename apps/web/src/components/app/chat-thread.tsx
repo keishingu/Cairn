@@ -94,7 +94,7 @@ interface PendingAttachment {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = React.memo(({ messageId, senderName, senderAvatarUrl, createdAt, content, reactions, attachments, onReact, compact }: {
+const ChatMessage = React.memo(function ChatMessage({ messageId, senderName, senderAvatarUrl, createdAt, content, reactions, attachments, onReact, compact }: {
   messageId: string
   senderName: string
   senderAvatarUrl?: string | null
@@ -104,7 +104,7 @@ const ChatMessage = React.memo(({ messageId, senderName, senderAvatarUrl, create
   attachments: AttachmentDto[]
   onReact: (messageId: string, emoji: string) => void
   compact?: boolean
-}) => {
+}) {
   const [showPicker, setShowPicker] = React.useState(false)
   const addBtnRef = React.useRef<HTMLButtonElement>(null)
   const avatarSize = compact ? 30 : 36
