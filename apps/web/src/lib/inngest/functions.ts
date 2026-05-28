@@ -22,7 +22,7 @@ export const onMessageCreated = inngest.createFunction(
     // チャンネルメンバー（送信者を除く）を取得
     const members = await step.run('fetch-members', async () => {
       const { db, channelMembers, profiles } = await import('@cairn/db')
-      const { eq, ne } = await import('drizzle-orm')
+      const { eq } = await import('drizzle-orm')
       return db
         .select({ userId: channelMembers.userId, displayName: profiles.displayName })
         .from(channelMembers)
