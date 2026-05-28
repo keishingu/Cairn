@@ -296,10 +296,10 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           <button key={m.userId}
             onMouseDown={e => { e.preventDefault(); insertMention(m.userId, m.displayName) }}
             onMouseEnter={() => setSelectedIdx(i)}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: i === selectedIdx ? 'var(--card-2)' : 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: i === selectedIdx ? 'var(--accent-soft)' : 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
           >
             <Avatar name={m.displayName} size={22}/>
-            <span style={{ fontSize: 13.5, color: 'var(--text-2)', fontWeight: 500 }}>{m.displayName}</span>
+            <span style={{ fontSize: 13.5, color: i === selectedIdx ? 'var(--accent)' : 'var(--text-2)', fontWeight: 500 }}>{m.displayName}</span>
           </button>
         ))}
       </div>
@@ -396,6 +396,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                   {placeholder}
                 </div>
               )}
+              {draftOverlay && (
+                <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: 0, right: 0, fontSize: 13, fontFamily: 'inherit', lineHeight: 1, whiteSpace: 'nowrap', pointerEvents: 'none', overflow: 'hidden' }}>
+                  {draftOverlay}
+                </div>
+              )}
               <input
                 ref={compactInputRef}
                 value={draft}
@@ -409,7 +414,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                   send()
                 })}
                 placeholder={typeof placeholder === 'string' ? placeholder : ''}
-                style={{ width: '100%', border: 'none', background: 'transparent', fontSize: 13, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
+                style={{ width: '100%', border: 'none', background: 'transparent', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
               />
             </div>
             <button onClick={() => fileInputRef.current?.click()} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
