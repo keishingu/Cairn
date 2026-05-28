@@ -33,6 +33,27 @@ export const onMessageCreated = inngest.createFunction(
         .then(rows => rows.filter(r => r.userId !== senderId))
     })
 
+    // DM チャンネルの場合は相手に Push を送って終了
+    const isDm = await step.run('check-dm', async () => {
+      const { db, channels } = await import('@cairn/db')
+      const { eq } = await import('drizzle-orm')
+      const [ch] = await db.select({ type: channels.type }).from(channels).where(eq(channels.id, channelId)).limit(1)
+      return ch?.type === 'dm'
+    })
+
+    if (isDm) {
+      await step.run('send-dm-push', async () => {
+        await Promise.allSettled(
+          members.map(m => sendWebPushToUser(m.userId, {
+            title: senderName,
+            body: content.slice(0, 100),
+            url: '/chat',
+          })),
+        )
+      })
+      return { mentionNotifications: 0, fileNotifications: 0, dm: true }
+    }
+
     if (members.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
 
     // @メンション通知

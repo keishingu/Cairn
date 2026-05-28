@@ -13,9 +13,11 @@ import { FileTypeIcon } from './file-type-icon'
 import {
   formatChatMessageTime,
   useChannelMessages,
+  useChannelMembers,
   useCurrentUser,
   useSendChannelMessage,
   useToggleMessageReaction,
+  useWorkspaceMembers,
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 
@@ -189,7 +191,7 @@ const ChatMessage = ({ messageId, senderName, senderAvatarUrl, createdAt, conten
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onImageSelect, onRemoveAttachment, isUploading }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onImageSelect, onRemoveAttachment, isUploading, mentionMembers }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -204,10 +206,71 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onImageSelect: (file: File) => void
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
+  mentionMembers?: { userId: string; displayName: string }[]
 }) => {
   const [showPicker, setShowPicker] = React.useState(false)
+  const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
+  const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
   const smileBtnRef = React.useRef<HTMLButtonElement>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const compactInputRef = React.useRef<HTMLInputElement>(null)
+
+  // draft がクリアされたらメンション状態もリセット
+  React.useEffect(() => {
+    if (!draft) { setMentionQuery(null); setMentionAnchorPos(null) }
+  }, [draft])
+
+  const mentionCandidates = React.useMemo(() => {
+    if (mentionQuery === null || !mentionMembers) return []
+    const q = mentionQuery.toLowerCase()
+    return mentionMembers.filter(m => m.displayName.toLowerCase().includes(q)).slice(0, 6)
+  }, [mentionQuery, mentionMembers])
+
+  const detectMention = (val: string, cursorPos: number) => {
+    const before = val.slice(0, cursorPos)
+    const m = /@([^\s@]*)$/.exec(before)
+    if (m) { setMentionQuery(m[1]!); setMentionAnchorPos(m.index) }
+    else { setMentionQuery(null); setMentionAnchorPos(null) }
+  }
+
+  const insertMention = (displayName: string) => {
+    if (mentionAnchorPos === null) return
+    const cursor = (textareaRef.current ?? compactInputRef.current)?.selectionStart ?? draft.length
+    const newDraft = `${draft.slice(0, mentionAnchorPos)}@${displayName} ${draft.slice(cursor)}`
+    setDraft(newDraft)
+    setMentionQuery(null)
+    setMentionAnchorPos(null)
+    const targetPos = mentionAnchorPos + displayName.length + 2
+    requestAnimationFrame(() => {
+      const el = textareaRef.current ?? compactInputRef.current
+      if (el) { el.focus(); el.setSelectionRange(targetPos, targetPos) }
+    })
+  }
+
+  const handleKeyDownWithMention = (e: React.KeyboardEvent, fallback: () => void) => {
+    if (mentionCandidates.length > 0) {
+      if (e.key === 'Escape') { e.preventDefault(); setMentionQuery(null); return }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); insertMention(mentionCandidates[0]!.displayName); return }
+    }
+    fallback()
+  }
+
+  const MentionPicker = mentionCandidates.length > 0 ? (
+    <div style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', overflow: 'hidden', zIndex: 50 }}>
+      {mentionCandidates.map(m => (
+        <button key={m.userId}
+          onMouseDown={e => { e.preventDefault(); insertMention(m.displayName) }}
+          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        >
+          <Avatar name={m.displayName} size={20}/>
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{m.displayName}</span>
+        </button>
+      ))}
+    </div>
+  ) : null
 
   const canSend = (draft.trim().length > 0 || pendingAttachments.length > 0) && !isPending && !isUploading
 
@@ -274,22 +337,24 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           {AttachmentPreviews}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px' }}>
             <div style={{ flex: 1, position: 'relative' }}>
+              {MentionPicker}
               {typeof placeholder !== 'string' && !draft && (
                 <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 13 }}>
                   {placeholder}
                 </div>
               )}
               <input
+                ref={compactInputRef}
                 value={draft}
-                onChange={e => setDraft(e.target.value)}
+                onChange={e => { setDraft(e.target.value); detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={() => setIsComposing(false)}
-                onKeyDown={e => {
+                onKeyDown={e => handleKeyDownWithMention(e, () => {
                   if (e.key !== 'Enter' || e.shiftKey) return
                   if (isImeConfirmingEnter(e, isComposing)) return
                   e.preventDefault()
                   send()
-                }}
+                })}
                 placeholder={typeof placeholder === 'string' ? placeholder : ''}
                 style={{ width: '100%', border: 'none', background: 'transparent', fontSize: 13, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
               />
@@ -337,22 +402,24 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         {AttachmentPreviews}
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, padding: '10px 14px 12px' }}>
           <div style={{ flex: 1, position: 'relative' }}>
+            {MentionPicker}
             {typeof placeholder !== 'string' && !draft && (
               <div style={{ position: 'absolute', top: 2, left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 14 }}>
                 {placeholder}
               </div>
             )}
             <textarea
+              ref={textareaRef}
               value={draft}
-              onChange={e => setDraft(e.target.value)}
+              onChange={e => { setDraft(e.target.value); detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
               onCompositionStart={() => setIsComposing(true)}
               onCompositionEnd={() => setIsComposing(false)}
-              onKeyDown={e => {
+              onKeyDown={e => handleKeyDownWithMention(e, () => {
                 if (e.key !== 'Enter' || e.shiftKey) return
                 if (isImeConfirmingEnter(e, isComposing)) return
                 e.preventDefault()
                 send()
-              }}
+              })}
               placeholder={typeof placeholder === 'string' ? placeholder : ''}
               rows={1}
               style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160 }}
@@ -386,8 +453,18 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
 
   const { data: currentUser } = useCurrentUser()
   const { data: messages = [], isLoading, isError } = useChannelMessages(channelId)
+  const { data: wsMembers = [] } = useWorkspaceMembers()
+  const { data: chMemberIds = [] } = useChannelMembers(channelId)
   const sendMutation = useSendChannelMessage(channelId, currentUser)
   const reactMutation = useToggleMessageReaction(channelId)
+
+  const mentionMembers = React.useMemo(() => {
+    if (chMemberIds.length > 0) {
+      const idSet = new Set(chMemberIds.map(m => m.userId))
+      return wsMembers.filter(m => idSet.has(m.userId) && m.userId !== currentUser?.id)
+    }
+    return wsMembers.filter(m => m.userId !== currentUser?.id)
+  }, [chMemberIds, wsMembers, currentUser?.id])
 
   React.useEffect(() => {
     if (!sendMutation.isError) return
@@ -526,6 +603,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
         onImageSelect={handleImageSelect}
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
+        mentionMembers={mentionMembers}
         {...(compact ? { compact: true } : {})}
       />
     </>
