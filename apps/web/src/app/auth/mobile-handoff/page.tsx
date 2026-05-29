@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 function isSafeRedirect(path: string): boolean {
@@ -9,7 +9,6 @@ function isSafeRedirect(path: string): boolean {
 }
 
 function MobileHandoffInner() {
-  const router = useRouter()
   const params = useSearchParams()
 
   useEffect(() => {
@@ -24,7 +23,7 @@ function MobileHandoffInner() {
     const refreshToken = hashParams.get('rt')
 
     if (!accessToken || !refreshToken) {
-      router.replace('/auth/login')
+      window.location.replace('/auth/login')
       return
     }
 
@@ -34,8 +33,11 @@ function MobileHandoffInner() {
     const supabase = createClient()
     supabase.auth
       .setSession({ access_token: accessToken, refresh_token: refreshToken })
-      .then(() => router.replace(redirect))
-      .catch(() => router.replace('/auth/login'))
+      // router.replace() は RSC フェッチを発生させ、ミドルウェアが Cookie を
+      // 確認するタイミングでまだ Cookie が届いていない場合がある。
+      // window.location.replace() でフルリロードすることで Cookie を確実に送信する。
+      .then(() => window.location.replace(redirect))
+      .catch(() => window.location.replace('/auth/login'))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -49,3 +51,4 @@ export default function MobileHandoffPage() {
     </Suspense>
   )
 }
+
