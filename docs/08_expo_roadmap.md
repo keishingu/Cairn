@@ -199,16 +199,15 @@ const { status } = await Notifications.requestPermissionsAsync()
 
 ### Phase 2-B（Expo アプリ）
 
-| ステップ | 内容 | 依存 |
+**方針: チャット以外は WebView で Web アプリを表示。チャットのみネイティブ実装。**
+
+| ステップ | 内容 | 状態 |
 |---|---|---|
-| 2-5 | `apps/mobile/` 新設、Expo Router セットアップ | 2-1〜2-4 |
-| 2-6 | Supabase Auth 統合（SecureStore） | 2-5 |
-| 2-7 | プロジェクト一覧・詳細画面 | 2-5, 2-6 |
-| 2-8 | チャット画面（TanStack Query ポーリング） | 2-5, 2-6 |
-| 2-9 | タスク画面 | 2-5, 2-6 |
-| 2-10 | Expo Push Notifications 統合 | 1-1〜1-5, 2-6 |
-| 2-11 | 通知一覧画面 | 2-10 |
-| 2-12 | 写真アップロード・ギャラリー（expo-image-picker） | 2-5, 2-6 |
+| 2-1 | `apps/mobile/` 新設、Expo Router・Auth・API クライアント | ✅ 完了（PR #68） |
+| 2-2 | ネイティブ画面実装（projects / chats / tasks / notifications） | ✅ 完了（PR #68） |
+| 2-3 | Expo Push Notifications 統合 | ✅ 完了（PR #68） |
+| 2-4 | WebView 化（projects / tasks / notifications）+ セッション橋渡し | 未着手 → `docs/prompts/phase2b-4-webview.md` |
+| 2-5 | ネイティブチャット強化（オフライン送信キュー・バックグラウンドアップロード） | 未着手 → `docs/prompts/phase2b-5-native-chat.md` |
 
 ### Phase 3（仕上げ・マイルストーン等）
 
