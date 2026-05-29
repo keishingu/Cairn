@@ -59,13 +59,17 @@ export const pushSubscriptions = pgTable(
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
     deviceType: text('device_type').notNull(), // 'web' | 'expo'
-    endpoint: text('endpoint').notNull(),
+    // web: Web Push 購読 URL。expo: null
+    endpoint: text('endpoint'),
     keys: jsonb('keys').$type<{ p256dh: string; auth: string }>(),
+    // expo: Expo Push Token ("ExponentPushToken[...]")。web: null
     expoToken: text('expo_token'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    unique().on(t.userId, t.endpoint),
+    // Postgres の UNIQUE は NULL を比較から除外するため、両制約は相互干渉しない
+    unique('uniq_push_web').on(t.userId, t.endpoint),
+    unique('uniq_push_expo').on(t.userId, t.expoToken),
     index('idx_push_subscriptions_user').on(t.userId),
   ],
 )

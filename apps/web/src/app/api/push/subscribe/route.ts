@@ -5,13 +5,18 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 
-const subscribeSchema = z.object({
+const webSchema = z.object({
+  deviceType: z.literal('web'),
   endpoint: z.string().url(),
-  keys: z.object({
-    p256dh: z.string(),
-    auth: z.string(),
-  }),
+  keys: z.object({ p256dh: z.string(), auth: z.string() }),
 })
+
+const expoSchema = z.object({
+  deviceType: z.literal('expo'),
+  expoToken: z.string().startsWith('ExponentPushToken['),
+})
+
+const subscribeSchema = z.discriminatedUnion('deviceType', [webSchema, expoSchema])
 
 export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
@@ -34,18 +39,29 @@ export async function POST(req: Request) {
   try {
     const { db, pushSubscriptions } = await import('@cairn/db')
 
-    await db
-      .insert(pushSubscriptions)
-      .values({
-        userId: ctx.userId,
-        deviceType: 'web',
-        endpoint: parsed.data.endpoint,
-        keys: parsed.data.keys,
-      })
-      .onConflictDoUpdate({
-        target: [pushSubscriptions.userId, pushSubscriptions.endpoint],
-        set: { keys: parsed.data.keys },
-      })
+    if (parsed.data.deviceType === 'web') {
+      await db
+        .insert(pushSubscriptions)
+        .values({
+          userId: ctx.userId,
+          deviceType: 'web',
+          endpoint: parsed.data.endpoint,
+          keys: parsed.data.keys,
+        })
+        .onConflictDoUpdate({
+          target: [pushSubscriptions.userId, pushSubscriptions.endpoint],
+          set: { keys: parsed.data.keys },
+        })
+    } else {
+      await db
+        .insert(pushSubscriptions)
+        .values({
+          userId: ctx.userId,
+          deviceType: 'expo',
+          expoToken: parsed.data.expoToken,
+        })
+        .onConflictDoNothing()
+    }
 
     return NextResponse.json({ ok: true })
   } catch (err) {
