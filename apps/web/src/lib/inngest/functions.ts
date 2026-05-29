@@ -4,7 +4,7 @@
 import { inngest } from './client'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
-import { sendWebPushToUser } from '@/lib/push/send'
+import { sendPushToUser } from '@/lib/push/send'
 
 // <@userId|displayName> 形式の構造化メンションから userId を抽出する
 function extractMentionedUserIds(content: string): string[] {
@@ -42,7 +42,7 @@ export const onMessageCreated = inngest.createFunction(
     if (isDm) {
       await step.run('send-dm-push', async () => {
         await Promise.allSettled(
-          members.map(m => sendWebPushToUser(m.userId, {
+          members.map(m => sendPushToUser(m.userId, {
             title: senderName,
             body: content.slice(0, 100),
             url: '/chat',
@@ -109,7 +109,7 @@ export const onMessageCreated = inngest.createFunction(
       await step.run('send-mention-push', async () => {
         await Promise.allSettled(
           mentionedMembers.map(m =>
-            sendWebPushToUser(m.userId, {
+            sendPushToUser(m.userId, {
               title: `${senderName} があなたをメンションしました`,
               body: content.slice(0, 100),
               url: `/chat?channel=${channelId}`,
@@ -176,7 +176,7 @@ export const onTaskAssigned = inngest.createFunction(
     })
 
     await step.run('send-task-push', async () => {
-      await sendWebPushToUser(assigneeId, {
+      await sendPushToUser(assigneeId, {
         title: `${assignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
         url: '/tasks',
