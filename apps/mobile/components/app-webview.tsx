@@ -1,9 +1,14 @@
 import React from 'react'
-import { StyleSheet } from 'react-native'
+import { View, StyleSheet, useColorScheme } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 import { supabase } from '../lib/supabase'
 
 const WEB_BASE = process.env['EXPO_PUBLIC_API_BASE_URL']!
+
+// Web 側の globals.css --bg と揃える
+const BG_DARK = '#0B0F14'
+const BG_LIGHT = '#F8FAFC'
 
 interface Props {
   path: string
@@ -12,6 +17,9 @@ interface Props {
 export function AppWebView({ path }: Props) {
   const webViewRef = React.useRef<WebView>(null)
   const [handoff, setHandoff] = React.useState<{ uri: string; script: string } | null>(null)
+  const insets = useSafeAreaInsets()
+  const colorScheme = useColorScheme()
+  const bg = colorScheme === 'dark' ? BG_DARK : BG_LIGHT
 
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -36,20 +44,23 @@ export function AppWebView({ path }: Props) {
     })
   }, [path])
 
-  if (!handoff) return null
+  if (!handoff) return <View style={[styles.fill, { backgroundColor: bg }]} />
 
   return (
-    <WebView
-      ref={webViewRef}
-      source={{ uri: handoff.uri }}
-      injectedJavaScriptBeforeContentLoaded={handoff.script}
-      style={styles.webview}
-      // 自ドメイン以外へのナビゲーションをブロック
-      originWhitelist={[WEB_BASE]}
-    />
+    <View style={[styles.fill, { backgroundColor: bg, paddingTop: insets.top }]}>
+      <WebView
+        ref={webViewRef}
+        source={{ uri: handoff.uri }}
+        injectedJavaScriptBeforeContentLoaded={handoff.script}
+        style={styles.webview}
+        // 自ドメイン以外へのナビゲーションをブロック
+        originWhitelist={[WEB_BASE]}
+      />
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
   webview: { flex: 1 },
 })
