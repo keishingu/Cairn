@@ -33,6 +33,8 @@ export const viewport: Viewport = {
     { media: '(prefers-color-scheme: light)', color: '#4F8EF7' },
     { media: '(prefers-color-scheme: dark)', color: '#0B1622' },
   ],
+  // iOS Safari で input/textarea フォーカス時の自動ズームを防ぐ
+  maximumScale: 1,
 }
 
 export default function RootLayout({
