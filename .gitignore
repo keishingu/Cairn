@@ -45,7 +45,8 @@ drizzle/meta
 supabase/migrations/meta/
 
 # claude
-.claude/
+.claude/settings.local.json
+.claude/worktrees/*
 
 # pnpm
 .pnpm-store/
