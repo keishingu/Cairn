@@ -3,7 +3,7 @@
 
 'use client'
 
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -12,7 +12,7 @@ function isSafeRedirect(path: string): boolean {
   return path.startsWith('/') && !path.startsWith('//')
 }
 
-export default function MobileHandoffPage() {
+function MobileHandoffInner() {
   const router = useRouter()
   const params = useSearchParams()
 
@@ -41,4 +41,12 @@ export default function MobileHandoffPage() {
   }, [])
 
   return null
+}
+
+export default function MobileHandoffPage() {
+  return (
+    <Suspense>
+      <MobileHandoffInner />
+    </Suspense>
+  )
 }
