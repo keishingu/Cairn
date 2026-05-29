@@ -34,8 +34,6 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
     }
   }, [session, segments, router])
 
-  if (session === undefined) return null
-
   return <React.Fragment>{children}</React.Fragment>
 }
 
