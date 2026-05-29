@@ -113,7 +113,7 @@ function MobilePage({ page, projectsView, initialMemberId }: { page: string; pro
   )
 }
 
-function MobileShellInner() {
+function MobileShellInner({ isWebView }: { isWebView: boolean }) {
   const pathname = usePathname()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -121,6 +121,13 @@ function MobileShellInner() {
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
+
+  // sessionStorage で webview フラグを永続化し、クライアントサイドナビゲーション後も維持
+  const [inWebView, setInWebView] = React.useState(false)
+  React.useEffect(() => {
+    if (isWebView) sessionStorage.setItem('cairn:webview', '1')
+    setInWebView(isWebView || sessionStorage.getItem('cairn:webview') === '1')
+  }, [isWebView])
 
   const { panelProject, openPanel } = useProjectPanel()
 
@@ -178,13 +185,13 @@ function MobileShellInner() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
             <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} />
           </div>
-          <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
+          {!inWebView && <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />}
         </div>
       </div>
     </AppShellContext.Provider>
   )
 }
 
-export function MobileShell() {
-  return <MobileShellInner />
+export function MobileShell({ isWebView = false }: { isWebView?: boolean }) {
+  return <MobileShellInner isWebView={isWebView} />
 }

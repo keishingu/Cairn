@@ -13,6 +13,9 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-device', detectMobile(ua) ? 'mobile' : 'desktop')
 
+  const isWebView = request.nextUrl.searchParams.get('webview') === '1'
+  if (isWebView) requestHeaders.set('x-webview', '1')
+
   let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
 
   const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL']
