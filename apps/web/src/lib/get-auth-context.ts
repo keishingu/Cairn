@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
+import type { User } from '@supabase/supabase-js'
 
 const DEV_USER_ID      = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
@@ -26,13 +28,30 @@ export async function getAuthContext(): Promise<AuthResult> {
   }
 
   const supabase = await createClient()
-  // getSession はクッキーの JWT をローカルで検証するだけでネットワーク往復が発生しない。
-  // ミドルウェアが API ルートをスキップしているため、ここが唯一の認証チェックになる。
-  // JWT の署名と有効期限（デフォルト1時間）が安全性の担保。
-  const { data: { session }, error: authError } = await supabase.auth.getSession()
-  const user = session?.user
+  const headersList = await headers()
+  const authorization = headersList.get('Authorization')
 
-  if (authError || !user) {
+  let user: User | null = null
+
+  if (authorization?.startsWith('Bearer ')) {
+    const token = authorization.slice(7)
+    const { data, error } = await supabase.auth.getUser(token)
+    if (error || !data.user) {
+      return { ctx: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+    }
+    user = data.user
+  } else {
+    // getSession はクッキーの JWT をローカルで検証するだけでネットワーク往復が発生しない。
+    // ミドルウェアが API ルートをスキップしているため、ここが唯一の認証チェックになる。
+    // JWT の署名と有効期限（デフォルト1時間）が安全性の担保。
+    const { data: { session }, error: authError } = await supabase.auth.getSession()
+    if (authError || !session?.user) {
+      return { ctx: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+    }
+    user = session.user
+  }
+
+  if (!user) {
     return { ctx: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
 

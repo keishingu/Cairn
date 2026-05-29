@@ -6,6 +6,7 @@ import { Icon, Avatar, StatusChip } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import type { ProjectDto } from '@/app/api/projects/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { ProjectPanel } from './project-panel'
 
 const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
@@ -168,7 +169,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
   const { data: projects = [], isLoading } = useQuery<MemberProjectDto[]>({
     queryKey: ['member-projects', member.userId],
     queryFn: () =>
-      fetch(`/api/workspaces/members/${member.userId}/projects`).then(r => r.json()),
+      fetchWithAuth(`/api/workspaces/members/${member.userId}/projects`).then(r => r.json()),
   })
 
   const handleProjectClick = (p: MemberProjectDto) => {

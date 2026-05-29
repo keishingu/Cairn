@@ -5,9 +5,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 async function fetchWorkspaceCoverPhotos(): Promise<WorkspaceCoverPhoto[]> {
-  const res = await fetch('/api/workspaces/cover-photos')
+  const res = await fetchWithAuth('/api/workspaces/cover-photos')
   if (!res.ok) return []
   return res.json() as Promise<WorkspaceCoverPhoto[]>
 }
@@ -19,7 +20,7 @@ async function createProject(body: {
   endDate?: string | undefined
   coverPhotoUrl?: string | undefined
 }): Promise<ProjectDto> {
-  const res = await fetch('/api/projects', {
+  const res = await fetchWithAuth('/api/projects', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

@@ -11,6 +11,7 @@ import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 const Toggle = ({ on }: { on: boolean }) => (
   <div style={{
@@ -55,7 +56,7 @@ const SettingsAccount = () => {
   const queryClient = useQueryClient()
   const { data: user, isLoading } = useQuery<CurrentUserDto>({
     queryKey: ['me'],
-    queryFn: () => fetch('/api/me').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
   })
 
   const [displayName, setDisplayName] = React.useState('')
@@ -68,7 +69,7 @@ const SettingsAccount = () => {
 
   const nameMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/me', {
+      const res = await fetchWithAuth('/api/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ displayName }),
@@ -89,7 +90,7 @@ const SettingsAccount = () => {
     mutationFn: async (file: File) => {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await fetch('/api/me/avatar', { method: 'POST', body: fd })
+      const res = await fetchWithAuth('/api/me/avatar', { method: 'POST', body: fd })
       if (!res.ok) {
         const d = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(d.error ?? 'アップロードに失敗しました')
@@ -277,7 +278,7 @@ const COLOR_PRESETS = [
 ]
 
 async function fetchStatuses(): Promise<ProjectStatusDto[]> {
-  const res = await fetch('/api/projects/statuses')
+  const res = await fetchWithAuth('/api/projects/statuses')
   if (!res.ok) throw new Error('fetch failed')
   return res.json() as Promise<ProjectStatusDto[]>
 }
@@ -299,7 +300,7 @@ const StatusRow = ({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/projects/statuses/${status.id}`, {
+      const res = await fetchWithAuth(`/api/projects/statuses/${status.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), color, isFinal }),
@@ -311,7 +312,7 @@ const StatusRow = ({
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/projects/statuses/${status.id}`, { method: 'DELETE' })
+      const res = await fetchWithAuth(`/api/projects/statuses/${status.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('削除に失敗しました')
     },
     onSuccess: onDeleted,
@@ -405,7 +406,7 @@ const SettingsWorkflow = () => {
 
   const addMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/projects/statuses', {
+      const res = await fetchWithAuth('/api/projects/statuses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName.trim(), color: newColor }),
@@ -546,7 +547,7 @@ const SettingsWorkspaceGeneral = () => {
 
   const { data: ws } = useQuery<WorkspaceDto>({
     queryKey: ['workspace'],
-    queryFn: () => fetch('/api/workspaces').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
   })
 
   const [wsName, setWsName] = React.useState('')
@@ -563,7 +564,7 @@ const SettingsWorkspaceGeneral = () => {
 
   const nameMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/workspaces', {
+      const res = await fetchWithAuth('/api/workspaces', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: wsName }),
@@ -582,7 +583,7 @@ const SettingsWorkspaceGeneral = () => {
 
   const descMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/workspaces', {
+      const res = await fetchWithAuth('/api/workspaces', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description: wsDesc || null }),
@@ -603,7 +604,7 @@ const SettingsWorkspaceGeneral = () => {
     mutationFn: async (file: File) => {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await fetch('/api/workspaces/logo', { method: 'POST', body: fd })
+      const res = await fetchWithAuth('/api/workspaces/logo', { method: 'POST', body: fd })
       if (!res.ok) {
         const d = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(d.error ?? 'アップロードに失敗しました')
@@ -781,7 +782,7 @@ const SettingsCoverPhotos = () => {
   const queryClient = useQueryClient()
   const { data: photos = [], isLoading } = useQuery<WorkspaceCoverPhoto[]>({
     queryKey: ['workspace-cover-photos'],
-    queryFn: () => fetch('/api/workspaces/cover-photos').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/workspaces/cover-photos').then(r => r.json()),
   })
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = React.useState(false)
@@ -796,7 +797,7 @@ const SettingsCoverPhotos = () => {
     try {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await fetch('/api/workspaces/cover-photos', { method: 'POST', body: fd })
+      const res = await fetchWithAuth('/api/workspaces/cover-photos', { method: 'POST', body: fd })
       if (!res.ok) {
         const body = await res.json() as { error?: string }
         throw new Error(body.error ?? 'アップロードに失敗しました')
@@ -812,7 +813,7 @@ const SettingsCoverPhotos = () => {
   }
 
   const deletePhoto = useMutation({
-    mutationFn: (id: string) => fetch('/api/workspaces/cover-photos', {
+    mutationFn: (id: string) => fetchWithAuth('/api/workspaces/cover-photos', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
@@ -941,10 +942,10 @@ const SettingsCoverPhotos = () => {
 const SettingsIntegrations = () => {
   const { data, refetch } = useQuery<{ token: string }>({
     queryKey: ['ical-token'],
-    queryFn: () => fetch('/api/calendar/token').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/calendar/token').then(r => r.json()),
   })
   const regenerate = useMutation({
-    mutationFn: () => fetch('/api/calendar/token', { method: 'POST' }).then(r => r.json()),
+    mutationFn: () => fetchWithAuth('/api/calendar/token', { method: 'POST' }).then(r => r.json()),
     onSuccess: () => refetch(),
   })
   const [copiedScope, setCopiedScope] = React.useState<string | null>(null)
@@ -1040,7 +1041,7 @@ const SERVICE_META: { key: ServiceKey; label: string; icon: string }[] = [
 const SettingsDeveloper = () => {
   const { data, isLoading, refetch, isFetching } = useQuery<DevStatusDto>({
     queryKey: ['dev-status'],
-    queryFn: () => fetch('/api/dev/status').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/dev/status').then(r => r.json()),
     staleTime: 0,
     gcTime: 0,
   })

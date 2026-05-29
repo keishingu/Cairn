@@ -9,6 +9,7 @@ import { MobileHeader } from '../mobile/header'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 // ---- ソースチップ ----
 
@@ -343,17 +344,17 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
 
   const { data: conversations = [] } = useQuery<ConversationDto[]>({
     queryKey: ['ai-conversations'],
-    queryFn: () => fetch('/api/ai/conversations').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/ai/conversations').then(r => r.json()),
   })
 
   const { data: initialMessages } = useQuery<MessageDto[]>({
     queryKey: ['ai-messages', activeId],
-    queryFn: () => fetch(`/api/ai/conversations/${activeId}/messages`).then(r => r.json()),
+    queryFn: () => fetchWithAuth(`/api/ai/conversations/${activeId}/messages`).then(r => r.json()),
     enabled: !!activeId,
   })
 
   const createConversation = useMutation({
-    mutationFn: () => fetch('/api/ai/conversations', { method: 'POST' }).then(r => r.json()) as Promise<ConversationDto>,
+    mutationFn: () => fetchWithAuth('/api/ai/conversations', { method: 'POST' }).then(r => r.json()) as Promise<ConversationDto>,
     onSuccess: (conv) => {
       queryClient.setQueryData<ConversationDto[]>(['ai-conversations'], prev => [conv, ...(prev ?? [])])
       setActiveId(conv.id)

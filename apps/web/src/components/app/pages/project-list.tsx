@@ -10,6 +10,7 @@ import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 // ─── Tag presets ──────────────────────────────────────────────────
 const TAG_PRESETS = [
@@ -331,19 +332,19 @@ function formatDates(start: string | null, end: string | null): string {
 }
 
 async function fetchProjects(): Promise<ProjectDto[]> {
-  const res = await fetch('/api/projects')
+  const res = await fetchWithAuth('/api/projects')
   if (!res.ok) throw new Error('fetch failed')
   return res.json() as Promise<ProjectDto[]>
 }
 
 async function fetchStatuses(): Promise<ProjectStatusDto[]> {
-  const res = await fetch('/api/projects/statuses')
+  const res = await fetchWithAuth('/api/projects/statuses')
   if (!res.ok) throw new Error('fetch failed')
   return res.json() as Promise<ProjectStatusDto[]>
 }
 
 async function fetchWorkspaceCoverPhotos(): Promise<WorkspaceCoverPhoto[]> {
-  const res = await fetch('/api/workspaces/cover-photos')
+  const res = await fetchWithAuth('/api/workspaces/cover-photos')
   if (!res.ok) return []
   return res.json() as Promise<WorkspaceCoverPhoto[]>
 }
@@ -356,7 +357,7 @@ async function createProject(body: {
   endDate?: string | undefined
   coverPhotoUrl?: string | undefined
 }): Promise<ProjectDto> {
-  const res = await fetch('/api/projects', {
+  const res = await fetchWithAuth('/api/projects', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

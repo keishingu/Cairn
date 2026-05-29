@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../../primitives'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 const ROLE_LABEL: Record<string, string> = {
   leader:    'リーダー',
@@ -271,12 +272,12 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
 
   const { data: members = [], isLoading } = useQuery<ProjectMemberDto[]>({
     queryKey: ['project-members', projectId],
-    queryFn: () => fetch(`/api/projects/${projectId}/members`).then(r => r.json()),
+    queryFn: () => fetchWithAuth(`/api/projects/${projectId}/members`).then(r => r.json()),
   })
 
   const { data: wsMembers = [], isLoading: isLoadingWs } = useQuery<WorkspaceMemberDto[]>({
     queryKey: ['workspace-members'],
-    queryFn: () => fetch('/api/workspaces/members').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
     enabled: showInvite,
   })
 
@@ -285,7 +286,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
 
   const addMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
-      const res = await fetch(`/api/projects/${projectId}/members`, {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, role }),
@@ -309,7 +310,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
 
   const removeMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const res = await fetch(`/api/projects/${projectId}/members/${userId}`, {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/members/${userId}`, {
         method: 'DELETE',
       })
       if (!res.ok) throw new Error('Failed')

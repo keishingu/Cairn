@@ -7,9 +7,10 @@ import { useCallback } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import type { ProjectDto } from '@/app/api/projects/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 async function fetchProjects(): Promise<ProjectDto[]> {
-  const res = await fetch('/api/projects')
+  const res = await fetchWithAuth('/api/projects')
   if (!res.ok) throw new Error('fetch failed')
   return res.json() as Promise<ProjectDto[]>
 }

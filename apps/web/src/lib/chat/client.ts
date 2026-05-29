@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { AttachmentDto } from '@cairn/shared'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
@@ -35,37 +36,37 @@ export function findProjectChannelById(
 }
 
 async function fetchProjectChannels(): Promise<ProjectChannelDto[]> {
-  const res = await fetch('/api/projects/channels')
+  const res = await fetchWithAuth('/api/projects/channels')
   if (!res.ok) throw new Error('チャンネルの取得に失敗しました')
   return res.json()
 }
 
 async function fetchWorkspaceChannels(): Promise<WorkspaceChannelDto[]> {
-  const res = await fetch('/api/workspaces/channels')
+  const res = await fetchWithAuth('/api/workspaces/channels')
   if (!res.ok) throw new Error('チャンネルの取得に失敗しました')
   return res.json()
 }
 
 async function fetchWorkspaceMembers(): Promise<WorkspaceMemberDto[]> {
-  const res = await fetch('/api/workspaces/members')
+  const res = await fetchWithAuth('/api/workspaces/members')
   if (!res.ok) throw new Error('メンバーの取得に失敗しました')
   return res.json()
 }
 
 async function fetchDms(): Promise<DmChannelDto[]> {
-  const res = await fetch('/api/workspaces/dms')
+  const res = await fetchWithAuth('/api/workspaces/dms')
   if (!res.ok) throw new Error('DMの取得に失敗しました')
   return res.json()
 }
 
 async function fetchChannelMembers(channelId: string): Promise<{ userId: string }[]> {
-  const res = await fetch(`/api/channels/${channelId}/members`)
+  const res = await fetchWithAuth(`/api/channels/${channelId}/members`)
   if (!res.ok) return []
   return res.json()
 }
 
 async function addChannelMember(channelId: string, userId: string): Promise<void> {
-  const res = await fetch(`/api/channels/${channelId}/members`, {
+  const res = await fetchWithAuth(`/api/channels/${channelId}/members`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId }),
@@ -77,7 +78,7 @@ async function addChannelMember(channelId: string, userId: string): Promise<void
 }
 
 async function createWorkspaceChannel(body: { name: string; isPrivate: boolean }): Promise<WorkspaceChannelDto> {
-  const res = await fetch('/api/workspaces/channels', {
+  const res = await fetchWithAuth('/api/workspaces/channels', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -90,7 +91,7 @@ async function createWorkspaceChannel(body: { name: string; isPrivate: boolean }
 }
 
 async function createDm(targetUserId: string): Promise<{ id: string }> {
-  const res = await fetch('/api/workspaces/dms', {
+  const res = await fetchWithAuth('/api/workspaces/dms', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ targetUserId }),
@@ -100,7 +101,7 @@ async function createDm(targetUserId: string): Promise<{ id: string }> {
 }
 
 async function fetchChannelMessages(channelId: string): Promise<MessageDto[]> {
-  const res = await fetch(`/api/channels/${channelId}/messages`)
+  const res = await fetchWithAuth(`/api/channels/${channelId}/messages`)
   if (!res.ok) throw new Error('メッセージの取得に失敗しました')
   return res.json()
 }
@@ -112,7 +113,7 @@ interface SendMessageInput {
 }
 
 async function postChannelMessage(channelId: string, input: SendMessageInput): Promise<MessageDto> {
-  const res = await fetch(`/api/channels/${channelId}/messages`, {
+  const res = await fetchWithAuth(`/api/channels/${channelId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content: input.content, attachmentFileIds: input.attachmentFileIds }),
@@ -122,7 +123,7 @@ async function postChannelMessage(channelId: string, input: SendMessageInput): P
 }
 
 async function toggleMessageReaction(messageId: string, emoji: string): Promise<void> {
-  const res = await fetch(`/api/messages/${messageId}/reactions`, {
+  const res = await fetchWithAuth(`/api/messages/${messageId}/reactions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ emoji }),
@@ -131,7 +132,7 @@ async function toggleMessageReaction(messageId: string, emoji: string): Promise<
 }
 
 async function fetchCurrentUser(): Promise<CurrentUserDto> {
-  const res = await fetch('/api/me')
+  const res = await fetchWithAuth('/api/me')
   if (!res.ok) throw new Error('ユーザー情報の取得に失敗しました')
   return res.json()
 }
@@ -279,7 +280,7 @@ export function useMarkChannelRead() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (channelId: string) =>
-      fetch(`/api/channels/${channelId}/read`, { method: 'POST' }).then(r => {
+      fetchWithAuth(`/api/channels/${channelId}/read`, { method: 'POST' }).then(r => {
         if (!r.ok) throw new Error('既読処理に失敗しました')
       }),
     onSuccess: () => {

@@ -5,9 +5,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 async function fetchStatuses(): Promise<ProjectStatusDto[]> {
-  const res = await fetch('/api/projects/statuses')
+  const res = await fetchWithAuth('/api/projects/statuses')
   if (!res.ok) throw new Error('fetch failed')
   return res.json() as Promise<ProjectStatusDto[]>
 }
@@ -85,7 +86,7 @@ export const SettingsTab = ({ project, onDeleted }: SettingsTabProps) => {
       }
       if (selectedStatus !== project.statusName) body.statusName = selectedStatus
 
-      const res = await fetch(`/api/projects/${project.id}`, {
+      const res = await fetchWithAuth(`/api/projects/${project.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -100,7 +101,7 @@ export const SettingsTab = ({ project, onDeleted }: SettingsTabProps) => {
 
   const archiveMutation = useMutation({
     mutationFn: async (archived: boolean) => {
-      const res = await fetch(`/api/projects/${project.id}`, {
+      const res = await fetchWithAuth(`/api/projects/${project.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ archived }),
@@ -118,7 +119,7 @@ export const SettingsTab = ({ project, onDeleted }: SettingsTabProps) => {
     setIsDeleting(true)
     setDeleteError(null)
     try {
-      const res = await fetch(`/api/projects/${project.id}`, { method: 'DELETE' })
+      const res = await fetchWithAuth(`/api/projects/${project.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const data = await res.json().catch(() => ({})) as { error?: string }
         setDeleteError(data.error ?? '削除に失敗しました')

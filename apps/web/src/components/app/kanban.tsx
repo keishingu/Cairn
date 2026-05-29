@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack } from './primitives'
 import { MEMBERS, STATUS, STATUS_COL, type StatusKey } from './data'
 import type { ProjectDto } from '@/app/api/projects/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 function formatDateRange(start: string | null, end: string | null): string {
   if (!start) return ''
@@ -163,12 +164,12 @@ export const KanbanBoard = ({ onCardClick, isMobile = false }: KanbanBoardProps)
 
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
-    queryFn: () => fetch('/api/projects').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
   })
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, statusName }: { id: string; statusName: StatusKey }) => {
-      const res = await fetch(`/api/projects/${id}`, {
+      const res = await fetchWithAuth(`/api/projects/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ statusName }),

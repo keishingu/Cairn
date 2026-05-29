@@ -20,6 +20,7 @@ import {
   useWorkspaceMembers,
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 const URL_RE = /https?:\/\/[^\s<>"']+/g
@@ -573,7 +574,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('channelId', channelId)
-      const res = await fetch('/api/attachments/upload', { method: 'POST', body: formData })
+      const res = await fetchWithAuth('/api/attachments/upload', { method: 'POST', body: formData })
       if (!res.ok) {
         const data = await res.json().catch(() => ({})) as { error?: string }
         setSendError(data.error ?? 'アップロードに失敗しました')
@@ -602,7 +603,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
     const urls = extractGoogleDocsUrls(text)
     if (urls.length === 0) return
     for (const url of urls) {
-      void fetch('/api/external-links', {
+      void fetchWithAuth('/api/external-links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, channelId }),

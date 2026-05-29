@@ -13,6 +13,7 @@ import { TasksTab } from './tabs/tasks-tab'
 import { MembersTab } from './tabs/members-tab'
 import { GalleryTab } from './tabs/gallery-tab'
 import { SettingsTab } from './tabs/settings-tab'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 
 const PanelAITab = () => (
@@ -59,13 +60,13 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, onClose }: C
 
   const { data: workspacePhotos = [] } = useQuery<WorkspaceCoverPhoto[]>({
     queryKey: ['workspace-cover-photos'],
-    queryFn: () => fetch('/api/workspaces/cover-photos').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/workspaces/cover-photos').then(r => r.json()),
   })
 
   const apply = async (url: string | null) => {
     setSaving(true)
     try {
-      const res = await fetch(`/api/projects/${projectId}`, {
+      const res = await fetchWithAuth(`/api/projects/${projectId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ coverPhotoUrl: url }),
