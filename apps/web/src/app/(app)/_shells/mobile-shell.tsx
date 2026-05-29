@@ -26,6 +26,7 @@ import { PageMembers } from '@/components/app/pages/members-page'
 import { PageFiles } from '@/components/app/pages/files'
 import { PageGallery } from '@/components/app/pages/gallery'
 import { useProjectPanel } from '@/hooks/use-project-panel'
+import { PageNotifications } from '@/components/app/pages/notifications'
 
 const MOBILE_STORAGE_KEY = 'cairn:projects_view_mobile'
 type ProjectsView = 'list' | 'calendar' | 'kanban'
@@ -121,6 +122,7 @@ function MobileShellInner() {
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
+  const [notifOpen, setNotifOpen] = React.useState(false)
 
   const { panelProject, openPanel } = useProjectPanel()
 
@@ -153,7 +155,7 @@ function MobileShellInner() {
   }, [router])
 
   return (
-    <AppShellContext.Provider value={{ openPanel, openNotif: () => {}, projectsView, setProjectsView }}>
+    <AppShellContext.Provider value={{ openPanel, openNotif: () => setNotifOpen(true), projectsView, setProjectsView }}>
       <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden' }}>
         <NavigationProgress />
         {/* ProjectPanel・MemberDetailPanel は position:fixed でフルスクリーン表示 */}
@@ -174,11 +176,12 @@ function MobileShellInner() {
             isMobile
           />
         )}
+        {notifOpen && <PageNotifications isMobile onClose={() => setNotifOpen(false)} />}
         <div className="app" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
             <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} />
           </div>
-          <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
+          <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} onNotif={() => setNotifOpen(true)} />
         </div>
       </div>
     </AppShellContext.Provider>

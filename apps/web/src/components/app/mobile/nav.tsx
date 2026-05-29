@@ -12,6 +12,7 @@ interface MobileNavProps {
   projectsView: string
   onNavigate: (path: string) => void
   onChangeView: (view: string) => void
+  onNotif: () => void
 }
 
 const BASE_TABS = [
@@ -28,7 +29,8 @@ const PROJECTS_VIEWS = [
   { id: 'kanban',   label: 'カンバン',   icon: 'kanban'  },
 ]
 
-const MENU_ITEMS = [
+const MENU_ITEMS: { label: string; icon: string; path: string | null }[] = [
+  { label: '通知',       icon: 'bell',     path: null },
   { label: 'ファイル',   icon: 'file',     path: '/files' },
   { label: 'ギャラリー', icon: 'image',    path: '/gallery' },
   { label: 'メンバー',   icon: 'users',    path: '/members' },
@@ -37,7 +39,7 @@ const MENU_ITEMS = [
 
 const MENU_PAGES = new Set(['settings', 'files', 'gallery', 'members'])
 
-export function MobileNav({ page, projectsView, onNavigate, onChangeView }: MobileNavProps) {
+export function MobileNav({ page, projectsView, onNavigate, onChangeView, onNotif }: MobileNavProps) {
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [projectsPickerOpen, setProjectsPickerOpen] = React.useState(false)
   const projectLabel = useProjectLabel()
@@ -132,8 +134,8 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
         }}>
           {MENU_ITEMS.map((item, i) => (
             <button
-              key={item.path}
-              onClick={() => { closeAll(); onNavigate(item.path) }}
+              key={item.label}
+              onClick={() => { closeAll(); item.path !== null ? onNavigate(item.path) : onNotif() }}
               style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 14,
                 padding: '16px 20px', border: 'none', background: 'transparent',
