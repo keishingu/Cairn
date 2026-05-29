@@ -43,14 +43,18 @@ Expo アプリは Next.js サーバーを直接叩けないため、以下の整
 
 Next.js Route Handlers はブラウザ向けに Cookie 認証を前提としている。Expo から叩くには **Bearer トークン認証に対応した API エンドポイント**が必要。
 
-選択肢：
+**採用方針：Bearer トークンを Next.js Route Handlers に追加（Hono 移行は行わない）**
 
-| 方式 | 内容 | タイミング |
+`getAuthContext()` を拡張し、`Authorization: Bearer <token>` ヘッダを優先して検証し、なければ Cookie にフォールバックする構造にする。Web クライアントも同じエンドポイントを Bearer トークンで呼ぶよう統一する。
+
+| 比較軸 | Bearer on Next.js（採用） | Hono 分離 |
 |---|---|---|
-| **Supabase クライアント直接** | Expo から Supabase JS SDK を直接使用。DB アクセスは RLS で制御 | Expo 開始時点の暫定策 |
-| **Hono API 分離** | `apps/api/` に Hono サーバーを追加。Bearer トークン認証。Expo・Web 共用 | Phase 2 で正式対応 |
+| 移行コスト | 小（getAuthContext + fetcher のみ変更） | 大（全ルートの移植） |
+| デプロイ変更 | なし（Vercel の Next.js のまま） | 不要（Next.js catch-all 内で動かせる）が構成が増える |
+| Expo 対応 | ✅ | ✅ |
+| 将来の独立スケール | ❌ | ✅ |
 
-`packages/core` にビジネスロジックを寄せているのは、この Hono 移行を見越した設計。
+> **将来の Hono 移行トリガー**：「API を Next.js とは別サービスにスケールしたい」「Vercel 以外にデプロイしたい」という要件が出た時点で改めて検討する。Bearer 対応は Hono 移行後もそのまま使えるため、今の投資は無駄にならない。
 
 ### 2-B. 通知・未読基盤の整備
 
@@ -189,10 +193,9 @@ const { status } = await Notifications.requestPermissionsAsync()
 
 | ステップ | 内容 |
 |---|---|
-| 2-1 | `apps/api/` に Hono サーバーを追加 |
-| 2-2 | Bearer トークン認証ミドルウェア（Supabase JWT 検証） |
-| 2-3 | 主要エンドポイントを Hono に移植（channels / messages / projects / tasks） |
-| 2-4 | `packages/core` の UseCase を Hono ハンドラから呼び出す |
+| 2-1 | `getAuthContext()` を Bearer トークン対応に拡張（`Authorization` ヘッダ優先、Cookie フォールバック） |
+| 2-2 | `fetchWithAuth()` ユーティリティを作成し、全 TanStack Query fetcher を Bearer ヘッダ付きに統一 |
+| 2-3 | Expo での Supabase Auth 初期化（`expo-secure-store` によるトークン永続化） |
 
 ### Phase 2-B（Expo アプリ）
 
