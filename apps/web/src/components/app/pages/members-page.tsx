@@ -72,7 +72,7 @@ const MemberCard = ({ member, projectCount, selected, onClick }: MemberCardProps
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-        <Avatar name={member.displayName} size={44} />
+        <Avatar name={member.displayName} url={member.avatarUrl} size={44} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{member.displayName}</div>
           <span style={{ fontSize: 10.5, fontWeight: 700, color: role.c, background: role.bg, padding: '2px 8px', borderRadius: 4 }}>
@@ -109,6 +109,7 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
     setSelectedProject({
       id:                 p.projectId,
       title:              p.title,
+      description:        null,
       statusName:         p.statusName,
       startDate:          p.startDate,
       endDate:            p.endDate,
@@ -120,6 +121,7 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
       isMember:           true,
       archived:           false,
       coverPhotoIdx:      p.coverPhotoIdx,
+      coverPhotoUrl:      null,
     })
   }
 
@@ -128,12 +130,20 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
     queryFn: () => fetch('/api/workspaces/members').then(r => r.json()),
   })
 
-  // initialUserId が指定されている場合、メンバーデータ読み込み後に自動選択
+  // PC: initialUserId が指定されている場合、メンバーデータ読み込み後に自動選択
   React.useEffect(() => {
-    if (!initialUserId || members.length === 0) return
+    if (!initialUserId || isMobile || members.length === 0) return
     const m = members.find(m => m.userId === initialUserId)
     if (m) setSelectedMember(m)
-  }, [initialUserId, members])
+  }, [initialUserId, isMobile, members])
+
+  // モバイル: initialUserId からパネルを自動オープン
+  React.useEffect(() => {
+    if (!initialUserId || !isMobile || members.length === 0) return
+    const m = members.find(m => m.userId === initialUserId)
+    if (m) setMobileDetailMember(m)
+  }, [initialUserId, isMobile, members])
+
 
   const filtered = React.useMemo(() => {
     return members.filter(m => {
@@ -166,7 +176,10 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
           <MemberDetailPanel
             member={mobileDetailMember}
             onProjectClick={handleProjectClick}
-            onClose={() => setMobileDetailMember(null)}
+            onClose={() => {
+              setMobileDetailMember(null)
+              router.push('/members', { scroll: false })
+            }}
             isMobile
           />
         )}
@@ -228,7 +241,10 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
                   member={m}
                   projectCount={Math.max(1, 5 - i % 4)}
                   selected={false}
-                  onClick={() => setMobileDetailMember(m)}
+                  onClick={() => {
+                    setMobileDetailMember(m)
+                    router.push(`/members/${m.userId}`, { scroll: false })
+                  }}
                 />
               ))}
             </div>

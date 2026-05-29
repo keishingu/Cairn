@@ -3,8 +3,27 @@
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
-import { FileTypeIcon } from '../../file-type-icon'
+import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
+
+function IndexingBadge({ status }: { status: string | undefined }) {
+  if (!status || status === 'indexed' || status === 'skipped') return null
+  if (status === 'pending') {
+    return (
+      <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--card-2)', color: 'var(--text-3)', flexShrink: 0 }}>
+        インデックス中
+      </span>
+    )
+  }
+  if (status === 'failed') {
+    return (
+      <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--red-soft)', color: 'var(--red-text)', flexShrink: 0 }}>
+        非公開
+      </span>
+    )
+  }
+  return null
+}
 
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return ''
@@ -28,6 +47,11 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
       const res = await fetch(`/api/projects/${projectId}/files`)
       if (!res.ok) throw new Error('Failed to fetch files')
       return res.json() as Promise<ProjectFileDto[]>
+    },
+    // pending なリンクがある間は 3 秒ごとに再フェッチして名前・ステータスを最新化
+    refetchInterval: (query) => {
+      const data = query.state.data
+      return Array.isArray(data) && data.some(f => f.indexingStatus === 'pending') ? 3000 : false
     },
   })
 
@@ -83,21 +107,31 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
         const meta = [sizeStr, dateStr].filter(Boolean).join(' · ')
         const isMenuOpen = menuOpenId === f.id
 
+        const isLink = f.fileType === 'link'
+        const linkHref = isLink ? f.externalUrl : `/api/attachments/${f.id}`
+
         return (
           <div key={f.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderBottom: '1px solid var(--divider)', borderRadius: 6 }}>
             <a
-              href={`/api/attachments/${f.id}`}
+              href={linkHref}
               target="_blank"
               rel="noopener noreferrer"
               style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, textDecoration: 'none', cursor: 'pointer' }}
             >
-              <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName} fileId={f.id}/>
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                {isLink && f.externalUrl
+                  ? <GoogleDocsIcon url={f.externalUrl}/>
+                  : <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName} fileId={f.id}/>
+                }
+                <IndexDot status={f.indexingStatus}/>
+              </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {f.fileName}
                   {i === 0 && <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>最新</span>}
+                  {isLink && <IndexingBadge status={f.indexingStatus}/>}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{meta}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{isLink ? '外部リンク' : meta}</div>
               </div>
             </a>
 

@@ -9,6 +9,7 @@ import { QueryProvider } from '@/components/query-provider'
 import { ServiceWorkerRegistrar } from '@/components/service-worker-registrar'
 import { ThemeCookieSync } from '@/components/theme-cookie-sync'
 import { DynamicAppleTouchIcon } from '@/components/dynamic-apple-touch-icon'
+import { DynamicFavicon } from '@/components/dynamic-favicon'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -21,6 +22,9 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: 'default',
     title: 'Cairn',
+  },
+  icons: {
+    icon: '/favicon.ico',
   },
 }
 
@@ -44,6 +48,7 @@ export default function RootLayout({
             <QueryProvider>{children}</QueryProvider>
             <ThemeCookieSync />
             <DynamicAppleTouchIcon />
+            <DynamicFavicon />
           </AccentColorProvider>
         </ThemeProvider>
         <ServiceWorkerRegistrar />

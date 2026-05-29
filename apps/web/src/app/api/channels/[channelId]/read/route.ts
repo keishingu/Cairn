@@ -1,0 +1,54 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+import { NextResponse } from 'next/server'
+import { getAuthContext } from '@/lib/get-auth-context'
+
+type RouteContext = { params: Promise<{ channelId: string }> }
+
+export async function POST(_req: Request, { params }: RouteContext) {
+  const { channelId } = await params
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
+
+  if (!process.env['DATABASE_URL']) {
+    return NextResponse.json({ ok: true })
+  }
+
+  try {
+    const { db } = await import('@cairn/db')
+    const { channelReadStates, messages } = await import('@cairn/db')
+    const { eq, and, isNull, desc } = await import('drizzle-orm')
+
+    const [latest] = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
+      .orderBy(desc(messages.createdAt))
+      .limit(1)
+
+    await db
+      .insert(channelReadStates)
+      .values({
+        userId: ctx.userId,
+        channelId,
+        lastReadAt: new Date(),
+        lastReadMessageId: latest?.id ?? null,
+        unreadMentionCount: 0,
+      })
+      .onConflictDoUpdate({
+        target: [channelReadStates.userId, channelReadStates.channelId],
+        set: {
+          lastReadAt: new Date(),
+          lastReadMessageId: latest?.id ?? null,
+          unreadMentionCount: 0,
+          updatedAt: new Date(),
+        },
+      })
+
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('[POST /api/channels/[channelId]/read]', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

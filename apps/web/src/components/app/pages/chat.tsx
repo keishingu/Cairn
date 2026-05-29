@@ -9,7 +9,10 @@ import {
   useWorkspaceChannels,
   useWorkspaceMembers,
   useWorkspaceDms,
+  useChannelMembers,
   useCreateDm,
+  useMarkChannelRead,
+  useCurrentUser,
 } from '@/lib/chat/client'
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
 import { CreateChannelModal } from './create-channel-modal'
@@ -97,6 +100,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const { data: workspaceChannels = [] } = useWorkspaceChannels()
   const { data: members = [] } = useWorkspaceMembers()
   const { data: dms = [] } = useWorkspaceDms()
+  const markChannelRead = useMarkChannelRead()
   const createDmMutation = useCreateDm()
 
   React.useEffect(() => {
@@ -118,6 +122,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const selectChannel = (id: string) => {
     setChannelId(id)
     if (isMobile) setActivePane('thread')
+    markChannelRead.mutate(id)
   }
 
   const startDm = (targetUserId: string) => {
@@ -134,8 +139,21 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const isPrivate = !!(currentGeneral?.isPrivate)
   const isDm = !!currentDm
   const channelName = currentChannel?.projectTitle ?? currentGeneral?.name ?? currentDm?.participantName ?? ''
-  const memberNames = members.map(m => m.displayName)
   const currentChannelMemberCount = currentGeneral?.memberCount
+
+  const { data: currentUser } = useCurrentUser()
+  const { data: channelMemberIds = [] } = useChannelMembers(isProject || isPrivate ? channelId : null)
+
+  const memberNames = React.useMemo(() => {
+    if (isDm) {
+      return [currentDm.participantName, ...(currentUser ? [currentUser.displayName] : [])]
+    }
+    if (isProject || isPrivate) {
+      const idSet = new Set(channelMemberIds.map(m => m.userId))
+      return members.filter(m => idSet.has(m.userId)).map(m => m.displayName)
+    }
+    return currentGeneral?.memberNames ?? []
+  }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral])
 
   // ─── DM メンバーピッカー ────────────────────────────────────────
   const dmPicker = (
@@ -164,12 +182,12 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
       <ChatSidebarSection title="プロジェクト">
         {projectChannels.map(c => (
-          <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => selectChannel(c.channelId)} prefix="#" label={c.projectTitle} mobile={isMobile}/>
+          <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => selectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
         ))}
       </ChatSidebarSection>
       <ChatSidebarSection title="チャンネル" onAdd={() => setShowCreateChannel(true)}>
         {workspaceChannels.map(c => (
-          <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => selectChannel(c.id)} prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''} mobile={isMobile} memberNames={c.memberNames} memberCount={c.memberCount}/>
+          <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => selectChannel(c.id)} prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''} badge={c.unreadCount} mobile={isMobile} memberNames={c.memberNames} memberCount={c.memberCount}/>
         ))}
       </ChatSidebarSection>
       <div style={{ marginBottom: 10 }}>
@@ -179,7 +197,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         </div>
         <div>
           {dms.map(d => (
-            <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => selectChannel(d.id)} avatar={d.participantName} label={d.participantName} mobile={isMobile}/>
+            <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => selectChannel(d.id)} avatar={d.participantName} label={d.participantName} badge={d.unreadCount} mobile={isMobile}/>
           ))}
         </div>
       </div>
@@ -315,13 +333,13 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         </div>
         <div style={{ padding: '12px 16px' }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>メンバー</div>
-          {members.slice(0, 6).map((m, i) => (
-            <div key={m.userId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
+          {memberNames.slice(0, 6).map((name, i) => (
+            <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
               <div style={{ position: 'relative' }}>
-                <Avatar name={m.displayName} size={24}/>
+                <Avatar name={name} size={24}/>
                 <span style={{ position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%', background: i < 3 ? 'var(--accent)' : 'var(--text-4)', border: '2px solid var(--card)' }}/>
               </div>
-              <span style={{ fontSize: 12.5, color: 'var(--text-2)', flex: 1 }}>{m.displayName}</span>
+              <span style={{ fontSize: 12.5, color: 'var(--text-2)', flex: 1 }}>{name}</span>
             </div>
           ))}
         </div>

@@ -17,7 +17,7 @@ export const files = pgTable(
     uploadedBy: uuid('uploaded_by')
       .notNull()
       .references(() => profiles.id),
-    storagePath: text('storage_path').notNull(),
+    storagePath: text('storage_path'),
     fileName: text('file_name').notNull(),
     mimeType: text('mime_type'),
     fileSize: bigint('file_size', { mode: 'number' }),

@@ -3,7 +3,7 @@
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
-import { FileTypeIcon } from '../file-type-icon'
+import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
 import type { FileDto } from '@/app/api/files/route'
 
 type FilterKey = 'all' | 'pdf' | 'img' | 'doc'
@@ -58,12 +58,18 @@ const FileRow = ({ file, isMobile, onDelete }: { file: FileDto; isMobile: boolea
       onMouseLeave={() => setHovered(false)}
     >
       <a
-        href={`/api/attachments/${file.id}`}
+        href={file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`}
         target="_blank"
         rel="noopener noreferrer"
         style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, textDecoration: 'none' }}
       >
-        <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id} />
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          {file.fileType === 'link' && file.externalUrl
+            ? <GoogleDocsIcon url={file.externalUrl} />
+            : <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id} />
+          }
+          <IndexDot status={file.indexingStatus} />
+        </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
             fontSize: 13, fontWeight: 600, color: 'var(--text)',

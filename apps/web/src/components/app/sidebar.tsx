@@ -7,7 +7,9 @@ import { Icon } from './primitives'
 import { Avatar } from './primitives'
 import { createClient } from '@/lib/supabase/client'
 import type { CurrentUserDto } from '@/app/api/me/route'
+import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
+import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
 
 export type PageId =
   | 'projects' | 'calendar' | 'kanban'
@@ -18,7 +20,7 @@ interface SidebarItemProps {
   icon?: string
   label: string
   active?: boolean
-  badge?: number
+  badge?: number | undefined
   onClick?: () => void
   indent?: boolean
 }
@@ -107,6 +109,18 @@ interface SidebarProps {
 
 export const Sidebar = ({ page, setPage }: SidebarProps) => {
   const projectLabel = useProjectLabel()
+  const { data: projectChannels = [] } = useProjectChannels()
+  const { data: workspaceChannels = [] } = useWorkspaceChannels()
+  const { data: dms = [] } = useWorkspaceDms()
+  const totalChatUnread = React.useMemo(
+    () => [...projectChannels, ...workspaceChannels, ...dms].reduce((sum, c) => sum + (c.unreadCount ?? 0), 0),
+    [projectChannels, workspaceChannels, dms],
+  )
+  const { data: workspace } = useQuery<WorkspaceDto>({
+    queryKey: ['workspace'],
+    queryFn: () => fetch('/api/workspaces').then(r => r.json()),
+    staleTime: 60_000,
+  })
   const projectChildren: SidebarGroupItem[] = [
     { id: 'projects', icon: 'list',     label: '一覧' },
     { id: 'calendar', icon: 'calendar', label: 'カレンダー' },
@@ -129,16 +143,25 @@ export const Sidebar = ({ page, setPage }: SidebarProps) => {
       <div style={{ padding: '16px 16px 14px', borderBottom: '1px solid var(--divider)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
-            width: 32, height: 32, borderRadius: 8,
-            background: 'linear-gradient(135deg, #10B981, #0891B2)',
+            width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+            background: workspace?.logoUrl ? 'var(--border)' : 'linear-gradient(135deg, #10B981, #0891B2)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
+            color: '#fff', overflow: 'hidden',
+            boxShadow: workspace?.logoUrl ? 'none' : '0 4px 12px rgba(16,185,129,0.3)',
           }}>
-            <Icon name="mountain" size={18} strokeWidth={2.2}/>
+            {workspace?.logoUrl
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={workspace.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+              : workspace?.name
+                ? <span style={{ fontSize: 14, fontWeight: 700 }}>{workspace.name.slice(0, 1)}</span>
+                : <Icon name="mountain" size={18} strokeWidth={2.2}/>
+            }
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>山岳部</div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.2 }}>東京工科大学 · Pro</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>{workspace?.name ?? '…'}</div>
+            {workspace?.description && (
+              <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.2 }}>{workspace.description}</div>
+            )}
           </div>
           <Icon name="chevDown" size={14} color="var(--text-3)"/>
         </div>
@@ -160,8 +183,8 @@ export const Sidebar = ({ page, setPage }: SidebarProps) => {
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase' }}>ワークスペース</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           <SidebarGroup icon="folder" label={projectLabel} page={page} setPage={setPage} items={projectChildren}/>
-          <SidebarItem icon="check" label="マイタスク" badge={4} active={page === 'tasks'} onClick={() => setPage('tasks')}/>
-          <SidebarItem icon="chat" label="チャット一覧" badge={12} active={page === 'chats'} onClick={() => setPage('chats')}/>
+          <SidebarItem icon="check" label="マイタスク" active={page === 'tasks'} onClick={() => setPage('tasks')}/>
+          <SidebarItem icon="chat" label="チャット一覧" badge={totalChatUnread || undefined} active={page === 'chats'} onClick={() => setPage('chats')}/>
         </div>
 
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '14px 10px 6px', textTransform: 'uppercase' }}>ライブラリ</div>
@@ -232,7 +255,7 @@ function SidebarUserFooter() {
 
   return (
     <div style={{ padding: '10px 12px', borderTop: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }} ref={menuRef}>
-      <Avatar name={displayName} size={32}/>
+      <Avatar name={displayName} url={me?.avatarUrl ?? null} size={32}/>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2 }}>{displayName}</div>
         <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3 }}>オンライン</div>

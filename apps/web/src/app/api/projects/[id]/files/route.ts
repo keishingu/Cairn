@@ -12,6 +12,8 @@ export interface ProjectFileDto {
   fileType: string
   uploaderName: string
   createdAt: string
+  externalUrl?: string
+  indexingStatus?: string
 }
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -26,8 +28,14 @@ export async function GET(_req: Request, { params }: RouteContext) {
   }
 
   try {
-    const { db, files, profiles, projects, galleryItems } = await import('@cairn/db')
-    const { eq, and, isNull, desc } = await import('drizzle-orm')
+    const { db, files, profiles, projects, galleryItems, documentChunks } = await import('@cairn/db')
+    const { eq, and, isNull, desc, inArray } = await import('drizzle-orm')
+
+    const INDEXABLE_MIMES = new Set([
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ])
 
     // プロジェクトが同一ワークスペースに属することを確認
     const [project] = await db
@@ -49,6 +57,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         fileType: files.fileType,
         uploaderName: profiles.displayName,
         createdAt: files.createdAt,
+        metadata: files.metadata,
       })
       .from(files)
       .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
@@ -59,16 +68,47 @@ export async function GET(_req: Request, { params }: RouteContext) {
       ))
       .orderBy(desc(files.createdAt))
 
+    // チャンク済みファイルの ID セットを取得
+    const fileIds = rows.map(r => r.id)
+    const chunkedIdSet = new Set<string>()
+    if (fileIds.length > 0) {
+      const chunked = await db
+        .selectDistinct({ sourceId: documentChunks.sourceId })
+        .from(documentChunks)
+        .where(and(
+          eq(documentChunks.sourceType, 'file'),
+          inArray(documentChunks.sourceId, fileIds),
+        ))
+      chunked.forEach(c => chunkedIdSet.add(c.sourceId))
+    }
+
     return NextResponse.json(
-      rows.map(r => ({
-        id: r.id,
-        fileName: r.fileName,
-        mimeType: r.mimeType,
-        fileSize: r.fileSize,
-        fileType: r.fileType,
-        uploaderName: r.uploaderName,
-        createdAt: r.createdAt.toISOString(),
-      })) satisfies ProjectFileDto[],
+      rows.map(r => {
+        const meta = (r.metadata ?? {}) as Record<string, unknown>
+        const externalUrl = meta['externalUrl']
+
+        // リンク: metadata の indexingStatus をそのまま使う
+        // アップロードファイル: indexable なら chunk の有無でステータスを決定
+        let indexingStatus: string | undefined
+        if (r.fileType === 'link') {
+          const s = meta['indexingStatus']
+          indexingStatus = typeof s === 'string' ? s : undefined
+        } else if (INDEXABLE_MIMES.has(r.mimeType ?? '')) {
+          indexingStatus = chunkedIdSet.has(r.id) ? 'indexed' : 'pending'
+        }
+
+        return {
+          id: r.id,
+          fileName: r.fileName,
+          mimeType: r.mimeType,
+          fileSize: r.fileSize,
+          fileType: r.fileType,
+          uploaderName: r.uploaderName,
+          createdAt: r.createdAt.toISOString(),
+          ...(typeof externalUrl === 'string' ? { externalUrl } : {}),
+          ...(indexingStatus !== undefined ? { indexingStatus } : {}),
+        }
+      }) satisfies ProjectFileDto[],
     )
   } catch (err) {
     console.error('[/api/projects/[id]/files GET] DB query failed:', err)

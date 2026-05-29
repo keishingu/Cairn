@@ -10,12 +10,14 @@ export interface WorkspaceChannelDto {
   isPrivate: boolean
   memberCount: number
   memberNames: string[]
+  unreadCount: number
+  unreadMentionCount: number
 }
 
 function mockChannels(): WorkspaceChannelDto[] {
   return [
-    { id: 'g1', name: '雑談',     isPrivate: false, memberCount: 8, memberNames: ['山田 太郎', '佐藤 花子', '鈴木 健', '田中 陽子'] },
-    { id: 'g2', name: '連絡事項', isPrivate: false, memberCount: 5, memberNames: ['山田 太郎', '佐藤 花子', '鈴木 健'] },
+    { id: 'g1', name: '雑談',     isPrivate: false, memberCount: 8, memberNames: ['山田 太郎', '佐藤 花子', '鈴木 健', '田中 陽子'], unreadCount: 0, unreadMentionCount: 0 },
+    { id: 'g2', name: '連絡事項', isPrivate: false, memberCount: 5, memberNames: ['山田 太郎', '佐藤 花子', '鈴木 健'], unreadCount: 0, unreadMentionCount: 0 },
   ]
 }
 
@@ -54,9 +56,38 @@ export async function GET() {
       membersByChannel.set(m.channelId, arr)
     }
 
+    const channelIds = channelRows.map(c => c.id)
+    const { channelReadStates, messages } = await import('@cairn/db')
+    const { isNull, gt, count, sql } = await import('drizzle-orm')
+
+    const [unreadRows, mentionRows] = await Promise.all([
+      channelIds.length > 0
+        ? db
+            .select({ channelId: messages.channelId, cnt: count() })
+            .from(messages)
+            .leftJoin(channelReadStates, and(eq(channelReadStates.channelId, messages.channelId), eq(channelReadStates.userId, ctx.userId)))
+            .where(and(inArray(messages.channelId, channelIds), isNull(messages.deletedAt), gt(messages.createdAt, sql`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
+            .groupBy(messages.channelId)
+        : Promise.resolve([]),
+      channelIds.length > 0
+        ? db
+            .select({ channelId: channelReadStates.channelId, cnt: channelReadStates.unreadMentionCount })
+            .from(channelReadStates)
+            .where(and(eq(channelReadStates.userId, ctx.userId), inArray(channelReadStates.channelId, channelIds)))
+        : Promise.resolve([]),
+    ])
+
+    const unreadMap = new Map(unreadRows.map(r => [r.channelId, r.cnt]))
+    const mentionMap = new Map(mentionRows.map(r => [r.channelId, r.cnt]))
+
     const result: WorkspaceChannelDto[] = channelRows.map(c => {
       const names = membersByChannel.get(c.id) ?? []
-      return { id: c.id, name: c.name, isPrivate: c.isPrivate, memberCount: names.length, memberNames: names.slice(0, 4) }
+      return {
+        id: c.id, name: c.name, isPrivate: c.isPrivate,
+        memberCount: names.length, memberNames: names.slice(0, 4),
+        unreadCount: unreadMap.get(c.id) ?? 0,
+        unreadMentionCount: mentionMap.get(c.id) ?? 0,
+      }
     })
 
     return NextResponse.json(result)
@@ -97,6 +128,8 @@ export async function POST(req: Request) {
       isPrivate,
       memberCount: 0,
       memberNames: [],
+      unreadCount: 0,
+      unreadMentionCount: 0,
     }
     return NextResponse.json(mock, { status: 201 })
   }
@@ -117,7 +150,7 @@ export async function POST(req: Request) {
 
     const inserted = rows[0]
     if (!inserted) throw new Error('insert returned no rows')
-    const result: WorkspaceChannelDto = { ...inserted, memberCount: 0, memberNames: [] }
+    const result: WorkspaceChannelDto = { ...inserted, memberCount: 0, memberNames: [], unreadCount: 0, unreadMentionCount: 0 }
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('[/api/workspaces/channels POST] DB error:', err)

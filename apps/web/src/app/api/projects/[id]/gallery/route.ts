@@ -60,7 +60,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const result: GalleryItemDto[] = rows.map((r: typeof rows[number]) => ({
       id: r.id,
       fileId: r.fileId,
-      publicUrl: supabase.storage.from(GALLERY_BUCKET).getPublicUrl(r.storagePath).data.publicUrl,
+      publicUrl: supabase.storage.from(GALLERY_BUCKET).getPublicUrl(r.storagePath!).data.publicUrl,
       takenAt: r.takenAt?.toISOString() ?? null,
       createdAt: r.createdAt.toISOString(),
     }))

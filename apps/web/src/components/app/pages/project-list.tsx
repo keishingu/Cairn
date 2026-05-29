@@ -7,9 +7,9 @@ import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
 import { STATUS, type StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
+import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
-import { ProjectPanel } from '../detail-panel/project-panel'
 
 // ─── Tag presets ──────────────────────────────────────────────────
 const TAG_PRESETS = [
@@ -118,46 +118,81 @@ const StatusChipSelector = ({ value, onChange }: StatusChipSelectorProps) => (
 
 // ─── Cover photo picker ───────────────────────────────────────────
 interface CoverPickerProps {
-  value: number
-  onChange: (v: number) => void
+  value: string | null
+  onChange: (v: string | null) => void
+  workspacePhotos: WorkspaceCoverPhoto[]
 }
 
-const CoverPicker = ({ value, onChange }: CoverPickerProps) => (
-  <div style={{ position: 'relative' }}>
-    <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '2px 2px 8px', scrollbarWidth: 'thin' }}>
-      {Array.from({ length: 12 }).map((_, i) => {
-        const selected = value === i
-        return (
-          <button key={i} type="button" onClick={() => onChange(i)} style={{
-            flexShrink: 0, width: 96, height: 64, padding: 0,
-            borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
-            border: `2px solid ${selected ? 'var(--accent)' : 'transparent'}`,
-            outline: selected ? 'none' : '1px solid var(--border)',
-            outlineOffset: -1,
-            background: 'transparent', position: 'relative',
-            transition: 'transform .1s, border-color .12s',
-            transform: selected ? 'scale(1.02)' : 'scale(1)',
-          }}>
-            <MountainPhoto idx={i} height={60} flat radius={6}/>
-            {selected && (
-              <div style={{
-                position: 'absolute', inset: 0,
-                background: 'linear-gradient(180deg, rgba(16,185,129,0) 0%, rgba(16,185,129,0.45) 100%)',
-                display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
-                padding: 5,
-              }}>
-                <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--accent)', color: 'var(--on-accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon name="check" size={11} strokeWidth={3}/>
-                </span>
-              </div>
-            )}
-          </button>
-        )
-      })}
-    </div>
-    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 8, width: 28, background: 'linear-gradient(90deg, transparent, var(--card-2))', pointerEvents: 'none' }}/>
-  </div>
+const CoverPickerThumb = ({ selected, children }: { selected: boolean; children: React.ReactNode }) => (
+  <button type="button" style={{
+    flexShrink: 0, width: 96, height: 64, padding: 0,
+    borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
+    border: `2px solid ${selected ? 'var(--accent)' : 'transparent'}`,
+    outline: selected ? 'none' : '1px solid var(--border)',
+    outlineOffset: -1,
+    background: 'transparent', position: 'relative',
+    transition: 'transform .1s, border-color .12s',
+    transform: selected ? 'scale(1.02)' : 'scale(1)',
+  }}>
+    {children}
+    {selected && (
+      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 0%, rgba(16,185,129,0.45) 100%)', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', padding: 5 }}>
+        <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--accent)', color: 'var(--on-accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="check" size={11} strokeWidth={3}/>
+        </span>
+      </div>
+    )}
+  </button>
 )
+
+const CoverPicker = ({ value, onChange, workspacePhotos }: CoverPickerProps) => {
+  if (workspacePhotos.length === 0) {
+    return (
+      <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Icon name="image" size={16} color="var(--text-4)"/>
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>カバー写真は自動設定されます</div>
+          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>ワークスペース設定からアップロードすると選択できます</div>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        {/* 「なし（自動）」 option */}
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          style={{
+            flexShrink: 0, width: 72, height: 48, borderRadius: 8,
+            border: `2px solid ${value === null ? 'var(--accent)' : 'var(--border)'}`,
+            background: 'var(--card-2)', color: value === null ? 'var(--accent-text)' : 'var(--text-3)',
+            cursor: 'pointer', fontSize: 10, fontWeight: 600, fontFamily: 'inherit',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+          }}
+        >
+          <Icon name="x" size={12}/>
+          自動
+        </button>
+      </div>
+      <div style={{ position: 'relative' }}>
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '2px 2px 8px', scrollbarWidth: 'thin' }}>
+          {workspacePhotos.map(photo => {
+            const selected = value === photo.url
+            return (
+              <CoverPickerThumb key={photo.id} selected={selected}>
+                {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
+                <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onClick={() => onChange(photo.url)}/>
+              </CoverPickerThumb>
+            )
+          })}
+        </div>
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 8, width: 28, background: 'linear-gradient(90deg, transparent, var(--card-2))', pointerEvents: 'none' }}/>
+      </div>
+    </div>
+  )
+}
 
 // ─── Tag picker ───────────────────────────────────────────────────
 interface TagPreset {
@@ -307,12 +342,19 @@ async function fetchStatuses(): Promise<ProjectStatusDto[]> {
   return res.json() as Promise<ProjectStatusDto[]>
 }
 
+async function fetchWorkspaceCoverPhotos(): Promise<WorkspaceCoverPhoto[]> {
+  const res = await fetch('/api/workspaces/cover-photos')
+  if (!res.ok) return []
+  return res.json() as Promise<WorkspaceCoverPhoto[]>
+}
+
 async function createProject(body: {
   title: string
   description?: string | undefined
   statusId?: string | undefined
   startDate?: string | undefined
   endDate?: string | undefined
+  coverPhotoUrl?: string | undefined
 }): Promise<ProjectDto> {
   const res = await fetch('/api/projects', {
     method: 'POST',
@@ -334,16 +376,20 @@ interface FormState {
   status: StatusKey
   startDate: string
   endDate: string
-  coverIdx: number
+  cover: string | null
   tags: string[]
 }
 
 const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => {
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
+  const { data: workspacePhotos = [] } = useQuery({
+    queryKey: ['workspace-cover-photos'],
+    queryFn: fetchWorkspaceCoverPhotos,
+  })
 
   const [form, setForm] = React.useState<FormState>({
     title: '', description: '', status: 'plan',
-    startDate: '', endDate: '', coverIdx: 0, tags: [],
+    startDate: '', endDate: '', cover: null, tags: [],
   })
   const [errors, setErrors] = React.useState<{ title?: string; endDate?: string }>({})
   const titleRef = React.useRef<HTMLInputElement>(null)
@@ -390,6 +436,7 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
       statusId: selectedStatus?.id,
       startDate: form.startDate || undefined,
       endDate: form.endDate || undefined,
+      coverPhotoUrl: form.cover ?? undefined,
     })
   }
 
@@ -491,16 +538,19 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
             </Field>
 
             <Field label="カバー写真" hint="一覧・パネルで表示">
-              <CoverPicker value={form.coverIdx} onChange={v => set('coverIdx', v)}/>
-              <div style={{ marginTop: 10, position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                <MountainPhoto idx={form.coverIdx} height={90} flat radius={0}/>
-                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px', gap: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {form.title || 'プロジェクト名'}
-                  </span>
-                  <StatusChip s={form.status}/>
+              <CoverPicker value={form.cover} onChange={v => set('cover', v)} workspacePhotos={workspacePhotos}/>
+              {form.cover !== null && (
+                <div style={{ marginTop: 10, position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={form.cover} alt="カバー" style={{ width: '100%', height: 90, objectFit: 'cover', display: 'block' }}/>
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px', gap: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {form.title || 'プロジェクト名'}
+                    </span>
+                    <StatusChip s={form.status}/>
+                  </div>
                 </div>
-              </div>
+              )}
             </Field>
           </div>
         </div>
@@ -531,7 +581,6 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<StatusKey[]>([])
   const filterBtnRef = React.useRef<HTMLDivElement>(null)
-  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
 
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
@@ -571,15 +620,10 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      {/* Mobile: project panel overlay */}
-      {isMobile && selectedProject && (
-        <ProjectPanel project={selectedProject} onClose={() => setSelectedProject(null)} isMobile/>
-      )}
-
       {/* Create modal/sheet */}
       {showCreate && (
         isMobile
-          ? <CreateProjectSheet onClose={() => setShowCreate(false)} onCreated={(p) => { handleCreated(p); setSelectedProject(p) }}/>
+          ? <CreateProjectSheet onClose={() => setShowCreate(false)} onCreated={(p) => { handleCreated(p); openPanel?.(p) }}/>
           : <CreateProjectModal onClose={() => setShowCreate(false)} onCreated={handleCreated}/>
       )}
 
@@ -730,14 +774,17 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
 
               if (isMobile) {
                 return (
-                  <div key={p.id} onClick={() => setSelectedProject(p)} style={{
+                  <div key={p.id} onClick={() => openPanel?.(p)} style={{
                     background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14,
                     overflow: 'hidden', cursor: 'pointer',
                     display: 'flex', alignItems: 'stretch',
                   }}>
                     {/* Cover photo thumbnail */}
                     <div style={{ width: 88, flexShrink: 0, position: 'relative' }}>
-                      <MountainPhoto idx={p.coverPhotoIdx} height={88} flat radius={0}/>
+                      {p.coverPhotoUrl
+                        ? <img src={p.coverPhotoUrl} alt="" style={{ width: 88, height: 88, objectFit: 'cover', display: 'block' }}/>
+                        : <MountainPhoto idx={p.coverPhotoIdx} height={88} flat radius={0}/>
+                      }
                     </div>
                     {/* Content */}
                     <div style={{ flex: 1, minWidth: 0, padding: '12px 14px' }}>
@@ -767,7 +814,10 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)' }}
                 >
                   <div style={{ position: 'relative' }}>
-                    <MountainPhoto idx={p.coverPhotoIdx} height={120} flat/>
+                    {p.coverPhotoUrl
+                      ? <img src={p.coverPhotoUrl} alt="" style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }}/>
+                      : <MountainPhoto idx={p.coverPhotoIdx} height={120} flat/>
+                    }
                     <div style={{ position: 'absolute', top: 10, left: 10 }}>
                       <StatusChip s={p.statusName as StatusKey}/>
                     </div>

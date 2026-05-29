@@ -28,6 +28,7 @@ const PATHS: Record<string, React.ReactNode> = {
   plus:        <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,
   search:      <><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></>,
   bell:        <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></>,
+  'bell-off':  <><path d="M13.7 21a2 2 0 0 1-3.4 0"/><path d="M10.7 3.1a6 6 0 0 1 7.2 5c0 2.5-.5 4.2-1.1 5.5"/><path d="M6 9c0 2-.5 3.8-1 5"/><path d="M3 3l18 18"/><path d="M9 9a6 6 0 0 0-.4 2.1"/><path d="M3 9h1"/><path d="M21 12h-1"/></>,
   chevDown:    <><polyline points="6 9 12 15 18 9"/></>,
   chevRight:   <><polyline points="9 6 15 12 9 18"/></>,
   chevLeft:    <><polyline points="15 6 9 12 15 18"/></>,
@@ -64,6 +65,8 @@ const PATHS: Record<string, React.ReactNode> = {
   logout:      <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
   monitor:     <><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></>,
   refresh:     <><polyline points="23 4 23 10 17 10"/><path d="M20.5 16a9 9 0 1 1-2.5-9.4L23 10"/></>,
+  database:    <><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></>,
+  code:        <><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></>,
   copy:        <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
   trash:       <><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></>,
 }
@@ -97,23 +100,33 @@ function hashName(s: string) {
 
 interface AvatarProps {
   name?: string
+  url?: string | null
   size?: number
   ring?: boolean
   style?: React.CSSProperties
 }
 
-export const Avatar = ({ name = '', size = 28, ring = false, style }: AvatarProps) => {
+export const Avatar = ({ name = '', url, size = 28, ring = false, style }: AvatarProps) => {
   const initials = name ? name.replace(/\s/g, '').slice(0, 1).toUpperCase() : '?'
   const g = AV_GRADS[hashName(name) % AV_GRADS.length]!
+  const base: React.CSSProperties = {
+    width: size, height: size, borderRadius: '50%',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    boxShadow: ring ? '0 0 0 2px var(--card)' : 'none',
+    flexShrink: 0, overflow: 'hidden',
+    ...style,
+  }
+  if (url) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={url} alt={name} style={{ ...base, objectFit: 'cover' }}/>
+    )
+  }
   return (
     <div style={{
-      width: size, height: size, borderRadius: '50%',
+      ...base,
       background: `linear-gradient(135deg, ${g[0]}, ${g[1]})`,
       color: '#fff', fontWeight: 600, fontSize: size * 0.42,
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: ring ? '0 0 0 2px var(--card)' : 'none',
-      flexShrink: 0,
-      ...style,
     }}>{initials}</div>
   )
 }
