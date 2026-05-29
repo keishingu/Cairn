@@ -11,26 +11,41 @@ interface Props {
 
 export function AppWebView({ path }: Props) {
   const webViewRef = React.useRef<WebView>(null)
-  const [uri, setUri] = React.useState<string | null>(null)
+  const [handoff, setHandoff] = React.useState<{ uri: string; script: string } | null>(null)
 
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) return
       const { access_token, refresh_token } = session
       const redirect = encodeURIComponent(`${path}?webview=1`)
-      setUri(
-        `${WEB_BASE}/auth/mobile-handoff?access_token=${access_token}&refresh_token=${refresh_token}&redirect=${redirect}`,
-      )
+
+      // トークンをURLに含めず sessionStorage 経由で渡す（サーバーログへの露出を防ぐ）
+      const script = `
+        (function() {
+          try {
+            sessionStorage.setItem('__cairn_at', ${JSON.stringify(access_token)});
+            sessionStorage.setItem('__cairn_rt', ${JSON.stringify(refresh_token)});
+          } catch(e) {}
+        })();
+        true;
+      `
+      setHandoff({
+        uri: `${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}`,
+        script,
+      })
     })
   }, [path])
 
-  if (!uri) return null
+  if (!handoff) return null
 
   return (
     <WebView
       ref={webViewRef}
-      source={{ uri }}
+      source={{ uri: handoff.uri }}
+      injectedJavaScriptBeforeContentLoaded={handoff.script}
       style={styles.webview}
+      // 自ドメイン以外へのナビゲーションをブロック
+      originWhitelist={[WEB_BASE]}
     />
   )
 }
