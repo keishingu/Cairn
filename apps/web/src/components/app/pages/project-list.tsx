@@ -11,6 +11,7 @@ import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/rout
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useAppShell } from '@/components/app/app-shell-context'
 
 // ─── Tag presets ──────────────────────────────────────────────────
 const TAG_PRESETS = [
@@ -574,6 +575,7 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
 }
 
 export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) => {
+  const { openNotif } = useAppShell()
   const queryClient = useQueryClient()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
   const [view, setView] = React.useState<'grid' | 'table'>('grid')
@@ -637,7 +639,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
               <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
                 <Icon name="search" size={20}/>
               </button>
-              <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
+              <button onClick={openNotif} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
                 <Icon name="bell" size={20}/>
               </button>
             </div>

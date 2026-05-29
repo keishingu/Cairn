@@ -10,13 +10,13 @@ import { Icon, Avatar } from '../primitives'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
+import { usePushNotifications } from '@/lib/push/client'
 
 const PERSONAL_SECTIONS = [
   {
     title: 'アカウント',
     items: [
-      { icon: 'users',    label: 'プロフィール編集', value: '山田 太郎' },
-      { icon: 'bell',     label: '通知設定',         value: 'オン' },
+      { icon: 'users', label: 'プロフィール編集', value: '山田 太郎' },
     ],
   },
 ]
@@ -105,6 +105,54 @@ const ProjectLabelSetting = () => {
   )
 }
 
+const PushNotificationSetting = () => {
+  const push = usePushNotifications()
+  if (push.permission === 'unsupported') return null
+
+  const isGranted = push.permission === 'granted'
+  const isDenied = push.permission === 'denied'
+
+  return (
+    <div style={{ margin: '16px 16px 0' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 4 }}>通知</div>
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '15px 16px' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: isGranted ? 'var(--accent-soft)' : 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name={isGranted ? 'bell' : 'bell-off'} size={16} color={isGranted ? 'var(--accent-text)' : 'var(--text-3)'}/>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14.5, color: 'var(--text)', fontWeight: 500 }}>プッシュ通知</div>
+            {isDenied && (
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>ブラウザの設定で通知が拒否されています</div>
+            )}
+          </div>
+          {isDenied ? (
+            <span style={{ fontSize: 13, color: 'var(--text-3)' }}>拒否済み</span>
+          ) : (
+            <button
+              onClick={isGranted ? push.unsubscribe : push.subscribe}
+              disabled={push.loading}
+              style={{
+                position: 'relative', width: 48, height: 28, borderRadius: 999,
+                border: 'none', cursor: push.loading ? 'default' : 'pointer', padding: 0,
+                background: isGranted ? 'var(--accent)' : 'var(--card-hover)',
+                transition: 'background .2s', flexShrink: 0,
+              }}
+            >
+              <span style={{
+                position: 'absolute', top: 3, width: 22, height: 22, borderRadius: '50%',
+                background: 'var(--card)', boxShadow: '0 1px 4px rgba(0,0,0,.2)',
+                transition: 'left .2s',
+                left: isGranted ? 23 : 3,
+              }}/>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const SectionList = ({ sections }: { sections: typeof PERSONAL_SECTIONS }) => (
   <>
     {sections.map(section => (
@@ -158,6 +206,7 @@ export function MobileSettings() {
         {/* 個人設定 */}
         <div style={{ margin: '16px 16px 0', fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 4 }}>個人</div>
         <SectionList sections={PERSONAL_SECTIONS}/>
+        <PushNotificationSetting />
 
         {/* 外観 */}
         <div style={{ margin: '16px 16px 0' }}>
