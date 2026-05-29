@@ -26,6 +26,9 @@ importers:
       '@cairn/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@expo/vector-icons':
+        specifier: ~14.0.0
+        version: 14.0.4
       '@supabase/supabase-js':
         specifier: ^2
         version: 2.106.0
