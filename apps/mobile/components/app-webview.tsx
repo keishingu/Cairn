@@ -58,7 +58,7 @@ export function AppWebView({ path }: Props) {
         ref={webViewRef}
         source={{ uri }}
         style={styles.webview}
-        originWhitelist={[`${WEB_BASE}/*`, `${WEB_BASE}`]}
+        originWhitelist={['https://*', 'http://*']}
         // iOS スワイプバック（ブラウザの進む/戻るジェスチャー）
         allowsBackForwardNavigationGestures={Platform.OS === 'ios'}
         onNavigationStateChange={handleNavigationStateChange}
