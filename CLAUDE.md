@@ -62,6 +62,8 @@ pnpm dev
 - **UA ベースのデバイス出し分け**: middleware で `x-device` ヘッダーをセットし、`app/(app)/layout.tsx` で PC シェル / モバイルシェルを切り替える。レスポンシブ CSS は使わない
 - **プロジェクトビューは localStorage で管理**: 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクト済み。ビュー切替（一覧 / カレンダー / カンバン）はURLパラメータを使わず localStorage のみで永続化（PCキー: `cairn:projects_view_pc`、モバイルキー: `cairn:projects_view_mobile`）。`/projects/[id]` はプロジェクト詳細（現在は `/projects?open={id}` にリダイレクト）
 - **API 認証は Bearer トークン（Supabase JWT）**: Web クライアントも Expo も同じ Next.js Route Handlers を呼び出し、`Authorization: Bearer <token>` で認証する。`getAuthContext()` は `Authorization` ヘッダを優先し、なければ Cookie にフォールバックする。Hono API 分離は「Next.js からの独立スケール・デプロイ分離が必要」になった時点で改めて検討する
+- **`push_subscriptions` は web / expo で列を分離**: `endpoint`（Web Push URL）は nullable、`expo_token`（Expo Push Token）は nullable。それぞれ独立した unique 制約 `uniq_push_web(user_id, endpoint)` / `uniq_push_expo(user_id, expo_token)` で管理する。Postgres の UNIQUE は NULL を比較から除外するため両制約は干渉しない
+- **Expo のスタイリングは React Native StyleSheet**: Web の CSS 変数・Tailwind は React Native で使えないため別管理。NativeWind は導入コストに対してメリットが薄い段階のため採用しない
 
 
 ## Detail Panel コンポーネントの方針
