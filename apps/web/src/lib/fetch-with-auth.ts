@@ -7,6 +7,13 @@ export async function fetchWithAuth(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
+  const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL']
+  const supabaseKey = process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']
+
+  if (!supabaseUrl || !supabaseKey) {
+    return fetch(input, init)
+  }
+
   const supabase = createClient()
   const { data: { session } } = await supabase.auth.getSession()
 
