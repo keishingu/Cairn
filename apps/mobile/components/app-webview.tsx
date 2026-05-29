@@ -1,7 +1,9 @@
 import React from 'react'
-import { View, StyleSheet, useColorScheme } from 'react-native'
+import { Platform, View, StyleSheet, useColorScheme } from 'react-native'
+import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
+import type { WebViewNavigation } from 'react-native-webview'
 import { supabase } from '../lib/supabase'
 
 const WEB_BASE = process.env['EXPO_PUBLIC_API_BASE_URL']!
@@ -20,6 +22,7 @@ export function AppWebView({ path }: Props) {
   const insets = useSafeAreaInsets()
   const colorScheme = useColorScheme()
   const bg = colorScheme === 'dark' ? BG_DARK : BG_LIGHT
+  const router = useRouter()
 
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -37,6 +40,16 @@ export function AppWebView({ path }: Props) {
     })
   }, [path])
 
+  // Web 側でログアウトして /auth/login に遷移したらネイティブセッションも破棄する
+  function handleNavigationStateChange(state: WebViewNavigation) {
+    const url = state.url
+    if (url.includes('/auth/login') || url.includes('/auth/signup')) {
+      supabase.auth.signOut().then(() => {
+        router.replace('/(auth)/login')
+      })
+    }
+  }
+
   if (!uri) return <View style={[styles.fill, { backgroundColor: bg }]} />
 
   return (
@@ -46,6 +59,9 @@ export function AppWebView({ path }: Props) {
         source={{ uri }}
         style={styles.webview}
         originWhitelist={[`${WEB_BASE}/*`, `${WEB_BASE}`]}
+        // iOS スワイプバック（ブラウザの進む/戻るジェスチャー）
+        allowsBackForwardNavigationGestures={Platform.OS === 'ios'}
+        onNavigationStateChange={handleNavigationStateChange}
       />
     </View>
   )
