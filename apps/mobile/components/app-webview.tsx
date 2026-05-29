@@ -40,6 +40,9 @@ export function AppWebView({ path }: Props) {
     })
   }, [path])
 
+  // WEB_BASE のオリジン（scheme+host+port）を抽出して信頼済みオリジンとする
+  const trustedOrigin = WEB_BASE.replace(/\/$/, '').replace(/(https?:\/\/[^/]+).*/, '$1')
+
   // Web 側でログアウトして /auth/login に遷移したらネイティブセッションも破棄する
   function handleNavigationStateChange(state: WebViewNavigation) {
     const url = state.url
@@ -48,6 +51,15 @@ export function AppWebView({ path }: Props) {
         router.replace('/(auth)/login')
       })
     }
+  }
+
+  // 信頼済みオリジン以外へのナビゲーションをブロック（HTTPS のみ許可）
+  function handleShouldStartLoadWithRequest(request: WebViewNavigation) {
+    const url = request.url
+    // about:blank など内部リソースは通す
+    if (url === 'about:blank' || url.startsWith('about:')) return true
+    // 信頼済みオリジンの HTTPS のみ許可
+    return url.startsWith(`${trustedOrigin}/`) || url === trustedOrigin
   }
 
   if (!uri) return <View style={[styles.fill, { backgroundColor: bg }]} />
@@ -59,6 +71,7 @@ export function AppWebView({ path }: Props) {
         source={{ uri }}
         style={styles.webview}
         originWhitelist={['https://*', 'http://*']}
+        onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
         // iOS スワイプバック（ブラウザの進む/戻るジェスチャー）
         allowsBackForwardNavigationGestures={Platform.OS === 'ios'}
         onNavigationStateChange={handleNavigationStateChange}
