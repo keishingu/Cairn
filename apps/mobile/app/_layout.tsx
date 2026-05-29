@@ -5,7 +5,7 @@ import { queryClient } from '../lib/query-client'
 import { supabase } from '../lib/supabase'
 import type { Session } from '@supabase/supabase-js'
 
-function AuthGuard({ children }: { children: React.ReactNode }) {
+function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElement | null {
   const [session, setSession] = React.useState<Session | null | undefined>(undefined)
   const segments = useSegments()
   const router = useRouter()
@@ -36,7 +36,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (session === undefined) return null
 
-  return <>{children}</>
+  return <React.Fragment>{children}</React.Fragment>
 }
 
 export default function RootLayout() {
