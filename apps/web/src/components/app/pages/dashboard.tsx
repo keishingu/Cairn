@@ -9,6 +9,7 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import { MobileHeader } from '../mobile/header'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 const DAY_NAMES = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日']
 
@@ -50,17 +51,17 @@ export const PageDashboard = ({ openPanel, isMobile }: PageDashboardProps) => {
 
   const { data: projects = [] } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
-    queryFn: () => fetch('/api/projects').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
   })
 
   const { data: tasks = [] } = useQuery<TaskDto[]>({
     queryKey: ['tasks'],
-    queryFn: () => fetch('/api/tasks').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/tasks').then(r => r.json()),
   })
 
   const { data: me } = useQuery<CurrentUserDto>({
     queryKey: ['me'],
-    queryFn: () => fetch('/api/me').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
   })
 
   const activeProjects = projects.filter(p => p.statusName !== 'done')

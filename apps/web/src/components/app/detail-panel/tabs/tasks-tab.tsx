@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 // ─── AddTaskModal ─────────────────────────────────────────────────
 
@@ -21,7 +22,7 @@ const AddTaskModal = ({ project, onClose }: AddTaskModalProps) => {
 
   const mutation = useMutation({
     mutationFn: async (data: { title: string; projectId: string; priority: string; dueDate?: string }) => {
-      const res = await fetch('/api/tasks', {
+      const res = await fetchWithAuth('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -193,14 +194,14 @@ export const TasksTab = ({ project }: TasksTabProps) => {
 
   const { data: tasks = [], isLoading } = useQuery<TaskDto[]>({
     queryKey: ['tasks', project.id],
-    queryFn: () => fetch(`/api/tasks?projectId=${project.id}`).then(r => r.json()),
+    queryFn: () => fetchWithAuth(`/api/tasks?projectId=${project.id}`).then(r => r.json()),
   })
 
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, newStatus }: { id: string; newStatus: TaskDto['status'] }) => {
-      const res = await fetch(`/api/tasks/${id}`, {
+      const res = await fetchWithAuth(`/api/tasks/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),

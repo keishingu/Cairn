@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
 import type { FileDto } from '@/app/api/files/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 type FilterKey = 'all' | 'pdf' | 'img' | 'doc'
 
@@ -119,12 +120,12 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
 
   const { data: files = [], isLoading } = useQuery<FileDto[]>({
     queryKey: ['files'],
-    queryFn: () => fetch('/api/files').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/files').then(r => r.json()),
   })
 
   const deleteFile = useMutation({
     mutationFn: (fileId: string) =>
-      fetch(`/api/attachments/${fileId}`, { method: 'DELETE' }).then(r => {
+      fetchWithAuth(`/api/attachments/${fileId}`, { method: 'DELETE' }).then(r => {
         if (!r.ok) throw new Error('削除に失敗しました')
       }),
     onSuccess: () => {

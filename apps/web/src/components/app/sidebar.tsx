@@ -10,6 +10,7 @@ import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 export type PageId =
   | 'projects' | 'calendar' | 'kanban'
@@ -118,7 +119,7 @@ export const Sidebar = ({ page, setPage }: SidebarProps) => {
   )
   const { data: workspace } = useQuery<WorkspaceDto>({
     queryKey: ['workspace'],
-    queryFn: () => fetch('/api/workspaces').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
     staleTime: 60_000,
   })
   const projectChildren: SidebarGroupItem[] = [
@@ -232,7 +233,7 @@ function SidebarUserFooter() {
 
   const { data: me } = useQuery<CurrentUserDto>({
     queryKey: ['me'],
-    queryFn: () => fetch('/api/me').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
     staleTime: 60_000,
   })
   const displayName = me?.displayName ?? '…'

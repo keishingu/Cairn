@@ -10,6 +10,7 @@ import { MemberDetailPanel } from '../detail-panel/member-panel'
 import { ProjectPanel } from '../detail-panel/project-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -127,7 +128,7 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
 
   const { data: members = [], isLoading } = useQuery<WorkspaceMemberDto[]>({
     queryKey: ['workspace-members'],
-    queryFn: () => fetch('/api/workspaces/members').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
   })
 
   // PC: initialUserId が指定されている場合、メンバーデータ読み込み後に自動選択

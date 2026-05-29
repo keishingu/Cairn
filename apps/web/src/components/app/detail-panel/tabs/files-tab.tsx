@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 function IndexingBadge({ status }: { status: string | undefined }) {
   if (!status || status === 'indexed' || status === 'skipped') return null
@@ -44,7 +45,7 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
   const { data: files = [], isLoading, isError } = useQuery<ProjectFileDto[]>({
     queryKey: ['project-files', projectId],
     queryFn: async () => {
-      const res = await fetch(`/api/projects/${projectId}/files`)
+      const res = await fetchWithAuth(`/api/projects/${projectId}/files`)
       if (!res.ok) throw new Error('Failed to fetch files')
       return res.json() as Promise<ProjectFileDto[]>
     },
@@ -57,7 +58,7 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
 
   const deleteFile = useMutation({
     mutationFn: (fileId: string) =>
-      fetch(`/api/attachments/${fileId}`, { method: 'DELETE' }).then(r => {
+      fetchWithAuth(`/api/attachments/${fileId}`, { method: 'DELETE' }).then(r => {
         if (!r.ok) throw new Error('削除に失敗しました')
       }),
     onSuccess: () => {

@@ -4,6 +4,7 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import type { WorkspaceGalleryItemDto } from '@/app/api/gallery/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 function formatDate(takenAt: string | null, createdAt: string): string {
   if (takenAt) {
@@ -20,7 +21,7 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
   const { data: items = [], isLoading, isError } = useQuery<WorkspaceGalleryItemDto[]>({
     queryKey: ['workspace-gallery'],
     queryFn: async () => {
-      const res = await fetch('/api/gallery')
+      const res = await fetchWithAuth('/api/gallery')
       if (!res.ok) throw new Error('Failed to fetch gallery')
       return res.json() as Promise<WorkspaceGalleryItemDto[]>
     },

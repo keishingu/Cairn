@@ -7,6 +7,7 @@ import { STATUS, STATUS_COL } from '../data'
 import type { StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '@/components/app/mobile/header'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 // ─── Date helpers ──────────────────────────────────────────────────
 
@@ -619,7 +620,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const [calView, setCalView] = React.useState<CalView>('month')
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
-    queryFn: () => fetch('/api/projects').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
   })
 
   const events = React.useMemo(

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useCallback, useEffect, useState } from 'react'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -14,7 +15,7 @@ function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
 
 async function getVapidPublicKey(): Promise<string | null> {
   try {
-    const res = await fetch('/api/push/vapid-public-key')
+    const res = await fetchWithAuth('/api/push/vapid-public-key')
     if (!res.ok) return null
     const data = await res.json() as { publicKey?: string }
     return data.publicKey ?? null
@@ -25,7 +26,7 @@ async function getVapidPublicKey(): Promise<string | null> {
 
 async function saveSubscription(sub: PushSubscription): Promise<void> {
   const json = sub.toJSON()
-  await fetch('/api/push/subscribe', {
+  await fetchWithAuth('/api/push/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
@@ -33,7 +34,7 @@ async function saveSubscription(sub: PushSubscription): Promise<void> {
 }
 
 async function removeSubscription(sub: PushSubscription): Promise<void> {
-  await fetch('/api/push/subscribe', {
+  await fetchWithAuth('/api/push/subscribe', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ endpoint: sub.endpoint }),

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { NotificationDto } from '@/app/api/notifications/route'
 
 export type { NotificationDto }
@@ -11,13 +12,13 @@ export const notificationQueryKeys = {
 }
 
 async function fetchNotifications(filter: string): Promise<NotificationDto[]> {
-  const res = await fetch(`/api/notifications?filter=${filter}`)
+  const res = await fetchWithAuth(`/api/notifications?filter=${filter}`)
   if (!res.ok) throw new Error('通知の取得に失敗しました')
   return res.json()
 }
 
 async function markNotificationsRead(ids?: string[]): Promise<{ updated: number }> {
-  const res = await fetch('/api/notifications', {
+  const res = await fetchWithAuth('/api/notifications', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(ids ? { ids } : {}),

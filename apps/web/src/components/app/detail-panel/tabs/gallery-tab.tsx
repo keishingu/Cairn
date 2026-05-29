@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
 import type { GalleryItemDto } from '@/app/api/projects/[id]/gallery/route'
 import { processImageForUpload } from '@/lib/process-image'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 interface UploadState {
   total: number
@@ -19,7 +20,7 @@ async function uploadFile(projectId: string, original: File): Promise<void> {
   if (takenAt) fd.append('takenAt', takenAt.toISOString())
   if (latitude !== null) fd.append('latitude', String(latitude))
   if (longitude !== null) fd.append('longitude', String(longitude))
-  const res = await fetch(`/api/projects/${projectId}/gallery`, { method: 'POST', body: fd })
+  const res = await fetchWithAuth(`/api/projects/${projectId}/gallery`, { method: 'POST', body: fd })
   if (!res.ok) {
     const data = await res.json().catch(() => ({})) as { error?: string }
     throw new Error(data.error ?? `${original.name} のアップロードに失敗しました`)
@@ -36,7 +37,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
   const { data: items = [], isLoading, isError } = useQuery<GalleryItemDto[]>({
     queryKey: ['project-gallery', projectId],
     queryFn: async () => {
-      const res = await fetch(`/api/projects/${projectId}/gallery`)
+      const res = await fetchWithAuth(`/api/projects/${projectId}/gallery`)
       if (!res.ok) throw new Error('Failed to fetch gallery')
       return res.json() as Promise<GalleryItemDto[]>
     },
@@ -70,7 +71,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
   }
 
   const deleteItem = async (itemId: string) => {
-    const res = await fetch(`/api/projects/${projectId}/gallery/${itemId}`, { method: 'DELETE' })
+    const res = await fetchWithAuth(`/api/projects/${projectId}/gallery/${itemId}`, { method: 'DELETE' })
     if (!res.ok) throw new Error('削除に失敗しました')
     void queryClient.invalidateQueries({ queryKey: ['project-gallery', projectId] })
   }
