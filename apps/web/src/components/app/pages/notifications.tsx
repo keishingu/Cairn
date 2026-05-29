@@ -51,23 +51,16 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
   }
 
   const header = (
-    <div style={{ padding: '16px 18px 12px', borderBottom: '1px solid var(--divider)', ...(isMobile && { paddingTop: 'calc(16px + env(safe-area-inset-top))' }) }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div style={{ borderBottom: '1px solid var(--divider)', ...(isMobile && { paddingTop: 'env(safe-area-inset-top)' }) }}>
+      {/* タイトル行 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 18px 0' }}>
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
           通知
           {unreadCount > 0 && (
             <span style={{ background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999 }}>{unreadCount}</span>
           )}
         </h2>
-        <button
-          className="btn btn-ghost"
-          style={{ height: 28, fontSize: 12, padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4, opacity: unreadCount === 0 ? 0.4 : 1 }}
-          onClick={handleMarkAllRead}
-          disabled={unreadCount === 0 || markRead.isPending}
-        >
-          <Icon name="check" size={12} /> すべて既読
-        </button>
-        {push.permission !== 'unsupported' && push.permission !== 'denied' && (
+        {!isMobile && push.permission !== 'unsupported' && push.permission !== 'denied' && (
           <button
             className="btn btn-ghost"
             style={{ height: 28, fontSize: 12, padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
@@ -79,11 +72,52 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
             {push.permission === 'granted' ? 'OFF' : 'ON'}
           </button>
         )}
+        <button
+          className="btn btn-ghost"
+          style={{ height: 28, fontSize: 12, padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4, opacity: unreadCount === 0 ? 0.4 : 1 }}
+          onClick={handleMarkAllRead}
+          disabled={unreadCount === 0 || markRead.isPending}
+        >
+          <Icon name="check" size={12} /> すべて既読
+        </button>
         <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="close" size={15}/>
         </button>
       </div>
-      <div style={{ display: 'flex', gap: 4, marginTop: 12 }}>
+
+      {/* モバイル: プッシュ通知トグル行 */}
+      {isMobile && push.permission !== 'unsupported' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 18px 0' }}>
+          <Icon name={push.permission === 'granted' ? 'bell' : 'bell-off'} size={13} color="var(--text-3)" />
+          <span style={{ flex: 1, fontSize: 13, color: 'var(--text-3)' }}>
+            {push.permission === 'denied'
+              ? 'ブラウザの設定で通知が拒否されています'
+              : push.permission === 'granted' ? 'プッシュ通知 オン' : 'プッシュ通知 オフ'}
+          </span>
+          {push.permission !== 'denied' && (
+            <button
+              onClick={push.permission === 'granted' ? push.unsubscribe : push.subscribe}
+              disabled={push.loading}
+              style={{
+                position: 'relative', width: 44, height: 26, borderRadius: 999,
+                border: 'none', cursor: push.loading ? 'default' : 'pointer', padding: 0, flexShrink: 0,
+                background: push.permission === 'granted' ? 'var(--accent)' : 'var(--card-hover)',
+                transition: 'background .2s',
+              }}
+            >
+              <span style={{
+                position: 'absolute', top: 3, width: 20, height: 20, borderRadius: '50%',
+                background: 'var(--card)', boxShadow: '0 1px 3px rgba(0,0,0,.25)',
+                transition: 'left .2s',
+                left: push.permission === 'granted' ? 21 : 3,
+              }}/>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* フィルタータブ */}
+      <div style={{ display: 'flex', gap: 4, padding: '10px 18px 12px' }}>
         {FILTERS.map(f => (
           <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding: '5px 12px', borderRadius: 999, border: 'none', background: filter === f.id ? 'var(--card-hover)' : 'transparent', color: filter === f.id ? 'var(--text)' : 'var(--text-3)', fontSize: 12, fontWeight: filter === f.id ? 600 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>{f.label}</button>
         ))}
