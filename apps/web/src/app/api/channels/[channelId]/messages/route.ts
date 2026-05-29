@@ -236,7 +236,7 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     const senderName = profile?.displayName ?? '不明'
 
-    await inngest.send({
+    inngest.send({
       name: 'message/created',
       data: {
         messageId: inserted.id,
@@ -247,7 +247,9 @@ export async function POST(req: Request, { params }: RouteContext) {
         content: inserted.content,
         attachmentFileIds: parsed.data.attachmentFileIds ?? [],
       },
-    } satisfies MessageCreatedEvent)
+    } satisfies MessageCreatedEvent).catch((err: unknown) => {
+      console.warn('[inngest] message/created send failed (Inngest not running?):', err)
+    })
 
     return NextResponse.json({
       id: inserted.id,

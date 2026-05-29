@@ -1,10 +1,7 @@
 import React from 'react'
 import { Tabs } from 'expo-router'
-import { Ionicons } from '@expo/vector-icons'
 import * as Notifications from 'expo-notifications'
 import { apiFetch } from '../../lib/api-fetch'
-
-type IoniconsName = React.ComponentProps<typeof Ionicons>['name']
 
 // フォアグラウンド通知の表示設定
 Notifications.setNotificationHandler({
@@ -12,6 +9,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 })
 
@@ -34,37 +33,19 @@ async function registerPushToken() {
   }
 }
 
-function tabIcon(name: IoniconsName) {
-  return ({ color }: { color: string }) => <Ionicons name={name} size={24} color={color} />
-}
-
 export default function AppLayout() {
   React.useEffect(() => {
     void registerPushToken()
   }, [])
 
   return (
-    <Tabs screenOptions={{ headerShown: false, tabBarActiveTintColor: '#0070f3' }}>
-      <Tabs.Screen
-        name="projects"
-        options={{ title: 'プロジェクト', tabBarIcon: tabIcon('folder-outline') }}
-      />
-      <Tabs.Screen
-        name="chats"
-        options={{ title: 'チャット', tabBarIcon: tabIcon('chatbubbles-outline') }}
-      />
-      <Tabs.Screen
-        name="tasks"
-        options={{ title: 'タスク', tabBarIcon: tabIcon('checkmark-circle-outline') }}
-      />
-      <Tabs.Screen
-        name="notifications"
-        options={{ title: '通知', tabBarIcon: tabIcon('notifications-outline') }}
-      />
-      <Tabs.Screen
-        name="menu"
-        options={{ title: 'メニュー', tabBarIcon: tabIcon('menu-outline') }}
-      />
+    <Tabs screenOptions={{ headerShown: false, tabBarStyle: { display: 'none' } }}>
+      <Tabs.Screen name="projects" />
+      <Tabs.Screen name="chats" />
+      <Tabs.Screen name="tasks" />
+      <Tabs.Screen name="notifications" />
+      <Tabs.Screen name="ai" />
+      <Tabs.Screen name="menu" />
     </Tabs>
   )
 }

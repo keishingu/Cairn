@@ -1,6 +1,7 @@
 import React from 'react'
 import { Slot, useRouter, useSegments } from 'expo-router'
 import { QueryClientProvider } from '@tanstack/react-query'
+import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { queryClient } from '../lib/query-client'
 import { supabase } from '../lib/supabase'
 import type { Session } from '@supabase/supabase-js'
@@ -39,10 +40,12 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
 
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthGuard>
-        <Slot />
-      </AuthGuard>
-    </QueryClientProvider>
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthGuard>
+          <Slot />
+        </AuthGuard>
+      </QueryClientProvider>
+    </SafeAreaProvider>
   )
 }
