@@ -47,7 +47,7 @@ export function AppWebView({ path }: Props) {
   if (!handoff) return <View style={[styles.fill, { backgroundColor: bg }]} />
 
   return (
-    <View style={[styles.fill, { backgroundColor: bg, paddingTop: insets.top }]}>
+    <View style={[styles.fill, { backgroundColor: bg, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <WebView
         ref={webViewRef}
         source={{ uri: handoff.uri }}
