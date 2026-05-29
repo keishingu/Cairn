@@ -8,8 +8,7 @@ import { MobileShell } from './_shells/mobile-shell'
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const headersList = await headers()
   const isMobile = headersList.get('x-device') === 'mobile'
-  const isWebView = headersList.get('x-webview') === '1'
 
-  if (isMobile) return <MobileShell isWebView={isWebView} />
+  if (isMobile) return <MobileShell />
   return <PCShell>{children}</PCShell>
 }

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { generateId } from '@/lib/generate-id'
 import type { AttachmentDto } from '@cairn/shared'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
@@ -237,7 +238,7 @@ export function useSendChannelMessage(
 
       if (currentUser) {
         const optimisticMsg: MessageDto = {
-          id: `optimistic-${crypto.randomUUID()}`,
+          id: `optimistic-${generateId()}`,
           content: input.content,
           senderId: currentUser.id,
           senderName: currentUser.displayName,
