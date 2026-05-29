@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@babel/runtime": "^7",
     "@cairn/shared": "workspace:*",
     "@supabase/supabase-js": "^2",
     "expo": "~52.0.0",
