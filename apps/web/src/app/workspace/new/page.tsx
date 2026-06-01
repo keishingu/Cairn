@@ -5,7 +5,7 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { WORKSPACE_COOKIE } from '@/lib/get-auth-context'
+import { WORKSPACE_COOKIE } from '@/lib/workspace-cookie'
 
 export default function NewWorkspacePage() {
   const router = useRouter()

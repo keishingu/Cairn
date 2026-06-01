@@ -5,11 +5,12 @@ import { NextResponse } from 'next/server'
 import { headers, cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import type { User } from '@supabase/supabase-js'
+import { WORKSPACE_COOKIE } from './workspace-cookie'
 
 const DEV_USER_ID      = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
-export const WORKSPACE_COOKIE = 'cairn_workspace_id'
+export { WORKSPACE_COOKIE } from './workspace-cookie'
 
 // サーバーレス関数インスタンス内でワークスペース ID をキャッシュし、
 // warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
