@@ -52,18 +52,19 @@ export async function POST(req: Request) {
       await db.insert(profiles).values({ id: user.id, displayName })
     }
 
-    const existingMembership = await db
-      .select({ workspaceId: workspaceMembers.workspaceId })
-      .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, user.id))
-      .limit(1)
-
-    if (existingMembership.length > 0) {
-      return NextResponse.json({ ok: true, needsWorkspace: false })
-    }
-
+    // workspaceName が指定されていれば必ず新規ワークスペースを作成（複数WS対応）
+    // 指定がない場合のみ既存メンバーシップを確認してオンボーディング要否を返す
     if (!parsed.data.workspaceName) {
-      return NextResponse.json({ ok: true, needsWorkspace: true })
+      const existingMembership = await db
+        .select({ workspaceId: workspaceMembers.workspaceId })
+        .from(workspaceMembers)
+        .where(eq(workspaceMembers.userId, user.id))
+        .limit(1)
+
+      return NextResponse.json({
+        ok: true,
+        needsWorkspace: existingMembership.length === 0,
+      })
     }
 
     const workspaceName = parsed.data.workspaceName
