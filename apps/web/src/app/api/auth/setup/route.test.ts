@@ -1,0 +1,214 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// --- vi.hoisted: vi.mock ファクトリから参照できるよう先に定義 ---
+const { mockUser, mockSupabase, mockDb } = vi.hoisted(() => {
+  const mockUser = {
+    id: 'user-00000001',
+    email: 'test@example.com',
+    user_metadata: {},
+  }
+  const mockSupabase = {
+    auth: {
+      getUser: vi.fn().mockResolvedValue({ data: { user: mockUser }, error: null }),
+    },
+  }
+  const mockDb = {
+    select: vi.fn(),
+    insert: vi.fn(),
+  }
+  return { mockUser, mockSupabase, mockDb }
+})
+
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: vi.fn().mockResolvedValue(mockSupabase),
+}))
+
+vi.mock('next/headers', () => ({
+  cookies: vi.fn().mockResolvedValue({ get: vi.fn() }),
+  headers: vi.fn().mockResolvedValue(new Headers()),
+}))
+
+vi.mock('@cairn/db', () => ({
+  db: mockDb,
+  profiles: { id: 'profiles.id' },
+  workspaces: {
+    id: 'workspaces.id',
+    name: 'workspaces.name',
+    slug: 'workspaces.slug',
+    createdBy: 'workspaces.createdBy',
+  },
+  workspaceMembers: {
+    workspaceId: 'wm.workspaceId',
+    userId: 'wm.userId',
+    role: 'wm.role',
+  },
+  channels: {
+    workspaceId: 'ch.workspaceId',
+    type: 'ch.type',
+    name: 'ch.name',
+  },
+}))
+
+vi.mock('drizzle-orm', () => ({ eq: vi.fn(() => 'eq-result') }))
+
+vi.mock('@/lib/inngest/client', () => ({
+  inngest: { send: vi.fn().mockResolvedValue(undefined) },
+}))
+
+/** 単一結果を返す select チェーン */
+function selectChain(result: unknown[]) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        limit: vi.fn().mockResolvedValue(result),
+      }),
+    }),
+  }
+}
+
+/** .values() を await するだけの insert チェーン */
+function insertChainPlain() {
+  return { values: vi.fn().mockResolvedValue([]) }
+}
+
+/** .values().returning() を使う insert チェーン */
+function insertChainReturning(result: unknown[]) {
+  return {
+    values: vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue(result),
+    }),
+  }
+}
+
+describe('POST /api/auth/setup', () => {
+  afterEach(() => {
+    delete process.env['DATABASE_URL']
+    vi.clearAllMocks()
+  })
+
+  describe('モックモード (DATABASE_URL なし)', () => {
+    it('{ ok: true, needsWorkspace: false } を返す', async () => {
+      delete process.env['DATABASE_URL']
+      const { POST } = await import('./route')
+
+      const res = await POST(
+        new Request('http://localhost/api/auth/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }),
+      )
+
+      expect(res.status).toBe(200)
+      await expect(res.json()).resolves.toEqual({ ok: true, needsWorkspace: false })
+    })
+
+    it('不正な JSON には 400 を返す', async () => {
+      delete process.env['DATABASE_URL']
+      const { POST } = await import('./route')
+
+      const res = await POST(
+        new Request('http://localhost/api/auth/setup', {
+          method: 'POST',
+          body: 'not-json',
+        }),
+      )
+
+      expect(res.status).toBe(400)
+    })
+  })
+
+  describe('DB モード (DATABASE_URL あり)', () => {
+    beforeEach(() => {
+      process.env['DATABASE_URL'] = 'postgresql://test'
+    })
+
+    it('workspaceName なし・メンバーシップなし → needsWorkspace: true', async () => {
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ id: mockUser.id }])) // プロフィール存在
+        .mockReturnValueOnce(selectChain([]))                    // メンバーシップなし
+
+      const { POST } = await import('./route')
+      const res = await POST(
+        new Request('http://localhost/api/auth/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }),
+      )
+
+      expect(res.status).toBe(200)
+      await expect(res.json()).resolves.toEqual({ ok: true, needsWorkspace: true })
+    })
+
+    it('workspaceName なし・メンバーシップあり → needsWorkspace: false', async () => {
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
+        .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-existing' }]))
+
+      const { POST } = await import('./route')
+      const res = await POST(
+        new Request('http://localhost/api/auth/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }),
+      )
+
+      await expect(res.json()).resolves.toEqual({ ok: true, needsWorkspace: false })
+    })
+
+    it('workspaceName あり・既存メンバーシップがあっても新規ワークスペースを作成する（修正後の挙動）', async () => {
+      // プロフィール存在確認のみ（membership チェックは workspaceName 指定時はスキップ）
+      mockDb.select.mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
+
+      mockDb.insert
+        .mockReturnValueOnce(insertChainReturning([{ id: 'new-ws-id-999' }])) // workspaces
+        .mockReturnValueOnce(insertChainPlain())                               // channels
+        .mockReturnValueOnce(insertChainPlain())                               // workspaceMembers
+
+      const { POST } = await import('./route')
+      const res = await POST(
+        new Request('http://localhost/api/auth/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workspaceName: '新チーム' }),
+        }),
+      )
+
+      expect(res.status).toBe(200)
+      const body = await res.json() as { ok: boolean; needsWorkspace: boolean; workspaceId: string }
+      expect(body.ok).toBe(true)
+      expect(body.needsWorkspace).toBe(false)
+      expect(body.workspaceId).toBe('new-ws-id-999')
+      // insert が3回呼ばれること（workspaces / channels / workspaceMembers）
+      expect(mockDb.insert).toHaveBeenCalledTimes(3)
+    })
+
+    it('workspaceName あり・プロフィール未作成 → プロフィールも同時に作成する', async () => {
+      mockDb.select.mockReturnValueOnce(selectChain([]))   // プロフィールなし
+
+      mockDb.insert
+        .mockReturnValueOnce(insertChainPlain())                               // profiles
+        .mockReturnValueOnce(insertChainReturning([{ id: 'ws-new-777' }]))    // workspaces
+        .mockReturnValueOnce(insertChainPlain())                               // channels
+        .mockReturnValueOnce(insertChainPlain())                               // workspaceMembers
+
+      const { POST } = await import('./route')
+      const res = await POST(
+        new Request('http://localhost/api/auth/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workspaceName: 'プロフィール作成テスト' }),
+        }),
+      )
+
+      expect(res.status).toBe(200)
+      // profiles も含めて insert が4回
+      expect(mockDb.insert).toHaveBeenCalledTimes(4)
+    })
+  })
+})
