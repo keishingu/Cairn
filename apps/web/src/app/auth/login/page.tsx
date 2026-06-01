@@ -5,11 +5,22 @@
 
 import React from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <LoginForm />
+    </React.Suspense>
+  )
+}
+
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const inviteToken = searchParams.get('invite')
+
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
@@ -21,7 +32,7 @@ export default function LoginPage() {
     setError(null)
 
     const supabase = createClient()
-    const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
     if (authError) {
       setError('メールアドレスまたはパスワードが正しくありません')
@@ -29,19 +40,26 @@ export default function LoginPage() {
       return
     }
 
-    // コールバック失敗等でセットアップが未完了のユーザーを救済するため、
-    // ログイン時に毎回 setup を呼ぶ（冪等なので既存ユーザーには影響なし）
-    const displayName =
-      (data.user?.user_metadata?.['display_name'] as string | undefined) ??
-      data.user?.email ??
-      'ユーザー'
-    await fetch('/api/auth/setup', {
+    // 招待リンク経由の場合は招待ページへ戻す
+    if (inviteToken) {
+      router.push(`/invite/${inviteToken}`)
+      router.refresh()
+      return
+    }
+
+    // ワークスペースがあるか確認し、なければオンボーディングへ
+    const res = await fetch('/api/auth/setup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ displayName }),
+      body: JSON.stringify({}),
     })
+    const body = await res.json().catch(() => ({})) as { needsWorkspace?: boolean }
 
-    router.push('/projects')
+    if (body.needsWorkspace) {
+      router.push('/onboarding')
+    } else {
+      router.push('/projects')
+    }
     router.refresh()
   }
 
@@ -145,11 +163,14 @@ export default function LoginPage() {
       </div>
 
       <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-3)' }}>
-        アカウントをお持ちでない方は{' '}
-        <Link href="/auth/signup" style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}>
-          新規登録
+        <Link
+          href={inviteToken ? `/auth/signup?invite=${inviteToken}` : '/auth/signup'}
+          style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}
+        >
+          新しいワークスペースを作成する →
         </Link>
       </div>
     </div>
   )
 }
+

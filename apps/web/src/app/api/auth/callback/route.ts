@@ -7,6 +7,8 @@ import { createClient } from '@/lib/supabase/server'
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
+  // 招待トークンが付いている場合は受け入れフローへ
+  const inviteToken = searchParams.get('invite')
 
   if (code) {
     const supabase = await createClient()
@@ -18,10 +20,12 @@ export async function GET(request: Request) {
         user.email ??
         'ユーザー'
 
+      let isNewUser = true
+
       if (process.env['DATABASE_URL']) {
         try {
           const { db } = await import('@cairn/db')
-          const { profiles, workspaces, workspaceMembers, channels } = await import('@cairn/db')
+          const { profiles } = await import('@cairn/db')
           const { eq } = await import('drizzle-orm')
 
           const existing = await db
@@ -30,32 +34,22 @@ export async function GET(request: Request) {
             .where(eq(profiles.id, user.id))
             .limit(1)
 
-          if (existing.length === 0) {
+          isNewUser = existing.length === 0
+
+          if (isNewUser) {
             await db.insert(profiles).values({ id: user.id, displayName })
-
-            const slug = `workspace-${user.id.slice(0, 8)}`
-            const [ws] = await db
-              .insert(workspaces)
-              .values({ name: `${displayName}のワークスペース`, slug, createdBy: user.id })
-              .returning({ id: workspaces.id })
-
-            if (ws) {
-              await db.insert(workspaceMembers).values({
-                workspaceId: ws.id,
-                userId: user.id,
-                role: 'owner',
-              })
-              await db.insert(channels).values([
-                { workspaceId: ws.id, name: '雑談', isPrivate: false },
-                { workspaceId: ws.id, name: '連絡事項', isPrivate: false },
-              ])
-            }
           }
         } catch (err) {
           console.error('[/api/auth/callback] setup failed:', err)
         }
       }
 
+      if (inviteToken) {
+        return NextResponse.redirect(`${origin}/invite/${inviteToken}`)
+      }
+      if (isNewUser) {
+        return NextResponse.redirect(`${origin}/onboarding`)
+      }
       return NextResponse.redirect(`${origin}/projects`)
     }
   }
