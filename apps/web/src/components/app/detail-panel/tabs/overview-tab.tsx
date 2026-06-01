@@ -22,7 +22,7 @@ export const OverviewTab = ({ project }: { project: ProjectDto }) => (
       </div>
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>ステータス</div>
-        <StatusChip s={project.statusName}/>
+        <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
       </div>
     </div>
     <div style={{ padding: 14, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>

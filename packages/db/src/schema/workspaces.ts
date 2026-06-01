@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { workspaceRoleEnum } from './enums'
 
 export interface WorkspaceCoverPhoto {
@@ -80,7 +80,6 @@ export const projectStatuses = pgTable(
     name: text('name').notNull(),
     color: text('color').notNull().default('#3B82F6'),
     sortOrder: text('sort_order').notNull(),
-    isFinal: boolean('is_final').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.workspaceId, t.name)],

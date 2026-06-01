@@ -4,7 +4,6 @@ import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
-import { STATUS, type StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
@@ -27,8 +26,6 @@ const TAG_PRESETS = [
   { id: 't11', name: '装備強化',     color: 'var(--text-3)' },
   { id: 't12', name: '危険度: 高',   color: 'var(--red)' },
 ] as const
-
-const STATUS_ORDER: StatusKey[] = ['plan', 'review', 'wait', 'doing', 'retro', 'done']
 
 // ─── Form atoms ───────────────────────────────────────────────────
 interface FieldProps {
@@ -86,22 +83,22 @@ function onBlurRing(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>,
 
 // ─── Status chip selector ─────────────────────────────────────────
 interface StatusChipSelectorProps {
-  value: StatusKey
-  onChange: (v: StatusKey) => void
+  statuses: ProjectStatusDto[]
+  value: string
+  onChange: (v: string) => void
 }
 
-const StatusChipSelector = ({ value, onChange }: StatusChipSelectorProps) => (
+const StatusChipSelector = ({ statuses, value, onChange }: StatusChipSelectorProps) => (
   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-    {STATUS_ORDER.map(s => {
-      const cfg = STATUS[s]
-      const selected = value === s
+    {statuses.map(s => {
+      const selected = value === s.name
       return (
-        <button key={s} type="button" onClick={() => onChange(s)} style={{
+        <button key={s.id} type="button" onClick={() => onChange(s.name)} style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
           padding: '7px 12px', borderRadius: 999,
-          border: `1.5px solid ${selected ? cfg.dot : 'var(--border)'}`,
-          background: selected ? cfg.bg : 'var(--card)',
-          color: selected ? cfg.fg : 'var(--text-2)',
+          border: `1.5px solid ${selected ? s.color : 'var(--border)'}`,
+          background: selected ? s.color + '22' : 'var(--card)',
+          color: selected ? 'var(--text)' : 'var(--text-2)',
           fontSize: 12, fontWeight: selected ? 700 : 500,
           fontFamily: 'inherit', cursor: 'pointer',
           transition: 'background .12s, border-color .12s',
@@ -109,8 +106,8 @@ const StatusChipSelector = ({ value, onChange }: StatusChipSelectorProps) => (
           onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
           onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'var(--card)' }}
         >
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.dot }}/>
-          {cfg.label}
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color }}/>
+          {s.name}
         </button>
       )
     })}
@@ -255,12 +252,13 @@ const TagPicker = ({ value, onChange, available = TAG_PRESETS }: TagPickerProps)
 
 // ─── Filter popover ───────────────────────────────────────────────
 interface FilterPopoverProps {
-  statuses: StatusKey[]
-  onChange: (statuses: StatusKey[]) => void
+  allStatuses: ProjectStatusDto[]
+  selected: string[]
+  onChange: (statuses: string[]) => void
   onClose: () => void
 }
 
-const FilterPopover = ({ statuses, onChange, onClose }: FilterPopoverProps) => {
+const FilterPopover = ({ allStatuses, selected, onChange, onClose }: FilterPopoverProps) => {
   const ref = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
@@ -271,8 +269,8 @@ const FilterPopover = ({ statuses, onChange, onClose }: FilterPopoverProps) => {
     return () => document.removeEventListener('mousedown', handler)
   }, [onClose])
 
-  const toggle = (s: StatusKey) => {
-    onChange(statuses.includes(s) ? statuses.filter(x => x !== s) : [...statuses, s])
+  const toggle = (name: string) => {
+    onChange(selected.includes(name) ? selected.filter(x => x !== name) : [...selected, name])
   }
 
   return (
@@ -285,24 +283,23 @@ const FilterPopover = ({ statuses, onChange, onClose }: FilterPopoverProps) => {
         ステータス
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {STATUS_ORDER.map(s => {
-          const cfg = STATUS[s]
-          const checked = statuses.includes(s)
+        {allStatuses.map(s => {
+          const checked = selected.includes(s.name)
           return (
-            <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer' }}
+            <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer' }}
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
-              <input type="checkbox" checked={checked} onChange={() => toggle(s)}
-                style={{ width: 14, height: 14, accentColor: cfg.dot, cursor: 'pointer' }}
+              <input type="checkbox" checked={checked} onChange={() => toggle(s.name)}
+                style={{ width: 14, height: 14, accentColor: s.color, cursor: 'pointer' }}
               />
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.dot, flexShrink: 0 }}/>
-              <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{cfg.label}</span>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }}/>
+              <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{s.name}</span>
             </label>
           )
         })}
       </div>
-      {statuses.length > 0 && (
+      {selected.length > 0 && (
         <button onClick={() => onChange([])} style={{
           marginTop: 10, width: '100%', padding: '7px 0',
           border: '1px solid var(--border)', borderRadius: 6,
@@ -374,7 +371,7 @@ interface CreateProjectModalProps {
 interface FormState {
   title: string
   description: string
-  status: StatusKey
+  status: string
   startDate: string
   endDate: string
   cover: string | null
@@ -389,9 +386,15 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
   })
 
   const [form, setForm] = React.useState<FormState>({
-    title: '', description: '', status: 'plan',
+    title: '', description: '', status: '',
     startDate: '', endDate: '', cover: null, tags: [],
   })
+
+  React.useEffect(() => {
+    if (statuses.length > 0 && form.status === '') {
+      setForm(prev => ({ ...prev, status: statuses[0]!.name }))
+    }
+  }, [statuses]) // eslint-disable-line react-hooks/exhaustive-deps
   const [errors, setErrors] = React.useState<{ title?: string; endDate?: string }>({})
   const titleRef = React.useRef<HTMLInputElement>(null)
 
@@ -506,7 +509,7 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
             </Field>
 
             <Field label="ステータス" required>
-              <StatusChipSelector value={form.status} onChange={v => set('status', v)}/>
+              <StatusChipSelector statuses={statuses} value={form.status} onChange={v => set('status', v)}/>
             </Field>
           </div>
 
@@ -548,7 +551,10 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
                     <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {form.title || 'プロジェクト名'}
                     </span>
-                    <StatusChip s={form.status}/>
+                    {form.status && (() => {
+                      const s = statuses.find(x => x.name === form.status)
+                      return s ? <StatusChip name={s.name} color={s.color}/> : null
+                    })()}
                   </div>
                 </div>
               )}
@@ -580,7 +586,8 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
   const [filter, setFilter] = React.useState('all')
   const [showCreate, setShowCreate] = React.useState(false)
   const [filterOpen, setFilterOpen] = React.useState(false)
-  const [statusFilter, setStatusFilter] = React.useState<StatusKey[]>([])
+  const { data: allStatuses = [] } = useQuery({ queryKey: ['statuses'], queryFn: fetchStatuses })
+  const [statusFilter, setStatusFilter] = React.useState<string[]>([])
   const filterBtnRef = React.useRef<HTMLDivElement>(null)
 
   const handleCreated = (project: ProjectDto) => {
@@ -592,7 +599,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
     all:      projects.filter(p => !p.archived).length,
     mine:     projects.filter(p => p.isMember && !p.archived).length,
     owned:    projects.filter(p => p.isOwner && !p.archived).length,
-    active:   projects.filter(p => p.statusName !== 'done' && !p.archived).length,
+    active:   projects.filter(p => !p.archived).length,
     archived: projects.filter(p => p.archived).length,
   }
 
@@ -608,7 +615,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
     switch (filter) {
       case 'mine':     return projects.filter(p => p.isMember && !p.archived)
       case 'owned':    return projects.filter(p => p.isOwner && !p.archived)
-      case 'active':   return projects.filter(p => p.statusName !== 'done' && !p.archived)
+      case 'active':   return projects.filter(p => !p.archived)
       case 'archived': return projects.filter(p => p.archived)
       default:         return projects.filter(p => !p.archived)
     }
@@ -616,7 +623,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
 
   const filteredProjects = React.useMemo(() => {
     if (statusFilter.length === 0) return tabFiltered
-    return tabFiltered.filter(p => statusFilter.includes(p.statusName as StatusKey))
+    return tabFiltered.filter(p => p.statusName !== null && statusFilter.includes(p.statusName))
   }, [tabFiltered, statusFilter])
 
   return (
@@ -710,7 +717,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                 )}
               </button>
               {filterOpen && (
-                <FilterPopover statuses={statusFilter} onChange={setStatusFilter} onClose={() => setFilterOpen(false)}/>
+                <FilterPopover allStatuses={allStatuses} selected={statusFilter} onChange={setStatusFilter} onClose={() => setFilterOpen(false)}/>
               )}
             </div>
             <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
@@ -737,7 +744,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
               <span/><span>プロジェクト</span><span>ステータス</span><span>日程</span><span>メンバー</span><span>進捗</span><span/>
             </div>
             {filteredProjects.map((p, i) => {
-              const accent = STATUS[p.statusName as StatusKey]?.dot ?? 'var(--text-3)'
+              const accent = p.statusColor ?? 'var(--text-3)'
               const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
               return (
                 <div key={p.id} onClick={() => openPanel?.(p)} style={{
@@ -750,7 +757,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                 >
                   <span style={{ width: 10, height: 10, borderRadius: 3, background: accent }}/>
                   <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
-                  <StatusChip s={p.statusName as StatusKey}/>
+                  <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
                   <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{formatDates(p.startDate, p.endDate)}</span>
                   <AvatarStack names={p.memberNames} size={22}/>
                   <div style={{ height: 6, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
@@ -770,7 +777,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
             gap: isMobile ? 10 : 16,
           }}>
             {filteredProjects.map((p, i) => {
-              const accent = STATUS[p.statusName as StatusKey]?.dot ?? 'var(--text-3)'
+              const accent = p.statusColor ?? 'var(--text-3)'
               const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
 
               if (isMobile) {
@@ -796,7 +803,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                         {formatDates(p.startDate, p.endDate)}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StatusChip s={p.statusName as StatusKey}/>
+                        <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
                         <AvatarStack names={p.memberNames} size={20}/>
                         <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 2 }}>{p.memberCount}人</span>
                       </div>
@@ -820,7 +827,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                       : <MountainPhoto idx={p.coverPhotoIdx} height={120} flat/>
                     }
                     <div style={{ position: 'absolute', top: 10, left: 10 }}>
-                      <StatusChip s={p.statusName as StatusKey}/>
+                      <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
                     </div>
                   </div>
                   <div style={{ padding: '12px 14px 14px' }}>

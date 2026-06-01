@@ -56,6 +56,7 @@ function formatDateRange(start: string | null, end: string | null): string {
 function memberProjectToProjectDto(p: MemberProjectDto): ProjectDto {
   return {
     id: p.projectId, title: p.title, description: null, statusName: p.statusName,
+    statusColor: p.statusColor,
     startDate: p.startDate, endDate: p.endDate, memberCount: p.memberCount,
     memberNames: [], taskCount: 0, completedTaskCount: 0,
     isOwner: p.role === 'leader', isMember: true, archived: false,
@@ -94,7 +95,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
             {project.title}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <StatusChip s={project.statusName}/>
+            <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
             <span style={{ fontSize: 12, color: 'var(--text-4)' }}>
               {formatDateRange(project.startDate, project.endDate)}
             </span>
@@ -137,7 +138,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
           {project.title}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <StatusChip s={project.statusName}/>
+          <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>
             {formatDateRange(project.startDate, project.endDate)}
           </span>

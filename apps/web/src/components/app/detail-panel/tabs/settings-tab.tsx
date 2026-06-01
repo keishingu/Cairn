@@ -84,7 +84,7 @@ export const SettingsTab = ({ project, onDeleted }: SettingsTabProps) => {
         startDate: startDate || null,
         endDate: endDate || null,
       }
-      if (selectedStatus !== project.statusName) body.statusName = selectedStatus
+      if (selectedStatus !== project.statusName && selectedStatus !== null) body.statusName = selectedStatus
 
       const res = await fetchWithAuth(`/api/projects/${project.id}`, {
         method: 'PATCH',

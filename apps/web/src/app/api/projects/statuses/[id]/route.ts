@@ -19,7 +19,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const b = body as { name?: string; color?: string; isFinal?: boolean; sortOrder?: string }
+  const b = body as { name?: string; color?: string; sortOrder?: string }
 
   if (!process.env['DATABASE_URL']) {
     return NextResponse.json({ id, ...b })
@@ -30,10 +30,9 @@ export async function PATCH(
     const { projectStatuses } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    const set: { name?: string; color?: string; isFinal?: boolean; sortOrder?: string } = {}
+    const set: { name?: string; color?: string; sortOrder?: string } = {}
     if (b.name !== undefined) set.name = b.name.trim()
     if (b.color !== undefined) set.color = b.color
-    if (b.isFinal !== undefined) set.isFinal = b.isFinal
     if (b.sortOrder !== undefined) set.sortOrder = b.sortOrder
 
     if (Object.keys(set).length === 0) {

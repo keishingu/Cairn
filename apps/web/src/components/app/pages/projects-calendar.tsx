@@ -3,9 +3,8 @@
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon, StatusChip } from '../primitives'
-import { STATUS, STATUS_COL } from '../data'
-import type { StatusKey } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '@/components/app/mobile/header'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
@@ -220,7 +219,8 @@ const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: Calendar
             ))
           ) : (
             events.filter(e => e.row < MAX_ROWS).map((e, i) => {
-              const cfg = STATUS_COL[e.project.statusName as StatusKey]
+              const barColor = e.project.statusColor ?? '#9CA3AF'
+              const cfg = { bg: barColor + '18', bar: barColor, text: barColor }
               const colW = 100 / 7
               const left = `calc(${e.day * colW}% + 4px)`
               const width = `calc(${e.span * colW}% - 8px)`
@@ -345,7 +345,8 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
                 </span>
                 <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
                   {visible.map(p => {
-                    const cfg = STATUS_COL[p.statusName as StatusKey]
+                    const _bar = p.statusColor ?? '#9CA3AF'
+                    const cfg = { bg: _bar + '18', bar: _bar, text: _bar }
                     return (
                       <div
                         key={p.id}
@@ -415,7 +416,8 @@ const MobileDayEvents = ({ date, projects, onProjectClick, isLoading }: MobileDa
       ) : (
         <div style={{ padding: '8px 0' }}>
           {dayProjects.map((p, i) => {
-            const cfg = STATUS_COL[p.statusName as StatusKey]
+            const _c = p.statusColor ?? '#9CA3AF'
+            const cfg = { bg: _c + '18', bar: _c, text: _c }
             const dateStr = formatDateRange(p.startDate, p.endDate)
             return (
               <button
@@ -437,7 +439,7 @@ const MobileDayEvents = ({ date, projects, onProjectClick, isLoading }: MobileDa
                     <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
                   )}
                 </div>
-                <StatusChip s={p.statusName as StatusKey} />
+                <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'} />
               </button>
             )
           })}
@@ -476,7 +478,7 @@ const MobileWeekStrip = ({ weekStart, projects, selectedDate, onSelectDate }: Mo
           const isSelected = day.toDateString() === selectedDate.toDateString()
           const isToday = day.toDateString() === today.toDateString()
           const dayProjects = getDateProjects(projects, day)
-          const dots = dayProjects.slice(0, 3).map(p => STATUS_COL[p.statusName as StatusKey]?.bar ?? 'var(--text-3)')
+          const dots = dayProjects.slice(0, 3).map(p => p.statusColor ?? '#9CA3AF')
           return (
             <button key={i} onClick={() => onSelectDate(day)} style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
@@ -556,7 +558,8 @@ const MobileTimelineView = ({ year, month, projects, onProjectClick, isLoading }
   return (
     <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
       {sorted.map((p) => {
-        const cfg = STATUS_COL[p.statusName as StatusKey]
+        const _c = p.statusColor ?? '#9CA3AF'
+        const cfg = { bg: _c + '18', bar: _c, text: _c }
         const dateStr = formatDateRange(p.startDate, p.endDate)
         const startDate = p.startDate ? parseLocalDate(p.startDate) : null
         const dateLabel = startDate ? formatDateLabel(startDate) : ''
@@ -591,7 +594,7 @@ const MobileTimelineView = ({ year, month, projects, onProjectClick, isLoading }
                   <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
                 )}
               </div>
-              <StatusChip s={p.statusName as StatusKey} />
+              <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'} />
             </button>
           </React.Fragment>
         )
@@ -621,6 +624,10 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
+  })
+  const { data: allStatuses = [] } = useQuery<ProjectStatusDto[]>({
+    queryKey: ['statuses'],
+    queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
   })
 
   const events = React.useMemo(
@@ -811,10 +818,10 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
 
       {/* Legend */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 12, fontSize: 11.5, color: 'var(--text-3)' }}>
-        {(['plan', 'review', 'wait', 'doing', 'retro', 'done'] as const).map(s => (
-          <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 12, height: 12, borderRadius: 3, background: STATUS_COL[s].bg, borderLeft: `2px solid ${STATUS_COL[s].bar}` }} />
-            {STATUS[s].label}
+        {allStatuses.map(s => (
+          <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 12, height: 12, borderRadius: 3, background: s.color + '18', borderLeft: `2px solid ${s.color}` }} />
+            {s.name}
           </span>
         ))}
         {!isLoading && projects.length > 0 && (
