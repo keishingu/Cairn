@@ -20,6 +20,7 @@ export default function OnboardingInvitePage() {
   const [expiresIn, setExpiresIn] = React.useState<ExpiresIn>('1h')
   const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
   const [generating, setGenerating] = React.useState(false)
+  const [generateError, setGenerateError] = React.useState<string | null>(null)
   const [copied, setCopied] = React.useState(false)
   const [isMobile, setIsMobile] = React.useState(false)
 
@@ -30,14 +31,17 @@ export default function OnboardingInvitePage() {
   async function generateLink() {
     setGenerating(true)
     setCopied(false)
+    setGenerateError(null)
     const res = await fetch('/api/workspaces/invites', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ expiresIn }),
     })
-    if (res.ok) {
-      const data = await res.json() as { url: string }
+    const data = await res.json().catch(() => ({})) as { url?: string; error?: string }
+    if (res.ok && data.url) {
       setInviteUrl(data.url)
+    } else {
+      setGenerateError(data.error ?? '招待リンクの生成に失敗しました')
     }
     setGenerating(false)
   }
@@ -124,24 +128,35 @@ export default function OnboardingInvitePage() {
 
           {/* リンク生成ボタン */}
           {!inviteUrl && (
-            <button
-              type="button"
-              onClick={generateLink}
-              disabled={generating}
-              style={{
-                padding: '10px 16px',
-                borderRadius: 8,
-                border: 'none',
-                background: generating ? 'var(--border-2)' : 'var(--accent)',
-                color: generating ? 'var(--text-4)' : 'var(--on-accent)',
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: generating ? 'default' : 'pointer',
-                fontFamily: 'inherit',
-              }}
-            >
-              {generating ? '生成中...' : '招待リンクを生成'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={generateLink}
+                disabled={generating}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: generating ? 'var(--border-2)' : 'var(--accent)',
+                  color: generating ? 'var(--text-4)' : 'var(--on-accent)',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: generating ? 'default' : 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {generating ? '生成中...' : '招待リンクを生成'}
+              </button>
+              {generateError && (
+                <div style={{
+                  padding: '8px 12px', borderRadius: 8,
+                  background: 'var(--red-soft)', border: '1px solid var(--red)',
+                  color: 'var(--red-text)', fontSize: 12.5,
+                }}>
+                  {generateError}
+                </div>
+              )}
+            </>
           )}
 
           {/* 生成済みリンク */}

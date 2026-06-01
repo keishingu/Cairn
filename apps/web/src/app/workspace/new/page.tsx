@@ -5,8 +5,9 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
+import { WORKSPACE_COOKIE } from '@/lib/get-auth-context'
 
-export default function OnboardingPage() {
+export default function NewWorkspacePage() {
   const router = useRouter()
   const [workspaceName, setWorkspaceName] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
@@ -32,16 +33,15 @@ export default function OnboardingPage() {
       return
     }
 
-    // 作成したワークスペースをアクティブに設定
     if (body.workspaceId) {
-      document.cookie = `cairn_workspace_id=${body.workspaceId}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
+      document.cookie = `${WORKSPACE_COOKIE}=${body.workspaceId}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     }
-
-    router.push('/onboarding/invite')
+    router.push('/projects')
+    router.refresh()
   }
 
   return (
-    <div style={{
+    <div className="app app-root" style={{
       minHeight: '100vh',
       display: 'flex',
       alignItems: 'center',
@@ -50,25 +50,15 @@ export default function OnboardingPage() {
       padding: '24px 16px',
     }}>
       <div style={{ width: '100%', maxWidth: 440 }}>
-        {/* Step indicator */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 32, justifyContent: 'center' }}>
-          <StepDot label="1" done />
-          <StepLine />
-          <StepDot label="2" active />
-          <StepLine />
-          <StepDot label="3" />
-        </div>
-
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
             Cairn
           </div>
           <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
-            ワークスペースを作成
+            新しいワークスペースを作成
           </div>
-          <div style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 1.6 }}>
-            チームや組織の名前でワークスペースを作成します。<br />
-            メンバーはあとから招待できます。
+          <div style={{ fontSize: 14, color: 'var(--text-3)' }}>
+            別のチームや用途向けに新しいワークスペースを作成します。
           </div>
         </div>
 
@@ -90,7 +80,7 @@ export default function OnboardingPage() {
                 onChange={e => setWorkspaceName(e.target.value)}
                 required
                 autoFocus
-                placeholder="例: 山岳部、開発チーム、ABC株式会社"
+                placeholder="例: 開発チーム、ABC株式会社"
                 maxLength={100}
                 style={{
                   padding: '9px 12px',
@@ -103,19 +93,13 @@ export default function OnboardingPage() {
                   fontFamily: 'inherit',
                 }}
               />
-              <div style={{ fontSize: 12, color: 'var(--text-4)' }}>
-                あとで変更できます
-              </div>
             </div>
 
             {error && (
               <div style={{
-                padding: '8px 12px',
-                borderRadius: 8,
-                background: 'var(--red-soft)',
-                border: '1px solid var(--red)',
-                color: 'var(--red-text)',
-                fontSize: 12.5,
+                padding: '8px 12px', borderRadius: 8,
+                background: 'var(--red-soft)', border: '1px solid var(--red)',
+                color: 'var(--red-text)', fontSize: 12.5,
               }}>
                 {error}
               </div>
@@ -125,49 +109,32 @@ export default function OnboardingPage() {
               type="submit"
               disabled={loading || !workspaceName.trim()}
               style={{
-                padding: '10px 16px',
-                borderRadius: 8,
-                border: 'none',
+                padding: '10px 16px', borderRadius: 8, border: 'none',
                 background: loading || !workspaceName.trim() ? 'var(--border-2)' : 'var(--accent)',
                 color: loading || !workspaceName.trim() ? 'var(--text-4)' : 'var(--on-accent)',
-                fontSize: 14,
-                fontWeight: 600,
+                fontSize: 14, fontWeight: 600,
                 cursor: loading || !workspaceName.trim() ? 'default' : 'pointer',
-                fontFamily: 'inherit',
-                marginTop: 4,
+                fontFamily: 'inherit', marginTop: 4,
               }}
             >
-              {loading ? '作成中...' : 'ワークスペースを作成'}
+              {loading ? '作成中...' : '作成'}
             </button>
           </form>
         </div>
+
+        <button
+          type="button"
+          onClick={() => router.back()}
+          style={{
+            width: '100%', marginTop: 16, padding: '10px 16px', borderRadius: 8,
+            border: '1px solid var(--border-2)', background: 'transparent',
+            color: 'var(--text-3)', fontSize: 14, fontWeight: 500,
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          キャンセル
+        </button>
       </div>
     </div>
   )
-}
-
-function StepDot({ label, done, active }: { label: string; done?: boolean; active?: boolean }) {
-  const bg = done ? 'var(--accent)' : active ? 'var(--accent)' : 'var(--border-2)'
-  const color = done || active ? 'var(--on-accent)' : 'var(--text-4)'
-  return (
-    <div style={{
-      width: 28,
-      height: 28,
-      borderRadius: '50%',
-      background: bg,
-      color,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: 12,
-      fontWeight: 700,
-      flexShrink: 0,
-    }}>
-      {done ? '✓' : label}
-    </div>
-  )
-}
-
-function StepLine() {
-  return <div style={{ flex: 1, height: 1, background: 'var(--border-2)', maxWidth: 48 }} />
 }

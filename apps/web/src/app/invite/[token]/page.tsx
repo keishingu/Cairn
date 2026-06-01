@@ -57,11 +57,15 @@ export default function InvitePage() {
     setJoining(true)
     setJoinError(null)
     const res = await fetch(`/api/invite/${token}/accept`, { method: 'POST' })
+    const data = await res.json().catch(() => ({})) as { ok?: boolean; workspaceId?: string; error?: string }
     if (!res.ok) {
-      const body = await res.json().catch(() => ({})) as { error?: string }
-      setJoinError(body.error ?? '参加に失敗しました')
+      setJoinError(data.error ?? '参加に失敗しました')
       setJoining(false)
       return
+    }
+    // 参加したワークスペースをアクティブに設定
+    if (data.workspaceId) {
+      document.cookie = `cairn_workspace_id=${data.workspaceId}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     }
     router.push('/projects')
     router.refresh()
