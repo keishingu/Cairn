@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { getAuthContext } from '@/lib/get-auth-context'
+import { getAuthUser } from '@/lib/get-auth-context'
 
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ token: string }> },
 ) {
-  const { ctx, error } = await getAuthContext()
+  const { userId, error } = await getAuthUser()
   if (error) return error
 
   const { token } = await params
@@ -48,7 +48,7 @@ export async function POST(
       .where(
         and(
           eq(workspaceMembers.workspaceId, invite.workspaceId),
-          eq(workspaceMembers.userId, ctx.userId),
+          eq(workspaceMembers.userId, userId),
         )
       )
       .limit(1)
@@ -79,14 +79,14 @@ export async function POST(
 
     await db.insert(workspaceMembers).values({
       workspaceId: claimed.workspaceId,
-      userId: ctx.userId,
+      userId: userId,
       role: claimed.role,
     })
 
     if (inngest) {
       await inngest.send({
         name: 'member/upserted',
-        data: { userId: ctx.userId, workspaceId: claimed.workspaceId },
+        data: { userId: userId, workspaceId: claimed.workspaceId },
       }).catch(e => console.warn('[/api/invite/[token]/accept] Inngest event send failed:', e))
     }
 

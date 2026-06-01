@@ -22,6 +22,36 @@ type AuthResult =
   | { ctx: AuthContext; error: null }
   | { ctx: null; error: ReturnType<typeof NextResponse.json> }
 
+type UserResult =
+  | { userId: string; error: null }
+  | { userId: null; error: ReturnType<typeof NextResponse.json> }
+
+/** ワークスペース所属を問わずユーザー認証だけを行う（招待受け入れ等で使用） */
+export async function getAuthUser(): Promise<UserResult> {
+  if (!process.env['DATABASE_URL']) {
+    return { userId: DEV_USER_ID, error: null }
+  }
+
+  const supabase = await createClient()
+  const headersList = await headers()
+  const authorization = headersList.get('Authorization')
+
+  if (authorization?.startsWith('Bearer ')) {
+    const token = authorization.slice(7)
+    const { data, error } = await supabase.auth.getUser(token)
+    if (error || !data.user) {
+      return { userId: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+    }
+    return { userId: data.user.id, error: null }
+  }
+
+  const { data: { session }, error: authError } = await supabase.auth.getSession()
+  if (authError || !session?.user) {
+    return { userId: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  }
+  return { userId: session.user.id, error: null }
+}
+
 export async function getAuthContext(): Promise<AuthResult> {
   if (!process.env['DATABASE_URL']) {
     return { ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID }, error: null }
