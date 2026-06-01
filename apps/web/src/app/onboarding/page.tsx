@@ -32,7 +32,7 @@ export default function OnboardingPage() {
       return
     }
 
-    // 作成したワークスペースをアクティブに設定
+    // 作成したワークスペースをアクティブに設定してフルリロード（キャッシュ破棄）
     if (body.workspaceId) {
       document.cookie = `cairn_workspace_id=${body.workspaceId}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     }

@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Icon } from './primitives'
 import { Avatar } from './primitives'
 import { createClient } from '@/lib/supabase/client'
@@ -111,7 +111,6 @@ interface SidebarProps {
 
 export const Sidebar = ({ page, setPage }: SidebarProps) => {
   const router = useRouter()
-  const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const { data: projectChannels = [] } = useProjectChannels()
   const { data: workspaceChannels = [] } = useWorkspaceChannels()
@@ -135,8 +134,8 @@ export const Sidebar = ({ page, setPage }: SidebarProps) => {
   function switchWorkspace(id: string) {
     document.cookie = `cairn_workspace_id=${id}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     setSwitcherOpen(false)
-    queryClient.clear()
-    router.refresh()
+    // サーバーキャッシュ・TanStack Query・ルーターキャッシュをすべて破棄
+    window.location.href = '/projects'
   }
   const projectChildren: SidebarGroupItem[] = [
     { id: 'projects', icon: 'list',     label: '一覧' },

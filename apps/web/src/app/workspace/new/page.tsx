@@ -36,8 +36,8 @@ export default function NewWorkspacePage() {
     if (body.workspaceId) {
       document.cookie = `${WORKSPACE_COOKIE}=${body.workspaceId}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     }
-    router.push('/projects')
-    router.refresh()
+    // キャッシュをすべて破棄するためフルリロード
+    window.location.href = '/projects'
   }
 
   return (

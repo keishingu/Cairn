@@ -63,12 +63,11 @@ export default function InvitePage() {
       setJoining(false)
       return
     }
-    // 参加したワークスペースをアクティブに設定
+    // 参加したワークスペースをアクティブに設定してフルリロード（キャッシュ破棄）
     if (data.workspaceId) {
       document.cookie = `cairn_workspace_id=${data.workspaceId}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     }
-    router.push('/projects')
-    router.refresh()
+    window.location.href = '/projects'
   }
 
   if (notFound) {
