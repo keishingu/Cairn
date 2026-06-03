@@ -37,13 +37,14 @@ function usePatchProject(projectId: string) {
 
 // ─── インライン編集フィールド ─────────────────────────────────────
 const InlineText = ({
-  value, onSave, placeholder, multiline = false, large = false,
+  value, onSave, placeholder, multiline = false, large = false, required = false,
 }: {
   value: string
   onSave: (v: string) => void
   placeholder?: string
   multiline?: boolean
   large?: boolean
+  required?: boolean
 }) => {
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState(value)
@@ -52,6 +53,7 @@ const InlineText = ({
 
   const commit = () => {
     setEditing(false)
+    if (required && !draft.trim()) { setDraft(value); return }
     if (draft.trim() !== value.trim()) onSave(draft.trim())
   }
 
@@ -246,6 +248,7 @@ export const OverviewTab = ({ project }: { project: ProjectDto }) => {
         onSave={v => patch.mutate({ title: v })}
         placeholder="プロジェクト名"
         large
+        required
       />
 
       {/* ステータス・日程 */}
