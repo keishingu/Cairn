@@ -356,8 +356,8 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       </div>
 
       {/* 削除 */}
-      <div style={{ padding: 12, borderRadius: 10, border: '1px solid var(--red)', background: 'var(--red-soft)' }}>
-        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--red-text)', marginBottom: 8 }}>プロジェクトの削除</div>
+      <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
+        <div style={cardLabelStyle}>削除</div>
         {!confirmDelete ? (
           <button
             onClick={() => setConfirmDelete(true)}
