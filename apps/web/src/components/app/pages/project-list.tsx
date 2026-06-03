@@ -577,7 +577,14 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
   const queryClient = useQueryClient()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
   const [view, setView] = React.useState<'grid' | 'table'>('grid')
-  const [filter, setFilter] = React.useState('all')
+  const [filter, setFilterState] = React.useState<string>(() => {
+    if (typeof window === 'undefined') return 'all'
+    return localStorage.getItem('cairn:projects_filter') ?? 'all'
+  })
+  const setFilter = (f: string) => {
+    setFilterState(f)
+    localStorage.setItem('cairn:projects_filter', f)
+  }
   const [showCreate, setShowCreate] = React.useState(false)
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<StatusKey[]>([])
