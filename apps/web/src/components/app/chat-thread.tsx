@@ -97,7 +97,7 @@ interface PendingAttachment {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, compact }: {
+const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, compact, isMobile }: {
   messageId: string
   senderId: string
   currentUserId: string | undefined
@@ -112,12 +112,14 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
   compact?: boolean
+  isMobile?: boolean
 }) {
   const [showPicker, setShowPicker] = React.useState(false)
   const [hovered, setHovered] = React.useState(false)
   const [editMode, setEditMode] = React.useState(false)
   const [editDraft, setEditDraft] = React.useState('')
   const [deleteConfirm, setDeleteConfirm] = React.useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
   const addBtnRef = React.useRef<HTMLButtonElement>(null)
   const editTextareaRef = React.useRef<HTMLTextAreaElement>(null)
   const avatarSize = compact ? 30 : 36
@@ -126,6 +128,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   const isOwn = currentUserId === senderId
 
   const startEdit = () => {
+    setMobileMenuOpen(false)
     setEditDraft(content)
     setEditMode(true)
     requestAnimationFrame(() => {
@@ -147,11 +150,71 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitEdit() }
   }
 
+  // PC: ホバー時に右上に表示するアクションパネル
+  const pcActions = !isMobile && hovered && isOwn && !editMode && (
+    <div style={{
+      position: 'absolute', top: 4, right: 8,
+      display: 'flex', gap: 4, alignItems: 'center',
+      background: 'var(--card)', border: '1px solid var(--border)',
+      borderRadius: 8, padding: '2px 4px', boxShadow: 'var(--shadow-sm)',
+    }}>
+      <button onClick={startEdit} title="編集"
+        style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
+      ><Icon name="edit" size={13}/></button>
+      {deleteConfirm ? (
+        <>
+          <span style={{ fontSize: 11, color: 'var(--red-text)', padding: '0 2px' }}>削除？</span>
+          <button onClick={() => { onDelete(messageId); setDeleteConfirm(false) }}
+            style={{ border: 'none', background: 'var(--red)', color: '#fff', cursor: 'pointer', padding: '2px 7px', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>はい</button>
+          <button onClick={() => setDeleteConfirm(false)}
+            style={{ border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '2px 7px', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>いいえ</button>
+        </>
+      ) : (
+        <button onClick={() => setDeleteConfirm(true)} title="削除"
+          style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
+        ><Icon name="trash" size={13}/></button>
+      )}
+    </div>
+  )
+
+  // モバイル: 常時表示の「⋯」ボタン → タップで展開
+  const mobileActions = isMobile && isOwn && !editMode && (
+    <div style={{ position: 'relative', flexShrink: 0, alignSelf: 'flex-start', paddingTop: 2 }}>
+      {mobileMenuOpen ? (
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '2px 4px', boxShadow: 'var(--shadow-sm)' }}>
+          <button onClick={startEdit}
+            style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '4px 6px', borderRadius: 5, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
+          ><Icon name="edit" size={14}/></button>
+          {deleteConfirm ? (
+            <>
+              <span style={{ fontSize: 11, color: 'var(--red-text)', padding: '0 2px' }}>削除？</span>
+              <button onClick={() => { onDelete(messageId); setDeleteConfirm(false); setMobileMenuOpen(false) }}
+                style={{ border: 'none', background: 'var(--red)', color: '#fff', cursor: 'pointer', padding: '2px 7px', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>はい</button>
+              <button onClick={() => { setDeleteConfirm(false); setMobileMenuOpen(false) }}
+                style={{ border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '2px 7px', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>いいえ</button>
+            </>
+          ) : (
+            <button onClick={() => setDeleteConfirm(true)}
+              style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '4px 6px', borderRadius: 5, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
+            ><Icon name="trash" size={14}/></button>
+          )}
+          <button onClick={() => { setMobileMenuOpen(false); setDeleteConfirm(false) }}
+            style={{ border: 'none', background: 'transparent', color: 'var(--text-4)', cursor: 'pointer', padding: '4px 4px', borderRadius: 5, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
+          ><Icon name="close" size={12}/></button>
+        </div>
+      ) : (
+        <button onClick={() => setMobileMenuOpen(true)}
+          style={{ border: 'none', background: 'transparent', color: 'var(--text-4)', cursor: 'pointer', padding: '2px 4px', display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
+        ><Icon name="more" size={16}/></button>
+      )}
+    </div>
+  )
+
   return (
     <div
       style={{ display: 'flex', gap: compact ? 8 : 12, padding: px, alignItems: 'flex-start', position: 'relative', background: hovered ? 'var(--card-2)' : 'transparent' }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setDeleteConfirm(false) }}
+      onMouseEnter={() => !isMobile && setHovered(true)}
+      onMouseLeave={() => { if (!isMobile) { setHovered(false); setDeleteConfirm(false) } }}
     >
       <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -176,15 +239,13 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
               }}
             />
             <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-              <button
-                onClick={submitEdit}
+              <button onClick={submitEdit}
                 style={{ padding: '3px 10px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
               >保存</button>
-              <button
-                onClick={() => setEditMode(false)}
+              <button onClick={() => setEditMode(false)}
                 style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
               >キャンセル</button>
-              <span style={{ fontSize: 11, color: 'var(--text-4)', alignSelf: 'center' }}>Enter で保存 · Esc でキャンセル</span>
+              {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', alignSelf: 'center' }}>Enter で保存 · Esc でキャンセル</span>}
             </div>
           </div>
         ) : (
@@ -258,44 +319,8 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
           )}
         </div>
       </div>
-      {/* 編集・削除ボタン（自分のメッセージにホバー時） */}
-      {hovered && isOwn && !editMode && (
-        <div style={{
-          position: 'absolute', top: 4, right: 8,
-          display: 'flex', gap: 4, alignItems: 'center',
-          background: 'var(--card)', border: '1px solid var(--border)',
-          borderRadius: 8, padding: '2px 4px', boxShadow: 'var(--shadow-sm)',
-        }}>
-          <button
-            onClick={startEdit}
-            title="編集"
-            style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5, fontSize: 12, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
-          >
-            <Icon name="pencil" size={13}/>
-          </button>
-          {deleteConfirm ? (
-            <>
-              <span style={{ fontSize: 11, color: 'var(--red-text)', padding: '0 2px' }}>削除？</span>
-              <button
-                onClick={() => { onDelete(messageId); setDeleteConfirm(false) }}
-                style={{ border: 'none', background: 'var(--red)', color: '#fff', cursor: 'pointer', padding: '2px 7px', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}
-              >はい</button>
-              <button
-                onClick={() => setDeleteConfirm(false)}
-                style={{ border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '2px 7px', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}
-              >いいえ</button>
-            </>
-          ) : (
-            <button
-              onClick={() => setDeleteConfirm(true)}
-              title="削除"
-              style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5, fontSize: 12, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
-            >
-              <Icon name="trash-2" size={13}/>
-            </button>
-          )}
-        </div>
-      )}
+      {pcActions}
+      {mobileActions}
     </div>
   )
 })
@@ -604,11 +629,12 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
 
 // ─── ChatThread ───────────────────────────────────────────────────
 
-export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
+export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile }: {
   channelId: string | null
   channelName?: string
   isPrivate?: boolean
   compact?: boolean
+  isMobile?: boolean
 }) => {
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
@@ -784,6 +810,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
               onEdit={(messageId, content) => editMutation.mutate({ messageId, content })}
               onDelete={(messageId) => deleteMutation.mutate(messageId)}
               {...(compact ? { compact: true } : {})}
+              {...(isMobile ? { isMobile: true } : {})}
             />
           ))
         )}
