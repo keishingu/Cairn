@@ -50,20 +50,33 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { messages, channels } = await import('@cairn/db')
+    const { eq, and, isNull } = await import('drizzle-orm')
 
-    const [updated] = await db
-      .update(messages)
-      .set({ content: parsed.data.content, updatedAt: new Date() })
-      .where(and(eq(messages.id, messageId), eq(messages.senderId, ctx.userId)))
-      .returning({ id: messages.id, content: messages.content })
+    // 送信者・ワークスペース・削除済み除外をすべて確認してから更新
+    const [target] = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .innerJoin(channels, eq(messages.channelId, channels.id))
+      .where(and(
+        eq(messages.id, messageId),
+        eq(messages.senderId, ctx.userId),
+        eq(channels.workspaceId, ctx.workspaceId),
+        isNull(messages.deletedAt),
+      ))
+      .limit(1)
 
-    if (!updated) {
+    if (!target) {
       return NextResponse.json({ error: 'メッセージが見つからないか編集権限がありません' }, { status: 404 })
     }
 
-    return NextResponse.json({ id: updated.id, content: updated.content })
+    const [updated] = await db
+      .update(messages)
+      .set({ content: parsed.data.content, isEdited: true, updatedAt: new Date() })
+      .where(eq(messages.id, messageId))
+      .returning({ id: messages.id, content: messages.content })
+
+    return NextResponse.json({ id: updated!.id, content: updated!.content })
   } catch (err) {
     console.error('[/api/messages/[messageId] PATCH] DB query failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -95,18 +108,30 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { messages, channels } = await import('@cairn/db')
+    const { eq, and, isNull } = await import('drizzle-orm')
 
-    const [deleted] = await db
-      .update(messages)
-      .set({ deletedAt: new Date() })
-      .where(and(eq(messages.id, messageId), eq(messages.senderId, ctx.userId)))
-      .returning({ id: messages.id })
+    // 送信者・ワークスペーススコープを確認してからソフトデリート
+    const [target] = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .innerJoin(channels, eq(messages.channelId, channels.id))
+      .where(and(
+        eq(messages.id, messageId),
+        eq(messages.senderId, ctx.userId),
+        eq(channels.workspaceId, ctx.workspaceId),
+        isNull(messages.deletedAt),
+      ))
+      .limit(1)
 
-    if (!deleted) {
+    if (!target) {
       return NextResponse.json({ error: 'メッセージが見つからないか削除権限がありません' }, { status: 404 })
     }
+
+    await db
+      .update(messages)
+      .set({ deletedAt: new Date() })
+      .where(eq(messages.id, messageId))
 
     return new NextResponse(null, { status: 204 })
   } catch (err) {

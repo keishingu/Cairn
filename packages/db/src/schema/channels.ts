@@ -52,6 +52,7 @@ export const messages = pgTable(
       .references(() => profiles.id),
     messageType: messageTypeEnum('message_type').notNull().default('text'),
     content: text('content').notNull(),
+    isEdited: boolean('is_edited').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
