@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom'
 import Picker from '@emoji-mart/react'
 import data from '@emoji-mart/data'
 import { useTheme } from 'next-themes'
+import { useAccentColor } from '@/components/accent-color-provider'
+import { ACCENT_PRESETS } from '@/lib/accent-presets'
 
 const MARGIN = 6
 // emoji-mart デフォルトサイズ
@@ -21,13 +23,12 @@ export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) 
   const containerRef = React.useRef<HTMLDivElement>(null)
   const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null)
   const { resolvedTheme } = useTheme()
+  const { accentId } = useAccentColor()
 
   const pickerColor = React.useMemo(() => {
-    if (typeof window === 'undefined') return '#10B981'
-    const appRoot = document.querySelector('.app-root')
-    if (!appRoot) return '#10B981'
-    return getComputedStyle(appRoot).getPropertyValue('--accent').trim() || '#10B981'
-  }, [resolvedTheme])
+    const preset = ACCENT_PRESETS.find(p => p.id === accentId) ?? ACCENT_PRESETS[0]!
+    return resolvedTheme === 'dark' ? preset.dark.accent : preset.light.accent
+  }, [accentId, resolvedTheme])
 
   React.useLayoutEffect(() => {
     if (!anchorRef.current) return
