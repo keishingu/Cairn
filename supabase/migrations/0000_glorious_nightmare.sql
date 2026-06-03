@@ -158,7 +158,6 @@ CREATE TABLE "messages" (
 	"sender_id" uuid NOT NULL,
 	"message_type" "message_type" DEFAULT 'text' NOT NULL,
 	"content" text NOT NULL,
-	"is_edited" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"deleted_at" timestamp with time zone

@@ -72,7 +72,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
     const [updated] = await db
       .update(messages)
-      .set({ content: parsed.data.content, isEdited: true, updatedAt: new Date() })
+      .set({ content: parsed.data.content, updatedAt: new Date() })
       .where(eq(messages.id, messageId))
       .returning({ id: messages.id, content: messages.content })
 

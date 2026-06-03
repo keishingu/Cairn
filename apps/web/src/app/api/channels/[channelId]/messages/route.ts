@@ -62,7 +62,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         senderGlobalAvatarUrl: profiles.avatarUrl,
         senderWorkspaceAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: messages.createdAt,
-        isEdited: messages.isEdited,
+        updatedAt: messages.updatedAt,
       })
       .from(messages)
       .innerJoin(profiles, eq(messages.senderId, profiles.id))
@@ -141,7 +141,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       senderName: r.senderName,
       senderAvatarUrl: r.senderWorkspaceAvatarUrl ?? r.senderGlobalAvatarUrl,
       createdAt: r.createdAt.toISOString(),
-      isEdited: r.isEdited,
+      isEdited: r.updatedAt.getTime() > r.createdAt.getTime(),
       reactions: reactionMap.get(r.id) ?? [],
       attachments: attachmentMap.get(r.id) ?? [],
     }))
