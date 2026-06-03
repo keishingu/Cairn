@@ -12,7 +12,7 @@ import type { WorkspaceListItemDto } from '@/app/api/workspaces/list/route'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import { usePinnedProjects, usePinProject, useUnpinProject } from '@/lib/use-pinned-projects'
+import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 export type PageId =
@@ -193,27 +193,12 @@ export const Sidebar = ({ page, setPage, openPanel }: SidebarProps) => {
     { id: 'kanban',   icon: 'kanban',   label: 'カンバン' },
   ]
   const { data: pinnedProjects = [] } = usePinnedProjects()
-  const pinProject = usePinProject()
   const unpinProject = useUnpinProject()
   const { data: allProjects = [] } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
     staleTime: 30_000,
   })
-  const [pinPickerOpen, setPinPickerOpen] = React.useState(false)
-  const pinPickerRef = React.useRef<HTMLDivElement>(null)
-
-  React.useEffect(() => {
-    if (!pinPickerOpen) return
-    function close(e: MouseEvent) {
-      if (pinPickerRef.current && !pinPickerRef.current.contains(e.target as Node)) setPinPickerOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [pinPickerOpen])
-
-  const pinnedProjectIds = new Set(pinnedProjects.map(p => p.projectId))
-  const unpinnedProjects = allProjects.filter(p => !pinnedProjectIds.has(p.id))
   return (
     <aside style={{
       width: 236, flexShrink: 0,
@@ -371,48 +356,8 @@ export const Sidebar = ({ page, setPage, openPanel }: SidebarProps) => {
           <SidebarItem icon="settings" label="設定"     active={page === 'settings'} onClick={() => setPage('settings')}/>
         </div>
 
-        <div style={{ position: 'relative' }} ref={pinPickerRef}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '18px 10px 8px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span>ピン留め{projectLabel}</span>
-            <button
-              onClick={() => setPinPickerOpen(o => !o)}
-              style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 2, borderRadius: 4, color: 'var(--text-4)', display: 'flex', alignItems: 'center' }}
-              title={`${projectLabel}をピン留め`}
-            >
-              <Icon name="plus" size={12} color="var(--text-4)"/>
-            </button>
-          </div>
-
-          {pinPickerOpen && (
-            <div style={{
-              position: 'absolute', top: '100%', left: 8, right: 8, zIndex: 200,
-              background: 'var(--card)', border: '1px solid var(--border)',
-              borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6,
-              maxHeight: 240, overflowY: 'auto',
-            }}>
-              {unpinnedProjects.length === 0
-                ? <div style={{ padding: '8px 10px', fontSize: 12.5, color: 'var(--text-4)' }}>
-                    ピン留めできる{projectLabel}がありません
-                  </div>
-                : unpinnedProjects.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => { pinProject.mutate(p.id); setPinPickerOpen(false) }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-                      padding: '7px 10px', borderRadius: 7, border: 'none', background: 'transparent',
-                      color: 'var(--text)', fontSize: 12.5, cursor: 'pointer', textAlign: 'left',
-                      fontFamily: 'inherit',
-                    }}
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-                  >
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{p.title}</span>
-                  </button>
-                ))
-              }
-            </div>
-          )}
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '18px 10px 8px', textTransform: 'uppercase' }}>
+          ピン留め{projectLabel}
         </div>
 
         {pinnedProjects.map(p => (
