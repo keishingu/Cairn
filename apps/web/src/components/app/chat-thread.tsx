@@ -15,6 +15,8 @@ import {
   useChannelMessages,
   useChannelMembers,
   useCurrentUser,
+  useDeleteMessage,
+  useEditMessage,
   useSendChannelMessage,
   useToggleMessageReaction,
   useWorkspaceMembers,
@@ -95,39 +97,102 @@ interface PendingAttachment {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = React.memo(function ChatMessage({ messageId, senderName, senderAvatarUrl, createdAt, content, reactions, attachments, onReact, compact }: {
+const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, compact }: {
   messageId: string
+  senderId: string
+  currentUserId: string | undefined
   senderName: string
   senderAvatarUrl?: string | null
   createdAt: string
+  isEdited: boolean
   content: string
   reactions: Array<{ emoji: string; count: number; mine: boolean }>
   attachments: AttachmentDto[]
   onReact: (messageId: string, emoji: string) => void
+  onEdit: (messageId: string, content: string) => void
+  onDelete: (messageId: string) => void
   compact?: boolean
 }) {
   const [showPicker, setShowPicker] = React.useState(false)
+  const [hovered, setHovered] = React.useState(false)
+  const [editMode, setEditMode] = React.useState(false)
+  const [editDraft, setEditDraft] = React.useState('')
+  const [deleteConfirm, setDeleteConfirm] = React.useState(false)
   const addBtnRef = React.useRef<HTMLButtonElement>(null)
+  const editTextareaRef = React.useRef<HTMLTextAreaElement>(null)
   const avatarSize = compact ? 30 : 36
   const px = compact ? '8px 14px' : '6px 16px'
   const emojiOnly = isEmojiOnly(content)
+  const isOwn = currentUserId === senderId
+
+  const startEdit = () => {
+    setEditDraft(content)
+    setEditMode(true)
+    requestAnimationFrame(() => {
+      if (editTextareaRef.current) {
+        editTextareaRef.current.focus()
+        editTextareaRef.current.setSelectionRange(content.length, content.length)
+      }
+    })
+  }
+
+  const submitEdit = () => {
+    const trimmed = editDraft.trim()
+    if (trimmed && trimmed !== content) onEdit(messageId, trimmed)
+    setEditMode(false)
+  }
+
+  const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') { e.preventDefault(); setEditMode(false) }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitEdit() }
+  }
 
   return (
     <div
-      style={{ display: 'flex', gap: compact ? 8 : 12, padding: px, alignItems: 'flex-start' }}
-      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+      style={{ display: 'flex', gap: compact ? 8 : 12, padding: px, alignItems: 'flex-start', position: 'relative', background: hovered ? 'var(--card-2)' : 'transparent' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setDeleteConfirm(false) }}
     >
       <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
           <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
+          {isEdited && <span style={{ fontSize: 10, color: 'var(--text-4)', fontStyle: 'italic' }}>編集済み</span>}
         </div>
-        {content && (
-          <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6, whiteSpace: 'pre-line' }}>
-            {emojiOnly ? content : renderTextWithLinks(content)}
+        {editMode ? (
+          <div style={{ marginBottom: 4 }}>
+            <textarea
+              ref={editTextareaRef}
+              value={editDraft}
+              onChange={e => setEditDraft(e.target.value)}
+              onKeyDown={handleEditKeyDown}
+              rows={2}
+              style={{
+                width: '100%', border: '1px solid var(--accent)', borderRadius: 8,
+                background: 'var(--card)', padding: '6px 10px',
+                fontSize: compact ? 13 : 13.5, color: 'var(--text)', outline: 'none',
+                fontFamily: 'inherit', lineHeight: 1.5, resize: 'none', boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+              <button
+                onClick={submitEdit}
+                style={{ padding: '3px 10px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+              >保存</button>
+              <button
+                onClick={() => setEditMode(false)}
+                style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+              >キャンセル</button>
+              <span style={{ fontSize: 11, color: 'var(--text-4)', alignSelf: 'center' }}>Enter で保存 · Esc でキャンセル</span>
+            </div>
           </div>
+        ) : (
+          content && (
+            <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6, whiteSpace: 'pre-line' }}>
+              {emojiOnly ? content : renderTextWithLinks(content)}
+            </div>
+          )
         )}
         {attachments.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: content ? 8 : 4 }}>
@@ -193,6 +258,44 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderName, sen
           )}
         </div>
       </div>
+      {/* 編集・削除ボタン（自分のメッセージにホバー時） */}
+      {hovered && isOwn && !editMode && (
+        <div style={{
+          position: 'absolute', top: 4, right: 8,
+          display: 'flex', gap: 4, alignItems: 'center',
+          background: 'var(--card)', border: '1px solid var(--border)',
+          borderRadius: 8, padding: '2px 4px', boxShadow: 'var(--shadow-sm)',
+        }}>
+          <button
+            onClick={startEdit}
+            title="編集"
+            style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5, fontSize: 12, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
+          >
+            <Icon name="pencil" size={13}/>
+          </button>
+          {deleteConfirm ? (
+            <>
+              <span style={{ fontSize: 11, color: 'var(--red-text)', padding: '0 2px' }}>削除？</span>
+              <button
+                onClick={() => { onDelete(messageId); setDeleteConfirm(false) }}
+                style={{ border: 'none', background: 'var(--red)', color: '#fff', cursor: 'pointer', padding: '2px 7px', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}
+              >はい</button>
+              <button
+                onClick={() => setDeleteConfirm(false)}
+                style={{ border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '2px 7px', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}
+              >いいえ</button>
+            </>
+          ) : (
+            <button
+              onClick={() => setDeleteConfirm(true)}
+              title="削除"
+              style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5, fontSize: 12, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
+            >
+              <Icon name="trash-2" size={13}/>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 })
@@ -544,6 +647,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
   const { data: chMemberIds = [] } = useChannelMembers(channelId)
   const sendMutation = useSendChannelMessage(channelId, currentUser)
   const reactMutation = useToggleMessageReaction(channelId)
+  const editMutation = useEditMessage(channelId)
+  const deleteMutation = useDeleteMessage(channelId)
 
   const mentionMembers = React.useMemo(() => {
     if (chMemberIds.length > 0) {
@@ -666,13 +771,18 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact }: {
             <ChatMessage
               key={m.id}
               messageId={m.id}
+              senderId={m.senderId}
+              currentUserId={currentUser?.id}
               senderName={m.senderName}
               senderAvatarUrl={m.senderAvatarUrl}
               createdAt={m.createdAt}
+              isEdited={m.isEdited}
               content={m.content}
               reactions={m.reactions}
               attachments={m.attachments}
               onReact={(messageId, emoji) => reactMutation.mutate({ messageId, emoji })}
+              onEdit={(messageId, content) => editMutation.mutate({ messageId, content })}
+              onDelete={(messageId) => deleteMutation.mutate(messageId)}
               {...(compact ? { compact: true } : {})}
             />
           ))
