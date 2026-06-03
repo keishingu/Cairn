@@ -35,6 +35,11 @@ function usePatchProject(projectId: string) {
   })
 }
 
+const cardLabelStyle: React.CSSProperties = {
+  fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)',
+  letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4,
+}
+
 // ─── インライン編集フィールド ─────────────────────────────────────
 const InlineText = ({
   value, onSave, placeholder, multiline = false, large = false, required = false,
@@ -75,7 +80,7 @@ const InlineText = ({
   if (multiline) {
     return (
       <textarea
-        value={draft || (editing ? '' : '')}
+        value={draft}
         placeholder={editing ? placeholder : (value ? undefined : placeholder)}
         rows={3}
         style={{ ...baseStyle, minHeight: 64 }}
@@ -131,36 +136,35 @@ const InlineDatePair = ({
       <button
         onClick={() => setEditing(true)}
         style={{
-          display: 'inline-flex', alignItems: 'center', gap: 5,
-          padding: '4px 8px', borderRadius: 7, border: '1px solid transparent',
-          background: 'transparent', color: 'var(--text)', fontSize: 13, fontFamily: 'inherit',
-          cursor: 'pointer', transition: 'background .12s',
+          display: 'inline-flex', alignItems: 'baseline', gap: 4,
+          padding: '2px 0', border: 'none',
+          background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
         }}
-        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        title="クリックして編集"
       >
-        <Icon name="calendar" size={13} color="var(--text-4)"/>
-        <span style={{ fontWeight: 500 }}>{formatDateRange(startDate, endDate)}</span>
-        <Icon name="edit" size={11} color="var(--text-4)"/>
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>
+          {formatDateRange(startDate, endDate)}
+        </span>
+        <Icon name="edit" size={10} color="var(--text-4)"/>
       </button>
     )
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-      <input type="date" value={start} onChange={e => setStart(e.target.value)} style={inputStyle}/>
-      <span style={{ color: 'var(--text-4)', fontSize: 12 }}>〜</span>
-      <input type="date" value={end} onChange={e => setEnd(e.target.value)} style={inputStyle}/>
-      <button
-        onClick={commit}
-        className="btn btn-primary"
-        style={{ height: 30, padding: '0 10px', fontSize: 12, flexShrink: 0 }}
-      >確定</button>
-      <button
-        onClick={() => { setEditing(false); setStart(startDate ?? ''); setEnd(endDate ?? '') }}
-        className="btn btn-ghost"
-        style={{ height: 30, padding: '0 8px', fontSize: 12 }}
-      >取消</button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+        <input type="date" value={start} onChange={e => setStart(e.target.value)} style={inputStyle}/>
+        <span style={{ color: 'var(--text-4)', fontSize: 12 }}>〜</span>
+        <input type="date" value={end} onChange={e => setEnd(e.target.value)} style={inputStyle}/>
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={commit} className="btn btn-primary" style={{ height: 28, padding: '0 10px', fontSize: 12 }}>確定</button>
+        <button
+          onClick={() => { setEditing(false); setStart(startDate ?? ''); setEnd(endDate ?? '') }}
+          className="btn btn-ghost"
+          style={{ height: 28, padding: '0 8px', fontSize: 12 }}
+        >取消</button>
+      </div>
     </div>
   )
 }
@@ -194,12 +198,10 @@ const InlineStatus = ({
         onClick={() => setOpen(v => !v)}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 5,
-          background: 'transparent', border: '1px solid transparent',
-          padding: '3px 6px 3px 2px', borderRadius: 7, cursor: 'pointer',
-          transition: 'background .12s',
+          background: 'transparent', border: 'none',
+          padding: '2px 0', cursor: 'pointer',
         }}
-        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        title="クリックして変更"
       >
         <StatusChip s={statusName}/>
         <Icon name="chevDown" size={11} color="var(--text-4)"/>
@@ -240,7 +242,7 @@ export const OverviewTab = ({ project }: { project: ProjectDto }) => {
   const patch = usePatchProject(project.id)
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <div style={{ flex: 1, overflow: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
       {/* タイトル */}
       <InlineText
@@ -251,29 +253,35 @@ export const OverviewTab = ({ project }: { project: ProjectDto }) => {
         required
       />
 
-      {/* ステータス・日程 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', padding: '2px 0' }}>
-        <InlineStatus
-          statusName={project.statusName}
-          onSave={name => patch.mutate({ statusName: name })}
-        />
-        <span style={{ color: 'var(--text-4)', fontSize: 12 }}>·</span>
-        <InlineDatePair
-          startDate={project.startDate}
-          endDate={project.endDate}
-          onSave={(start, end) => patch.mutate({ startDate: start, endDate: end })}
-        />
-      </div>
-
       {patch.isError && (
-        <div style={{ fontSize: 11.5, color: 'var(--red-text)', padding: '4px 2px' }}>
+        <div style={{ fontSize: 11.5, color: 'var(--red-text)', marginTop: -10 }}>
           ⚠ {(patch.error as Error).message}
         </div>
       )}
 
-      {/* 説明 */}
-      <div style={{ marginTop: 10 }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 4, padding: '0 2px' }}>説明</div>
+      {/* 日程 + ステータス */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
+          <div style={cardLabelStyle}>日程</div>
+          <InlineDatePair
+            startDate={project.startDate}
+            endDate={project.endDate}
+            onSave={(start, end) => patch.mutate({ startDate: start, endDate: end })}
+          />
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>{project.memberCount}人参加</div>
+        </div>
+        <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
+          <div style={cardLabelStyle}>ステータス</div>
+          <InlineStatus
+            statusName={project.statusName}
+            onSave={name => patch.mutate({ statusName: name })}
+          />
+        </div>
+      </div>
+
+      {/* サマリー */}
+      <div style={{ padding: 14, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
+        <div style={cardLabelStyle}>サマリー</div>
         <InlineText
           value={project.description ?? ''}
           onSave={v => patch.mutate({ description: v || null })}
@@ -283,14 +291,14 @@ export const OverviewTab = ({ project }: { project: ProjectDto }) => {
       </div>
 
       {/* 統計 */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>メンバー</div>
+          <div style={cardLabelStyle}>メンバー</div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>{project.memberCount}</div>
           <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>人参加</div>
         </div>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>タスク</div>
+          <div style={cardLabelStyle}>タスク</div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>
             {project.completedTaskCount}
             <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-3)' }}>/{project.taskCount}</span>
