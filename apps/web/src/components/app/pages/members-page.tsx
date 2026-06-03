@@ -3,6 +3,7 @@
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
+import { QRCodeSVG } from 'qrcode.react'
 import { Icon, Avatar } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
@@ -105,6 +106,7 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
   const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
   const [mobileDetailMember, setMobileDetailMember] = React.useState<WorkspaceMemberDto | null>(null)
+  const [showInviteModal, setShowInviteModal] = React.useState(false)
 
   const handleProjectClick = (p: MemberProjectDto) => {
     setSelectedProject({
@@ -186,6 +188,32 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
           />
         )}
         <MobileHeader title="メンバー" />
+        {showInviteModal && <InviteModal onClose={() => setShowInviteModal(false)} isMobile />}
+
+        {/* 招待ボタン */}
+        <div style={{ padding: '10px 16px', flexShrink: 0 }}>
+          <button
+            onClick={() => setShowInviteModal(true)}
+            style={{
+              width: '100%',
+              padding: '10px 16px',
+              borderRadius: 10,
+              border: 'none',
+              background: 'var(--accent)',
+              color: 'var(--on-accent)',
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+            }}
+          >
+            <Icon name="plus" size={14} strokeWidth={2.4} /> メンバーを招待
+          </button>
+        </div>
 
         {/* Search */}
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
@@ -293,9 +321,14 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
               >{f.label}</button>
             ))}
           </div>
-          <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowInviteModal(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}
+          >
             <Icon name="plus" size={13} strokeWidth={2.4} /> メンバーを招待
           </button>
+          {showInviteModal && <InviteModal onClose={() => setShowInviteModal(false)} isMobile={false} />}
         </div>
 
         {/* Grid */}
@@ -348,6 +381,178 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
           onClose={() => { setSelectedMember(null); router.push('/members') }}
         />
       ) : null}
+    </div>
+  )
+}
+
+type ExpiresIn = '1h' | '30d' | 'never'
+const EXPIRES_OPTIONS: { value: ExpiresIn; label: string }[] = [
+  { value: '1h', label: '1時間' },
+  { value: '30d', label: '30日間' },
+  { value: 'never', label: '無期限' },
+]
+
+function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boolean }) {
+  const [expiresIn, setExpiresIn] = React.useState<ExpiresIn>('1h')
+  const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
+  const [generating, setGenerating] = React.useState(false)
+  const [generateError, setGenerateError] = React.useState<string | null>(null)
+  const [copied, setCopied] = React.useState(false)
+
+  async function generateLink() {
+    setGenerating(true)
+    setCopied(false)
+    setGenerateError(null)
+    const res = await fetch('/api/workspaces/invites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expiresIn }),
+    })
+    const data = await res.json().catch(() => ({})) as { url?: string; error?: string }
+    if (res.ok && data.url) {
+      setInviteUrl(data.url)
+    } else {
+      setGenerateError(data.error ?? '招待リンクの生成に失敗しました')
+    }
+    setGenerating(false)
+  }
+
+  async function copyLink() {
+    if (!inviteUrl) return
+    await navigator.clipboard.writeText(inviteUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '24px 16px',
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{
+        background: 'var(--card)',
+        border: '1px solid var(--border)',
+        borderRadius: 16,
+        padding: '24px',
+        width: '100%',
+        maxWidth: 400,
+        boxShadow: 'var(--shadow-lg, 0 20px 60px rgba(0,0,0,0.2))',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>メンバーを招待</div>
+          <button
+            onClick={onClose}
+            style={{ padding: '4px 8px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-3)', fontSize: 18 }}
+          >×</button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>リンクの有効期限</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {EXPIRES_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => { setExpiresIn(opt.value); setInviteUrl(null) }}
+                  style={{
+                    flex: 1,
+                    padding: '7px 0',
+                    borderRadius: 8,
+                    border: `1.5px solid ${expiresIn === opt.value ? 'var(--accent)' : 'var(--border-2)'}`,
+                    background: expiresIn === opt.value ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'var(--bg)',
+                    color: expiresIn === opt.value ? 'var(--accent)' : 'var(--text-3)',
+                    fontSize: 13,
+                    fontWeight: expiresIn === opt.value ? 700 : 400,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!inviteUrl ? (
+            <>
+              {generateError && (
+                <div style={{
+                  padding: '8px 12px', borderRadius: 8, fontSize: 12.5,
+                  background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)',
+                }}>
+                  {generateError}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={generateLink}
+                disabled={generating}
+                style={{
+                  padding: '10px 16px', borderRadius: 8, border: 'none',
+                  background: generating ? 'var(--border-2)' : 'var(--accent)',
+                  color: generating ? 'var(--text-4)' : 'var(--on-accent)',
+                  fontSize: 14, fontWeight: 600,
+                  cursor: generating ? 'default' : 'pointer',
+                  fontFamily: 'inherit',
+              }}
+            >
+              {generating ? '生成中...' : '招待リンクを生成'}
+            </button>
+            </>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{
+                display: 'flex', gap: 8, padding: '8px 10px',
+                background: 'var(--bg)', border: '1px solid var(--border-2)', borderRadius: 8, alignItems: 'center',
+              }}>
+                <div style={{ flex: 1, fontSize: 12.5, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {inviteUrl}
+                </div>
+                <button
+                  type="button"
+                  onClick={copyLink}
+                  style={{
+                    flexShrink: 0, padding: '5px 12px', borderRadius: 6, border: 'none',
+                    background: copied ? '#e6f7ee' : 'var(--accent)',
+                    color: copied ? '#1a7a3c' : 'var(--on-accent)',
+                    fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {copied ? 'コピー済み ✓' : 'コピー'}
+                </button>
+              </div>
+
+              {isMobile && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+                  <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>QRコードでも共有できます</div>
+                  <div style={{ padding: 10, background: '#fff', borderRadius: 10, border: '1px solid var(--border)' }}>
+                    <QRCodeSVG value={inviteUrl} size={140} />
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={generateLink}
+                style={{
+                  padding: '6px 0', borderRadius: 8, border: '1px solid var(--border-2)',
+                  background: 'transparent', color: 'var(--text-3)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                別のリンクを生成
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

@@ -31,6 +31,10 @@ export const postMessageSchema = z
     { message: 'テキストまたは添付ファイルが必要です' },
   )
 
+export const editMessageSchema = z.object({
+  content: z.string().min(1).max(10000),
+})
+
 export const createTaskSchema = z.object({
   projectId: z.string().uuid(),
   title: z.string().min(1).max(200),
@@ -49,6 +53,7 @@ export const uploadGalleryItemSchema = z.object({
   longitude: z.number().min(-180).max(180).optional(),
 })
 
+export type EditMessageInput = z.infer<typeof editMessageSchema>
 export type CreateProjectInput = z.infer<typeof createProjectSchema>
 export type UpdateProjectStatusInput = z.infer<typeof updateProjectStatusSchema>
 export type PostMessageInput = z.infer<typeof postMessageSchema>

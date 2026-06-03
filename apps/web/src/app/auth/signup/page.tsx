@@ -5,11 +5,21 @@
 
 import React from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 export default function SignupPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <SignupForm />
+    </React.Suspense>
+  )
+}
+
+function SignupForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const inviteToken = searchParams.get('invite')
   const [displayName, setDisplayName] = React.useState('')
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
@@ -26,11 +36,15 @@ export default function SignupPage() {
     setError(null)
 
     const supabase = createClient()
+    const callbackUrl = inviteToken
+      ? `${window.location.origin}/api/auth/callback?invite=${inviteToken}`
+      : `${window.location.origin}/api/auth/callback`
+
     const { data, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/api/auth/callback`,
+        emailRedirectTo: callbackUrl,
         data: { display_name: displayName },
       },
     })
@@ -48,20 +62,17 @@ export default function SignupPage() {
       return
     }
 
-    const res = await fetch('/api/auth/setup', {
+    await fetch('/api/auth/setup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ displayName }),
     })
 
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      setError((body as { error?: string }).error ?? 'プロフィールの作成に失敗しました')
-      setLoading(false)
-      return
+    if (inviteToken) {
+      router.push(`/invite/${inviteToken}`)
+    } else {
+      router.push('/onboarding')
     }
-
-    router.push('/projects')
     router.refresh()
   }
 
@@ -71,7 +82,9 @@ export default function SignupPage() {
         <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
           Cairn
         </div>
-        <div style={{ fontSize: 14, color: 'var(--text-3)' }}>新しいアカウントを作成</div>
+        <div style={{ fontSize: 14, color: 'var(--text-3)' }}>
+          {inviteToken ? 'アカウントを作成して参加' : '新しいワークスペースを作成'}
+        </div>
       </div>
 
       <div style={{
@@ -183,17 +196,21 @@ export default function SignupPage() {
               marginTop: 4,
             }}
           >
-            {loading ? 'アカウント作成中...' : 'アカウントを作成'}
+            {loading ? '作成中...' : inviteToken ? 'アカウントを作成して参加' : 'アカウントを作成'}
           </button>
         </form>
       </div>
 
       <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-3)' }}>
         すでにアカウントをお持ちの方は{' '}
-        <Link href="/auth/login" style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}>
+        <Link
+          href={inviteToken ? `/auth/login?invite=${inviteToken}` : '/auth/login'}
+          style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}
+        >
           サインイン
         </Link>
       </div>
     </div>
   )
 }
+

@@ -48,7 +48,7 @@ export async function GET() {
       })
       .from(channels)
       .innerJoin(projects, eq(channels.projectId, projects.id))
-      .where(eq(projects.archived, false))
+      .where(and(eq(projects.workspaceId, ctx.workspaceId), eq(projects.archived, false)))
       .orderBy(projects.createdAt)
 
     if (rows.length === 0) return NextResponse.json([])

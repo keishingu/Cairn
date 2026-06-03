@@ -123,6 +123,26 @@ async function postChannelMessage(channelId: string, input: SendMessageInput): P
   return res.json()
 }
 
+async function editMessage(messageId: string, content: string): Promise<void> {
+  const res = await fetchWithAuth(`/api/messages/${messageId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? 'メッセージの編集に失敗しました')
+  }
+}
+
+async function deleteMessage(messageId: string): Promise<void> {
+  const res = await fetchWithAuth(`/api/messages/${messageId}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? 'メッセージの削除に失敗しました')
+  }
+}
+
 async function toggleMessageReaction(messageId: string, emoji: string): Promise<void> {
   const res = await fetchWithAuth(`/api/messages/${messageId}/reactions`, {
     method: 'POST',
@@ -244,6 +264,7 @@ export function useSendChannelMessage(
           senderName: currentUser.displayName,
           senderAvatarUrl: currentUser.avatarUrl,
           createdAt: new Date().toISOString(),
+          isEdited: false,
           reactions: [],
           attachments: input.optimisticAttachments ?? [],
         }
@@ -287,6 +308,51 @@ export function useMarkChannelRead() {
     onSuccess: () => {
       for (const key of CHANNEL_LISTS) {
         void queryClient.invalidateQueries({ queryKey: key })
+      }
+    },
+  })
+}
+
+export function useEditMessage(channelId: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ messageId, content }: { messageId: string; content: string }) =>
+      editMessage(messageId, content),
+    onMutate: async ({ messageId, content }) => {
+      await queryClient.cancelQueries({ queryKey: chatQueryKeys.messages(channelId) })
+      const prev = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
+      queryClient.setQueryData<MessageDto[]>(
+        chatQueryKeys.messages(channelId),
+        (old) => (old ?? []).map((m) => m.id === messageId ? { ...m, content, isEdited: true } : m),
+      )
+      return { prev }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prev !== undefined) {
+        queryClient.setQueryData(chatQueryKeys.messages(channelId), context.prev)
+      }
+    },
+  })
+}
+
+export function useDeleteMessage(channelId: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (messageId: string) => deleteMessage(messageId),
+    onMutate: async (messageId) => {
+      await queryClient.cancelQueries({ queryKey: chatQueryKeys.messages(channelId) })
+      const prev = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
+      queryClient.setQueryData<MessageDto[]>(
+        chatQueryKeys.messages(channelId),
+        (old) => (old ?? []).filter((m) => m.id !== messageId),
+      )
+      return { prev }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prev !== undefined) {
+        queryClient.setQueryData(chatQueryKeys.messages(channelId), context.prev)
       }
     },
   })

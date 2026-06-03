@@ -8,9 +8,12 @@ import { Avatar } from './primitives'
 import { createClient } from '@/lib/supabase/client'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
+import type { WorkspaceListItemDto } from '@/app/api/workspaces/list/route'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
+import type { ProjectDto } from '@/app/api/projects/route'
 
 export type PageId =
   | 'projects' | 'calendar' | 'kanban'
@@ -103,12 +106,61 @@ const SidebarGroup = ({ icon, label, page, setPage, items }: SidebarGroupProps) 
   )
 }
 
+interface PinnedProjectItemProps {
+  name: string
+  dot: string
+  onClick: () => void
+  onUnpin: () => void
+}
+
+const PinnedProjectItem = ({ name, dot, onClick, onUnpin }: PinnedProjectItemProps) => {
+  const [hovered, setHovered] = React.useState(false)
+  return (
+    <div
+      style={{ position: 'relative' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <button
+        onClick={onClick}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+          padding: '6px 10px', borderRadius: 7, border: 'none',
+          background: hovered ? 'var(--card-2)' : 'transparent',
+          color: 'var(--text-2)', fontSize: 12.5, cursor: 'pointer', textAlign: 'left',
+          fontFamily: 'inherit', paddingRight: hovered ? 28 : 10,
+        }}
+      >
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0 }}/>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{name}</span>
+      </button>
+      {hovered && (
+        <button
+          onClick={e => { e.stopPropagation(); onUnpin() }}
+          title="ピン留めを解除"
+          style={{
+            position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+            border: 'none', background: 'transparent', cursor: 'pointer',
+            color: 'var(--text-4)', padding: 2, borderRadius: 4, display: 'flex', alignItems: 'center',
+          }}
+          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'}
+          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-4)'}
+        >
+          <Icon name="close" size={11}/>
+        </button>
+      )}
+    </div>
+  )
+}
+
 interface SidebarProps {
   page: PageId
   setPage: (p: PageId) => void
+  openPanel?: (project: ProjectDto) => void
 }
 
-export const Sidebar = ({ page, setPage }: SidebarProps) => {
+export const Sidebar = ({ page, setPage, openPanel }: SidebarProps) => {
+  const router = useRouter()
   const projectLabel = useProjectLabel()
   const { data: projectChannels = [] } = useProjectChannels()
   const { data: workspaceChannels = [] } = useWorkspaceChannels()
@@ -122,17 +174,31 @@ export const Sidebar = ({ page, setPage }: SidebarProps) => {
     queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
     staleTime: 60_000,
   })
+  const { data: workspaceList = [] } = useQuery<WorkspaceListItemDto[]>({
+    queryKey: ['workspace-list'],
+    queryFn: () => fetchWithAuth('/api/workspaces/list').then(r => r.json()),
+    staleTime: 60_000,
+  })
+  const [switcherOpen, setSwitcherOpen] = React.useState(false)
+
+  function switchWorkspace(id: string) {
+    document.cookie = `cairn_workspace_id=${id}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
+    setSwitcherOpen(false)
+    // サーバーキャッシュ・TanStack Query・ルーターキャッシュをすべて破棄
+    window.location.href = '/projects'
+  }
   const projectChildren: SidebarGroupItem[] = [
     { id: 'projects', icon: 'list',     label: '一覧' },
     { id: 'calendar', icon: 'calendar', label: 'カレンダー' },
     { id: 'kanban',   icon: 'kanban',   label: 'カンバン' },
   ]
-  const pinnedProjects = [
-    { name: '北アルプス縦走計画', dot: 'var(--blue)' },
-    { name: '夏山合宿計画', dot: 'var(--emerald)' },
-    { name: 'クライミング講習会', dot: 'var(--amber)' },
-    { name: '雪山訓練', dot: 'var(--rose)' },
-  ]
+  const { data: pinnedProjects = [] } = usePinnedProjects()
+  const unpinProject = useUnpinProject()
+  const { data: allProjects = [] } = useQuery<ProjectDto[]>({
+    queryKey: ['projects'],
+    queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
+    staleTime: 30_000,
+  })
   return (
     <aside style={{
       width: 236, flexShrink: 0,
@@ -141,8 +207,18 @@ export const Sidebar = ({ page, setPage }: SidebarProps) => {
       display: 'flex', flexDirection: 'column',
       position: 'relative',
     }}>
-      <div style={{ padding: '16px 16px 14px', borderBottom: '1px solid var(--divider)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ padding: '16px 16px 14px', borderBottom: '1px solid var(--divider)', position: 'relative' }}>
+        <button
+          onClick={() => setSwitcherOpen(o => !o)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+            padding: '4px 6px', borderRadius: 8, border: 'none',
+            background: switcherOpen ? 'var(--card-hover)' : 'transparent',
+            cursor: 'pointer', textAlign: 'left',
+          }}
+          onMouseEnter={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+          onMouseLeave={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        >
           <div style={{
             width: 32, height: 32, borderRadius: 8, flexShrink: 0,
             background: workspace?.logoUrl ? 'var(--border)' : 'linear-gradient(135deg, #10B981, #0891B2)',
@@ -165,7 +241,86 @@ export const Sidebar = ({ page, setPage }: SidebarProps) => {
             )}
           </div>
           <Icon name="chevDown" size={14} color="var(--text-3)"/>
-        </div>
+        </button>
+
+        {/* ワークスペーススイッチャードロップダウン */}
+        {switcherOpen && (
+          <>
+            <div
+              style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+              onClick={() => setSwitcherOpen(false)}
+            />
+            <div style={{
+              position: 'absolute', top: '100%', left: 12, right: 12,
+              zIndex: 100,
+              background: 'var(--card)',
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+              padding: '6px',
+              marginTop: 4,
+            }}>
+              {workspaceList.map(ws => (
+                <button
+                  key={ws.id}
+                  onClick={() => switchWorkspace(ws.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    width: '100%', padding: '8px 10px', borderRadius: 7,
+                    border: 'none',
+                    background: ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent',
+                    cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent' }}
+                >
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+                    background: 'linear-gradient(135deg, #10B981, #0891B2)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontSize: 12, fontWeight: 700,
+                  }}>
+                    {ws.logoUrl
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={ws.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 7 }}/>
+                      : ws.name.slice(0, 1)
+                    }
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ws.name}
+                    </div>
+                  </div>
+                  {ws.id === workspace?.id && (
+                    <Icon name="check" size={14} color="var(--accent)"/>
+                  )}
+                </button>
+              ))}
+              <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }} />
+              <button
+                onClick={() => { setSwitcherOpen(false); router.push('/workspace/new') }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  width: '100%', padding: '8px 10px', borderRadius: 7,
+                  border: 'none', background: 'transparent',
+                  cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                  color: 'var(--text-3)',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              >
+                <div style={{
+                  width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+                  border: '1.5px dashed var(--border-2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Icon name="plus" size={14} color="var(--text-4)"/>
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 500 }}>新しいワークスペースを作成</span>
+              </button>
+            </div>
+          </>
+        )}
         <button style={{
           marginTop: 12, width: '100%', height: 32,
           display: 'flex', alignItems: 'center', gap: 8,
@@ -201,23 +356,26 @@ export const Sidebar = ({ page, setPage }: SidebarProps) => {
           <SidebarItem icon="settings" label="設定"     active={page === 'settings'} onClick={() => setPage('settings')}/>
         </div>
 
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '18px 10px 8px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>ピン留め{projectLabel}</span>
-          <Icon name="plus" size={12} color="var(--text-4)"/>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '18px 10px 8px', textTransform: 'uppercase' }}>
+          ピン留め{projectLabel}
         </div>
-        {pinnedProjects.map((p, i) => (
-          <button key={i} style={{
-            display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-            padding: '6px 10px', borderRadius: 7, border: 'none', background: 'transparent',
-            color: 'var(--text-2)', fontSize: 12.5, cursor: 'pointer', textAlign: 'left',
-            fontFamily: 'inherit',
-          }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-          >
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: p.dot, flexShrink: 0 }}/>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-          </button>
+
+        {pinnedProjects.map(p => (
+          <PinnedProjectItem
+            key={p.id}
+            name={p.title}
+            dot={p.dot}
+            onClick={() => {
+              const full = allProjects.find(pr => pr.id === p.projectId)
+              if (openPanel && full) {
+                openPanel(full)
+              } else if (full) {
+                setPage('projects')
+                openPanel?.(full)
+              }
+            }}
+            onUnpin={() => unpinProject.mutate(p.projectId)}
+          />
         ))}
       </nav>
 

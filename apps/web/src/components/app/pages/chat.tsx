@@ -242,7 +242,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             </div>
           }
         />
-        <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate}/>
+        <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile}/>
         {showMemberInvite && channelId && (
           <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
         )}
@@ -283,7 +283,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             <button className="btn"><Icon name="more" size={14}/></button>
           </div>
         </div>
-        <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate}/>
+        <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile}/>
       </main>
 
       <aside style={{ width: 280, background: 'var(--card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>

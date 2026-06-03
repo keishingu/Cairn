@@ -41,11 +41,15 @@ export async function middleware(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     const { pathname } = request.nextUrl
     const isAuthRoute = pathname.startsWith('/auth')
+    // 未ログインでもアクセスできるパブリックルート
+    const isPublicRoute = pathname.startsWith('/invite')
+    // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
+    const isOnboardingRoute = pathname.startsWith('/onboarding')
 
-    if (!user && !isAuthRoute) {
+    if (!user && !isAuthRoute && !isPublicRoute) {
       return NextResponse.redirect(new URL('/auth/login', request.url))
     }
-    if (user && isAuthRoute) {
+    if (user && isAuthRoute && !isOnboardingRoute) {
       return NextResponse.redirect(new URL('/projects', request.url))
     }
   }
