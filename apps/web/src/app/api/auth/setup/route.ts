@@ -68,7 +68,8 @@ export async function POST(req: Request) {
     }
 
     const workspaceName = parsed.data.workspaceName
-    const slug = `${workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${user.id.slice(0, 8)}`
+    const { randomUUID } = await import('crypto')
+    const slug = `${workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${randomUUID().slice(0, 8)}`
 
     const [ws] = await db
       .insert(workspaces)
