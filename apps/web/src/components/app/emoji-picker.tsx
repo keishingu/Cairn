@@ -25,9 +25,18 @@ export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) 
   const { resolvedTheme } = useTheme()
   const { accentId } = useAccentColor()
 
-  const pickerColor = React.useMemo(() => {
+  // emoji-mart はシャドウ DOM 内で `rgb(var(--em-rgb-accent))` を使い、
+  // `--em-rgb-accent` は `var(--rgb-accent, <デフォルト青>)` にフォールバックする。
+  // `--rgb-accent` を継承で渡せばハイライト色を上書きできる（値は "R, G, B" 形式）。
+  // Picker は Portal で `.app-root` の外（document.body）に描画されるため、
+  // `.app-root` の `--accent` は継承されない。ラッパー div に直接セットする。
+  const accentRgb = React.useMemo(() => {
     const preset = ACCENT_PRESETS.find(p => p.id === accentId) ?? ACCENT_PRESETS[0]!
-    return resolvedTheme === 'dark' ? preset.dark.accent : preset.light.accent
+    const hex = (resolvedTheme === 'dark' ? preset.dark.accent : preset.light.accent).replace('#', '')
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    return `${r}, ${g}, ${b}`
   }, [accentId, resolvedTheme])
 
   React.useLayoutEffect(() => {
@@ -62,13 +71,15 @@ export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) 
   if (!pos) return null
 
   return createPortal(
-    <div ref={containerRef} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}>
+    <div
+      ref={containerRef}
+      style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, '--rgb-accent': accentRgb } as React.CSSProperties}
+    >
       <Picker
         data={data}
         onEmojiSelect={(e: { native: string }) => { onSelect(e.native); onClose() }}
         locale="ja"
         theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
-        color={pickerColor}
         previewPosition="none"
         skinTonePosition="none"
         maxFrequentRows={1}
