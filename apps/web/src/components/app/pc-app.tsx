@@ -62,7 +62,7 @@ export const PCApp = ({ theme = 'light' }: PCAppProps) => {
       width: '100%', height: '100%', display: 'flex',
       background: 'var(--bg)', overflow: 'hidden',
     }}>
-      <Sidebar page={page} setPage={onSetPage}/>
+      <Sidebar page={page} setPage={onSetPage} openPanel={openPanel}/>
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, position: 'relative' }}>
         {!noTopBar && (
           <TopBar
