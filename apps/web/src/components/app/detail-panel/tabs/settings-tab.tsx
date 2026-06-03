@@ -1,43 +1,15 @@
 'use client'
 
 import React from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
-import type { ProjectDto } from '@/app/api/projects/route'
-import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-
-async function fetchStatuses(): Promise<ProjectStatusDto[]> {
-  const res = await fetchWithAuth('/api/projects/statuses')
-  if (!res.ok) throw new Error('fetch failed')
-  return res.json() as Promise<ProjectStatusDto[]>
-}
-
-function inputStyle(): React.CSSProperties {
-  return {
-    width: '100%', height: 34, padding: '0 10px',
-    border: '1px solid var(--border)', borderRadius: 8,
-    background: 'var(--card)', color: 'var(--text)',
-    fontSize: 12.5, fontFamily: 'inherit', outline: 'none',
-    boxSizing: 'border-box',
-  }
-}
-
-function textareaStyle(): React.CSSProperties {
-  return {
-    ...inputStyle(), height: 'auto', padding: '8px 10px',
-    resize: 'vertical', lineHeight: 1.55, minHeight: 72,
-  }
-}
+import type { ProjectDto } from '@/app/api/projects/route'
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
   <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
     {children}
   </div>
-)
-
-const FieldLabel = ({ children }: { children: React.ReactNode }) => (
-  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)', marginBottom: 4 }}>{children}</div>
 )
 
 interface SettingsTabProps {
@@ -48,56 +20,6 @@ interface SettingsTabProps {
 export const SettingsTab = ({ project, onDeleted }: SettingsTabProps) => {
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['projects'] })
-
-  const [title, setTitle] = React.useState(project.title)
-  const [description, setDescription] = React.useState(project.description ?? '')
-  const [startDate, setStartDate] = React.useState(project.startDate ?? '')
-  const [endDate, setEndDate] = React.useState(project.endDate ?? '')
-  const [selectedStatus, setSelectedStatus] = React.useState(project.statusName)
-  const [isDirty, setIsDirty] = React.useState(false)
-
-  // Reset when project changes
-  React.useEffect(() => {
-    setTitle(project.title)
-    setDescription(project.description ?? '')
-    setStartDate(project.startDate ?? '')
-    setEndDate(project.endDate ?? '')
-    setSelectedStatus(project.statusName)
-    setIsDirty(false)
-  }, [project.id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const { data: statuses = [] } = useQuery({ queryKey: ['statuses'], queryFn: fetchStatuses })
-
-  const markDirty = () => setIsDirty(true)
-
-  const updateMutation = useMutation({
-    mutationFn: async () => {
-      const body: {
-        title: string
-        description: string | null
-        startDate: string | null
-        endDate: string | null
-        statusName?: string
-      } = {
-        title,
-        description: description.trim() || null,
-        startDate: startDate || null,
-        endDate: endDate || null,
-      }
-      if (selectedStatus !== project.statusName) body.statusName = selectedStatus
-
-      const res = await fetchWithAuth(`/api/projects/${project.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(data.error ?? '更新に失敗しました')
-      }
-    },
-    onSuccess: () => { invalidate(); setIsDirty(false) },
-  })
 
   const archiveMutation = useMutation({
     mutationFn: async (archived: boolean) => {
@@ -136,86 +58,6 @@ export const SettingsTab = ({ project, onDeleted }: SettingsTabProps) => {
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 18 }}>
-
-      {/* 基本情報 */}
-      <section>
-        <SectionLabel>基本情報</SectionLabel>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-          <div>
-            <FieldLabel>タイトル</FieldLabel>
-            <input
-              value={title}
-              onChange={e => { setTitle(e.target.value); markDirty() }}
-              style={inputStyle()}
-            />
-          </div>
-
-          <div>
-            <FieldLabel>説明</FieldLabel>
-            <textarea
-              value={description}
-              onChange={e => { setDescription(e.target.value); markDirty() }}
-              placeholder="プロジェクトの概要や目標を記入…"
-              rows={3}
-              style={textareaStyle() as React.CSSProperties}
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div>
-              <FieldLabel>開始日</FieldLabel>
-              <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); markDirty() }} style={inputStyle()}/>
-            </div>
-            <div>
-              <FieldLabel>終了日</FieldLabel>
-              <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); markDirty() }} style={inputStyle()}/>
-            </div>
-          </div>
-
-          <div>
-            <FieldLabel>ステータス</FieldLabel>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {statuses.map(s => {
-                const active = selectedStatus === s.name
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => { setSelectedStatus(s.name as typeof selectedStatus); markDirty() }}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 5,
-                      padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
-                      border: `1.5px solid ${active ? s.color : 'var(--border)'}`,
-                      background: active ? s.color + '22' : 'var(--card-2)',
-                      fontFamily: 'inherit',
-                    }}
-                  >
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.color, flexShrink: 0 }}/>
-                    <span style={{ fontSize: 11.5, fontWeight: active ? 600 : 500, color: active ? 'var(--text)' : 'var(--text-3)' }}>{s.name}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {updateMutation.isError && (
-            <div style={{ fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(updateMutation.error as Error).message}
-            </div>
-          )}
-
-          {isDirty && (
-            <button
-              onClick={() => updateMutation.mutate()}
-              disabled={updateMutation.isPending || !title.trim()}
-              className="btn btn-primary"
-              style={{ height: 34, fontSize: 12.5, opacity: (updateMutation.isPending || !title.trim()) ? 0.6 : 1 }}
-            >
-              {updateMutation.isPending ? '保存中…' : '変更を保存'}
-            </button>
-          )}
-        </div>
-      </section>
 
       {/* アーカイブ */}
       <section>
