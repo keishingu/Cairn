@@ -22,6 +22,13 @@ export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) 
   const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null)
   const { resolvedTheme } = useTheme()
 
+  const pickerColor = React.useMemo(() => {
+    if (typeof window === 'undefined') return '#10B981'
+    const appRoot = document.querySelector('.app-root')
+    if (!appRoot) return '#10B981'
+    return getComputedStyle(appRoot).getPropertyValue('--accent').trim() || '#10B981'
+  }, [resolvedTheme])
+
   React.useLayoutEffect(() => {
     if (!anchorRef.current) return
     const rect = anchorRef.current.getBoundingClientRect()
@@ -60,6 +67,7 @@ export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) 
         onEmojiSelect={(e: { native: string }) => { onSelect(e.native); onClose() }}
         locale="ja"
         theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
+        color={pickerColor}
         previewPosition="none"
         skinTonePosition="none"
         maxFrequentRows={1}
