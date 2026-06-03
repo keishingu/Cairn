@@ -118,6 +118,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   const [hovered, setHovered] = React.useState(false)
   const [editMode, setEditMode] = React.useState(false)
   const [editDraft, setEditDraft] = React.useState('')
+  const [editComposing, setEditComposing] = React.useState(false)
   const [deleteConfirm, setDeleteConfirm] = React.useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
   const addBtnRef = React.useRef<HTMLButtonElement>(null)
@@ -147,7 +148,11 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
 
   const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') { e.preventDefault(); setEditMode(false) }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitEdit() }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      if (isImeConfirmingEnter(e, editComposing)) return
+      e.preventDefault()
+      submitEdit()
+    }
   }
 
   // PC: ホバー時に右上に表示するアクションパネル
@@ -229,6 +234,8 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
               ref={editTextareaRef}
               value={editDraft}
               onChange={e => setEditDraft(e.target.value)}
+              onCompositionStart={() => setEditComposing(true)}
+              onCompositionEnd={() => setEditComposing(false)}
               onKeyDown={handleEditKeyDown}
               rows={2}
               style={{
