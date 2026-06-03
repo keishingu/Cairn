@@ -2,16 +2,15 @@
 
 import React from 'react'
 import { createPortal } from 'react-dom'
-import Picker from '@emoji-mart/react'
-import data from '@emoji-mart/data'
+import EmojiPickerLib, { Theme, EmojiClickData, EmojiStyle } from 'emoji-picker-react'
+import jaData from 'emoji-picker-react/dist/data/emojis-ja'
 import { useTheme } from 'next-themes'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 
 const MARGIN = 6
-// emoji-mart デフォルトサイズ
-const PICKER_HEIGHT = 435
-const PICKER_WIDTH = 352
+const PICKER_HEIGHT = 450
+const PICKER_WIDTH = 350
 
 interface EmojiPickerProps {
   anchorRef: React.RefObject<HTMLElement | null>
@@ -25,18 +24,13 @@ export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) 
   const { resolvedTheme } = useTheme()
   const { accentId } = useAccentColor()
 
-  // emoji-mart はシャドウ DOM 内で `rgb(var(--em-rgb-accent))` を使い、
-  // `--em-rgb-accent` は `var(--rgb-accent, <デフォルト青>)` にフォールバックする。
-  // `--rgb-accent` を継承で渡せばハイライト色を上書きできる（値は "R, G, B" 形式）。
-  // Picker は Portal で `.app-root` の外（document.body）に描画されるため、
-  // `.app-root` の `--accent` は継承されない。ラッパー div に直接セットする。
-  const accentRgb = React.useMemo(() => {
+  const { accentColor, accentSoft } = React.useMemo(() => {
     const preset = ACCENT_PRESETS.find(p => p.id === accentId) ?? ACCENT_PRESETS[0]!
-    const hex = (resolvedTheme === 'dark' ? preset.dark.accent : preset.light.accent).replace('#', '')
-    const r = parseInt(hex.slice(0, 2), 16)
-    const g = parseInt(hex.slice(2, 4), 16)
-    const b = parseInt(hex.slice(4, 6), 16)
-    return `${r}, ${g}, ${b}`
+    const isDark = resolvedTheme === 'dark'
+    return {
+      accentColor: isDark ? preset.dark.accent : preset.light.accent,
+      accentSoft: isDark ? preset.dark.accentSoft : preset.light.accentSoft,
+    }
   }, [accentId, resolvedTheme])
 
   React.useLayoutEffect(() => {
@@ -71,18 +65,24 @@ export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) 
   if (!pos) return null
 
   return createPortal(
-    <div
-      ref={containerRef}
-      style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, '--rgb-accent': accentRgb } as React.CSSProperties}
-    >
-      <Picker
-        data={data}
-        onEmojiSelect={(e: { native: string }) => { onSelect(e.native); onClose() }}
-        locale="ja"
-        theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
-        previewPosition="none"
-        skinTonePosition="none"
-        maxFrequentRows={1}
+    <div ref={containerRef} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}>
+      <EmojiPickerLib
+        onEmojiClick={(emojiData: EmojiClickData) => { onSelect(emojiData.emoji); onClose() }}
+        theme={resolvedTheme === 'dark' ? Theme.DARK : Theme.LIGHT}
+        emojiStyle={EmojiStyle.NATIVE}
+        emojiData={jaData}
+        searchPlaceholder="検索"
+        previewConfig={{ showPreview: false }}
+        skinTonesDisabled
+        lazyLoadEmojis
+        width={PICKER_WIDTH}
+        height={PICKER_HEIGHT}
+        style={{
+          '--epr-highlight-color': accentColor,
+          '--epr-hover-bg-color': accentSoft,
+          '--epr-focus-bg-color': accentSoft,
+          '--epr-category-icon-active-color': accentColor,
+        } as React.CSSProperties}
       />
     </div>,
     document.body,
