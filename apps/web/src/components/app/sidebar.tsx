@@ -367,7 +367,12 @@ export const Sidebar = ({ page, setPage, openPanel }: SidebarProps) => {
             dot={p.dot}
             onClick={() => {
               const full = allProjects.find(pr => pr.id === p.projectId)
-              if (full) { setPage('projects'); openPanel?.(full) }
+              if (openPanel && full) {
+                openPanel(full)
+              } else if (full) {
+                setPage('projects')
+                openPanel?.(full)
+              }
             }}
             onUnpin={() => unpinProject.mutate(p.projectId)}
           />
