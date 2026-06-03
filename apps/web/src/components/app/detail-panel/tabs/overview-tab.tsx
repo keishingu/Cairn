@@ -3,6 +3,7 @@
 import React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, StatusChip } from '../../primitives'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { StatusKey } from '../../data'
@@ -21,7 +22,7 @@ function usePatchProject(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
-      const res = await fetch(`/api/projects/${projectId}`, {
+      const res = await fetchWithAuth(`/api/projects/${projectId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -180,7 +181,7 @@ const InlineStatus = ({
 
   const { data: statuses = [] } = useQuery<ProjectStatusDto[]>({
     queryKey: ['statuses'],
-    queryFn: () => fetch('/api/projects/statuses').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
   })
 
   React.useEffect(() => {
@@ -238,8 +239,50 @@ const InlineStatus = ({
 }
 
 // ─── 概要タブ本体 ─────────────────────────────────────────────────
-export const OverviewTab = ({ project }: { project: ProjectDto }) => {
+interface OverviewTabProps {
+  project: ProjectDto
+  onDeleted: () => void
+}
+
+export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
+  const queryClient = useQueryClient()
   const patch = usePatchProject(project.id)
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['projects'] })
+
+  const archiveMutation = useMutation({
+    mutationFn: async (archived: boolean) => {
+      const res = await fetchWithAuth(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived }),
+      })
+      if (!res.ok) throw new Error('操作に失敗しました')
+    },
+    onSuccess: invalidate,
+  })
+
+  const [confirmDelete, setConfirmDelete] = React.useState(false)
+  const [isDeleting, setIsDeleting] = React.useState(false)
+  const [deleteError, setDeleteError] = React.useState<string | null>(null)
+
+  const handleDelete = async () => {
+    setIsDeleting(true)
+    setDeleteError(null)
+    try {
+      const res = await fetchWithAuth(`/api/projects/${project.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        setDeleteError(data.error ?? '削除に失敗しました')
+        return
+      }
+      invalidate()
+      onDeleted()
+    } catch {
+      setDeleteError('削除に失敗しました')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -290,21 +333,66 @@ export const OverviewTab = ({ project }: { project: ProjectDto }) => {
         />
       </div>
 
-      {/* 統計 */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-          <div style={cardLabelStyle}>メンバー</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>{project.memberCount}</div>
-          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>人参加</div>
+      {/* アーカイブ */}
+      <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
+        <div style={cardLabelStyle}>アーカイブ</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 8 }}>
+          {project.archived
+            ? 'このプロジェクトはアーカイブされています。解除するとプロジェクト一覧に再表示されます。'
+            : 'アーカイブすると一覧の「アーカイブ」タブに移動します。データは保持されます。'}
         </div>
-        <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-          <div style={cardLabelStyle}>タスク</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>
-            {project.completedTaskCount}
-            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-3)' }}>/{project.taskCount}</span>
+        {archiveMutation.isError && (
+          <div style={{ fontSize: 11.5, color: 'var(--red-text)', marginBottom: 6 }}>⚠ 操作に失敗しました</div>
+        )}
+        <button
+          onClick={() => archiveMutation.mutate(!project.archived)}
+          disabled={archiveMutation.isPending}
+          className="btn btn-ghost"
+          style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+        >
+          <Icon name={project.archived ? 'refresh' : 'close'} size={11}/>
+          {archiveMutation.isPending ? '処理中…' : project.archived ? 'アーカイブを解除する' : 'アーカイブする'}
+        </button>
+      </div>
+
+      {/* 削除 */}
+      <div style={{ padding: 12, borderRadius: 10, border: '1px solid var(--red)', background: 'var(--red-soft)' }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--red-text)', marginBottom: 8 }}>プロジェクトの削除</div>
+        {!confirmDelete ? (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            style={{ width: '100%', padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            プロジェクトを削除する
+          </button>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 11.5, color: 'var(--red-text)', lineHeight: 1.6 }}>
+              チャット・ファイル・タスクを含むすべてのデータが完全に削除されます。この操作は取り消せません。
+            </div>
+            {deleteError && (
+              <div style={{ fontSize: 11.5, color: 'var(--red-text)', padding: '5px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.08)' }}>
+                ⚠ {deleteError}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={() => { setConfirmDelete(false); setDeleteError(null) }}
+                disabled={isDeleting}
+                style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text-2)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', background: 'var(--red)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: isDeleting ? 'default' : 'pointer', fontFamily: 'inherit', opacity: isDeleting ? 0.7 : 1 }}
+              >
+                {isDeleting ? '削除中…' : '本当に削除する'}
+              </button>
+            </div>
           </div>
-          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>完了</div>
-        </div>
+        )}
       </div>
 
     </div>

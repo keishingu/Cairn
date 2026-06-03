@@ -12,7 +12,6 @@ import { FilesTab } from './tabs/files-tab'
 import { TasksTab } from './tabs/tasks-tab'
 import { MembersTab } from './tabs/members-tab'
 import { GalleryTab } from './tabs/gallery-tab'
-import { SettingsTab } from './tabs/settings-tab'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 
@@ -169,7 +168,6 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
     { id: 'members',   label: 'メンバー',   icon: 'users' },
     { id: 'gallery',   label: 'ギャラリー', icon: 'image' },
     { id: 'ai',        label: 'AI',         icon: 'sparkles' },
-    { id: 'settings',  label: '設定',       icon: 'settings' },
   ]
 
   const mobileTabs = [
@@ -322,13 +320,12 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
       {/* Tab content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0 }}>
         {tab === 'chat'     && <ChatTab project={project}/>}
-        {tab === 'overview' && <OverviewTab project={project}/>}
+        {tab === 'overview' && <OverviewTab project={project} onDeleted={onClose}/>}
         {tab === 'files'    && <FilesTab projectId={project.id}/>}
         {tab === 'tasks'    && <TasksTab project={project}/>}
         {tab === 'members'  && <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>}
         {tab === 'gallery'  && <GalleryTab projectId={project.id}/>}
         {tab === 'ai'       && !isMobile && <PanelAITab/>}
-        {tab === 'settings' && !isMobile && <SettingsTab project={project} onDeleted={onClose}/>}
       </div>
     </aside>
   )
