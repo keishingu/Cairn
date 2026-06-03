@@ -15,35 +15,6 @@ import { GalleryTab } from './tabs/gallery-tab'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 
-const PanelAITab = () => (
-  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-    <div style={{ flex: 1, overflow: 'auto', padding: '12px 14px' }}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, var(--accent), var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
-          <Icon name="sparkles" size={14}/>
-        </div>
-        <div style={{ flex: 1, padding: '10px 12px', background: 'var(--card-2)', borderRadius: 10, fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.6 }}>
-          このプロジェクトの装備リストを要約しました。テント・ガス缶・行動食の3カテゴリーで32点。<br/>不足の可能性: 予備ガス缶（推奨+2個）。
-        </div>
-      </div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>提案</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {['天候による予備日程を提案', 'ルート上の山小屋を一覧化', '緊急時の下山ルートを抽出'].map((s, i) => (
-          <button key={i} style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text-2)', fontSize: 11.5, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>{s}</button>
-        ))}
-      </div>
-    </div>
-    <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--divider)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px' }}>
-        <input placeholder="AIに質問…" style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 12.5, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}/>
-        <button style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name="arrowUp" size={12}/>
-        </button>
-      </div>
-    </div>
-  </div>
-)
-
 
 // ─── Cover photo picker (inline, used inside the panel) ───────────
 interface CoverPickerPanelProps {
@@ -167,7 +138,6 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
     { id: 'tasks',     label: 'タスク',     icon: 'check' },
     { id: 'members',   label: 'メンバー',   icon: 'users' },
     { id: 'gallery',   label: 'ギャラリー', icon: 'image' },
-    { id: 'ai',        label: 'AI',         icon: 'sparkles' },
   ]
 
   const mobileTabs = [
@@ -325,7 +295,6 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
         {tab === 'tasks'    && <TasksTab project={project}/>}
         {tab === 'members'  && <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>}
         {tab === 'gallery'  && <GalleryTab projectId={project.id}/>}
-        {tab === 'ai'       && !isMobile && <PanelAITab/>}
       </div>
     </aside>
   )
