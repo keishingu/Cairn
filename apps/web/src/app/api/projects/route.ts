@@ -195,7 +195,8 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, channels } = await import('@cairn/db')
+    const { projects, channels, projectStatuses } = await import('@cairn/db')
+    const { eq } = await import('drizzle-orm')
 
     const [inserted] = await db
       .insert(projects)
@@ -212,6 +213,18 @@ export async function POST(req: Request) {
       .returning({ id: projects.id, title: projects.title, description: projects.description, startDate: projects.startDate, endDate: projects.endDate, coverPhotoUrl: projects.coverPhotoUrl })
 
     if (!inserted) throw new Error('Insert returned no rows')
+
+    let statusName: string | null = null
+    let statusColor: string | null = null
+    if (parsed.data.statusId) {
+      const [st] = await db
+        .select({ name: projectStatuses.name, color: projectStatuses.color })
+        .from(projectStatuses)
+        .where(eq(projectStatuses.id, parsed.data.statusId))
+        .limit(1)
+      statusName = st?.name ?? null
+      statusColor = st?.color ?? null
+    }
 
     await db.insert(channels).values({
       workspaceId: ctx.workspaceId,
@@ -233,8 +246,8 @@ export async function POST(req: Request) {
       id: inserted.id,
       title: inserted.title,
       description: inserted.description,
-      statusName: null,
-      statusColor: null,
+      statusName,
+      statusColor,
       startDate: inserted.startDate,
       endDate: inserted.endDate,
       memberCount: 1,
