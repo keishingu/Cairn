@@ -260,7 +260,7 @@ interface FilterPopoverProps {
   onClose: () => void
 }
 
-const FilterPopover = ({ allStatuses, selected, onChange, onClose }: FilterPopoverProps) => {
+export const FilterPopover = ({ allStatuses, selected, onChange, onClose }: FilterPopoverProps) => {
   const ref = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {

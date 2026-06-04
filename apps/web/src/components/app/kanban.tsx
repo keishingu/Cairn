@@ -160,9 +160,11 @@ const KanbanColumn = ({
 interface KanbanBoardProps {
   onCardClick: (project: ProjectDto) => void
   isMobile?: boolean
+  statusFilter?: string[]
+  projectFilter?: (p: ProjectDto) => boolean
 }
 
-export const KanbanBoard = ({ onCardClick, isMobile = false }: KanbanBoardProps) => {
+export const KanbanBoard = ({ onCardClick, isMobile = false, statusFilter, projectFilter }: KanbanBoardProps) => {
   const queryClient = useQueryClient()
 
   const { data: statuses = [], isLoading: statusesLoading } = useQuery<ProjectStatusDto[]>({
@@ -170,10 +172,13 @@ export const KanbanBoard = ({ onCardClick, isMobile = false }: KanbanBoardProps)
     queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
   })
 
-  const { data: projects = [], isLoading: projectsLoading } = useQuery<ProjectDto[]>({
+  const { data: allProjects = [], isLoading: projectsLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
   })
+
+  const projects = projectFilter ? allProjects.filter(projectFilter) : allProjects
+  const visibleStatuses = statusFilter?.length ? statuses.filter(s => statusFilter.includes(s.name)) : statuses
 
   const isLoading = statusesLoading || projectsLoading
 
@@ -229,7 +234,7 @@ export const KanbanBoard = ({ onCardClick, isMobile = false }: KanbanBoardProps)
         padding: '12px 16px', height: '100%',
         scrollSnapType: 'x mandatory',
       }}>
-        {statuses.map(s => (
+        {visibleStatuses.map(s => (
           <div key={s.id} style={{ flexShrink: 0, width: 'calc(85vw)', maxWidth: 320, scrollSnapAlign: 'start', display: 'flex', flexDirection: 'column' }}>
             <KanbanColumn
               status={s}
@@ -251,8 +256,8 @@ export const KanbanBoard = ({ onCardClick, isMobile = false }: KanbanBoardProps)
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${statuses.length || 5}, 1fr)`, gap: 10, height: '100%' }}>
-      {statuses.map(s => (
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${visibleStatuses.length || 5}, 1fr)`, gap: 10, height: '100%' }}>
+      {visibleStatuses.map(s => (
         <KanbanColumn
           key={s.id}
           status={s}

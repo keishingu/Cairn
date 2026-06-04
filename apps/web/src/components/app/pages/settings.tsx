@@ -1137,7 +1137,11 @@ const NAV_GROUPS = [
 ]
 
 export const PageSettings = () => {
-  const [section, setSection] = React.useState('account')
+  const searchParams = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search)
+    : null
+  const initialSection = searchParams?.get('section') ?? 'account'
+  const [section, setSection] = React.useState(initialSection)
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={{ width: 220, borderRight: '1px solid var(--border)', padding: '20px 14px', background: 'var(--card)' }}>

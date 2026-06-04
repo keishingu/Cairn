@@ -4,7 +4,7 @@ import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, StatusChip } from '../primitives'
 import { PageToolbar, SegmentedControl } from './page-toolbar'
-import { CreateProjectModal } from './project-list'
+import { CreateProjectModal, FilterPopover } from './project-list'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
@@ -627,6 +627,9 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const [selectedDate, setSelectedDate] = React.useState<Date>(today)
   const [calView, setCalView] = React.useState<CalView>('month')
   const [showCreate, setShowCreate] = React.useState(false)
+  const [filterOpen, setFilterOpen] = React.useState(false)
+  const [statusFilter, setStatusFilter] = React.useState<string[]>([])
+  const filterBtnRef = React.useRef<HTMLDivElement>(null)
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
@@ -636,9 +639,16 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
   })
 
+  const filteredProjects = React.useMemo(
+    () => statusFilter.length > 0
+      ? projects.filter(p => p.statusName != null && statusFilter.includes(p.statusName))
+      : projects,
+    [projects, statusFilter],
+  )
+
   const events = React.useMemo(
-    () => buildEvents(projects, year, month),
-    [projects, year, month],
+    () => buildEvents(filteredProjects, year, month),
+    [filteredProjects, year, month],
   )
 
   const weekStart = getWeekStart(selectedDate)
@@ -730,7 +740,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <MobileCalendarGrid
             year={year}
             month={month}
-            projects={projects}
+            projects={filteredProjects}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             onProjectClick={openPanel}
@@ -740,13 +750,13 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <>
             <MobileWeekStrip
               weekStart={weekStart}
-              projects={projects}
+              projects={filteredProjects}
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
             />
             <MobileDayEvents
               date={selectedDate}
-              projects={projects}
+              projects={filteredProjects}
               onProjectClick={openPanel}
               isLoading={isLoading}
             />
@@ -756,7 +766,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <MobileTimelineView
             year={year}
             month={month}
-            projects={projects}
+            projects={filteredProjects}
             onProjectClick={openPanel}
             isLoading={isLoading}
           />
@@ -805,6 +815,28 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
         }
         right={
           <>
+            <div ref={filterBtnRef} style={{ position: 'relative' }}>
+              <button
+                className="btn"
+                onClick={() => setFilterOpen(o => !o)}
+                style={statusFilter.length > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
+              >
+                <Icon name="filter" size={13} /> フィルター
+                {statusFilter.length > 0 && (
+                  <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
+                    {statusFilter.length}
+                  </span>
+                )}
+              </button>
+              {filterOpen && (
+                <FilterPopover
+                  allStatuses={allStatuses}
+                  selected={statusFilter}
+                  onChange={setStatusFilter}
+                  onClose={() => setFilterOpen(false)}
+                />
+              )}
+            </div>
             <SegmentedControl
               options={[
                 { id: 'month',    label: '月' },
