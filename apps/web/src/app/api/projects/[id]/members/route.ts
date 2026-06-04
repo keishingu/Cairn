@@ -62,7 +62,7 @@ export async function GET(
       .select({
         userId: profiles.id,
         displayName: profiles.displayName,
-        avatarUrl: sql<string | null>`coalesce(${workspaceMembers.avatarUrl}, ${profiles.avatarUrl})`,
+        avatarUrl: workspaceMembers.avatarUrl,
         role: projectMembers.role,
         attendance: projectMembers.attendance,
         addedAt: projectMembers.createdAt,
@@ -173,7 +173,7 @@ export async function POST(
     const [profile] = await db
       .select({
         displayName: profiles.displayName,
-        avatarUrl: sql<string | null>`coalesce(${workspaceMembers.avatarUrl}, ${profiles.avatarUrl})`,
+        avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(profiles)
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))

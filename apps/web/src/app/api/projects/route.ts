@@ -104,7 +104,7 @@ export async function GET() {
       .select({
         projectId: projectMembers.projectId,
         displayName: profiles.displayName,
-        avatarUrl: sql<string | null>`coalesce(${workspaceMembers.avatarUrl}, ${profiles.avatarUrl})`,
+        avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(projectMembers)
       .innerJoin(profiles, eq(projectMembers.userId, profiles.id))

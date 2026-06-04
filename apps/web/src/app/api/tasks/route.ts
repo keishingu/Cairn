@@ -85,7 +85,7 @@ export async function GET(req: Request) {
         priority: tasks.priority,
         dueDate: tasks.dueDate,
         assigneeName: profiles.displayName,
-        assigneeAvatarUrl: sql<string | null>`coalesce(${workspaceMembers.avatarUrl}, ${profiles.avatarUrl})`,
+        assigneeAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(tasks)
       .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
@@ -186,7 +186,7 @@ export async function POST(req: Request) {
       ? (await db
           .select({
             displayName: profiles.displayName,
-            avatarUrl: sql<string | null>`coalesce(${workspaceMembers.avatarUrl}, ${profiles.avatarUrl})`,
+            avatarUrl: workspaceMembers.avatarUrl,
           })
           .from(profiles)
           .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))

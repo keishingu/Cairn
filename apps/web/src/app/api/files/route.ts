@@ -67,7 +67,7 @@ export async function GET() {
         fileType: files.fileType,
         metadata: files.metadata,
         uploaderName: profiles.displayName,
-        uploaderAvatarUrl: sql<string | null>`coalesce(${workspaceMembers.avatarUrl}, ${profiles.avatarUrl})`,
+        uploaderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: files.createdAt,
       })
       .from(files)
