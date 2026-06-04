@@ -14,10 +14,6 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return new NextResponse(null, { status: 204 })
-  }
-
   try {
     const { db, galleryItems, files, projects } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')

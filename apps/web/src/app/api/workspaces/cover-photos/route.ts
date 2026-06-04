@@ -17,10 +17,6 @@ export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json([] satisfies WorkspaceCoverPhoto[])
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { workspaces } = await import('@cairn/db')
@@ -42,13 +38,6 @@ export async function GET() {
 export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(
-      { error: 'ローカル開発モードではアップロードは利用できません' },
-      { status: 501 },
-    )
-  }
 
   let formData: FormData
   try {
@@ -131,10 +120,6 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ error: 'ローカル開発モードでは利用できません' }, { status: 501 })
-  }
 
   let body: { id: string } | null = null
   try {

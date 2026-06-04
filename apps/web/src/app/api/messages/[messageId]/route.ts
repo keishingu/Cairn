@@ -4,11 +4,6 @@
 import { NextResponse } from 'next/server'
 import { editMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
-
-declare global {
-  var __cairnMockMessageStore: Map<string, MessageDto[]> | undefined
-}
 
 type RouteContext = { params: Promise<{ messageId: string }> }
 
@@ -27,25 +22,6 @@ export async function PATCH(req: Request, { params }: RouteContext) {
   const parsed = editMessageSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
-  }
-
-  if (!process.env['DATABASE_URL']) {
-    const store = globalThis.__cairnMockMessageStore
-    if (store) {
-      for (const [channelId, msgs] of store.entries()) {
-        const idx = msgs.findIndex(m => m.id === messageId)
-        if (idx !== -1) {
-          const msg = msgs[idx]!
-          if (msg.senderId !== ctx.userId) {
-            return NextResponse.json({ error: '編集権限がありません' }, { status: 403 })
-          }
-          msgs[idx] = { ...msg, content: parsed.data.content, isEdited: true }
-          store.set(channelId, msgs)
-          return NextResponse.json(msgs[idx])
-        }
-      }
-    }
-    return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
   }
 
   try {
@@ -87,24 +63,6 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
   const { messageId } = await params
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
-
-  if (!process.env['DATABASE_URL']) {
-    const store = globalThis.__cairnMockMessageStore
-    if (store) {
-      for (const [channelId, msgs] of store.entries()) {
-        const idx = msgs.findIndex(m => m.id === messageId)
-        if (idx !== -1) {
-          const msg = msgs[idx]!
-          if (msg.senderId !== ctx.userId) {
-            return NextResponse.json({ error: '削除権限がありません' }, { status: 403 })
-          }
-          store.set(channelId, msgs.filter(m => m.id !== messageId))
-          return new NextResponse(null, { status: 204 })
-        }
-      }
-    }
-    return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
-  }
 
   try {
     const { db } = await import('@cairn/db')

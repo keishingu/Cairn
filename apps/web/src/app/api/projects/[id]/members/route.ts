@@ -12,24 +12,6 @@ export interface ProjectMemberDto {
   addedAt: string
 }
 
-const MOCK_WS_NAMES: Record<string, string> = {
-  m1: '山田 太郎', m2: '佐藤 花子', m3: '鈴木 健',
-  m4: '田中 陽子', m5: '伊藤 翔',   m6: '高橋 美咲',
-  m7: '中村 拓也', m8: '小林 大地',
-}
-
-function mockProjectMembers(): ProjectMemberDto[] {
-  return [
-    { userId: 'm1', displayName: '山田 太郎', role: 'leader',    attendance: 'attending', addedAt: '2026-01-01' },
-    { userId: 'm2', displayName: '佐藤 花子', role: 'subleader', attendance: 'attending', addedAt: '2026-01-05' },
-    { userId: 'm3', displayName: '鈴木 健',   role: 'member',    attendance: 'attending', addedAt: '2026-01-10' },
-    { userId: 'm4', displayName: '田中 陽子', role: 'member',    attendance: 'attending', addedAt: '2026-01-12' },
-    { userId: 'm5', displayName: '伊藤 翔',   role: 'member',    attendance: 'attending', addedAt: '2026-02-01' },
-    { userId: 'm6', displayName: '高橋 美咲', role: 'member',    attendance: 'attending', addedAt: '2026-02-14' },
-    { userId: 'm8', displayName: '小林 大地', role: 'member',    attendance: 'tentative', addedAt: '2026-04-20' },
-  ]
-}
-
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -37,11 +19,6 @@ export async function GET(
   const { id: projectId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    void projectId
-    return NextResponse.json(mockProjectMembers())
-  }
 
   try {
     const { db } = await import('@cairn/db')
@@ -108,18 +85,6 @@ export async function POST(
   const validRoles = ['leader', 'subleader', 'member', 'reviewer', 'observer']
   if (!validRoles.includes(role)) {
     return NextResponse.json({ error: 'Invalid role' }, { status: 422 })
-  }
-
-  if (!process.env['DATABASE_URL']) {
-    void projectId
-    void ctx
-    return NextResponse.json({
-      userId,
-      displayName: MOCK_WS_NAMES[userId] ?? '不明',
-      role: (role as ProjectMemberDto['role']),
-      attendance: 'attending' as const,
-      addedAt: new Date().toISOString().slice(0, 10),
-    } satisfies ProjectMemberDto, { status: 201 })
   }
 
   try {

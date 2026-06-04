@@ -14,10 +14,6 @@ export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json([] satisfies ConversationDto[])
-  }
-
   try {
     const { db, aiConversations } = await import('@cairn/db')
     const { eq, desc } = await import('drizzle-orm')
@@ -44,13 +40,6 @@ export async function GET() {
 export async function POST() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(
-      { id: `mock-${Date.now()}`, title: null, createdAt: new Date().toISOString() } satisfies ConversationDto,
-      { status: 201 },
-    )
-  }
 
   try {
     const { db, aiConversations } = await import('@cairn/db')

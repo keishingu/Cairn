@@ -9,15 +9,6 @@ export async function GET(
 ) {
   const { token } = await params
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({
-      workspaceName: 'Dev Workspace',
-      createdByName: 'Dev User',
-      role: 'member',
-      expiresAt: null,
-    })
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { workspaceInvites, workspaces, profiles } = await import('@cairn/db')

@@ -22,10 +22,6 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid status' }, { status: 422 })
   }
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ id, status })
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { tasks } = await import('@cairn/db')

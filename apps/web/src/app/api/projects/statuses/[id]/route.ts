@@ -21,10 +21,6 @@ export async function PATCH(
 
   const b = body as { name?: string; color?: string; sortOrder?: string }
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ id, ...b })
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { projectStatuses } = await import('@cairn/db')
@@ -68,10 +64,6 @@ export async function DELETE(
   const { id } = await params
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ success: true })
-  }
 
   try {
     const { db } = await import('@cairn/db')

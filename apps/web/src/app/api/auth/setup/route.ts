@@ -30,10 +30,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ ok: true, needsWorkspace: false })
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { profiles, workspaces, workspaceMembers, channels } = await import('@cairn/db')

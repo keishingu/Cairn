@@ -1093,7 +1093,6 @@ const SettingsDeveloper = () => {
           <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
             {[
               { label: 'NODE_ENV',      value: data.env.nodeEnv },
-              { label: 'DATABASE_URL',  value: data.env.hasDatabase ? '設定済み' : '未設定（モックモード）' },
               { label: 'VAPID',         value: data.env.hasVapid  ? '設定済み' : '未設定（Push 通知無効）' },
             ].map(({ label, value }, i, arr) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: 'var(--card)', borderBottom: i < arr.length - 1 ? '1px solid var(--divider)' : 'none' }}>

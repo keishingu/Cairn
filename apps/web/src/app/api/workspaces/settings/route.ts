@@ -7,17 +7,9 @@ import type { WorkspaceSettings } from '@cairn/db'
 
 export type { WorkspaceSettings as WorkspaceSettingsDto }
 
-function mockSettings(): WorkspaceSettings {
-  return {}
-}
-
 export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(mockSettings())
-  }
 
   try {
     const { db } = await import('@cairn/db')
@@ -33,7 +25,7 @@ export async function GET() {
     return NextResponse.json((ws?.settings ?? {}) satisfies WorkspaceSettings)
   } catch (err) {
     console.error('[/api/workspaces/settings] GET failed:', err)
-    return NextResponse.json(mockSettings())
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -42,10 +34,6 @@ export async function PATCH(req: Request) {
   if (error) return error
 
   const patch = await req.json() as Partial<WorkspaceSettings>
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(patch)
-  }
 
   try {
     const { db } = await import('@cairn/db')

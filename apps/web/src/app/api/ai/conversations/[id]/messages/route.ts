@@ -23,10 +23,6 @@ export async function GET(_req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json([] satisfies MessageDto[])
-  }
-
   try {
     const { db, aiMessages, aiConversations } = await import('@cairn/db')
     const { eq, and, asc } = await import('drizzle-orm')
@@ -71,7 +67,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: 'OPENAI_API_KEY が設定されていません' }, { status: 503 })
   }
 
-  if (process.env['DATABASE_URL']) {
+  {
     const { db, aiConversations } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
     const [conv] = await db
@@ -93,7 +89,6 @@ export async function POST(req: Request, { params }: RouteContext) {
   const hasWebSearch = !!process.env['TAVILY_API_KEY']
 
   console.log('[AI chat] POST', {
-    hasDatabaseUrl: !!process.env['DATABASE_URL'],
     hasOpenAiKey: !!process.env['OPENAI_API_KEY'],
     hasTavilyKey: hasWebSearch,
     lastUserContent: lastUserContent.slice(0, 80),
@@ -105,7 +100,7 @@ export async function POST(req: Request, { params }: RouteContext) {
   let contextSection = ''
   let ragSources: RagSource[] = []
 
-  if (process.env['DATABASE_URL'] && lastUserContent) {
+  if (lastUserContent) {
     try {
       const { searchChunks } = await import('@/lib/ai/search-chunks')
       const chunks = await searchChunks(lastUserContent, ctx.workspaceId, { limit: 5, minSimilarity: 0.5 })
@@ -167,7 +162,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         messages,
         ...(hasWebSearch ? { tools: { webSearch: webSearchTool }, maxSteps: 5 } : {}),
         onFinish: async ({ text, steps }) => {
-          if (!process.env['DATABASE_URL'] || !lastUserContent) return
+          if (!lastUserContent) return
           try {
             const { db, aiMessages, aiConversations } = await import('@cairn/db')
             const { eq, and, isNull } = await import('drizzle-orm')

@@ -37,13 +37,6 @@ export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(
-      { error: 'ローカル開発モードでは外部リンクは利用できません' },
-      { status: 501 },
-    )
-  }
-
   let body: { url: string; channelId?: string; projectId?: string }
   try {
     body = await req.json() as typeof body

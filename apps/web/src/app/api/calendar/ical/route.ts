@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PROJECTS } from '@/components/app/data'
-
-const DEV_TOKEN = 'dev-ical-token-00000000000000000000000000000001'
 
 function escapeIcal(str: string): string {
   return str
@@ -84,26 +81,6 @@ export async function GET(req: NextRequest) {
 
   if (!token) {
     return new NextResponse('token is required', { status: 400 })
-  }
-
-  if (!process.env['DATABASE_URL']) {
-    if (token !== DEV_TOKEN) {
-      return new NextResponse('Invalid token', { status: 401 })
-    }
-    const projects: ProjectRow[] = PROJECTS.map(p => ({
-      id: p.id,
-      title: p.name,
-      startDate: p.startDate,
-      endDate: p.endDate,
-    }))
-    const ical = buildIcal(projects, scope === 'workspace' ? 'Cairn（全体）' : 'Cairn（自分）', req.nextUrl.origin)
-    return new NextResponse(ical, {
-      headers: {
-        'Content-Type': 'text/calendar; charset=utf-8',
-        'Content-Disposition': 'inline; filename="cairn.ics"',
-        'Cache-Control': 'no-cache',
-      },
-    })
   }
 
   try {

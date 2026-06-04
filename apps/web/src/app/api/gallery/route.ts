@@ -21,10 +21,6 @@ export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json([] satisfies WorkspaceGalleryItemDto[])
-  }
-
   try {
     const { db, galleryItems, files, projects } = await import('@cairn/db')
     const { eq, and, isNotNull, sql } = await import('drizzle-orm')

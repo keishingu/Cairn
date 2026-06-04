@@ -14,20 +14,9 @@ export interface WorkspaceChannelDto {
   unreadMentionCount: number
 }
 
-function mockChannels(): WorkspaceChannelDto[] {
-  return [
-    { id: 'g1', name: '雑談',     isPrivate: false, memberCount: 8, memberNames: ['山田 太郎', '佐藤 花子', '鈴木 健', '田中 陽子'], unreadCount: 0, unreadMentionCount: 0 },
-    { id: 'g2', name: '連絡事項', isPrivate: false, memberCount: 5, memberNames: ['山田 太郎', '佐藤 花子', '鈴木 健'], unreadCount: 0, unreadMentionCount: 0 },
-  ]
-}
-
 export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(mockChannels())
-  }
 
   try {
     const { db } = await import('@cairn/db')
@@ -92,8 +81,8 @@ export async function GET() {
 
     return NextResponse.json(result)
   } catch (err) {
-    console.error('[/api/workspaces/channels] DB query failed, using mock data:', err)
-    return NextResponse.json(mockChannels())
+    console.error('[/api/workspaces/channels] DB query failed:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -119,19 +108,6 @@ export async function POST(req: Request) {
   }
   if (name.length > 60) {
     return NextResponse.json({ error: '60文字以内で入力してください' }, { status: 400 })
-  }
-
-  if (!process.env['DATABASE_URL']) {
-    const mock: WorkspaceChannelDto = {
-      id: `mock-${Date.now()}`,
-      name,
-      isPrivate,
-      memberCount: 0,
-      memberNames: [],
-      unreadCount: 0,
-      unreadMentionCount: 0,
-    }
-    return NextResponse.json(mock, { status: 201 })
   }
 
   try {

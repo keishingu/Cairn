@@ -12,24 +12,7 @@ export interface ProjectChannelDto {
   unreadMentionCount: number
 }
 
-function mockChannels(): ProjectChannelDto[] {
-  return [
-    { channelId: '50000000-0000-0000-0000-000000000001', channelName: 'general', projectId: '30000000-0000-0000-0000-000000000001', projectTitle: '北アルプス縦走計画', unreadCount: 3, unreadMentionCount: 1 },
-    { channelId: '50000000-0000-0000-0000-000000000002', channelName: 'general', projectId: '30000000-0000-0000-0000-000000000002', projectTitle: '夏山合宿計画', unreadCount: 0, unreadMentionCount: 0 },
-    { channelId: '50000000-0000-0000-0000-000000000003', channelName: 'general', projectId: '30000000-0000-0000-0000-000000000003', projectTitle: 'クライミング講習会', unreadCount: 0, unreadMentionCount: 0 },
-    { channelId: '50000000-0000-0000-0000-000000000004', channelName: 'general', projectId: '30000000-0000-0000-0000-000000000004', projectTitle: '雪山訓練', unreadCount: 0, unreadMentionCount: 0 },
-    { channelId: '50000000-0000-0000-0000-000000000005', channelName: 'general', projectId: '30000000-0000-0000-0000-000000000005', projectTitle: '秋山ハイキング', unreadCount: 0, unreadMentionCount: 0 },
-    { channelId: '50000000-0000-0000-0000-000000000006', channelName: 'general', projectId: '30000000-0000-0000-0000-000000000006', projectTitle: '春山合宿', unreadCount: 0, unreadMentionCount: 0 },
-    { channelId: '50000000-0000-0000-0000-000000000007', channelName: 'general', projectId: '30000000-0000-0000-0000-000000000007', projectTitle: '沢登り練習会', unreadCount: 0, unreadMentionCount: 0 },
-    { channelId: '50000000-0000-0000-0000-000000000008', channelName: 'general', projectId: '30000000-0000-0000-0000-000000000008', projectTitle: '最終ハイキング', unreadCount: 0, unreadMentionCount: 0 },
-  ]
-}
-
 export async function GET() {
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(mockChannels())
-  }
-
   try {
     const { getAuthContext } = await import('@/lib/get-auth-context')
     const { ctx, error } = await getAuthContext()
@@ -88,7 +71,7 @@ export async function GET() {
 
     return NextResponse.json(result)
   } catch (err) {
-    console.error('[/api/projects/channels] DB query failed, using mock data:', err)
-    return NextResponse.json(mockChannels())
+    console.error('[/api/projects/channels] DB query failed:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

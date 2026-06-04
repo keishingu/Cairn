@@ -32,10 +32,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ ok: true })
-  }
-
   try {
     const { db, pushSubscriptions } = await import('@cairn/db')
 
@@ -82,10 +78,6 @@ export async function DELETE(req: Request) {
   const parsed = z.object({ endpoint: z.string() }).safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: 'endpoint required' }, { status: 422 })
-  }
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ ok: true })
   }
 
   try {

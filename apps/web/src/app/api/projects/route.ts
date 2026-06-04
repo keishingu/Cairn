@@ -3,7 +3,6 @@
 
 import { NextResponse } from 'next/server'
 import { createProjectSchema } from '@cairn/shared'
-import { PROJECTS, MEMBERS } from '@/components/app/data'
 import { getAuthContext } from '@/lib/get-auth-context'
 
 export interface ProjectDto {
@@ -25,36 +24,6 @@ export interface ProjectDto {
   coverPhotoUrl: string | null
 }
 
-const STATUS_COLOR_MAP: Record<string, string> = {
-  '計画中':     '#3B82F6',
-  '審議中':     '#F59E0B',
-  '実施待ち':   '#10B981',
-  '実施中':     '#8B5CF6',
-  '振り返り中': '#F43F5E',
-  '完了':       '#6B7280',
-}
-
-function mockProjects(): ProjectDto[] {
-  return PROJECTS.map((p, i) => ({
-    id: p.id,
-    title: p.name,
-    description: null,
-    statusName: p.status,
-    statusColor: STATUS_COLOR_MAP[p.status] ?? '#6B7280',
-    startDate: p.startDate,
-    endDate: p.endDate,
-    memberCount: p.members,
-    memberNames: MEMBERS.slice(0, Math.min(p.members, 4)),
-    taskCount: 5 + (i * 3) % 8,
-    completedTaskCount: 1 + (i * 2) % 5,
-    isOwner: i % 3 === 0,
-    isMember: true,
-    archived: false,
-    coverPhotoIdx: p.photoIdx,
-    coverPhotoUrl: null,
-  }))
-}
-
 function coverPhotoIdxFromId(id: string): number {
   let h = 0
   for (const c of id) h = (h * 31 + c.charCodeAt(0)) & 0xffff
@@ -64,10 +33,6 @@ function coverPhotoIdxFromId(id: string): number {
 export async function GET() {
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(mockProjects())
-  }
 
   try {
     const { db } = await import('@cairn/db')
@@ -150,8 +115,8 @@ export async function GET() {
 
     return NextResponse.json(result)
   } catch (err) {
-    console.error('[/api/projects] DB query failed, using mock data:', err)
-    return NextResponse.json(mockProjects())
+    console.error('[/api/projects] DB query failed:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -169,28 +134,6 @@ export async function POST(req: Request) {
   const parsed = createProjectSchema.safeParse({ ...(body as object), workspaceId: ctx.workspaceId })
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
-  }
-
-  if (!process.env['DATABASE_URL']) {
-    const newId = crypto.randomUUID()
-    return NextResponse.json({
-      id: newId,
-      title: parsed.data.title,
-      description: parsed.data.description ?? null,
-      statusName: null,
-      statusColor: null,
-      startDate: parsed.data.startDate ?? null,
-      endDate: parsed.data.endDate ?? null,
-      memberCount: 1,
-      memberNames: [],
-      taskCount: 0,
-      completedTaskCount: 0,
-      isOwner: true,
-      isMember: true,
-      archived: false,
-      coverPhotoIdx: coverPhotoIdxFromId(newId),
-      coverPhotoUrl: parsed.data.coverPhotoUrl ?? null,
-    } satisfies ProjectDto, { status: 201 })
   }
 
   try {
