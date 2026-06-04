@@ -3,6 +3,7 @@
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon, StatusChip } from '../primitives'
+import { PageToolbar, SegmentedControl } from './page-toolbar'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '@/components/app/mobile/header'
@@ -763,47 +764,49 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px 24px', overflow: 'hidden' }}>
       {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            className="btn"
-            style={{ height: 32, opacity: isCurrentPeriod ? 0.5 : 1 }}
-            onClick={goToday}
-            disabled={isCurrentPeriod}
-          >
-            今日
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goPrev}>
-              <Icon name="chevLeft" size={15} />
+      <PageToolbar
+        style={{ marginBottom: 14 }}
+        left={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              className="btn"
+              style={{ opacity: isCurrentPeriod ? 0.5 : 1 }}
+              onClick={goToday}
+              disabled={isCurrentPeriod}
+            >
+              今日
             </button>
-            <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goNext}>
-              <Icon name="chevRight" size={15} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goPrev}>
+                <Icon name="chevLeft" size={15} />
+              </button>
+              <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goNext}>
+                <Icon name="chevRight" size={15} />
+              </button>
+            </div>
+            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', padding: '0 4px', whiteSpace: 'nowrap' }}>
+              {periodLabel}
+            </span>
+          </div>
+        }
+        right={
+          <>
+            <button className="btn"><Icon name="filter" size={13} /> フィルター</button>
+            <SegmentedControl
+              options={[
+                { id: 'month',    label: '月' },
+                { id: 'week',     label: '週' },
+                { id: 'timeline', label: 'リスト' },
+              ]}
+              value={calView}
+              onChange={(v) => setCalView(v as CalView)}
+            />
+            <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="plus" size={13} strokeWidth={2.4} /> 予定を追加
             </button>
-          </div>
-          <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', padding: '0 4px' }}>
-            {formatYM(year, month)}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button className="btn"><Icon name="filter" size={13} /> フィルター</button>
-          <div style={{ display: 'flex', background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: 2, gap: 0 }}>
-            {['月', '週', 'リスト'].map((v, i) => (
-              <button key={v} style={{
-                padding: '5px 14px', borderRadius: 6, border: 'none',
-                background: i === 0 ? 'var(--card)' : 'transparent',
-                color: i === 0 ? 'var(--text)' : 'var(--text-3)',
-                fontSize: 12.5, fontWeight: i === 0 ? 600 : 500,
-                cursor: 'pointer', fontFamily: 'inherit',
-                boxShadow: i === 0 ? 'var(--shadow-sm)' : 'none',
-              }}>{v}</button>
-            ))}
-          </div>
-          <button className="btn btn-primary" style={{ height: 32, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Icon name="plus" size={13} strokeWidth={2.4} /> 予定を追加
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Calendar grid */}
       <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>

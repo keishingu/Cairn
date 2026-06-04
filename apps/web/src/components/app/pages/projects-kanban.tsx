@@ -4,6 +4,7 @@ import React from 'react'
 import { Icon } from '../primitives'
 import { KanbanBoard } from '../kanban'
 import { MobileHeader } from '@/components/app/mobile/header'
+import { PageToolbar } from './page-toolbar'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 interface PageKanbanProps {
@@ -25,21 +26,26 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px 24px', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn"><Icon name="filter" size={13} /> フィルター</button>
-          <button className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            グループ: ステータス <Icon name="chevDown" size={13} />
-          </button>
-          <button className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            すべてのプロジェクト <Icon name="chevDown" size={13} />
-          </button>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn"><Icon name="settings" size={13} /> ステージ設定</button>
-          <button className="btn btn-primary"><Icon name="plus" size={13} /> 新規プロジェクト</button>
-        </div>
-      </div>
+      <PageToolbar
+        style={{ marginBottom: 14 }}
+        left={
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              グループ: ステータス <Icon name="chevDown" size={13} />
+            </button>
+            <button className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              すべてのプロジェクト <Icon name="chevDown" size={13} />
+            </button>
+          </div>
+        }
+        right={
+          <>
+            <button className="btn"><Icon name="filter" size={13} /> フィルター</button>
+            <button className="btn"><Icon name="settings" size={13} /> ステージ設定</button>
+            <button className="btn btn-primary"><Icon name="plus" size={13} /> 新規プロジェクト</button>
+          </>
+        }
+      />
       <div style={{ flex: 1, minHeight: 0 }}>
         <KanbanBoard onCardClick={openPanel} />
       </div>

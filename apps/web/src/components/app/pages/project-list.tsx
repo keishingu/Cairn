@@ -10,6 +10,7 @@ import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/rout
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { PageToolbar, SegmentedControl } from './page-toolbar'
 
 // ─── Tag presets ──────────────────────────────────────────────────
 const TAG_PRESETS = [
@@ -659,57 +660,48 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
         />
       )}
 
-      {/* Toolbar: filter tabs + PC controls */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        borderBottom: '1px solid var(--border)',
-        flexShrink: 0,
-        padding: isMobile ? '10px 16px' : '0',
-        gap: isMobile ? 6 : 0,
-        overflowX: isMobile ? 'auto' : 'visible',
-        scrollbarWidth: 'none',
-      }}>
-        {filterTabs.map(f => (
-          <button key={f.id} onClick={() => setFilter(f.id)} style={isMobile ? {
-            padding: '6px 14px', borderRadius: 999, border: 'none', flexShrink: 0,
-            background: filter === f.id ? 'var(--accent)' : 'var(--card-2)',
-            color: filter === f.id ? 'var(--on-accent)' : 'var(--text-3)',
-            fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
-            cursor: 'pointer', fontFamily: 'inherit',
-          } : {
-            padding: '10px 14px', border: 'none', background: 'transparent',
-            color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
-            fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
-            cursor: 'pointer', fontFamily: 'inherit',
-            borderBottom: filter === f.id ? '2px solid var(--accent)' : '2px solid transparent',
-            marginBottom: -1,
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-          }}>
-            {f.label}
-            {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>{f.n}</span>}
-          </button>
-        ))}
-
-        {/* PC only: view toggle + status filter + create button */}
-        {!isMobile && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingBottom: 8, marginLeft: 'auto' }}>
-            <div style={{ display: 'flex', background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: 2 }}>
-              {([
-                { id: 'grid'  as const, i: 'kanban', l: 'カード' },
-                { id: 'table' as const, i: 'list',   l: 'テーブル' },
-              ]).map(v => (
-                <button key={v.id} onClick={() => setView(v.id)} style={{
-                  padding: '5px 10px', borderRadius: 6, border: 'none',
-                  background: view === v.id ? 'var(--card)' : 'transparent',
-                  color: view === v.id ? 'var(--text)' : 'var(--text-3)',
-                  fontSize: 12, fontWeight: view === v.id ? 600 : 500,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                  boxShadow: view === v.id ? 'var(--shadow-sm)' : 'none',
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                }}><Icon name={v.i} size={12}/> {v.l}</button>
-              ))}
-            </div>
+      {/* Toolbar */}
+      <PageToolbar
+        style={{
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+          padding: isMobile ? '10px 16px' : '0',
+        }}
+        left={
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 0 }}>
+            {filterTabs.map(f => (
+              <button key={f.id} onClick={() => setFilter(f.id)} style={isMobile ? {
+                padding: '6px 14px', borderRadius: 999, border: 'none', flexShrink: 0,
+                background: filter === f.id ? 'var(--accent)' : 'var(--card-2)',
+                color: filter === f.id ? 'var(--on-accent)' : 'var(--text-3)',
+                fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
+                cursor: 'pointer', fontFamily: 'inherit',
+              } : {
+                padding: '10px 14px', border: 'none', background: 'transparent',
+                color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
+                fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
+                cursor: 'pointer', fontFamily: 'inherit',
+                borderBottom: filter === f.id ? '2px solid var(--accent)' : '2px solid transparent',
+                marginBottom: -1,
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                whiteSpace: 'nowrap',
+              }}>
+                {f.label}
+                {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>{f.n}</span>}
+              </button>
+            ))}
+          </div>
+        }
+        right={!isMobile ? (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingBottom: 8 }}>
+            <SegmentedControl
+              options={[
+                { id: 'grid',  label: 'カード',   icon: <Icon name="kanban" size={12}/> },
+                { id: 'table', label: 'テーブル', icon: <Icon name="list"   size={12}/> },
+              ]}
+              value={view}
+              onChange={(v) => setView(v as 'grid' | 'table')}
+            />
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
               <button
                 className="btn"
@@ -731,8 +723,8 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
               <Icon name="plus" size={13}/> 新規プロジェクト
             </button>
           </div>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* Content */}
       <div style={{
