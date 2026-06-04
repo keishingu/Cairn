@@ -19,7 +19,6 @@ export interface WorkspaceSettings {
 export const profiles = pgTable('profiles', {
   id: uuid('id').primaryKey(),
   displayName: text('display_name').notNull(),
-  avatarUrl: text('avatar_url'),
   bio: text('bio'),
   icalToken: text('ical_token').unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

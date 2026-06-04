@@ -767,7 +767,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                   <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
                   <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
                   <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{formatDates(p.startDate, p.endDate)}</span>
-                  <AvatarStack names={p.memberNames} size={22}/>
+                  <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={22}/>
                   <div style={{ height: 6, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${progress}%`, background: accent, borderRadius: 3 }}/>
                   </div>
@@ -812,7 +812,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
-                        <AvatarStack names={p.memberNames} size={20}/>
+                        <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={20}/>
                         <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 2 }}>{p.memberCount}人</span>
                       </div>
                     </div>
@@ -842,7 +842,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>{p.title}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>{formatDates(p.startDate, p.endDate)} · {p.memberCount}人</div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <AvatarStack names={p.memberNames} size={22}/>
+                      <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={22}/>
                       {p.taskCount > 0 && (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11.5, color: 'var(--text-3)' }}>
                           <Icon name="check" size={12}/>{p.completedTaskCount}/{p.taskCount}

@@ -10,14 +10,15 @@ export interface WorkspaceChannelDto {
   isPrivate: boolean
   memberCount: number
   memberNames: string[]
+  memberAvatarUrls: (string | null)[]
   unreadCount: number
   unreadMentionCount: number
 }
 
 function mockChannels(): WorkspaceChannelDto[] {
   return [
-    { id: 'g1', name: '雑談',     isPrivate: false, memberCount: 8, memberNames: ['山田 太郎', '佐藤 花子', '鈴木 健', '田中 陽子'], unreadCount: 0, unreadMentionCount: 0 },
-    { id: 'g2', name: '連絡事項', isPrivate: false, memberCount: 5, memberNames: ['山田 太郎', '佐藤 花子', '鈴木 健'], unreadCount: 0, unreadMentionCount: 0 },
+    { id: 'g1', name: '雑談',     isPrivate: false, memberCount: 8, memberNames: ['山田 太郎', '佐藤 花子', '鈴木 健', '田中 陽子'], memberAvatarUrls: [null, null, null, null], unreadCount: 0, unreadMentionCount: 0 },
+    { id: 'g2', name: '連絡事項', isPrivate: false, memberCount: 5, memberNames: ['山田 太郎', '佐藤 花子', '鈴木 健'], memberAvatarUrls: [null, null, null], unreadCount: 0, unreadMentionCount: 0 },
   ]
 }
 
@@ -31,7 +32,7 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, profiles } = await import('@cairn/db')
+    const { channels, channelMembers, profiles, workspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray } = await import('drizzle-orm')
 
     const channelRows = await db
@@ -43,16 +44,21 @@ export async function GET() {
     if (channelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
 
     const memberRows = await db
-      .select({ channelId: channelMembers.channelId, displayName: profiles.displayName })
+      .select({
+        channelId: channelMembers.channelId,
+        displayName: profiles.displayName,
+        avatarUrl: workspaceMembers.avatarUrl,
+      })
       .from(channelMembers)
       .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(inArray(channelMembers.channelId, channelRows.map(c => c.id)))
       .orderBy(channelMembers.joinedAt)
 
-    const membersByChannel = new Map<string, string[]>()
+    const membersByChannel = new Map<string, { name: string; url: string | null }[]>()
     for (const m of memberRows) {
       const arr = membersByChannel.get(m.channelId) ?? []
-      arr.push(m.displayName)
+      arr.push({ name: m.displayName, url: m.avatarUrl ?? null })
       membersByChannel.set(m.channelId, arr)
     }
 
@@ -81,10 +87,13 @@ export async function GET() {
     const mentionMap = new Map(mentionRows.map(r => [r.channelId, r.cnt]))
 
     const result: WorkspaceChannelDto[] = channelRows.map(c => {
-      const names = membersByChannel.get(c.id) ?? []
+      const members = membersByChannel.get(c.id) ?? []
+      const shown = members.slice(0, 4)
       return {
         id: c.id, name: c.name, isPrivate: c.isPrivate,
-        memberCount: names.length, memberNames: names.slice(0, 4),
+        memberCount: members.length,
+        memberNames: shown.map(m => m.name),
+        memberAvatarUrls: shown.map(m => m.url),
         unreadCount: unreadMap.get(c.id) ?? 0,
         unreadMentionCount: mentionMap.get(c.id) ?? 0,
       }
@@ -126,8 +135,9 @@ export async function POST(req: Request) {
       id: `mock-${Date.now()}`,
       name,
       isPrivate,
-      memberCount: 0,
+      memberCount: 1,
       memberNames: [],
+      memberAvatarUrls: [],
       unreadCount: 0,
       unreadMentionCount: 0,
     }
@@ -136,7 +146,7 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels } = await import('@cairn/db')
+    const { channels, channelMembers } = await import('@cairn/db')
 
     const rows = await db
       .insert(channels)
@@ -150,7 +160,10 @@ export async function POST(req: Request) {
 
     const inserted = rows[0]
     if (!inserted) throw new Error('insert returned no rows')
-    const result: WorkspaceChannelDto = { ...inserted, memberCount: 0, memberNames: [], unreadCount: 0, unreadMentionCount: 0 }
+
+    await db.insert(channelMembers).values({ channelId: inserted.id, userId: ctx.userId })
+
+    const result: WorkspaceChannelDto = { ...inserted, memberCount: 1, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('[/api/workspaces/channels POST] DB error:', err)

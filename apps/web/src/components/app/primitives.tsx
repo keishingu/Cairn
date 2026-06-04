@@ -133,18 +133,19 @@ export const Avatar = ({ name = '', url, size = 28, ring = false, style }: Avata
 
 interface AvatarStackProps {
   names?: string[]
+  urls?: (string | null)[]
   size?: number
   max?: number
 }
 
-export const AvatarStack = ({ names = [], size = 24, max = 4 }: AvatarStackProps) => {
+export const AvatarStack = ({ names = [], urls = [], size = 24, max = 4 }: AvatarStackProps) => {
   const shown = names.slice(0, max)
   const extra = names.length - shown.length
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center' }}>
       {shown.map((n, i) => (
         <div key={i} style={{ marginLeft: i === 0 ? 0 : -size * 0.32 }}>
-          <Avatar name={n} size={size} ring />
+          <Avatar name={n} url={urls[i] ?? null} size={size} ring />
         </div>
       ))}
       {extra > 0 && (

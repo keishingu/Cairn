@@ -42,8 +42,7 @@ export async function GET() {
       .select({
         id: profiles.id,
         displayName: profiles.displayName,
-        globalAvatarUrl: profiles.avatarUrl,
-        workspaceAvatarUrl: workspaceMembers.avatarUrl,
+        avatarUrl: workspaceMembers.avatarUrl,
         bio: profiles.bio,
       })
       .from(profiles)
@@ -60,7 +59,7 @@ export async function GET() {
     return NextResponse.json({
       id: row.id,
       displayName: row.displayName,
-      avatarUrl: row.workspaceAvatarUrl ?? row.globalAvatarUrl,
+      avatarUrl: row.avatarUrl ?? null,
       email,
       bio: row.bio,
     } satisfies CurrentUserDto)

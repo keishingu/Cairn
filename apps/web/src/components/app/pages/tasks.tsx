@@ -105,7 +105,7 @@ const TaskRow = ({ task, onToggle, toggling }: TaskRowProps) => {
       )}
 
       {task.assigneeName && (
-        <Avatar name={task.assigneeName} size={22} />
+        <Avatar name={task.assigneeName} url={task.assigneeAvatarUrl} size={22} />
       )}
 
       {task.status === 'in_progress' && (
