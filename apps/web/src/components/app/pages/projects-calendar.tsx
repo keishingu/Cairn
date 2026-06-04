@@ -1,9 +1,11 @@
 'use client'
 
 import React from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, StatusChip } from '../primitives'
 import { PageToolbar, SegmentedControl } from './page-toolbar'
+import { CreateProjectModal } from './project-list'
+import { useProjectLabel } from '@/lib/use-workspace-settings'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '@/components/app/mobile/header'
@@ -618,10 +620,13 @@ const CAL_VIEWS: CalView[] = ['month', 'week', 'timeline']
 
 export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps) => {
   const today = new Date()
+  const queryClient = useQueryClient()
+  const projectLabel = useProjectLabel()
   const [year, setYear] = React.useState(today.getFullYear())
   const [month, setMonth] = React.useState(today.getMonth())
   const [selectedDate, setSelectedDate] = React.useState<Date>(today)
   const [calView, setCalView] = React.useState<CalView>('month')
+  const [showCreate, setShowCreate] = React.useState(false)
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
@@ -763,6 +768,15 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   // ── PC layout ──────────────────────────────────────────────────
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px 24px', overflow: 'hidden' }}>
+      {showCreate && (
+        <CreateProjectModal
+          onClose={() => setShowCreate(false)}
+          onCreated={(p) => {
+            queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), p])
+            setShowCreate(false)
+          }}
+        />
+      )}
       {/* Toolbar */}
       <PageToolbar
         style={{ marginBottom: 14 }}
@@ -791,7 +805,6 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
         }
         right={
           <>
-            <button className="btn"><Icon name="filter" size={13} /> フィルター</button>
             <SegmentedControl
               options={[
                 { id: 'month',    label: '月' },
@@ -801,8 +814,8 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               value={calView}
               onChange={(v) => setCalView(v as CalView)}
             />
-            <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <Icon name="plus" size={13} strokeWidth={2.4} /> 予定を追加
+            <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setShowCreate(true)}>
+              <Icon name="plus" size={13} strokeWidth={2.4} /> 新規{projectLabel}
             </button>
           </>
         }

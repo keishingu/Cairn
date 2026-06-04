@@ -11,6 +11,7 @@ import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { PageToolbar, SegmentedControl } from './page-toolbar'
+import { useProjectLabel } from '@/lib/use-workspace-settings'
 
 // ─── Tag presets ──────────────────────────────────────────────────
 const TAG_PRESETS = [
@@ -379,7 +380,7 @@ interface FormState {
   tags: string[]
 }
 
-const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => {
+export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => {
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
   const { data: workspacePhotos = [] } = useQuery({
     queryKey: ['workspace-cover-photos'],
@@ -582,6 +583,7 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
 
 export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) => {
   const queryClient = useQueryClient()
+  const projectLabel = useProjectLabel()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
   const [view, setView] = React.useState<'grid' | 'table'>('grid')
   const [filter, setFilterState] = React.useState<string>(() => {
@@ -665,7 +667,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
         style={{
           borderBottom: '1px solid var(--border)',
           flexShrink: 0,
-          padding: isMobile ? '10px 16px' : '0',
+          padding: isMobile ? '10px 16px' : '0 16px 0 0',
         }}
         left={
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 0 }}>
@@ -693,7 +695,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
           </div>
         }
         right={!isMobile ? (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 0' }}>
             <SegmentedControl
               options={[
                 { id: 'grid',  label: 'カード',   icon: <Icon name="kanban" size={12}/> },
@@ -720,7 +722,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
               )}
             </div>
             <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-              <Icon name="plus" size={13}/> 新規プロジェクト
+              <Icon name="plus" size={13}/> 新規{projectLabel}
             </button>
           </div>
         ) : undefined}

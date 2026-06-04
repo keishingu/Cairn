@@ -1,10 +1,13 @@
 'use client'
 
 import React from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import { KanbanBoard } from '../kanban'
 import { MobileHeader } from '@/components/app/mobile/header'
 import { PageToolbar } from './page-toolbar'
+import { CreateProjectModal } from './project-list'
+import { useProjectLabel } from '@/lib/use-workspace-settings'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 interface PageKanbanProps {
@@ -13,6 +16,15 @@ interface PageKanbanProps {
 }
 
 export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => {
+  const queryClient = useQueryClient()
+  const projectLabel = useProjectLabel()
+  const [showCreate, setShowCreate] = React.useState(false)
+
+  const handleCreated = (project: ProjectDto) => {
+    queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
+    setShowCreate(false)
+  }
+
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
@@ -26,24 +38,15 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px 24px', overflow: 'hidden' }}>
+      {showCreate && (
+        <CreateProjectModal onClose={() => setShowCreate(false)} onCreated={handleCreated} />
+      )}
       <PageToolbar
         style={{ marginBottom: 14 }}
-        left={
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              グループ: ステータス <Icon name="chevDown" size={13} />
-            </button>
-            <button className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              すべてのプロジェクト <Icon name="chevDown" size={13} />
-            </button>
-          </div>
-        }
         right={
-          <>
-            <button className="btn"><Icon name="filter" size={13} /> フィルター</button>
-            <button className="btn"><Icon name="settings" size={13} /> ステージ設定</button>
-            <button className="btn btn-primary"><Icon name="plus" size={13} /> 新規プロジェクト</button>
-          </>
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+            <Icon name="plus" size={13} /> 新規{projectLabel}
+          </button>
         }
       />
       <div style={{ flex: 1, minHeight: 0 }}>
