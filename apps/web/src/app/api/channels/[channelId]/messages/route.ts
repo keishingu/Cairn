@@ -20,6 +20,7 @@ export interface MessageDto {
   senderName: string
   senderAvatarUrl: string | null
   createdAt: string
+  isEdited: boolean
   reactions: ReactionDto[]
   attachments: AttachmentDto[]
 }
@@ -61,6 +62,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         senderGlobalAvatarUrl: profiles.avatarUrl,
         senderWorkspaceAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: messages.createdAt,
+        updatedAt: messages.updatedAt,
       })
       .from(messages)
       .innerJoin(profiles, eq(messages.senderId, profiles.id))
@@ -139,6 +141,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       senderName: r.senderName,
       senderAvatarUrl: r.senderWorkspaceAvatarUrl ?? r.senderGlobalAvatarUrl,
       createdAt: r.createdAt.toISOString(),
+      isEdited: r.updatedAt.getTime() > r.createdAt.getTime(),
       reactions: reactionMap.get(r.id) ?? [],
       attachments: attachmentMap.get(r.id) ?? [],
     }))
@@ -175,6 +178,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       senderName: '山田 太郎',
       senderAvatarUrl: null,
       createdAt: new Date().toISOString(),
+      isEdited: false,
       reactions: [],
       attachments: [],
     }
@@ -258,6 +262,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       senderName,
       senderAvatarUrl: profile?.workspaceAvatarUrl ?? profile?.globalAvatarUrl ?? null,
       createdAt: inserted.createdAt.toISOString(),
+      isEdited: false,
       reactions: [],
       attachments: [],
     } satisfies MessageDto, { status: 201 })

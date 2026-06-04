@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, date, index, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { boolean, date, index, integer, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { attendanceStatusEnum, projectMemberRoleEnum } from './enums'
 import { profiles, projectStatuses, tags, workspaces } from './workspaces'
 
@@ -73,4 +73,26 @@ export const projectTags = pgTable(
       .references(() => tags.id, { onDelete: 'cascade' }),
   },
   (t) => [unique().on(t.projectId, t.tagId)],
+)
+
+export const pinnedProjects = pgTable(
+  'pinned_projects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.userId, t.projectId),
+    index('idx_pinned_projects_user').on(t.userId, t.workspaceId),
+  ],
 )

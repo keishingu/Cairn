@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { headers } from 'next/headers'
+import { headers, cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import type { User } from '@supabase/supabase-js'
+import { WORKSPACE_COOKIE } from './workspace-cookie'
 
 const DEV_USER_ID      = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
+export { WORKSPACE_COOKIE } from './workspace-cookie'
+
 // サーバーレス関数インスタンス内でワークスペース ID をキャッシュし、
-// warm リクエストでの DB 往復を省く（TTL: 5分）
+// warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
 const workspaceCache = new Map<string, { workspaceId: string; expiresAt: number }>()
 
 export interface AuthContext {
@@ -21,6 +24,36 @@ export interface AuthContext {
 type AuthResult =
   | { ctx: AuthContext; error: null }
   | { ctx: null; error: ReturnType<typeof NextResponse.json> }
+
+type UserResult =
+  | { userId: string; error: null }
+  | { userId: null; error: ReturnType<typeof NextResponse.json> }
+
+/** ワークスペース所属を問わずユーザー認証だけを行う（招待受け入れ等で使用） */
+export async function getAuthUser(): Promise<UserResult> {
+  if (!process.env['DATABASE_URL']) {
+    return { userId: DEV_USER_ID, error: null }
+  }
+
+  const supabase = await createClient()
+  const headersList = await headers()
+  const authorization = headersList.get('Authorization')
+
+  if (authorization?.startsWith('Bearer ')) {
+    const token = authorization.slice(7)
+    const { data, error } = await supabase.auth.getUser(token)
+    if (error || !data.user) {
+      return { userId: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+    }
+    return { userId: data.user.id, error: null }
+  }
+
+  const { data: { session }, error: authError } = await supabase.auth.getSession()
+  if (authError || !session?.user) {
+    return { userId: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  }
+  return { userId: session.user.id, error: null }
+}
 
 export async function getAuthContext(): Promise<AuthResult> {
   if (!process.env['DATABASE_URL']) {
@@ -55,7 +88,11 @@ export async function getAuthContext(): Promise<AuthResult> {
     return { ctx: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
 
-  const cached = workspaceCache.get(user.id)
+  const cookieStore = await cookies()
+  const preferredWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
+
+  const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
+  const cached = workspaceCache.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) {
     return { ctx: { userId: user.id, workspaceId: cached.workspaceId }, error: null }
   }
@@ -63,7 +100,22 @@ export async function getAuthContext(): Promise<AuthResult> {
   try {
     const { db } = await import('@cairn/db')
     const { workspaceMembers } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { eq, and } = await import('drizzle-orm')
+
+    // クッキーで指定されたワークスペースがあればそちらを優先、ただしメンバーシップを確認
+    if (preferredWorkspaceId) {
+      const [preferred] = await db
+        .select({ workspaceId: workspaceMembers.workspaceId })
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, preferredWorkspaceId)))
+        .limit(1)
+
+      if (preferred) {
+        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+        return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
+      }
+      // クッキーが無効（退出済み等）→ フォールバック
+    }
 
     const [member] = await db
       .select({ workspaceId: workspaceMembers.workspaceId })

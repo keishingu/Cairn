@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { StatusKey, STATUS, photoUrl } from './data'
+import { photoUrl } from './data'
 
 // ─── Icon ─────────────────────────────────────────────────────────
 interface IconProps {
@@ -163,19 +163,17 @@ export const AvatarStack = ({ names = [], size = 24, max = 4 }: AvatarStackProps
 
 // ─── Status chip ──────────────────────────────────────────────────
 interface StatusChipProps {
-  s: StatusKey
+  name: string
+  color: string
   size?: number
 }
 
-export const StatusChip = ({ s, size = 11 }: StatusChipProps) => {
-  const cfg = STATUS[s] ?? STATUS.plan
-  return (
-    <span className="chip" style={{ background: cfg.bg, color: cfg.fg, fontSize: size }}>
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: cfg.dot }}/>
-      {cfg.label}
-    </span>
-  )
-}
+export const StatusChip = ({ name, color, size = 11 }: StatusChipProps) => (
+  <span className="chip" style={{ background: color + '22', color: 'var(--text)', fontSize: size }}>
+    <span style={{ width: 6, height: 6, borderRadius: '50%', background: color }}/>
+    {name}
+  </span>
+)
 
 // ─── Mountain photo ───────────────────────────────────────────────
 interface MountainPhotoProps {

@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { boolean, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { workspaceRoleEnum } from './enums'
 
 export interface WorkspaceCoverPhoto {
@@ -70,6 +70,22 @@ export const tags = pgTable(
   (t) => [unique().on(t.workspaceId, t.name)],
 )
 
+export const workspaceInvites = pgTable('workspace_invites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  token: text('token').notNull().unique(),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => profiles.id),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  maxUses: integer('max_uses'),
+  useCount: integer('use_count').notNull().default(0),
+  role: workspaceRoleEnum('role').notNull().default('member'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const projectStatuses = pgTable(
   'project_statuses',
   {
@@ -80,7 +96,6 @@ export const projectStatuses = pgTable(
     name: text('name').notNull(),
     color: text('color').notNull().default('#3B82F6'),
     sortOrder: text('sort_order').notNull(),
-    isFinal: boolean('is_final').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.workspaceId, t.name)],

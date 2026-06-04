@@ -4,7 +4,7 @@ import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
 import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
-import { MEMBERS, type StatusKey } from '../data'
+import { MEMBERS } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { ChatTab } from './tabs/chat-tab'
 import { OverviewTab, formatDateRange } from './tabs/overview-tab'
@@ -12,38 +12,9 @@ import { FilesTab } from './tabs/files-tab'
 import { TasksTab } from './tabs/tasks-tab'
 import { MembersTab } from './tabs/members-tab'
 import { GalleryTab } from './tabs/gallery-tab'
-import { SettingsTab } from './tabs/settings-tab'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { usePinnedProjects, usePinProject, useUnpinProject } from '@/lib/use-pinned-projects'
 
-
-const PanelAITab = () => (
-  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-    <div style={{ flex: 1, overflow: 'auto', padding: '12px 14px' }}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, var(--accent), var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
-          <Icon name="sparkles" size={14}/>
-        </div>
-        <div style={{ flex: 1, padding: '10px 12px', background: 'var(--card-2)', borderRadius: 10, fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.6 }}>
-          このプロジェクトの装備リストを要約しました。テント・ガス缶・行動食の3カテゴリーで32点。<br/>不足の可能性: 予備ガス缶（推奨+2個）。
-        </div>
-      </div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>提案</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {['天候による予備日程を提案', 'ルート上の山小屋を一覧化', '緊急時の下山ルートを抽出'].map((s, i) => (
-          <button key={i} style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text-2)', fontSize: 11.5, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>{s}</button>
-        ))}
-      </div>
-    </div>
-    <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--divider)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px' }}>
-        <input placeholder="AIに質問…" style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 12.5, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}/>
-        <button style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name="arrowUp" size={12}/>
-        </button>
-      </div>
-    </div>
-  </div>
-)
 
 
 // ─── Cover photo picker (inline, used inside the panel) ───────────
@@ -150,6 +121,11 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
   const [editingCover, setEditingCover] = React.useState(false)
   const moreRef = React.useRef<HTMLDivElement>(null)
 
+  const { data: pinnedProjects = [] } = usePinnedProjects()
+  const pinProject = usePinProject()
+  const unpinProject = useUnpinProject()
+  const isPinned = pinnedProjects.some(p => p.projectId === project.id)
+
   React.useEffect(() => {
     if (!moreOpen) return
     const handleClick = (e: MouseEvent) => {
@@ -168,8 +144,6 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
     { id: 'tasks',     label: 'タスク',     icon: 'check' },
     { id: 'members',   label: 'メンバー',   icon: 'users' },
     { id: 'gallery',   label: 'ギャラリー', icon: 'image' },
-    { id: 'ai',        label: 'AI',         icon: 'sparkles' },
-    { id: 'settings',  label: '設定',       icon: 'settings' },
   ]
 
   const mobileTabs = [
@@ -234,6 +208,18 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
                 {moreOpen && (
                   <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', zIndex: 50, minWidth: 168, padding: 4 }}>
                     <button
+                      onClick={() => {
+                        setMoreOpen(false)
+                        isPinned ? unpinProject.mutate(project.id) : pinProject.mutate(project.id)
+                      }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 6, textAlign: 'left' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                    >
+                      <Icon name="pin" size={13}/>
+                      {isPinned ? 'ピン留めを解除' : 'ピン留め'}
+                    </button>
+                    <button
                       onClick={() => { setMoreOpen(false); setEditingCover(true) }}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 6, textAlign: 'left' }}
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
@@ -259,7 +245,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
                 {project.title}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, opacity: 0.95 }}>
-                <StatusChip s={project.statusName as StatusKey}/>
+                <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
                 <span>{formatDateRange(project.startDate, project.endDate)}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                   <Icon name="users" size={11}/> {project.memberCount}人参加
@@ -294,7 +280,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
       {/* PC only: status + avatars + "詳細を開く" */}
       {!isMobile && (
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <StatusChip s={project.statusName}/>
+          <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
           <AvatarStack names={MEMBERS.slice(0, Math.min(project.memberCount, 5))} size={22} max={5}/>
           <button className="btn btn-ghost" style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}>
             <Icon name="arrowRight" size={11}/> 詳細を開く
@@ -322,13 +308,11 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
       {/* Tab content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0 }}>
         {tab === 'chat'     && <ChatTab project={project}/>}
-        {tab === 'overview' && <OverviewTab project={project}/>}
+        {tab === 'overview' && <OverviewTab project={project} onDeleted={onClose}/>}
         {tab === 'files'    && <FilesTab projectId={project.id}/>}
         {tab === 'tasks'    && <TasksTab project={project}/>}
         {tab === 'members'  && <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>}
         {tab === 'gallery'  && <GalleryTab projectId={project.id}/>}
-        {tab === 'ai'       && !isMobile && <PanelAITab/>}
-        {tab === 'settings' && !isMobile && <SettingsTab project={project} onDeleted={onClose}/>}
       </div>
     </aside>
   )

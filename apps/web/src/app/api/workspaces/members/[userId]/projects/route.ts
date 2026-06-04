@@ -4,12 +4,12 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { PROJECTS } from '@/components/app/data'
-import type { StatusKey } from '@/components/app/data'
 
 export interface MemberProjectDto {
   projectId: string
   title: string
-  statusName: StatusKey
+  statusName: string | null
+  statusColor: string | null
   role: 'leader' | 'subleader' | 'member' | 'reviewer' | 'observer'
   startDate: string | null
   endDate: string | null
@@ -43,6 +43,7 @@ function mockMemberProjects(userId: string): MemberProjectDto[] {
       projectId: p.id,
       title:     p.name,
       statusName: p.status,
+      statusColor: p.accent,
       role,
       startDate:  p.startDate,
       endDate:    p.endDate,
@@ -85,12 +86,13 @@ export async function GET(
 
     const rows = await db
       .select({
-        projectId:  projects.id,
-        title:      projects.title,
-        statusName: projectStatuses.name,
-        role:       projectMembers.role,
-        startDate:  projects.startDate,
-        endDate:    projects.endDate,
+        projectId:   projects.id,
+        title:       projects.title,
+        statusName:  projectStatuses.name,
+        statusColor: projectStatuses.color,
+        role:        projectMembers.role,
+        startDate:   projects.startDate,
+        endDate:     projects.endDate,
       })
       .from(projectMembers)
       .innerJoin(projects, eq(projectMembers.projectId, projects.id))
@@ -111,7 +113,8 @@ export async function GET(
       rows.map(r => ({
         projectId:     r.projectId,
         title:         r.title,
-        statusName:    (r.statusName ?? 'plan') as StatusKey,
+        statusName:    r.statusName ?? null,
+        statusColor:   r.statusColor ?? null,
         role:          r.role,
         startDate:     r.startDate ?? null,
         endDate:       r.endDate ?? null,

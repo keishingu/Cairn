@@ -3,8 +3,9 @@
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack } from './primitives'
-import { MEMBERS, STATUS, STATUS_COL, type StatusKey } from './data'
+import { MEMBERS } from './data'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 function formatDateRange(start: string | null, end: string | null): string {
@@ -19,14 +20,14 @@ function formatDateRange(start: string | null, end: string | null): string {
 
 interface KanbanCardProps {
   project: ProjectDto
+  barColor: string
   onClick: () => void
   onDragStart: () => void
   onDragEnd: () => void
   dragging: boolean
 }
 
-const KanbanCard = ({ project, onClick, onDragStart, onDragEnd, dragging }: KanbanCardProps) => {
-  const cfg = STATUS_COL[project.statusName]
+const KanbanCard = ({ project, barColor, onClick, onDragStart, onDragEnd, dragging }: KanbanCardProps) => {
   const dateStr = formatDateRange(project.startDate, project.endDate)
   return (
     <div
@@ -37,7 +38,7 @@ const KanbanCard = ({ project, onClick, onDragStart, onDragEnd, dragging }: Kanb
       style={{
         background: 'var(--card)', border: '1px solid var(--border)',
         borderRadius: 8, padding: '10px 12px',
-        borderLeft: `3px solid ${cfg.bar}`,
+        borderLeft: `3px solid ${barColor}`,
         cursor: 'grab',
         transition: 'box-shadow .12s, transform .12s, opacity .12s',
         boxShadow: 'var(--shadow-sm)',
@@ -85,15 +86,15 @@ const KanbanCardSkeleton = () => (
 )
 
 interface KanbanColumnProps {
-  status: StatusKey
+  status: ProjectStatusDto
   items: ProjectDto[]
   onCardClick: (project: ProjectDto) => void
   onDragStart: (id: string) => void
   onDragEnd: () => void
   draggingId: string | null
-  onDrop: (status: StatusKey) => void
-  dropTarget: StatusKey | null
-  onDragOver: (status: StatusKey | null) => void
+  onDrop: (statusId: string) => void
+  dropTarget: string | null
+  onDragOver: (statusId: string | null) => void
   isLoading?: boolean
 }
 
@@ -101,27 +102,29 @@ const KanbanColumn = ({
   status, items, onCardClick, onDragStart, onDragEnd,
   draggingId, onDrop, dropTarget, onDragOver, isLoading,
 }: KanbanColumnProps) => {
-  const cfg = STATUS_COL[status]
-  const isTarget = dropTarget === status
+  const bg   = status.color + '18'
+  const bar  = status.color
+  const text = status.color
+  const isTarget = dropTarget === status.id
   return (
     <div
-      onDragOver={e => { e.preventDefault(); onDragOver(status) }}
+      onDragOver={e => { e.preventDefault(); onDragOver(status.id) }}
       onDragLeave={() => onDragOver(null)}
-      onDrop={e => { e.preventDefault(); onDrop(status) }}
+      onDrop={e => { e.preventDefault(); onDrop(status.id) }}
       style={{
-        background: cfg.bg, borderRadius: 10,
+        background: bg, borderRadius: 10,
         display: 'flex', flexDirection: 'column',
         minWidth: 0, minHeight: 0,
-        outline: isTarget ? `2px dashed ${cfg.bar}` : '2px dashed transparent',
+        outline: isTarget ? `2px dashed ${bar}` : '2px dashed transparent',
         outlineOffset: -2,
         transition: 'outline-color .12s',
       }}
     >
       <div style={{ padding: '12px 14px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: cfg.text, letterSpacing: '0.01em' }}>
-          {STATUS[status].label}
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: text, letterSpacing: '0.01em' }}>
+          {status.name}
         </span>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: cfg.text, opacity: 0.7 }}>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: text, opacity: 0.7 }}>
           {isLoading ? '…' : items.length}
         </span>
       </div>
@@ -132,6 +135,7 @@ const KanbanColumn = ({
             <KanbanCard
               key={p.id}
               project={p}
+              barColor={bar}
               onClick={() => onCardClick(p)}
               onDragStart={() => onDragStart(p.id)}
               onDragEnd={onDragEnd}
@@ -142,7 +146,7 @@ const KanbanColumn = ({
         <button style={{
           border: 'none', background: 'transparent',
           padding: '8px 6px', fontSize: 12, fontWeight: 500,
-          color: cfg.text, opacity: 0.8, cursor: 'pointer',
+          color: text, opacity: 0.8, cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: 6,
           fontFamily: 'inherit', textAlign: 'left',
         }}>
@@ -159,16 +163,22 @@ interface KanbanBoardProps {
 }
 
 export const KanbanBoard = ({ onCardClick, isMobile = false }: KanbanBoardProps) => {
-  const cols: StatusKey[] = ['plan', 'review', 'wait', 'doing', 'retro']
   const queryClient = useQueryClient()
 
-  const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
+  const { data: statuses = [], isLoading: statusesLoading } = useQuery<ProjectStatusDto[]>({
+    queryKey: ['statuses'],
+    queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
+  })
+
+  const { data: projects = [], isLoading: projectsLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
   })
 
+  const isLoading = statusesLoading || projectsLoading
+
   const updateStatus = useMutation({
-    mutationFn: async ({ id, statusName }: { id: string; statusName: StatusKey }) => {
+    mutationFn: async ({ id, statusName }: { id: string; statusName: string }) => {
       const res = await fetchWithAuth(`/api/projects/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -179,9 +189,10 @@ export const KanbanBoard = ({ onCardClick, isMobile = false }: KanbanBoardProps)
     onMutate: async ({ id, statusName }) => {
       await queryClient.cancelQueries({ queryKey: ['projects'] })
       const prev = queryClient.getQueryData<ProjectDto[]>(['projects'])
+      const targetStatus = statuses.find(s => s.name === statusName)
       queryClient.setQueryData<ProjectDto[]>(
         ['projects'],
-        old => old?.map(p => p.id === id ? { ...p, statusName } : p) ?? [],
+        old => old?.map(p => p.id === id ? { ...p, statusName, statusColor: targetStatus?.color ?? p.statusColor } : p) ?? [],
       )
       return { prev }
     },
@@ -194,20 +205,18 @@ export const KanbanBoard = ({ onCardClick, isMobile = false }: KanbanBoardProps)
   })
 
   const [draggingId, setDraggingId] = React.useState<string | null>(null)
-  const [dropTarget, setDropTarget] = React.useState<StatusKey | null>(null)
-
-  const groups = Object.fromEntries(
-    cols.map(c => [c, projects.filter(p => p.statusName === c)]),
-  ) as Record<StatusKey, ProjectDto[]>
+  const [dropTarget, setDropTarget] = React.useState<string | null>(null)
 
   const onDragStart = (id: string) => setDraggingId(id)
   const onDragEnd = () => { setDraggingId(null); setDropTarget(null) }
-  const onDragOver = (status: StatusKey | null) => setDropTarget(status)
-  const onDrop = (status: StatusKey) => {
+  const onDragOver = (statusId: string | null) => setDropTarget(statusId)
+  const onDrop = (statusId: string) => {
     if (!draggingId) return
+    const targetStatus = statuses.find(s => s.id === statusId)
+    if (!targetStatus) return
     const project = projects.find(p => p.id === draggingId)
-    if (project && project.statusName !== status) {
-      updateStatus.mutate({ id: draggingId, statusName: status })
+    if (project && project.statusName !== targetStatus.name) {
+      updateStatus.mutate({ id: draggingId, statusName: targetStatus.name })
     }
     setDraggingId(null)
     setDropTarget(null)
@@ -220,11 +229,11 @@ export const KanbanBoard = ({ onCardClick, isMobile = false }: KanbanBoardProps)
         padding: '12px 16px', height: '100%',
         scrollSnapType: 'x mandatory',
       }}>
-        {cols.map(c => (
-          <div key={c} style={{ flexShrink: 0, width: 'calc(85vw)', maxWidth: 320, scrollSnapAlign: 'start', display: 'flex', flexDirection: 'column' }}>
+        {statuses.map(s => (
+          <div key={s.id} style={{ flexShrink: 0, width: 'calc(85vw)', maxWidth: 320, scrollSnapAlign: 'start', display: 'flex', flexDirection: 'column' }}>
             <KanbanColumn
-              status={c}
-              items={groups[c]}
+              status={s}
+              items={projects.filter(p => p.statusName === s.name)}
               onCardClick={onCardClick}
               onDragStart={() => {}}
               onDragEnd={() => {}}
@@ -242,12 +251,12 @@ export const KanbanBoard = ({ onCardClick, isMobile = false }: KanbanBoardProps)
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, height: '100%' }}>
-      {cols.map(c => (
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${statuses.length || 5}, 1fr)`, gap: 10, height: '100%' }}>
+      {statuses.map(s => (
         <KanbanColumn
-          key={c}
-          status={c}
-          items={groups[c]}
+          key={s.id}
+          status={s}
+          items={projects.filter(p => p.statusName === s.name)}
           onCardClick={onCardClick}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}

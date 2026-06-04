@@ -242,7 +242,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             </div>
           }
         />
-        <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate}/>
+        <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile}/>
         {showMemberInvite && channelId && (
           <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
         )}
@@ -269,7 +269,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                 {isDm ? <Avatar name={channelName} size={20}/> : isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
                 {channelName}
               </h2>
-              {isProject && <StatusChip s="plan"/>}
+              {isProject && <StatusChip name="計画中" color="#3B82F6"/>}
               {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> プライベート</span>}
             </div>
             <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
@@ -283,7 +283,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             <button className="btn"><Icon name="more" size={14}/></button>
           </div>
         </div>
-        <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate}/>
+        <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile}/>
       </main>
 
       <aside style={{ width: 280, background: 'var(--card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
