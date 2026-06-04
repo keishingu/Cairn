@@ -637,6 +637,14 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     setStatusFilter(v)
     localStorage.setItem(STORAGE_KEYS.calendar_status_filter, JSON.stringify(v))
   }
+  const [memberFilter, setMemberFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.calendar_member_filter) ?? '[]') } catch { return [] }
+  })
+  const setMemberFilterPersisted = (v: string[]) => {
+    setMemberFilter(v)
+    localStorage.setItem(STORAGE_KEYS.calendar_member_filter, JSON.stringify(v))
+  }
   const filterBtnRef = React.useRef<HTMLDivElement>(null)
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
@@ -647,11 +655,19 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
   })
 
+  const allMembers = React.useMemo(
+    () => [...new Set(projects.flatMap(p => p.memberNames))].sort(),
+    [projects],
+  )
+
   const filteredProjects = React.useMemo(
-    () => statusFilter.length > 0
-      ? projects.filter(p => p.statusName != null && statusFilter.includes(p.statusName))
-      : projects,
-    [projects, statusFilter],
+    () => {
+      let result = projects
+      if (statusFilter.length > 0) result = result.filter(p => p.statusName != null && statusFilter.includes(p.statusName))
+      if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
+      return result
+    },
+    [projects, statusFilter, memberFilter],
   )
 
   const events = React.useMemo(
@@ -827,20 +843,19 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               <button
                 className="btn"
                 onClick={() => setFilterOpen(o => !o)}
-                style={statusFilter.length > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
+                style={(statusFilter.length + memberFilter.length) > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
               >
                 <Icon name="filter" size={13} /> フィルター
-                {statusFilter.length > 0 && (
+                {(statusFilter.length + memberFilter.length) > 0 && (
                   <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
-                    {statusFilter.length}
+                    {statusFilter.length + memberFilter.length}
                   </span>
                 )}
               </button>
               {filterOpen && (
                 <FilterPopover
-                  allStatuses={allStatuses}
-                  selected={statusFilter}
-                  onChange={setStatusFilterPersisted}
+                  allStatuses={allStatuses} selected={statusFilter} onChange={setStatusFilterPersisted}
+                  allMembers={allMembers} selectedMembers={memberFilter} onChangeMembers={setMemberFilterPersisted}
                   onClose={() => setFilterOpen(false)}
                 />
               )}

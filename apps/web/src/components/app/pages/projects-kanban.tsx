@@ -40,6 +40,14 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
     setStatusFilter(v)
     localStorage.setItem(STORAGE_KEYS.kanban_status_filter, JSON.stringify(v))
   }
+  const [memberFilter, setMemberFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.kanban_member_filter) ?? '[]') } catch { return [] }
+  })
+  const setMemberFilterPersisted = (v: string[]) => {
+    setMemberFilter(v)
+    localStorage.setItem(STORAGE_KEYS.kanban_member_filter, JSON.stringify(v))
+  }
   const [scope, setScope] = React.useState<KanbanScope>(() => {
     if (typeof window === 'undefined') return 'all'
     const saved = localStorage.getItem(STORAGE_KEYS.kanban_scope)
@@ -57,6 +65,15 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
     queryKey: ['statuses'],
     queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
   })
+  const { data: projects = [] } = useQuery<ProjectDto[]>({
+    queryKey: ['projects'],
+    queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
+  })
+
+  const allMembers = React.useMemo(
+    () => [...new Set(projects.flatMap(p => p.memberNames))].sort(),
+    [projects],
+  )
 
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
@@ -65,11 +82,11 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
 
   const projectFilter = React.useCallback(
     (p: ProjectDto) => {
-      if (scope === 'mine') return !!p.isMember
-      if (scope === 'owned') return !!p.isOwner
-      return true
+      const scopeOk = scope === 'mine' ? !!p.isMember : scope === 'owned' ? !!p.isOwner : true
+      const memberOk = memberFilter.length === 0 || memberFilter.some(m => p.memberNames.includes(m))
+      return scopeOk && memberOk
     },
-    [scope],
+    [scope, memberFilter],
   )
 
   if (isMobile) {
@@ -121,20 +138,19 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
               <button
                 className="btn"
                 onClick={() => setFilterOpen(o => !o)}
-                style={statusFilter.length > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
+                style={(statusFilter.length + memberFilter.length) > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
               >
                 <Icon name="filter" size={13} /> フィルター
-                {statusFilter.length > 0 && (
+                {(statusFilter.length + memberFilter.length) > 0 && (
                   <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
-                    {statusFilter.length}
+                    {statusFilter.length + memberFilter.length}
                   </span>
                 )}
               </button>
               {filterOpen && (
                 <FilterPopover
-                  allStatuses={allStatuses}
-                  selected={statusFilter}
-                  onChange={setStatusFilterPersisted}
+                  allStatuses={allStatuses} selected={statusFilter} onChange={setStatusFilterPersisted}
+                  allMembers={allMembers} selectedMembers={memberFilter} onChangeMembers={setMemberFilterPersisted}
                   onClose={() => setFilterOpen(false)}
                 />
               )}
