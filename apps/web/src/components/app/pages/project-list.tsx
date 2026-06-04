@@ -10,6 +10,7 @@ import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/rout
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 // ─── Tag presets ──────────────────────────────────────────────────
 const TAG_PRESETS = [
@@ -585,11 +586,11 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
   const [view, setView] = React.useState<'grid' | 'table'>('grid')
   const [filter, setFilterState] = React.useState<string>(() => {
     if (typeof window === 'undefined') return 'all'
-    return localStorage.getItem('cairn:projects_filter') ?? 'all'
+    return localStorage.getItem(STORAGE_KEYS.projects_filter) ?? 'all'
   })
   const setFilter = (f: string) => {
     setFilterState(f)
-    localStorage.setItem('cairn:projects_filter', f)
+    localStorage.setItem(STORAGE_KEYS.projects_filter, f)
   }
   const [showCreate, setShowCreate] = React.useState(false)
   const [filterOpen, setFilterOpen] = React.useState(false)

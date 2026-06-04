@@ -26,8 +26,9 @@ import { PageMembers } from '@/components/app/pages/members-page'
 import { PageFiles } from '@/components/app/pages/files'
 import { PageGallery } from '@/components/app/pages/gallery'
 import { useProjectPanel } from '@/hooks/use-project-panel'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 
-const MOBILE_STORAGE_KEY = 'cairn:projects_view_mobile'
+const MOBILE_STORAGE_KEY = STORAGE_KEYS.projects_view_mob
 type ProjectsView = 'list' | 'calendar' | 'kanban'
 
 function isValidView(v: string | null | undefined): v is ProjectsView {

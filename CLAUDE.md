@@ -53,6 +53,37 @@ pnpm dev
 ```
 
 
+## localStorage キー命名規則
+
+アプリが管理するすべての localStorage キーは **`cairn:<snake_case>`** 形式に統一する。
+
+- プレフィックス `cairn:` は必須（他ライブラリのキーとの衝突を防ぐ）
+- `:` 以降は `snake_case`（小文字英数字とアンダースコアのみ）
+- キー定数は `apps/web/src/lib/storage-keys.ts` の `STORAGE_KEYS` オブジェクトで一元管理する
+- インラインの文字列リテラルで書かない
+
+```
+// ✅ Good
+STORAGE_KEYS.projects_filter   // → 'cairn:projects_filter'
+
+// ❌ Bad
+'cairn-accent'    // ハイフン区切り
+'cairn_filter'    // コロンなし
+'projects_filter' // プレフィックスなし
+```
+
+**例外**: `next-themes` が設定する `theme` キーはライブラリ管理のため対象外。
+
+### 現在登録済みのキー（`storage-keys.ts` より）
+
+| 定数名 | キー値 | 用途 |
+|---|---|---|
+| `STORAGE_KEYS.accent` | `cairn:accent` | アクセントカラー |
+| `STORAGE_KEYS.projects_view_pc` | `cairn:projects_view_pc` | PC プロジェクトビュー（list/calendar/kanban） |
+| `STORAGE_KEYS.projects_view_mob` | `cairn:projects_view_mobile` | モバイル プロジェクトビュー |
+| `STORAGE_KEYS.projects_filter` | `cairn:projects_filter` | プロジェクト一覧のタブ選択 |
+
+
 ## 決定済みの技術判断
 
 - **tsconfig の extends は相対パス**で書く（`../../packages/config/tsconfig/base.json`）
@@ -60,7 +91,7 @@ pnpm dev
 - **AIモデルは OpenAI**（gpt-4o / gpt-4o-mini）。Claude は使用しない
 - Mobile (Expo) は Phase 2 以降のため、現時点では実装しない
 - **UA ベースのデバイス出し分け**: middleware で `x-device` ヘッダーをセットし、`app/(app)/layout.tsx` で PC シェル / モバイルシェルを切り替える。レスポンシブ CSS は使わない
-- **プロジェクトビューは localStorage で管理**: 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクト済み。ビュー切替（一覧 / カレンダー / カンバン）はURLパラメータを使わず localStorage のみで永続化（PCキー: `cairn:projects_view_pc`、モバイルキー: `cairn:projects_view_mobile`）。`/projects/[id]` はプロジェクト詳細（現在は `/projects?open={id}` にリダイレクト）
+- **プロジェクトビューは localStorage で管理**: 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクト済み。ビュー切替（一覧 / カレンダー / カンバン）はURLパラメータを使わず localStorage のみで永続化（`STORAGE_KEYS.projects_view_pc` / `STORAGE_KEYS.projects_view_mob`）。`/projects/[id]` はプロジェクト詳細（現在は `/projects?open={id}` にリダイレクト）
 - **API 認証は Bearer トークン（Supabase JWT）**: Web クライアントも Expo も同じ Next.js Route Handlers を呼び出し、`Authorization: Bearer <token>` で認証する。`getAuthContext()` は `Authorization` ヘッダを優先し、なければ Cookie にフォールバックする。Hono API 分離は「Next.js からの独立スケール・デプロイ分離が必要」になった時点で改めて検討する
 
 
