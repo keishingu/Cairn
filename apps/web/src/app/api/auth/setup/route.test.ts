@@ -50,6 +50,12 @@ vi.mock('@cairn/db', () => ({
     type: 'ch.type',
     name: 'ch.name',
   },
+  projectStatuses: {
+    workspaceId: 'ps.workspaceId',
+    name: 'ps.name',
+    color: 'ps.color',
+    sortOrder: 'ps.sortOrder',
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({ eq: vi.fn(() => 'eq-result') }))
@@ -168,6 +174,7 @@ describe('POST /api/auth/setup', () => {
       mockDb.insert
         .mockReturnValueOnce(insertChainReturning([{ id: 'new-ws-id-999' }])) // workspaces
         .mockReturnValueOnce(insertChainPlain())                               // channels
+        .mockReturnValueOnce(insertChainPlain())                               // projectStatuses
         .mockReturnValueOnce(insertChainPlain())                               // workspaceMembers
 
       const { POST } = await import('./route')
@@ -184,8 +191,8 @@ describe('POST /api/auth/setup', () => {
       expect(body.ok).toBe(true)
       expect(body.needsWorkspace).toBe(false)
       expect(body.workspaceId).toBe('new-ws-id-999')
-      // insert が3回呼ばれること（workspaces / channels / workspaceMembers）
-      expect(mockDb.insert).toHaveBeenCalledTimes(3)
+      // insert が4回呼ばれること（workspaces / channels / projectStatuses / workspaceMembers）
+      expect(mockDb.insert).toHaveBeenCalledTimes(4)
     })
 
     it('workspaceName あり・プロフィール未作成 → プロフィールも同時に作成する', async () => {
@@ -195,6 +202,7 @@ describe('POST /api/auth/setup', () => {
         .mockReturnValueOnce(insertChainPlain())                               // profiles
         .mockReturnValueOnce(insertChainReturning([{ id: 'ws-new-777' }]))    // workspaces
         .mockReturnValueOnce(insertChainPlain())                               // channels
+        .mockReturnValueOnce(insertChainPlain())                               // projectStatuses
         .mockReturnValueOnce(insertChainPlain())                               // workspaceMembers
 
       const { POST } = await import('./route')
@@ -207,8 +215,8 @@ describe('POST /api/auth/setup', () => {
       )
 
       expect(res.status).toBe(200)
-      // profiles も含めて insert が4回
-      expect(mockDb.insert).toHaveBeenCalledTimes(4)
+      // profiles も含めて insert が5回（profiles / workspaces / channels / projectStatuses / workspaceMembers）
+      expect(mockDb.insert).toHaveBeenCalledTimes(5)
     })
   })
 })
