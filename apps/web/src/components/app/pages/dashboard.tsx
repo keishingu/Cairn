@@ -4,7 +4,7 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { Icon, AvatarStack, StatusChip } from '../primitives'
-import { MEMBERS, STATUS_COL } from '../data'
+import { MEMBERS } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
@@ -24,10 +24,7 @@ function getGreeting(hour: number): string {
 }
 
 function getProgressPct(project: ProjectDto, index: number): number {
-  const statusProgress: Record<string, number> = {
-    plan: 10, review: 30, wait: 50, doing: 70, retro: 90, done: 100,
-  }
-  return statusProgress[project.statusName] ?? (20 + index * 15)
+  return 20 + index * 15
 }
 
 function formatDateRange(start: string | null, end: string | null): string {
@@ -182,14 +179,14 @@ export const PageDashboard = ({ openPanel, isMobile }: PageDashboardProps) => {
                 </div>
               ) : (
                 todayEvents.slice(0, 5).map((p, i) => {
-                  const cfg = STATUS_COL[p.statusName]
+                  const barColor = p.statusColor ?? '#9CA3AF'
                   return (
                     <div
                       key={p.id}
                       onClick={() => openPanel?.(p)}
                       style={{ display: 'flex', gap: 14, padding: '12px 0', borderBottom: i < todayEvents.length - 1 ? '1px solid var(--divider)' : 'none', cursor: openPanel ? 'pointer' : 'default', alignItems: 'center' }}
                     >
-                      <div style={{ width: 3, height: 36, borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
+                      <div style={{ width: 3, height: 36, borderRadius: 2, background: barColor, flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: isMobile ? 13 : 13.5, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{p.title}</div>
                         <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{formatDateRange(p.startDate, p.endDate)}</div>
@@ -273,17 +270,17 @@ export const PageDashboard = ({ openPanel, isMobile }: PageDashboardProps) => {
                     onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COL[p.statusName].bar, flexShrink: 0 }} />
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.statusColor ?? '#9CA3AF', flexShrink: 0 }} />
                       <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{formatDateRange(p.startDate, p.endDate)}</div>
-                    <StatusChip s={p.statusName} />
+                    <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'} />
                     <AvatarStack names={MEMBERS.slice(0, Math.min(p.memberCount, 4))} size={22} />
                     <div style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                       <Icon name="users" size={12} /> {p.memberCount}人
                     </div>
                     <div style={{ width: '100%', height: 6, borderRadius: 3, background: 'var(--divider)', position: 'relative', overflow: 'hidden' }}>
-                      <div style={{ position: 'absolute', inset: 0, right: `${100 - getProgressPct(p, i)}%`, background: STATUS_COL[p.statusName].bar, borderRadius: 3 }} />
+                      <div style={{ position: 'absolute', inset: 0, right: `${100 - getProgressPct(p, i)}%`, background: p.statusColor ?? '#9CA3AF', borderRadius: 3 }} />
                     </div>
                   </div>
                 ))}
@@ -299,7 +296,7 @@ export const PageDashboard = ({ openPanel, isMobile }: PageDashboardProps) => {
             {isMobile && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                 {activeProjects.slice(0, 4).map((p, i) => {
-                  const cfg = STATUS_COL[p.statusName]
+                  const _c = p.statusColor ?? '#9CA3AF'
                   return (
                     <div
                       key={p.id}
@@ -311,13 +308,13 @@ export const PageDashboard = ({ openPanel, isMobile }: PageDashboardProps) => {
                         cursor: openPanel ? 'pointer' : 'default',
                       }}
                     >
-                      <div style={{ width: 40, height: 40, borderRadius: 10, background: cfg.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Icon name="mountain" size={18} color={cfg.bar}/>
+                      <div style={{ width: 40, height: 40, borderRadius: 10, background: _c + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Icon name="mountain" size={18} color={_c}/>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <StatusChip s={p.statusName}/>
+                          <StatusChip name={p.statusName ?? ''} color={_c}/>
                           <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{formatDateRange(p.startDate, p.endDate)}</span>
                         </div>
                       </div>

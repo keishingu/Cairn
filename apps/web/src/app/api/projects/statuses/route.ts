@@ -9,17 +9,16 @@ export interface ProjectStatusDto {
   name: string
   color: string
   sortOrder: string
-  isFinal: boolean
 }
 
 function mockStatuses(): ProjectStatusDto[] {
   return [
-    { id: '20000000-0000-0000-0000-000000000001', name: 'plan',   color: '#3B82F6', sortOrder: '1', isFinal: false },
-    { id: '20000000-0000-0000-0000-000000000002', name: 'review', color: '#F59E0B', sortOrder: '2', isFinal: false },
-    { id: '20000000-0000-0000-0000-000000000003', name: 'wait',   color: '#10B981', sortOrder: '3', isFinal: false },
-    { id: '20000000-0000-0000-0000-000000000004', name: 'doing',  color: '#8B5CF6', sortOrder: '4', isFinal: false },
-    { id: '20000000-0000-0000-0000-000000000005', name: 'retro',  color: '#F43F5E', sortOrder: '5', isFinal: false },
-    { id: '20000000-0000-0000-0000-000000000006', name: 'done',   color: '#6B7280', sortOrder: '6', isFinal: true },
+    { id: '20000000-0000-0000-0000-000000000001', name: '計画中',     color: '#3B82F6', sortOrder: '1' },
+    { id: '20000000-0000-0000-0000-000000000002', name: '審議中',     color: '#F59E0B', sortOrder: '2' },
+    { id: '20000000-0000-0000-0000-000000000003', name: '実施待ち',   color: '#10B981', sortOrder: '3' },
+    { id: '20000000-0000-0000-0000-000000000004', name: '実施中',     color: '#8B5CF6', sortOrder: '4' },
+    { id: '20000000-0000-0000-0000-000000000005', name: '振り返り中', color: '#F43F5E', sortOrder: '5' },
+    { id: '20000000-0000-0000-0000-000000000006', name: '完了',       color: '#6B7280', sortOrder: '6' },
   ]
 }
 
@@ -34,10 +33,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { name, color = '#6B7280', isFinal = false } = body as {
+  const { name, color = '#6B7280' } = body as {
     name?: string
     color?: string
-    isFinal?: boolean
   }
 
   if (!name?.trim()) {
@@ -49,7 +47,7 @@ export async function POST(req: Request) {
     const existing = mockStatuses()
     const sortOrder = String(existing.length + 1)
     return NextResponse.json({
-      id: newId, name: name.trim(), color, sortOrder, isFinal,
+      id: newId, name: name.trim(), color, sortOrder,
     } satisfies ProjectStatusDto, { status: 201 })
   }
 
@@ -73,7 +71,6 @@ export async function POST(req: Request) {
         name: name.trim(),
         color,
         sortOrder: nextOrder,
-        isFinal,
       })
       .returning()
 
@@ -84,7 +81,6 @@ export async function POST(req: Request) {
       name: inserted.name,
       color: inserted.color,
       sortOrder: inserted.sortOrder,
-      isFinal: inserted.isFinal,
     } satisfies ProjectStatusDto, { status: 201 })
   } catch (err) {
     console.error('[POST /api/projects/statuses]', err)
@@ -111,7 +107,6 @@ export async function GET() {
         name: projectStatuses.name,
         color: projectStatuses.color,
         sortOrder: projectStatuses.sortOrder,
-        isFinal: projectStatuses.isFinal,
       })
       .from(projectStatuses)
       .where(eq(projectStatuses.workspaceId, ctx.workspaceId))

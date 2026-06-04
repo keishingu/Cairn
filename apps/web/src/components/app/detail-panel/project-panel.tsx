@@ -4,7 +4,7 @@ import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
 import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
-import { MEMBERS, type StatusKey } from '../data'
+import { MEMBERS } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { ChatTab } from './tabs/chat-tab'
 import { OverviewTab, formatDateRange } from './tabs/overview-tab'
@@ -245,7 +245,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
                 {project.title}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, opacity: 0.95 }}>
-                <StatusChip s={project.statusName as StatusKey}/>
+                <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
                 <span>{formatDateRange(project.startDate, project.endDate)}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                   <Icon name="users" size={11}/> {project.memberCount}人参加
@@ -280,7 +280,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
       {/* PC only: status + avatars + "詳細を開く" */}
       {!isMobile && (
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <StatusChip s={project.statusName}/>
+          <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
           <AvatarStack names={MEMBERS.slice(0, Math.min(project.memberCount, 5))} size={22} max={5}/>
           <button className="btn btn-ghost" style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}>
             <Icon name="arrowRight" size={11}/> 詳細を開く

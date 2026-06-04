@@ -114,6 +114,7 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
       title:              p.title,
       description:        null,
       statusName:         p.statusName,
+      statusColor:        p.statusColor,
       startDate:          p.startDate,
       endDate:            p.endDate,
       memberCount:        p.memberCount,

@@ -7,7 +7,6 @@ export type ProjectStatus = {
   name: string
   color: string
   sortOrder: number
-  isFinal: boolean
 }
 
 export type Project = {

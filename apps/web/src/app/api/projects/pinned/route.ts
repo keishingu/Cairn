@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { PROJECTS, STATUS } from '@/components/app/data'
+import { PROJECTS } from '@/components/app/data'
 import type { ProjectDto } from '../route'
 
 export interface PinnedProjectDto {
@@ -21,7 +21,7 @@ function mockPinnedProjects(): PinnedProjectDto[] {
     projectId: p.id,
     title: p.name,
     statusName: p.status,
-    dot: STATUS[p.status].dot,
+    dot: '#3B82F6',
     sortOrder: i,
   }))
 }

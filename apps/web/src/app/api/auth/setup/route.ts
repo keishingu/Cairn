@@ -82,6 +82,16 @@ export async function POST(req: Request) {
       { workspaceId: ws.id, type: 'workspace' as const, name: '連絡事項' },
     ])
 
+    const { projectStatuses } = await import('@cairn/db')
+    await db.insert(projectStatuses).values([
+      { workspaceId: ws.id, name: '計画中',     color: '#3B82F6', sortOrder: '1' },
+      { workspaceId: ws.id, name: '審議中',     color: '#F59E0B', sortOrder: '2' },
+      { workspaceId: ws.id, name: '実施待ち',   color: '#10B981', sortOrder: '3' },
+      { workspaceId: ws.id, name: '実施中',     color: '#8B5CF6', sortOrder: '4' },
+      { workspaceId: ws.id, name: '振り返り中', color: '#F43F5E', sortOrder: '5' },
+      { workspaceId: ws.id, name: '完了',       color: '#6B7280', sortOrder: '6' },
+    ])
+
     await db.insert(workspaceMembers).values({
       workspaceId: ws.id,
       userId: user.id,

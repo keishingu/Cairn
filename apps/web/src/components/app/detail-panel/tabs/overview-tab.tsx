@@ -6,7 +6,7 @@ import { Icon, StatusChip } from '../../primitives'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
-import type { StatusKey } from '../../data'
+
 
 export function formatDateRange(start: string | null, end: string | null): string {
   if (!start) return '—'
@@ -173,7 +173,7 @@ const InlineDatePair = ({
 const InlineStatus = ({
   statusName, onSave,
 }: {
-  statusName: StatusKey
+  statusName: string | null
   onSave: (name: string) => void
 }) => {
   const [open, setOpen] = React.useState(false)
@@ -204,7 +204,7 @@ const InlineStatus = ({
         }}
         title="クリックして変更"
       >
-        <StatusChip s={statusName}/>
+        <StatusChip name={statusName ?? '—'} color={statuses.find(s => s.name === statusName)?.color ?? '#9CA3AF'}/>
         <Icon name="chevDown" size={11} color="var(--text-4)"/>
       </button>
       {open && (

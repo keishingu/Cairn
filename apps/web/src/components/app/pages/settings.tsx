@@ -295,7 +295,6 @@ const StatusRow = ({
   const [editing, setEditing] = React.useState(false)
   const [name, setName] = React.useState(status.name)
   const [color, setColor] = React.useState(status.color)
-  const [isFinal, setIsFinal] = React.useState(status.isFinal)
   const [confirmDel, setConfirmDel] = React.useState(false)
 
   const saveMutation = useMutation({
@@ -303,7 +302,7 @@ const StatusRow = ({
       const res = await fetchWithAuth(`/api/projects/statuses/${status.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), color, isFinal }),
+        body: JSON.stringify({ name: name.trim(), color }),
       })
       if (!res.ok) throw new Error('更新に失敗しました')
     },
@@ -323,11 +322,6 @@ const StatusRow = ({
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px' }}>
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: status.color, flexShrink: 0 }}/>
         <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{status.name}</span>
-        {status.isFinal && (
-          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-text)', padding: '2px 6px', borderRadius: 4, background: 'var(--accent-soft)', border: '1px solid var(--accent)' }}>
-            最終
-          </span>
-        )}
         <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0 }} onClick={() => setEditing(true)}>
           <Icon name="edit" size={12}/>
         </button>
@@ -359,10 +353,6 @@ const StatusRow = ({
           onChange={e => setName(e.target.value)}
           style={{ flex: 1, height: 32, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--card)', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', outline: 'none' }}
         />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-3)', cursor: 'pointer' }}>
-          <input type="checkbox" checked={isFinal} onChange={e => setIsFinal(e.target.checked)} style={{ accentColor: 'var(--accent)' }}/>
-          最終ステータス
-        </label>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {COLOR_PRESETS.map(c => (

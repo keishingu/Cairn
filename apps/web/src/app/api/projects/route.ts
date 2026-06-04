@@ -3,14 +3,15 @@
 
 import { NextResponse } from 'next/server'
 import { createProjectSchema } from '@cairn/shared'
-import { PROJECTS, MEMBERS, STATUS, type StatusKey } from '@/components/app/data'
+import { PROJECTS, MEMBERS } from '@/components/app/data'
 import { getAuthContext } from '@/lib/get-auth-context'
 
 export interface ProjectDto {
   id: string
   title: string
   description: string | null
-  statusName: StatusKey
+  statusName: string | null
+  statusColor: string | null
   startDate: string | null
   endDate: string | null
   memberCount: number
@@ -24,12 +25,22 @@ export interface ProjectDto {
   coverPhotoUrl: string | null
 }
 
+const STATUS_COLOR_MAP: Record<string, string> = {
+  '計画中':     '#3B82F6',
+  '審議中':     '#F59E0B',
+  '実施待ち':   '#10B981',
+  '実施中':     '#8B5CF6',
+  '振り返り中': '#F43F5E',
+  '完了':       '#6B7280',
+}
+
 function mockProjects(): ProjectDto[] {
   return PROJECTS.map((p, i) => ({
     id: p.id,
     title: p.name,
     description: null,
     statusName: p.status,
+    statusColor: STATUS_COLOR_MAP[p.status] ?? '#6B7280',
     startDate: p.startDate,
     endDate: p.endDate,
     memberCount: p.members,
@@ -70,6 +81,7 @@ export async function GET() {
         title: projects.title,
         description: projects.description,
         statusName: projectStatuses.name,
+        statusColor: projectStatuses.color,
         startDate: projects.startDate,
         endDate: projects.endDate,
         archived: projects.archived,
@@ -121,7 +133,8 @@ export async function GET() {
       id: r.id,
       title: r.title,
       description: r.description,
-      statusName: (r.statusName as StatusKey | null) ?? 'plan',
+      statusName: r.statusName ?? null,
+      statusColor: r.statusColor ?? null,
       startDate: r.startDate,
       endDate: r.endDate,
       archived: r.archived,
@@ -164,7 +177,8 @@ export async function POST(req: Request) {
       id: newId,
       title: parsed.data.title,
       description: parsed.data.description ?? null,
-      statusName: 'plan' as StatusKey,
+      statusName: null,
+      statusColor: null,
       startDate: parsed.data.startDate ?? null,
       endDate: parsed.data.endDate ?? null,
       memberCount: 1,
@@ -181,7 +195,8 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, channels } = await import('@cairn/db')
+    const { projects, channels, projectStatuses } = await import('@cairn/db')
+    const { eq } = await import('drizzle-orm')
 
     const [inserted] = await db
       .insert(projects)
@@ -198,6 +213,18 @@ export async function POST(req: Request) {
       .returning({ id: projects.id, title: projects.title, description: projects.description, startDate: projects.startDate, endDate: projects.endDate, coverPhotoUrl: projects.coverPhotoUrl })
 
     if (!inserted) throw new Error('Insert returned no rows')
+
+    let statusName: string | null = null
+    let statusColor: string | null = null
+    if (parsed.data.statusId) {
+      const [st] = await db
+        .select({ name: projectStatuses.name, color: projectStatuses.color })
+        .from(projectStatuses)
+        .where(eq(projectStatuses.id, parsed.data.statusId))
+        .limit(1)
+      statusName = st?.name ?? null
+      statusColor = st?.color ?? null
+    }
 
     await db.insert(channels).values({
       workspaceId: ctx.workspaceId,
@@ -219,7 +246,8 @@ export async function POST(req: Request) {
       id: inserted.id,
       title: inserted.title,
       description: inserted.description,
-      statusName: 'plan' as StatusKey,
+      statusName,
+      statusColor,
       startDate: inserted.startDate,
       endDate: inserted.endDate,
       memberCount: 1,

@@ -96,7 +96,6 @@ export const projectStatuses = pgTable(
     name: text('name').notNull(),
     color: text('color').notNull().default('#3B82F6'),
     sortOrder: text('sort_order').notNull(),
-    isFinal: boolean('is_final').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.workspaceId, t.name)],
