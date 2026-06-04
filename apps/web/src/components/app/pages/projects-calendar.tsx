@@ -6,6 +6,7 @@ import { Icon, StatusChip } from '../primitives'
 import { PageToolbar, SegmentedControl } from './page-toolbar'
 import { CreateProjectModal, FilterPopover } from './project-list'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '@/components/app/mobile/header'
@@ -628,7 +629,14 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const [calView, setCalView] = React.useState<CalView>('month')
   const [showCreate, setShowCreate] = React.useState(false)
   const [filterOpen, setFilterOpen] = React.useState(false)
-  const [statusFilter, setStatusFilter] = React.useState<string[]>([])
+  const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.calendar_status_filter) ?? '[]') } catch { return [] }
+  })
+  const setStatusFilterPersisted = (v: string[]) => {
+    setStatusFilter(v)
+    localStorage.setItem(STORAGE_KEYS.calendar_status_filter, JSON.stringify(v))
+  }
   const filterBtnRef = React.useRef<HTMLDivElement>(null)
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
@@ -832,7 +840,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
                 <FilterPopover
                   allStatuses={allStatuses}
                   selected={statusFilter}
-                  onChange={setStatusFilter}
+                  onChange={setStatusFilterPersisted}
                   onClose={() => setFilterOpen(false)}
                 />
               )}

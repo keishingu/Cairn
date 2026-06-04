@@ -15,8 +15,9 @@ import { PageNotifications } from '@/components/app/pages/notifications'
 import { AppShellContext } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { useProjectPanel } from '@/hooks/use-project-panel'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 
-const PC_STORAGE_KEY = 'cairn:projects_view_pc'
+const PC_STORAGE_KEY = STORAGE_KEYS.projects_view_pc
 type ProjectsView = 'list' | 'calendar' | 'kanban'
 
 function isValidView(v: string | null | undefined): v is ProjectsView {

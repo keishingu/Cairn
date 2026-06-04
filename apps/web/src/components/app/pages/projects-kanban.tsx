@@ -8,6 +8,7 @@ import { MobileHeader } from '@/components/app/mobile/header'
 import { PageToolbar } from './page-toolbar'
 import { CreateProjectModal, FilterPopover } from './project-list'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
@@ -31,8 +32,23 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
   const [showCreate, setShowCreate] = React.useState(false)
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [scopeOpen, setScopeOpen] = React.useState(false)
-  const [statusFilter, setStatusFilter] = React.useState<string[]>([])
-  const [scope, setScope] = React.useState<KanbanScope>('all')
+  const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.kanban_status_filter) ?? '[]') } catch { return [] }
+  })
+  const setStatusFilterPersisted = (v: string[]) => {
+    setStatusFilter(v)
+    localStorage.setItem(STORAGE_KEYS.kanban_status_filter, JSON.stringify(v))
+  }
+  const [scope, setScope] = React.useState<KanbanScope>(() => {
+    if (typeof window === 'undefined') return 'all'
+    const saved = localStorage.getItem(STORAGE_KEYS.kanban_scope)
+    return (saved === 'mine' || saved === 'owned') ? saved : 'all'
+  })
+  const setScopePersisted = (v: KanbanScope) => {
+    setScope(v)
+    localStorage.setItem(STORAGE_KEYS.kanban_scope, v)
+  }
 
   const filterBtnRef = React.useRef<HTMLDivElement>(null)
   const scopeBtnRef = React.useRef<HTMLDivElement>(null)
@@ -92,7 +108,7 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
                 <ScopePopover
                   containerRef={scopeBtnRef}
                   current={scope}
-                  onSelect={(s) => { setScope(s); setScopeOpen(false) }}
+                  onSelect={(s) => { setScopePersisted(s); setScopeOpen(false) }}
                   onClose={() => setScopeOpen(false)}
                 />
               )}
@@ -118,7 +134,7 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
                 <FilterPopover
                   allStatuses={allStatuses}
                   selected={statusFilter}
-                  onChange={setStatusFilter}
+                  onChange={setStatusFilterPersisted}
                   onClose={() => setFilterOpen(false)}
                 />
               )}

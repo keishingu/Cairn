@@ -199,4 +199,4 @@ export const ACCENT_PRESETS: AccentPreset[] = [
 ]
 
 export const DEFAULT_ACCENT_ID = 'emerald'
-export const ACCENT_STORAGE_KEY = 'cairn-accent'
+export const ACCENT_STORAGE_KEY = 'cairn:accent'
