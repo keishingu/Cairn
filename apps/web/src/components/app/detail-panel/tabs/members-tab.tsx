@@ -302,6 +302,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
         ['project-members', projectId],
         old => [...(old ?? []), newMember],
       )
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
       setShowInvite(false)
       setSelectedUserId('')
       setSelectedRole('member')
