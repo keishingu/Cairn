@@ -2,7 +2,6 @@
 
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
 import { Icon } from '../primitives'
 import { KanbanBoard } from '../kanban'
 import { MobileHeader } from '@/components/app/mobile/header'
@@ -28,7 +27,6 @@ interface PageKanbanProps {
 
 export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => {
   const queryClient = useQueryClient()
-  const router = useRouter()
   const projectLabel = useProjectLabel()
   const [showCreate, setShowCreate] = React.useState(false)
   const [filterOpen, setFilterOpen] = React.useState(false)
@@ -125,10 +123,7 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
                 />
               )}
             </div>
-            <button className="btn" onClick={() => router.push('/settings?section=workflow')}>
-              <Icon name="settings" size={13} /> ステージ設定
-            </button>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+<button className="btn btn-primary" onClick={() => setShowCreate(true)}>
               <Icon name="plus" size={13} /> 新規{projectLabel}
             </button>
           </>
