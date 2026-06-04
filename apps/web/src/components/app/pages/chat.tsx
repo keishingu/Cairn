@@ -35,9 +35,9 @@ const ChatSidebarSection = ({ title, children, onAdd }: { title: string; childre
   </div>
 )
 
-const ChatSidebarItem = ({ active, onClick, prefix, avatar, dot, label, badge, mobile, memberNames, memberCount }: {
+const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, dot, label, badge, mobile, memberNames, memberCount }: {
   active?: boolean; onClick?: () => void; prefix?: string
-  avatar?: string; dot?: string; label: string; badge?: number; mobile?: boolean
+  avatar?: string; avatarUrl?: string; dot?: string; label: string; badge?: number; mobile?: boolean
   memberNames?: string[]; memberCount?: number
 }) => (
   <button onClick={onClick} style={{
@@ -68,7 +68,7 @@ const ChatSidebarItem = ({ active, onClick, prefix, avatar, dot, label, badge, m
     ) : null}
     {avatar && (
       <div style={{ position: 'relative' }}>
-        <Avatar name={avatar} size={mobile ? 36 : 18}/>
+        <Avatar name={avatar} url={avatarUrl ?? null} size={mobile ? 36 : 18}/>
         {dot && <span style={{ position: 'absolute', bottom: -1, right: -1, width: mobile ? 10 : 6, height: mobile ? 10 : 6, borderRadius: '50%', background: dot, border: `2px solid var(--${mobile ? 'bg' : 'card-2'})` }}/>}
       </div>
     )}
@@ -144,16 +144,24 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const { data: currentUser } = useCurrentUser()
   const { data: channelMemberIds = [] } = useChannelMembers(isProject || isPrivate ? channelId : null)
 
-  const memberNames = React.useMemo(() => {
+  const channelMembers = React.useMemo<{ name: string; url: string | null }[]>(() => {
     if (isDm) {
-      return [currentDm.participantName, ...(currentUser ? [currentUser.displayName] : [])]
+      return [
+        { name: currentDm.participantName, url: currentDm.participantAvatarUrl ?? null },
+        ...(currentUser ? [{ name: currentUser.displayName, url: currentUser.avatarUrl ?? null }] : []),
+      ]
     }
     if (isProject || isPrivate) {
       const idSet = new Set(channelMemberIds.map(m => m.userId))
-      return members.filter(m => idSet.has(m.userId)).map(m => m.displayName)
+      return members.filter(m => idSet.has(m.userId)).map(m => ({ name: m.displayName, url: m.avatarUrl ?? null }))
     }
-    return currentGeneral?.memberNames ?? []
+    const names = currentGeneral?.memberNames ?? []
+    const urls = currentGeneral?.memberAvatarUrls ?? []
+    return names.map((name, i) => ({ name, url: urls[i] ?? null }))
   }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral])
+
+  const memberNames = channelMembers.map(m => m.name)
+  const memberAvatarUrls = channelMembers.map(m => m.url)
 
   // ─── DM メンバーピッカー ────────────────────────────────────────
   const dmPicker = (
@@ -168,7 +176,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
-              <Avatar name={m.displayName} size={20}/>
+              <Avatar name={m.displayName} url={m.avatarUrl ?? null} size={20}/>
               <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{m.displayName}</span>
             </button>
           ))}
@@ -197,7 +205,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         </div>
         <div>
           {dms.map(d => (
-            <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => selectChannel(d.id)} avatar={d.participantName} label={d.participantName} badge={d.unreadCount} mobile={isMobile}/>
+            <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => selectChannel(d.id)} avatar={d.participantName} {...(d.participantAvatarUrl ? { avatarUrl: d.participantAvatarUrl } : {})} label={d.participantName} badge={d.unreadCount} mobile={isMobile}/>
           ))}
         </div>
       </div>
@@ -266,7 +274,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                {isDm ? <Avatar name={channelName} size={20}/> : isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
+                {isDm ? <Avatar name={channelName} url={currentDm?.participantAvatarUrl ?? null} size={20}/> : isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
                 {channelName}
               </h2>
               {isProject && <StatusChip name="計画中" color="#3B82F6"/>}
@@ -277,7 +285,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             </div>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <AvatarStack names={memberNames} size={26} max={5}/>
+            <AvatarStack names={memberNames} urls={memberAvatarUrls} size={26} max={5}/>
             <button className="btn"><Icon name="search" size={13}/></button>
             <button className="btn"><Icon name="bell" size={13}/></button>
             <button className="btn"><Icon name="more" size={14}/></button>
@@ -333,13 +341,13 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         </div>
         <div style={{ padding: '12px 16px' }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>メンバー</div>
-          {memberNames.slice(0, 6).map((name, i) => (
-            <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
+          {channelMembers.slice(0, 6).map((m, i) => (
+            <div key={m.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
               <div style={{ position: 'relative' }}>
-                <Avatar name={name} size={24}/>
+                <Avatar name={m.name} url={m.url} size={24}/>
                 <span style={{ position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%', background: i < 3 ? 'var(--accent)' : 'var(--text-4)', border: '2px solid var(--card)' }}/>
               </div>
-              <span style={{ fontSize: 12.5, color: 'var(--text-2)', flex: 1 }}>{name}</span>
+              <span style={{ fontSize: 12.5, color: 'var(--text-2)', flex: 1 }}>{m.name}</span>
             </div>
           ))}
         </div>
