@@ -66,6 +66,7 @@ const STUB_PROJECT: ProjectDto = {
   endDate: '2026-03-31',
   memberCount: 2,
   memberNames: ['田中', '山田'],
+  memberAvatarUrls: [null, null],
   taskCount: 5,
   completedTaskCount: 2,
   isOwner: true,

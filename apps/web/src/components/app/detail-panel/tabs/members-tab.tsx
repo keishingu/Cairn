@@ -42,7 +42,7 @@ const MemberRow = ({ member, onRemove, removing, onMemberClick }: MemberRowProps
       padding: '8px 4px', borderBottom: '1px solid var(--divider)',
       opacity: removing ? 0.4 : 1, transition: 'opacity 0.15s',
     }}>
-      <Avatar name={member.displayName} size={28}/>
+      <Avatar name={member.displayName} url={member.avatarUrl} size={28}/>
       <button
         onClick={() => onMemberClick?.(member.userId, member.displayName)}
         disabled={!onMemberClick}

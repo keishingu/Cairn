@@ -26,6 +26,7 @@ const STUB_PROJECT: ProjectDto = {
   endDate: null,
   memberCount: 1,
   memberNames: [],
+  memberAvatarUrls: [],
   taskCount: 0,
   completedTaskCount: 0,
   isOwner: true,

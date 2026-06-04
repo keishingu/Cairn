@@ -16,6 +16,7 @@ export interface ProjectDto {
   endDate: string | null
   memberCount: number
   memberNames: string[]
+  memberAvatarUrls: (string | null)[]
   taskCount: number
   completedTaskCount: number
   isOwner: boolean
@@ -45,6 +46,7 @@ function mockProjects(): ProjectDto[] {
     endDate: p.endDate,
     memberCount: p.members,
     memberNames: MEMBERS.slice(0, Math.min(p.members, 4)),
+    memberAvatarUrls: MEMBERS.slice(0, Math.min(p.members, 4)).map(() => null),
     taskCount: 5 + (i * 3) % 8,
     completedTaskCount: 1 + (i * 2) % 5,
     isOwner: i % 3 === 0,
@@ -71,7 +73,7 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers, tasks, profiles } = await import('@cairn/db')
+    const { projects, projectStatuses, projectMembers, tasks, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, count, and } = await import('drizzle-orm')
     const { sql } = await import('drizzle-orm')
 
@@ -102,15 +104,23 @@ export async function GET() {
       .select({
         projectId: projectMembers.projectId,
         displayName: profiles.displayName,
+        avatarUrl: sql<string | null>`coalesce(${workspaceMembers.avatarUrl}, ${profiles.avatarUrl})`,
       })
       .from(projectMembers)
       .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .orderBy(projectMembers.createdAt)
     const memberNamesMap = new Map<string, string[]>()
+    const memberAvatarUrlsMap = new Map<string, (string | null)[]>()
     for (const row of memberRows) {
       const names = memberNamesMap.get(row.projectId) ?? []
-      if (names.length < 4) names.push(row.displayName)
+      const avatarUrls = memberAvatarUrlsMap.get(row.projectId) ?? []
+      if (names.length < 4) {
+        names.push(row.displayName)
+        avatarUrls.push(row.avatarUrl ?? null)
+      }
       memberNamesMap.set(row.projectId, names)
+      memberAvatarUrlsMap.set(row.projectId, avatarUrls)
     }
 
     const userMemberRows = await db
@@ -140,6 +150,7 @@ export async function GET() {
       archived: r.archived,
       memberCount: countMap.get(r.id) ?? 0,
       memberNames: memberNamesMap.get(r.id) ?? [],
+      memberAvatarUrls: memberAvatarUrlsMap.get(r.id) ?? [],
       taskCount: taskMap.get(r.id)?.total ?? 0,
       completedTaskCount: taskMap.get(r.id)?.completed ?? 0,
       isOwner: r.createdBy === ctx.userId,
@@ -183,6 +194,7 @@ export async function POST(req: Request) {
       endDate: parsed.data.endDate ?? null,
       memberCount: 1,
       memberNames: [],
+      memberAvatarUrls: [],
       taskCount: 0,
       completedTaskCount: 0,
       isOwner: true,
@@ -252,6 +264,7 @@ export async function POST(req: Request) {
       endDate: inserted.endDate,
       memberCount: 1,
       memberNames: [],
+      memberAvatarUrls: [],
       taskCount: 0,
       completedTaskCount: 0,
       isOwner: true,

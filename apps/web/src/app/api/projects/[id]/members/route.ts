@@ -7,6 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 export interface ProjectMemberDto {
   userId: string
   displayName: string
+  avatarUrl: string | null
   role: 'leader' | 'subleader' | 'member' | 'reviewer' | 'observer'
   attendance: 'attending' | 'tentative' | 'declined'
   addedAt: string
@@ -20,13 +21,13 @@ const MOCK_WS_NAMES: Record<string, string> = {
 
 function mockProjectMembers(): ProjectMemberDto[] {
   return [
-    { userId: 'm1', displayName: '山田 太郎', role: 'leader',    attendance: 'attending', addedAt: '2026-01-01' },
-    { userId: 'm2', displayName: '佐藤 花子', role: 'subleader', attendance: 'attending', addedAt: '2026-01-05' },
-    { userId: 'm3', displayName: '鈴木 健',   role: 'member',    attendance: 'attending', addedAt: '2026-01-10' },
-    { userId: 'm4', displayName: '田中 陽子', role: 'member',    attendance: 'attending', addedAt: '2026-01-12' },
-    { userId: 'm5', displayName: '伊藤 翔',   role: 'member',    attendance: 'attending', addedAt: '2026-02-01' },
-    { userId: 'm6', displayName: '高橋 美咲', role: 'member',    attendance: 'attending', addedAt: '2026-02-14' },
-    { userId: 'm8', displayName: '小林 大地', role: 'member',    attendance: 'tentative', addedAt: '2026-04-20' },
+    { userId: 'm1', displayName: '山田 太郎', avatarUrl: null, role: 'leader',    attendance: 'attending', addedAt: '2026-01-01' },
+    { userId: 'm2', displayName: '佐藤 花子', avatarUrl: null, role: 'subleader', attendance: 'attending', addedAt: '2026-01-05' },
+    { userId: 'm3', displayName: '鈴木 健',   avatarUrl: null, role: 'member',    attendance: 'attending', addedAt: '2026-01-10' },
+    { userId: 'm4', displayName: '田中 陽子', avatarUrl: null, role: 'member',    attendance: 'attending', addedAt: '2026-01-12' },
+    { userId: 'm5', displayName: '伊藤 翔',   avatarUrl: null, role: 'member',    attendance: 'attending', addedAt: '2026-02-01' },
+    { userId: 'm6', displayName: '高橋 美咲', avatarUrl: null, role: 'member',    attendance: 'attending', addedAt: '2026-02-14' },
+    { userId: 'm8', displayName: '小林 大地', avatarUrl: null, role: 'member',    attendance: 'tentative', addedAt: '2026-04-20' },
   ]
 }
 
@@ -45,8 +46,8 @@ export async function GET(
 
   try {
     const { db } = await import('@cairn/db')
-    const { profiles, projectMembers, projects } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
+    const { eq, and, sql } = await import('drizzle-orm')
 
     const [project] = await db
       .select({ id: projects.id })
@@ -61,12 +62,14 @@ export async function GET(
       .select({
         userId: profiles.id,
         displayName: profiles.displayName,
+        avatarUrl: sql<string | null>`coalesce(${workspaceMembers.avatarUrl}, ${profiles.avatarUrl})`,
         role: projectMembers.role,
         attendance: projectMembers.attendance,
         addedAt: projectMembers.createdAt,
       })
       .from(projectMembers)
       .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(eq(projectMembers.projectId, projectId))
       .orderBy(profiles.displayName)
 
@@ -74,6 +77,7 @@ export async function GET(
       rows.map(r => ({
         userId: r.userId,
         displayName: r.displayName,
+        avatarUrl: r.avatarUrl ?? null,
         role: r.role,
         attendance: r.attendance,
         addedAt: r.addedAt.toISOString().slice(0, 10),
@@ -116,6 +120,7 @@ export async function POST(
     return NextResponse.json({
       userId,
       displayName: MOCK_WS_NAMES[userId] ?? '不明',
+      avatarUrl: null,
       role: (role as ProjectMemberDto['role']),
       attendance: 'attending' as const,
       addedAt: new Date().toISOString().slice(0, 10),
@@ -125,7 +130,7 @@ export async function POST(
   try {
     const { db } = await import('@cairn/db')
     const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, sql } = await import('drizzle-orm')
 
     const [project] = await db
       .select({ id: projects.id })
@@ -166,13 +171,18 @@ export async function POST(
     }
 
     const [profile] = await db
-      .select({ displayName: profiles.displayName })
+      .select({
+        displayName: profiles.displayName,
+        avatarUrl: sql<string | null>`coalesce(${workspaceMembers.avatarUrl}, ${profiles.avatarUrl})`,
+      })
       .from(profiles)
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(eq(profiles.id, userId))
 
     return NextResponse.json({
       userId: inserted.userId,
       displayName: profile?.displayName ?? '',
+      avatarUrl: profile?.avatarUrl ?? null,
       role: inserted.role,
       attendance: inserted.attendance,
       addedAt: inserted.addedAt.toISOString().slice(0, 10),

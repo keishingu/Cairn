@@ -83,7 +83,7 @@ const FileRow = ({ file, isMobile, onDelete }: { file: FileDto; isMobile: boolea
           </div>
         </div>
       </a>
-      <Avatar name={file.uploaderName} size={22} />
+      <Avatar name={file.uploaderName} url={file.uploaderAvatarUrl} size={22} />
       <button
         onClick={() => onDelete(file.id, file.fileName)}
         style={{
