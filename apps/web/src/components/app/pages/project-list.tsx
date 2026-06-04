@@ -255,6 +255,7 @@ const TagPicker = ({ value, onChange, available = TAG_PRESETS }: TagPickerProps)
 
 // ─── Filter popover ───────────────────────────────────────────────
 interface FilterPopoverProps {
+  containerRef: React.RefObject<HTMLDivElement | null>
   allStatuses: ProjectStatusDto[]
   selected: string[]
   onChange: (statuses: string[]) => void
@@ -264,8 +265,13 @@ interface FilterPopoverProps {
   onClose: () => void
 }
 
+const checkRowStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8,
+  padding: '6px 8px', borderRadius: 6, cursor: 'pointer',
+}
+
 export const FilterPopover = ({
-  allStatuses, selected, onChange,
+  containerRef, allStatuses, selected, onChange,
   allMembers = [], selectedMembers = [], onChangeMembers,
   onClose,
 }: FilterPopoverProps) => {
@@ -273,11 +279,14 @@ export const FilterPopover = ({
 
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      if (
+        ref.current && !ref.current.contains(e.target as Node) &&
+        containerRef.current && !containerRef.current.contains(e.target as Node)
+      ) onClose()
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [onClose])
+  }, [containerRef, onClose])
 
   const toggleStatus = (name: string) =>
     onChange(selected.includes(name) ? selected.filter(x => x !== name) : [...selected, name])
@@ -293,30 +302,53 @@ export const FilterPopover = ({
       width: 240, background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 200, padding: 12,
     }}>
-      <SectionLabel>ステータス</SectionLabel>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+        ステータス
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {allStatuses.map(s => (
-          <FilterCheckRow
-            key={s.id}
-            checked={selected.includes(s.name)}
-            onChange={() => toggleStatus(s.name)}
-            left={<span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }}/>}
-            label={s.name}
-            accentColor={s.color}
-          />
-        ))}
+        {allStatuses.map(s => {
+          const isChecked = selected.includes(s.name)
+          return (
+            <label
+              key={s.id}
+              style={checkRowStyle}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <input
+                type="checkbox"
+                checked={isChecked}
+                onChange={() => toggleStatus(s.name)}
+                style={{ width: 14, height: 14, accentColor: s.color, cursor: 'pointer' }}
+              />
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{s.name}</span>
+            </label>
+          )
+        })}
       </div>
 
       {allMembers.length > 0 && (
         <>
-          <SectionLabel style={{ marginTop: 12 }}>参加者</SectionLabel>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8, marginTop: 12 }}>
+            参加者
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {allMembers.map(name => (
-              <FilterCheckRow
-                key={name}
-                checked={selectedMembers.includes(name)}
-                onChange={() => toggleMember(name)}
-                left={
+            {allMembers.map(name => {
+              const isChecked = selectedMembers.includes(name)
+              return (
+                <label
+                  key={name}
+                  style={checkRowStyle}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleMember(name)}
+                    style={{ width: 14, height: 14, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                  />
                   <span style={{
                     width: 20, height: 20, borderRadius: '50%',
                     background: 'var(--accent-soft)', color: 'var(--accent)',
@@ -325,10 +357,10 @@ export const FilterPopover = ({
                   }}>
                     {name.charAt(0)}
                   </span>
-                }
-                label={name}
-              />
-            ))}
+                  <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{name}</span>
+                </label>
+              )
+            })}
           </div>
         </>
       )}
@@ -346,33 +378,6 @@ export const FilterPopover = ({
     </div>
   )
 }
-
-const SectionLabel = ({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) => (
-  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8, ...style }}>
-    {children}
-  </div>
-)
-
-interface FilterCheckRowProps {
-  checked: boolean
-  onChange: () => void
-  left: React.ReactNode
-  label: string
-  accentColor?: string
-}
-
-const FilterCheckRow = ({ checked, onChange, left, label, accentColor }: FilterCheckRowProps) => (
-  <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer' }}
-    onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-  >
-    <input type="checkbox" checked={checked} onChange={onChange}
-      style={{ width: 14, height: 14, accentColor: accentColor ?? 'var(--accent)', cursor: 'pointer' }}
-    />
-    {left}
-    <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{label}</span>
-  </label>
-)
 
 // ─── Main component ───────────────────────────────────────────────
 interface ProjectListViewProps {
@@ -800,6 +805,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
               </button>
               {filterOpen && (
                 <FilterPopover
+                  containerRef={filterBtnRef}
                   allStatuses={allStatuses} selected={statusFilter} onChange={setStatusFilterPersisted}
                   allMembers={allMembers} selectedMembers={memberFilter} onChangeMembers={setMemberFilterPersisted}
                   onClose={() => setFilterOpen(false)}

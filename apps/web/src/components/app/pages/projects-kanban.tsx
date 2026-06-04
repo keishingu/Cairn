@@ -149,6 +149,7 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
               </button>
               {filterOpen && (
                 <FilterPopover
+                  containerRef={filterBtnRef}
                   allStatuses={allStatuses} selected={statusFilter} onChange={setStatusFilterPersisted}
                   allMembers={allMembers} selectedMembers={memberFilter} onChangeMembers={setMemberFilterPersisted}
                   onClose={() => setFilterOpen(false)}
