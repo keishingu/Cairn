@@ -1,8 +1,12 @@
 'use client'
 
 import React from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, StatusChip } from '../primitives'
+import { PageToolbar, SegmentedControl } from './page-toolbar'
+import { CreateProjectModal, FilterPopover } from './project-list'
+import { useProjectLabel } from '@/lib/use-workspace-settings'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '@/components/app/mobile/header'
@@ -617,10 +621,31 @@ const CAL_VIEWS: CalView[] = ['month', 'week', 'timeline']
 
 export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps) => {
   const today = new Date()
+  const queryClient = useQueryClient()
+  const projectLabel = useProjectLabel()
   const [year, setYear] = React.useState(today.getFullYear())
   const [month, setMonth] = React.useState(today.getMonth())
   const [selectedDate, setSelectedDate] = React.useState<Date>(today)
   const [calView, setCalView] = React.useState<CalView>('month')
+  const [showCreate, setShowCreate] = React.useState(false)
+  const [filterOpen, setFilterOpen] = React.useState(false)
+  const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.calendar_status_filter) ?? '[]') } catch { return [] }
+  })
+  const setStatusFilterPersisted = (v: string[]) => {
+    setStatusFilter(v)
+    localStorage.setItem(STORAGE_KEYS.calendar_status_filter, JSON.stringify(v))
+  }
+  const [memberFilter, setMemberFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.calendar_member_filter) ?? '[]') } catch { return [] }
+  })
+  const setMemberFilterPersisted = (v: string[]) => {
+    setMemberFilter(v)
+    localStorage.setItem(STORAGE_KEYS.calendar_member_filter, JSON.stringify(v))
+  }
+  const filterBtnRef = React.useRef<HTMLDivElement>(null)
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
@@ -630,9 +655,24 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
   })
 
+  const allMembers = React.useMemo(
+    () => [...new Set(projects.flatMap(p => p.memberNames))].sort(),
+    [projects],
+  )
+
+  const filteredProjects = React.useMemo(
+    () => {
+      let result = projects
+      if (statusFilter.length > 0) result = result.filter(p => p.statusName != null && statusFilter.includes(p.statusName))
+      if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
+      return result
+    },
+    [projects, statusFilter, memberFilter],
+  )
+
   const events = React.useMemo(
-    () => buildEvents(projects, year, month),
-    [projects, year, month],
+    () => buildEvents(filteredProjects, year, month),
+    [filteredProjects, year, month],
   )
 
   const weekStart = getWeekStart(selectedDate)
@@ -724,7 +764,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <MobileCalendarGrid
             year={year}
             month={month}
-            projects={projects}
+            projects={filteredProjects}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             onProjectClick={openPanel}
@@ -734,13 +774,13 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <>
             <MobileWeekStrip
               weekStart={weekStart}
-              projects={projects}
+              projects={filteredProjects}
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
             />
             <MobileDayEvents
               date={selectedDate}
-              projects={projects}
+              projects={filteredProjects}
               onProjectClick={openPanel}
               isLoading={isLoading}
             />
@@ -750,7 +790,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <MobileTimelineView
             year={year}
             month={month}
-            projects={projects}
+            projects={filteredProjects}
             onProjectClick={openPanel}
             isLoading={isLoading}
           />
@@ -762,48 +802,80 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   // ── PC layout ──────────────────────────────────────────────────
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px 24px', overflow: 'hidden' }}>
+      {showCreate && (
+        <CreateProjectModal
+          onClose={() => setShowCreate(false)}
+          onCreated={(p) => {
+            queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), p])
+            setShowCreate(false)
+          }}
+        />
+      )}
       {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            className="btn"
-            style={{ height: 32, opacity: isCurrentPeriod ? 0.5 : 1 }}
-            onClick={goToday}
-            disabled={isCurrentPeriod}
-          >
-            今日
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goPrev}>
-              <Icon name="chevLeft" size={15} />
+      <PageToolbar
+        style={{ marginBottom: 14 }}
+        left={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              className="btn"
+              style={{ opacity: isCurrentPeriod ? 0.5 : 1 }}
+              onClick={goToday}
+              disabled={isCurrentPeriod}
+            >
+              今日
             </button>
-            <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goNext}>
-              <Icon name="chevRight" size={15} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goPrev}>
+                <Icon name="chevLeft" size={15} />
+              </button>
+              <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goNext}>
+                <Icon name="chevRight" size={15} />
+              </button>
+            </div>
+            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', padding: '0 4px', whiteSpace: 'nowrap' }}>
+              {periodLabel}
+            </span>
+          </div>
+        }
+        right={
+          <>
+            <SegmentedControl
+              options={[
+                { id: 'month',    label: '月' },
+                { id: 'week',     label: '週' },
+                { id: 'timeline', label: 'リスト' },
+              ]}
+              value={calView}
+              onChange={(v) => setCalView(v as CalView)}
+            />
+            <div ref={filterBtnRef} style={{ position: 'relative' }}>
+              <button
+                className="btn"
+                onClick={() => setFilterOpen(o => !o)}
+                style={(statusFilter.length + memberFilter.length) > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
+              >
+                <Icon name="filter" size={13} /> フィルター
+                {(statusFilter.length + memberFilter.length) > 0 && (
+                  <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
+                    {statusFilter.length + memberFilter.length}
+                  </span>
+                )}
+              </button>
+              {filterOpen && (
+                <FilterPopover
+                  containerRef={filterBtnRef}
+                  allStatuses={allStatuses} selected={statusFilter} onChange={setStatusFilterPersisted}
+                  allMembers={allMembers} selectedMembers={memberFilter} onChangeMembers={setMemberFilterPersisted}
+                  onClose={() => setFilterOpen(false)}
+                />
+              )}
+            </div>
+            <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setShowCreate(true)}>
+              <Icon name="plus" size={13} strokeWidth={2.4} /> 新規{projectLabel}
             </button>
-          </div>
-          <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', padding: '0 4px' }}>
-            {formatYM(year, month)}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button className="btn"><Icon name="filter" size={13} /> フィルター</button>
-          <div style={{ display: 'flex', background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: 2, gap: 0 }}>
-            {['月', '週', 'リスト'].map((v, i) => (
-              <button key={v} style={{
-                padding: '5px 14px', borderRadius: 6, border: 'none',
-                background: i === 0 ? 'var(--card)' : 'transparent',
-                color: i === 0 ? 'var(--text)' : 'var(--text-3)',
-                fontSize: 12.5, fontWeight: i === 0 ? 600 : 500,
-                cursor: 'pointer', fontFamily: 'inherit',
-                boxShadow: i === 0 ? 'var(--shadow-sm)' : 'none',
-              }}>{v}</button>
-            ))}
-          </div>
-          <button className="btn btn-primary" style={{ height: 32, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Icon name="plus" size={13} strokeWidth={2.4} /> 予定を追加
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Calendar grid */}
       <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>

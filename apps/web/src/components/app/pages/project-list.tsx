@@ -10,6 +10,8 @@ import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/rout
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { PageToolbar, SegmentedControl } from './page-toolbar'
+import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 // ─── Tag presets ──────────────────────────────────────────────────
@@ -253,26 +255,46 @@ const TagPicker = ({ value, onChange, available = TAG_PRESETS }: TagPickerProps)
 
 // ─── Filter popover ───────────────────────────────────────────────
 interface FilterPopoverProps {
+  containerRef: React.RefObject<HTMLDivElement | null>
   allStatuses: ProjectStatusDto[]
   selected: string[]
   onChange: (statuses: string[]) => void
+  allMembers?: string[]
+  selectedMembers?: string[]
+  onChangeMembers?: (members: string[]) => void
   onClose: () => void
 }
 
-const FilterPopover = ({ allStatuses, selected, onChange, onClose }: FilterPopoverProps) => {
+const checkRowStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8,
+  padding: '6px 8px', borderRadius: 6, cursor: 'pointer',
+}
+
+export const FilterPopover = ({
+  containerRef, allStatuses, selected, onChange,
+  allMembers = [], selectedMembers = [], onChangeMembers,
+  onClose,
+}: FilterPopoverProps) => {
   const ref = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      if (
+        ref.current && !ref.current.contains(e.target as Node) &&
+        containerRef.current && !containerRef.current.contains(e.target as Node)
+      ) onClose()
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [onClose])
+  }, [containerRef, onClose])
 
-  const toggle = (name: string) => {
+  const toggleStatus = (name: string) =>
     onChange(selected.includes(name) ? selected.filter(x => x !== name) : [...selected, name])
-  }
+
+  const toggleMember = (name: string) =>
+    onChangeMembers?.(selectedMembers.includes(name) ? selectedMembers.filter(x => x !== name) : [...selectedMembers, name])
+
+  const hasAny = selected.length > 0 || selectedMembers.length > 0
 
   return (
     <div ref={ref} style={{
@@ -285,29 +307,72 @@ const FilterPopover = ({ allStatuses, selected, onChange, onClose }: FilterPopov
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {allStatuses.map(s => {
-          const checked = selected.includes(s.name)
+          const isChecked = selected.includes(s.name)
           return (
-            <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer' }}
+            <label
+              key={s.id}
+              style={checkRowStyle}
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
-              <input type="checkbox" checked={checked} onChange={() => toggle(s.name)}
+              <input
+                type="checkbox"
+                checked={isChecked}
+                onChange={() => toggleStatus(s.name)}
                 style={{ width: 14, height: 14, accentColor: s.color, cursor: 'pointer' }}
               />
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }}/>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
               <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{s.name}</span>
             </label>
           )
         })}
       </div>
-      {selected.length > 0 && (
-        <button onClick={() => onChange([])} style={{
+
+      {allMembers.length > 0 && (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8, marginTop: 12 }}>
+            参加者
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {allMembers.map(name => {
+              const isChecked = selectedMembers.includes(name)
+              return (
+                <label
+                  key={name}
+                  style={checkRowStyle}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleMember(name)}
+                    style={{ width: 14, height: 14, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                  />
+                  <span style={{
+                    width: 20, height: 20, borderRadius: '50%',
+                    background: 'var(--accent-soft)', color: 'var(--accent)',
+                    fontSize: 10, fontWeight: 700, flexShrink: 0,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {name.charAt(0)}
+                  </span>
+                  <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{name}</span>
+                </label>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {hasAny && (
+        <button onClick={() => { onChange([]); onChangeMembers?.([]) }} style={{
           marginTop: 10, width: '100%', padding: '7px 0',
           border: '1px solid var(--border)', borderRadius: 6,
           background: 'transparent', color: 'var(--text-3)',
           fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
         }}>
-          フィルターをクリア
+          すべてクリア
         </button>
       )}
     </div>
@@ -379,7 +444,7 @@ interface FormState {
   tags: string[]
 }
 
-const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => {
+export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => {
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
   const { data: workspacePhotos = [] } = useQuery({
     queryKey: ['workspace-cover-photos'],
@@ -582,6 +647,7 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
 
 export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) => {
   const queryClient = useQueryClient()
+  const projectLabel = useProjectLabel()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
   const [view, setView] = React.useState<'grid' | 'table'>('grid')
   const [filter, setFilterState] = React.useState<string>(() => {
@@ -595,7 +661,22 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
   const [showCreate, setShowCreate] = React.useState(false)
   const [filterOpen, setFilterOpen] = React.useState(false)
   const { data: allStatuses = [] } = useQuery({ queryKey: ['statuses'], queryFn: fetchStatuses })
-  const [statusFilter, setStatusFilter] = React.useState<string[]>([])
+  const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.projects_status_filter) ?? '[]') } catch { return [] }
+  })
+  const setStatusFilterPersisted = (v: string[]) => {
+    setStatusFilter(v)
+    localStorage.setItem(STORAGE_KEYS.projects_status_filter, JSON.stringify(v))
+  }
+  const [memberFilter, setMemberFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.projects_member_filter) ?? '[]') } catch { return [] }
+  })
+  const setMemberFilterPersisted = (v: string[]) => {
+    setMemberFilter(v)
+    localStorage.setItem(STORAGE_KEYS.projects_member_filter, JSON.stringify(v))
+  }
   const filterBtnRef = React.useRef<HTMLDivElement>(null)
 
   const handleCreated = (project: ProjectDto) => {
@@ -629,10 +710,17 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
     }
   }, [projects, filter])
 
+  const allMembers = React.useMemo(
+    () => [...new Set(projects.flatMap(p => p.memberNames))].sort(),
+    [projects],
+  )
+
   const filteredProjects = React.useMemo(() => {
-    if (statusFilter.length === 0) return tabFiltered
-    return tabFiltered.filter(p => p.statusName !== null && statusFilter.includes(p.statusName))
-  }, [tabFiltered, statusFilter])
+    let result = tabFiltered
+    if (statusFilter.length > 0) result = result.filter(p => p.statusName !== null && statusFilter.includes(p.statusName))
+    if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
+    return result
+  }, [tabFiltered, statusFilter, memberFilter])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
@@ -660,80 +748,76 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
         />
       )}
 
-      {/* Toolbar: filter tabs + PC controls */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        borderBottom: '1px solid var(--border)',
-        flexShrink: 0,
-        padding: isMobile ? '10px 16px' : '0',
-        gap: isMobile ? 6 : 0,
-        overflowX: isMobile ? 'auto' : 'visible',
-        scrollbarWidth: 'none',
-      }}>
-        {filterTabs.map(f => (
-          <button key={f.id} onClick={() => setFilter(f.id)} style={isMobile ? {
-            padding: '6px 14px', borderRadius: 999, border: 'none', flexShrink: 0,
-            background: filter === f.id ? 'var(--accent)' : 'var(--card-2)',
-            color: filter === f.id ? 'var(--on-accent)' : 'var(--text-3)',
-            fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
-            cursor: 'pointer', fontFamily: 'inherit',
-          } : {
-            padding: '10px 14px', border: 'none', background: 'transparent',
-            color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
-            fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
-            cursor: 'pointer', fontFamily: 'inherit',
-            borderBottom: filter === f.id ? '2px solid var(--accent)' : '2px solid transparent',
-            marginBottom: -1,
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-          }}>
-            {f.label}
-            {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>{f.n}</span>}
-          </button>
-        ))}
-
-        {/* PC only: view toggle + status filter + create button */}
-        {!isMobile && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingBottom: 8, marginLeft: 'auto' }}>
-            <div style={{ display: 'flex', background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: 2 }}>
-              {([
-                { id: 'grid'  as const, i: 'kanban', l: 'カード' },
-                { id: 'table' as const, i: 'list',   l: 'テーブル' },
-              ]).map(v => (
-                <button key={v.id} onClick={() => setView(v.id)} style={{
-                  padding: '5px 10px', borderRadius: 6, border: 'none',
-                  background: view === v.id ? 'var(--card)' : 'transparent',
-                  color: view === v.id ? 'var(--text)' : 'var(--text-3)',
-                  fontSize: 12, fontWeight: view === v.id ? 600 : 500,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                  boxShadow: view === v.id ? 'var(--shadow-sm)' : 'none',
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                }}><Icon name={v.i} size={12}/> {v.l}</button>
-              ))}
-            </div>
+      {/* Toolbar */}
+      <PageToolbar
+        style={{
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+          padding: isMobile ? '10px 16px' : '0 16px 0 0',
+        }}
+        left={
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 0 }}>
+            {filterTabs.map(f => (
+              <button key={f.id} onClick={() => setFilter(f.id)} style={isMobile ? {
+                padding: '6px 14px', borderRadius: 999, border: 'none', flexShrink: 0,
+                background: filter === f.id ? 'var(--accent)' : 'var(--card-2)',
+                color: filter === f.id ? 'var(--on-accent)' : 'var(--text-3)',
+                fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
+                cursor: 'pointer', fontFamily: 'inherit',
+              } : {
+                padding: '10px 14px', border: 'none', background: 'transparent',
+                color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
+                fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
+                cursor: 'pointer', fontFamily: 'inherit',
+                borderBottom: filter === f.id ? '2px solid var(--accent)' : '2px solid transparent',
+                marginBottom: -1,
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                whiteSpace: 'nowrap',
+              }}>
+                {f.label}
+                {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>{f.n}</span>}
+              </button>
+            ))}
+          </div>
+        }
+        right={!isMobile ? (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 0' }}>
+            <SegmentedControl
+              options={[
+                { id: 'grid',  label: 'カード',   icon: <Icon name="kanban" size={12}/> },
+                { id: 'table', label: 'テーブル', icon: <Icon name="list"   size={12}/> },
+              ]}
+              value={view}
+              onChange={(v) => setView(v as 'grid' | 'table')}
+            />
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
               <button
                 className="btn"
                 onClick={() => setFilterOpen(o => !o)}
-                style={statusFilter.length > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
+                style={(statusFilter.length + memberFilter.length) > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
               >
                 <Icon name="filter" size={13}/> フィルター
-                {statusFilter.length > 0 && (
+                {(statusFilter.length + memberFilter.length) > 0 && (
                   <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
-                    {statusFilter.length}
+                    {statusFilter.length + memberFilter.length}
                   </span>
                 )}
               </button>
               {filterOpen && (
-                <FilterPopover allStatuses={allStatuses} selected={statusFilter} onChange={setStatusFilter} onClose={() => setFilterOpen(false)}/>
+                <FilterPopover
+                  containerRef={filterBtnRef}
+                  allStatuses={allStatuses} selected={statusFilter} onChange={setStatusFilterPersisted}
+                  allMembers={allMembers} selectedMembers={memberFilter} onChangeMembers={setMemberFilterPersisted}
+                  onClose={() => setFilterOpen(false)}
+                />
               )}
             </div>
             <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-              <Icon name="plus" size={13}/> 新規プロジェクト
+              <Icon name="plus" size={13}/> 新規{projectLabel}
             </button>
           </div>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* Content */}
       <div style={{
