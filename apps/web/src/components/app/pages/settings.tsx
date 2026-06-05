@@ -507,8 +507,7 @@ const SettingsAI = () => (
       <div className="card">
         {[
           { l: 'ファイルアップロード時に自動要約', s: 'PDF / XLSX / GPX', on: true },
-          { l: 'チャットで @AI でメンション呼び出し', s: '即時応答', on: true },
-          { l: 'ダッシュボードに自動サマリー生成', s: '毎日 7:00 / 22:00', on: true },
+{ l: 'ダッシュボードに自動サマリー生成', s: '毎日 7:00 / 22:00', on: true },
           { l: '危険情報を検知して通知', s: '天候・遭難情報・装備不足', on: false },
         ].map((r, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderBottom: i < 3 ? '1px solid var(--divider)' : 'none' }}>

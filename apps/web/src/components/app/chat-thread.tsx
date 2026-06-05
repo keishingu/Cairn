@@ -359,6 +359,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const [insertedMentionNames, setInsertedMentionNames] = React.useState<Set<string>>(new Set())
   const smileBtnRef = React.useRef<HTMLButtonElement>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const imageInputRef = React.useRef<HTMLInputElement>(null)
+  const docInputRef = React.useRef<HTMLInputElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const compactInputRef = React.useRef<HTMLInputElement>(null)
   const overlayRef = React.useRef<HTMLDivElement>(null)
@@ -496,19 +498,46 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     </div>
   ) : null
 
+  const makeFileHandler = (ref: React.RefObject<HTMLInputElement>) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) { onImageSelect(file); e.target.value = '' }
+  }
+
   const hiddenFileInput = (
     <input
       ref={fileInputRef}
       type="file"
       accept={ACCEPT_FILE_TYPES}
       style={{ display: 'none' }}
-      onChange={e => {
-        const file = e.target.files?.[0]
-        if (file) {
-          onImageSelect(file)
-          e.target.value = ''
-        }
-      }}
+      onChange={makeFileHandler(fileInputRef)}
+    />
+  )
+
+  const hiddenImageInput = (
+    <input
+      ref={imageInputRef}
+      type="file"
+      accept="image/*"
+      style={{ display: 'none' }}
+      onChange={makeFileHandler(imageInputRef)}
+    />
+  )
+
+  const ACCEPT_DOC_TYPES = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ].join(',')
+
+  const hiddenDocInput = (
+    <input
+      ref={docInputRef}
+      type="file"
+      accept={ACCEPT_DOC_TYPES}
+      style={{ display: 'none' }}
+      onChange={makeFileHandler(docInputRef)}
     />
   )
 
@@ -572,6 +601,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   return (
     <div style={{ padding: '8px 24px 18px', background: 'var(--bg)' }}>
       {hiddenFileInput}
+      {hiddenImageInput}
+      {hiddenDocInput}
       {sendError && (
         <div style={{ marginBottom: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>⚠️ {sendError}</span>
@@ -580,14 +611,12 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       )}
       <div style={{ background: 'var(--card)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--divider)' }}>
-          <button onClick={() => fileInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+          <button onClick={() => imageInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="image" size={13}/> 画像
           </button>
-          {[{ i: 'sparkles', l: '@AI', accent: true }].map((b, j) => (
-            <button key={j} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--accent)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-              <Icon name={b.i} size={13}/> {b.l}
-            </button>
-          ))}
+          <button onClick={() => docInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="paperclip" size={13}/> ファイル
+          </button>
           <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="smile" size={13}/> 絵文字
           </button>
