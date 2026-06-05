@@ -7,6 +7,7 @@ import { ChatThread } from '../chat-thread'
 import { useQuery } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { MessageSearchResultDto } from '@/app/api/search/messages/route'
 import {
   useProjectChannels,
   useWorkspaceChannels,
@@ -208,6 +209,94 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
   )
 }
 
+// ─── Cross-channel search ─────────────────────────────────────────
+
+interface CrossChannelSearchProps {
+  onClose: () => void
+  onJump: (channelId: string, messageId: string) => void
+  isMobile?: boolean
+}
+
+const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelSearchProps) => {
+  const [query, setQuery] = React.useState('')
+  const inputRef = React.useRef<HTMLInputElement>(null)
+  const debouncedQuery = useDebounce(query, 400)
+
+  React.useEffect(() => { inputRef.current?.focus() }, [])
+
+  const { data: results = [], isFetching } = useQuery<MessageSearchResultDto[]>({
+    queryKey: ['global-message-search', debouncedQuery],
+    queryFn: () => fetchWithAuth(`/api/search/messages?q=${encodeURIComponent(debouncedQuery)}`).then(r => r.json()),
+    enabled: debouncedQuery.length >= 1,
+  })
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Search input bar */}
+      <div style={{ padding: isMobile ? '8px 12px' : '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card)', flexShrink: 0 }}>
+        <Icon name="search" size={14} color="var(--accent)"/>
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="全チャンネルを横断検索…"
+          style={{ flex: 1, fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+          onKeyDown={e => { if (e.key === 'Escape') onClose() }}
+        />
+        <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-3)', padding: 2 }}>
+          <Icon name="close" size={14}/>
+        </button>
+      </div>
+
+      {/* Results */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {!debouncedQuery ? (
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+            キーワードを入力してください
+          </div>
+        ) : isFetching ? (
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+            検索中…
+          </div>
+        ) : results.length === 0 ? (
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+            「{debouncedQuery}」に一致するメッセージはありません
+          </div>
+        ) : (
+          <>
+            <div style={{ padding: '6px 16px 2px', fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>
+              {results.length} 件{results.length === 50 ? '以上' : ''}
+            </div>
+            {results.map(msg => (
+              <div
+                key={msg.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => onJump(msg.channelId, msg.id)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onJump(msg.channelId, msg.id) }}
+                style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', cursor: 'pointer' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
+                    {msg.channelName}
+                  </span>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word' }}>
+                  {highlightMatch(msg.content, debouncedQuery)}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── PageChat ─────────────────────────────────────────────────────
 
 export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
@@ -217,6 +306,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [showCreateChannel, setShowCreateChannel] = React.useState(false)
   const [showMemberInvite, setShowMemberInvite] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
+  const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
   const [targetMessageId, setTargetMessageId] = React.useState<string | null>(null)
   const memberPickerRef = React.useRef<HTMLDivElement>(null)
 
@@ -246,6 +336,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const selectChannel = (id: string) => {
     setChannelId(id)
     setSearchOpen(false)
+    setGlobalSearchOpen(false)
     setTargetMessageId(null)
     if (isMobile) setActivePane('thread')
     markChannelRead.mutate(id)
@@ -254,6 +345,14 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const jumpToMessage = (messageId: string) => {
     setSearchOpen(false)
     setTargetMessageId(messageId)
+  }
+
+  const jumpToChannelMessage = (channelId: string, messageId: string) => {
+    setGlobalSearchOpen(false)
+    setChannelId(channelId)
+    setTargetMessageId(messageId)
+    if (isMobile) setActivePane('thread')
+    markChannelRead.mutate(channelId)
   }
 
   const startDm = (targetUserId: string) => {
@@ -357,8 +456,18 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     if (activePane === 'list') {
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
-          <MobileHeader title="チャット"/>
-          {channelList}
+          <MobileHeader
+            title="チャット"
+            right={
+              <button className="btn" onClick={() => setGlobalSearchOpen(s => !s)} style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}>
+                <Icon name="search" size={16}/>
+              </button>
+            }
+          />
+          {globalSearchOpen
+            ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage} isMobile/>
+            : channelList
+          }
           {createChannelUI}
         </div>
       )
@@ -397,38 +506,52 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       {createChannelUI}
       <aside style={{ width: 240, background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)' }}>
+        <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>チャット</h2>
+          <button
+            className="btn"
+            onClick={() => setGlobalSearchOpen(s => !s)}
+            style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}
+            title="全チャンネル検索"
+          >
+            <Icon name="search" size={13}/>
+          </button>
         </div>
         {channelList}
       </aside>
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
-        <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                {isDm ? <Avatar name={channelName} url={currentDm?.participantAvatarUrl ?? null} size={20}/> : isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
-                {channelName}
-              </h2>
-              {isProject && <StatusChip name="計画中" color="#3B82F6"/>}
-              {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> プライベート</span>}
+        {globalSearchOpen ? (
+          <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
+        ) : (
+          <>
+            <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    {isDm ? <Avatar name={channelName} url={currentDm?.participantAvatarUrl ?? null} size={20}/> : isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
+                    {channelName}
+                  </h2>
+                  {isProject && <StatusChip name="計画中" color="#3B82F6"/>}
+                  {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> プライベート</span>}
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+                  {isProject ? '参加メンバー' : isDm ? 'ダイレクトメッセージ' : isPrivate ? '招待制' : '全体チャンネル'}
+                </div>
+              </div>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <AvatarStack names={memberNames} urls={memberAvatarUrls} size={26} max={5}/>
+                <button className="btn" onClick={() => setSearchOpen(s => !s)} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
+                <button className="btn"><Icon name="bell" size={13}/></button>
+                <button className="btn"><Icon name="more" size={14}/></button>
+              </div>
             </div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-              {isProject ? '参加メンバー' : isDm ? 'ダイレクトメッセージ' : isPrivate ? '招待制' : '全体チャンネル'}
-            </div>
-          </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <AvatarStack names={memberNames} urls={memberAvatarUrls} size={26} max={5}/>
-            <button className="btn" onClick={() => setSearchOpen(s => !s)} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
-            <button className="btn"><Icon name="bell" size={13}/></button>
-            <button className="btn"><Icon name="more" size={14}/></button>
-          </div>
-        </div>
-        {searchOpen && channelId
-          ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-          : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
-        }
+            {searchOpen && channelId
+              ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
+              : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
+            }
+          </>
+        )}
       </main>
 
       <aside style={{ width: 280, background: 'var(--card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
