@@ -324,11 +324,9 @@ function ChatView({
               </button>
             </div>
           </form>
-          {!isMobile && (
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-4)', textAlign: 'center' }}>
-              AIは間違えることもあります。重要な判断はリーダーに相談してください。
-            </div>
-          )}
+          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-4)', textAlign: 'center' }}>
+            AIは間違えることもあります。重要な判断はリーダーに相談してください。
+          </div>
         </div>
       </div>
     </div>
@@ -367,12 +365,6 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     if (isMobile) setMobilePane('chat')
   }
 
-  // PCのみ最新会話を自動選択
-  React.useEffect(() => {
-    if (!isMobile && !activeId && conversations.length > 0) {
-      setActiveId(conversations[0]!.id)
-    }
-  }, [conversations, activeId, isMobile])
 
   // ---- モバイル ----
 
