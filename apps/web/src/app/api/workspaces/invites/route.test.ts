@@ -57,6 +57,7 @@ function selectChain(result: unknown[]) {
     from: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({
         limit: vi.fn().mockResolvedValue(result),
+        orderBy: vi.fn().mockResolvedValue(result),
       }),
       innerJoin: vi.fn().mockReturnThis(),
     }),
