@@ -16,6 +16,7 @@ export interface TaskDto {
   priority: 'high' | 'medium' | 'low'
   dueDate: string | null
   assigneeName: string | null
+  assigneeAvatarUrl: string | null
 }
 
 export async function GET(req: Request) {
@@ -27,7 +28,7 @@ export async function GET(req: Request) {
     if (error) return error
 
     const { db } = await import('@cairn/db')
-    const { tasks, projects, profiles } = await import('@cairn/db')
+    const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, inArray } = await import('drizzle-orm')
 
     const projectRows = await db
@@ -50,9 +51,11 @@ export async function GET(req: Request) {
         priority: tasks.priority,
         dueDate: tasks.dueDate,
         assigneeName: profiles.displayName,
+        assigneeAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(tasks)
       .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
+      .leftJoin(workspaceMembers, eq(workspaceMembers.userId, tasks.assigneeId))
       .where(inArray(tasks.projectId, projectIds))
 
     const projectMap = new Map(projectRows.map(p => [p.id, p.title]))
@@ -66,6 +69,7 @@ export async function GET(req: Request) {
       priority: r.priority,
       dueDate: r.dueDate,
       assigneeName: r.assigneeName ?? null,
+      assigneeAvatarUrl: r.assigneeAvatarUrl ?? null,
     }))
 
     return NextResponse.json(result)
@@ -93,7 +97,7 @@ export async function POST(req: Request) {
     if (error) return error
 
     const { db } = await import('@cairn/db')
-    const { tasks, projects, profiles } = await import('@cairn/db')
+    const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
 
     const [inserted] = await db
@@ -117,7 +121,11 @@ export async function POST(req: Request) {
       .where(eq(projects.id, inserted.projectId))
 
     const assigneeRow = inserted.assigneeId
-      ? (await db.select({ displayName: profiles.displayName }).from(profiles).where(eq(profiles.id, inserted.assigneeId)))[0]
+      ? (await db
+          .select({ displayName: profiles.displayName, avatarUrl: workspaceMembers.avatarUrl })
+          .from(profiles)
+          .leftJoin(workspaceMembers, eq(workspaceMembers.userId, profiles.id))
+          .where(eq(profiles.id, inserted.assigneeId)))[0]
       : null
 
     const result: TaskDto = {
@@ -129,6 +137,7 @@ export async function POST(req: Request) {
       priority: inserted.priority,
       dueDate: inserted.dueDate,
       assigneeName: assigneeRow?.displayName ?? null,
+      assigneeAvatarUrl: assigneeRow?.avatarUrl ?? null,
     }
 
     if (inserted.assigneeId && inserted.assigneeId !== ctx.userId) {

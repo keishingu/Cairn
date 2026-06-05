@@ -10,6 +10,7 @@ export interface WorkspaceChannelDto {
   isPrivate: boolean
   memberCount: number
   memberNames: string[]
+  memberAvatarUrls: (string | null)[]
   unreadCount: number
   unreadMentionCount: number
 }
@@ -31,17 +32,19 @@ export async function GET() {
 
     if (channelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
 
+    const { workspaceMembers } = await import('@cairn/db')
     const memberRows = await db
-      .select({ channelId: channelMembers.channelId, displayName: profiles.displayName })
+      .select({ channelId: channelMembers.channelId, displayName: profiles.displayName, avatarUrl: workspaceMembers.avatarUrl })
       .from(channelMembers)
       .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, channelMembers.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(inArray(channelMembers.channelId, channelRows.map(c => c.id)))
       .orderBy(channelMembers.joinedAt)
 
-    const membersByChannel = new Map<string, string[]>()
+    const membersByChannel = new Map<string, { name: string; avatarUrl: string | null }[]>()
     for (const m of memberRows) {
       const arr = membersByChannel.get(m.channelId) ?? []
-      arr.push(m.displayName)
+      arr.push({ name: m.displayName, avatarUrl: m.avatarUrl ?? null })
       membersByChannel.set(m.channelId, arr)
     }
 
@@ -70,10 +73,13 @@ export async function GET() {
     const mentionMap = new Map(mentionRows.map(r => [r.channelId, r.cnt]))
 
     const result: WorkspaceChannelDto[] = channelRows.map(c => {
-      const names = membersByChannel.get(c.id) ?? []
+      const members = membersByChannel.get(c.id) ?? []
+      const top4 = members.slice(0, 4)
       return {
         id: c.id, name: c.name, isPrivate: c.isPrivate,
-        memberCount: names.length, memberNames: names.slice(0, 4),
+        memberCount: members.length,
+        memberNames: top4.map(m => m.name),
+        memberAvatarUrls: top4.map(m => m.avatarUrl),
         unreadCount: unreadMap.get(c.id) ?? 0,
         unreadMentionCount: mentionMap.get(c.id) ?? 0,
       }
@@ -126,7 +132,7 @@ export async function POST(req: Request) {
 
     const inserted = rows[0]
     if (!inserted) throw new Error('insert returned no rows')
-    const result: WorkspaceChannelDto = { ...inserted, memberCount: 0, memberNames: [], unreadCount: 0, unreadMentionCount: 0 }
+    const result: WorkspaceChannelDto = { ...inserted, memberCount: 0, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('[/api/workspaces/channels POST] DB error:', err)

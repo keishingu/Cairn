@@ -7,6 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 export interface ProjectMemberDto {
   userId: string
   displayName: string
+  avatarUrl: string | null
   role: 'leader' | 'subleader' | 'member' | 'reviewer' | 'observer'
   attendance: 'attending' | 'tentative' | 'declined'
   addedAt: string
@@ -22,7 +23,7 @@ export async function GET(
 
   try {
     const { db } = await import('@cairn/db')
-    const { profiles, projectMembers, projects } = await import('@cairn/db')
+    const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
     const [project] = await db
@@ -38,12 +39,14 @@ export async function GET(
       .select({
         userId: profiles.id,
         displayName: profiles.displayName,
+        avatarUrl: workspaceMembers.avatarUrl,
         role: projectMembers.role,
         attendance: projectMembers.attendance,
         addedAt: projectMembers.createdAt,
       })
       .from(projectMembers)
       .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(eq(projectMembers.projectId, projectId))
       .orderBy(profiles.displayName)
 
@@ -51,6 +54,7 @@ export async function GET(
       rows.map(r => ({
         userId: r.userId,
         displayName: r.displayName,
+        avatarUrl: r.avatarUrl ?? null,
         role: r.role,
         attendance: r.attendance,
         addedAt: r.addedAt.toISOString().slice(0, 10),
@@ -138,6 +142,7 @@ export async function POST(
     return NextResponse.json({
       userId: inserted.userId,
       displayName: profile?.displayName ?? '',
+      avatarUrl: null,
       role: inserted.role,
       attendance: inserted.attendance,
       addedAt: inserted.addedAt.toISOString().slice(0, 10),

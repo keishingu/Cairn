@@ -119,6 +119,7 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
       endDate:            p.endDate,
       memberCount:        p.memberCount,
       memberNames:        [],
+      memberAvatarUrls:   [],
       taskCount:          0,
       completedTaskCount: 0,
       isOwner:            p.role === 'leader',

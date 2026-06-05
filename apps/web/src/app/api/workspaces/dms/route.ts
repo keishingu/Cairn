@@ -9,6 +9,7 @@ export interface DmChannelDto {
   id: string
   participantId: string
   participantName: string
+  participantAvatarUrl: string | null
   unreadCount: number
   unreadMentionCount: number
 }
@@ -21,7 +22,7 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, profiles } = await import('@cairn/db')
+    const { channels, channelMembers, profiles, workspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray, ne } = await import('drizzle-orm')
 
     // 自分が参加している DM チャンネル ID を取得
@@ -36,10 +37,12 @@ export async function GET() {
         id: channels.id,
         participantId: profiles.id,
         participantName: profiles.displayName,
+        participantAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(channels)
       .innerJoin(channelMembers, eq(channelMembers.channelId, channels.id))
       .innerJoin(profiles, eq(profiles.id, channelMembers.userId))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(
         and(
           eq(channels.workspaceId, ctx.workspaceId),
@@ -73,12 +76,13 @@ export async function GET() {
 
       return NextResponse.json(rows.map(r => ({
         ...r,
+        participantAvatarUrl: r.participantAvatarUrl ?? null,
         unreadCount: unreadMap.get(r.id) ?? 0,
         unreadMentionCount: mentionMap.get(r.id) ?? 0,
       })) satisfies DmChannelDto[])
     }
 
-    return NextResponse.json(rows.map(r => ({ ...r, unreadCount: 0, unreadMentionCount: 0 })) satisfies DmChannelDto[])
+    return NextResponse.json(rows.map(r => ({ ...r, participantAvatarUrl: r.participantAvatarUrl ?? null, unreadCount: 0, unreadMentionCount: 0 })) satisfies DmChannelDto[])
   } catch (err) {
     console.error('[/api/workspaces/dms GET] failed:', err)
     return NextResponse.json([] satisfies DmChannelDto[])

@@ -25,8 +25,7 @@ export async function GET() {
       .select({
         userId: profiles.id,
         displayName: profiles.displayName,
-        workspaceAvatarUrl: workspaceMembers.avatarUrl,
-        globalAvatarUrl: profiles.avatarUrl,
+        avatarUrl: workspaceMembers.avatarUrl,
         role: workspaceMembers.role,
         joinedAt: workspaceMembers.joinedAt,
       })
@@ -38,7 +37,7 @@ export async function GET() {
     const result: WorkspaceMemberDto[] = rows.map(r => ({
       userId: r.userId,
       displayName: r.displayName,
-      avatarUrl: r.workspaceAvatarUrl ?? r.globalAvatarUrl,
+      avatarUrl: r.avatarUrl ?? null,
       role: r.role,
       joinedAt: r.joinedAt.toISOString().slice(0, 10),
     }))

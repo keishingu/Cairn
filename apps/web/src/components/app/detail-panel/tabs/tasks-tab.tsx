@@ -287,7 +287,7 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                     </span>
                   )}
                   {t.dueDate && <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{t.dueDate.slice(5).replace('-', '/')}</span>}
-                  {t.assigneeName && <Avatar name={t.assigneeName} size={20} />}
+                  {t.assigneeName && <Avatar name={t.assigneeName} url={t.assigneeAvatarUrl} size={20} />}
                 </div>
               ))}
             </>
@@ -317,7 +317,7 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                   </button>
                   <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-3)', textDecoration: 'line-through' }}>{t.title}</span>
                   {t.dueDate && <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{t.dueDate.slice(5).replace('-', '/')}</span>}
-                  {t.assigneeName && <Avatar name={t.assigneeName} size={20} />}
+                  {t.assigneeName && <Avatar name={t.assigneeName} url={t.assigneeAvatarUrl} size={20} />}
                 </div>
               ))}
             </>

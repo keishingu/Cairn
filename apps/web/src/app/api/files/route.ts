@@ -14,6 +14,7 @@ export interface FileDto {
   fileSize: number | null
   fileType: string
   uploaderName: string
+  uploaderAvatarUrl: string | null
   createdAt: string
   externalUrl?: string
   indexingStatus?: string
@@ -24,7 +25,7 @@ export async function GET() {
     const { ctx, error } = await getAuthContext()
     if (error) return error
 
-    const { db, files, profiles, projects, messageAttachments, messages, channels, galleryItems, documentChunks } = await import('@cairn/db')
+    const { db, files, profiles, projects, messageAttachments, messages, channels, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
     const { eq, and, desc, isNull, inArray, sql } = await import('drizzle-orm')
 
     const INDEXABLE_MIMES = new Set([
@@ -52,11 +53,13 @@ export async function GET() {
         fileType: files.fileType,
         metadata: files.metadata,
         uploaderName: profiles.displayName,
+        uploaderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: files.createdAt,
       })
       .from(files)
       .leftJoin(projects, eq(files.projectId, projects.id))
       .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, files.uploadedBy), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
       .where(and(
         eq(files.workspaceId, ctx.workspaceId),
@@ -103,6 +106,7 @@ export async function GET() {
           fileSize: r.fileSize,
           fileType: r.fileType,
           uploaderName: r.uploaderName,
+          uploaderAvatarUrl: r.uploaderAvatarUrl ?? null,
           createdAt: r.createdAt.toISOString(),
           ...(typeof externalUrl === 'string' ? { externalUrl } : {}),
           ...(indexingStatus !== undefined ? { indexingStatus } : {}),

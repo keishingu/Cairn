@@ -46,8 +46,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         content: messages.content,
         senderId: messages.senderId,
         senderName: profiles.displayName,
-        senderGlobalAvatarUrl: profiles.avatarUrl,
-        senderWorkspaceAvatarUrl: workspaceMembers.avatarUrl,
+        senderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: messages.createdAt,
         updatedAt: messages.updatedAt,
       })
@@ -126,7 +125,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       content: r.content,
       senderId: r.senderId,
       senderName: r.senderName,
-      senderAvatarUrl: r.senderWorkspaceAvatarUrl ?? r.senderGlobalAvatarUrl,
+      senderAvatarUrl: r.senderAvatarUrl ?? null,
       createdAt: r.createdAt.toISOString(),
       isEdited: r.updatedAt.getTime() > r.createdAt.getTime(),
       reactions: reactionMap.get(r.id) ?? [],
@@ -197,8 +196,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     const [profile] = await db
       .select({
         displayName: profiles.displayName,
-        globalAvatarUrl: profiles.avatarUrl,
-        workspaceAvatarUrl: workspaceMembers.avatarUrl,
+        avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(profiles)
       .leftJoin(
@@ -229,7 +227,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       content: inserted.content,
       senderId: inserted.senderId,
       senderName,
-      senderAvatarUrl: profile?.workspaceAvatarUrl ?? profile?.globalAvatarUrl ?? null,
+      senderAvatarUrl: profile?.avatarUrl ?? null,
       createdAt: inserted.createdAt.toISOString(),
       isEdited: false,
       reactions: [],
