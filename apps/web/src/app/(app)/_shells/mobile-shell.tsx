@@ -121,7 +121,6 @@ function MobileShellInner() {
   const page = pageFromPathname(pathname)
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
-  const [projectsSearch, setProjectsSearch] = React.useState('')
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
 
   const { panelProject, openPanel } = useProjectPanel()
@@ -155,7 +154,7 @@ function MobileShellInner() {
   }, [router])
 
   return (
-    <AppShellContext.Provider value={{ openPanel, openNotif: () => {}, projectsView, setProjectsView, projectsSearch, setProjectsSearch }}>
+    <AppShellContext.Provider value={{ openPanel, openNotif: () => {}, projectsView, setProjectsView }}>
       <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden' }}>
         <NavigationProgress />
         {/* ProjectPanel・MemberDetailPanel は position:fixed でフルスクリーン表示 */}

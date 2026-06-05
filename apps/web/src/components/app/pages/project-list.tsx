@@ -4,7 +4,6 @@ import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
-import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
@@ -649,7 +648,6 @@ export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalPro
 export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) => {
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
-  const { projectsSearch } = useAppShell()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
   const [view, setView] = React.useState<'grid' | 'table'>('grid')
   const [filter, setFilterState] = React.useState<string>(() => {
@@ -721,14 +719,8 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
     let result = tabFiltered
     if (statusFilter.length > 0) result = result.filter(p => p.statusName !== null && statusFilter.includes(p.statusName))
     if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
-    const q = projectsSearch.trim().toLowerCase()
-    if (q) result = result.filter(p =>
-      p.title.toLowerCase().includes(q) ||
-      (p.description?.toLowerCase().includes(q) ?? false) ||
-      p.memberNames.some(n => n.toLowerCase().includes(q)),
-    )
     return result
-  }, [tabFiltered, statusFilter, memberFilter, projectsSearch])
+  }, [tabFiltered, statusFilter, memberFilter])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>

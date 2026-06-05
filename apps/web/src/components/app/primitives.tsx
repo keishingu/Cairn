@@ -1,7 +1,6 @@
 'use client'
 
 import React from 'react'
-import { useAppShell } from './app-shell-context'
 
 const PHOTO_IDS = [
   '1464822759023-fed622ff2c3b', '1483728642387-6c3bdd6c93e5', '1454391304352-2bf4678b1a7a',
@@ -210,54 +209,13 @@ export const MountainPhoto = ({ idx = 0, height = 200, flat = false, radius }: M
 )
 
 // ─── TopBar search box ────────────────────────────────────────────
-export const TopBarSearch = () => {
-  const { projectsSearch, setProjectsSearch } = useAppShell()
-  const inputRef = React.useRef<HTMLInputElement>(null)
-
-  React.useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        inputRef.current?.focus()
-      }
-      if (e.key === 'Escape' && document.activeElement === inputRef.current) {
-        setProjectsSearch('')
-        inputRef.current?.blur()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [setProjectsSearch])
-
-  const isEmpty = projectsSearch === ''
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '0 10px', height: 32, width: 280 }}>
-      <Icon name="search" size={14} color="var(--text-3)"/>
-      <input
-        ref={inputRef}
-        value={projectsSearch}
-        onChange={e => setProjectsSearch(e.target.value)}
-        placeholder="プロジェクト・人・ファイルを検索"
-        style={{
-          flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none',
-          color: 'var(--text)', caretColor: 'var(--accent)',
-        }}
-      />
-      {isEmpty
-        ? <span className="kbd">⌘K</span>
-        : (
-          <button
-            onClick={() => { setProjectsSearch(''); inputRef.current?.focus() }}
-            style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-3)' }}
-          >
-            <Icon name="close" size={13}/>
-          </button>
-        )
-      }
-    </div>
-  )
-}
+export const TopBarSearch = () => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '0 10px', height: 32, width: 280 }}>
+    <Icon name="search" size={14} color="var(--text-3)"/>
+    <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-4)' }}>プロジェクト・人・ファイルを検索</span>
+    <span className="kbd">⌘K</span>
+  </div>
+)
 
 // ─── Placeholder page ─────────────────────────────────────────────
 export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) => (

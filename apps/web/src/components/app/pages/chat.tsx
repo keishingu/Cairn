@@ -94,6 +94,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [showMemberPicker, setShowMemberPicker] = React.useState(false)
   const [showCreateChannel, setShowCreateChannel] = React.useState(false)
   const [showMemberInvite, setShowMemberInvite] = React.useState(false)
+  const [chatSearch, setChatSearch] = React.useState('')
   const memberPickerRef = React.useRef<HTMLDivElement>(null)
 
   const { data: projectChannels = [] } = useProjectChannels()
@@ -185,16 +186,46 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     </div>
   )
 
+  const q = chatSearch.trim().toLowerCase()
+  const filteredProjectChannels = q
+    ? projectChannels.filter(c => c.projectTitle.toLowerCase().includes(q))
+    : projectChannels
+  const filteredWorkspaceChannels = q
+    ? workspaceChannels.filter(c => (c.name ?? '').toLowerCase().includes(q))
+    : workspaceChannels
+  const filteredDms = q
+    ? dms.filter(d => d.participantName.toLowerCase().includes(q))
+    : dms
+
+  const chatSearchBar = (
+    <div style={{ padding: isMobile ? '8px 12px' : '6px 8px', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, padding: '0 8px', height: 28 }}>
+        <Icon name="search" size={12} color="var(--text-4)"/>
+        <input
+          value={chatSearch}
+          onChange={e => setChatSearch(e.target.value)}
+          placeholder="チャットを検索"
+          style={{ flex: 1, fontSize: 12, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+        />
+        {chatSearch && (
+          <button onClick={() => setChatSearch('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>
+            <Icon name="close" size={11}/>
+          </button>
+        )}
+      </div>
+    </div>
+  )
+
   // ─── チャンネル一覧 ────────────────────────────────────────────
   const channelList = (
     <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
       <ChatSidebarSection title="プロジェクト">
-        {projectChannels.map(c => (
+        {filteredProjectChannels.map(c => (
           <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => selectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
         ))}
       </ChatSidebarSection>
       <ChatSidebarSection title="チャンネル" onAdd={() => setShowCreateChannel(true)}>
-        {workspaceChannels.map(c => (
+        {filteredWorkspaceChannels.map(c => (
           <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => selectChannel(c.id)} prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''} badge={c.unreadCount} mobile={isMobile} memberNames={c.memberNames} memberCount={c.memberCount}/>
         ))}
       </ChatSidebarSection>
@@ -204,7 +235,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           {dmPicker}
         </div>
         <div>
-          {dms.map(d => (
+          {filteredDms.map(d => (
             <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => selectChannel(d.id)} avatar={d.participantName} {...(d.participantAvatarUrl ? { avatarUrl: d.participantAvatarUrl } : {})} label={d.participantName} badge={d.unreadCount} mobile={isMobile}/>
           ))}
         </div>
@@ -227,6 +258,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
           <MobileHeader title="チャット"/>
+          {chatSearchBar}
           {channelList}
           {createChannelUI}
         </div>
@@ -266,6 +298,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)' }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>チャット</h2>
         </div>
+        {chatSearchBar}
         {channelList}
       </aside>
 

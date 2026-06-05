@@ -7,7 +7,6 @@ import { PageToolbar, SegmentedControl } from './page-toolbar'
 import { CreateProjectModal, FilterPopover } from './project-list'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
-import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '@/components/app/mobile/header'
@@ -647,7 +646,6 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     localStorage.setItem(STORAGE_KEYS.calendar_member_filter, JSON.stringify(v))
   }
   const filterBtnRef = React.useRef<HTMLDivElement>(null)
-  const { projectsSearch } = useAppShell()
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
@@ -666,14 +664,8 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     let result = projects
     if (statusFilter.length > 0) result = result.filter(p => p.statusName != null && statusFilter.includes(p.statusName))
     if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
-    const q = projectsSearch.trim().toLowerCase()
-    if (q) result = result.filter(p =>
-      p.title.toLowerCase().includes(q) ||
-      (p.description?.toLowerCase().includes(q) ?? false) ||
-      p.memberNames.some(n => n.toLowerCase().includes(q)),
-    )
     return result
-  }, [projects, statusFilter, memberFilter, projectsSearch])
+  }, [projects, statusFilter, memberFilter])
 
   const events = React.useMemo(
     () => buildEvents(visibleProjects, year, month),
