@@ -123,10 +123,11 @@ function formatSearchDate(iso: string) {
 interface ChatMessageSearchProps {
   channelId: string
   onClose: () => void
+  onJump: (messageId: string) => void
   isMobile?: boolean
 }
 
-const ChatMessageSearch = ({ channelId, onClose, isMobile = false }: ChatMessageSearchProps) => {
+const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: ChatMessageSearchProps) => {
   const [query, setQuery] = React.useState('')
   const inputRef = React.useRef<HTMLInputElement>(null)
   const debouncedQuery = useDebounce(query, 400)
@@ -179,10 +180,14 @@ const ChatMessageSearch = ({ channelId, onClose, isMobile = false }: ChatMessage
             {results.map(msg => (
               <div
                 key={msg.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => onJump(msg.id)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onJump(msg.id) }}
                 style={{
-                  padding: isMobile ? '10px 16px' : '10px 16px',
+                  padding: '10px 16px',
                   borderBottom: '1px solid var(--divider)',
-                  cursor: 'default',
+                  cursor: 'pointer',
                 }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
@@ -212,6 +217,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [showCreateChannel, setShowCreateChannel] = React.useState(false)
   const [showMemberInvite, setShowMemberInvite] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
+  const [targetMessageId, setTargetMessageId] = React.useState<string | null>(null)
   const memberPickerRef = React.useRef<HTMLDivElement>(null)
 
   const { data: projectChannels = [] } = useProjectChannels()
@@ -240,8 +246,14 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const selectChannel = (id: string) => {
     setChannelId(id)
     setSearchOpen(false)
+    setTargetMessageId(null)
     if (isMobile) setActivePane('thread')
     markChannelRead.mutate(id)
+  }
+
+  const jumpToMessage = (messageId: string) => {
+    setSearchOpen(false)
+    setTargetMessageId(messageId)
   }
 
   const startDm = (targetUserId: string) => {
@@ -370,8 +382,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           }
         />
         {searchOpen && channelId
-          ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} isMobile={isMobile}/>
-          : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile}/>
+          ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
+          : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
         }
         {showMemberInvite && channelId && (
           <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
@@ -414,8 +426,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           </div>
         </div>
         {searchOpen && channelId
-          ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} isMobile={isMobile}/>
-          : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile}/>
+          ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
+          : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
         }
       </main>
 
