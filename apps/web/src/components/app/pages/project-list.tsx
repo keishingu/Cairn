@@ -383,6 +383,7 @@ export const FilterPopover = ({
 interface ProjectListViewProps {
   openPanel?: (project?: ProjectDto) => void
   isMobile?: boolean
+  externalSearch?: string
 }
 
 function formatDates(start: string | null, end: string | null): string {
@@ -645,7 +646,7 @@ export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalPro
   )
 }
 
-export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) => {
+export const ProjectListView = ({ openPanel, isMobile, externalSearch }: ProjectListViewProps) => {
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
@@ -678,6 +679,9 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
     localStorage.setItem(STORAGE_KEYS.projects_member_filter, JSON.stringify(v))
   }
   const filterBtnRef = React.useRef<HTMLDivElement>(null)
+  const [search, setSearch] = React.useState('')
+  const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false)
+  const searchInputRef = React.useRef<HTMLInputElement>(null)
 
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
@@ -715,12 +719,17 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
     [projects],
   )
 
+  const effectiveSearch = isMobile ? search : (externalSearch ?? search)
+  const isSearching = effectiveSearch.trim().length > 0
+
   const filteredProjects = React.useMemo(() => {
+    const q = effectiveSearch.trim().toLowerCase()
+    if (q) return projects.filter(p => p.title.toLowerCase().includes(q))
     let result = tabFiltered
     if (statusFilter.length > 0) result = result.filter(p => p.statusName !== null && statusFilter.includes(p.statusName))
     if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
     return result
-  }, [tabFiltered, statusFilter, memberFilter])
+  }, [tabFiltered, statusFilter, memberFilter, effectiveSearch, projects])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
@@ -733,19 +742,42 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
 
       {/* Mobile header */}
       {isMobile && (
-        <MobileHeader
-          title="プロジェクト一覧"
-          right={
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
-                <Icon name="search" size={20}/>
-              </button>
-              <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
-                <Icon name="bell" size={20}/>
-              </button>
+        <>
+          <MobileHeader
+            title="プロジェクト一覧"
+            right={
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  onClick={() => { setMobileSearchOpen(o => !o); setTimeout(() => searchInputRef.current?.focus(), 50) }}
+                  style={{ border: 'none', background: mobileSearchOpen ? 'var(--card-hover)' : 'transparent', borderRadius: 8, color: mobileSearchOpen ? 'var(--accent)' : 'var(--text-3)', cursor: 'pointer', padding: 4 }}
+                >
+                  <Icon name="search" size={20}/>
+                </button>
+                <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
+                  <Icon name="bell" size={20}/>
+                </button>
+              </div>
+            }
+          />
+          {mobileSearchOpen && (
+            <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card)', flexShrink: 0 }}>
+              <Icon name="search" size={14} color="var(--text-3)"/>
+              <input
+                ref={searchInputRef}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="アーカイブを含むすべてのプロジェクトを検索…"
+                style={{ flex: 1, fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+                onKeyDown={e => { if (e.key === 'Escape') { setMobileSearchOpen(false); setSearch('') } }}
+              />
+              {search && (
+                <button onClick={() => setSearch('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>
+                  <Icon name="close" size={12}/>
+                </button>
+              )}
             </div>
-          }
-        />
+          )}
+        </>
       )}
 
       {/* Toolbar */}
@@ -756,7 +788,7 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
           padding: isMobile ? '10px 16px' : '0 16px 0 0',
         }}
         left={
-          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 0, opacity: isSearching ? 0.4 : 1, pointerEvents: isSearching ? 'none' : undefined, transition: 'opacity .15s' }}>
             {filterTabs.map(f => (
               <button key={f.id} onClick={() => setFilter(f.id)} style={isMobile ? {
                 padding: '6px 14px', borderRadius: 999, border: 'none', flexShrink: 0,
@@ -849,7 +881,12 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                 >
                   <span style={{ width: 10, height: 10, borderRadius: 3, background: accent }}/>
                   <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
-                  <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
+                    {isSearching && p.archived && (
+                      <span className="chip" style={{ background: 'var(--text-4)', color: 'var(--bg)', fontSize: 10 }}>アーカイブ</span>
+                    )}
+                  </div>
                   <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{formatDates(p.startDate, p.endDate)}</span>
                   <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={22}/>
                   <div style={{ height: 6, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
@@ -896,6 +933,9 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
+                        {isSearching && p.archived && (
+                          <span className="chip" style={{ background: 'var(--text-4)', color: 'var(--bg)', fontSize: 10 }}>アーカイブ</span>
+                        )}
                         <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={20}/>
                         <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 2 }}>{p.memberCount}人</span>
                       </div>
@@ -918,8 +958,11 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                       ? <img src={p.coverPhotoUrl} alt="" style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }}/>
                       : <MountainPhoto idx={p.coverPhotoIdx} height={120} flat/>
                     }
-                    <div style={{ position: 'absolute', top: 10, left: 10 }}>
+                    <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                       <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
+                      {isSearching && p.archived && (
+                        <span className="chip" style={{ background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 10, backdropFilter: 'blur(4px)' }}>アーカイブ</span>
+                      )}
                     </div>
                   </div>
                   <div style={{ padding: '12px 14px 14px' }}>

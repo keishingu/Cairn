@@ -321,18 +321,7 @@ export const Sidebar = ({ page, setPage, openPanel }: SidebarProps) => {
             </div>
           </>
         )}
-        <button style={{
-          marginTop: 12, width: '100%', height: 32,
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '0 10px', borderRadius: 7,
-          background: 'var(--card-2)', border: '1px solid var(--border)',
-          color: 'var(--text-3)', fontSize: 12.5, fontFamily: 'inherit',
-          cursor: 'pointer',
-        }}>
-          <Icon name="search" size={14}/>
-          <span style={{ flex: 1, textAlign: 'left' }}>検索</span>
-          <span className="kbd">⌘K</span>
-        </button>
+
       </div>
 
       <nav style={{ flex: 1, overflow: 'auto', padding: '12px 12px' }}>

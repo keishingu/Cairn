@@ -112,10 +112,11 @@ const FileRowSkeleton = () => (
 
 // ─── PageFiles ────────────────────────────────────────────────────
 
-export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
+export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boolean; externalSearch?: string }) => {
   const queryClient = useQueryClient()
   const [filter, setFilter] = React.useState<FilterKey>('all')
   const [search, setSearch] = React.useState('')
+  const effectiveSearch = isMobile ? search : (externalSearch ?? search)
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
   const sentinelRef = React.useRef<HTMLDivElement>(null)
 
@@ -141,14 +142,14 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
   }
 
   const filtered = React.useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = effectiveSearch.trim().toLowerCase()
     return files.filter(f =>
       matchesFilter(f, filter) &&
       (!q || f.fileName.toLowerCase().includes(q) || (f.projectTitle ?? f.channelName ?? '').toLowerCase().includes(q)),
     )
-  }, [files, filter, search])
+  }, [files, filter, effectiveSearch])
 
-  React.useEffect(() => { setVisibleCount(PAGE_SIZE) }, [filter, search])
+  React.useEffect(() => { setVisibleCount(PAGE_SIZE) }, [filter, effectiveSearch])
 
   React.useEffect(() => {
     const sentinel = sentinelRef.current
@@ -185,20 +186,22 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
         borderBottom: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 7, padding: '0 10px', height: 32 }}>
-          <Icon name="search" size={13} color="var(--text-4)"/>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="ファイル名・プロジェクトで検索"
-            style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
-          />
-          {search && (
-            <button onClick={() => setSearch('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>
-              <Icon name="close" size={12}/>
-            </button>
-          )}
-        </div>
+        {isMobile && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 7, padding: '0 10px', height: 32 }}>
+            <Icon name="search" size={13} color="var(--text-4)"/>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="ファイル名・プロジェクトで検索"
+              style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+            />
+            {search && (
+              <button onClick={() => setSearch('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>
+                <Icon name="close" size={12}/>
+              </button>
+            )}
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, overflowX: 'auto' }}>
           {filterDefs.map(f => (
             <button

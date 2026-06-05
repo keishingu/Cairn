@@ -209,11 +209,25 @@ export const MountainPhoto = ({ idx = 0, height = 200, flat = false, radius }: M
 )
 
 // ─── TopBar search box ────────────────────────────────────────────
-export const TopBarSearch = () => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '0 10px', height: 32, width: 280 }}>
-    <Icon name="search" size={14} color="var(--text-3)"/>
-    <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-4)' }}>プロジェクト・人・ファイルを検索</span>
-    <span className="kbd">⌘K</span>
+export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+}) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: `1px solid ${value ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8, padding: '0 10px', height: 32, width: 260, transition: 'border-color .12s' }}>
+    <Icon name="search" size={14} color={value ? 'var(--accent)' : 'var(--text-3)'}/>
+    <input
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+      onKeyDown={e => { if (e.key === 'Escape') onChange('') }}
+    />
+    {value && (
+      <button onClick={() => onChange('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>
+        <Icon name="close" size={12}/>
+      </button>
+    )}
   </div>
 )
 
