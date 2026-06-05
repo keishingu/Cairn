@@ -151,6 +151,9 @@
 .app .card { background: var(--card); border:1px solid var(--border); border-radius:12px; }
 .app .kbd { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; border-radius:4px; font-size:10.5px; font-weight:600; background:var(--bg-elev); color:var(--text-3); border:1px solid var(--border); font-family:'SF Mono', ui-monospace, monospace; }
 
+@keyframes messageHighlight { 0% { background-color: var(--accent-soft-2); } 100% { background-color: transparent; } }
+.message-highlight { animation: messageHighlight 2s ease-out forwards; }
+
 @keyframes projectPanelIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
 @keyframes slideUpSheet { from { transform: translateY(100%); } to { transform: translateY(0); } }

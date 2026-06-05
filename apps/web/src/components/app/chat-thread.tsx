@@ -217,6 +217,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
 
   return (
     <div
+      data-message-id={messageId}
       style={{ display: 'flex', gap: compact ? 8 : 12, padding: px, alignItems: 'flex-start', position: 'relative', background: hovered ? 'var(--card-2)' : 'transparent' }}
       onMouseEnter={() => !isMobile && setHovered(true)}
       onMouseLeave={() => { if (!isMobile) { setHovered(false); setDeleteConfirm(false) } }}
@@ -636,12 +637,13 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
 
 // ─── ChatThread ───────────────────────────────────────────────────
 
-export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile }: {
+export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile, targetMessageId }: {
   channelId: string | null
   channelName?: string
   isPrivate?: boolean
   compact?: boolean
   isMobile?: boolean
+  targetMessageId?: string | null
 }) => {
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
@@ -704,6 +706,16 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length])
+
+  React.useEffect(() => {
+    if (!targetMessageId || isLoading || !scrollRef.current) return
+    const el = scrollRef.current.querySelector<HTMLElement>(`[data-message-id="${targetMessageId}"]`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('message-highlight')
+    const t = setTimeout(() => el.classList.remove('message-highlight'), 2000)
+    return () => { clearTimeout(t); el.classList.remove('message-highlight') }
+  }, [targetMessageId, isLoading])
 
   const handleImageSelect = async (file: File) => {
     if (!channelId) return

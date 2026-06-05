@@ -115,6 +115,7 @@ const FileRowSkeleton = () => (
 export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
   const queryClient = useQueryClient()
   const [filter, setFilter] = React.useState<FilterKey>('all')
+  const [search, setSearch] = React.useState('')
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
   const sentinelRef = React.useRef<HTMLDivElement>(null)
 
@@ -139,12 +140,15 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
     deleteFile.mutate(fileId)
   }
 
-  const filtered = React.useMemo(
-    () => files.filter(f => matchesFilter(f, filter)),
-    [files, filter],
-  )
+  const filtered = React.useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return files.filter(f =>
+      matchesFilter(f, filter) &&
+      (!q || f.fileName.toLowerCase().includes(q) || (f.projectTitle ?? f.channelName ?? '').toLowerCase().includes(q)),
+    )
+  }, [files, filter, search])
 
-  React.useEffect(() => { setVisibleCount(PAGE_SIZE) }, [filter])
+  React.useEffect(() => { setVisibleCount(PAGE_SIZE) }, [filter, search])
 
   React.useEffect(() => {
     const sentinel = sentinelRef.current
@@ -177,25 +181,40 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Toolbar */}
       <div style={{
-        padding: isMobile ? '8px 12px' : '14px 20px',
+        padding: isMobile ? '8px 12px' : '10px 20px',
         borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0,
-        overflowX: 'auto',
+        display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0,
       }}>
-        {filterDefs.map(f => (
-          <button
-            key={f.id}
-            onClick={() => setFilter(f.id)}
-            style={{
-              padding: isMobile ? '6px 8px' : '6px 10px',
-              borderRadius: 6, border: 'none',
-              background: filter === f.id ? 'var(--card-hover)' : 'transparent',
-              color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
-              fontSize: isMobile ? 12 : 12.5, fontWeight: filter === f.id ? 600 : 500,
-              cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-            }}
-          >{f.label}</button>
-        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 7, padding: '0 10px', height: 32 }}>
+          <Icon name="search" size={13} color="var(--text-4)"/>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="ファイル名・プロジェクトで検索"
+            style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+          />
+          {search && (
+            <button onClick={() => setSearch('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>
+              <Icon name="close" size={12}/>
+            </button>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, overflowX: 'auto' }}>
+          {filterDefs.map(f => (
+            <button
+              key={f.id}
+              onClick={() => setFilter(f.id)}
+              style={{
+                padding: isMobile ? '6px 8px' : '6px 10px',
+                borderRadius: 6, border: 'none',
+                background: filter === f.id ? 'var(--card-hover)' : 'transparent',
+                color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
+                fontSize: isMobile ? 12 : 12.5, fontWeight: filter === f.id ? 600 : 500,
+                cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+              }}
+            >{f.label}</button>
+          ))}
+        </div>
       </div>
 
       {/* Content */}

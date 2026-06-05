@@ -660,19 +660,16 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     [projects],
   )
 
-  const filteredProjects = React.useMemo(
-    () => {
-      let result = projects
-      if (statusFilter.length > 0) result = result.filter(p => p.statusName != null && statusFilter.includes(p.statusName))
-      if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
-      return result
-    },
-    [projects, statusFilter, memberFilter],
-  )
+  const visibleProjects = React.useMemo(() => {
+    let result = projects
+    if (statusFilter.length > 0) result = result.filter(p => p.statusName != null && statusFilter.includes(p.statusName))
+    if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
+    return result
+  }, [projects, statusFilter, memberFilter])
 
   const events = React.useMemo(
-    () => buildEvents(filteredProjects, year, month),
-    [filteredProjects, year, month],
+    () => buildEvents(visibleProjects, year, month),
+    [visibleProjects, year, month],
   )
 
   const weekStart = getWeekStart(selectedDate)
@@ -764,7 +761,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <MobileCalendarGrid
             year={year}
             month={month}
-            projects={filteredProjects}
+            projects={visibleProjects}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             onProjectClick={openPanel}
@@ -774,13 +771,13 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <>
             <MobileWeekStrip
               weekStart={weekStart}
-              projects={filteredProjects}
+              projects={visibleProjects}
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
             />
             <MobileDayEvents
               date={selectedDate}
-              projects={filteredProjects}
+              projects={visibleProjects}
               onProjectClick={openPanel}
               isLoading={isLoading}
             />
@@ -790,7 +787,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <MobileTimelineView
             year={year}
             month={month}
-            projects={filteredProjects}
+            projects={visibleProjects}
             onProjectClick={openPanel}
             isLoading={isLoading}
           />
