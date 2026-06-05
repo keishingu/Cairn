@@ -839,6 +839,15 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
         }
         right={
           <>
+            <SegmentedControl
+              options={[
+                { id: 'month',    label: '月' },
+                { id: 'week',     label: '週' },
+                { id: 'timeline', label: 'リスト' },
+              ]}
+              value={calView}
+              onChange={(v) => setCalView(v as CalView)}
+            />
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
               <button
                 className="btn"
@@ -861,15 +870,6 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
                 />
               )}
             </div>
-            <SegmentedControl
-              options={[
-                { id: 'month',    label: '月' },
-                { id: 'week',     label: '週' },
-                { id: 'timeline', label: 'リスト' },
-              ]}
-              value={calView}
-              onChange={(v) => setCalView(v as CalView)}
-            />
             <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setShowCreate(true)}>
               <Icon name="plus" size={13} strokeWidth={2.4} /> 新規{projectLabel}
             </button>
