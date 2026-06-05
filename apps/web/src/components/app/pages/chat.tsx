@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MobileHeader } from '../mobile/header'
 import { ChatThread } from '../chat-thread'
@@ -297,11 +298,22 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
   )
 }
 
+// ─── Pending cross-channel jump (survives component remount) ─────
+let _pendingJump: { channelId: string; messageId: string } | null = null
+
 // ─── PageChat ─────────────────────────────────────────────────────
 
 export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
-  const [channelId, setChannelId] = React.useState<string | null>(null)
-  const [activePane, setActivePane] = React.useState<'list' | 'thread'>('list')
+  const router = useRouter()
+  const pathname = usePathname()
+
+  // /chats/<channelId> → channelId, /chats → null
+  const urlChannelId = React.useMemo(() => {
+    const segments = pathname.split('/')
+    return segments[1] === 'chats' && segments[2] ? segments[2] : null
+  }, [pathname])
+
+  const [channelId, setChannelId] = React.useState<string | null>(urlChannelId)
   const [showMemberPicker, setShowMemberPicker] = React.useState(false)
   const [showCreateChannel, setShowCreateChannel] = React.useState(false)
   const [showMemberInvite, setShowMemberInvite] = React.useState(false)
@@ -309,6 +321,19 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
   const [targetMessageId, setTargetMessageId] = React.useState<string | null>(null)
   const memberPickerRef = React.useRef<HTMLDivElement>(null)
+
+  // ブラウザの戻る/進むでURLが変わったとき状態を同期
+  React.useEffect(() => {
+    setChannelId(urlChannelId)
+  }, [urlChannelId])
+
+  // 全チャンネル横断ジャンプで設定されたpendingJumpを消費
+  React.useEffect(() => {
+    if (_pendingJump && _pendingJump.channelId === channelId) {
+      setTargetMessageId(_pendingJump.messageId)
+      _pendingJump = null
+    }
+  }, [channelId])
 
   const { data: projectChannels = [] } = useProjectChannels()
   const { data: workspaceChannels = [] } = useWorkspaceChannels()
@@ -327,18 +352,21 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // PC: チャンネル未選択時に最初のプロジェクトチャンネルへ自動遷移
   React.useEffect(() => {
     if (!channelId && projectChannels.length > 0 && !isMobile) {
-      setChannelId(projectChannels[0]!.channelId)
+      const firstId = projectChannels[0]!.channelId
+      setChannelId(firstId)
+      router.replace('/chats/' + firstId)
     }
-  }, [channelId, projectChannels, isMobile])
+  }, [channelId, projectChannels, isMobile, router])
 
   const selectChannel = (id: string) => {
     setChannelId(id)
     setSearchOpen(false)
     setGlobalSearchOpen(false)
     setTargetMessageId(null)
-    if (isMobile) setActivePane('thread')
+    router.push('/chats/' + id)
     markChannelRead.mutate(id)
   }
 
@@ -347,12 +375,12 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setTargetMessageId(messageId)
   }
 
-  const jumpToChannelMessage = (channelId: string, messageId: string) => {
+  const jumpToChannelMessage = (chanId: string, messageId: string) => {
+    _pendingJump = { channelId: chanId, messageId }
     setGlobalSearchOpen(false)
-    setChannelId(channelId)
-    setTargetMessageId(messageId)
-    if (isMobile) setActivePane('thread')
-    markChannelRead.mutate(channelId)
+    setChannelId(chanId)
+    router.push('/chats/' + chanId)
+    markChannelRead.mutate(chanId)
   }
 
   const startDm = (targetUserId: string) => {
@@ -453,7 +481,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
 
   // ─── モバイル ─────────────────────────────────────────────────
   if (isMobile) {
-    if (activePane === 'list') {
+    // URLにchannelIdがなければチャンネル一覧、あればスレッド
+    if (!channelId) {
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
           <MobileHeader
@@ -477,7 +506,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         <MobileHeader
           title={channelName}
           subtitle={currentChannelMemberCount != null ? `${currentChannelMemberCount}名が参加中` : undefined}
-          onBack={() => setActivePane('list')}
+          onBack={() => router.push('/chats')}
           right={
             <div style={{ display: 'flex', gap: 4 }}>
               <button className="btn" onClick={() => setSearchOpen(s => !s)} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={16}/></button>
