@@ -523,19 +523,10 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     />
   )
 
-  const ACCEPT_DOC_TYPES = [
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  ].join(',')
-
   const hiddenDocInput = (
     <input
       ref={docInputRef}
       type="file"
-      accept={ACCEPT_DOC_TYPES}
       style={{ display: 'none' }}
       onChange={makeFileHandler(docInputRef)}
     />
