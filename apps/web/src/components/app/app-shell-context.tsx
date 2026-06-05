@@ -11,6 +11,8 @@ interface AppShellContextValue {
   openNotif: () => void
   projectsView: string
   setProjectsView: (view: string) => void
+  projectsSearch: string
+  setProjectsSearch: (q: string) => void
 }
 
 export const AppShellContext = createContext<AppShellContextValue>({
@@ -18,6 +20,8 @@ export const AppShellContext = createContext<AppShellContextValue>({
   openNotif: () => {},
   projectsView: 'list',
   setProjectsView: () => {},
+  projectsSearch: '',
+  setProjectsSearch: () => {},
 })
 
 export const useAppShell = () => useContext(AppShellContext)

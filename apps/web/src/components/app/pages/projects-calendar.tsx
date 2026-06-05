@@ -7,6 +7,7 @@ import { PageToolbar, SegmentedControl } from './page-toolbar'
 import { CreateProjectModal, FilterPopover } from './project-list'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
+import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '@/components/app/mobile/header'
@@ -646,6 +647,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     localStorage.setItem(STORAGE_KEYS.calendar_member_filter, JSON.stringify(v))
   }
   const filterBtnRef = React.useRef<HTMLDivElement>(null)
+  const { projectsSearch } = useAppShell()
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
@@ -660,19 +662,22 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     [projects],
   )
 
-  const filteredProjects = React.useMemo(
-    () => {
-      let result = projects
-      if (statusFilter.length > 0) result = result.filter(p => p.statusName != null && statusFilter.includes(p.statusName))
-      if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
-      return result
-    },
-    [projects, statusFilter, memberFilter],
-  )
+  const visibleProjects = React.useMemo(() => {
+    let result = projects
+    if (statusFilter.length > 0) result = result.filter(p => p.statusName != null && statusFilter.includes(p.statusName))
+    if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
+    const q = projectsSearch.trim().toLowerCase()
+    if (q) result = result.filter(p =>
+      p.title.toLowerCase().includes(q) ||
+      (p.description?.toLowerCase().includes(q) ?? false) ||
+      p.memberNames.some(n => n.toLowerCase().includes(q)),
+    )
+    return result
+  }, [projects, statusFilter, memberFilter, projectsSearch])
 
   const events = React.useMemo(
-    () => buildEvents(filteredProjects, year, month),
-    [filteredProjects, year, month],
+    () => buildEvents(visibleProjects, year, month),
+    [visibleProjects, year, month],
   )
 
   const weekStart = getWeekStart(selectedDate)
@@ -764,7 +769,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <MobileCalendarGrid
             year={year}
             month={month}
-            projects={filteredProjects}
+            projects={visibleProjects}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             onProjectClick={openPanel}
@@ -774,13 +779,13 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <>
             <MobileWeekStrip
               weekStart={weekStart}
-              projects={filteredProjects}
+              projects={visibleProjects}
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
             />
             <MobileDayEvents
               date={selectedDate}
-              projects={filteredProjects}
+              projects={visibleProjects}
               onProjectClick={openPanel}
               isLoading={isLoading}
             />
@@ -790,7 +795,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <MobileTimelineView
             year={year}
             month={month}
-            projects={filteredProjects}
+            projects={visibleProjects}
             onProjectClick={openPanel}
             isLoading={isLoading}
           />

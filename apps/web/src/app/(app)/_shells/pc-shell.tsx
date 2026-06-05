@@ -58,6 +58,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
   }, [router])
 
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
+  const [projectsSearch, setProjectsSearch] = React.useState('')
 
   const setProjectsView = React.useCallback((view: string) => {
     if (!isValidView(view)) return
@@ -94,6 +95,8 @@ export function PCShell({ children }: { children: React.ReactNode }) {
       openNotif: () => setNotifOpen(true),
       projectsView,
       setProjectsView,
+      projectsSearch,
+      setProjectsSearch,
     }}>
       <div className="app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
         <NavigationProgress />

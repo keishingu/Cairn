@@ -3,6 +3,7 @@
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack } from './primitives'
+import { useAppShell } from './app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -165,6 +166,7 @@ interface KanbanBoardProps {
 
 export const KanbanBoard = ({ onCardClick, isMobile = false, statusFilter, projectFilter }: KanbanBoardProps) => {
   const queryClient = useQueryClient()
+  const { projectsSearch } = useAppShell()
 
   const { data: statuses = [], isLoading: statusesLoading } = useQuery<ProjectStatusDto[]>({
     queryKey: ['statuses'],
@@ -180,6 +182,16 @@ export const KanbanBoard = ({ onCardClick, isMobile = false, statusFilter, proje
   const visibleStatuses = statusFilter?.length ? statuses.filter(s => statusFilter.includes(s.name)) : statuses
 
   const isLoading = statusesLoading || projectsLoading
+
+  const visibleProjects = React.useMemo(() => {
+    const q = projectsSearch.trim().toLowerCase()
+    if (!q) return projects
+    return projects.filter(p =>
+      p.title.toLowerCase().includes(q) ||
+      (p.description?.toLowerCase().includes(q) ?? false) ||
+      p.memberNames.some(n => n.toLowerCase().includes(q)),
+    )
+  }, [projects, projectsSearch])
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, statusName }: { id: string; statusName: string }) => {
@@ -237,7 +249,7 @@ export const KanbanBoard = ({ onCardClick, isMobile = false, statusFilter, proje
           <div key={s.id} style={{ flexShrink: 0, width: 'calc(85vw)', maxWidth: 320, scrollSnapAlign: 'start', display: 'flex', flexDirection: 'column' }}>
             <KanbanColumn
               status={s}
-              items={projects.filter(p => p.statusName === s.name)}
+              items={visibleProjects.filter(p => p.statusName === s.name)}
               onCardClick={onCardClick}
               onDragStart={() => {}}
               onDragEnd={() => {}}
@@ -260,7 +272,7 @@ export const KanbanBoard = ({ onCardClick, isMobile = false, statusFilter, proje
         <KanbanColumn
           key={s.id}
           status={s}
-          items={projects.filter(p => p.statusName === s.name)}
+          items={visibleProjects.filter(p => p.statusName === s.name)}
           onCardClick={onCardClick}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
