@@ -25,25 +25,12 @@ export interface MessageDto {
   attachments: AttachmentDto[]
 }
 
-declare global {
-  var __cairnMockMessageStore: Map<string, MessageDto[]> | undefined
-}
-
-function getMockStore() {
-  globalThis.__cairnMockMessageStore ??= new Map<string, MessageDto[]>()
-  return globalThis.__cairnMockMessageStore
-}
-
 type RouteContext = { params: Promise<{ channelId: string }> }
 
 export async function GET(_req: Request, { params }: RouteContext) {
   const { channelId } = await params
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(getMockStore().get(channelId) ?? [] satisfies MessageDto[])
-  }
 
   try {
     const { db } = await import('@cairn/db')
@@ -167,24 +154,6 @@ export async function POST(req: Request, { params }: RouteContext) {
   const parsed = postMessageSchema.safeParse({ ...(body as object), channelId })
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
-  }
-
-  if (!process.env['DATABASE_URL']) {
-    const newMsg: MessageDto = {
-      id: crypto.randomUUID(),
-      content: parsed.data.content,
-      senderId: ctx.userId,
-      senderName: '山田 太郎',
-      senderAvatarUrl: null,
-      createdAt: new Date().toISOString(),
-      isEdited: false,
-      reactions: [],
-      attachments: [],
-    }
-    const mockStore = getMockStore()
-    const prev = mockStore.get(channelId) ?? []
-    mockStore.set(channelId, [...prev, newMsg])
-    return NextResponse.json(newMsg, { status: 201 })
   }
 
   try {

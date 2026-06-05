@@ -9,10 +9,6 @@ export async function DELETE(
 ) {
   const { id: projectId } = await params
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ success: true })
-  }
-
   try {
     const { db, projects, files, channels, messages, messageAttachments } = await import('@cairn/db')
     const { eq, and, or } = await import('drizzle-orm')
@@ -95,10 +91,6 @@ export async function PATCH(
   const keys = Object.keys(b as object)
   if (keys.length === 0) {
     return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
-  }
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ id, ...b })
   }
 
   try {

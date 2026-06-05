@@ -18,7 +18,6 @@ export type DevStatusDto = {
   tavily: ServiceStatus
   env: {
     nodeEnv: string
-    hasDatabase: boolean
     hasVapid: boolean
   }
 }
@@ -34,7 +33,6 @@ async function checkWithLatency(fn: () => Promise<string | undefined>): Promise<
 }
 
 async function checkSupabaseDb(): Promise<ServiceStatus> {
-  if (!process.env['DATABASE_URL']) return { status: 'unconfigured', detail: 'DATABASE_URL 未設定' }
   return checkWithLatency(async () => {
     const { db } = await import('@cairn/db')
     const { sql } = await import('drizzle-orm')
@@ -127,7 +125,6 @@ export async function GET() {
     supabaseDb, supabaseStorage, inngest, openai, tavily,
     env: {
       nodeEnv: process.env['NODE_ENV'] ?? 'unknown',
-      hasDatabase: !!process.env['DATABASE_URL'],
       hasVapid: !!process.env['VAPID_PUBLIC_KEY'],
     },
   }

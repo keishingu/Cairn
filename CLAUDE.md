@@ -138,14 +138,7 @@ components/app/
 
 ## 認証・API ルート実装規約
 
-### 二つの動作モード
-
-| 条件 | 動作 |
-|------|------|
-| `DATABASE_URL` 未設定 | Supabase なし開発モード。認証スキップ、モックデータを使用 |
-| `DATABASE_URL` あり | 認証必須。未認証は `/auth/login` へリダイレクト |
-
-ミドルウェア（`apps/web/src/middleware.ts`）が `DATABASE_URL` の有無を見てガードを切り替えるため、`supabase start` なしでも `pnpm dev` 単体で動く。
+認証は常に必須。`DATABASE_URL` と Supabase の設定が必要。未認証は `/auth/login` へリダイレクト。
 
 ### API ルートでのユーザー取得
 
@@ -161,8 +154,6 @@ export async function POST(req: Request) {
   // ctx.userId, ctx.workspaceId が使える
 }
 ```
-
-`DATABASE_URL` 未設定時はモック ID が自動的に返るため、両モードで動作する。
 
 ### サインアップフロー
 

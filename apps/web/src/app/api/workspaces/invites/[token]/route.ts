@@ -13,10 +13,6 @@ export async function DELETE(
 
   const { token } = await params
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ ok: true })
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { workspaceInvites, workspaceMembers } = await import('@cairn/db')

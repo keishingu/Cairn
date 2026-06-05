@@ -12,13 +12,6 @@ export async function DELETE(
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    void projectId
-    void userId
-    void ctx
-    return NextResponse.json({ success: true })
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { projectMembers, projects } = await import('@cairn/db')

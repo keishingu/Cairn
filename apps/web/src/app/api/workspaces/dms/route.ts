@@ -20,10 +20,6 @@ export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json([] satisfies DmChannelDto[])
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { channels, channelMembers, profiles, workspaceMembers } = await import('@cairn/db')
@@ -106,10 +102,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
   const { targetUserId } = parsed.data
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ id: `mock-dm-${targetUserId}` })
-  }
 
   try {
     const { db } = await import('@cairn/db')

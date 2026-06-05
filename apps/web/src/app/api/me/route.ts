@@ -16,16 +16,6 @@ export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({
-      id: ctx.userId,
-      displayName: '山田 太郎',
-      avatarUrl: null,
-      email: 'yamada@example.com',
-      bio: null,
-    } satisfies CurrentUserDto)
-  }
-
   try {
     const { db, profiles } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
@@ -89,10 +79,6 @@ export async function PATCH(req: Request) {
   }
   if (hasDisplayName && !b.displayName?.trim()) {
     return NextResponse.json({ error: '表示名は必須です' }, { status: 422 })
-  }
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ id: ctx.userId, ...b })
   }
 
   try {

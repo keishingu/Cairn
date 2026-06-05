@@ -3,8 +3,6 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { PROJECTS } from '@/components/app/data'
-import type { ProjectDto } from '../route'
 
 export interface PinnedProjectDto {
   id: string
@@ -15,24 +13,9 @@ export interface PinnedProjectDto {
   sortOrder: number
 }
 
-function mockPinnedProjects(): PinnedProjectDto[] {
-  return PROJECTS.slice(0, 4).map((p, i) => ({
-    id: `mock-pin-${p.id}`,
-    projectId: p.id,
-    title: p.name,
-    statusName: p.status,
-    dot: '#3B82F6',
-    sortOrder: i,
-  }))
-}
-
 export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(mockPinnedProjects())
-  }
 
   try {
     const { db } = await import('@cairn/db')
@@ -89,10 +72,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'projectId required' }, { status: 400 })
   }
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ ok: true }, { status: 201 })
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { pinnedProjects } = await import('@cairn/db')
@@ -131,10 +110,6 @@ export async function DELETE(req: Request) {
   const { projectId } = body as { projectId?: string }
   if (!projectId) {
     return NextResponse.json({ error: 'projectId required' }, { status: 400 })
-  }
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ ok: true })
   }
 
   try {

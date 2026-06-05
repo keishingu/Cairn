@@ -3,7 +3,6 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { PROJECTS } from '@/components/app/data'
 
 export interface MemberProjectDto {
   projectId: string
@@ -23,36 +22,6 @@ function coverPhotoIdxFromId(id: string): number {
   return h
 }
 
-// userId → [{projectIndex, role}]
-const MOCK_MEMBERSHIPS: Record<string, { pi: number; role: MemberProjectDto['role'] }[]> = {
-  m1: [{ pi: 0, role: 'leader' },    { pi: 5, role: 'leader' },    { pi: 7, role: 'observer' }],
-  m2: [{ pi: 0, role: 'subleader' }, { pi: 1, role: 'subleader' }, { pi: 7, role: 'subleader' }],
-  m3: [{ pi: 0, role: 'member' },    { pi: 3, role: 'member' },    { pi: 6, role: 'member' }],
-  m4: [{ pi: 1, role: 'member' },    { pi: 4, role: 'member' },    { pi: 5, role: 'member' }],
-  m5: [{ pi: 0, role: 'member' },    { pi: 2, role: 'member' },    { pi: 5, role: 'member' }],
-  m6: [{ pi: 1, role: 'member' },    { pi: 6, role: 'reviewer' },  { pi: 7, role: 'member' }],
-  m7: [{ pi: 2, role: 'member' },    { pi: 3, role: 'member' }],
-  m8: [{ pi: 4, role: 'observer' }],
-}
-
-function mockMemberProjects(userId: string): MemberProjectDto[] {
-  const memberships = MOCK_MEMBERSHIPS[userId] ?? []
-  return memberships.map(({ pi, role }) => {
-    const p = PROJECTS[pi]!
-    return {
-      projectId: p.id,
-      title:     p.name,
-      statusName: p.status,
-      statusColor: p.accent,
-      role,
-      startDate:  p.startDate,
-      endDate:    p.endDate,
-      memberCount: p.members,
-      coverPhotoIdx: p.photoIdx,
-    }
-  })
-}
-
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ userId: string }> },
@@ -60,11 +29,6 @@ export async function GET(
   const { userId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    void ctx
-    return NextResponse.json(mockMemberProjects(userId))
-  }
 
   try {
     const { db } = await import('@cairn/db')

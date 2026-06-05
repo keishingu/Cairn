@@ -27,10 +27,6 @@ export async function GET(_req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json([] satisfies GalleryItemDto[])
-  }
-
   try {
     const { db, galleryItems, files, projects } = await import('@cairn/db')
     const { eq, and, desc, isNotNull, sql } = await import('drizzle-orm')
@@ -76,10 +72,6 @@ export async function POST(req: Request, { params }: RouteContext) {
   const { id: projectId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ error: 'ローカル開発モードではアップロードは利用できません' }, { status: 501 })
-  }
 
   let formData: FormData
   try {

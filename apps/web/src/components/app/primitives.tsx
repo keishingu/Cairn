@@ -1,7 +1,20 @@
 'use client'
 
 import React from 'react'
-import { photoUrl } from './data'
+const PHOTO_IDS = [
+  '1464822759023-fed622ff2c3b', '1483728642387-6c3bdd6c93e5', '1454391304352-2bf4678b1a7a',
+  '1519681393784-d120267933ba', '1486870591958-9b9d0d1dda99', '1454496522488-7a8e488e8606',
+  '1469854523086-cc02fe5d8800', '1426604966848-d7adac402bff', '1418065460487-3956c3a83d04',
+  '1551632811-561732d1e306',    '1506905925346-21bda4d32df4', '1444930694458-01babe71870e',
+  '1502082553048-f009c37129b9', '1601925240970-98447a0e0cb0', '1542202229-7d93c33f5d07',
+  '1464822759023-fed622ff2c3b', '1543946207-39bd91e70ca7', '1496614932623-0a3a9743552e',
+  '1517524008697-84bbe3c3fd98', '1483356046701-7565d31be5c5',
+]
+
+const photoUrl = (idx: number, w = 600, h = 400) => {
+  const id = PHOTO_IDS[Math.abs(idx) % PHOTO_IDS.length]
+  return `https://images.unsplash.com/photo-${id}?w=${w}&h=${h}&fit=crop&auto=format&q=70`
+}
 
 // ─── Icon ─────────────────────────────────────────────────────────
 interface IconProps {

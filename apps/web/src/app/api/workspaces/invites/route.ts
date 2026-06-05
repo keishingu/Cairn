@@ -39,15 +39,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
 
-  if (!process.env['DATABASE_URL']) {
-    const mockToken = 'mock-invite-token-dev'
-    return NextResponse.json({
-      token: mockToken,
-      url: `${new URL(req.url).origin}/invite/${mockToken}`,
-      expiresAt: null,
-    })
-  }
-
   try {
     if (!(await requireAdminRole(ctx.workspaceId, ctx.userId))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -95,10 +86,6 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ invites: [] })
-  }
 
   try {
     const { db } = await import('@cairn/db')

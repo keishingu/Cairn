@@ -15,24 +15,13 @@ export interface WorkspaceChannelDto {
   unreadMentionCount: number
 }
 
-function mockChannels(): WorkspaceChannelDto[] {
-  return [
-    { id: 'g1', name: '雑談',     isPrivate: false, memberCount: 8, memberNames: ['山田 太郎', '佐藤 花子', '鈴木 健', '田中 陽子'], memberAvatarUrls: [null, null, null, null], unreadCount: 0, unreadMentionCount: 0 },
-    { id: 'g2', name: '連絡事項', isPrivate: false, memberCount: 5, memberNames: ['山田 太郎', '佐藤 花子', '鈴木 健'], memberAvatarUrls: [null, null, null], unreadCount: 0, unreadMentionCount: 0 },
-  ]
-}
-
 export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(mockChannels())
-  }
-
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, profiles, workspaceMembers } = await import('@cairn/db')
+    const { channels, channelMembers, profiles } = await import('@cairn/db')
     const { and, eq, inArray } = await import('drizzle-orm')
 
     const channelRows = await db
@@ -43,22 +32,19 @@ export async function GET() {
 
     if (channelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
 
+    const { workspaceMembers } = await import('@cairn/db')
     const memberRows = await db
-      .select({
-        channelId: channelMembers.channelId,
-        displayName: profiles.displayName,
-        avatarUrl: workspaceMembers.avatarUrl,
-      })
+      .select({ channelId: channelMembers.channelId, displayName: profiles.displayName, avatarUrl: workspaceMembers.avatarUrl })
       .from(channelMembers)
       .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, channelMembers.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(inArray(channelMembers.channelId, channelRows.map(c => c.id)))
       .orderBy(channelMembers.joinedAt)
 
-    const membersByChannel = new Map<string, { name: string; url: string | null }[]>()
+    const membersByChannel = new Map<string, { name: string; avatarUrl: string | null }[]>()
     for (const m of memberRows) {
       const arr = membersByChannel.get(m.channelId) ?? []
-      arr.push({ name: m.displayName, url: m.avatarUrl ?? null })
+      arr.push({ name: m.displayName, avatarUrl: m.avatarUrl ?? null })
       membersByChannel.set(m.channelId, arr)
     }
 
@@ -88,12 +74,12 @@ export async function GET() {
 
     const result: WorkspaceChannelDto[] = channelRows.map(c => {
       const members = membersByChannel.get(c.id) ?? []
-      const shown = members.slice(0, 4)
+      const top4 = members.slice(0, 4)
       return {
         id: c.id, name: c.name, isPrivate: c.isPrivate,
         memberCount: members.length,
-        memberNames: shown.map(m => m.name),
-        memberAvatarUrls: shown.map(m => m.url),
+        memberNames: top4.map(m => m.name),
+        memberAvatarUrls: top4.map(m => m.avatarUrl),
         unreadCount: unreadMap.get(c.id) ?? 0,
         unreadMentionCount: mentionMap.get(c.id) ?? 0,
       }
@@ -101,8 +87,8 @@ export async function GET() {
 
     return NextResponse.json(result)
   } catch (err) {
-    console.error('[/api/workspaces/channels] DB query failed, using mock data:', err)
-    return NextResponse.json(mockChannels())
+    console.error('[/api/workspaces/channels] DB query failed:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -130,23 +116,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: '60文字以内で入力してください' }, { status: 400 })
   }
 
-  if (!process.env['DATABASE_URL']) {
-    const mock: WorkspaceChannelDto = {
-      id: `mock-${Date.now()}`,
-      name,
-      isPrivate,
-      memberCount: 1,
-      memberNames: [],
-      memberAvatarUrls: [],
-      unreadCount: 0,
-      unreadMentionCount: 0,
-    }
-    return NextResponse.json(mock, { status: 201 })
-  }
-
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers } = await import('@cairn/db')
+    const { channels } = await import('@cairn/db')
 
     const rows = await db
       .insert(channels)
@@ -160,10 +132,7 @@ export async function POST(req: Request) {
 
     const inserted = rows[0]
     if (!inserted) throw new Error('insert returned no rows')
-
-    await db.insert(channelMembers).values({ channelId: inserted.id, userId: ctx.userId })
-
-    const result: WorkspaceChannelDto = { ...inserted, memberCount: 1, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
+    const result: WorkspaceChannelDto = { ...inserted, memberCount: 0, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('[/api/workspaces/channels POST] DB error:', err)

@@ -3,7 +3,6 @@
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack } from './primitives'
-import { MEMBERS } from './data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -62,7 +61,7 @@ const KanbanCard = ({ project, barColor, onClick, onDragStart, onDragEnd, draggi
         <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 10 }}>{dateStr}</div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <AvatarStack names={MEMBERS.slice(0, Math.min(project.memberCount, 4))} size={20} max={4} />
+        <AvatarStack names={project.memberNames} size={20} max={4} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--text-3)' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
             <Icon name="users" size={11.5} />

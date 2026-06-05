@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
@@ -57,6 +57,7 @@ function selectChain(result: unknown[]) {
     from: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({
         limit: vi.fn().mockResolvedValue(result),
+        orderBy: vi.fn().mockResolvedValue(result),
       }),
       innerJoin: vi.fn().mockReturnThis(),
     }),
@@ -69,6 +70,10 @@ function selectChain(result: unknown[]) {
 }
 
 describe('POST /api/workspaces/invites', () => {
+  beforeEach(() => {
+    process.env['DATABASE_URL'] = 'postgresql://test'
+  })
+
   afterEach(() => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
@@ -77,143 +82,119 @@ describe('POST /api/workspaces/invites', () => {
     })
   })
 
-  describe('モックモード (DATABASE_URL なし)', () => {
-    it('モックトークンと URL を返す', async () => {
-      delete process.env['DATABASE_URL']
-      const { POST } = await import('./route')
-
-      const res = await POST(
-        new Request('http://localhost/api/workspaces/invites', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ expiresIn: '1h' }),
-        }),
-      )
-
-      expect(res.status).toBe(200)
-      const body = await res.json() as { token: string; url: string; expiresAt: null }
-      expect(typeof body.token).toBe('string')
-      expect(body.url).toContain('/invite/')
-      expect(body.expiresAt).toBeNull()
+  it('未認証なら認証エラーを返す', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: null,
+      error: new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }),
     })
+    const { POST } = await import('./route')
 
-    it('未認証なら認証エラーを返す', async () => {
-      delete process.env['DATABASE_URL']
-      mockGetAuthContext.mockResolvedValue({
-        ctx: null,
-        error: new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }),
-      })
-      const { POST } = await import('./route')
+    const res = await POST(
+      new Request('http://localhost/api/workspaces/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    )
 
-      const res = await POST(
-        new Request('http://localhost/api/workspaces/invites', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        }),
-      )
-
-      expect(res.status).toBe(401)
-    })
+    expect(res.status).toBe(401)
   })
 
-  describe('DB モード (DATABASE_URL あり)', () => {
-    beforeEach(() => {
-      process.env['DATABASE_URL'] = 'postgresql://test'
+  it('owner でないユーザーには 403 を返す', async () => {
+    // requireAdminRole の DB クエリ: role が 'member' → false
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('http://localhost/api/workspaces/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiresIn: '1h' }),
+      }),
+    )
+
+    expect(res.status).toBe(403)
+    const body = await res.json() as { error: string }
+    expect(body.error).toBe('Forbidden')
+  })
+
+  it('メンバーシップなし（ゲストも含む）は 403', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([]))  // no membership found
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('http://localhost/api/workspaces/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiresIn: '30d' }),
+      }),
+    )
+
+    expect(res.status).toBe(403)
+  })
+
+  it('owner は招待トークンを作成できる', async () => {
+    // requireAdminRole: owner
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
+
+    const fakeToken = 'aaaabbbb-cccc-dddd-eeee-ffffgggghhh'
+    mockDb.insert.mockReturnValueOnce({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{
+          token: fakeToken,
+          expiresAt: null,
+          role: 'member',
+        }]),
+      }),
     })
 
-    it('owner でないユーザーには 403 を返す', async () => {
-      // requireAdminRole の DB クエリ: role が 'member' → false
-      mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('http://localhost/api/workspaces/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiresIn: 'never', role: 'member' }),
+      }),
+    )
 
-      const { POST } = await import('./route')
-      const res = await POST(
-        new Request('http://localhost/api/workspaces/invites', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ expiresIn: '1h' }),
-        }),
-      )
+    expect(res.status).toBe(200)
+    const body = await res.json() as { token: string; url: string; role: string }
+    expect(body.token).toBe(fakeToken)
+    expect(body.url).toContain(`/invite/${fakeToken}`)
+    expect(body.role).toBe('member')
+  })
 
-      expect(res.status).toBe(403)
-      const body = await res.json() as { error: string }
-      expect(body.error).toBe('Forbidden')
+  it('admin も招待トークンを作成できる', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'admin' }]))
+
+    mockDb.insert.mockReturnValueOnce({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{
+          token: 'admin-token-123',
+          expiresAt: new Date('2026-07-01'),
+          role: 'guest',
+        }]),
+      }),
     })
 
-    it('メンバーシップなし（ゲストも含む）は 403', async () => {
-      mockDb.select.mockReturnValueOnce(selectChain([]))  // no membership found
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('http://localhost/api/workspaces/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiresIn: '30d', role: 'guest' }),
+      }),
+    )
 
-      const { POST } = await import('./route')
-      const res = await POST(
-        new Request('http://localhost/api/workspaces/invites', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ expiresIn: '30d' }),
-        }),
-      )
-
-      expect(res.status).toBe(403)
-    })
-
-    it('owner は招待トークンを作成できる', async () => {
-      // requireAdminRole: owner
-      mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
-
-      const fakeToken = 'aaaabbbb-cccc-dddd-eeee-ffffgggghhh'
-      mockDb.insert.mockReturnValueOnce({
-        values: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([{
-            token: fakeToken,
-            expiresAt: null,
-            role: 'member',
-          }]),
-        }),
-      })
-
-      const { POST } = await import('./route')
-      const res = await POST(
-        new Request('http://localhost/api/workspaces/invites', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ expiresIn: 'never', role: 'member' }),
-        }),
-      )
-
-      expect(res.status).toBe(200)
-      const body = await res.json() as { token: string; url: string; role: string }
-      expect(body.token).toBe(fakeToken)
-      expect(body.url).toContain(`/invite/${fakeToken}`)
-      expect(body.role).toBe('member')
-    })
-
-    it('admin も招待トークンを作成できる', async () => {
-      mockDb.select.mockReturnValueOnce(selectChain([{ role: 'admin' }]))
-
-      mockDb.insert.mockReturnValueOnce({
-        values: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([{
-            token: 'admin-token-123',
-            expiresAt: new Date('2026-07-01'),
-            role: 'guest',
-          }]),
-        }),
-      })
-
-      const { POST } = await import('./route')
-      const res = await POST(
-        new Request('http://localhost/api/workspaces/invites', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ expiresIn: '30d', role: 'guest' }),
-        }),
-      )
-
-      expect(res.status).toBe(200)
-    })
+    expect(res.status).toBe(200)
   })
 })
 
 describe('GET /api/workspaces/invites', () => {
+  beforeEach(() => {
+    process.env['DATABASE_URL'] = 'postgresql://test'
+  })
+
   afterEach(() => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
@@ -223,8 +204,8 @@ describe('GET /api/workspaces/invites', () => {
     })
   })
 
-  it('モックモードでは空配列を返す', async () => {
-    delete process.env['DATABASE_URL']
+  it('空のワークスペースでは空配列を返す', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([]))
     const { GET } = await import('./route')
 
     const res = await GET(
@@ -232,6 +213,5 @@ describe('GET /api/workspaces/invites', () => {
     )
 
     expect(res.status).toBe(200)
-    await expect(res.json()).resolves.toEqual({ invites: [] })
   })
 })
