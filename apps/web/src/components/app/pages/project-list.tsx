@@ -383,6 +383,7 @@ export const FilterPopover = ({
 interface ProjectListViewProps {
   openPanel?: (project?: ProjectDto) => void
   isMobile?: boolean
+  externalSearch?: string
 }
 
 function formatDates(start: string | null, end: string | null): string {
@@ -645,7 +646,7 @@ export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalPro
   )
 }
 
-export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) => {
+export const ProjectListView = ({ openPanel, isMobile, externalSearch }: ProjectListViewProps) => {
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
@@ -718,16 +719,17 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
     [projects],
   )
 
-  const isSearching = search.trim().length > 0
+  const effectiveSearch = isMobile ? search : (externalSearch ?? search)
+  const isSearching = effectiveSearch.trim().length > 0
 
   const filteredProjects = React.useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = effectiveSearch.trim().toLowerCase()
     if (q) return projects.filter(p => p.title.toLowerCase().includes(q))
     let result = tabFiltered
     if (statusFilter.length > 0) result = result.filter(p => p.statusName !== null && statusFilter.includes(p.statusName))
     if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
     return result
-  }, [tabFiltered, statusFilter, memberFilter, search, projects])
+  }, [tabFiltered, statusFilter, memberFilter, effectiveSearch, projects])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
@@ -812,21 +814,6 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
         }
         right={!isMobile ? (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--card-2)', border: `1px solid ${search ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 7, padding: '0 10px', height: 32, width: 220, transition: 'border-color .12s' }}>
-              <Icon name="search" size={13} color={search ? 'var(--accent)' : 'var(--text-4)'}/>
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="プロジェクトを検索…"
-                style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
-                onKeyDown={e => { if (e.key === 'Escape') setSearch('') }}
-              />
-              {search && (
-                <button onClick={() => setSearch('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>
-                  <Icon name="close" size={12}/>
-                </button>
-              )}
-            </div>
             <SegmentedControl
               options={[
                 { id: 'grid',  label: 'カード',   icon: <Icon name="kanban" size={12}/> },

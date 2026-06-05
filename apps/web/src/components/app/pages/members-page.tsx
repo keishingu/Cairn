@@ -97,11 +97,13 @@ const MemberCard = ({ member, projectCount, selected, onClick }: MemberCardProps
 interface PageMembersProps {
   initialUserId?: string
   isMobile?: boolean
+  externalSearch?: string
 }
 
-export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
+export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMembersProps) => {
   const router = useRouter()
   const [search, setSearch] = React.useState('')
+  const effectiveSearch = isMobile ? search : (externalSearch ?? search)
   const [roleFilter, setRoleFilter] = React.useState<WorkspaceMemberDto['role'] | 'all'>('all')
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
   const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
@@ -152,11 +154,11 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
 
   const filtered = React.useMemo(() => {
     return members.filter(m => {
-      const matchSearch = search === '' || m.displayName.includes(search)
+      const matchSearch = effectiveSearch === '' || m.displayName.toLowerCase().includes(effectiveSearch.toLowerCase())
       const matchRole = roleFilter === 'all' || m.role === roleFilter
       return matchSearch && matchRole
     })
-  }, [members, search, roleFilter])
+  }, [members, effectiveSearch, roleFilter])
 
   const counts = React.useMemo(() => {
     const c = new Map<string, number>([['all', members.length]])
@@ -291,22 +293,6 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {/* Toolbar */}
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <div style={{ flex: 1, position: 'relative' }}>
-            <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-4)', pointerEvents: 'none' }}>
-              <Icon name="search" size={14} />
-            </div>
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="メンバーを検索…"
-              style={{
-                width: '100%', maxWidth: 280, height: 34, padding: '0 12px 0 32px',
-                border: '1px solid var(--border)', borderRadius: 8,
-                background: 'var(--card)', color: 'var(--text)', fontSize: 13,
-                fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
-              }}
-            />
-          </div>
           <div style={{ display: 'flex', gap: 2 }}>
             {roleFilters.map(f => (
               <button
