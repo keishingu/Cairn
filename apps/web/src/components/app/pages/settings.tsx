@@ -1020,13 +1020,13 @@ const STATUS_CONFIG: Record<ServiceStatus['status'], { label: string; color: str
 }
 
 type ServiceKey = Exclude<keyof DevStatusDto, 'env'>
-const SERVICE_META: { key: ServiceKey; label: string; icon: string }[] = [
-  { key: 'supabaseDb',      label: 'Supabase Database',   icon: 'database' },
-  { key: 'supabaseStorage', label: 'Supabase Storage',    icon: 'archive' },
-  { key: 'inngest',         label: 'Inngest',              icon: 'sparkles' },
-  { key: 'openai',          label: 'OpenAI',               icon: 'sparkles' },
-  { key: 'googleMaps',      label: 'Google Maps Platform', icon: 'map-pin' },
-  { key: 'tavily',          label: 'Tavily',               icon: 'search' },
+const SERVICE_META: { key: ServiceKey; label: string; icon: string; purpose: string }[] = [
+  { key: 'supabaseDb',      label: 'Supabase Database',   icon: 'database',  purpose: 'プロジェクト・タスク・メッセージなど全データの永続化に必要' },
+  { key: 'supabaseStorage', label: 'Supabase Storage',    icon: 'archive',   purpose: 'カバー写真・ギャラリー画像・添付ファイルの保存に必要' },
+  { key: 'inngest',         label: 'Inngest',              icon: 'sparkles',  purpose: 'AI エージェント・通知・外部連携などの非同期ジョブ実行に必要' },
+  { key: 'openai',          label: 'OpenAI',               icon: 'sparkles',  purpose: 'AI アシスタント・ドキュメント要約・ベクトル検索に必要' },
+  { key: 'googleMaps',      label: 'Google Maps Platform', icon: 'map-pin',   purpose: 'プロジェクト作成時の場所オートコンプリートとカバー写真取得に必要' },
+  { key: 'tavily',          label: 'Tavily',               icon: 'search',    purpose: 'AI エージェントのウェブ検索機能に必要（省略可）' },
 ]
 
 const SettingsDeveloper = () => {
@@ -1056,7 +1056,7 @@ const SettingsDeveloper = () => {
       <section style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>外部サービス</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
-          {SERVICE_META.map(({ key, label, icon }) => {
+          {SERVICE_META.map(({ key, label, icon, purpose }) => {
             const s = data?.[key]
             const cfg = s ? STATUS_CONFIG[s.status] : null
             return (
@@ -1066,8 +1066,9 @@ const SettingsDeveloper = () => {
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{label}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 1 }}>{purpose}</div>
                   {s?.detail && (
-                    <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>{s.detail}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{s.detail}</div>
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
