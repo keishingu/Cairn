@@ -12,7 +12,7 @@ export interface PlacePhoto {
 const MAX_PHOTOS = 5
 
 export async function GET(req: Request) {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY
+  const apiKey = process.env['GOOGLE_MAPS_API_KEY']
   if (!apiKey) {
     return NextResponse.json({ error: 'Google Maps API key not configured' }, { status: 503 })
   }

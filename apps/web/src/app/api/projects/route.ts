@@ -157,7 +157,7 @@ export async function POST(req: Request) {
     let coverPhotoUrl = parsed.data.coverPhotoUrl ?? null
 
     if (parsed.data.placePhotoName && !coverPhotoUrl) {
-      const apiKey = process.env.GOOGLE_MAPS_API_KEY
+      const apiKey = process.env['GOOGLE_MAPS_API_KEY']
       if (apiKey) {
         try {
           const mediaRes = await fetch(

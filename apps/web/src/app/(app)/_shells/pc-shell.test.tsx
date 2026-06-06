@@ -74,6 +74,7 @@ const STUB_PROJECT: ProjectDto = {
   archived: false,
   coverPhotoIdx: 0,
   coverPhotoUrl: null,
+  location: null,
 }
 
 // context 経由で openPanel を呼ぶ用ヘルパーコンポーネント
