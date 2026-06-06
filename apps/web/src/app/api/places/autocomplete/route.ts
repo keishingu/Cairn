@@ -45,8 +45,8 @@ export async function GET(req: Request) {
     suggestions.push({
       placeId: pred.placeId,
       description: pred.text.text,
-      mainText: pred.structuredFormat?.mainText?.text,
-      secondaryText: pred.structuredFormat?.secondaryText?.text,
+      ...(pred.structuredFormat?.mainText?.text && { mainText: pred.structuredFormat.mainText.text }),
+      ...(pred.structuredFormat?.secondaryText?.text && { secondaryText: pred.structuredFormat.secondaryText.text }),
     })
   }
 
