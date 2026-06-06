@@ -22,6 +22,7 @@ import { PageKanban } from '@/components/app/pages/projects-kanban'
 import { Icon } from '@/components/app/primitives'
 import { AppShellContext, useAppShell } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
+import { PageNotifications } from '@/components/app/pages/notifications'
 import { PageMembers } from '@/components/app/pages/members-page'
 import { PageFiles } from '@/components/app/pages/files'
 import { PageGallery } from '@/components/app/pages/gallery'
@@ -122,6 +123,7 @@ function MobileShellInner() {
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
+  const [notifOpen, setNotifOpen] = React.useState(false)
 
   const { panelProject, openPanel } = useProjectPanel()
 
@@ -154,9 +156,10 @@ function MobileShellInner() {
   }, [router])
 
   return (
-    <AppShellContext.Provider value={{ openPanel, openNotif: () => {}, projectsView, setProjectsView }}>
-      <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden' }}>
+    <AppShellContext.Provider value={{ openPanel, openNotif: () => setNotifOpen(true), projectsView, setProjectsView }}>
+      <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
         <NavigationProgress />
+        {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)}/>}
         {/* ProjectPanel・MemberDetailPanel は position:fixed でフルスクリーン表示 */}
         {panelProject && (
           <ProjectPanel

@@ -5,6 +5,7 @@
 
 import React from 'react'
 import { Icon } from '../primitives'
+import { useAppShell } from '../app-shell-context'
 
 interface MobileHeaderProps {
   title: string
@@ -14,6 +15,7 @@ interface MobileHeaderProps {
 }
 
 export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderProps) {
+  const { openNotif } = useAppShell()
   return (
     <header style={{
       display: 'flex', alignItems: 'center', gap: 8,
@@ -30,6 +32,14 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
         <h1 style={{ margin: 0, fontSize: subtitle ? 15 : 17, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h1>
         {subtitle && <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-4)', marginTop: 1 }}>{subtitle}</p>}
       </div>
+      <button
+        onClick={openNotif}
+        className="btn btn-ghost"
+        style={{ width: 34, padding: 0, justifyContent: 'center', position: 'relative', flexShrink: 0 }}
+      >
+        <Icon name="bell" size={17}/>
+        <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', border: '2px solid var(--card)' }}/>
+      </button>
       {right}
     </header>
   )

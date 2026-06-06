@@ -571,7 +571,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <AvatarStack names={memberNames} urls={memberAvatarUrls} size={26} max={5}/>
                 <button className="btn" onClick={() => setSearchOpen(s => !s)} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
-                <button className="btn"><Icon name="bell" size={13}/></button>
                 <button className="btn"><Icon name="more" size={14}/></button>
               </div>
             </div>

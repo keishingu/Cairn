@@ -444,10 +444,9 @@ interface TopBarProps {
   title: string
   subtitle?: string | null
   children?: React.ReactNode
-  onBell?: () => void
 }
 
-export const TopBar = ({ title, subtitle, children, onBell }: TopBarProps) => (
+export const TopBar = ({ title, subtitle, children }: TopBarProps) => (
   <header style={{
     height: 56, flexShrink: 0,
     display: 'flex', alignItems: 'center', gap: 16,
@@ -461,10 +460,5 @@ export const TopBar = ({ title, subtitle, children, onBell }: TopBarProps) => (
       </div>
     </div>
     {children}
-    <button onClick={onBell} className="btn btn-ghost" style={{ width: 34, padding: 0, justifyContent: 'center', position: 'relative' }}>
-      <Icon name="bell" size={16}/>
-      <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', border: '2px solid var(--card)' }}/>
-    </button>
-    <button className="btn btn-ghost" style={{ width: 34, padding: 0, justifyContent: 'center' }}><Icon name="inbox" size={16}/></button>
   </header>
 )
