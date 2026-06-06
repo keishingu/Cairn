@@ -18,6 +18,8 @@ export const projects = pgTable(
     startDate: date('start_date'),
     endDate: date('end_date'),
     coverPhotoUrl: text('cover_photo_url'),
+    location: text('location'),
+    placeId: text('place_id'),
     archived: boolean('archived').notNull().default(false),
     createdBy: uuid('created_by')
       .notNull()

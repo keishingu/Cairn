@@ -11,6 +11,9 @@ export const createProjectSchema = z.object({
   startDate: z.string().date().optional(),
   endDate: z.string().date().optional(),
   coverPhotoUrl: z.string().url().optional(),
+  location: z.string().max(500).optional(),
+  placeId: z.string().max(500).optional(),
+  placePhotoName: z.string().max(500).optional(),
 })
 
 export const updateProjectStatusSchema = z.object({
