@@ -72,7 +72,6 @@ export const PCApp = ({ theme = 'light' }: PCAppProps) => {
               page === 'kanban'    ? '8 件 / 5 ステージ'
               : null
             }
-            onBell={() => setNotifOpen(true)}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '0 10px', height: 32, width: 280 }}>
               <Icon name="search" size={14} color="var(--text-3)"/>

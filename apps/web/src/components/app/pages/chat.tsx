@@ -22,6 +22,7 @@ import {
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
 import { CreateChannelModal } from './create-channel-modal'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
+import { BellButton } from '../sidebar'
 
 // ─── Sidebar ─────────────────────────────────────────────────────
 
@@ -549,41 +550,42 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         {channelList}
       </aside>
 
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
-        {globalSearchOpen ? (
-          <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
-        ) : (
-          <>
-            <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    {isDm ? <Avatar name={channelName} url={currentDm?.participantAvatarUrl ?? null} size={20}/> : isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
-                    {channelName}
-                  </h2>
-                  {isProject && <StatusChip name="計画中" color="#3B82F6"/>}
-                  {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> プライベート</span>}
-                </div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                  {isProject ? '参加メンバー' : isDm ? 'ダイレクトメッセージ' : isPrivate ? '招待制' : '全体チャンネル'}
-                </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {!globalSearchOpen && (
+          <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {isDm ? <Avatar name={channelName} url={currentDm?.participantAvatarUrl ?? null} size={20}/> : isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
+                  {channelName}
+                </h2>
+                {isProject && <StatusChip name="計画中" color="#3B82F6"/>}
+                {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> プライベート</span>}
               </div>
-              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <AvatarStack names={memberNames} urls={memberAvatarUrls} size={26} max={5}/>
-                <button className="btn" onClick={() => setSearchOpen(s => !s)} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
-                <button className="btn"><Icon name="bell" size={13}/></button>
-                <button className="btn"><Icon name="more" size={14}/></button>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+                {isProject ? '参加メンバー' : isDm ? 'ダイレクトメッセージ' : isPrivate ? '招待制' : '全体チャンネル'}
               </div>
             </div>
-            {searchOpen && channelId
-              ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-              : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
-            }
-          </>
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <AvatarStack names={memberNames} urls={memberAvatarUrls} size={26} max={5}/>
+              <button className="btn" onClick={() => setSearchOpen(s => !s)} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
+              <button className="btn"><Icon name="more" size={14}/></button>
+              <BellButton size={13}/>
+            </div>
+          </div>
         )}
-      </main>
 
-      <aside style={{ width: 280, background: 'var(--card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+          <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
+            {globalSearchOpen
+              ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
+              : searchOpen && channelId
+                ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
+                : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
+            }
+          </main>
+
+          <aside style={{ width: 280, background: 'var(--card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
           <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{isProject ? 'このプロジェクトについて' : isDm ? 'ダイレクトメッセージ' : 'このチャンネルについて'}</h3>
         </div>
@@ -640,7 +642,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             </div>
           ))}
         </div>
-      </aside>
+          </aside>
+        </div>
+      </div>
     </div>
   )
 }
