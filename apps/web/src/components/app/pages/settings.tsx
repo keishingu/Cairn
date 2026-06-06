@@ -1021,11 +1021,12 @@ const STATUS_CONFIG: Record<ServiceStatus['status'], { label: string; color: str
 
 type ServiceKey = Exclude<keyof DevStatusDto, 'env'>
 const SERVICE_META: { key: ServiceKey; label: string; icon: string }[] = [
-  { key: 'supabaseDb',      label: 'Supabase Database', icon: 'database' },
-  { key: 'supabaseStorage', label: 'Supabase Storage',  icon: 'archive' },
-  { key: 'inngest',         label: 'Inngest',            icon: 'sparkles' },
-  { key: 'openai',          label: 'OpenAI',             icon: 'sparkles' },
-  { key: 'tavily',          label: 'Tavily',             icon: 'search' },
+  { key: 'supabaseDb',      label: 'Supabase Database',   icon: 'database' },
+  { key: 'supabaseStorage', label: 'Supabase Storage',    icon: 'archive' },
+  { key: 'inngest',         label: 'Inngest',              icon: 'sparkles' },
+  { key: 'openai',          label: 'OpenAI',               icon: 'sparkles' },
+  { key: 'googleMaps',      label: 'Google Maps Platform', icon: 'map-pin' },
+  { key: 'tavily',          label: 'Tavily',               icon: 'search' },
 ]
 
 const SettingsDeveloper = () => {
