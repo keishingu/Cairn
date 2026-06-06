@@ -130,6 +130,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
       coverPhotoIdx:      p.coverPhotoIdx,
       coverPhotoUrl:      null,
       location:           null,
+      placeId:            null,
     })
   }
 

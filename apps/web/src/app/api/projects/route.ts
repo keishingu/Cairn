@@ -24,6 +24,7 @@ export interface ProjectDto {
   coverPhotoIdx: number
   coverPhotoUrl: string | null
   location: string | null
+  placeId: string | null
 }
 
 function coverPhotoIdxFromId(id: string): number {
@@ -55,6 +56,7 @@ export async function GET() {
         createdBy: projects.createdBy,
         coverPhotoUrl: projects.coverPhotoUrl,
         location: projects.location,
+        placeId: projects.placeId,
       })
       .from(projects)
       .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
@@ -124,6 +126,7 @@ export async function GET() {
       coverPhotoIdx: coverPhotoIdxFromId(r.id),
       coverPhotoUrl: r.coverPhotoUrl ?? null,
       location: r.location ?? null,
+      placeId: r.placeId ?? null,
     }))
 
     return NextResponse.json(result)
@@ -256,6 +259,7 @@ export async function POST(req: Request) {
       coverPhotoIdx: coverPhotoIdxFromId(inserted.id),
       coverPhotoUrl: inserted.coverPhotoUrl ?? null,
       location: inserted.location ?? null,
+      placeId: parsed.data.placeId ?? null,
     } satisfies ProjectDto, { status: 201 })
   } catch (err) {
     console.error('[/api/projects POST] DB query failed:', err)

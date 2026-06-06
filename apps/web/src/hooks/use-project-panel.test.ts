@@ -35,6 +35,7 @@ const STUB_PROJECT: ProjectDto = {
   coverPhotoIdx: 0,
   coverPhotoUrl: null,
   location: null,
+  placeId: null,
 }
 
 function makeWrapper(projects: ProjectDto[] = [STUB_PROJECT]) {

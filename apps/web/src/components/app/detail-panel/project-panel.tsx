@@ -3,8 +3,8 @@
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
-import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { PlacePhoto } from '@/app/api/places/photos/route'
 import { ChatTab } from './tabs/chat-tab'
 import { OverviewTab, formatDateRange } from './tabs/overview-tab'
 import { FilesTab } from './tabs/files-tab'
@@ -21,19 +21,21 @@ interface CoverPickerPanelProps {
   projectId: string
   currentCoverUrl: string | null
   defaultIdx: number
+  placeId: string | null
   onClose: () => void
 }
 
-const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, onClose }: CoverPickerPanelProps) => {
+const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onClose }: CoverPickerPanelProps) => {
   const queryClient = useQueryClient()
   const [saving, setSaving] = React.useState(false)
 
-  const { data: workspacePhotos = [] } = useQuery<WorkspaceCoverPhoto[]>({
-    queryKey: ['workspace-cover-photos'],
-    queryFn: () => fetchWithAuth('/api/workspaces/cover-photos').then(r => r.json()),
+  const { data: placePhotos = [], isLoading: photosLoading } = useQuery<PlacePhoto[]>({
+    queryKey: ['place-photos', placeId],
+    queryFn: () => fetchWithAuth(`/api/places/photos?placeId=${encodeURIComponent(placeId!)}`).then(r => r.json()),
+    enabled: !!placeId,
   })
 
-  const apply = async (url: string | null) => {
+  const applyUrl = async (url: string | null) => {
     setSaving(true)
     try {
       const res = await fetchWithAuth(`/api/projects/${projectId}`, {
@@ -45,6 +47,27 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, onClose }: C
       queryClient.setQueryData<ProjectDto[]>(['projects'], old =>
         (old ?? []).map(p => p.id === projectId ? { ...p, coverPhotoUrl: url } : p),
       )
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const applyPlacePhoto = async (photoName: string) => {
+    setSaving(true)
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ placePhotoName: photoName }),
+      })
+      if (!res.ok) return
+      const data = await res.json() as { coverPhotoUrl?: string | null }
+      if (data.coverPhotoUrl) {
+        queryClient.setQueryData<ProjectDto[]>(['projects'], old =>
+          (old ?? []).map(p => p.id === projectId ? { ...p, coverPhotoUrl: data.coverPhotoUrl! } : p),
+        )
+      }
       onClose()
     } finally {
       setSaving(false)
@@ -69,31 +92,31 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, onClose }: C
         </button>
       </div>
 
-      {workspacePhotos.length > 0 && (
+      {placeId && (
         <>
-          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>ライブラリ</div>
-          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, marginBottom: 6 }}>
-            {workspacePhotos.map(photo => {
-              const selected = currentCoverUrl === photo.url
-              return (
-                <button key={photo.id} type="button" style={thumbStyle(selected)} onClick={() => apply(photo.url)} disabled={saving}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>場所の写真</div>
+          {photosLoading ? (
+            <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="loader" size={12}/> 取得中…
+            </div>
+          ) : placePhotos.length > 0 ? (
+            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, marginBottom: 6, scrollbarWidth: 'thin' }}>
+              {placePhotos.map(photo => (
+                <button key={photo.photoName} type="button" style={thumbStyle(false)} onClick={() => { void applyPlacePhoto(photo.photoName) }} disabled={saving}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
-                  {selected && (
-                    <div style={{ position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: '50%', background: 'var(--accent)', color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Icon name="check" size={9} strokeWidth={3}/>
-                    </div>
-                  )}
+                  <img src={photo.thumbnailUri} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
                 </button>
-              )
-            })}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0 8px' }}>写真が見つかりませんでした</div>
+          )}
         </>
       )}
 
       <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>デフォルト</div>
       <div>
-        <button type="button" style={thumbStyle(currentCoverUrl === null)} onClick={() => apply(null)} disabled={saving}>
+        <button type="button" style={thumbStyle(currentCoverUrl === null)} onClick={() => { void applyUrl(null) }} disabled={saving}>
           <MountainPhoto idx={defaultIdx} height={50} flat radius={5}/>
           {currentCoverUrl === null && (
             <div style={{ position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: '50%', background: 'var(--accent)', color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -272,6 +295,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: Proj
           projectId={project.id}
           currentCoverUrl={project.coverPhotoUrl}
           defaultIdx={project.coverPhotoIdx}
+          placeId={project.placeId}
           onClose={() => setEditingCover(false)}
         />
       )}
