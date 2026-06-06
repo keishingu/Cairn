@@ -1,0 +1,189 @@
+/* 山岳部SaaS — design tokens
+ * Light/Dark themes share the same variable names so layouts swap cleanly.
+ */
+
+:root,
+[data-theme="light"] {
+  /* Surfaces */
+  --bg:            #F8FAFC;
+  --bg-elev:       #F1F5F9;
+  --card:          #FFFFFF;
+  --card-2:        #F8FAFC;
+  --card-hover:    #F1F5F9;
+  --overlay:       rgba(15, 23, 42, 0.45);
+
+  /* Text */
+  --text:          #0F172A;
+  --text-2:        #334155;
+  --text-3:        #64748B;
+  --text-4:        #94A3B8;
+  --text-inv:      #FFFFFF;
+
+  /* Borders */
+  --border:        #E2E8F0;
+  --border-2:      #CBD5E1;
+  --border-strong: #94A3B8;
+  --divider:       #EEF2F7;
+
+  /* Accent — overridden by tweaks */
+  --accent:        #10B981;
+  --accent-hover:  #059669;
+  --accent-soft:   #ECFDF5;
+  --accent-soft-2: #D1FAE5;
+  --accent-text:   #047857;
+  --on-accent:     #FFFFFF;
+
+  /* Status colors (constant across themes) */
+  --blue:          #3B82F6;
+  --blue-soft:     #DBEAFE;
+  --blue-text:     #1D4ED8;
+  --emerald:       #10B981;
+  --emerald-soft:  #D1FAE5;
+  --emerald-text:  #047857;
+  --amber:         #F59E0B;
+  --amber-soft:    #FEF3C7;
+  --amber-text:    #B45309;
+  --red:           #EF4444;
+  --red-soft:      #FEE2E2;
+  --red-text:      #B91C1C;
+  --violet:        #8B5CF6;
+  --violet-soft:   #EDE9FE;
+  --violet-text:   #6D28D9;
+  --rose:          #F43F5E;
+  --rose-soft:     #FFE4E6;
+  --rose-text:     #BE123C;
+
+  /* Kanban column tints */
+  --col-plan-bg:       #EFF6FF;
+  --col-plan-bar:      #3B82F6;
+  --col-review-bg:     #FEFCE8;
+  --col-review-bar:    #EAB308;
+  --col-wait-bg:       #F0FDF4;
+  --col-wait-bar:      #22C55E;
+  --col-doing-bg:      #F5F3FF;
+  --col-doing-bar:     #8B5CF6;
+  --col-retro-bg:      #FEF2F2;
+  --col-retro-bar:     #F43F5E;
+  --col-done-bg:       #F1F5F9;
+  --col-done-bar:      #94A3B8;
+
+  /* Shadows */
+  --shadow-sm:   0 1px 2px rgba(15,23,42,0.04);
+  --shadow:      0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+  --shadow-md:   0 4px 12px rgba(15,23,42,0.06), 0 2px 4px rgba(15,23,42,0.04);
+  --shadow-lg:   0 12px 32px rgba(15,23,42,0.08), 0 4px 12px rgba(15,23,42,0.04);
+  --shadow-pop:  0 16px 48px rgba(15,23,42,0.16), 0 0 0 1px var(--border);
+
+  --ring:        0 0 0 3px rgba(16,185,129,0.20);
+  --selection:   #C7F0DC;
+}
+
+[data-theme="dark"] {
+  --bg:            #0B0F14;
+  --bg-elev:       #0F141B;
+  --card:          #111827;
+  --card-2:        #0F1622;
+  --card-hover:    #1A2233;
+  --overlay:       rgba(0,0,0,0.6);
+
+  --text:          #F9FAFB;
+  --text-2:        #D1D5DB;
+  --text-3:        #9CA3AF;
+  --text-4:        #6B7280;
+  --text-inv:      #0B0F14;
+
+  --border:        #1F2937;
+  --border-2:      #374151;
+  --border-strong: #4B5563;
+  --divider:       #1A2030;
+
+  --accent:        #10B981;
+  --accent-hover:  #34D399;
+  --accent-soft:   rgba(16,185,129,0.12);
+  --accent-soft-2: rgba(16,185,129,0.20);
+  --accent-text:   #34D399;
+  --on-accent:     #06241A;
+
+  --blue:          #60A5FA;
+  --blue-soft:     rgba(59,130,246,0.16);
+  --blue-text:     #93C5FD;
+  --emerald:       #10B981;
+  --emerald-soft:  rgba(16,185,129,0.16);
+  --emerald-text:  #34D399;
+  --amber:         #F59E0B;
+  --amber-soft:    rgba(245,158,11,0.16);
+  --amber-text:    #FBBF24;
+  --red:           #EF4444;
+  --red-soft:      rgba(239,68,68,0.16);
+  --red-text:      #F87171;
+  --violet:        #A78BFA;
+  --violet-soft:   rgba(139,92,246,0.18);
+  --violet-text:   #C4B5FD;
+  --rose:          #FB7185;
+  --rose-soft:     rgba(244,63,94,0.18);
+  --rose-text:     #FDA4AF;
+
+  --col-plan-bg:       rgba(59,130,246,0.10);
+  --col-plan-bar:      #3B82F6;
+  --col-review-bg:     rgba(234,179,8,0.10);
+  --col-review-bar:    #EAB308;
+  --col-wait-bg:       rgba(34,197,94,0.10);
+  --col-wait-bar:      #22C55E;
+  --col-doing-bg:      rgba(139,92,246,0.12);
+  --col-doing-bar:     #8B5CF6;
+  --col-retro-bg:      rgba(244,63,94,0.12);
+  --col-retro-bar:     #F43F5E;
+  --col-done-bg:       rgba(148,163,184,0.10);
+  --col-done-bar:      #64748B;
+
+  --shadow-sm:   0 1px 2px rgba(0,0,0,0.4);
+  --shadow:      0 1px 3px rgba(0,0,0,0.45), 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md:   0 6px 18px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.35);
+  --shadow-lg:   0 16px 40px rgba(0,0,0,0.55), 0 6px 14px rgba(0,0,0,0.35);
+  --shadow-pop:  0 20px 56px rgba(0,0,0,0.6), 0 0 0 1px var(--border);
+
+  --ring:        0 0 0 3px rgba(16,185,129,0.32);
+  --selection:   rgba(16,185,129,0.25);
+}
+
+/* Base resets only inside our app surface */
+.app, .app * { box-sizing: border-box; }
+.app {
+  font-family: 'Inter', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.005em;
+}
+.app ::selection { background: var(--selection); }
+
+/* Scrollbars */
+.app *::-webkit-scrollbar { width: 10px; height: 10px; }
+.app *::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+.app *::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: padding-box; border: 2px solid transparent; }
+.app *::-webkit-scrollbar-track { background: transparent; }
+
+/* Buttons */
+.btn { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 12px; border-radius:8px; font-size:13px; font-weight:500; border:1px solid var(--border); background:var(--card); color:var(--text); cursor:pointer; transition: background .12s, border-color .12s, box-shadow .12s; }
+.btn:hover { background: var(--card-hover); border-color: var(--border-2); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight:600; }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-ghost { background: transparent; border-color: transparent; }
+.btn-ghost:hover { background: var(--card-hover); }
+
+/* Chip */
+.chip { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:600; letter-spacing:0.01em; }
+
+/* Card */
+.card { background: var(--card); border:1px solid var(--border); border-radius:12px; }
+
+/* Kbd */
+.kbd { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; border-radius:4px; font-size:10.5px; font-weight:600; background:var(--bg-elev); color:var(--text-3); border:1px solid var(--border); font-family:'SF Mono', ui-monospace, monospace; }
+
+/* Subtle dotted bg used in a few cards */
+.dotbg {
+  background-image: radial-gradient(var(--border) 0.8px, transparent 0.8px);
+  background-size: 14px 14px;
+}

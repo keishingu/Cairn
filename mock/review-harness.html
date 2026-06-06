@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Review Harness</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<style>
+  html, body { margin: 0; padding: 0; background: #f0eee9; }
+  #pc { width: 1440px; height: 920px; overflow: hidden; }
+  #mobile { display: flex; flex-wrap: wrap; gap: 24px; padding: 24px; }
+</style>
+</head>
+<body>
+  <div id="pc"></div>
+  <div id="mobile"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="ios-frame.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="ui.jsx"></script>
+  <script type="text/babel" src="photos.jsx"></script>
+  <script type="text/babel" src="pc-project-edit.jsx"></script>
+  <script type="text/babel" src="pc-panel-settings.jsx"></script>
+  <script type="text/babel" src="pc-create-modal.jsx"></script>
+  <script type="text/babel" src="pc-shell.jsx"></script>
+  <script type="text/babel" src="pc-pages.jsx"></script>
+  <script type="text/babel" src="pc-extra.jsx"></script>
+  <script type="text/babel" src="mobile-screens.jsx"></script>
+
+  <script type="text/babel">
+    const theme = new URLSearchParams(location.search).get('theme') || 'light';
+    function PCHarness() {
+      const [page, setPage] = React.useState(new URLSearchParams(location.search).get('page') || 'dashboard');
+      const [panel, setPanel] = React.useState(new URLSearchParams(location.search).get('panel') === '1');
+      const pageTitle = { dashboard:'ダッシュボード', projects:'プロジェクト', calendar:'カレンダー', kanban:'カンバン', tasks:'マイタスク', chats:'チャット', files:'ファイル', gallery:'ギャラリー', ai:'AIアシスタント', members:'メンバー', settings:'設定' }[page];
+      const noTopBar = ['ai','settings','gallery','chats'].includes(page);
+      const openPanel = () => setPanel(true);
+      return (
+        <div className="app" data-theme={theme} style={{ width:'100%', height:'100%', display:'flex', background:'var(--bg)', overflow:'hidden' }}>
+          <Sidebar page={page} setPage={(p)=>{setPage(p);setPanel(false);}}/>
+          <main style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0, minHeight:0, position:'relative' }}>
+            {!noTopBar && <TopBar title={pageTitle} subtitle={null} onBell={()=>{}}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, background:'var(--card-2)', border:'1px solid var(--border)', borderRadius:8, padding:'0 10px', height:32, width:280 }}>
+                <Icon name="search" size={14} color="var(--text-3)"/>
+                <span style={{ flex:1, fontSize:12.5, color:'var(--text-4)' }}>検索</span>
+                <span className="kbd">⌘K</span>
+              </div>
+            </TopBar>}
+            <div style={{ flex:1, display:'flex', minHeight:0, minWidth:0, position:'relative' }}>
+              <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0, minWidth:0 }}>
+                {page==='dashboard' && <PageDashboard openPanel={openPanel}/>}
+                {page==='projects' && <PageProjects openPanel={openPanel}/>}
+                {page==='calendar' && <PageCalendar openPanel={openPanel}/>}
+                {page==='kanban' && <PageKanban openPanel={openPanel}/>}
+                {page==='gallery' && <PageGallery/>}
+                {page==='ai' && <PageAI/>}
+                {page==='settings' && <PageSettings/>}
+                {page==='chats' && <PageChat/>}
+              </div>
+              {panel && <ProjectPanel onClose={()=>setPanel(false)}/>}
+            </div>
+          </main>
+        </div>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById('pc')).render(<PCHarness/>);
+
+    const mTheme = new URLSearchParams(location.search).get('mtheme') || 'dark';
+    const screens = [
+      ['一覧', MProjectList], ['チャット', MProjectChat], ['ファイル', MFiles],
+      ['カレンダー', MCalendar], ['カンバン', MKanban], ['タスク', MTasks],
+      ['メンバー', MMembers], ['ギャラリー', MGallery], ['AI', MAI], ['新規', MNewProject],
+    ];
+    function MobileAll() {
+      return <>{screens.map(([label, C], i) => C ? (
+        <div key={i}>
+          <IOSDevice width={390} height={800} dark={mTheme==='dark'}>
+            <MobileThemeCtx.Provider value={mTheme}>
+              <C/>
+            </MobileThemeCtx.Provider>
+          </IOSDevice>
+        </div>
+      ) : null)}</>;
+    }
+    ReactDOM.createRoot(document.getElementById('mobile')).render(<MobileAll/>);
+  </script>
+</body>
+</html>
