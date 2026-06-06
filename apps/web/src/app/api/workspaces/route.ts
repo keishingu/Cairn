@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireWorkspaceAdmin } from '@/lib/permissions'
 
 export interface WorkspaceDto {
   id: string
@@ -62,6 +63,9 @@ export async function PATCH(req: Request) {
   if (hasName && !b.name?.trim()) {
     return NextResponse.json({ error: 'ワークスペース名は必須です' }, { status: 422 })
   }
+
+  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  if (forbidden) return forbidden
 
   try {
     const { db, workspaces } = await import('@cairn/db')

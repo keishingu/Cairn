@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireWorkspaceAdmin } from '@/lib/permissions'
 
 export interface ProjectStatusDto {
   id: string
@@ -30,6 +31,9 @@ export async function POST(req: Request) {
   if (!name?.trim()) {
     return NextResponse.json({ error: 'name is required' }, { status: 422 })
   }
+
+  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
