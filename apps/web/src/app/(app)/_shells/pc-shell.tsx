@@ -14,6 +14,7 @@ import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/pro
 import { PageNotifications } from '@/components/app/pages/notifications'
 import { AppShellContext } from '@/components/app/app-shell-context'
 import { Icon } from '@/components/app/primitives'
+import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { useProjectPanel } from '@/hooks/use-project-panel'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
@@ -37,6 +38,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
 
   const { panelProject, openPanel } = useProjectPanel()
+  const unreadCount = useUnreadNotificationCount()
 
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
   const [notifOpen, setNotifOpen] = React.useState(false)
@@ -108,7 +110,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
                 style={{ position: 'absolute', top: 11, right: 16, zIndex: 20, width: 34, padding: 0, justifyContent: 'center' }}
               >
                 <Icon name="bell" size={16}/>
-                <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', border: '2px solid var(--card)' }}/>
+                {unreadCount > 0 && <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', border: '2px solid var(--card)' }}/>}
               </button>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
                 {children}
