@@ -448,7 +448,7 @@ export function BellButton({ size = 16 }: { size?: number }) {
   return (
     <button onClick={openNotif} className="btn btn-ghost" style={{ width: 34, padding: 0, justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
       <Icon name="bell" size={size}/>
-      {unreadCount > 0 && <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', border: '2px solid var(--card)' }}/>}
+      {unreadCount > 0 && <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', border: '2px solid var(--card)' }}/>}
     </button>
   )
 }
