@@ -40,7 +40,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isAuthRoute = pathname.startsWith('/auth')
   // 未ログインでもアクセスできるパブリックルート
-  const isPublicRoute = pathname.startsWith('/invite')
+  const isPublicRoute = pathname.startsWith('/invite') || pathname.startsWith('/lp')
   // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
   const isOnboardingRoute = pathname.startsWith('/onboarding')
 
