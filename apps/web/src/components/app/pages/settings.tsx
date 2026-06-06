@@ -4,6 +4,7 @@ import React from 'react'
 import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
+import { BellButton } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
@@ -1140,7 +1141,10 @@ export const PageSettings = () => {
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={{ width: 220, borderRight: '1px solid var(--border)', padding: '20px 14px', background: 'var(--card)' }}>
-        <h2 style={{ margin: '0 8px 14px', fontSize: 16, fontWeight: 700 }}>設定</h2>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
+          <h2 style={{ margin: '0 8px 0', fontSize: 16, fontWeight: 700, flex: 1 }}>設定</h2>
+          <BellButton />
+        </div>
         {NAV_GROUPS.map((group, gi) => (
           <div key={group.label} style={{ marginBottom: gi < NAV_GROUPS.length - 1 ? 16 : 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0 10px', marginBottom: 4 }}>

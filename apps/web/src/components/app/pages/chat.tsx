@@ -22,6 +22,7 @@ import {
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
 import { CreateChannelModal } from './create-channel-modal'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
+import { BellButton } from '../sidebar'
 
 // ─── Sidebar ─────────────────────────────────────────────────────
 
@@ -569,6 +570,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
               <AvatarStack names={memberNames} urls={memberAvatarUrls} size={26} max={5}/>
               <button className="btn" onClick={() => setSearchOpen(s => !s)} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
               <button className="btn"><Icon name="more" size={14}/></button>
+              <BellButton size={13}/>
             </div>
           </div>
         )}

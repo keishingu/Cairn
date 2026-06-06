@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from './primitives'
 import { Avatar } from './primitives'
+import { useAppShell } from './app-shell-context'
+import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { createClient } from '@/lib/supabase/client'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
@@ -440,25 +442,39 @@ function SidebarUserFooter() {
   )
 }
 
+export function BellButton({ size = 16 }: { size?: number }) {
+  const { openNotif } = useAppShell()
+  const unreadCount = useUnreadNotificationCount()
+  return (
+    <button onClick={openNotif} className="btn btn-ghost" style={{ width: 34, padding: 0, justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
+      <Icon name="bell" size={size}/>
+      {unreadCount > 0 && <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', border: '2px solid var(--card)' }}/>}
+    </button>
+  )
+}
+
 interface TopBarProps {
   title: string
   subtitle?: string | null
   children?: React.ReactNode
 }
 
-export const TopBar = ({ title, subtitle, children }: TopBarProps) => (
-  <header style={{
-    height: 56, flexShrink: 0,
-    display: 'flex', alignItems: 'center', gap: 16,
-    padding: '0 24px', borderBottom: '1px solid var(--border)',
-    background: 'var(--card)',
-  }}>
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-        <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)' }}>{title}</h1>
-        {subtitle && <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{subtitle}</span>}
+export function TopBar({ title, subtitle, children }: TopBarProps) {
+  return (
+    <header style={{
+      height: 56, flexShrink: 0,
+      display: 'flex', alignItems: 'center', gap: 16,
+      padding: '0 24px', borderBottom: '1px solid var(--border)',
+      background: 'var(--card)',
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)' }}>{title}</h1>
+          {subtitle && <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{subtitle}</span>}
+        </div>
       </div>
-    </div>
-    {children}
-  </header>
-)
+      {children}
+      <BellButton />
+    </header>
+  )
+}
