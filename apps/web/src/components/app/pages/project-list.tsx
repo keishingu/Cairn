@@ -6,7 +6,6 @@ import { chatQueryKeys } from '@/lib/chat/client'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
-import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -121,10 +120,7 @@ const StatusChipSelector = ({ statuses, value, onChange }: StatusChipSelectorPro
 
 // ─── Cover photo picker ───────────────────────────────────────────
 interface CoverPickerProps {
-  value: string | null
-  onChange: (v: string | null) => void
   onPhotoNameChange: (name: string | null) => void
-  workspacePhotos: WorkspaceCoverPhoto[]
   placePhotos: PlacePhoto[]
   selectedPhotoName: string | null
 }
@@ -151,16 +147,14 @@ const CoverPickerThumb = ({ selected, onClick, children }: { selected: boolean; 
   </button>
 )
 
-const CoverPicker = ({ value, onChange, onPhotoNameChange, workspacePhotos, placePhotos, selectedPhotoName }: CoverPickerProps) => {
-  const hasAny = placePhotos.length > 0 || workspacePhotos.length > 0
-
-  if (!hasAny) {
+const CoverPicker = ({ onPhotoNameChange, placePhotos, selectedPhotoName }: CoverPickerProps) => {
+  if (placePhotos.length === 0) {
     return (
       <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
         <Icon name="image" size={16} color="var(--text-4)"/>
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>カバー写真は自動設定されます</div>
-          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>場所を入力するか、ワークスペース設定からアップロードできます</div>
+          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>場所を入力すると、その場所の写真から選べます</div>
         </div>
       </div>
     )
@@ -171,11 +165,11 @@ const CoverPicker = ({ value, onChange, onPhotoNameChange, workspacePhotos, plac
       <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
         <button
           type="button"
-          onClick={() => { onChange(null); onPhotoNameChange(null) }}
+          onClick={() => onPhotoNameChange(null)}
           style={{
             flexShrink: 0, width: 72, height: 48, borderRadius: 8,
-            border: `2px solid ${value === null && selectedPhotoName === null ? 'var(--accent)' : 'var(--border)'}`,
-            background: 'var(--card-2)', color: value === null && selectedPhotoName === null ? 'var(--accent-text)' : 'var(--text-3)',
+            border: `2px solid ${selectedPhotoName === null ? 'var(--accent)' : 'var(--border)'}`,
+            background: 'var(--card-2)', color: selectedPhotoName === null ? 'var(--accent-text)' : 'var(--text-3)',
             cursor: 'pointer', fontSize: 10, fontWeight: 600, fontFamily: 'inherit',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
           }}
@@ -185,51 +179,20 @@ const CoverPicker = ({ value, onChange, onPhotoNameChange, workspacePhotos, plac
         </button>
       </div>
 
-      {placePhotos.length > 0 && (
-        <>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 6 }}>
-            場所の写真
-          </div>
-          <div style={{ position: 'relative', marginBottom: 12 }}>
-            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '2px 2px 8px', scrollbarWidth: 'thin' }}>
-              {placePhotos.map(photo => {
-                const selected = selectedPhotoName === photo.photoName
-                return (
-                  <CoverPickerThumb key={photo.photoName} selected={selected} onClick={() => { onChange(null); onPhotoNameChange(photo.photoName) }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={photo.thumbnailUri} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
-                  </CoverPickerThumb>
-                )
-              })}
-            </div>
-            <div style={{ position: 'absolute', top: 0, right: 0, bottom: 8, width: 28, background: 'linear-gradient(90deg, transparent, var(--card-2))', pointerEvents: 'none' }}/>
-          </div>
-        </>
-      )}
-
-      {workspacePhotos.length > 0 && (
-        <>
-          {placePhotos.length > 0 && (
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 6 }}>
-              ライブラリ
-            </div>
-          )}
-          <div style={{ position: 'relative' }}>
-            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '2px 2px 8px', scrollbarWidth: 'thin' }}>
-              {workspacePhotos.map(photo => {
-                const selected = value === photo.url && selectedPhotoName === null
-                return (
-                  <CoverPickerThumb key={photo.id} selected={selected} onClick={() => { onChange(photo.url); onPhotoNameChange(null) }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
-                  </CoverPickerThumb>
-                )
-              })}
-            </div>
-            <div style={{ position: 'absolute', top: 0, right: 0, bottom: 8, width: 28, background: 'linear-gradient(90deg, transparent, var(--card-2))', pointerEvents: 'none' }}/>
-          </div>
-        </>
-      )}
+      <div style={{ position: 'relative' }}>
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '2px 2px 8px', scrollbarWidth: 'thin' }}>
+          {placePhotos.map(photo => {
+            const selected = selectedPhotoName === photo.photoName
+            return (
+              <CoverPickerThumb key={photo.photoName} selected={selected} onClick={() => onPhotoNameChange(photo.photoName)}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photo.thumbnailUri} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
+              </CoverPickerThumb>
+            )
+          })}
+        </div>
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 8, width: 28, background: 'linear-gradient(90deg, transparent, var(--card-2))', pointerEvents: 'none' }}/>
+      </div>
     </div>
   )
 }
@@ -446,12 +409,6 @@ async function fetchStatuses(): Promise<ProjectStatusDto[]> {
   return res.json() as Promise<ProjectStatusDto[]>
 }
 
-async function fetchWorkspaceCoverPhotos(): Promise<WorkspaceCoverPhoto[]> {
-  const res = await fetchWithAuth('/api/workspaces/cover-photos')
-  if (!res.ok) return []
-  return res.json() as Promise<WorkspaceCoverPhoto[]>
-}
-
 async function createProject(body: {
   title: string
   description?: string | undefined
@@ -489,7 +446,6 @@ interface FormState {
   status: string
   startDate: string
   endDate: string
-  cover: string | null
   tags: string[]
   location: string
   placeId: string
@@ -498,16 +454,12 @@ interface FormState {
 
 export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => {
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
-  const { data: workspacePhotos = [] } = useQuery({
-    queryKey: ['workspace-cover-photos'],
-    queryFn: fetchWorkspaceCoverPhotos,
-  })
   const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])
   const [photosLoading, setPhotosLoading] = React.useState(false)
 
   const [form, setForm] = React.useState<FormState>({
     title: '', description: '', status: '',
-    startDate: '', endDate: '', cover: null, tags: [],
+    startDate: '', endDate: '', tags: [],
     location: '', placeId: '', selectedPhotoName: null,
   })
 
@@ -558,13 +510,13 @@ export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalPro
     try {
       const photos = await fetchPlacePhotos(placeId)
       setPlacePhotos(photos)
-      if (photos.length > 0 && form.cover === null && form.selectedPhotoName === null) {
+      if (photos.length > 0 && form.selectedPhotoName === null) {
         set('selectedPhotoName', photos[0]!.photoName)
       }
     } finally {
       setPhotosLoading(false)
     }
-  }, [form.cover, form.selectedPhotoName]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [form.selectedPhotoName]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLocationClear = () => {
     set('location', '')
@@ -583,7 +535,6 @@ export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalPro
       statusId: selectedStatus?.id,
       startDate: form.startDate || undefined,
       endDate: form.endDate || undefined,
-      coverPhotoUrl: form.cover ?? undefined,
       location: form.location.trim() || undefined,
       placeId: form.placeId || undefined,
       placePhotoName: form.selectedPhotoName ?? undefined,
@@ -706,10 +657,7 @@ export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalPro
               )}
               {!photosLoading && (
                 <CoverPicker
-                  value={form.cover}
-                  onChange={v => set('cover', v)}
                   onPhotoNameChange={v => set('selectedPhotoName', v)}
-                  workspacePhotos={workspacePhotos}
                   placePhotos={placePhotos}
                   selectedPhotoName={form.selectedPhotoName}
                 />
@@ -717,7 +665,7 @@ export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalPro
               {(() => {
                 const previewUrl = form.selectedPhotoName
                   ? placePhotos.find(p => p.photoName === form.selectedPhotoName)?.thumbnailUri
-                  : form.cover
+                  : null
                 if (!previewUrl) return null
                 return (
                   <div style={{ marginTop: 10, position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>

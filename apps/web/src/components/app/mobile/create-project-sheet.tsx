@@ -1,19 +1,12 @@
 'use client'
 
 import React from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
-import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
 import type { PlacePhoto } from '@/app/api/places/photos/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { LocationInput } from '../location-input'
-
-async function fetchWorkspaceCoverPhotos(): Promise<WorkspaceCoverPhoto[]> {
-  const res = await fetchWithAuth('/api/workspaces/cover-photos')
-  if (!res.ok) return []
-  return res.json() as Promise<WorkspaceCoverPhoto[]>
-}
 
 async function createProject(body: {
   title: string
@@ -61,16 +54,11 @@ interface CreateProjectSheetProps {
 
 export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
-  const { data: workspacePhotos = [] } = useQuery<WorkspaceCoverPhoto[]>({
-    queryKey: ['workspace-cover-photos'],
-    queryFn: fetchWorkspaceCoverPhotos,
-  })
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
   const [startDate, setStartDate] = React.useState('')
   const [endDate, setEndDate] = React.useState('')
-  const [selectedPhotoUrl, setSelectedPhotoUrl] = React.useState<string | null>(null)
   const [location, setLocation] = React.useState('')
   const [placeId, setPlaceId] = React.useState('')
   const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])
@@ -117,7 +105,6 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
       description: description.trim() || undefined,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
-      coverPhotoUrl: selectedPhotoUrl ?? undefined,
       location: location.trim() || undefined,
       placeId: placeId || undefined,
       placePhotoName: selectedPhotoName ?? undefined,
@@ -221,7 +208,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
                 setPhotosLoading(true)
                 fetchPlacePhotos(pid).then(photos => {
                   setPlacePhotos(photos)
-                  if (photos.length > 0 && selectedPhotoUrl === null && selectedPhotoName === null) {
+                  if (photos.length > 0 && selectedPhotoName === null) {
                     setSelectedPhotoName(photos[0]!.photoName)
                   }
                 }).finally(() => setPhotosLoading(false))
@@ -249,7 +236,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
                 <Icon name="loader" size={14}/>
                 場所の写真を取得中…
               </div>
-            ) : (placePhotos.length === 0 && workspacePhotos.length === 0) ? (
+            ) : placePhotos.length === 0 ? (
               <div style={{ padding: '14px 16px', borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)', textAlign: 'center' }}>
                 <Icon name="image" size={20} color="var(--text-4)"/>
                 <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-3)' }}>
@@ -259,14 +246,13 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
             ) : (
               <>
                 <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '2px 2px 8px', scrollbarWidth: 'none' }}>
-                  {/* なし option */}
                   <button
                     type="button"
-                    onClick={() => { setSelectedPhotoUrl(null); setSelectedPhotoName(null) }}
+                    onClick={() => setSelectedPhotoName(null)}
                     style={{
                       flexShrink: 0, width: 72, height: 56, borderRadius: 8,
-                      border: `2px solid ${selectedPhotoUrl === null && selectedPhotoName === null ? 'var(--accent)' : 'var(--border)'}`,
-                      background: 'var(--card-2)', color: selectedPhotoUrl === null && selectedPhotoName === null ? 'var(--accent-text)' : 'var(--text-3)',
+                      border: `2px solid ${selectedPhotoName === null ? 'var(--accent)' : 'var(--border)'}`,
+                      background: 'var(--card-2)', color: selectedPhotoName === null ? 'var(--accent-text)' : 'var(--text-3)',
                       cursor: 'pointer', fontSize: 10, fontWeight: 600, fontFamily: 'inherit',
                       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
                     }}
@@ -281,7 +267,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
                       <button
                         key={photo.photoName}
                         type="button"
-                        onClick={() => { setSelectedPhotoName(photo.photoName); setSelectedPhotoUrl(null) }}
+                        onClick={() => setSelectedPhotoName(photo.photoName)}
                         style={{
                           flexShrink: 0, width: 96, height: 64, padding: 0,
                           borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
@@ -303,41 +289,10 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
                       </button>
                     )
                   })}
-
-                  {workspacePhotos.map(photo => {
-                    const selected = selectedPhotoUrl === photo.url && selectedPhotoName === null
-                    return (
-                      <button
-                        key={photo.id}
-                        type="button"
-                        onClick={() => { setSelectedPhotoUrl(photo.url); setSelectedPhotoName(null) }}
-                        style={{
-                          flexShrink: 0, width: 96, height: 64, padding: 0,
-                          borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
-                          border: `2px solid ${selected ? 'var(--accent)' : 'transparent'}`,
-                          outline: selected ? 'none' : '1px solid var(--border)',
-                          outlineOffset: -1,
-                          background: 'transparent', position: 'relative',
-                        }}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
-                        {selected && (
-                          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 0%, rgba(16,185,129,0.45) 100%)', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', padding: 5 }}>
-                            <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--accent)', color: 'var(--on-accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <Icon name="check" size={11} strokeWidth={3}/>
-                            </span>
-                          </div>
-                        )}
-                      </button>
-                    )
-                  })}
                 </div>
 
-                {(() => {
-                  const previewUrl = selectedPhotoName
-                    ? placePhotos.find(p => p.photoName === selectedPhotoName)?.thumbnailUri
-                    : selectedPhotoUrl
+                {selectedPhotoName && (() => {
+                  const previewUrl = placePhotos.find(p => p.photoName === selectedPhotoName)?.thumbnailUri
                   if (!previewUrl) return null
                   return (
                     <div style={{ marginTop: 4, position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>

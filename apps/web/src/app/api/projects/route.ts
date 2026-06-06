@@ -171,14 +171,14 @@ export async function POST(req: Request) {
                 const buffer = await imgRes.arrayBuffer()
                 const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
                 const ext = contentType.includes('png') ? 'png' : 'jpg'
-                const photoId = crypto.randomUUID()
-                const storagePath = `place-photos/${photoId}.${ext}`
+                const slug = parsed.data.placePhotoName.split('/').join('_')
+                const storagePath = `place-photos/${slug}.${ext}`
                 const { createServiceRoleClient } = await import('@/lib/supabase/service')
                 const supabase = createServiceRoleClient()
                 const { error: uploadError } = await supabase.storage
                   .from('covers')
                   .upload(storagePath, buffer, { contentType, upsert: false })
-                if (!uploadError) {
+                if (!uploadError || uploadError.message.toLowerCase().includes('already exist')) {
                   const { data: { publicUrl } } = supabase.storage.from('covers').getPublicUrl(storagePath)
                   coverPhotoUrl = publicUrl
                 }
