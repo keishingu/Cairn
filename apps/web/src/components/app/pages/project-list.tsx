@@ -6,10 +6,11 @@ import { chatQueryKeys } from '@/lib/chat/client'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
-import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { LocationInput } from '../location-input'
+import type { PlacePhoto } from '@/app/api/places/photos/route'
 import { PageToolbar, SegmentedControl } from './page-toolbar'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
@@ -119,13 +120,13 @@ const StatusChipSelector = ({ statuses, value, onChange }: StatusChipSelectorPro
 
 // ─── Cover photo picker ───────────────────────────────────────────
 interface CoverPickerProps {
-  value: string | null
-  onChange: (v: string | null) => void
-  workspacePhotos: WorkspaceCoverPhoto[]
+  onPhotoNameChange: (name: string | null) => void
+  placePhotos: PlacePhoto[]
+  selectedPhotoName: string | null
 }
 
-const CoverPickerThumb = ({ selected, children }: { selected: boolean; children: React.ReactNode }) => (
-  <button type="button" style={{
+const CoverPickerThumb = ({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: React.ReactNode }) => (
+  <button type="button" onClick={onClick} style={{
     flexShrink: 0, width: 96, height: 64, padding: 0,
     borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
     border: `2px solid ${selected ? 'var(--accent)' : 'transparent'}`,
@@ -146,29 +147,29 @@ const CoverPickerThumb = ({ selected, children }: { selected: boolean; children:
   </button>
 )
 
-const CoverPicker = ({ value, onChange, workspacePhotos }: CoverPickerProps) => {
-  if (workspacePhotos.length === 0) {
+const CoverPicker = ({ onPhotoNameChange, placePhotos, selectedPhotoName }: CoverPickerProps) => {
+  if (placePhotos.length === 0) {
     return (
       <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
         <Icon name="image" size={16} color="var(--text-4)"/>
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>カバー写真は自動設定されます</div>
-          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>ワークスペース設定からアップロードすると選択できます</div>
+          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>場所を入力すると、その場所の写真から選べます</div>
         </div>
       </div>
     )
   }
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-        {/* 「なし（自動）」 option */}
         <button
           type="button"
-          onClick={() => onChange(null)}
+          onClick={() => onPhotoNameChange(null)}
           style={{
             flexShrink: 0, width: 72, height: 48, borderRadius: 8,
-            border: `2px solid ${value === null ? 'var(--accent)' : 'var(--border)'}`,
-            background: 'var(--card-2)', color: value === null ? 'var(--accent-text)' : 'var(--text-3)',
+            border: `2px solid ${selectedPhotoName === null ? 'var(--accent)' : 'var(--border)'}`,
+            background: 'var(--card-2)', color: selectedPhotoName === null ? 'var(--accent-text)' : 'var(--text-3)',
             cursor: 'pointer', fontSize: 10, fontWeight: 600, fontFamily: 'inherit',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
           }}
@@ -177,14 +178,15 @@ const CoverPicker = ({ value, onChange, workspacePhotos }: CoverPickerProps) => 
           自動
         </button>
       </div>
+
       <div style={{ position: 'relative' }}>
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '2px 2px 8px', scrollbarWidth: 'thin' }}>
-          {workspacePhotos.map(photo => {
-            const selected = value === photo.url
+          {placePhotos.map(photo => {
+            const selected = selectedPhotoName === photo.photoName
             return (
-              <CoverPickerThumb key={photo.id} selected={selected}>
-                {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
-                <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onClick={() => onChange(photo.url)}/>
+              <CoverPickerThumb key={photo.photoName} selected={selected} onClick={() => onPhotoNameChange(photo.photoName)}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photo.thumbnailUri} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
               </CoverPickerThumb>
             )
           })}
@@ -407,12 +409,6 @@ async function fetchStatuses(): Promise<ProjectStatusDto[]> {
   return res.json() as Promise<ProjectStatusDto[]>
 }
 
-async function fetchWorkspaceCoverPhotos(): Promise<WorkspaceCoverPhoto[]> {
-  const res = await fetchWithAuth('/api/workspaces/cover-photos')
-  if (!res.ok) return []
-  return res.json() as Promise<WorkspaceCoverPhoto[]>
-}
-
 async function createProject(body: {
   title: string
   description?: string | undefined
@@ -420,6 +416,9 @@ async function createProject(body: {
   startDate?: string | undefined
   endDate?: string | undefined
   coverPhotoUrl?: string | undefined
+  location?: string | undefined
+  placeId?: string | undefined
+  placePhotoName?: string | undefined
 }): Promise<ProjectDto> {
   const res = await fetchWithAuth('/api/projects', {
     method: 'POST',
@@ -428,6 +427,12 @@ async function createProject(body: {
   })
   if (!res.ok) throw new Error('プロジェクトの作成に失敗しました')
   return res.json() as Promise<ProjectDto>
+}
+
+async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
+  const res = await fetchWithAuth(`/api/places/photos?placeId=${encodeURIComponent(placeId)}`)
+  if (!res.ok) return []
+  return res.json() as Promise<PlacePhoto[]>
 }
 
 interface CreateProjectModalProps {
@@ -441,20 +446,21 @@ interface FormState {
   status: string
   startDate: string
   endDate: string
-  cover: string | null
   tags: string[]
+  location: string
+  placeId: string
+  selectedPhotoName: string | null
 }
 
 export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => {
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
-  const { data: workspacePhotos = [] } = useQuery({
-    queryKey: ['workspace-cover-photos'],
-    queryFn: fetchWorkspaceCoverPhotos,
-  })
+  const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])
+  const [photosLoading, setPhotosLoading] = React.useState(false)
 
   const [form, setForm] = React.useState<FormState>({
     title: '', description: '', status: '',
-    startDate: '', endDate: '', cover: null, tags: [],
+    startDate: '', endDate: '', tags: [],
+    location: '', placeId: '', selectedPhotoName: null,
   })
 
   React.useEffect(() => {
@@ -497,6 +503,28 @@ export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalPro
     return Object.keys(e).length === 0
   }
 
+  const handleLocationSelect = React.useCallback(async (description: string, placeId: string) => {
+    set('location', description)
+    set('placeId', placeId)
+    setPhotosLoading(true)
+    try {
+      const photos = await fetchPlacePhotos(placeId)
+      setPlacePhotos(photos)
+      if (photos.length > 0 && form.selectedPhotoName === null) {
+        set('selectedPhotoName', photos[0]!.photoName)
+      }
+    } finally {
+      setPhotosLoading(false)
+    }
+  }, [form.selectedPhotoName]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleLocationClear = () => {
+    set('location', '')
+    set('placeId', '')
+    set('selectedPhotoName', null)
+    setPlacePhotos([])
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!validate()) return
@@ -507,7 +535,9 @@ export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalPro
       statusId: selectedStatus?.id,
       startDate: form.startDate || undefined,
       endDate: form.endDate || undefined,
-      coverPhotoUrl: form.cover ?? undefined,
+      location: form.location.trim() || undefined,
+      placeId: form.placeId || undefined,
+      placePhotoName: form.selectedPhotoName ?? undefined,
     })
   }
 
@@ -575,6 +605,16 @@ export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalPro
               />
             </Field>
 
+            <Field label="場所" hint="任意" htmlFor="cpm-location">
+              <LocationInput
+                value={form.location}
+                onSelect={(desc, pid) => { void handleLocationSelect(desc, pid) }}
+                onClear={handleLocationClear}
+                inputStyle={fieldInputStyle(false)}
+                placeholder="例: 北アルプス、槍ヶ岳"
+              />
+            </Field>
+
             <Field label="ステータス" required>
               <StatusChipSelector statuses={statuses} value={form.status} onChange={v => set('status', v)}/>
             </Field>
@@ -609,22 +649,40 @@ export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalPro
             </Field>
 
             <Field label="カバー写真" hint="一覧・パネルで表示">
-              <CoverPicker value={form.cover} onChange={v => set('cover', v)} workspacePhotos={workspacePhotos}/>
-              {form.cover !== null && (
-                <div style={{ marginTop: 10, position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={form.cover} alt="カバー" style={{ width: '100%', height: 90, objectFit: 'cover', display: 'block' }}/>
-                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px', gap: 8 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {form.title || 'プロジェクト名'}
-                    </span>
-                    {form.status && (() => {
-                      const s = statuses.find(x => x.name === form.status)
-                      return s ? <StatusChip name={s.name} color={s.color}/> : null
-                    })()}
-                  </div>
+              {photosLoading && (
+                <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon name="loader" size={14}/>
+                  場所の写真を取得中…
                 </div>
               )}
+              {!photosLoading && (
+                <CoverPicker
+                  onPhotoNameChange={v => set('selectedPhotoName', v)}
+                  placePhotos={placePhotos}
+                  selectedPhotoName={form.selectedPhotoName}
+                />
+              )}
+              {(() => {
+                const previewUrl = form.selectedPhotoName
+                  ? placePhotos.find(p => p.photoName === form.selectedPhotoName)?.thumbnailUri
+                  : null
+                if (!previewUrl) return null
+                return (
+                  <div style={{ marginTop: 10, position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={previewUrl} alt="カバー" style={{ width: '100%', height: 90, objectFit: 'cover', display: 'block' }}/>
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px', gap: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {form.title || 'プロジェクト名'}
+                      </span>
+                      {form.status && (() => {
+                        const s = statuses.find(x => x.name === form.status)
+                        return s ? <StatusChip name={s.name} color={s.color}/> : null
+                      })()}
+                    </div>
+                  </div>
+                )
+              })()}
             </Field>
           </div>
         </div>

@@ -4,12 +4,14 @@
 'use client'
 
 import React from 'react'
+import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { MobileHeader } from './header'
 import { Icon, Avatar } from '../primitives'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
+import { createClient } from '@/lib/supabase/client'
 
 const PERSONAL_SECTIONS = [
   {
@@ -136,7 +138,14 @@ export function MobileSettings() {
   const { theme, setTheme } = useTheme()
   const { accentId, setAccentId } = useAccentColor()
   const [mounted, setMounted] = React.useState(false)
+  const router = useRouter()
   React.useEffect(() => setMounted(true), [])
+
+  async function handleLogout() {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/auth/login')
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
@@ -215,7 +224,7 @@ export function MobileSettings() {
 
         {/* ログアウト */}
         <div style={{ margin: '24px 16px 0' }}>
-          <button style={{ width: '100%', padding: '15px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--rose)', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <button onClick={handleLogout} style={{ width: '100%', padding: '15px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--rose)', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             ログアウト
           </button>
         </div>

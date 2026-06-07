@@ -16,6 +16,7 @@ export type DevStatusDto = {
   inngest: ServiceStatus
   openai: ServiceStatus
   tavily: ServiceStatus
+  googleMaps: ServiceStatus
   env: {
     nodeEnv: string
     hasVapid: boolean
@@ -109,20 +110,29 @@ async function checkTavily(): Promise<ServiceStatus> {
   return { status: 'ok', detail: 'API キー設定済み' }
 }
 
+async function checkGoogleMaps(): Promise<ServiceStatus> {
+  const key = process.env['GOOGLE_MAPS_API_KEY']
+  if (!key) return { status: 'unconfigured', detail: 'GOOGLE_MAPS_API_KEY 未設定（省略可 — 場所検索・カバー写真取得が無効）' }
+  if (key.length !== 39) return { status: 'error', detail: `APIキーの文字数が不正です（${key.length}文字 / 期待値: 39文字）` }
+  if (!/^[A-Za-z0-9_-]+$/.test(key)) return { status: 'error', detail: 'APIキーに使用できない文字が含まれています（英数字・-・_のみ）' }
+  return { status: 'ok', detail: 'API キー設定済み（Places API New）' }
+}
+
 export async function GET() {
   const { error } = await getAuthContext()
   if (error) return error
 
-  const [supabaseDb, supabaseStorage, inngest, openai, tavily] = await Promise.all([
+  const [supabaseDb, supabaseStorage, inngest, openai, tavily, googleMaps] = await Promise.all([
     checkSupabaseDb(),
     checkSupabaseStorage(),
     checkInngest(),
     checkOpenAI(),
     checkTavily(),
+    checkGoogleMaps(),
   ])
 
   const result: DevStatusDto = {
-    supabaseDb, supabaseStorage, inngest, openai, tavily,
+    supabaseDb, supabaseStorage, inngest, openai, tavily, googleMaps,
     env: {
       nodeEnv: process.env['NODE_ENV'] ?? 'unknown',
       hasVapid: !!process.env['VAPID_PUBLIC_KEY'],
