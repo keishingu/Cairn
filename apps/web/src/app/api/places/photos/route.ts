@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { getAuthContext } from '@/lib/get-auth-context'
 
 export interface PlacePhoto {
   photoName: string
@@ -11,7 +12,12 @@ export interface PlacePhoto {
 
 const MAX_PHOTOS = 5
 
+const PLACE_ID_RE = /^[A-Za-z0-9_-]+$/
+
 export async function GET(req: Request) {
+  const { error } = await getAuthContext()
+  if (error) return error
+
   const apiKey = process.env['GOOGLE_MAPS_API_KEY']
   if (!apiKey) {
     return NextResponse.json({ error: 'Google Maps API key not configured' }, { status: 503 })
@@ -20,6 +26,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const placeId = searchParams.get('placeId')?.trim()
   if (!placeId) return NextResponse.json({ error: 'placeId is required' }, { status: 400 })
+  if (!PLACE_ID_RE.test(placeId)) return NextResponse.json({ error: 'Invalid placeId' }, { status: 400 })
 
   let detailRes: Response
   try {
