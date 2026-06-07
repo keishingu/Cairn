@@ -71,12 +71,13 @@ export async function PATCH(
 
     // owner を降格する場合、ワークスペースに最低1人の owner が残るか確認
     if (currentRole === 'owner' && newRole !== 'owner') {
-      const [{ ownerCount }] = await db
+      const ownerCountRows = await db
         .select({ ownerCount: count() })
         .from(workspaceMembers)
         .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.role, 'owner')))
+      const ownerCount = Number(ownerCountRows[0]?.ownerCount ?? 0)
 
-      if (Number(ownerCount) <= 1) {
+      if (ownerCount <= 1) {
         return NextResponse.json(
           { error: 'ワークスペースには最低1人の owner が必要です' },
           { status: 422 },
