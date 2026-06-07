@@ -87,6 +87,8 @@ export async function PATCH(
     archived?: boolean
     coverPhotoUrl?: string | null
     placePhotoName?: string
+    location?: string | null
+    placeId?: string | null
   }
   const b = body as PatchBody
   const keys = Object.keys(b as object)
@@ -150,6 +152,8 @@ export async function PATCH(
       statusId?: string | null
       archived?: boolean
       coverPhotoUrl?: string | null
+      location?: string | null
+      placeId?: string | null
       updatedAt: Date
     } = { updatedAt: new Date() }
 
@@ -159,6 +163,8 @@ export async function PATCH(
     if ('endDate' in (b as object)) set.endDate = b.endDate ?? null
     if (b.archived !== undefined) set.archived = b.archived
     if (resolvedCoverPhotoUrl !== undefined) set.coverPhotoUrl = resolvedCoverPhotoUrl
+    if ('location' in (b as object)) set.location = b.location ?? null
+    if ('placeId' in (b as object)) set.placeId = b.placeId ?? null
 
     if (b.statusName !== undefined) {
       const [status] = await db
