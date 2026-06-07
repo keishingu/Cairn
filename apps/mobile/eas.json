@@ -7,10 +7,5 @@
       "distribution": "internal",
       "channel": "preview"
     }
-  },
-  "update": {
-    "preview": {
-      "channel": "preview"
-    }
   }
 }
