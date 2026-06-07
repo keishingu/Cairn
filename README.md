@@ -75,6 +75,7 @@ cp apps/mobile/.env.local.example apps/mobile/.env.local
 
 ```bash
 # .env.local.example からコピー後、LAN IP を自動検出して両方の .env.local を書き換える
+# Wi-Fi 切替などで LAN IP が変わったときも、再実行すれば古い IP を現在の IP に上書きする
 pnpm setup:mobile-lan
 ```
 

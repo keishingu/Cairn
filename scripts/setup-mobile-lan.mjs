@@ -32,9 +32,11 @@ function detectLanIp() {
   return candidates.find(ip => ip.startsWith('192.168.') || ip.startsWith('10.')) ?? candidates[0]
 }
 
-// http://localhost:PORT や http://127.0.0.1:PORT のホスト部分だけを LAN IP に置き換える
+// http://<host>:PORT のホスト部分を常に現在の LAN IP に揃える。
+// localhost / 127.0.0.1 だけでなく、Wi-Fi 切替などで古くなった LAN IP
+// （例: 192.168.1.97 のまま）もまとめて現在の IP に修正できるようにする。
 function rewriteHost(value, lanIp) {
-  return value.replace(/(https?:\/\/)(?:localhost|127\.0\.0\.1)(:\d+)/, `$1${lanIp}$2`)
+  return value.replace(/(https?:\/\/)[^/:]+(:\d+)/, `$1${lanIp}$2`)
 }
 
 function patchEnvFile(path, keys, lanIp) {
