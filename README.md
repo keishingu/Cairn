@@ -71,7 +71,12 @@ Expo Go アプリ内の WebView で Web 版（`apps/web`）を表示するラッ
 cp apps/mobile/.env.local.example apps/mobile/.env.local
 ```
 
-実機・Expo Go で動作確認する場合は、`.env.local` の `localhost` / `127.0.0.1` を PC の LAN IP（`ifconfig | grep "inet "` 等で確認）に書き換える。WebView 内 JS は端末上で実行されるため、`127.0.0.1` は端末自身を指してしまう。`apps/web/.env.local` の `NEXT_PUBLIC_SUPABASE_URL` も同様に LAN IP へ変更する必要がある。
+実機・シミュレータ問わず Expo Go で動作確認する場合は、`apps/mobile/.env.local` の `localhost` / `127.0.0.1` を PC の LAN IP（`ifconfig | grep "inet "` 等で確認）に書き換える。WebView 内 JS は端末上で実行されるため、`127.0.0.1` は端末自身を指してしまう。
+
+> **`apps/web/.env.local` の `NEXT_PUBLIC_SUPABASE_URL` も同じ LAN IP に変更すること（忘れがち）**
+>
+> `mobile-handoff` ページは WebView（端末側）でブラウザとして動く Next.js の JS バンドルなので、そこに埋め込まれた `NEXT_PUBLIC_SUPABASE_URL` が `127.0.0.1` のままだと端末から見て「自分自身」にアクセスしようとして繋がらない。
+> ログイン後に画面が真っ白になり、しばらくしてネイティブのログイン画面に戻されてしまう場合は、これが原因の可能性が高い（ミドルウェアの `getUser()` がタイムアウトして `/auth/login` にリダイレクトされ、それを WebView 側が検知してネイティブもサインアウトしてしまう）。
 
 ```bash
 # 7. Expo 開発サーバー起動
