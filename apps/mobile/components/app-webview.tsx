@@ -70,8 +70,10 @@ export function AppWebView({ path }: Props) {
         ref={webViewRef}
         source={{ uri }}
         style={styles.webview}
-        originWhitelist={['https://*', 'http://*']}
+        originWhitelist={[trustedOrigin, `${trustedOrigin}/*`, 'about:*']}
         onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
+        setSupportMultipleWindows={false}
+        javaScriptCanOpenWindowsAutomatically={false}
         // iOS スワイプバック（ブラウザの進む/戻るジェスチャー）
         allowsBackForwardNavigationGestures={Platform.OS === 'ios'}
         onNavigationStateChange={handleNavigationStateChange}

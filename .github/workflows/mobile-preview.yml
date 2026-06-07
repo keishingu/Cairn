@@ -16,6 +16,10 @@ jobs:
   preview:
     name: Publish EAS Update preview
     runs-on: ubuntu-latest
+    environment: Preview
+    permissions:
+      contents: read
+      pull-requests: write
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4

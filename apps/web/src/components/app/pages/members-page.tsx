@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import { Icon, Avatar } from '../primitives'
@@ -102,10 +102,16 @@ interface PageMembersProps {
 
 export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMembersProps) => {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [search, setSearch] = React.useState('')
   const effectiveSearch = isMobile ? search : (externalSearch ?? search)
   const [roleFilter, setRoleFilter] = React.useState<WorkspaceMemberDto['role'] | 'all'>('all')
-  const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
+  // ナビゲーション時の remount でパネルが一瞬消えないよう、キャッシュから初期値を復元する
+  const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(() => {
+    if (!initialUserId || isMobile) return null
+    const cached = queryClient.getQueryData<WorkspaceMemberDto[]>(['workspace-members'])
+    return cached?.find(m => m.userId === initialUserId) ?? null
+  })
   const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
   const [mobileDetailMember, setMobileDetailMember] = React.useState<WorkspaceMemberDto | null>(null)
   const [showInviteModal, setShowInviteModal] = React.useState(false)
@@ -129,6 +135,8 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
       archived:           false,
       coverPhotoIdx:      p.coverPhotoIdx,
       coverPhotoUrl:      null,
+      location:           null,
+      placeId:            null,
     })
   }
 

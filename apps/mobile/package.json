@@ -13,7 +13,7 @@
     "@cairn/shared": "workspace:*",
     "@expo/metro-runtime": "~6.1.1",
     "@expo/vector-icons": "^15.0.0",
-    "@supabase/supabase-js": "^2",
+    "@supabase/supabase-js": "2.105.0",
     "@tanstack/react-query": "^5",
     "expo": "~54.0.0",
     "expo-constants": "~18.0.0",

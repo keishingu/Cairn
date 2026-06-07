@@ -101,7 +101,7 @@ describe('POST /api/workspaces/invites', () => {
   })
 
   it('owner でないユーザーには 403 を返す', async () => {
-    // requireAdminRole の DB クエリ: role が 'member' → false
+    // requireWorkspaceAdmin の DB クエリ: role が 'member' → false
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
 
     const { POST } = await import('./route')
@@ -134,7 +134,7 @@ describe('POST /api/workspaces/invites', () => {
   })
 
   it('owner は招待トークンを作成できる', async () => {
-    // requireAdminRole: owner
+    // requireWorkspaceAdmin: owner
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
 
     const fakeToken = 'aaaabbbb-cccc-dddd-eeee-ffffgggghhh'
@@ -204,7 +204,10 @@ describe('GET /api/workspaces/invites', () => {
     })
   })
 
-  it('空のワークスペースでは空配列を返す', async () => {
+  it('admin は招待一覧を取得できる', async () => {
+    // requireWorkspaceAdmin: admin ロールを持つ
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'admin' }]))
+    // 招待一覧は空
     mockDb.select.mockReturnValueOnce(selectChain([]))
     const { GET } = await import('./route')
 
@@ -213,5 +216,16 @@ describe('GET /api/workspaces/invites', () => {
     )
 
     expect(res.status).toBe(200)
+  })
+
+  it('member は招待一覧を取得できない', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
+    const { GET } = await import('./route')
+
+    const res = await GET(
+      new Request('http://localhost/api/workspaces/invites'),
+    )
+
+    expect(res.status).toBe(403)
   })
 })

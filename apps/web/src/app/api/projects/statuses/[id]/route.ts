@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireWorkspaceAdmin } from '@/lib/permissions'
 
 export async function PATCH(
   req: Request,
@@ -35,6 +36,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
     }
 
+    const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+    if (forbidden) return forbidden
+
     const [updated] = await db
       .update(projectStatuses)
       .set(set)
@@ -64,6 +68,9 @@ export async function DELETE(
   const { id } = await params
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
+
+  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
