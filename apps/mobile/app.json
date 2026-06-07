@@ -15,13 +15,14 @@
       "android"
     ],
     "ios": {
-      "bundleIdentifier": "com.cairn.app",
+      "bundleIdentifier": "com.oss-cairn",
       "infoPlist": {
-        "NSUserNotificationsUsageDescription": "プロジェクトのメンションやタスクの更新を通知します"
+        "NSUserNotificationsUsageDescription": "プロジェクトのメンションやタスクの更新を通知します",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.cairn.app"
+      "package": "com.oss_cairn"
     },
     "plugins": [
       "expo-router",
