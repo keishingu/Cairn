@@ -1,7 +1,9 @@
 import React from 'react'
-import { View, StyleSheet, useColorScheme } from 'react-native'
+import { Platform, View, StyleSheet, useColorScheme } from 'react-native'
+import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
+import type { WebViewNavigation } from 'react-native-webview'
 import { supabase } from '../lib/supabase'
 
 const WEB_BASE = process.env['EXPO_PUBLIC_API_BASE_URL']!
@@ -16,10 +18,11 @@ interface Props {
 
 export function AppWebView({ path }: Props) {
   const webViewRef = React.useRef<WebView>(null)
-  const [handoff, setHandoff] = React.useState<{ uri: string; script: string } | null>(null)
+  const [uri, setUri] = React.useState<string | null>(null)
   const insets = useSafeAreaInsets()
   const colorScheme = useColorScheme()
   const bg = colorScheme === 'dark' ? BG_DARK : BG_LIGHT
+  const router = useRouter()
 
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -27,34 +30,51 @@ export function AppWebView({ path }: Props) {
       const { access_token, refresh_token } = session
       const redirect = encodeURIComponent(`${path}?webview=1`)
 
-      // トークンをURLに含めず sessionStorage 経由で渡す（サーバーログへの露出を防ぐ）
-      const script = `
-        (function() {
-          try {
-            sessionStorage.setItem('__cairn_at', ${JSON.stringify(access_token)});
-            sessionStorage.setItem('__cairn_rt', ${JSON.stringify(refresh_token)});
-          } catch(e) {}
-        })();
-        true;
-      `
-      setHandoff({
-        uri: `${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}`,
-        script,
-      })
+      // トークンを URL フラグメント（#）で渡す。
+      // フラグメントはサーバーに送信されないためアクセスログに残らない。
+      // injectedJavaScriptBeforeContentLoaded の sessionStorage 書き込みは
+      // iOS/Android 実機では別 JS コンテキストで実行されページから参照できないため廃止。
+      const at = encodeURIComponent(access_token)
+      const rt = encodeURIComponent(refresh_token)
+      setUri(`${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}#at=${at}&rt=${rt}`)
     })
   }, [path])
 
-  if (!handoff) return <View style={[styles.fill, { backgroundColor: bg }]} />
+  // WEB_BASE のオリジン（scheme+host+port）を抽出して信頼済みオリジンとする
+  const trustedOrigin = WEB_BASE.replace(/\/$/, '').replace(/(https?:\/\/[^/]+).*/, '$1')
+
+  // Web 側でログアウトして /auth/login に遷移したらネイティブセッションも破棄する
+  function handleNavigationStateChange(state: WebViewNavigation) {
+    const url = state.url
+    if (url.includes('/auth/login') || url.includes('/auth/signup')) {
+      supabase.auth.signOut().then(() => {
+        router.replace('/(auth)/login')
+      })
+    }
+  }
+
+  // 信頼済みオリジン以外へのナビゲーションをブロック（HTTPS のみ許可）
+  function handleShouldStartLoadWithRequest(request: WebViewNavigation) {
+    const url = request.url
+    // about:blank など内部リソースは通す
+    if (url === 'about:blank' || url.startsWith('about:')) return true
+    // 信頼済みオリジンの HTTPS のみ許可
+    return url.startsWith(`${trustedOrigin}/`) || url === trustedOrigin
+  }
+
+  if (!uri) return <View style={[styles.fill, { backgroundColor: bg }]} />
 
   return (
     <View style={[styles.fill, { backgroundColor: bg, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <WebView
         ref={webViewRef}
-        source={{ uri: handoff.uri }}
-        injectedJavaScriptBeforeContentLoaded={handoff.script}
+        source={{ uri }}
         style={styles.webview}
-        // 自ドメイン以外へのナビゲーションをブロック
-        originWhitelist={[WEB_BASE]}
+        originWhitelist={['https://*', 'http://*']}
+        onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
+        // iOS スワイプバック（ブラウザの進む/戻るジェスチャー）
+        allowsBackForwardNavigationGestures={Platform.OS === 'ios'}
+        onNavigationStateChange={handleNavigationStateChange}
       />
     </View>
   )
