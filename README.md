@@ -83,6 +83,11 @@ pnpm setup:mobile-lan
 > `mobile-handoff` ページは WebView（端末側）でブラウザとして動く Next.js の JS バンドルなので、そこに埋め込まれた `NEXT_PUBLIC_SUPABASE_URL` が `127.0.0.1` のままだと端末から見て「自分自身」にアクセスしようとして繋がらない。
 > ログイン後に画面が真っ白になり、しばらくしてネイティブのログイン画面に戻されてしまう場合は、これが原因の可能性が高い（ミドルウェアの `getUser()` がタイムアウトして `/auth/login` にリダイレクトされ、それを WebView 側が検知してネイティブもサインアウトしてしまう）。`pnpm setup:mobile-lan` を使えば両方まとめて書き換わるので忘れにくい。
 
+> **画面が真っ白になる場合は `allowedDevOrigins` も疑う**
+>
+> Next.js 15 の開発サーバーは、デフォルトで `localhost` 以外のオリジンから `/_next/*` への CORS リクエストをブロックする。LAN IP 経由で WebView からアクセスすると JS バンドルの読み込みがブロックされ、React がハイドレーションされず画面が真っ白になる。
+> `apps/web/next.config.ts` で開発機の LAN IP を自動検出して `allowedDevOrigins` に設定済みのため、通常は対応不要。ターミナルに `Cross origin request detected from <IP> to /_next/* resource` という警告が出ている場合はこの設定が効いていないので確認すること。
+
 ```bash
 # 7. Expo 開発サーバー起動
 cd apps/mobile
