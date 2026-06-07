@@ -60,6 +60,29 @@ supabase stop
 
 ---
 
+## モバイル（Expo）
+
+Expo Go アプリ内の WebView で Web 版（`apps/web`）を表示するラッパー。Web 側の開発サーバーが必要なため、まず上記の Web 環境を起動しておく。
+
+```bash
+# 1〜5（Supabase起動・環境変数コピー・マイグレーション・pnpm dev）はWebと共通
+
+# 6. モバイル用環境変数をコピーして編集
+cp apps/mobile/.env.local.example apps/mobile/.env.local
+```
+
+実機・Expo Go で動作確認する場合は、`.env.local` の `localhost` / `127.0.0.1` を PC の LAN IP（`ifconfig | grep "inet "` 等で確認）に書き換える。WebView 内 JS は端末上で実行されるため、`127.0.0.1` は端末自身を指してしまう。`apps/web/.env.local` の `NEXT_PUBLIC_SUPABASE_URL` も同様に LAN IP へ変更する必要がある。
+
+```bash
+# 7. Expo 開発サーバー起動
+cd apps/mobile
+pnpm start
+```
+
+表示された QR コードを Expo Go アプリで読み込む。
+
+---
+
 ## コマンド
 
 ```bash
