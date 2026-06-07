@@ -23,6 +23,8 @@ export interface ProjectDto {
   archived: boolean
   coverPhotoIdx: number
   coverPhotoUrl: string | null
+  location: string | null
+  placeId: string | null
 }
 
 function coverPhotoIdxFromId(id: string): number {
@@ -53,6 +55,8 @@ export async function GET() {
         archived: projects.archived,
         createdBy: projects.createdBy,
         coverPhotoUrl: projects.coverPhotoUrl,
+        location: projects.location,
+        placeId: projects.placeId,
       })
       .from(projects)
       .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
@@ -121,6 +125,8 @@ export async function GET() {
       isMember: userProjectIds.has(r.id),
       coverPhotoIdx: coverPhotoIdxFromId(r.id),
       coverPhotoUrl: r.coverPhotoUrl ?? null,
+      location: r.location ?? null,
+      placeId: r.placeId ?? null,
     }))
 
     return NextResponse.json(result)
@@ -151,6 +157,43 @@ export async function POST(req: Request) {
     const { projects, channels, projectStatuses } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
 
+    let coverPhotoUrl = parsed.data.coverPhotoUrl ?? null
+
+    if (parsed.data.placePhotoName && !coverPhotoUrl) {
+      const apiKey = process.env['GOOGLE_MAPS_API_KEY']
+      if (apiKey) {
+        try {
+          const mediaRes = await fetch(
+            `https://places.googleapis.com/v1/${parsed.data.placePhotoName}/media?maxWidthPx=1200&skipHttpRedirect=true&key=${apiKey}`,
+          )
+          if (mediaRes.ok) {
+            const media = await mediaRes.json() as { photoUri?: string }
+            if (media.photoUri) {
+              const imgRes = await fetch(media.photoUri)
+              if (imgRes.ok) {
+                const buffer = await imgRes.arrayBuffer()
+                const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
+                const ext = contentType.includes('png') ? 'png' : 'jpg'
+                const slug = parsed.data.placePhotoName.split('/').join('_')
+                const storagePath = `place-photos/${slug}.${ext}`
+                const { createServiceRoleClient } = await import('@/lib/supabase/service')
+                const supabase = createServiceRoleClient()
+                const { error: uploadError } = await supabase.storage
+                  .from('covers')
+                  .upload(storagePath, buffer, { contentType, upsert: false })
+                if (!uploadError || uploadError.message.toLowerCase().includes('already exist')) {
+                  const { data: { publicUrl } } = supabase.storage.from('covers').getPublicUrl(storagePath)
+                  coverPhotoUrl = publicUrl
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[/api/projects POST] place photo upload failed (skipped):', e)
+        }
+      }
+    }
+
     const [inserted] = await db
       .insert(projects)
       .values({
@@ -160,10 +203,12 @@ export async function POST(req: Request) {
         statusId: parsed.data.statusId ?? null,
         startDate: parsed.data.startDate ?? null,
         endDate: parsed.data.endDate ?? null,
-        coverPhotoUrl: parsed.data.coverPhotoUrl ?? null,
+        coverPhotoUrl,
+        location: parsed.data.location ?? null,
+        placeId: parsed.data.placeId ?? null,
         createdBy: ctx.userId,
       })
-      .returning({ id: projects.id, title: projects.title, description: projects.description, startDate: projects.startDate, endDate: projects.endDate, coverPhotoUrl: projects.coverPhotoUrl })
+      .returning({ id: projects.id, title: projects.title, description: projects.description, startDate: projects.startDate, endDate: projects.endDate, coverPhotoUrl: projects.coverPhotoUrl, location: projects.location })
 
     if (!inserted) throw new Error('Insert returned no rows')
 
@@ -213,6 +258,8 @@ export async function POST(req: Request) {
       archived: false,
       coverPhotoIdx: coverPhotoIdxFromId(inserted.id),
       coverPhotoUrl: inserted.coverPhotoUrl ?? null,
+      location: inserted.location ?? null,
+      placeId: parsed.data.placeId ?? null,
     } satisfies ProjectDto, { status: 201 })
   } catch (err) {
     console.error('[/api/projects POST] DB query failed:', err)

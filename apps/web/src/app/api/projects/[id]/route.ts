@@ -86,6 +86,9 @@ export async function PATCH(
     statusName?: string
     archived?: boolean
     coverPhotoUrl?: string | null
+    placePhotoName?: string
+    location?: string | null
+    placeId?: string | null
   }
   const b = body as PatchBody
   const keys = Object.keys(b as object)
@@ -102,6 +105,45 @@ export async function PATCH(
     const { ctx, error } = await getAuthContext()
     if (error) return error
 
+    let resolvedCoverPhotoUrl: string | null | undefined = undefined
+
+    if (b.placePhotoName) {
+      const apiKey = process.env['GOOGLE_MAPS_API_KEY']
+      if (apiKey) {
+        try {
+          const mediaRes = await fetch(
+            `https://places.googleapis.com/v1/${b.placePhotoName}/media?maxWidthPx=1200&skipHttpRedirect=true&key=${apiKey}`,
+          )
+          if (mediaRes.ok) {
+            const media = await mediaRes.json() as { photoUri?: string }
+            if (media.photoUri) {
+              const imgRes = await fetch(media.photoUri)
+              if (imgRes.ok) {
+                const buffer = await imgRes.arrayBuffer()
+                const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
+                const ext = contentType.includes('png') ? 'png' : 'jpg'
+                const slug = b.placePhotoName.split('/').join('_')
+                const storagePath = `place-photos/${slug}.${ext}`
+                const { createServiceRoleClient } = await import('@/lib/supabase/service')
+                const supabase = createServiceRoleClient()
+                const { error: uploadError } = await supabase.storage
+                  .from('covers')
+                  .upload(storagePath, buffer, { contentType, upsert: false })
+                if (!uploadError || uploadError.message.toLowerCase().includes('already exist')) {
+                  const { data: { publicUrl } } = supabase.storage.from('covers').getPublicUrl(storagePath)
+                  resolvedCoverPhotoUrl = publicUrl
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[PATCH /api/projects/[id]] place photo upload failed (skipped):', e)
+        }
+      }
+    } else if ('coverPhotoUrl' in (b as object)) {
+      resolvedCoverPhotoUrl = b.coverPhotoUrl ?? null
+    }
+
     const set: {
       title?: string
       description?: string | null
@@ -110,6 +152,8 @@ export async function PATCH(
       statusId?: string | null
       archived?: boolean
       coverPhotoUrl?: string | null
+      location?: string | null
+      placeId?: string | null
       updatedAt: Date
     } = { updatedAt: new Date() }
 
@@ -118,7 +162,9 @@ export async function PATCH(
     if ('startDate' in (b as object)) set.startDate = b.startDate ?? null
     if ('endDate' in (b as object)) set.endDate = b.endDate ?? null
     if (b.archived !== undefined) set.archived = b.archived
-    if ('coverPhotoUrl' in (b as object)) set.coverPhotoUrl = b.coverPhotoUrl ?? null
+    if (resolvedCoverPhotoUrl !== undefined) set.coverPhotoUrl = resolvedCoverPhotoUrl
+    if ('location' in (b as object)) set.location = b.location ?? null
+    if ('placeId' in (b as object)) set.placeId = b.placeId ?? null
 
     if (b.statusName !== undefined) {
       const [status] = await db
@@ -146,7 +192,12 @@ export async function PATCH(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ id, ...b })
+    const { placePhotoName: _, ...rest } = b
+    return NextResponse.json({
+      id,
+      ...rest,
+      ...(resolvedCoverPhotoUrl !== undefined && { coverPhotoUrl: resolvedCoverPhotoUrl }),
+    })
   } catch (err) {
     console.error('[PATCH /api/projects/[id]]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

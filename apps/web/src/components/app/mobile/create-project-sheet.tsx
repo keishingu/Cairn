@@ -1,17 +1,12 @@
 'use client'
 
 import React from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
-import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
+import type { PlacePhoto } from '@/app/api/places/photos/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-
-async function fetchWorkspaceCoverPhotos(): Promise<WorkspaceCoverPhoto[]> {
-  const res = await fetchWithAuth('/api/workspaces/cover-photos')
-  if (!res.ok) return []
-  return res.json() as Promise<WorkspaceCoverPhoto[]>
-}
+import { LocationInput } from '../location-input'
 
 async function createProject(body: {
   title: string
@@ -19,6 +14,9 @@ async function createProject(body: {
   startDate?: string | undefined
   endDate?: string | undefined
   coverPhotoUrl?: string | undefined
+  location?: string | undefined
+  placeId?: string | undefined
+  placePhotoName?: string | undefined
 }): Promise<ProjectDto> {
   const res = await fetchWithAuth('/api/projects', {
     method: 'POST',
@@ -27,6 +25,12 @@ async function createProject(body: {
   })
   if (!res.ok) throw new Error('プロジェクトの作成に失敗しました')
   return res.json() as Promise<ProjectDto>
+}
+
+async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
+  const res = await fetchWithAuth(`/api/places/photos?placeId=${encodeURIComponent(placeId)}`)
+  if (!res.ok) return []
+  return res.json() as Promise<PlacePhoto[]>
 }
 
 const inputStyle: React.CSSProperties = {
@@ -50,16 +54,16 @@ interface CreateProjectSheetProps {
 
 export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
-  const { data: workspacePhotos = [] } = useQuery<WorkspaceCoverPhoto[]>({
-    queryKey: ['workspace-cover-photos'],
-    queryFn: fetchWorkspaceCoverPhotos,
-  })
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
   const [startDate, setStartDate] = React.useState('')
   const [endDate, setEndDate] = React.useState('')
-  const [selectedPhotoUrl, setSelectedPhotoUrl] = React.useState<string | null>(null)
+  const [location, setLocation] = React.useState('')
+  const [placeId, setPlaceId] = React.useState('')
+  const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])
+  const [selectedPhotoName, setSelectedPhotoName] = React.useState<string | null>(null)
+  const [photosLoading, setPhotosLoading] = React.useState(false)
   const [titleError, setTitleError] = React.useState('')
   const [endDateError, setEndDateError] = React.useState('')
 
@@ -101,7 +105,9 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
       description: description.trim() || undefined,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
-      coverPhotoUrl: selectedPhotoUrl ?? undefined,
+      location: location.trim() || undefined,
+      placeId: placeId || undefined,
+      placePhotoName: selectedPhotoName ?? undefined,
     })
   }
 
@@ -188,45 +194,80 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
             />
           </div>
 
+          {/* Location */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>場所</label>
+              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>任意</span>
+            </div>
+            <LocationInput
+              value={location}
+              onSelect={(desc, pid) => {
+                setLocation(desc)
+                setPlaceId(pid)
+                setPhotosLoading(true)
+                fetchPlacePhotos(pid).then(photos => {
+                  setPlacePhotos(photos)
+                  if (photos.length > 0 && selectedPhotoName === null) {
+                    setSelectedPhotoName(photos[0]!.photoName)
+                  }
+                }).finally(() => setPhotosLoading(false))
+              }}
+              onClear={() => {
+                setLocation('')
+                setPlaceId('')
+                setPlacePhotos([])
+                setSelectedPhotoName(null)
+              }}
+              inputStyle={inputStyle}
+              placeholder="例: 北アルプス、槍ヶ岳"
+            />
+          </div>
+
           {/* Cover photo */}
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
               <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>カバー写真</label>
               <span style={{ fontSize: 11, color: 'var(--text-4)' }}>任意</span>
             </div>
-            {workspacePhotos.length === 0 ? (
+
+            {photosLoading ? (
+              <div style={{ padding: '12px 14px', borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="loader" size={14}/>
+                場所の写真を取得中…
+              </div>
+            ) : placePhotos.length === 0 ? (
               <div style={{ padding: '14px 16px', borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)', textAlign: 'center' }}>
                 <Icon name="image" size={20} color="var(--text-4)"/>
                 <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-3)' }}>
-                  ワークスペース設定からカバー写真を追加すると<br/>ここで選べるようになります
+                  場所を入力すると自動で候補が表示されます
                 </div>
               </div>
             ) : (
               <>
                 <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '2px 2px 8px', scrollbarWidth: 'none' }}>
-                  {/* 「なし」 option */}
                   <button
                     type="button"
-                    onClick={() => setSelectedPhotoUrl(null)}
+                    onClick={() => setSelectedPhotoName(null)}
                     style={{
-                      flexShrink: 0, width: 80, height: 56, borderRadius: 8,
-                      border: `2px solid ${selectedPhotoUrl === null ? 'var(--accent)' : 'var(--border)'}`,
-                      background: 'var(--card-2)', color: selectedPhotoUrl === null ? 'var(--accent-text)' : 'var(--text-3)',
-                      cursor: 'pointer', fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+                      flexShrink: 0, width: 72, height: 56, borderRadius: 8,
+                      border: `2px solid ${selectedPhotoName === null ? 'var(--accent)' : 'var(--border)'}`,
+                      background: 'var(--card-2)', color: selectedPhotoName === null ? 'var(--accent-text)' : 'var(--text-3)',
+                      cursor: 'pointer', fontSize: 10, fontWeight: 600, fontFamily: 'inherit',
                       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
                     }}
                   >
-                    <Icon name="x" size={14}/>
-                    なし
+                    <Icon name="x" size={13}/>
+                    自動
                   </button>
 
-                  {workspacePhotos.map(photo => {
-                    const selected = selectedPhotoUrl === photo.url
+                  {placePhotos.map(photo => {
+                    const selected = selectedPhotoName === photo.photoName
                     return (
                       <button
-                        key={photo.id}
+                        key={photo.photoName}
                         type="button"
-                        onClick={() => setSelectedPhotoUrl(photo.url)}
+                        onClick={() => setSelectedPhotoName(photo.photoName)}
                         style={{
                           flexShrink: 0, width: 96, height: 64, padding: 0,
                           borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
@@ -237,7 +278,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
                         }}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
+                        <img src={photo.thumbnailUri} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
                         {selected && (
                           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 0%, rgba(16,185,129,0.45) 100%)', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', padding: 5 }}>
                             <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--accent)', color: 'var(--on-accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -250,17 +291,21 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
                   })}
                 </div>
 
-                {selectedPhotoUrl && (
-                  <div style={{ marginTop: 4, position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={selectedPhotoUrl} alt="カバープレビュー" style={{ width: '100%', height: 80, objectFit: 'cover', display: 'block' }}/>
-                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.5) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px' }}>
-                      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {title || 'プロジェクト名'}
-                      </span>
+                {selectedPhotoName && (() => {
+                  const previewUrl = placePhotos.find(p => p.photoName === selectedPhotoName)?.thumbnailUri
+                  if (!previewUrl) return null
+                  return (
+                    <div style={{ marginTop: 4, position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={previewUrl} alt="カバープレビュー" style={{ width: '100%', height: 80, objectFit: 'cover', display: 'block' }}/>
+                      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.5) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px' }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {title || 'プロジェクト名'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
               </>
             )}
           </div>

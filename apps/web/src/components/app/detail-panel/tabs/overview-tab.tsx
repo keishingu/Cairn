@@ -6,6 +6,7 @@ import { Icon, StatusChip } from '../../primitives'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
+import { LocationInput } from '../../location-input'
 
 
 export function formatDateRange(start: string | null, end: string | null): string {
@@ -238,6 +239,64 @@ const InlineStatus = ({
   )
 }
 
+const InlineLocation = ({
+  location, onSave, onClear,
+}: {
+  location: string | null
+  onSave: (description: string, placeId: string) => void
+  onClear: () => void
+}) => {
+  const [editing, setEditing] = React.useState(false)
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', height: 34, padding: '0 12px',
+    border: '1px solid var(--accent)', borderRadius: 7,
+    background: 'var(--card)', color: 'var(--text)',
+    fontSize: 12.5, fontFamily: 'inherit', outline: 'none',
+    boxSizing: 'border-box',
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '2px 0', border: 'none',
+          background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
+          maxWidth: '100%',
+        }}
+        title="クリックして編集"
+      >
+        <Icon name="map-pin" size={12} color={location ? 'var(--accent-text)' : 'var(--text-4)'}/>
+        <span style={{ fontSize: 13, color: location ? 'var(--text)' : 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {location ?? '場所を設定…'}
+        </span>
+        <Icon name="edit" size={10} color="var(--text-4)"/>
+      </button>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <LocationInput
+        value={location ?? ''}
+        onSelect={(desc, pid) => { onSave(desc, pid); setEditing(false) }}
+        onClear={() => { onClear(); setEditing(false) }}
+        inputStyle={inputStyle}
+        placeholder="場所を検索…"
+      />
+      <button
+        onClick={() => setEditing(false)}
+        className="btn btn-ghost"
+        style={{ alignSelf: 'flex-start', height: 26, fontSize: 11.5, padding: '0 8px' }}
+      >
+        キャンセル
+      </button>
+    </div>
+  )
+}
+
 // ─── 概要タブ本体 ─────────────────────────────────────────────────
 interface OverviewTabProps {
   project: ProjectDto
@@ -320,6 +379,16 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
             onSave={name => patch.mutate({ statusName: name })}
           />
         </div>
+      </div>
+
+      {/* 場所 */}
+      <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
+        <div style={cardLabelStyle}>場所</div>
+        <InlineLocation
+          location={project.location}
+          onSave={(desc, pid) => patch.mutate({ location: desc, placeId: pid })}
+          onClear={() => patch.mutate({ location: null, placeId: null })}
+        />
       </div>
 
       {/* サマリー */}
