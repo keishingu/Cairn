@@ -99,6 +99,31 @@ pnpm start
 
 ---
 
+## モバイルプレビュー（EAS Update）
+
+`apps/mobile` に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。Expo Go でスキャンするだけで、ローカル環境を起動せずに実機確認ができる。
+
+- 対象パスを `apps/mobile/**` に限定し、無関係な変更では発行しない（EAS の無料枠を消費しないため）
+- プレビューが見にいく Web / Supabase は固定の検証用環境（Vercel の固定プレビューデプロイ + 共有の Supabase プレビュー DB）を指す。ローカル開発用の LAN IP 設定とは無関係
+
+### 初回セットアップ（リポジトリ管理者）
+
+1. Expo アカウントを作成し、`apps/mobile` で `eas init` を実行してプロジェクトを作成（`EXPO_PUBLIC_EAS_PROJECT_ID` が発行される）
+2. `eas update:configure` を実行し、`app.json` に `updates` / `runtimeVersion` の設定を追加する
+3. Expo のアクセストークンを発行し、GitHub リポジトリの Secrets に `EXPO_TOKEN` として登録する
+4. Vercel で `apps/web` の固定プレビュー環境を用意し、共有 Supabase プレビュー DB を指す環境変数を設定する（URL は取得済みの `oss-cairn.com` のサブドメインを割り当てる想定）
+5. GitHub リポジトリの Variables / Secrets に以下を登録する
+
+| 種別 | 名前 | 値 |
+|---|---|---|
+| Variable | `MOBILE_PREVIEW_EAS_PROJECT_ID` | `eas init` で発行されたプロジェクト ID |
+| Variable | `MOBILE_PREVIEW_API_BASE_URL` | Vercel 固定プレビューの URL |
+| Variable | `MOBILE_PREVIEW_SUPABASE_URL` | 共有 Supabase プレビュー DB の URL |
+| Secret | `MOBILE_PREVIEW_SUPABASE_ANON_KEY` | 共有 Supabase プレビュー DB の anon key |
+| Secret | `EXPO_TOKEN` | Expo のアクセストークン |
+
+---
+
 ## コマンド
 
 ```bash
