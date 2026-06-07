@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { getAuthContext } from '@/lib/get-auth-context'
 
 interface AutocompleteSuggestion {
   placeId: string
@@ -11,6 +12,9 @@ interface AutocompleteSuggestion {
 }
 
 export async function GET(req: Request) {
+  const { error } = await getAuthContext()
+  if (error) return error
+
   const apiKey = process.env['GOOGLE_MAPS_API_KEY']
   if (!apiKey) {
     return NextResponse.json({ error: 'Google Maps API key not configured' }, { status: 503 })

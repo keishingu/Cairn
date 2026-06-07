@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { requireProjectLeader, requireProjectManager } from '@/lib/permissions'
 
 export async function DELETE(
   _req: Request,
@@ -27,6 +28,9 @@ export async function DELETE(
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
+
+    const forbidden = await requireProjectLeader(projectId, ctx.userId, ctx.workspaceId)
+    if (forbidden) return forbidden
 
     // CASCADE 前にストレージパスを収集する
     // - files.projectId = projectId（直接紐付き）
@@ -105,6 +109,19 @@ export async function PATCH(
     const { ctx, error } = await getAuthContext()
     if (error) return error
 
+    const [project] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
+      .limit(1)
+
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    const forbidden = await requireProjectManager(id, ctx.userId, ctx.workspaceId)
+    if (forbidden) return forbidden
+
     let resolvedCoverPhotoUrl: string | null | undefined = undefined
 
     if (b.placePhotoName) {
@@ -143,7 +160,6 @@ export async function PATCH(
     } else if ('coverPhotoUrl' in (b as object)) {
       resolvedCoverPhotoUrl = b.coverPhotoUrl ?? null
     }
-
     const set: {
       title?: string
       description?: string | null

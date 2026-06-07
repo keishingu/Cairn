@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireWorkspaceAdmin } from '@/lib/permissions'
 
 export interface WorkspaceChannelDto {
   id: string
@@ -115,6 +116,9 @@ export async function POST(req: Request) {
   if (name.length > 60) {
     return NextResponse.json({ error: '60文字以内で入力してください' }, { status: 400 })
   }
+
+  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
