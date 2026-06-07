@@ -257,6 +257,12 @@ node scripts/generate-icons.mjs
 
 ---
 
+##
+
+expoビルド用ブランチ: develop
+
+--
+
 ## ライセンス
 
 Apache License 2.0
