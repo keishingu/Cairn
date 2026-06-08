@@ -387,12 +387,37 @@ const EXPIRES_OPTIONS: { value: ExpiresIn; label: string }[] = [
   { value: 'never', label: '無期限' },
 ]
 
+interface InviteRecord {
+  id: string
+  token: string
+  url: string
+  expiresAt: string | null
+  maxUses: number | null
+  useCount: number
+  role: string
+  createdAt: string
+  createdByName: string
+}
+
 function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boolean }) {
   const [expiresIn, setExpiresIn] = React.useState<ExpiresIn>('1h')
   const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
   const [generating, setGenerating] = React.useState(false)
   const [generateError, setGenerateError] = React.useState<string | null>(null)
   const [copied, setCopied] = React.useState(false)
+  const [existingInvites, setExistingInvites] = React.useState<InviteRecord[]>([])
+  const [revoking, setRevoking] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    void fetchExistingInvites()
+  }, [])
+
+  async function fetchExistingInvites() {
+    const res = await fetch('/api/workspaces/invites')
+    if (!res.ok) return
+    const data = await res.json().catch(() => ({})) as { invites?: InviteRecord[] }
+    setExistingInvites(data.invites ?? [])
+  }
 
   async function generateLink() {
     setGenerating(true)
@@ -406,10 +431,19 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
     const data = await res.json().catch(() => ({})) as { url?: string; error?: string }
     if (res.ok && data.url) {
       setInviteUrl(data.url)
+      void fetchExistingInvites()
     } else {
       setGenerateError(data.error ?? '招待リンクの生成に失敗しました')
     }
     setGenerating(false)
+  }
+
+  async function revokeInvite(token: string) {
+    setRevoking(token)
+    await fetch(`/api/workspaces/invites/${token}`, { method: 'DELETE' })
+    setExistingInvites(prev => prev.filter(inv => inv.token !== token))
+    if (inviteUrl?.includes(token)) setInviteUrl(null)
+    setRevoking(null)
   }
 
   async function copyLink() {
@@ -544,6 +578,51 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
               >
                 別のリンクを生成
               </button>
+            </div>
+          )}
+
+          {existingInvites.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>有効なリンク</div>
+              {existingInvites.map(inv => {
+                const expiresLabel = inv.expiresAt
+                  ? `${new Date(inv.expiresAt).toLocaleDateString('ja-JP')} まで`
+                  : '無期限'
+                const roleLabel = inv.role === 'guest' ? 'ゲスト' : 'メンバー'
+                return (
+                  <div
+                    key={inv.token}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '8px 10px', borderRadius: 8,
+                      background: 'var(--bg)', border: '1px solid var(--border-2)',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {inv.url}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>
+                        {roleLabel} · {expiresLabel}{inv.maxUses != null ? ` · ${inv.useCount}/${inv.maxUses}回使用` : ''}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => revokeInvite(inv.token)}
+                      disabled={revoking === inv.token}
+                      style={{
+                        flexShrink: 0, padding: '4px 10px', borderRadius: 6,
+                        border: '1px solid var(--red)', background: 'transparent',
+                        color: revoking === inv.token ? 'var(--text-4)' : 'var(--red-text)',
+                        fontSize: 11.5, fontWeight: 600, cursor: revoking === inv.token ? 'default' : 'pointer',
+                        fontFamily: 'inherit', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {revoking === inv.token ? '処理中...' : '無効化'}
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
