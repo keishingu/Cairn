@@ -47,6 +47,7 @@ const STUB_MEMBER: WorkspaceMemberDto = {
   avatarUrl: null,
   role: 'member',
   joinedAt: '2026-01-01',
+  projectCount: 3,
 }
 
 function makeQC(members: WorkspaceMemberDto[] = [STUB_MEMBER]) {
