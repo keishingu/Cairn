@@ -10,9 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "tauri:dev": "CAIRN_APP_URL=https://develop.oss-cairn.com tauri dev",
-    "tauri:build:prod": "CAIRN_APP_URL=https://oss-cairn.com tauri build",
-    "tauri:build:dev": "CAIRN_APP_URL=https://develop.oss-cairn.com tauri build"
+    "tauri:dev": "CAIRN_APP_URL=https://develop.oss-cairn.com pnpm exec tauri dev",
+    "tauri:build:prod": "CAIRN_APP_URL=https://oss-cairn.com pnpm exec tauri build",
+    "tauri:build:dev": "CAIRN_APP_URL=https://develop.oss-cairn.com pnpm exec tauri build"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.1.9",
