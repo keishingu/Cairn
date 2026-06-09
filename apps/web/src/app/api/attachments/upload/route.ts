@@ -61,14 +61,9 @@ export async function POST(req: Request) {
   const supabase = createServiceRoleClient()
   const buffer = await file.arrayBuffer()
 
-  // Supabase Storage の chat-attachments バケットはテキスト系 MIME を非対応のため
-  // ストレージへは application/octet-stream で送信し、DB に正しい MIME タイプを保存する
-  const TEXT_MIME_TYPES = new Set(['text/plain', 'text/markdown'])
-  const storageContentType = TEXT_MIME_TYPES.has(file.type) ? 'application/octet-stream' : file.type
-
   const { error: uploadError } = await supabase.storage
     .from('chat-attachments')
-    .upload(storagePath, buffer, { contentType: storageContentType, upsert: false })
+    .upload(storagePath, buffer, { contentType: file.type, upsert: false })
 
   if (uploadError) {
     console.error('[/api/attachments/upload] Storage upload failed:', uploadError)
