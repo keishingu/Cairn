@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.cairn.app",
   "build": {
-    "frontendDist": "${CAIRN_APP_URL}",
-    "devUrl": "${CAIRN_APP_URL}"
+    "frontendDist": "https://oss-cairn.com",
+    "devUrl": "https://develop.oss-cairn.com"
   },
   "app": {
     "windows": [
