@@ -235,8 +235,96 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
         position: 'relative',
       }}>
         {/* ロゴ */}
-        <div style={{ padding: '14px 0', display: 'flex', justifyContent: 'center', borderBottom: '1px solid var(--divider)' }}>
-          {logoEl}
+        <div style={{ padding: '14px 0', display: 'flex', justifyContent: 'center', borderBottom: '1px solid var(--divider)', position: 'relative' }}>
+          <button
+            onClick={() => setSwitcherOpen(o => !o)}
+            title={workspace?.name ?? 'ワークスペース'}
+            style={{
+              border: 'none', background: switcherOpen ? 'var(--card-hover)' : 'transparent',
+              cursor: 'pointer', padding: 4, borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+            onMouseEnter={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+            onMouseLeave={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
+            {logoEl}
+          </button>
+
+          {switcherOpen && (
+            <>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setSwitcherOpen(false)}/>
+              <div style={{
+                position: 'absolute', top: '100%', left: 4, right: 4,
+                zIndex: 100,
+                background: 'var(--card)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                padding: '6px',
+                marginTop: 4,
+                minWidth: 200,
+              }}>
+                {workspaceList.map(ws => (
+                  <button
+                    key={ws.id}
+                    onClick={() => switchWorkspace(ws.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      width: '100%', padding: '8px 10px', borderRadius: 7,
+                      border: 'none',
+                      background: ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent',
+                      cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent' }}
+                  >
+                    <div style={{
+                      width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+                      background: 'linear-gradient(135deg, #10B981, #0891B2)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#fff', fontSize: 12, fontWeight: 700,
+                    }}>
+                      {ws.logoUrl
+                        // eslint-disable-next-line @next/next/no-img-element
+                        ? <img src={ws.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 7 }}/>
+                        : ws.name.slice(0, 1)
+                      }
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {ws.name}
+                      </div>
+                    </div>
+                    {ws.id === workspace?.id && (
+                      <Icon name="check" size={14} color="var(--accent)"/>
+                    )}
+                  </button>
+                ))}
+                <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }} />
+                <button
+                  onClick={() => { setSwitcherOpen(false); router.push('/workspace/new') }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    width: '100%', padding: '8px 10px', borderRadius: 7,
+                    border: 'none', background: 'transparent',
+                    cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                    color: 'var(--text-3)',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                >
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+                    border: '1.5px dashed var(--border-2)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Icon name="plus" size={14} color="var(--text-4)"/>
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>新しいワークスペースを作成</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* アイコンナビ */}
