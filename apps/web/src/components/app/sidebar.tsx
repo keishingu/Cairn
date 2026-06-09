@@ -241,34 +241,20 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
 
         {/* アイコンナビ */}
         <nav style={{ flex: 1, overflow: 'auto', padding: '10px 6px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <CollapsedNavItem icon="folder"   label={projectLabel} active={isProjectsActive} onClick={() => setPage('projects')}/>
-          <CollapsedNavItem icon="check"    label="マイタスク" active={page === 'tasks'}   onClick={() => setPage('tasks')}/>
-          <CollapsedNavItem icon="chat"     label="チャット一覧" badge={totalChatUnread || undefined} active={page === 'chats'}   onClick={() => setPage('chats')}/>
+          <CollapsedNavItem icon="list"     label={`${projectLabel}：一覧`}       active={page === 'projects'} onClick={() => setPage('projects')}/>
+          <CollapsedNavItem icon="calendar" label={`${projectLabel}：カレンダー`} active={page === 'calendar'} onClick={() => setPage('calendar')}/>
+          <CollapsedNavItem icon="kanban"   label={`${projectLabel}：カンバン`}   active={page === 'kanban'}   onClick={() => setPage('kanban')}/>
+          <CollapsedNavItem icon="check"    label="マイタスク"     active={page === 'tasks'}   onClick={() => setPage('tasks')}/>
+          <CollapsedNavItem icon="chat"     label="チャット一覧"   badge={totalChatUnread || undefined} active={page === 'chats'}   onClick={() => setPage('chats')}/>
           <div style={{ margin: '6px 0', height: 1, background: 'var(--divider)' }}/>
-          <CollapsedNavItem icon="file"     label="ファイル" active={page === 'files'}   onClick={() => setPage('files')}/>
-          <CollapsedNavItem icon="image"    label="ギャラリー" active={page === 'gallery'} onClick={() => setPage('gallery')}/>
+          <CollapsedNavItem icon="file"     label="ファイル"       active={page === 'files'}   onClick={() => setPage('files')}/>
+          <CollapsedNavItem icon="image"    label="ギャラリー"     active={page === 'gallery'} onClick={() => setPage('gallery')}/>
           <CollapsedNavItem icon="sparkles" label="AIアシスタント" active={page === 'ai'}      onClick={() => setPage('ai')}/>
           <div style={{ margin: '6px 0', height: 1, background: 'var(--divider)' }}/>
-          <CollapsedNavItem icon="users"    label="メンバー" active={page === 'members'}  onClick={() => setPage('members')}/>
-          <CollapsedNavItem icon="settings" label="設定" active={page === 'settings'} onClick={() => setPage('settings')}/>
+          <CollapsedNavItem icon="users"    label="メンバー"       active={page === 'members'}  onClick={() => setPage('members')}/>
+          <CollapsedNavItem icon="settings" label="設定"           active={page === 'settings'} onClick={() => setPage('settings')}/>
         </nav>
-
-        {/* 展開ボタン */}
-        <div style={{ padding: '8px 6px', borderTop: '1px solid var(--divider)', display: 'flex', justifyContent: 'center' }}>
-          <button
-            onClick={onToggleCollapse}
-            title="サイドバーを展開"
-            style={{
-              border: 'none', background: 'transparent', cursor: 'pointer',
-              color: 'var(--text-4)', padding: '6px', borderRadius: 7,
-              display: 'flex', alignItems: 'center',
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-4)' }}
-          >
-            <Icon name="chevRight" size={15}/>
-          </button>
-        </div>
+        <SidebarUserFooter collapsed={true} onToggle={onToggleCollapse}/>
       </aside>
     )
   }
@@ -429,26 +415,7 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
         ))}
       </nav>
 
-      {/* 折りたたみボタン */}
-      <div style={{ padding: '8px 12px', borderTop: '1px solid var(--divider)', display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          onClick={onToggleCollapse}
-          title="サイドバーを折りたたむ"
-          style={{
-            border: 'none', background: 'transparent', cursor: 'pointer',
-            color: 'var(--text-4)', padding: '5px 7px', borderRadius: 7,
-            display: 'flex', alignItems: 'center', gap: 4,
-            fontSize: 12, fontFamily: 'inherit',
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-4)' }}
-        >
-          <Icon name="chevLeft" size={14}/>
-          <Icon name="chevLeft" size={14}/>
-        </button>
-      </div>
-
-      <SidebarUserFooter />
+      <SidebarUserFooter collapsed={false} onToggle={onToggleCollapse}/>
     </aside>
   )
 }
@@ -487,7 +454,7 @@ const CollapsedNavItem = ({ icon, label, active, badge, onClick }: CollapsedNavI
   </button>
 )
 
-function SidebarUserFooter() {
+function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolean | undefined; onToggle?: (() => void) | undefined }) {
   const router = useRouter()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
@@ -515,41 +482,75 @@ function SidebarUserFooter() {
     router.refresh()
   }
 
+  const logoutMenu = menuOpen && (
+    <div style={{
+      position: 'absolute', bottom: '100%', left: collapsed ? -4 : 12, right: collapsed ? -4 : 12,
+      background: 'var(--card)', border: '1px solid var(--border)',
+      borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 100,
+      minWidth: 140,
+    }}>
+      <button
+        onClick={handleLogout}
+        style={{
+          width: '100%', padding: '8px 10px', borderRadius: 7, border: 'none',
+          background: 'transparent', color: 'var(--red-text)', fontSize: 13,
+          fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+          display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
+        }}
+        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--red-soft)'}
+        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+      >
+        <Icon name="logout" size={14}/>
+        ログアウト
+      </button>
+    </div>
+  )
+
+  const avatarBtn = (
+    <button
+      onClick={() => setMenuOpen(v => !v)}
+      title={collapsed ? displayName : undefined}
+      style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, borderRadius: '50%', flexShrink: 0 }}
+    >
+      <Avatar name={displayName} url={me?.avatarUrl ?? null} size={32}/>
+    </button>
+  )
+
+  const toggleBtn = (
+    <button
+      onClick={onToggle}
+      title={collapsed ? 'サイドバーを展開' : 'サイドバーを折りたたむ'}
+      style={{
+        border: 'none', background: 'transparent', cursor: 'pointer',
+        color: 'var(--text-4)', padding: '5px 6px', borderRadius: 7,
+        display: 'flex', alignItems: 'center', flexShrink: 0,
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-4)' }}
+    >
+      <Icon name={collapsed ? 'chevronsRight' : 'chevronsLeft'} size={15}/>
+    </button>
+  )
+
+  if (collapsed) {
+    return (
+      <div style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, position: 'relative' }} ref={menuRef}>
+        {avatarBtn}
+        {toggleBtn}
+        {logoutMenu}
+      </div>
+    )
+  }
+
   return (
     <div style={{ padding: '10px 12px', borderTop: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }} ref={menuRef}>
-      <Avatar name={displayName} url={me?.avatarUrl ?? null} size={32}/>
+      {avatarBtn}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2 }}>{displayName}</div>
         <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3 }}>オンライン</div>
       </div>
-      <button
-        onClick={() => setMenuOpen(v => !v)}
-        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-3)', padding: 4, borderRadius: 6 }}
-      >
-        <Icon name="more" size={16}/>
-      </button>
-      {menuOpen && (
-        <div style={{
-          position: 'absolute', bottom: '100%', right: 12, left: 12,
-          background: 'var(--card)', border: '1px solid var(--border)',
-          borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 100,
-        }}>
-          <button
-            onClick={handleLogout}
-            style={{
-              width: '100%', padding: '8px 10px', borderRadius: 7, border: 'none',
-              background: 'transparent', color: 'var(--red-text)', fontSize: 13,
-              fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-              display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
-            }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--red-soft)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-          >
-            <Icon name="logout" size={14}/>
-            ログアウト
-          </button>
-        </div>
-      )}
+      {toggleBtn}
+      {logoutMenu}
     </div>
   )
 }
