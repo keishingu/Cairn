@@ -32,7 +32,10 @@ export async function GET() {
         statusColor: projectStatuses.color,
       })
       .from(pinnedProjects)
-      .innerJoin(projects, eq(pinnedProjects.projectId, projects.id))
+      .innerJoin(
+        projects,
+        and(eq(pinnedProjects.projectId, projects.id), eq(projects.workspaceId, ctx.workspaceId)),
+      )
       .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
       .where(
         and(
@@ -74,8 +77,18 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { pinnedProjects } = await import('@cairn/db')
+    const { pinnedProjects, projects } = await import('@cairn/db')
     const { eq, and, count } = await import('drizzle-orm')
+
+    const [project] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
+      .limit(1)
+
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
 
     const [existing] = await db
       .select({ n: count() })

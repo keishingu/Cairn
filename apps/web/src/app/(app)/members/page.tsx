@@ -4,17 +4,15 @@
 'use client'
 
 import React from 'react'
-import { useAppShell } from '@/components/app/app-shell-context'
 import { TopBar } from '@/components/app/sidebar'
 import { TopBarSearch } from '@/components/app/primitives'
 import { PageMembers } from '@/components/app/pages/members-page'
 
 export default function MembersPage() {
-  const { openNotif } = useAppShell()
   const [search, setSearch] = React.useState('')
   return (
     <>
-      <TopBar title="メンバー" onBell={openNotif}>
+      <TopBar title="メンバー">
         <TopBarSearch value={search} onChange={setSearch} placeholder="メンバーを検索…"/>
       </TopBar>
       <PageMembers externalSearch={search}/>

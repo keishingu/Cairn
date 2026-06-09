@@ -1,0 +1,51 @@
+name: Mobile Preview
+
+# apps/mobile に変更があった PR でのみ EAS Update を発行し、
+# Expo Go で読み込める QR コード付きのプレビューリンクを PR にコメントする。
+# EAS の無料枠を消費しすぎないよう、対象パスを apps/mobile 配下に限定している。
+on:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Publish EAS Update preview
+    runs-on: ubuntu-latest
+    environment: Preview
+    permissions:
+      contents: read
+      pull-requests: write
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Publish preview update and comment on PR
+        uses: expo/expo-github-action/preview@v8
+        with:
+          working-directory: apps/mobile
+          command: eas update --auto --branch pr-${{ github.event.number }}
+        env:
+          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.MOBILE_PREVIEW_EAS_PROJECT_ID }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_API_BASE_URL: ${{ vars.MOBILE_PREVIEW_API_BASE_URL }}

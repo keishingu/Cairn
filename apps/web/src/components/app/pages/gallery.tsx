@@ -3,6 +3,7 @@
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '../primitives'
+import { TopBar } from '../sidebar'
 import type { WorkspaceGalleryItemDto } from '@/app/api/gallery/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
@@ -46,18 +47,7 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* PC ヘッダー */}
       {!isMobile && (
-        <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em' }}>ギャラリー</h2>
-              {items.length > 0 && (
-                <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: 2 }}>
-                  {items.length} 枚
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <TopBar title="ギャラリー" subtitle={items.length > 0 ? `${items.length} 枚` : null}/>
       )}
 
       {/* コンテンツ */}

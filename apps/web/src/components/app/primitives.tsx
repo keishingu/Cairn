@@ -76,6 +76,7 @@ const PATHS: Record<string, React.ReactNode> = {
   tent:        <><path d="M3 20l9-15 9 15z"/><path d="M12 5v15"/><path d="M9 20l3-4 3 4"/></>,
   mic:         <><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 12a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></>,
   map:         <><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21"/><line x1="8" y1="3" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="21"/></>,
+  'map-pin':   <><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></>,
   logout:      <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
   monitor:     <><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></>,
   refresh:     <><polyline points="23 4 23 10 17 10"/><path d="M20.5 16a9 9 0 1 1-2.5-9.4L23 10"/></>,

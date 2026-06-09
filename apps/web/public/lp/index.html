@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="dark" data-tone="rich" data-lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cairn — Open Source Project Collaboration OS</title>
+<meta name="description" content="One Project. One Place. チャット・マイルストーン・カレンダー・ファイル・AIをひとつに。オープンソースのプロジェクトコラボレーション基盤。">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/lp/cairn-lp.css">
+</head>
+<body>
+
+<!-- brand mark (3 stacked cairn blocks) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="cairn-mark" viewBox="0 0 512 512">
+    <rect x="192" y="88"  width="188" height="88" rx="22" fill="currentColor"/>
+    <rect x="96"  y="204" width="228" height="88" rx="22" fill="currentColor"/>
+    <rect x="112" y="320" width="296" height="92" rx="22" fill="currentColor"/>
+  </symbol>
+</svg>
+
+<!-- ── nav ───────────────────────────────────────────────────────── -->
+<header class="nav" id="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="Cairn">
+      <svg class="brand-mark" style="color:var(--accent)"><use href="#cairn-mark"/></svg>
+      Cairn
+    </a>
+    <nav class="nav-links" aria-label="主要ナビゲーション">
+      <a href="#features"><span data-i="ja">機能</span><span data-i="en">Features</span></a>
+      <a href="#open-source"><span data-i="ja">オープンソース</span><span data-i="en">Open Source</span></a>
+      <a href="#self-hosted"><span data-i="ja">セルフホスト</span><span data-i="en">Self-Hosted</span></a>
+      <a href="#enterprise"><span data-i="ja">法人向け</span><span data-i="en">Enterprise</span></a>
+      <a href="#docs"><span data-i="ja">ドキュメント</span><span data-i="en">Docs</span></a>
+    </nav>
+    <div class="nav-right">
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button type="button" data-lang-set="ja">日本語</button>
+        <button type="button" data-lang-set="en">EN</button>
+      </div>
+      <a class="nav-icon" href="#open-source" aria-label="GitHub">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
+      </a>
+      <span class="gh-stars">
+</span>
+      <a class="btn btn-primary btn-sm" href="#demo"><span data-i="ja">デモを試す</span><span data-i="en">Try Demo</span></a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ── hero ────────────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="hero-glow"></div>
+    <div class="hero-grid"></div>
+    <div class="wrap hero-inner">
+      <div class="badge reveal">
+        <span class="tag">OSS</span>
+        <b>Project Collaboration OS</b>
+        <span class="sep apache">·</span>
+        <span class="apache">Apache-2.0</span>
+      </div>
+      <h1 class="display reveal" data-d="1">One&nbsp;Project.<br>One&nbsp;Place.</h1>
+      <p class="hero-lead reveal" data-d="2">
+        <span data-i="en">Open source project collaboration OS.</span>
+        <span data-i="ja">オープンソースのプロジェクト・コラボレーション OS。</span>
+        <span class="jp" data-i="en">Chat, milestones, calendar, files and AI — everything your project needs, in one place.</span>
+        <span class="jp" data-i="ja">チャット・マイルストーン・カレンダー・ファイル・AI。プロジェクトに必要なものを、ひとつの場所に。</span>
+      </p>
+      <div class="hero-cta reveal" data-d="3">
+        <a class="btn btn-primary btn-lg" href="#demo">
+          Try Demo
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+        <a class="btn btn-ghost btn-lg" href="#open-source">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+      <div class="hero-meta reveal" data-d="4">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span data-i="en">100% Open Source</span><span data-i="ja">100% オープンソース</span></span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span data-i="en">Self-Hosted</span><span data-i="ja">セルフホスト</span></span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span data-i="en">Bring Your Own AI</span><span data-i="ja">AI を自由に</span></span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span data-i="en">Extensible</span><span data-i="ja">拡張可能</span></span>
+      </div>
+    </div>
+
+    <!-- product window mock -->
+    <div class="wrap">
+      <div class="shot reveal" data-d="3">
+        <div class="window">
+          <div class="win-bar">
+            <div class="dots"><i></i><i></i><i></i></div>
+            <div class="win-addr"><span><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>app.cairn.dev / 大学山岳部</span></div>
+          </div>
+          <div class="app">
+            <aside class="app-rail">
+              <div class="rail-ws">
+                <svg class="brand-mark" style="color:var(--accent)"><use href="#cairn-mark"/></svg>
+                <div><b>大学山岳部</b></div>
+              </div>
+              <div class="rail-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span data-i="ja">検索</span><span data-i="en">Search</span><kbd>⌘K</kbd></div>
+              <div class="rail-sec"><span data-i="ja">ワークスペース</span><span data-i="en">Workspace</span></div>
+              <div class="rail-i parent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h6l2 2h8v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/></svg><span data-i="ja">イベント</span><span data-i="en">Events</span><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+              <div class="rail-i sub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 7h13M8 12h13M8 17h13M3.5 7h.01M3.5 12h.01M3.5 17h.01"/></svg><span data-i="ja">一覧</span><span data-i="en">List</span></div>
+              <div class="rail-i sub active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><span data-i="ja">カレンダー</span><span data-i="en">Calendar</span></div>
+              <div class="rail-i sub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="11" rx="1"/><rect x="17" y="4" width="4" height="14" rx="1"/></svg><span data-i="ja">カンバン</span><span data-i="en">Board</span></div>
+              <div class="rail-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L20 6"/><path d="M21 12v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11"/></svg><span data-i="ja">マイタスク</span><span data-i="en">My Tasks</span></div>
+              <div class="rail-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span data-i="ja">チャット一覧</span><span data-i="en">All Chats</span></div>
+              <div class="rail-sec"><span data-i="ja">ライブラリ</span><span data-i="en">Library</span></div>
+              <div class="rail-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h6l2 3h8v11a2 2 0 0 1-2 2H4z"/></svg><span data-i="ja">ファイル</span><span data-i="en">Files</span></div>
+              <div class="rail-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m3 17 5-4 4 3 3-2 6 5"/></svg><span data-i="ja">ギャラリー</span><span data-i="en">Gallery</span></div>
+              <div class="rail-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l1.6 4 4.4.3-3.4 2.8 1.1 4.3L12 12.9 8.3 14.7l1.1-4.3L6 7.6l4.4-.3z"/></svg><span data-i="ja">AIアシスタント</span><span data-i="en">AI Assistant</span></div>
+            </aside>
+
+            <!-- calendar -->
+            <div class="cal">
+              <div class="cal-bar">
+                <div class="cal-nav">
+                  <button class="cal-today"><span data-i="ja">今日</span><span data-i="en">Today</span></button>
+                  <span class="cal-arrows"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 6-6 6 6 6"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg></span>
+                  <b data-i="ja">2026年6月</b><b data-i="en">June 2026</b>
+                </div>
+                <div class="cal-tools">
+                  <div class="cal-seg"><span class="on"><span data-i="ja">月</span><span data-i="en">Month</span></span><span><span data-i="ja">週</span><span data-i="en">Week</span></span><span><span data-i="ja">リスト</span><span data-i="en">List</span></span></div>
+                  <button class="cal-new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg><span data-i="ja">新規イベント</span><span data-i="en">New Event</span></button>
+                </div>
+              </div>
+              <div class="cal-wk"><span class="sun"><span data-i="ja">日</span><span data-i="en">Su</span></span><span><span data-i="ja">月</span><span data-i="en">Mo</span></span><span><span data-i="ja">火</span><span data-i="en">Tu</span></span><span><span data-i="ja">水</span><span data-i="en">We</span></span><span><span data-i="ja">木</span><span data-i="en">Th</span></span><span><span data-i="ja">金</span><span data-i="en">Fr</span></span><span class="sat"><span data-i="ja">土</span><span data-i="en">Sa</span></span></div>
+              <div class="cal-grid">
+                <div class="cd"><span class="cn sun">31</span><span class="ev ev-blue">瑞牆・小川山</span><span class="ev ev-amber">二子山</span></div>
+                <div class="cd"><span class="cn">1</span></div>
+                <div class="cd"><span class="cn">2</span></div>
+                <div class="cd"><span class="cn">3</span></div>
+                <div class="cd"><span class="cn">4</span></div>
+                <div class="cd"><span class="cn">5</span><span class="ev ev-blue">Bugaboo!</span></div>
+                <div class="cd"><span class="cn sat today">6</span></div>
+
+                <div class="cd"><span class="cn sun">7</span><span class="ev ev-blue">Bugaboo!</span></div>
+                <div class="cd"><span class="cn">8</span></div>
+                <div class="cd"><span class="cn">9</span><span class="ev ev-green">クライミング講…</span></div>
+                <div class="cd"><span class="cn">10</span></div>
+                <div class="cd"><span class="cn">11</span></div>
+                <div class="cd"><span class="cn">12</span><span class="ev ev-green">場所未定・日程確保</span><span class="ev ev-gray">北アルプス縦走</span></div>
+                <div class="cd"><span class="cn sat">13</span></div>
+
+                <div class="cd"><span class="cn sun">14</span><span class="ev ev-gray">北アルプス縦走計画</span></div>
+                <div class="cd"><span class="cn">15</span></div>
+                <div class="cd"><span class="cn">16</span><span class="ev ev-amber">雪山訓練</span></div>
+                <div class="cd"><span class="cn">17</span></div>
+                <div class="cd"><span class="cn">18</span></div>
+                <div class="cd"><span class="cn">19</span></div>
+                <div class="cd"><span class="cn sat">20</span></div>
+
+                <div class="cd"><span class="cn sun">21</span></div>
+                <div class="cd"><span class="cn">22</span></div>
+                <div class="cd"><span class="cn">23</span></div>
+                <div class="cd"><span class="cn">24</span></div>
+                <div class="cd"><span class="cn">25</span></div>
+                <div class="cd"><span class="cn">26</span></div>
+                <div class="cd sel"><span class="cn sat">27</span><span class="ev ev-blue on">剱岳</span></div>
+
+                <div class="cd"><span class="cn sun">28</span><span class="ev ev-blue">剱岳</span></div>
+                <div class="cd"><span class="cn">29</span></div>
+                <div class="cd"><span class="cn">30</span></div>
+                <div class="cd dim"><span class="cn">1</span></div>
+                <div class="cd dim"><span class="cn">2</span></div>
+                <div class="cd dim"><span class="cn">3</span></div>
+                <div class="cd dim"><span class="cn sat">4</span></div>
+              </div>
+              <div class="cal-legend">
+                <span><i class="d-blue"></i><span data-i="ja">計画中</span><span data-i="en">Planning</span></span><span><i class="d-amber"></i><span data-i="ja">審査中</span><span data-i="en">Review</span></span>
+                <span><i class="d-green"></i><span data-i="ja">実施待ち</span><span data-i="en">Ready</span></span><span><i class="d-gray"></i><span data-i="ja">保留</span><span data-i="en">On hold</span></span>
+              </div>
+            </div>
+
+            <!-- detail panel -->
+            <aside class="detail">
+              <div class="dt-hd"><b>剱岳</b><span class="dt-x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg></span></div>
+              <div class="dt-banner">
+                <div class="dt-date"><b>6/28 ～ 7/29</b><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 6a3 3 0 0 1 0 6M21 20a6 6 0 0 0-5-5.9"/></svg><span data-i="ja">3人参加</span><span data-i="en">3 going</span></span></div>
+              </div>
+              <div class="dt-status">
+                <span class="dt-pill"><i></i><span data-i="ja">計画中</span><span data-i="en">Planning</span></span>
+                <div class="dt-avs"><span style="background:#E0726E">圭</span><span style="background:#0FB981">山</span><span style="background:#3B82F6">新</span></div>
+                <span class="dt-open"><span data-i="ja">詳細を開く →</span><span data-i="en">Open details →</span></span>
+              </div>
+              <div class="dt-tabs"><span><span data-i="ja">概要</span><span data-i="en">Overview</span></span><span class="on"><span data-i="ja">チャット</span><span data-i="en">Chat</span></span><span><span data-i="ja">ファイル</span><span data-i="en">Files</span></span><span><span data-i="ja">タスク</span><span data-i="en">Tasks</span></span><span><span data-i="ja">メンバー</span><span data-i="en">Members</span></span></div>
+              <div class="dt-chan"># 剱岳<span class="cnt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 19a6 6 0 0 1 12 0"/></svg>3</span></div>
+              <div class="dt-feed">
+                <div class="dm">
+                  <div class="dav" style="background:linear-gradient(135deg,#E0726E,#C7564F)">圭</div>
+                  <div class="dm-b">
+                    <div class="dm-h"><b>新宮 圭</b><time>5/26 14:27</time></div>
+                    <div class="dm-t">ルート最終案、共有します。確認お願いします</div>
+                    <a class="link-chip"><span class="lc-i doc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg></span><span class="lc-t"><b>山行計画書</b><i>docs.google.com</i></span></a>
+                  </div>
+                </div>
+                <div class="dm">
+                  <div class="dav" style="background:linear-gradient(135deg,#E0726E,#C7564F)">圭</div>
+                  <div class="dm-b">
+                    <div class="dm-h"><b>新宮 圭</b><time>5/27 16:29</time></div>
+                    <a class="link-chip"><span class="lc-i pdf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span><span class="lc-t"><b>ルートマップ.pdf</b><i>drive.google.com</i></span></a>
+                  </div>
+                </div>
+                <div class="dm">
+                  <div class="dav" style="background:linear-gradient(135deg,#0FB981,#34D399)">山</div>
+                  <div class="dm-b">
+                    <div class="dm-h"><b>山田 太郎</b><time>5/28 10:27</time></div>
+                    <div class="dm-t">ありがとう！</div>
+                  </div>
+                </div>
+                <div class="dm">
+                  <div class="dav" style="background:linear-gradient(135deg,#E0726E,#C7564F)">圭</div>
+                  <div class="dm-b">
+                    <div class="dm-h"><b>新宮 圭</b><time>6/4 00:10</time><em data-i="ja">編集済み</em><em data-i="en">edited</em></div>
+                    <div class="dm-t">はーい！！！</div>
+                  </div>
+                </div>
+              </div>
+              <div class="dt-input"><span><span data-i="ja"># 剱岳 にメッセージ送信</span><span data-i="en">Message #剱岳</span></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m22 2-7 20-4-9-9-4z"/></svg></div>
+            </aside>
+          </div>
+        </div>
+        <div class="shot-fade"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── problem ─────────────────────────────────────────────────── -->
+  <section class="section" id="problem">
+    <div class="wrap">
+      <div class="sec-head center reveal">
+        <span class="eyebrow eyebrow--muted">The Problem</span>
+        <h2 class="h2" data-i="ja">プロジェクトの情報は、<br>いつも散らばっている。</h2>
+        <h2 class="h2" data-i="en">Project knowledge<br>is always scattered.</h2>
+        <p data-i="ja">Slack、カレンダー、スプレッドシート、PDF、議事録。必要なものは、いつも別の場所にある。</p>
+        <p data-i="en">Slack, calendar, spreadsheets, PDFs, meeting notes — what you need always lives somewhere else.</p>
+      </div>
+      <div class="prob-grid">
+        <article class="prob reveal" data-d="1">
+          <div class="prob-n">01</div>
+          <div class="prob-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"/></svg></div>
+          <h3 class="h3">Conversations slip away</h3>
+          <p><span data-i="ja">会話が流れて消える。決まったこと、約束したことが、後から追えない。</span><span data-i="en">Conversations vanish in the stream. Decisions and promises can’t be traced later.</span></p>
+        </article>
+        <article class="prob reveal" data-d="2">
+          <div class="prob-n">02</div>
+          <div class="prob-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8"/></svg></div>
+          <h3 class="h3">Files get scattered</h3>
+          <p><span data-i="ja">ファイルや資料が点在する。最新版がどこにあるのか、誰も分からない。</span><span data-i="en">Files and docs end up everywhere. Nobody knows which version is the latest.</span></p>
+        </article>
+        <article class="prob reveal" data-d="3">
+          <div class="prob-n">03</div>
+          <div class="prob-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></div>
+          <h3 class="h3">Schedules stay invisible</h3>
+          <p><span data-i="ja">スケジュールも進捗も見えない。気づいたときには、もう遅れている。</span><span data-i="en">Schedules and progress stay hidden. By the time you notice, you’re already behind.</span></p>
+        </article>
+      </div>
+      <div class="prob-arrow reveal">
+        <span data-i="ja">散らばった情報を、</span>
+        <span data-i="en">Cairn brings it</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        <b data-i="ja">Cairn がひとつにまとめる。</b>
+        <b data-i="en">all together.</b>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── solution ────────────────────────────────────────────────── -->
+  <section class="section solution" id="solution">
+    <div class="hero-glow" style="opacity:calc(var(--hero-glow)*0.5);height:480px;inset:0 0 auto 0"></div>
+    <div class="wrap" style="position:relative;z-index:1">
+      <span class="eyebrow reveal" style="margin-bottom:22px">The Solution</span>
+      <h2 class="big reveal" data-d="1">One Project.<br><span class="a">One Place.</span></h2>
+      <p class="lead reveal" data-d="2" style="text-align:center;max-width:42ch;margin-inline:auto">
+        <span data-i="ja">プロジェクトに必要なものを、ひとつの場所に集約する。チームが前に進むための、共通の基盤。</span>
+        <span data-i="en">Everything your project needs, gathered in one place — a shared foundation for moving work forward.</span>
+      </p>
+    </div>
+  </section>
+
+  <!-- ── features ────────────────────────────────────────────────── -->
+  <section class="section" id="features" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Features</span>
+        <h2 class="h2" data-i="ja">プロジェクトを前に進める、<br>6つの基本。</h2>
+        <h2 class="h2" data-i="en">Six essentials that move<br>projects forward.</h2>
+        <p data-i="ja">機能を並べるのではなく、プロジェクトが進む流れそのものを設計しています。</p>
+        <p data-i="en">Not a pile of features — a design for the way projects actually move forward.</p>
+      </div>
+      <div class="feat-grid">
+        <article class="feat reveal" data-d="1">
+          <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+          <h3 class="h3">Chat</h3>
+          <p class="en"><span data-i="en">Conversations that move projects forward.</span><span data-i="ja">会話がそのままプロジェクトを前に進める。</span></p>
+        </article>
+        <article class="feat reveal" data-d="2">
+          <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4M4 4h13l-2 4 2 4H4"/></svg></div>
+          <h3 class="h3">Milestones</h3>
+          <p class="en"><span data-i="en">Organize work around meaningful outcomes.</span><span data-i="ja">意味のある成果を軸に、仕事を整理する。</span></p>
+        </article>
+        <article class="feat reveal" data-d="3">
+          <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></div>
+          <h3 class="h3">Calendar</h3>
+          <p class="en"><span data-i="en">See schedules and deadlines in one place.</span><span data-i="ja">予定と締切を、ひとつの場所で見渡す。</span></p>
+        </article>
+        <article class="feat reveal" data-d="1">
+          <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6l2 3h8v11a2 2 0 0 1-2 2H4z"/></svg></div>
+          <h3 class="h3">Files</h3>
+          <p class="en"><span data-i="en">Keep project knowledge together.</span><span data-i="ja">プロジェクトの知識を、ひとつにまとめる。</span></p>
+        </article>
+        <article class="feat reveal" data-d="2">
+          <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m3 17 5-4 4 3 3-2 6 5"/></svg></div>
+          <h3 class="h3">Gallery</h3>
+          <p class="en"><span data-i="en">Share field reports, photos and records.</span><span data-i="ja">現場の記録や写真を、チームの資産に。</span></p>
+        </article>
+        <article class="feat reveal" data-d="3">
+          <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4 4.4.3-3.4 2.8 1.1 4.3L12 12.9 8.3 14.7l1.1-4.3L6 7.6l4.4-.3z"/><path d="M5 19l.7 1.6L7.3 21l-1.6.4L5 23l-.7-1.6L2.7 21l1.6-.4z"/></svg></div>
+          <h3 class="h3">AI</h3>
+          <p class="en"><span data-i="en">Bring your own AI.</span><span data-i="ja">好みの AI を、そのまま組み込める。</span></p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── open source + deploy ────────────────────────────────────── -->
+  <section class="section" id="open-source" style="padding-top:0">
+    <div class="wrap">
+      <div class="split">
+        <article class="panel-card reveal" data-d="1">
+          <span class="eyebrow">Open Source First</span>
+          <h3 data-i="ja">誰でも使えて、<br>自分たちで動かせる。</h3>
+          <h3 data-i="en">Anyone can use it.<br>You run it yourself.</h3>
+          <p class="desc" data-i="ja">Cairn はオープンソース。自由に使い、自由に運用し、必要なら自由に拡張できる。</p>
+          <p class="desc" data-i="en">Cairn is open source. Use it freely, run it freely, and extend it freely when you need to.</p>
+          <ul class="check-list">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span><span data-i="ja"><span class="k">GitHub で公開</span> — Apache-2.0 ライセンス</span><span data-i="en"><span class="k">Public on GitHub</span> — Apache-2.0 licensed</span></span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span><span data-i="ja"><span class="k">Community Driven</span> — コミュニティと共に育つ</span><span data-i="en"><span class="k">Community Driven</span> — grows with its community</span></span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span><span data-i="ja"><span class="k">Transparent</span> — 透明性と監査可能な開発</span><span data-i="en"><span class="k">Transparent</span> — open, auditable development</span></span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span><span data-i="ja"><span class="k">Extensible</span> — 組織に合わせて拡張可能</span><span data-i="en"><span class="k">Extensible</span> — adapts to your organization</span></span></li>
+          </ul>
+          <a class="btn btn-ghost card-cta" href="#open-source">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
+            View on GitHub
+          </a>
+        </article>
+
+        <article class="panel-card reveal" data-d="2" id="self-hosted">
+          <span class="eyebrow">Deploy Anywhere</span>
+          <h3 data-i="ja">どこにでも、<br>デプロイできる。</h3>
+          <h3 data-i="en">Deploy it<br>anywhere.</h3>
+          <p class="desc" data-i="ja">クラウドでも、オンプレミスでも、自社のインフラでも。運用は、あなたの手の中に。</p>
+          <p class="desc" data-i="en">Cloud, on-premise, or your own infrastructure. Operations stay entirely in your hands.</p>
+          <div class="deploy-targets">
+            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/><rect x="15" y="9" width="5" height="5"/><path d="M3 16c2 3 16 3 18 0"/></svg><b>Docker</b><span>compose</span></div>
+            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M12 7v10M7 9.5l10 5M17 9.5l-10 5"/></svg><b>Kubernetes</b><span>helm</span></div>
+            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 10a4 4 0 0 0-7.7-1.3A3.5 3.5 0 1 0 7.5 18H18a4 4 0 0 0 0-8z"/></svg><b>Cloud</b><span>AWS/GCP</span></div>
+            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 20h10M9 16v4M15 16v4"/></svg><b>On-Premise</b><span>self</span></div>
+          </div>
+          <div class="term">
+            <div class="term-hd"><i></i> bash — cairn</div>
+            <div class="term-body">
+              <span class="c" data-i="ja"># 自分のインフラで起動</span><span class="c" data-i="en"># run on your own infra</span><br>
+              <span class="p">$</span> docker compose up <span class="g">-d</span><br>
+              <span class="c">✓ cairn running at :3128</span>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── enterprise ──────────────────────────────────────────────── -->
+  <section class="section" id="enterprise" style="padding-top:0">
+    <div class="wrap">
+      <div class="ent reveal">
+        <div class="ent-l">
+          <span class="eyebrow">Enterprise Support</span>
+          <h2 class="h2" data-i="ja">お困りですか？</h2>
+          <h2 class="h2" data-i="en">Need help?</h2>
+          <p data-i="ja">単なる OSS ではありません。導入から定着まで、チームの課題解決を伴走します。要件整理・ワークフロー設計・連携・AI 活用まで。</p>
+          <p data-i="en">More than just open source. We walk with your team from rollout to adoption — requirements, workflow design, integration and AI.</p>
+          <div class="ent-cta">
+            <a class="btn btn-primary" href="#contact"><span data-i="ja">お問い合わせ</span><span data-i="en">Contact us</span></a>
+            <a class="btn btn-bare" href="#docs"><span data-i="ja">導入の流れを見る →</span><span data-i="en">See how it works →</span></a>
+          </div>
+        </div>
+        <div class="ent-r">
+          <div class="ent-svc">
+            <span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+            <div><b>Implementation Support</b><span data-i="ja">要件ヒアリング・業務整理・導入支援</span><span data-i="en">Requirements, process mapping & rollout</span></div>
+          </div>
+          <div class="ent-svc">
+            <span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M9 6h6a3 3 0 0 1 3 3v6M6 9v6a3 3 0 0 0 3 3h6"/></svg></span>
+            <div><b>Workflow Design</b><span data-i="ja">運用フローの設計・カスタマイズ</span><span data-i="en">Designing & customizing your workflow</span></div>
+          </div>
+          <div class="ent-svc">
+            <span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span>
+            <div><b>Integration</b><span data-i="ja">既存ツール・社内システム連携</span><span data-i="en">Connecting existing tools & systems</span></div>
+          </div>
+          <div class="ent-svc">
+            <span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4 4.4.3-3.4 2.8 1.1 4.3L12 12.9 8.3 14.7l1.1-4.3L6 7.6l4.4-.3z"/></svg></span>
+            <div><b>AI Adoption</b><span data-i="ja">AI 活用・業務改善コンサルティング</span><span data-i="en">AI adoption & process improvement</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── final cta ───────────────────────────────────────────────── -->
+  <section class="section final" id="demo">
+    <div class="final-glow"></div>
+    <div class="wrap final-inner">
+      <svg class="brand-mark mark-xl reveal" style="color:var(--accent)"><use href="#cairn-mark"/></svg>
+      <h2 class="reveal" data-d="1">Move your project<br>forward, together.</h2>
+      <p class="lead reveal" data-d="2" style="text-align:center"><span data-i="ja">プロジェクトの情報を整理するための、新しい場所を。今すぐ試せます。</span><span data-i="en">A new home for everything your project knows. Try it right now.</span></p>
+      <div class="hero-cta reveal" data-d="3">
+        <a class="btn btn-primary btn-lg" href="#demo">
+          Try Demo
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+        <a class="btn btn-ghost btn-lg" href="#open-source">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ── footer ────────────────────────────────────────────────────── -->
+<footer class="footer" id="docs">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a class="brand" href="#top"><svg class="brand-mark" style="color:var(--accent)"><use href="#cairn-mark"/></svg>Cairn</a>
+        <p>Open Source Project Collaboration OS. Self-hosted, extensible, yours.</p>
+        <div class="foot-social">
+          <a class="nav-icon" href="#" aria-label="GitHub"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg></a>
+          <a class="nav-icon" href="#demo" aria-label="Cairn Cloud（公式ホスティング）" title="Cairn Cloud — 公式ホスティング"><svg viewBox="0 0 512 512"><use href="#cairn-mark"/></svg></a>
+          <a class="nav-icon" href="#" aria-label="X"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.2 3h3.3l-7.2 8.2L23 21h-6.7l-5.2-6.8L5 21H1.7l7.7-8.8L1 3h6.8l4.7 6.2zm-1.2 16h1.8L7.1 4.9H5.2z"/></svg></a>
+        </div>
+      </div>
+      <div class="foot-col">
+        <h4>Product</h4>
+        <a href="#features">Features</a>
+        <a href="#self-hosted">Self-Hosted</a>
+        <a href="#enterprise">Enterprise</a>
+        <a href="#demo">Demo</a>
+      </div>
+      <div class="foot-col">
+        <h4>Resources</h4>
+        <a href="#docs">Documentation</a>
+        <a href="#docs">FAQ</a>
+        <a href="#docs">Release Notes</a>
+        <a href="#open-source">Changelog</a>
+      </div>
+      <div class="foot-col">
+        <h4>Community</h4>
+        <a href="#open-source">GitHub</a>
+        <a href="#demo">Cairn Cloud</a>
+        <a href="#">X (Twitter)</a>
+        <a href="#contact">Contact</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <p>© 2026 Cairn Project</p>
+      <span class="lic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M14.8 9.3a3 3 0 1 0 0 5.4"/></svg>Apache License 2.0</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/lp/cairn-lp.js"></script>
+</body>
+</html>

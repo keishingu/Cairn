@@ -10,11 +10,11 @@ import { TopBarSearch } from '@/components/app/primitives'
 import { PageProjects } from '@/components/app/pages/projects'
 
 export default function ProjectsPage() {
-  const { openPanel, openNotif } = useAppShell()
+  const { openPanel } = useAppShell()
   const [search, setSearch] = React.useState('')
   return (
     <>
-      <TopBar title="プロジェクト" subtitle="8 件 · 進行中 7" onBell={openNotif}>
+      <TopBar title="プロジェクト" subtitle="8 件 · 進行中 7">
         <TopBarSearch value={search} onChange={setSearch} placeholder="プロジェクトを検索…"/>
       </TopBar>
       <PageProjects openPanel={openPanel} search={search}/>

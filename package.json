@@ -10,7 +10,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "clean": "turbo clean",
     "desktop:build:prod": "pnpm --filter @cairn/web tauri:build:prod",
-    "desktop:build:dev": "pnpm --filter @cairn/web tauri:build:dev"
+    "desktop:build:dev": "pnpm --filter @cairn/web tauri:build:dev",
+    "setup:mobile-lan": "node scripts/setup-mobile-lan.mjs"
   },
   "devDependencies": {
     "canvas": "^3.2.3",

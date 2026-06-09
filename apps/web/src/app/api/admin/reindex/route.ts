@@ -3,11 +3,15 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireWorkspaceAdmin } from '@/lib/permissions'
 
 // ワークスペース内の全データを再インデックスする管理用エンドポイント
 export async function POST() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
+
+  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  if (forbidden) return forbidden
 
   try {
     const { db, files, workspaceMembers, projects } = await import('@cairn/db')

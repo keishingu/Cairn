@@ -60,6 +60,70 @@ supabase stop
 
 ---
 
+## モバイル（Expo）
+
+Expo Go アプリ内の WebView で Web 版（`apps/web`）を表示するラッパー。Web 側の開発サーバーが必要なため、まず上記の Web 環境を起動しておく。
+
+```bash
+# 1〜5（Supabase起動・環境変数コピー・マイグレーション・pnpm dev）はWebと共通
+
+# 6. モバイル用環境変数をコピーして編集
+cp apps/mobile/.env.local.example apps/mobile/.env.local
+```
+
+実機・シミュレータ問わず Expo Go で動作確認する場合は、`apps/mobile/.env.local` と `apps/web/.env.local` の両方で `localhost` / `127.0.0.1` を PC の LAN IP に書き換える必要がある。WebView 内 JS は端末上で実行されるため、`127.0.0.1` は端末自身を指してしまう。
+
+```bash
+# .env.local.example からコピー後、LAN IP を自動検出して両方の .env.local を書き換える
+# Wi-Fi 切替などで LAN IP が変わったときも、再実行すれば古い IP を現在の IP に上書きする
+pnpm setup:mobile-lan
+```
+
+> **`apps/web/.env.local` の `NEXT_PUBLIC_SUPABASE_URL` の変更を忘れやすいので注意**
+>
+> `mobile-handoff` ページは WebView（端末側）でブラウザとして動く Next.js の JS バンドルなので、そこに埋め込まれた `NEXT_PUBLIC_SUPABASE_URL` が `127.0.0.1` のままだと端末から見て「自分自身」にアクセスしようとして繋がらない。
+> ログイン後に画面が真っ白になり、しばらくしてネイティブのログイン画面に戻されてしまう場合は、これが原因の可能性が高い（ミドルウェアの `getUser()` がタイムアウトして `/auth/login` にリダイレクトされ、それを WebView 側が検知してネイティブもサインアウトしてしまう）。`pnpm setup:mobile-lan` を使えば両方まとめて書き換わるので忘れにくい。
+
+> **画面が真っ白になる場合は `allowedDevOrigins` も疑う**
+>
+> Next.js 15 の開発サーバーは、デフォルトで `localhost` 以外のオリジンから `/_next/*` への CORS リクエストをブロックする。LAN IP 経由で WebView からアクセスすると JS バンドルの読み込みがブロックされ、React がハイドレーションされず画面が真っ白になる。
+> `apps/web/next.config.ts` で開発機の LAN IP を自動検出して `allowedDevOrigins` に設定済みのため、通常は対応不要。ターミナルに `Cross origin request detected from <IP> to /_next/* resource` という警告が出ている場合はこの設定が効いていないので確認すること。
+
+```bash
+# 7. Expo 開発サーバー起動
+cd apps/mobile
+pnpm start
+```
+
+表示された QR コードを Expo Go アプリで読み込む。
+
+---
+
+## モバイルプレビュー（EAS Update）
+
+`apps/mobile` に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。Expo Go でスキャンするだけで、ローカル環境を起動せずに実機確認ができる。
+
+- 対象パスを `apps/mobile/**` に限定し、無関係な変更では発行しない（EAS の無料枠を消費しないため）
+- プレビューが見にいく Web / Supabase は固定の検証用環境（Vercel の固定プレビューデプロイ + 共有の Supabase プレビュー DB）を指す。ローカル開発用の LAN IP 設定とは無関係
+
+### 初回セットアップ（リポジトリ管理者）
+
+1. Expo アカウントを作成し、`apps/mobile` で `eas init` を実行してプロジェクトを作成（`EXPO_PUBLIC_EAS_PROJECT_ID` が発行される）
+2. `eas update:configure` を実行し、`app.json` に `updates` / `runtimeVersion` の設定を追加する
+3. Expo のアクセストークンを発行し、GitHub リポジトリの Secrets に `EXPO_TOKEN` として登録する
+4. Vercel で `apps/web` の固定プレビュー環境を用意し、共有 Supabase プレビュー DB を指す環境変数を設定する（URL は取得済みの `oss-cairn.com` のサブドメインを割り当てる想定）
+5. GitHub リポジトリの Variables / Secrets に以下を登録する
+
+| 種別 | 名前 | 値 |
+|---|---|---|
+| Variable | `MOBILE_PREVIEW_EAS_PROJECT_ID` | `eas init` で発行されたプロジェクト ID |
+| Variable | `MOBILE_PREVIEW_API_BASE_URL` | Vercel 固定プレビューの URL |
+| Variable | `MOBILE_PREVIEW_SUPABASE_URL` | 共有 Supabase プレビュー DB の URL |
+| Secret | `MOBILE_PREVIEW_SUPABASE_ANON_KEY` | 共有 Supabase プレビュー DB の anon key |
+| Secret | `EXPO_TOKEN` | Expo のアクセストークン |
+
+---
+
 ## コマンド
 
 ```bash
@@ -192,6 +256,12 @@ node scripts/generate-icons.mjs
 4. 生成されたファイルをコミットする
 
 ---
+
+##
+
+expoビルド用ブランチ: develop
+
+--
 
 ## ライセンス
 
