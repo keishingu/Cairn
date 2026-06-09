@@ -438,6 +438,8 @@ async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
 interface CreateProjectModalProps {
   onClose: () => void
   onCreated: (project: ProjectDto) => void
+  initialStartDate?: string
+  initialEndDate?: string
 }
 
 interface FormState {
@@ -452,14 +454,14 @@ interface FormState {
   selectedPhotoName: string | null
 }
 
-export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => {
+export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initialEndDate }: CreateProjectModalProps) => {
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
   const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])
   const [photosLoading, setPhotosLoading] = React.useState(false)
 
   const [form, setForm] = React.useState<FormState>({
     title: '', description: '', status: '',
-    startDate: '', endDate: '', tags: [],
+    startDate: initialStartDate ?? '', endDate: initialEndDate ?? '', tags: [],
     location: '', placeId: '', selectedPhotoName: null,
   })
 
