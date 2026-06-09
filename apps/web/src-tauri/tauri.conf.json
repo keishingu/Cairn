@@ -18,7 +18,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' https://oss-cairn.com https://develop.oss-cairn.com; script-src 'self' 'unsafe-inline' https://oss-cairn.com https://develop.oss-cairn.com; style-src 'self' 'unsafe-inline'; connect-src *; img-src * data: blob:; font-src * data:"
     }
   },
   "bundle": {
