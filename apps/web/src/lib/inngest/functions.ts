@@ -3,6 +3,7 @@
 
 import { inngest } from './client'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
 
@@ -212,12 +213,6 @@ export const deleteStorageObjects = inngest.createFunction(
   },
 )
 
-const INDEXABLE_MIME_TYPES = new Set([
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-])
-
 export const indexFileChunks = inngest.createFunction(
   { id: 'index-file-chunks' },
   { event: 'file/uploaded' },
@@ -229,7 +224,7 @@ export const indexFileChunks = inngest.createFunction(
       storagePath: string
     }
 
-    if (!INDEXABLE_MIME_TYPES.has(mimeType)) {
+    if (!isIndexable(mimeType)) {
       return { skipped: true, reason: 'not an indexable document type' }
     }
 
