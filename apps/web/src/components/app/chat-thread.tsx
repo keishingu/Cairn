@@ -10,6 +10,7 @@ import { Avatar } from './primitives'
 import { EmojiPicker } from './emoji-picker'
 import { Icon } from './primitives'
 import { FileTypeIcon } from './file-type-icon'
+import { CreateTextFileDialog } from './create-text-file-dialog'
 import {
   formatChatMessageTime,
   useChannelMessages,
@@ -335,7 +336,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onImageSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onImageSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted, onCreateTextFile }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -352,6 +353,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   isUploading: boolean
   mentionMembers?: { userId: string; displayName: string }[]
   onMentionInserted?: (userId: string, displayName: string) => void
+  onCreateTextFile: () => void
 }) => {
   const [showPicker, setShowPicker] = React.useState(false)
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
@@ -577,6 +579,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
             <button onClick={() => fileInputRef.current?.click()} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
               <Icon name="paperclip" size={15}/>
             </button>
+            <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
+              <Icon name="file-text" size={15}/>
+            </button>
             <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
               <Icon name="smile" size={15}/>
             </button>
@@ -608,6 +613,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           </button>
           <button onClick={() => docInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="paperclip" size={13}/> ファイル
+          </button>
+          <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="file-text" size={13}/> テキストファイル
           </button>
           <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="smile" size={13}/> 絵文字
@@ -670,6 +678,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [isComposing, setIsComposing] = React.useState(false)
   const [pendingAttachments, setPendingAttachments] = React.useState<PendingAttachment[]>([])
   const [isUploading, setIsUploading] = React.useState(false)
+  const [showTextFileDialog, setShowTextFileDialog] = React.useState(false)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -822,8 +831,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     </>
   ) : 'メッセージを入力...'
 
+  const handleTextFileCreated = (file: File) => {
+    setShowTextFileDialog(false)
+    void handleImageSelect(file)
+  }
+
   return (
     <>
+      {showTextFileDialog && (
+        <CreateTextFileDialog
+          onClose={() => setShowTextFileDialog(false)}
+          onCreated={handleTextFileCreated}
+        />
+      )}
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
@@ -870,6 +890,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         isUploading={isUploading}
         mentionMembers={mentionMembers}
         onMentionInserted={onMentionInserted}
+        onCreateTextFile={() => setShowTextFileDialog(true)}
         {...(compact ? { compact: true } : {})}
       />
     </>

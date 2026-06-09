@@ -16,6 +16,8 @@ export const STORAGE_KEYS = {
   kanban_status_filter:      'cairn:kanban_status_filter',
   kanban_member_filter:      'cairn:kanban_member_filter',
   kanban_scope:              'cairn:kanban_scope',
+  projects_list_view:        'cairn:projects_list_view',
+  projects_table_sort:       'cairn:projects_table_sort',
 } as const
 
 export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS]
