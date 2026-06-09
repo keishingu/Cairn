@@ -11,6 +11,7 @@ import { EmojiPicker } from './emoji-picker'
 import { Icon } from './primitives'
 import { FileTypeIcon } from './file-type-icon'
 import { CreateTextFileDialog } from './create-text-file-dialog'
+import { MarkdownContent } from './markdown-content'
 import {
   formatChatMessageTime,
   useChannelMessages,
@@ -27,43 +28,10 @@ import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { chatDraftKey } from '@/lib/storage-keys'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
-const URL_RE = /https?:\/\/[^\s<>"']+/g
-const STRUCTURED_MENTION_RE = /<@[^|>\s]+\|[^>\n]+>/g
 
 function extractGoogleDocsUrls(text: string): string[] {
   const matches = text.match(GOOGLE_DOCS_URL_RE) ?? []
   return [...new Set(matches.map(u => u.replace(/[.,;:!?)>]+$/, '')))]
-}
-
-function renderTextWithLinks(text: string): React.ReactNode {
-  const nodes: React.ReactNode[] = []
-  let last = 0
-  let match: RegExpExecArray | null
-  const re = new RegExp(`${STRUCTURED_MENTION_RE.source}|${URL_RE.source}`, 'g')
-  while ((match = re.exec(text)) !== null) {
-    if (match.index > last) nodes.push(text.slice(last, match.index))
-    const token = match[0]!
-    if (token.startsWith('<@')) {
-      const pipeIdx = token.indexOf('|')
-      const displayName = token.slice(pipeIdx + 1, -1)
-      nodes.push(
-        <span key={match.index} style={{ display: 'inline', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>
-          @{displayName}
-        </span>,
-      )
-    } else {
-      const url = token.replace(/[.,;:!?)>\]]+$/, '')
-      nodes.push(
-        <a key={match.index} href={url} target="_blank" rel="noopener noreferrer"
-          style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}>
-          {url}
-        </a>,
-      )
-    }
-    last = match.index + token.length
-  }
-  if (last < text.length) nodes.push(text.slice(last))
-  return nodes.length === 1 && typeof nodes[0] === 'string' ? nodes[0] : nodes
 }
 
 const ACCEPT_FILE_TYPES = [
@@ -104,7 +72,7 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, compact, isMobile }: {
+const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, compact, isMobile }: {
   messageId: string
   senderId: string
   currentUserId: string | undefined
@@ -118,6 +86,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
+  onCheckboxToggle: (messageId: string, index: number, checked: boolean) => void
   compact?: boolean
   isMobile?: boolean
 }) {
@@ -265,8 +234,15 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
           </div>
         ) : (
           content && (
-            <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6, whiteSpace: 'pre-line' }}>
-              {emojiOnly ? content : renderTextWithLinks(content)}
+            <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6 }}>
+              {emojiOnly ? content : (
+                <MarkdownContent
+                  content={content}
+                  fontSize={compact ? 13 : 13.5}
+                  lineHeight={1.6}
+                  onCheckboxToggle={(index, checked) => onCheckboxToggle(messageId, index, checked)}
+                />
+              )}
             </div>
           )
         )}
@@ -782,6 +758,21 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const editMutation = useEditMessage(channelId)
   const deleteMutation = useDeleteMessage(channelId)
 
+  const handleCheckboxToggle = React.useCallback(async (messageId: string, index: number, checked: boolean) => {
+    try {
+      const res = await fetchWithAuth(`/api/messages/${messageId}/checkbox`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index, checked }),
+      })
+      if (res.ok) {
+        await queryClient.invalidateQueries({ queryKey: ['channel-messages', channelId] })
+      }
+    } catch {
+      // サイレントに失敗
+    }
+  }, [channelId, queryClient])
+
   const mentionMembers = React.useMemo(() => {
     if (chMemberIds.length > 0) {
       const idSet = new Set(chMemberIds.map(m => m.userId))
@@ -937,6 +928,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               onReact={(messageId, emoji) => reactMutation.mutate({ messageId, emoji })}
               onEdit={(messageId, content) => editMutation.mutate({ messageId, content })}
               onDelete={(messageId) => deleteMutation.mutate(messageId)}
+              onCheckboxToggle={handleCheckboxToggle}
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}
             />
