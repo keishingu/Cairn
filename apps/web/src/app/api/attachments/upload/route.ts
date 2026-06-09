@@ -61,9 +61,12 @@ export async function POST(req: Request) {
   const supabase = createServiceRoleClient()
   const buffer = await file.arrayBuffer()
 
+  // Supabase Storage は text/markdown を非対応のため、テキスト系は text/plain でアップロードする
+  const storageContentType = file.type === 'text/markdown' ? 'text/plain' : file.type
+
   const { error: uploadError } = await supabase.storage
     .from('chat-attachments')
-    .upload(storagePath, buffer, { contentType: file.type, upsert: false })
+    .upload(storagePath, buffer, { contentType: storageContentType, upsert: false })
 
   if (uploadError) {
     console.error('[/api/attachments/upload] Storage upload failed:', uploadError)

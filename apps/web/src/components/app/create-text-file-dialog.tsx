@@ -12,13 +12,23 @@ interface Props {
 
 export const CreateTextFileDialog = ({ onClose, onCreated }: Props) => {
   const [title, setTitle] = React.useState('')
-  const [ext, setExt] = React.useState<'txt' | 'md'>('txt')
+  const [ext, setExt] = React.useState<'txt' | 'md'>('md')
   const [content, setContent] = React.useState('')
   const contentRef = React.useRef<HTMLTextAreaElement>(null)
 
   React.useEffect(() => {
     contentRef.current?.focus()
   }, [])
+
+  const handleContentChange = (value: string) => {
+    setContent(value)
+    if (title === '') {
+      const firstLine = value.split('\n')[0] ?? ''
+      if (firstLine.startsWith('# ')) {
+        setTitle(firstLine.slice(2).trim())
+      }
+    }
+  }
 
   const handleSubmit = () => {
     const fileName = (title.trim() || 'snippet') + '.' + ext
@@ -84,7 +94,7 @@ export const CreateTextFileDialog = ({ onClose, onCreated }: Props) => {
             <textarea
               ref={contentRef}
               value={content}
-              onChange={e => setContent(e.target.value)}
+              onChange={e => handleContentChange(e.target.value)}
               rows={10}
               style={{ padding: '9px 10px', borderRadius: 7, border: '1px solid var(--border-2)', background: 'var(--input)', color: 'var(--text)', fontSize: 13, outline: 'none', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', lineHeight: 1.6, resize: 'vertical', minHeight: 140 }}
               onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
