@@ -159,9 +159,11 @@ interface SidebarProps {
   page: PageId
   setPage: (p: PageId) => void
   openPanel?: (project: ProjectDto) => void
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
-export const Sidebar = ({ page, setPage, openPanel }: SidebarProps) => {
+export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleCollapse }: SidebarProps) => {
   const router = useRouter()
   const projectLabel = useProjectLabel()
   const { data: projectChannels = [] } = useProjectChannels()
@@ -201,12 +203,83 @@ export const Sidebar = ({ page, setPage, openPanel }: SidebarProps) => {
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
     staleTime: 30_000,
   })
+
+  const isProjectsActive = page === 'projects' || page === 'calendar' || page === 'kanban'
+
+  const logoEl = (
+    <div style={{
+      width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+      background: workspace?.logoUrl ? 'var(--border)' : 'linear-gradient(135deg, #10B981, #0891B2)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: '#fff', overflow: 'hidden',
+      boxShadow: workspace?.logoUrl ? 'none' : '0 4px 12px rgba(16,185,129,0.3)',
+    }}>
+      {workspace?.logoUrl
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={workspace.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+        : workspace?.name
+          ? <span style={{ fontSize: 14, fontWeight: 700 }}>{workspace.name.slice(0, 1)}</span>
+          : <Icon name="mountain" size={18} strokeWidth={2.2}/>
+      }
+    </div>
+  )
+
+  if (collapsed) {
+    return (
+      <aside style={{
+        width: 56, flexShrink: 0,
+        background: 'var(--card)',
+        borderRight: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column',
+        transition: 'width .2s ease',
+        position: 'relative',
+      }}>
+        {/* ロゴ */}
+        <div style={{ padding: '14px 0', display: 'flex', justifyContent: 'center', borderBottom: '1px solid var(--divider)' }}>
+          {logoEl}
+        </div>
+
+        {/* アイコンナビ */}
+        <nav style={{ flex: 1, overflow: 'auto', padding: '10px 6px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <CollapsedNavItem icon="folder"   label={projectLabel} active={isProjectsActive} onClick={() => setPage('projects')}/>
+          <CollapsedNavItem icon="check"    label="マイタスク" active={page === 'tasks'}   onClick={() => setPage('tasks')}/>
+          <CollapsedNavItem icon="chat"     label="チャット一覧" badge={totalChatUnread || undefined} active={page === 'chats'}   onClick={() => setPage('chats')}/>
+          <div style={{ margin: '6px 0', height: 1, background: 'var(--divider)' }}/>
+          <CollapsedNavItem icon="file"     label="ファイル" active={page === 'files'}   onClick={() => setPage('files')}/>
+          <CollapsedNavItem icon="image"    label="ギャラリー" active={page === 'gallery'} onClick={() => setPage('gallery')}/>
+          <CollapsedNavItem icon="sparkles" label="AIアシスタント" active={page === 'ai'}      onClick={() => setPage('ai')}/>
+          <div style={{ margin: '6px 0', height: 1, background: 'var(--divider)' }}/>
+          <CollapsedNavItem icon="users"    label="メンバー" active={page === 'members'}  onClick={() => setPage('members')}/>
+          <CollapsedNavItem icon="settings" label="設定" active={page === 'settings'} onClick={() => setPage('settings')}/>
+        </nav>
+
+        {/* 展開ボタン */}
+        <div style={{ padding: '8px 6px', borderTop: '1px solid var(--divider)', display: 'flex', justifyContent: 'center' }}>
+          <button
+            onClick={onToggleCollapse}
+            title="サイドバーを展開"
+            style={{
+              border: 'none', background: 'transparent', cursor: 'pointer',
+              color: 'var(--text-4)', padding: '6px', borderRadius: 7,
+              display: 'flex', alignItems: 'center',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-4)' }}
+          >
+            <Icon name="chevRight" size={15}/>
+          </button>
+        </div>
+      </aside>
+    )
+  }
+
   return (
     <aside style={{
       width: 236, flexShrink: 0,
       background: 'var(--card)',
       borderRight: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column',
+      transition: 'width .2s ease',
       position: 'relative',
     }}>
       <div style={{ padding: '16px 16px 14px', borderBottom: '1px solid var(--divider)', position: 'relative' }}>
@@ -221,21 +294,7 @@ export const Sidebar = ({ page, setPage, openPanel }: SidebarProps) => {
           onMouseEnter={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
           onMouseLeave={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
         >
-          <div style={{
-            width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-            background: workspace?.logoUrl ? 'var(--border)' : 'linear-gradient(135deg, #10B981, #0891B2)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', overflow: 'hidden',
-            boxShadow: workspace?.logoUrl ? 'none' : '0 4px 12px rgba(16,185,129,0.3)',
-          }}>
-            {workspace?.logoUrl
-              // eslint-disable-next-line @next/next/no-img-element
-              ? <img src={workspace.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-              : workspace?.name
-                ? <span style={{ fontSize: 14, fontWeight: 700 }}>{workspace.name.slice(0, 1)}</span>
-                : <Icon name="mountain" size={18} strokeWidth={2.2}/>
-            }
-          </div>
+          {logoEl}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>{workspace?.name ?? '…'}</div>
             {workspace?.description && (
@@ -370,10 +429,63 @@ export const Sidebar = ({ page, setPage, openPanel }: SidebarProps) => {
         ))}
       </nav>
 
+      {/* 折りたたみボタン */}
+      <div style={{ padding: '8px 12px', borderTop: '1px solid var(--divider)', display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={onToggleCollapse}
+          title="サイドバーを折りたたむ"
+          style={{
+            border: 'none', background: 'transparent', cursor: 'pointer',
+            color: 'var(--text-4)', padding: '5px 7px', borderRadius: 7,
+            display: 'flex', alignItems: 'center', gap: 4,
+            fontSize: 12, fontFamily: 'inherit',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-4)' }}
+        >
+          <Icon name="chevLeft" size={14}/>
+          <Icon name="chevLeft" size={14}/>
+        </button>
+      </div>
+
       <SidebarUserFooter />
     </aside>
   )
 }
+
+interface CollapsedNavItemProps {
+  icon: string
+  label: string
+  active?: boolean
+  badge?: number | undefined
+  onClick?: () => void
+}
+
+const CollapsedNavItem = ({ icon, label, active, badge, onClick }: CollapsedNavItemProps) => (
+  <button
+    onClick={onClick}
+    title={label}
+    style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      width: '100%', padding: '8px 0', borderRadius: 8, border: 'none',
+      background: active ? 'var(--card-hover)' : 'transparent',
+      color: active ? 'var(--accent)' : 'var(--text-3)',
+      cursor: 'pointer', position: 'relative',
+    }}
+    onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+    onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+  >
+    <Icon name={icon} size={18}/>
+    {badge != null && badge > 0 && (
+      <span style={{
+        position: 'absolute', top: 4, right: 8,
+        background: 'var(--accent)', color: 'var(--on-accent)',
+        fontSize: 9, fontWeight: 700, padding: '1px 4px',
+        borderRadius: 999, minWidth: 14, textAlign: 'center',
+      }}>{badge}</span>
+    )}
+  </button>
+)
 
 function SidebarUserFooter() {
   const router = useRouter()
