@@ -13,6 +13,8 @@ const ALLOWED_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+  'text/markdown',
 ])
 
 function resolveFileType(mimeType: string): 'image' | 'document' | 'other' {
@@ -46,7 +48,7 @@ export async function POST(req: Request) {
   }
 
   if (!ALLOWED_MIME_TYPES.has(file.type)) {
-    return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel）' }, { status: 400 })
+    return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel・テキスト）' }, { status: 400 })
   }
 
   if (file.size > MAX_FILE_SIZE) {
