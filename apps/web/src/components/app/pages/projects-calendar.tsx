@@ -9,6 +9,7 @@ import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
+import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
 import { MobileHeader } from '@/components/app/mobile/header'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
@@ -87,6 +88,61 @@ interface CalEvent {
   row: number
 }
 
+interface GcalDisplayEvent {
+  id: string
+  title: string
+  color: string
+  htmlLink: string | null
+  week: number
+  day: number
+  span: number
+  row: number
+}
+
+function buildGcalEvents(events: GcalEventDto[], year: number, month: number): GcalDisplayEvent[] {
+  const calStart = getCalendarStart(year, month)
+  const calEnd = new Date(calStart)
+  calEnd.setDate(calEnd.getDate() + 41)
+
+  const raw: Omit<GcalDisplayEvent, 'row'>[] = []
+
+  for (const ev of events) {
+    const start = parseLocalDate(ev.startDate)
+    const end = parseLocalDate(ev.endDate)
+
+    if (end < calStart || start > calEnd) continue
+
+    const visStart = start < calStart ? new Date(calStart) : start
+    const visEnd = end > calEnd ? new Date(calEnd) : end
+
+    let cur = new Date(visStart)
+    while (cur <= visEnd) {
+      const week = Math.floor(daysBetween(calStart, cur) / 7)
+      const day = cur.getDay()
+      const weekEnd = new Date(cur)
+      weekEnd.setDate(weekEnd.getDate() + (6 - day))
+      const segEnd = weekEnd < visEnd ? weekEnd : visEnd
+      const span = daysBetween(cur, segEnd) + 1
+      raw.push({ id: ev.id, title: ev.title, color: ev.calendarColor ?? '#4285F4', htmlLink: ev.htmlLink, week, day, span })
+      cur = new Date(segEnd)
+      cur.setDate(cur.getDate() + 1)
+    }
+  }
+
+  const result: GcalDisplayEvent[] = []
+  for (let w = 0; w < 6; w++) {
+    const weekEvents = raw.filter(e => e.week === w).sort((a, b) => a.day - b.day)
+    const occupiedUntil: number[] = []
+    for (const e of weekEvents) {
+      let row = 0
+      while ((occupiedUntil[row] ?? -1) >= e.day) row++
+      occupiedUntil[row] = e.day + e.span - 1
+      result.push({ ...e, row })
+    }
+  }
+  return result
+}
+
 function buildEvents(projects: ProjectDto[], year: number, month: number): CalEvent[] {
   const calStart = getCalendarStart(year, month)
   const calEnd = new Date(calStart)
@@ -156,11 +212,12 @@ interface CalendarGridProps {
   year: number
   month: number
   events: CalEvent[]
+  gcalEvents?: GcalDisplayEvent[]
   onEventClick: (project: ProjectDto) => void
   isLoading: boolean
 }
 
-const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: CalendarGridProps) => {
+const CalendarGrid = ({ year, month, events, gcalEvents = [], onEventClick, isLoading }: CalendarGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const cells = buildCells(year, month)
 
@@ -222,37 +279,93 @@ const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: Calendar
               }} />
             ))
           ) : (
-            events.filter(e => e.row < MAX_ROWS).map((e, i) => {
-              const barColor = e.project.statusColor ?? '#9CA3AF'
-              const cfg = { bg: barColor + '18', bar: barColor, text: barColor }
-              const colW = 100 / 7
-              const left = `calc(${e.day * colW}% + 4px)`
-              const width = `calc(${e.span * colW}% - 8px)`
-              const topOffset = DATE_AREA + e.row * (EVENT_H + EVENT_GAP)
-              const top = `calc(${e.week} / 6 * 100% + ${topOffset}px)`
-              return (
-                <button
-                  key={i}
-                  onClick={() => onEventClick(e.project)}
-                  style={{
-                    position: 'absolute', left, top, width,
-                    height: EVENT_H, borderRadius: 5,
-                    background: cfg.bg, color: cfg.text,
-                    border: 'none', borderLeft: `3px solid ${cfg.bar}`,
-                    fontSize: 11, fontWeight: 600,
-                    padding: '0 7px', textAlign: 'left',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
-                    transition: 'filter .1s',
-                  }}
-                  onMouseEnter={e2 => { (e2.currentTarget as HTMLElement).style.filter = 'brightness(0.95)' }}
-                  onMouseLeave={e2 => { (e2.currentTarget as HTMLElement).style.filter = 'none' }}
-                  title={e.project.title}
-                >
-                  {e.project.title}
-                </button>
-              )
-            })
+            <>
+              {events.filter(e => e.row < MAX_ROWS).map((e, i) => {
+                const barColor = e.project.statusColor ?? '#9CA3AF'
+                const cfg = { bg: barColor + '18', bar: barColor, text: barColor }
+                const colW = 100 / 7
+                const left = `calc(${e.day * colW}% + 4px)`
+                const width = `calc(${e.span * colW}% - 8px)`
+                const topOffset = DATE_AREA + e.row * (EVENT_H + EVENT_GAP)
+                const top = `calc(${e.week} / 6 * 100% + ${topOffset}px)`
+                return (
+                  <button
+                    key={`c-${i}`}
+                    onClick={() => onEventClick(e.project)}
+                    style={{
+                      position: 'absolute', left, top, width,
+                      height: EVENT_H, borderRadius: 5,
+                      background: cfg.bg, color: cfg.text,
+                      border: 'none', borderLeft: `3px solid ${cfg.bar}`,
+                      fontSize: 11, fontWeight: 600,
+                      padding: '0 7px', textAlign: 'left',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
+                      transition: 'filter .1s',
+                    }}
+                    onMouseEnter={e2 => { (e2.currentTarget as HTMLElement).style.filter = 'brightness(0.95)' }}
+                    onMouseLeave={e2 => { (e2.currentTarget as HTMLElement).style.filter = 'none' }}
+                    title={e.project.title}
+                  >
+                    {e.project.title}
+                  </button>
+                )
+              })}
+              {gcalEvents.filter(e => e.row < MAX_ROWS).map((e, i) => {
+                const colW = 100 / 7
+                const left = `calc(${e.day * colW}% + 4px)`
+                const width = `calc(${e.span * colW}% - 8px)`
+                const topOffset = DATE_AREA + e.row * (EVENT_H + EVENT_GAP)
+                const top = `calc(${e.week} / 6 * 100% + ${topOffset}px)`
+                const el = (
+                  <div
+                    key={`g-${i}`}
+                    style={{
+                      position: 'absolute', left, top, width,
+                      height: EVENT_H, borderRadius: 5,
+                      background: e.color + '15', color: e.color,
+                      borderLeft: `3px dashed ${e.color}`,
+                      fontSize: 11, fontWeight: 500,
+                      padding: '0 7px',
+                      display: 'flex', alignItems: 'center',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      opacity: 0.85,
+                    }}
+                    title={e.title}
+                  >
+                    {e.title}
+                  </div>
+                )
+                if (e.htmlLink) {
+                  return (
+                    <a
+                      key={`g-${i}`}
+                      href={e.htmlLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        position: 'absolute', left, top, width,
+                        height: EVENT_H, borderRadius: 5,
+                        background: e.color + '15', color: e.color,
+                        borderLeft: `3px dashed ${e.color}`,
+                        fontSize: 11, fontWeight: 500,
+                        padding: '0 7px',
+                        display: 'flex', alignItems: 'center',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        opacity: 0.85,
+                        textDecoration: 'none',
+                        pointerEvents: 'auto',
+                        cursor: 'pointer',
+                      }}
+                      title={`${e.title}（Google カレンダーで開く）`}
+                    >
+                      {e.title}
+                    </a>
+                  )
+                }
+                return el
+              })}
+            </>
           )}
         </div>
       </div>
@@ -655,6 +768,17 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
   })
 
+  const { data: gcalEventsRaw = [] } = useQuery<GcalEventDto[]>({
+    queryKey: ['gcal-events', year, month],
+    queryFn: () => fetchWithAuth(`/api/calendar/google/events?year=${year}&month=${month}`).then(r => r.json()),
+    staleTime: 15 * 60 * 1000,
+  })
+
+  const gcalDisplayEvents = React.useMemo(
+    () => buildGcalEvents(gcalEventsRaw, year, month),
+    [gcalEventsRaw, year, month],
+  )
+
   const allMembers = React.useMemo(
     () => [...new Set(projects.flatMap(p => p.memberNames))].sort(),
     [projects],
@@ -880,6 +1004,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           year={year}
           month={month}
           events={events}
+          gcalEvents={gcalDisplayEvents}
           onEventClick={openPanel}
           isLoading={isLoading}
         />
