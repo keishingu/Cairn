@@ -243,13 +243,16 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
               <div style={{ position: 'relative', display: 'inline-flex' }}>
                 {tab.id === 'menu'
                   ? (
-                    <div style={{
-                      width: 22, height: 22, borderRadius: '50%', overflow: 'hidden',
-                      boxShadow: active ? '0 0 0 2px var(--accent)' : '0 0 0 2px transparent',
-                      transition: 'box-shadow .15s',
-                    }}>
-                      <Avatar name={me?.displayName ?? ''} url={me?.avatarUrl ?? null} size={22} />
-                    </div>
+                    <Avatar
+                      name={me?.displayName ?? ''}
+                      url={me?.avatarUrl ?? null}
+                      size={22}
+                      style={{
+                        display: 'flex',
+                        boxShadow: active ? '0 0 0 2px var(--card), 0 0 0 4px var(--accent)' : 'none',
+                        transition: 'box-shadow .15s',
+                      }}
+                    />
                   )
                   : <Icon name={iconName} size={22} />
                 }
