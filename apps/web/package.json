@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "tauri:dev": "pnpm exec tauri dev",
+    "tauri:dev": "pnpm exec tauri dev --config '{\"bundle\":{\"icon\":[\"icons-dev/32x32.png\",\"icons-dev/128x128.png\",\"icons-dev/128x128@2x.png\",\"icons-dev/icon.icns\",\"icons-dev/icon.ico\"]}}'",
     "tauri:build:prod": "pnpm exec tauri build",
     "tauri:build:dev": "pnpm exec tauri build --config '{\"build\":{\"frontendDist\":\"https://develop.oss-cairn.com\"},\"bundle\":{\"icon\":[\"icons-dev/32x32.png\",\"icons-dev/128x128.png\",\"icons-dev/128x128@2x.png\",\"icons-dev/icon.icns\",\"icons-dev/icon.ico\"]}}'"
   },
