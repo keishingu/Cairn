@@ -23,6 +23,7 @@ import {
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { chatDraftKey } from '@/lib/storage-keys'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 const URL_RE = /https?:\/\/[^\s<>"']+/g
@@ -93,6 +94,11 @@ interface PendingAttachment {
   mimeType: string | null
   fileSize: number | null
   previewUrl: string
+}
+
+interface PersistedDraft {
+  text: string
+  attachments: Omit<PendingAttachment, 'previewUrl'>[]
 }
 
 // ─── Message ──────────────────────────────────────────────────────
@@ -353,6 +359,15 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   mentionMembers?: { userId: string; displayName: string }[]
   onMentionInserted?: (userId: string, displayName: string) => void
 }) => {
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = Array.from(e.clipboardData.items)
+    const imageItem = items.find(item => item.type.startsWith('image/'))
+    if (imageItem) {
+      e.preventDefault()
+      const file = imageItem.getAsFile()
+      if (file) onImageSelect(file)
+    }
+  }
   const [showPicker, setShowPicker] = React.useState(false)
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
   const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
@@ -470,7 +485,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: compact ? '6px 10px 0' : '6px 14px 0' }}>
       {pendingAttachments.map(a => (
         <div key={a.fileId} style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
-          {isImageMime(a.mimeType) ? (
+          {isImageMime(a.mimeType) && a.previewUrl ? (
             <img src={a.previewUrl} alt={a.fileName} style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover', display: 'block' }} />
           ) : (
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 12.5, maxWidth: 240 }}>
@@ -570,6 +585,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                   e.preventDefault()
                   send()
                 })}
+                onPaste={handlePaste}
                 placeholder={typeof placeholder === 'string' ? placeholder : ''}
                 style={{ width: '100%', border: 'none', background: 'transparent', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
               />
@@ -640,6 +656,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 e.preventDefault()
                 send()
               })}
+              onPaste={handlePaste}
               onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
               placeholder={typeof placeholder === 'string' ? placeholder : ''}
               rows={1}
@@ -675,6 +692,57 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const queryClient = useQueryClient()
   // displayName → userId map for structured mention serialization
   const mentionMapRef = React.useRef<Map<string, string>>(new Map())
+  // Ref to latest draft state for cleanup-time saves (avoids stale closure)
+  const latestDraftRef = React.useRef({ draft: '', pendingAttachments: [] as PendingAttachment[] })
+  latestDraftRef.current = { draft, pendingAttachments }
+
+  const persistDraft = React.useCallback((id: string, text: string, attachments: PendingAttachment[]) => {
+    const key = chatDraftKey(id)
+    const payload: PersistedDraft = {
+      text,
+      attachments: attachments.map(({ previewUrl: _url, ...rest }) => rest),
+    }
+    if (payload.text || payload.attachments.length > 0) {
+      localStorage.setItem(key, JSON.stringify(payload))
+    } else {
+      localStorage.removeItem(key)
+    }
+  }, [])
+
+  // channelId 切り替え時: 旧チャンネルのドラフトを保存し、新チャンネルのドラフトを復元
+  React.useEffect(() => {
+    if (!channelId) {
+      setDraft('')
+      setPendingAttachments([])
+      return
+    }
+    const saved = localStorage.getItem(chatDraftKey(channelId))
+    if (saved) {
+      try {
+        const parsed: PersistedDraft = JSON.parse(saved)
+        setDraft(parsed.text ?? '')
+        // blob URL は復元不可なので空文字にしてファイル名表示にフォールバック
+        setPendingAttachments((parsed.attachments ?? []).map(a => ({ ...a, previewUrl: '' })))
+      } catch {
+        setDraft('')
+        setPendingAttachments([])
+      }
+    } else {
+      setDraft('')
+      setPendingAttachments([])
+    }
+    return () => {
+      const { draft: d, pendingAttachments: p } = latestDraftRef.current
+      persistDraft(channelId, d, p)
+    }
+  }, [channelId, persistDraft])
+
+  // 300ms デバウンスで自動保存（ページリロード対策）
+  React.useEffect(() => {
+    if (!channelId) return
+    const timer = setTimeout(() => persistDraft(channelId, draft, pendingAttachments), 300)
+    return () => clearTimeout(timer)
+  }, [channelId, draft, pendingAttachments, persistDraft])
 
   const onMentionInserted = React.useCallback((userId: string, displayName: string) => {
     mentionMapRef.current.set(displayName, userId)
@@ -795,6 +863,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     pendingDraftRef.current = text
     setSendError(null)
     setDraft('')
+    if (channelId) localStorage.removeItem(chatDraftKey(channelId))
 
     const optimisticAttachments: AttachmentDto[] = pendingAttachments.map((a, i) => ({
       id: `optimistic-${a.fileId}`,

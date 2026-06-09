@@ -19,3 +19,6 @@ export const STORAGE_KEYS = {
 } as const
 
 export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS]
+
+/** チャンネル別の未送信ドラフトキー (cairn:chat_draft_<channelId>) */
+export const chatDraftKey = (channelId: string) => `cairn:chat_draft_${channelId}` as const
