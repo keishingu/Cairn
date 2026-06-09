@@ -99,6 +99,48 @@ pnpm start
 
 ---
 
+## デスクトップアプリ（Tauri）
+
+`apps/web` をリモートシェルとして読み込む薄いラッパー。Next.js・API・通知まわりの変更は不要で、Web 版と同一のバックエンドを参照する。
+
+### 必要なツール
+
+- Rust（asdf 推奨）
+
+```bash
+asdf plugin add rust
+asdf install rust latest
+asdf set rust latest
+```
+
+### 開発・ビルドコマンド
+
+```bash
+# dev 環境（https://develop.oss-cairn.com）に接続して起動
+pnpm --filter @cairn/web tauri:dev
+
+# 本番バイナリのビルド（https://oss-cairn.com）
+pnpm desktop:build:prod
+
+# dev 環境バイナリのビルド（https://develop.oss-cairn.com）
+pnpm desktop:build:dev
+```
+
+### 環境別アイコン
+
+Dock / タスクバーのアイコンで環境を区別できる。
+
+| 環境 | アイコン |
+|---|---|
+| prod | emerald-dark（濃紺背景 + 緑） |
+| dev | blue-light（白背景 + 青） |
+
+### 開発者ツール
+
+`tauri:dev` 起動時はデベロッパーツールが自動で開く（`#[cfg(debug_assertions)]` によりリリースビルドでは無効）。
+
+---
+
 ## モバイルプレビュー（EAS Update）
 
 `apps/mobile` に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。Expo Go でスキャンするだけで、ローカル環境を起動せずに実機確認ができる。
