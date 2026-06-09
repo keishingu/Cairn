@@ -54,3 +54,7 @@ supabase/migrations/meta/
 # supabase
 supabase/.branches/
 supabase/.temp/
+
+# tauri
+apps/web/src-tauri/target/
+apps/web/src-tauri/gen/
