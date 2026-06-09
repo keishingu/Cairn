@@ -10,7 +10,6 @@ import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
-import type { WorkspaceListItemDto } from '@/app/api/workspaces/list/route'
 
 interface MobileNavProps {
   page: string
@@ -45,7 +44,6 @@ const MENU_PAGES = new Set(['settings', 'files', 'gallery', 'members'])
 export function MobileNav({ page, projectsView, onNavigate, onChangeView }: MobileNavProps) {
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [projectsPickerOpen, setProjectsPickerOpen] = React.useState(false)
-  const [wsSwitcherOpen, setWsSwitcherOpen] = React.useState(false)
   const projectLabel = useProjectLabel()
   const TABS = BASE_TABS.map(t => ({ ...t, label: t.label ?? projectLabel }))
 
@@ -59,28 +57,15 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
     queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
     staleTime: 60_000,
   })
-  const { data: workspaceList = [] } = useQuery<WorkspaceListItemDto[]>({
-    queryKey: ['workspace-list'],
-    queryFn: () => fetchWithAuth('/api/workspaces/list').then(r => r.json()),
-    staleTime: 60_000,
-  })
 
-  function switchWorkspace(id: string) {
-    document.cookie = `cairn_workspace_id=${id}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
-    setMenuOpen(false)
-    window.location.href = '/projects'
-  }
-
-  const closeAll = () => { setMenuOpen(false); setProjectsPickerOpen(false); setWsSwitcherOpen(false) }
+  const closeAll = () => { setMenuOpen(false); setProjectsPickerOpen(false) }
 
   const handleTabClick = (tab: typeof TABS[number]) => {
     if (tab.id === 'menu') {
       setProjectsPickerOpen(false)
       setMenuOpen(o => !o)
-      if (menuOpen) setWsSwitcherOpen(false)
     } else if (tab.id === 'projects') {
       setMenuOpen(false)
-      setWsSwitcherOpen(false)
       if (page === 'projects') {
         setProjectsPickerOpen(o => !o)
       } else {
@@ -162,15 +147,8 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
         }}>
           {/* ワークスペース + ユーザー情報 */}
           <div style={{ padding: '16px 20px 14px' }}>
-            {/* ワークスペーススイッチャー */}
-            <button
-              onClick={() => setWsSwitcherOpen(o => !o)}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                border: 'none', background: 'transparent', cursor: 'pointer',
-                fontFamily: 'inherit', padding: 0, textAlign: 'left',
-              }}
-            >
+            {/* ワークスペース名（表示のみ） */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{
                 width: 36, height: 36, borderRadius: 10, flexShrink: 0,
                 background: workspace?.logoUrl ? 'var(--border)' : 'linear-gradient(135deg, #10B981, #0891B2)',
@@ -191,44 +169,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
                 </div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.4 }}>ワークスペース</div>
               </div>
-              <span style={{ display: 'inline-flex', transition: 'transform .15s', transform: wsSwitcherOpen ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }}>
-                <Icon name="chevDown" size={14} color="var(--text-3)" />
-              </span>
-            </button>
-
-            {/* インラインワークスペース一覧 */}
-            {wsSwitcherOpen && (
-              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--divider)' }}>
-                {workspaceList.map(ws => (
-                  <button
-                    key={ws.id}
-                    onClick={() => switchWorkspace(ws.id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      width: '100%', padding: '8px 0', border: 'none',
-                      background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-                    }}
-                  >
-                    <div style={{
-                      width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-                      background: 'linear-gradient(135deg, #10B981, #0891B2)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: '#fff', fontSize: 12, fontWeight: 700, overflow: 'hidden',
-                    }}>
-                      {ws.logoUrl
-                        // eslint-disable-next-line @next/next/no-img-element
-                        ? <img src={ws.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 7 }} />
-                        : ws.name.slice(0, 1)
-                      }
-                    </div>
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: ws.id === workspace?.id ? 700 : 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {ws.name}
-                    </span>
-                    {ws.id === workspace?.id && <Icon name="check" size={13} color="var(--accent)" />}
-                  </button>
-                ))}
-              </div>
-            )}
+            </div>
 
             {/* ユーザー情報 */}
             <div style={{
@@ -303,12 +244,11 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
                 {tab.id === 'menu'
                   ? (
                     <div style={{
-                      width: 24, height: 24, borderRadius: '50%', overflow: 'hidden',
-                      outline: active ? '2px solid var(--accent)' : '2px solid transparent',
-                      outlineOffset: 1,
-                      transition: 'outline-color .15s',
+                      width: 22, height: 22, borderRadius: '50%', overflow: 'hidden',
+                      boxShadow: active ? '0 0 0 2px var(--accent)' : '0 0 0 2px transparent',
+                      transition: 'box-shadow .15s',
                     }}>
-                      <Avatar name={me?.displayName ?? ''} url={me?.avatarUrl ?? null} size={24} />
+                      <Avatar name={me?.displayName ?? ''} url={me?.avatarUrl ?? null} size={22} />
                     </div>
                   )
                   : <Icon name={iconName} size={22} />
