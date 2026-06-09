@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import type { TaskDto } from '../route'
+import { toggleCheckboxAt } from '@/lib/chat/checkboxes'
 
 export async function PATCH(
   req: Request,
@@ -33,12 +34,35 @@ export async function PATCH(
 
     const [updated] = await db
       .update(tasks)
-      .set({ status })
+      .set({ status, updatedAt: new Date() })
       .where(eq(tasks.id, id))
-      .returning({ id: tasks.id })
+      .returning({ id: tasks.id, sourceMessageId: tasks.sourceMessageId, sourceCheckboxIndex: tasks.sourceCheckboxIndex })
 
     if (!updated) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+    }
+
+    // チャットメッセージのチェックボックスに逆同期
+    if (updated.sourceMessageId != null && updated.sourceCheckboxIndex != null) {
+      const { messages } = await import('@cairn/db')
+      const [msg] = await db
+        .select({ content: messages.content })
+        .from(messages)
+        .where(eq(messages.id, updated.sourceMessageId))
+        .limit(1)
+      if (msg) {
+        const newContent = toggleCheckboxAt(
+          msg.content,
+          updated.sourceCheckboxIndex,
+          status === 'done',
+        )
+        if (newContent !== msg.content) {
+          await db
+            .update(messages)
+            .set({ content: newContent })
+            .where(eq(messages.id, updated.sourceMessageId))
+        }
+      }
     }
 
     return NextResponse.json({ id, status })
