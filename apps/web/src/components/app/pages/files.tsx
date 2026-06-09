@@ -198,7 +198,12 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
       fetchWithAuth(`/api/attachments/${fileId}/reindex`, { method: 'POST' }).then(r => {
         if (!r.ok) throw new Error('再インデックスに失敗しました')
       }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['files'] }),
+    onMutate: (fileId: string) => {
+      queryClient.setQueryData<FileDto[]>(['files'], prev =>
+        prev?.map(f => f.id === fileId ? { ...f, indexingStatus: 'pending' } : f),
+      )
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['files'] }),
   })
 
   const handleDelete = (fileId: string, fileName: string) => {

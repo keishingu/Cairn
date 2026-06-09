@@ -32,6 +32,8 @@ export async function GET() {
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+      'text/markdown',
     ])
 
     const rows = await db
