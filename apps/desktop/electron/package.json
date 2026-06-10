@@ -9,13 +9,12 @@
   "scripts": {
     "dev": "cross-env NODE_ENV=development DESKTOP_APP_URL=https://develop.oss-cairn.com electron .",
     "generate-icons": "node scripts/generate-icons.mjs",
-    "build:prod": "electron-builder --config electron-builder.prod.json",
-    "build:dev": "electron-builder --config electron-builder.dev.json"
+    "build:prod": "pnpm dlx electron-builder@26 --config electron-builder.prod.json",
+    "build:dev": "pnpm dlx electron-builder@26 --config electron-builder.dev.json"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
     "electron": "^42.4.0",
-    "electron-builder": "^26.15.2",
     "icon-gen": "^5.0.0"
   }
 }
