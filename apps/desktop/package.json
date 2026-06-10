@@ -1,0 +1,11 @@
+{
+  "name": "@cairn/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @cairn/desktop-electron dev",
+    "build:prod": "pnpm --filter @cairn/desktop-electron build:prod",
+    "build:dev": "pnpm --filter @cairn/desktop-electron build:dev",
+    "generate-icons": "pnpm --filter @cairn/desktop-electron generate-icons"
+  }
+}

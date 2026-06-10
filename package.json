@@ -3,15 +3,15 @@
   "private": true,
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev --filter=!@cairn/desktop-electron",
+    "dev": "turbo dev --filter=!@cairn/desktop-electron --filter=!@cairn/desktop",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "clean": "turbo clean",
-    "desktop:electron:dev": "pnpm --filter @cairn/desktop-electron dev",
-    "desktop:electron:build:prod": "pnpm --filter @cairn/desktop-electron build:prod",
-    "desktop:electron:build:dev": "pnpm --filter @cairn/desktop-electron build:dev",
+    "desktop:dev": "pnpm --filter @cairn/desktop dev",
+    "desktop:build:prod": "pnpm --filter @cairn/desktop build:prod",
+    "desktop:build:dev": "pnpm --filter @cairn/desktop build:dev",
     "setup:mobile-lan": "node scripts/setup-mobile-lan.mjs"
   },
   "devDependencies": {
