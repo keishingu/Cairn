@@ -12,6 +12,8 @@ import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
+import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 
 const Toggle = ({ on }: { on: boolean }) => (
   <div style={{
@@ -768,6 +770,7 @@ const SettingsWorkspaceGeneral = () => {
 }
 
 const SettingsIntegrations = () => {
+  // ── iCal 出力 ──────────────────────────────────────────────────────
   const { data, refetch } = useQuery<{ token: string }>({
     queryKey: ['ical-token'],
     queryFn: () => fetchWithAuth('/api/calendar/token').then(r => r.json()),
@@ -795,13 +798,83 @@ const SettingsIntegrations = () => {
     { scope: 'workspace', label: 'ワークスペース全体',             desc: 'ワークスペース内のすべてのプロジェクト期間' },
   ]
 
+  // ── Google カレンダー読み込み ───────────────────────────────────────
+  const queryClient = useQueryClient()
+  const [gcalMsg, setGcalMsg] = React.useState<{ text: string; ok: boolean } | null>(null)
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const gcal = params.get('gcal')
+    if (gcal === 'connected') setGcalMsg({ text: 'Google カレンダーと接続しました', ok: true })
+    else if (gcal === 'error') setGcalMsg({ text: '接続に失敗しました。再試行してください。', ok: false })
+    else if (gcal === 'denied') setGcalMsg({ text: '接続がキャンセルされました。', ok: false })
+    if (gcal) {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('gcal')
+      window.history.replaceState({}, '', url.toString())
+      setTimeout(() => setGcalMsg(null), 5000)
+    }
+  }, [])
+
+  const { data: gcalStatus, isLoading: gcalLoading } = useQuery<GcalStatusDto>({
+    queryKey: ['gcal-status'],
+    queryFn: () => fetchWithAuth('/api/calendar/google/status').then(r => r.json()),
+  })
+
+  const { data: gcalCalendars } = useQuery<GcalCalendarDto[]>({
+    queryKey: ['gcal-calendars'],
+    queryFn: () => fetchWithAuth('/api/calendar/google/calendars').then(r => r.json()),
+    enabled: gcalStatus?.connected === true,
+  })
+
+  const connectGcal = async () => {
+    const res = await fetchWithAuth('/api/calendar/google/connect')
+    const { url } = await res.json() as { url?: string; error?: string }
+    if (url) window.location.href = url
+  }
+
+  const disconnectGcal = useMutation({
+    mutationFn: () => fetchWithAuth('/api/calendar/google/disconnect', { method: 'POST' }).then(r => r.json()),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['gcal-status'] })
+      void queryClient.invalidateQueries({ queryKey: ['gcal-calendars'] })
+      void queryClient.invalidateQueries({ queryKey: ['gcal-events'] })
+    },
+  })
+
+  const [calendarSelection, setCalendarSelection] = React.useState<Record<string, boolean>>({})
+  const [savingCalendars, setSavingCalendars] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!gcalCalendars) return
+    const init: Record<string, boolean> = {}
+    for (const c of gcalCalendars) init[c.id] = c.selected
+    setCalendarSelection(init)
+  }, [gcalCalendars])
+
+  const saveCalendarSelection = async () => {
+    if (!gcalCalendars) return
+    setSavingCalendars(true)
+    const selected = gcalCalendars
+      .filter(c => calendarSelection[c.id])
+      .map(c => ({ id: c.id, name: c.name, color: c.color }))
+    await fetchWithAuth('/api/calendar/google/calendars', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selectedCalendars: selected }),
+    })
+    void queryClient.invalidateQueries({ queryKey: ['gcal-events'] })
+    setSavingCalendars(false)
+  }
+
   return (
     <div style={{ maxWidth: 780 }}>
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>連携</h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>外部サービスとの連携を設定します。</p>
 
-      <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>Google カレンダー連携</h2>
+      {/* ── iCal 出力セクション ───────────────────────────────────── */}
+      <section style={{ marginBottom: 32 }}>
+        <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>Cairn → Google カレンダー（iCal 出力）</h2>
         <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
           URLをコピーして Google カレンダーの「他のカレンダーを追加」→「URLで追加」に貼り付けてください。
         </p>
@@ -841,6 +914,117 @@ const SettingsIntegrations = () => {
               <Icon name="refresh" size={12}/> URL を再生成
             </button>
           </div>
+        </div>
+      </section>
+
+      {/* ── Google カレンダー読み込みセクション ──────────────────────── */}
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>Google カレンダー → Cairn（イベント読み込み）</h2>
+        <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
+          Google カレンダーの予定をカレンダービューにオーバーレイ表示します。
+        </p>
+
+        {gcalMsg && (
+          <div style={{
+            marginBottom: 12, padding: '10px 14px', borderRadius: 8, fontSize: 12.5,
+            background: gcalMsg.ok ? 'var(--emerald-soft)' : 'var(--red-soft)',
+            color: gcalMsg.ok ? 'var(--emerald-text)' : 'var(--red-text)',
+            border: `1px solid ${gcalMsg.ok ? 'var(--emerald-text)' : 'var(--red-text)'}22`,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <Icon name={gcalMsg.ok ? 'check-circle' : 'alert-circle'} size={14}/>
+            {gcalMsg.text}
+          </div>
+        )}
+
+        <div className="card" style={{ padding: 0 }}>
+          {gcalLoading ? (
+            <div style={{ padding: '20px 16px', color: 'var(--text-3)', fontSize: 13 }}>読み込み中…</div>
+          ) : !gcalStatus?.configured ? (
+            <div style={{ padding: '16px', fontSize: 12.5, color: 'var(--text-3)' }}>
+              <Icon name="alert-circle" size={13} style={{ marginRight: 6 }}/>
+              環境変数 <code style={{ fontFamily: 'monospace', background: 'var(--card-2)', padding: '1px 4px', borderRadius: 4 }}>GOOGLE_CALENDAR_CLIENT_ID</code> / <code style={{ fontFamily: 'monospace', background: 'var(--card-2)', padding: '1px 4px', borderRadius: 4 }}>GOOGLE_CALENDAR_CLIENT_SECRET</code> が未設定です。
+            </div>
+          ) : !gcalStatus.connected ? (
+            <div style={{ padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>未接続</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>Google アカウントを連携してカレンダーを読み込みます。</div>
+              </div>
+              <button
+                className="btn btn-primary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0 }}
+                onClick={() => void connectGcal()}
+              >
+                <Icon name="calendar" size={13}/> Google で接続
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* 接続済みヘッダー */}
+              <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--emerald-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name="check" size={15} color="var(--emerald-text)"/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>接続済み</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{gcalStatus.email}</div>
+                  </div>
+                </div>
+                <button
+                  className="btn btn-ghost"
+                  style={{ fontSize: 12, color: 'var(--red-text)', height: 28, padding: '0 10px' }}
+                  onClick={() => disconnectGcal.mutate()}
+                  disabled={disconnectGcal.isPending}
+                >
+                  接続を解除
+                </button>
+              </div>
+
+              {/* カレンダー選択 */}
+              <div style={{ padding: '12px 16px' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', marginBottom: 10 }}>表示するカレンダー</div>
+                {!gcalCalendars ? (
+                  <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>読み込み中…</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {gcalCalendars.map(cal => (
+                      <label
+                        key={cal.id}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '4px 0' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={calendarSelection[cal.id] ?? false}
+                          onChange={e => setCalendarSelection(prev => ({ ...prev, [cal.id]: e.target.checked }))}
+                          style={{ width: 14, height: 14, accentColor: cal.color, cursor: 'pointer' }}
+                        />
+                        <span style={{ width: 10, height: 10, borderRadius: '50%', background: cal.color, flexShrink: 0 }}/>
+                        <span style={{ fontSize: 13, flex: 1 }}>
+                          {cal.name}
+                          {cal.primary && <span style={{ marginLeft: 6, fontSize: 10.5, color: 'var(--text-4)', background: 'var(--card-2)', borderRadius: 4, padding: '1px 5px' }}>メイン</span>}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {gcalCalendars && (
+                <div style={{ padding: '10px 16px', borderTop: '1px solid var(--divider)', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    className="btn btn-primary"
+                    style={{ height: 30, fontSize: 12.5, padding: '0 14px' }}
+                    onClick={() => void saveCalendarSelection()}
+                    disabled={savingCalendars}
+                  >
+                    {savingCalendars ? '保存中…' : '保存'}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </section>
     </div>
@@ -975,7 +1159,10 @@ const NAV_GROUPS = [
 ]
 
 export const PageSettings = () => {
-  const [section, setSection] = React.useState('account')
+  const [section, setSection] = React.useState(() => {
+    if (typeof window === 'undefined') return 'account'
+    return new URLSearchParams(window.location.search).get('tab') ?? 'account'
+  })
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={{ width: 220, borderRight: '1px solid var(--border)', padding: '20px 14px', background: 'var(--card)' }}>
