@@ -669,9 +669,21 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], timedEvents = []
   })
 
   const gridBodyRef = React.useRef<HTMLDivElement>(null)
+  const scrollRef = React.useRef<HTMLDivElement>(null)
+  const [scrollbarWidth, setScrollbarWidth] = React.useState(0)
   const isDragging = React.useRef(false)
   const [dragStart, setDragStart] = React.useState<string | null>(null)
   const [dragEnd, setDragEnd] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const update = () => setScrollbarWidth(el.offsetWidth - el.clientWidth)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   const getCellDateFromPoint = (clientX: number): string | null => {
     const el = gridBodyRef.current
@@ -736,7 +748,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], timedEvents = []
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* 曜日ヘッダー */}
-      <div style={{ display: 'grid', gridTemplateColumns: `${GUTTER_W}px repeat(7, 1fr)`, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `${GUTTER_W}px repeat(7, 1fr)`, borderBottom: '1px solid var(--border)', flexShrink: 0, paddingRight: scrollbarWidth }}>
         <div />
         {cells.map((cell, i) => (
           <div key={i} style={{
@@ -758,7 +770,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], timedEvents = []
       </div>
 
       {/* 終日エリア（Cairnプロジェクト・終日Googleイベント） */}
-      <div style={{ display: 'grid', gridTemplateColumns: `${GUTTER_W}px repeat(7, 1fr)`, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `${GUTTER_W}px repeat(7, 1fr)`, borderBottom: '1px solid var(--border)', flexShrink: 0, paddingRight: scrollbarWidth }}>
         <div style={{ fontSize: 10, color: 'var(--text-3)', textAlign: 'center', paddingTop: 6 }}>終日</div>
         <div
           ref={gridBodyRef}
@@ -866,7 +878,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], timedEvents = []
       </div>
 
       {/* 時間グリッド（Googleカレンダーの時刻指定イベント） */}
-      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         <div style={{ display: 'grid', gridTemplateColumns: `${GUTTER_W}px 1fr`, height: 24 * HOUR_HEIGHT }}>
           <div style={{ position: 'relative' }}>
             {Array.from({ length: 24 }).map((_, h) => (
