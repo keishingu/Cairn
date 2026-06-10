@@ -254,6 +254,66 @@ export function buildGcalWeekEvents(events: GcalEventDto[], weekStart: Date): Gc
   return result
 }
 
+interface GcalTimedEvent {
+  id: string
+  title: string
+  color: string
+  htmlLink: string | null
+  day: number
+  startMin: number
+  endMin: number
+  col: number
+  cols: number
+}
+
+const MIN_TIMED_EVENT_MINUTES = 30
+
+/** 時刻指定のGoogleカレンダーイベントを、週グリッド上の位置（曜日・分・列）に変換する */
+export function buildGcalTimedEvents(events: GcalEventDto[], weekStart: Date): GcalTimedEvent[] {
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekEnd.getDate() + 6)
+
+  const raw: Omit<GcalTimedEvent, 'col' | 'cols'>[] = []
+
+  for (const ev of events) {
+    if (ev.isAllDay || !ev.startTime) continue
+    const start = parseLocalDate(ev.startDate)
+    if (start < weekStart || start > weekEnd) continue
+
+    const day = daysBetween(weekStart, start)
+    const [sh, sm] = ev.startTime.split(':').map(Number)
+    const startMin = (sh ?? 0) * 60 + (sm ?? 0)
+
+    let endMin = startMin + MIN_TIMED_EVENT_MINUTES
+    if (ev.endTime) {
+      if (ev.endDate !== ev.startDate) {
+        endMin = 24 * 60
+      } else {
+        const [eh, em] = ev.endTime.split(':').map(Number)
+        endMin = (eh ?? 0) * 60 + (em ?? 0)
+        if (endMin <= startMin) endMin = startMin + MIN_TIMED_EVENT_MINUTES
+      }
+    }
+
+    raw.push({ id: ev.id, title: ev.title, color: ev.calendarColor ?? '#4285F4', htmlLink: ev.htmlLink, day, startMin, endMin })
+  }
+
+  const result: GcalTimedEvent[] = []
+  for (let d = 0; d < 7; d++) {
+    const dayEvents = raw.filter(e => e.day === d).sort((a, b) => a.startMin - b.startMin)
+    const colEndMin: number[] = []
+    const assigned = dayEvents.map(e => {
+      let col = 0
+      while ((colEndMin[col] ?? -1) > e.startMin) col++
+      colEndMin[col] = e.endMin
+      return { ...e, col }
+    })
+    const cols = colEndMin.length
+    for (const e of assigned) result.push({ ...e, cols })
+  }
+  return result
+}
+
 function getDateProjects(projects: ProjectDto[], d: Date): ProjectDto[] {
   const ms = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())
   return projects.filter(p => {
@@ -586,16 +646,20 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], onEventClick, onDa
 
 // ─── PC Week grid ────────────────────────────────────────────────
 
+const HOUR_HEIGHT = 48
+const GUTTER_W = 48
+
 interface CalendarWeekGridProps {
   weekStart: Date
   events: CalEvent[]
   gcalEvents?: GcalDisplayEvent[]
+  timedEvents?: GcalTimedEvent[]
   onEventClick: (project: ProjectDto) => void
   onDateSelect: (start: string, end: string) => void
   isLoading: boolean
 }
 
-const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], onEventClick, onDateSelect, isLoading }: CalendarWeekGridProps) => {
+const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], timedEvents = [], onEventClick, onDateSelect, isLoading }: CalendarWeekGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const today = new Date()
   const cells = Array.from({ length: 7 }, (_, day) => {
@@ -671,7 +735,9 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], onEventClick, on
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      {/* 曜日ヘッダー */}
+      <div style={{ display: 'grid', gridTemplateColumns: `${GUTTER_W}px repeat(7, 1fr)`, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <div />
         {cells.map((cell, i) => (
           <div key={i} style={{
             padding: '8px 12px', fontSize: 11, fontWeight: 600,
@@ -691,10 +757,12 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], onEventClick, on
         ))}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      {/* 終日エリア（Cairnプロジェクト・終日Googleイベント） */}
+      <div style={{ display: 'grid', gridTemplateColumns: `${GUTTER_W}px repeat(7, 1fr)`, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <div style={{ fontSize: 10, color: 'var(--text-3)', textAlign: 'center', paddingTop: 6 }}>終日</div>
         <div
           ref={gridBodyRef}
-          style={{ position: 'relative', minHeight: Math.max(bodyHeight, 120), cursor: isDragging.current ? 'crosshair' : 'default', userSelect: 'none' }}
+          style={{ gridColumn: '2 / -1', position: 'relative', minHeight: Math.max(bodyHeight, 32), cursor: isDragging.current ? 'crosshair' : 'default', userSelect: 'none' }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -793,6 +861,77 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], onEventClick, on
                 })}
               </>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* 時間グリッド（Googleカレンダーの時刻指定イベント） */}
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `${GUTTER_W}px 1fr`, height: 24 * HOUR_HEIGHT }}>
+          <div style={{ position: 'relative' }}>
+            {Array.from({ length: 24 }).map((_, h) => (
+              <div key={h} style={{
+                position: 'absolute', top: h * HOUR_HEIGHT - 6, right: 8,
+                fontSize: 10, color: 'var(--text-3)', whiteSpace: 'nowrap',
+              }}>
+                {h}:00
+              </div>
+            ))}
+          </div>
+
+          <div style={{ position: 'relative' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', height: '100%' }}>
+              {cells.map((cell, i) => (
+                <div key={i} style={{
+                  position: 'relative',
+                  borderRight: i < 6 ? '1px solid var(--border)' : 'none',
+                  background: cell.isToday ? 'var(--accent-soft)' : 'transparent',
+                }}>
+                  {Array.from({ length: 24 }).map((_, h) => (
+                    <div key={h} style={{
+                      position: 'absolute', top: h * HOUR_HEIGHT, left: 0, right: 0,
+                      borderTop: '1px solid var(--border)',
+                    }} />
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+              {timedEvents.map((e, i) => {
+                const colW = 100 / 7
+                const segW = colW / e.cols
+                const left = `calc(${e.day * colW + e.col * segW}% + 2px)`
+                const width = `calc(${segW}% - 4px)`
+                const top = (e.startMin / 60) * HOUR_HEIGHT
+                const height = Math.max(((e.endMin - e.startMin) / 60) * HOUR_HEIGHT, 16)
+                const style: React.CSSProperties = {
+                  position: 'absolute', left, top, width, height,
+                  borderRadius: 4,
+                  background: e.color + '20', color: e.color,
+                  borderLeft: `3px dashed ${e.color}`,
+                  fontSize: 10.5, fontWeight: 500, lineHeight: 1.3,
+                  padding: '2px 5px',
+                  overflow: 'hidden', textOverflow: 'ellipsis',
+                  opacity: 0.9,
+                }
+                if (e.htmlLink) {
+                  return (
+                    <a
+                      key={`t-${i}`}
+                      href={e.htmlLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ ...style, textDecoration: 'none', pointerEvents: 'auto', cursor: 'pointer', display: 'block' }}
+                      title={`${e.title}（Google カレンダーで開く）`}
+                    >
+                      {e.title}
+                    </a>
+                  )
+                }
+                return <div key={`t-${i}`} style={style} title={e.title}>{e.title}</div>
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -1267,7 +1406,12 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   )
 
   const gcalWeekDisplayEvents = React.useMemo(
-    () => (gcalConnected ? buildGcalWeekEvents(visibleGcalEvents, weekStart) : []),
+    () => (gcalConnected ? buildGcalWeekEvents(visibleGcalEvents.filter(ev => ev.isAllDay), weekStart) : []),
+    [visibleGcalEvents, weekStart, gcalConnected],
+  )
+
+  const gcalTimedEvents = React.useMemo(
+    () => (gcalConnected ? buildGcalTimedEvents(visibleGcalEvents, weekStart) : []),
     [visibleGcalEvents, weekStart, gcalConnected],
   )
 
@@ -1501,6 +1645,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             weekStart={weekStart}
             events={weekEvents}
             gcalEvents={gcalWeekDisplayEvents}
+            timedEvents={gcalTimedEvents}
             onEventClick={openPanel}
             onDateSelect={openCreate}
             isLoading={isLoading}
