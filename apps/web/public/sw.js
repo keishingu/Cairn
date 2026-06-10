@@ -56,7 +56,12 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  const data = event.data?.json() ?? {};
+  let data = {};
+  try {
+    data = event.data?.json() ?? {};
+  } catch {
+    data = { body: event.data?.text() ?? '' };
+  }
   event.waitUntil(
     self.registration.showNotification(data.title ?? 'Cairn', {
       body: data.body ?? '',

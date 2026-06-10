@@ -159,9 +159,11 @@ interface SidebarProps {
   page: PageId
   setPage: (p: PageId) => void
   openPanel?: (project: ProjectDto) => void
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
-export const Sidebar = ({ page, setPage, openPanel }: SidebarProps) => {
+export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleCollapse }: SidebarProps) => {
   const router = useRouter()
   const projectLabel = useProjectLabel()
   const { data: projectChannels = [] } = useProjectChannels()
@@ -201,12 +203,157 @@ export const Sidebar = ({ page, setPage, openPanel }: SidebarProps) => {
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
     staleTime: 30_000,
   })
+
+  const isProjectsActive = page === 'projects' || page === 'calendar' || page === 'kanban'
+
+  const logoEl = (
+    <div style={{
+      width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+      background: workspace?.logoUrl ? 'var(--border)' : 'linear-gradient(135deg, #10B981, #0891B2)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: '#fff', overflow: 'hidden',
+      boxShadow: workspace?.logoUrl ? 'none' : '0 4px 12px rgba(16,185,129,0.3)',
+    }}>
+      {workspace?.logoUrl
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={workspace.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+        : workspace?.name
+          ? <span style={{ fontSize: 14, fontWeight: 700 }}>{workspace.name.slice(0, 1)}</span>
+          : <Icon name="mountain" size={18} strokeWidth={2.2}/>
+      }
+    </div>
+  )
+
+  if (collapsed) {
+    return (
+      <aside style={{
+        width: 56, flexShrink: 0,
+        background: 'var(--card)',
+        borderRight: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column',
+        transition: 'width .2s ease',
+        position: 'relative',
+      }}>
+        {/* ロゴ */}
+        <div style={{ padding: '14px 0', display: 'flex', justifyContent: 'center', borderBottom: '1px solid var(--divider)', position: 'relative' }}>
+          <button
+            onClick={() => setSwitcherOpen(o => !o)}
+            title={workspace?.name ?? 'ワークスペース'}
+            style={{
+              border: 'none', background: switcherOpen ? 'var(--card-hover)' : 'transparent',
+              cursor: 'pointer', padding: 4, borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+            onMouseEnter={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+            onMouseLeave={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
+            {logoEl}
+          </button>
+
+          {switcherOpen && (
+            <>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setSwitcherOpen(false)}/>
+              <div style={{
+                position: 'absolute', top: '100%', left: 4, right: 4,
+                zIndex: 100,
+                background: 'var(--card)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                padding: '6px',
+                marginTop: 4,
+                minWidth: 200,
+              }}>
+                {workspaceList.map(ws => (
+                  <button
+                    key={ws.id}
+                    onClick={() => switchWorkspace(ws.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      width: '100%', padding: '8px 10px', borderRadius: 7,
+                      border: 'none',
+                      background: ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent',
+                      cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent' }}
+                  >
+                    <div style={{
+                      width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+                      background: 'linear-gradient(135deg, #10B981, #0891B2)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#fff', fontSize: 12, fontWeight: 700,
+                    }}>
+                      {ws.logoUrl
+                        // eslint-disable-next-line @next/next/no-img-element
+                        ? <img src={ws.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 7 }}/>
+                        : ws.name.slice(0, 1)
+                      }
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {ws.name}
+                      </div>
+                    </div>
+                    {ws.id === workspace?.id && (
+                      <Icon name="check" size={14} color="var(--accent)"/>
+                    )}
+                  </button>
+                ))}
+                <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }} />
+                <button
+                  onClick={() => { setSwitcherOpen(false); router.push('/workspace/new') }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    width: '100%', padding: '8px 10px', borderRadius: 7,
+                    border: 'none', background: 'transparent',
+                    cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                    color: 'var(--text-3)',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                >
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+                    border: '1.5px dashed var(--border-2)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Icon name="plus" size={14} color="var(--text-4)"/>
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>新しいワークスペースを作成</span>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* アイコンナビ */}
+        <nav style={{ flex: 1, overflow: 'auto', padding: '10px 6px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <CollapsedNavItem icon="list"     label={`${projectLabel}：一覧`}       active={page === 'projects'} onClick={() => setPage('projects')}/>
+          <CollapsedNavItem icon="calendar" label={`${projectLabel}：カレンダー`} active={page === 'calendar'} onClick={() => setPage('calendar')}/>
+          <CollapsedNavItem icon="kanban"   label={`${projectLabel}：カンバン`}   active={page === 'kanban'}   onClick={() => setPage('kanban')}/>
+          <CollapsedNavItem icon="check"    label="マイタスク"     active={page === 'tasks'}   onClick={() => setPage('tasks')}/>
+          <CollapsedNavItem icon="chat"     label="チャット一覧"   badge={totalChatUnread || undefined} active={page === 'chats'}   onClick={() => setPage('chats')}/>
+          <div style={{ margin: '6px 0', height: 1, background: 'var(--divider)' }}/>
+          <CollapsedNavItem icon="file"     label="ファイル"       active={page === 'files'}   onClick={() => setPage('files')}/>
+          <CollapsedNavItem icon="image"    label="ギャラリー"     active={page === 'gallery'} onClick={() => setPage('gallery')}/>
+          <CollapsedNavItem icon="sparkles" label="AIアシスタント" active={page === 'ai'}      onClick={() => setPage('ai')}/>
+          <div style={{ margin: '6px 0', height: 1, background: 'var(--divider)' }}/>
+          <CollapsedNavItem icon="users"    label="メンバー"       active={page === 'members'}  onClick={() => setPage('members')}/>
+          <CollapsedNavItem icon="settings" label="設定"           active={page === 'settings'} onClick={() => setPage('settings')}/>
+        </nav>
+        <SidebarUserFooter collapsed={true} onToggle={onToggleCollapse}/>
+      </aside>
+    )
+  }
+
   return (
     <aside style={{
       width: 236, flexShrink: 0,
       background: 'var(--card)',
       borderRight: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column',
+      transition: 'width .2s ease',
       position: 'relative',
     }}>
       <div style={{ padding: '16px 16px 14px', borderBottom: '1px solid var(--divider)', position: 'relative' }}>
@@ -221,21 +368,7 @@ export const Sidebar = ({ page, setPage, openPanel }: SidebarProps) => {
           onMouseEnter={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
           onMouseLeave={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
         >
-          <div style={{
-            width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-            background: workspace?.logoUrl ? 'var(--border)' : 'linear-gradient(135deg, #10B981, #0891B2)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', overflow: 'hidden',
-            boxShadow: workspace?.logoUrl ? 'none' : '0 4px 12px rgba(16,185,129,0.3)',
-          }}>
-            {workspace?.logoUrl
-              // eslint-disable-next-line @next/next/no-img-element
-              ? <img src={workspace.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-              : workspace?.name
-                ? <span style={{ fontSize: 14, fontWeight: 700 }}>{workspace.name.slice(0, 1)}</span>
-                : <Icon name="mountain" size={18} strokeWidth={2.2}/>
-            }
-          </div>
+          {logoEl}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>{workspace?.name ?? '…'}</div>
             {workspace?.description && (
@@ -370,12 +503,46 @@ export const Sidebar = ({ page, setPage, openPanel }: SidebarProps) => {
         ))}
       </nav>
 
-      <SidebarUserFooter />
+      <SidebarUserFooter collapsed={false} onToggle={onToggleCollapse}/>
     </aside>
   )
 }
 
-function SidebarUserFooter() {
+interface CollapsedNavItemProps {
+  icon: string
+  label: string
+  active?: boolean
+  badge?: number | undefined
+  onClick?: () => void
+}
+
+const CollapsedNavItem = ({ icon, label, active, badge, onClick }: CollapsedNavItemProps) => (
+  <button
+    onClick={onClick}
+    title={label}
+    style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      width: '100%', padding: '8px 0', borderRadius: 8, border: 'none',
+      background: active ? 'var(--card-hover)' : 'transparent',
+      color: active ? 'var(--accent)' : 'var(--text-3)',
+      cursor: 'pointer', position: 'relative',
+    }}
+    onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+    onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+  >
+    <Icon name={icon} size={18}/>
+    {badge != null && badge > 0 && (
+      <span style={{
+        position: 'absolute', top: 4, right: 8,
+        background: 'var(--accent)', color: 'var(--on-accent)',
+        fontSize: 9, fontWeight: 700, padding: '1px 4px',
+        borderRadius: 999, minWidth: 14, textAlign: 'center',
+      }}>{badge}</span>
+    )}
+  </button>
+)
+
+function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolean | undefined; onToggle?: (() => void) | undefined }) {
   const router = useRouter()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
@@ -403,41 +570,75 @@ function SidebarUserFooter() {
     router.refresh()
   }
 
+  const logoutMenu = menuOpen && (
+    <div style={{
+      position: 'absolute', bottom: '100%', left: collapsed ? -4 : 12, right: collapsed ? -4 : 12,
+      background: 'var(--card)', border: '1px solid var(--border)',
+      borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 100,
+      minWidth: 140,
+    }}>
+      <button
+        onClick={handleLogout}
+        style={{
+          width: '100%', padding: '8px 10px', borderRadius: 7, border: 'none',
+          background: 'transparent', color: 'var(--red-text)', fontSize: 13,
+          fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+          display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
+        }}
+        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--red-soft)'}
+        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+      >
+        <Icon name="logout" size={14}/>
+        ログアウト
+      </button>
+    </div>
+  )
+
+  const avatarBtn = (
+    <button
+      onClick={() => setMenuOpen(v => !v)}
+      title={collapsed ? displayName : undefined}
+      style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, borderRadius: '50%', flexShrink: 0 }}
+    >
+      <Avatar name={displayName} url={me?.avatarUrl ?? null} size={32}/>
+    </button>
+  )
+
+  const toggleBtn = (
+    <button
+      onClick={onToggle}
+      title={collapsed ? 'サイドバーを展開' : 'サイドバーを折りたたむ'}
+      style={{
+        border: 'none', background: 'transparent', cursor: 'pointer',
+        color: 'var(--text-4)', padding: '5px 6px', borderRadius: 7,
+        display: 'flex', alignItems: 'center', flexShrink: 0,
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-4)' }}
+    >
+      <Icon name={collapsed ? 'chevronsRight' : 'chevronsLeft'} size={15}/>
+    </button>
+  )
+
+  if (collapsed) {
+    return (
+      <div style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, position: 'relative' }} ref={menuRef}>
+        {avatarBtn}
+        {toggleBtn}
+        {logoutMenu}
+      </div>
+    )
+  }
+
   return (
     <div style={{ padding: '10px 12px', borderTop: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }} ref={menuRef}>
-      <Avatar name={displayName} url={me?.avatarUrl ?? null} size={32}/>
+      {avatarBtn}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2 }}>{displayName}</div>
         <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3 }}>オンライン</div>
       </div>
-      <button
-        onClick={() => setMenuOpen(v => !v)}
-        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-3)', padding: 4, borderRadius: 6 }}
-      >
-        <Icon name="more" size={16}/>
-      </button>
-      {menuOpen && (
-        <div style={{
-          position: 'absolute', bottom: '100%', right: 12, left: 12,
-          background: 'var(--card)', border: '1px solid var(--border)',
-          borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 100,
-        }}>
-          <button
-            onClick={handleLogout}
-            style={{
-              width: '100%', padding: '8px 10px', borderRadius: 7, border: 'none',
-              background: 'transparent', color: 'var(--red-text)', fontSize: 13,
-              fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-              display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
-            }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--red-soft)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-          >
-            <Icon name="logout" size={14}/>
-            ログアウト
-          </button>
-        </div>
-      )}
+      {toggleBtn}
+      {logoutMenu}
     </div>
   )
 }

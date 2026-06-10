@@ -5,6 +5,8 @@ const INDEXABLE_MIME_TYPES = new Set([
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'text/markdown',
 ])
 
 export function isIndexable(mimeType: string): boolean {
@@ -13,9 +15,9 @@ export function isIndexable(mimeType: string): boolean {
 
 export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
   if (mimeType === 'application/pdf') {
-    const { PDFParse } = await import('pdf-parse')
-    const parser = new PDFParse({ data: buffer })
-    const result = await parser.getText()
+    const pdfParse = await import('pdf-parse')
+    const parse = (pdfParse.default ?? pdfParse) as (buf: Buffer) => Promise<{ text: string }>
+    const result = await parse(buffer)
     return result.text
   }
 
@@ -26,6 +28,10 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
     const mammoth = await import('mammoth')
     const result = await mammoth.extractRawText({ buffer })
     return result.value
+  }
+
+  if (mimeType === 'text/plain' || mimeType === 'text/markdown') {
+    return buffer.toString('utf-8')
   }
 
   throw new Error(`Unsupported MIME type for text extraction: ${mimeType}`)

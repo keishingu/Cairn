@@ -7,6 +7,7 @@ import React from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { SocialAuthButtons } from '../_components/social-auth-buttons'
 
 export default function LoginPage() {
   return (
@@ -79,6 +80,14 @@ function LoginForm() {
         padding: '28px 28px 24px',
         boxShadow: 'var(--shadow-sm)',
       }}>
+        <SocialAuthButtons inviteToken={inviteToken} />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>
+          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+          <span style={{ fontSize: 12, color: 'var(--text-4)', whiteSpace: 'nowrap' }}>またはメールで続ける</span>
+          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+        </div>
+
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>

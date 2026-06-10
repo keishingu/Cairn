@@ -16,6 +16,12 @@ export const STORAGE_KEYS = {
   kanban_status_filter:      'cairn:kanban_status_filter',
   kanban_member_filter:      'cairn:kanban_member_filter',
   kanban_scope:              'cairn:kanban_scope',
+  sidebar_collapsed:         'cairn:sidebar_collapsed',
+  projects_list_view:        'cairn:projects_list_view',
+  projects_table_sort:       'cairn:projects_table_sort',
 } as const
 
 export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS]
+
+/** チャンネル別の未送信ドラフトキー (cairn:chat_draft_<channelId>) */
+export const chatDraftKey = (channelId: string) => `cairn:chat_draft_${channelId}` as const

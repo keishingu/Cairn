@@ -29,7 +29,7 @@ async function saveSubscription(sub: PushSubscription): Promise<void> {
   await fetchWithAuth('/api/push/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+    body: JSON.stringify({ deviceType: 'web', endpoint: json.endpoint, keys: json.keys }),
   })
 }
 

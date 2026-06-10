@@ -10,6 +10,8 @@ import { Avatar } from './primitives'
 import { EmojiPicker } from './emoji-picker'
 import { Icon } from './primitives'
 import { FileTypeIcon } from './file-type-icon'
+import { CreateTextFileDialog } from './create-text-file-dialog'
+import { MarkdownContent } from './markdown-content'
 import {
   formatChatMessageTime,
   useChannelMessages,
@@ -23,45 +25,13 @@ import {
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { chatDraftKey } from '@/lib/storage-keys'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
-const URL_RE = /https?:\/\/[^\s<>"']+/g
-const STRUCTURED_MENTION_RE = /<@[^|>\s]+\|[^>\n]+>/g
 
 function extractGoogleDocsUrls(text: string): string[] {
   const matches = text.match(GOOGLE_DOCS_URL_RE) ?? []
   return [...new Set(matches.map(u => u.replace(/[.,;:!?)>]+$/, '')))]
-}
-
-function renderTextWithLinks(text: string): React.ReactNode {
-  const nodes: React.ReactNode[] = []
-  let last = 0
-  let match: RegExpExecArray | null
-  const re = new RegExp(`${STRUCTURED_MENTION_RE.source}|${URL_RE.source}`, 'g')
-  while ((match = re.exec(text)) !== null) {
-    if (match.index > last) nodes.push(text.slice(last, match.index))
-    const token = match[0]!
-    if (token.startsWith('<@')) {
-      const pipeIdx = token.indexOf('|')
-      const displayName = token.slice(pipeIdx + 1, -1)
-      nodes.push(
-        <span key={match.index} style={{ display: 'inline', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>
-          @{displayName}
-        </span>,
-      )
-    } else {
-      const url = token.replace(/[.,;:!?)>\]]+$/, '')
-      nodes.push(
-        <a key={match.index} href={url} target="_blank" rel="noopener noreferrer"
-          style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}>
-          {url}
-        </a>,
-      )
-    }
-    last = match.index + token.length
-  }
-  if (last < text.length) nodes.push(text.slice(last))
-  return nodes.length === 1 && typeof nodes[0] === 'string' ? nodes[0] : nodes
 }
 
 const ACCEPT_FILE_TYPES = [
@@ -95,9 +65,14 @@ interface PendingAttachment {
   previewUrl: string
 }
 
+interface PersistedDraft {
+  text: string
+  attachments: Omit<PendingAttachment, 'previewUrl'>[]
+}
+
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, compact, isMobile }: {
+const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, compact, isMobile }: {
   messageId: string
   senderId: string
   currentUserId: string | undefined
@@ -111,6 +86,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
+  onCheckboxToggle: (messageId: string, index: number, checked: boolean) => void
   compact?: boolean
   isMobile?: boolean
 }) {
@@ -258,8 +234,15 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
           </div>
         ) : (
           content && (
-            <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6, whiteSpace: 'pre-line' }}>
-              {emojiOnly ? content : renderTextWithLinks(content)}
+            <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6 }}>
+              {emojiOnly ? content : (
+                <MarkdownContent
+                  content={content}
+                  fontSize={compact ? 13 : 13.5}
+                  lineHeight={1.6}
+                  onCheckboxToggle={(index, checked) => onCheckboxToggle(messageId, index, checked)}
+                />
+              )}
             </div>
           )
         )}
@@ -335,7 +318,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onImageSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted, onCreateTextFile }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -347,12 +330,66 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   setIsComposing: (v: boolean) => void
   compact?: boolean
   pendingAttachments: PendingAttachment[]
-  onImageSelect: (file: File) => void
+  onFilesSelect: (files: File[]) => void
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
   mentionMembers?: { userId: string; displayName: string }[]
   onMentionInserted?: (userId: string, displayName: string) => void
+  onCreateTextFile: () => void
 }) => {
+  const [isDragOver, setIsDragOver] = React.useState(false)
+  const dragCounterRef = React.useRef(0)
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = Array.from(e.clipboardData.items)
+    const files = items
+      .filter(item => item.kind === 'file')
+      .map(item => item.getAsFile())
+      .filter((f): f is File => f !== null)
+    if (files.length > 0) {
+      e.preventDefault()
+      onFilesSelect(files)
+    }
+  }
+
+  const hasFileDrag = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files')
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current += 1
+    setIsDragOver(true)
+  }
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+    e.stopPropagation()
+  }
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) setIsDragOver(false)
+  }
+  const handleDrop = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.stopPropagation()
+    e.preventDefault()
+    dragCounterRef.current = 0
+    setIsDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) onFilesSelect(files)
+  }
+
+  const dropHandlers = {
+    onDragEnter: handleDragEnter,
+    onDragOver: handleDragOver,
+    onDragLeave: handleDragLeave,
+    onDrop: handleDrop,
+  }
+
   const [showPicker, setShowPicker] = React.useState(false)
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
   const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
@@ -470,7 +507,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: compact ? '6px 10px 0' : '6px 14px 0' }}>
       {pendingAttachments.map(a => (
         <div key={a.fileId} style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
-          {isImageMime(a.mimeType) ? (
+          {isImageMime(a.mimeType) && a.previewUrl ? (
             <img src={a.previewUrl} alt={a.fileName} style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover', display: 'block' }} />
           ) : (
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 12.5, maxWidth: 240 }}>
@@ -499,9 +536,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     </div>
   ) : null
 
-  const makeFileHandler = (ref: React.RefObject<HTMLInputElement | null>) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) { onImageSelect(file); e.target.value = '' }
+  const makeFileHandler = () => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length > 0) { onFilesSelect(files); e.target.value = '' }
   }
 
   const hiddenFileInput = (
@@ -509,8 +546,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       ref={fileInputRef}
       type="file"
       accept={ACCEPT_FILE_TYPES}
+      multiple
       style={{ display: 'none' }}
-      onChange={makeFileHandler(fileInputRef)}
+      onChange={makeFileHandler()}
     />
   )
 
@@ -519,8 +557,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       ref={imageInputRef}
       type="file"
       accept="image/*"
+      multiple
       style={{ display: 'none' }}
-      onChange={makeFileHandler(imageInputRef)}
+      onChange={makeFileHandler()}
     />
   )
 
@@ -528,19 +567,25 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     <input
       ref={docInputRef}
       type="file"
+      multiple
       style={{ display: 'none' }}
-      onChange={makeFileHandler(docInputRef)}
+      onChange={makeFileHandler()}
     />
   )
 
   if (compact) {
     return (
-      <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--divider)' }}>
+      <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--divider)', position: 'relative' }} {...dropHandlers}>
         {hiddenFileInput}
         {sendError && (
           <div style={{ marginBottom: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)', fontSize: 11.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span>⚠️ {sendError}</span>
             <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'transparent', color: 'var(--red-text)', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+          </div>
+        )}
+        {isDragOver && (
+          <div style={{ position: 'absolute', inset: 6, zIndex: 10, borderRadius: 10, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--accent)' }}>ドロップしてアップロード</span>
           </div>
         )}
         <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
@@ -570,12 +615,16 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                   e.preventDefault()
                   send()
                 })}
+                onPaste={handlePaste}
                 placeholder={typeof placeholder === 'string' ? placeholder : ''}
                 style={{ width: '100%', border: 'none', background: 'transparent', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
               />
             </div>
             <button onClick={() => fileInputRef.current?.click()} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
               <Icon name="paperclip" size={15}/>
+            </button>
+            <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
+              <Icon name="file-text" size={15}/>
             </button>
             <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
               <Icon name="smile" size={15}/>
@@ -591,7 +640,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   }
 
   return (
-    <div style={{ padding: '8px 24px 18px', background: 'var(--bg)' }}>
+    <div style={{ padding: '8px 24px 18px', background: 'var(--bg)', position: 'relative' }} {...dropHandlers}>
       {hiddenFileInput}
       {hiddenImageInput}
       {hiddenDocInput}
@@ -601,6 +650,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'transparent', color: 'var(--red-text)', cursor: 'pointer', fontSize: 12, padding: '0 4px' }}>✕</button>
         </div>
       )}
+      {isDragOver && (
+        <div style={{ position: 'absolute', inset: '8px 24px 18px', zIndex: 10, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--accent)' }}>ドロップしてアップロード</span>
+        </div>
+      )}
       <div style={{ background: 'var(--card)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--divider)' }}>
           <button onClick={() => imageInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
@@ -608,6 +662,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           </button>
           <button onClick={() => docInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="paperclip" size={13}/> ファイル
+          </button>
+          <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="file-text" size={13}/> テキストファイル
           </button>
           <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="smile" size={13}/> 絵文字
@@ -640,6 +697,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 e.preventDefault()
                 send()
               })}
+              onPaste={handlePaste}
               onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
               placeholder={typeof placeholder === 'string' ? placeholder : ''}
               rows={1}
@@ -670,11 +728,63 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [isComposing, setIsComposing] = React.useState(false)
   const [pendingAttachments, setPendingAttachments] = React.useState<PendingAttachment[]>([])
   const [isUploading, setIsUploading] = React.useState(false)
+  const [showTextFileDialog, setShowTextFileDialog] = React.useState(false)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   // displayName → userId map for structured mention serialization
   const mentionMapRef = React.useRef<Map<string, string>>(new Map())
+  // Ref to latest draft state for cleanup-time saves (avoids stale closure)
+  const latestDraftRef = React.useRef({ draft: '', pendingAttachments: [] as PendingAttachment[] })
+  latestDraftRef.current = { draft, pendingAttachments }
+
+  const persistDraft = React.useCallback((id: string, text: string, attachments: PendingAttachment[]) => {
+    const key = chatDraftKey(id)
+    const payload: PersistedDraft = {
+      text,
+      attachments: attachments.map(({ previewUrl: _url, ...rest }) => rest),
+    }
+    if (payload.text || payload.attachments.length > 0) {
+      localStorage.setItem(key, JSON.stringify(payload))
+    } else {
+      localStorage.removeItem(key)
+    }
+  }, [])
+
+  // channelId 切り替え時: 旧チャンネルのドラフトを保存し、新チャンネルのドラフトを復元
+  React.useEffect(() => {
+    if (!channelId) {
+      setDraft('')
+      setPendingAttachments([])
+      return
+    }
+    const saved = localStorage.getItem(chatDraftKey(channelId))
+    if (saved) {
+      try {
+        const parsed: PersistedDraft = JSON.parse(saved)
+        setDraft(parsed.text ?? '')
+        // blob URL は復元不可なので空文字にしてファイル名表示にフォールバック
+        setPendingAttachments((parsed.attachments ?? []).map(a => ({ ...a, previewUrl: '' })))
+      } catch {
+        setDraft('')
+        setPendingAttachments([])
+      }
+    } else {
+      setDraft('')
+      setPendingAttachments([])
+    }
+    return () => {
+      const { draft: d, pendingAttachments: p } = latestDraftRef.current
+      persistDraft(channelId, d, p)
+    }
+  }, [channelId, persistDraft])
+
+  // 300ms デバウンスで自動保存（ページリロード対策）
+  React.useEffect(() => {
+    if (!channelId) return
+    const timer = setTimeout(() => persistDraft(channelId, draft, pendingAttachments), 300)
+    return () => clearTimeout(timer)
+  }, [channelId, draft, pendingAttachments, persistDraft])
 
   const onMentionInserted = React.useCallback((userId: string, displayName: string) => {
     mentionMapRef.current.set(displayName, userId)
@@ -704,6 +814,21 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const reactMutation = useToggleMessageReaction(channelId)
   const editMutation = useEditMessage(channelId)
   const deleteMutation = useDeleteMessage(channelId)
+
+  const handleCheckboxToggle = React.useCallback(async (messageId: string, index: number, checked: boolean) => {
+    try {
+      const res = await fetchWithAuth(`/api/messages/${messageId}/checkbox`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index, checked }),
+      })
+      if (res.ok) {
+        await queryClient.invalidateQueries({ queryKey: ['channel-messages', channelId] })
+      }
+    } catch {
+      // サイレントに失敗
+    }
+  }, [channelId, queryClient])
 
   const mentionMembers = React.useMemo(() => {
     if (chMemberIds.length > 0) {
@@ -737,9 +862,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     return () => { clearTimeout(t); el.classList.remove('message-highlight') }
   }, [targetMessageId, isLoading])
 
-  const handleImageSelect = async (file: File) => {
-    if (!channelId) return
-    setIsUploading(true)
+  const uploadFile = async (file: File): Promise<PendingAttachment | null> => {
+    if (!channelId) return null
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -748,16 +872,57 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       if (!res.ok) {
         const data = await res.json().catch(() => ({})) as { error?: string }
         setSendError(data.error ?? 'アップロードに失敗しました')
-        return
+        return null
       }
       const data = await res.json() as { fileId: string; fileName: string; mimeType: string | null; fileSize: number | null }
       const previewUrl = URL.createObjectURL(file)
-      setPendingAttachments(prev => [...prev, { ...data, previewUrl }])
+      return { ...data, previewUrl }
     } catch {
       setSendError('アップロードに失敗しました')
+      return null
+    }
+  }
+
+  const handleFilesSelect = async (files: File[]) => {
+    if (!channelId || files.length === 0) return
+    setIsUploading(true)
+    try {
+      const results = await Promise.all(files.map(uploadFile))
+      const successful = results.filter((r): r is PendingAttachment => r !== null)
+      if (successful.length > 0) setPendingAttachments(prev => [...prev, ...successful])
     } finally {
       setIsUploading(false)
     }
+  }
+
+  // メッセージ一覧エリアへのドラッグ&ドロップ
+  const [isListDragOver, setIsListDragOver] = React.useState(false)
+  const listDragCounterRef = React.useRef(0)
+  const hasFileDrag = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files')
+
+  const handleListDragEnter = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+    listDragCounterRef.current += 1
+    setIsListDragOver(true)
+  }
+  const handleListDragOver = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+  }
+  const handleListDragLeave = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+    listDragCounterRef.current = Math.max(0, listDragCounterRef.current - 1)
+    if (listDragCounterRef.current === 0) setIsListDragOver(false)
+  }
+  const handleListDrop = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+    listDragCounterRef.current = 0
+    setIsListDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) void handleFilesSelect(files)
   }
 
   const handleRemoveAttachment = (fileId: string) => {
@@ -795,6 +960,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     pendingDraftRef.current = text
     setSendError(null)
     setDraft('')
+    if (channelId) localStorage.removeItem(chatDraftKey(channelId))
 
     const optimisticAttachments: AttachmentDto[] = pendingAttachments.map((a, i) => ({
       id: `optimistic-${a.fileId}`,
@@ -822,8 +988,30 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     </>
   ) : 'メッセージを入力...'
 
+  const handleTextFileCreated = (file: File) => {
+    setShowTextFileDialog(false)
+    void handleFilesSelect([file])
+  }
+
   return (
-    <>
+    <div
+      style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}
+      onDragEnter={handleListDragEnter}
+      onDragOver={handleListDragOver}
+      onDragLeave={handleListDragLeave}
+      onDrop={handleListDrop}
+    >
+      {showTextFileDialog && (
+        <CreateTextFileDialog
+          onClose={() => setShowTextFileDialog(false)}
+          onCreated={handleTextFileCreated}
+        />
+      )}
+      {isListDragOver && (
+        <div style={{ position: 'absolute', inset: 8, zIndex: 50, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)' }}>ファイルをドロップしてアップロード</span>
+        </div>
+      )}
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
@@ -848,6 +1036,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               onReact={(messageId, emoji) => reactMutation.mutate({ messageId, emoji })}
               onEdit={(messageId, content) => editMutation.mutate({ messageId, content })}
               onDelete={(messageId) => deleteMutation.mutate(messageId)}
+              onCheckboxToggle={handleCheckboxToggle}
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}
             />
@@ -865,13 +1054,14 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         isComposing={isComposing}
         setIsComposing={setIsComposing}
         pendingAttachments={pendingAttachments}
-        onImageSelect={handleImageSelect}
+        onFilesSelect={handleFilesSelect}
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
         mentionMembers={mentionMembers}
         onMentionInserted={onMentionInserted}
+        onCreateTextFile={() => setShowTextFileDialog(true)}
         {...(compact ? { compact: true } : {})}
       />
-    </>
+    </div>
   )
 }
