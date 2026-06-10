@@ -95,7 +95,7 @@ export async function listCalendars(accessToken: string): Promise<GoogleCalendar
   const res = await fetch(`${GOOGLE_CALENDAR_BASE}/users/me/calendarList`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
-  if (!res.ok) throw new Error('Failed to fetch calendar list')
+  if (!res.ok) throw new Error(`Failed to fetch calendar list: ${res.status} ${await res.text()}`)
   const data = await res.json() as { items?: GoogleCalendarListItem[] }
   return data.items ?? []
 }

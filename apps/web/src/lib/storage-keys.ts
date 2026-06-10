@@ -1,6 +1,10 @@
 /**
  * アプリが管理する localStorage キーの一覧。
- * 命名規則: `cairn:<snake_case>` （詳細は CLAUDE.md 参照）
+ *
+ * 命名規則: `cairn:<snake_case>`
+ *   - プレフィックス `cairn:` は必須（他ライブラリのキーとの衝突を防ぐ）
+ *   - `:` 以降は snake_case（小文字英数字とアンダースコアのみ）
+ *   - 新しいキーは必ずこのオブジェクトに追加し、インラインの文字列リテラルで書かない
  *
  * ※ next-themes が設定する `theme` キーはライブラリ管理のため対象外。
  */
@@ -13,6 +17,7 @@ export const STORAGE_KEYS = {
   projects_member_filter:    'cairn:projects_member_filter',
   calendar_status_filter:    'cairn:calendar_status_filter',
   calendar_member_filter:    'cairn:calendar_member_filter',
+  calendar_gcal_hidden:      'cairn:calendar_gcal_hidden',
   kanban_status_filter:      'cairn:kanban_status_filter',
   kanban_member_filter:      'cairn:kanban_member_filter',
   kanban_scope:              'cairn:kanban_scope',

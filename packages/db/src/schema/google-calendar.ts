@@ -14,6 +14,9 @@ export const googleCalendarEvents = pgTable('google_calendar_events', {
   // all-day events: YYYY-MM-DD (Googleの exclusive endDate を -1日して inclusive に変換済み)
   startDate: text('start_date'),
   endDate: text('end_date'),
+  // 時刻指定イベント: HH:mm (ローカルタイムゾーンでの時刻)
+  startTime: text('start_time'),
+  endTime: text('end_time'),
   isAllDay: boolean('is_all_day').notNull().default(false),
   description: text('description'),
   calendarName: text('calendar_name'),

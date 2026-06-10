@@ -5,13 +5,11 @@
 
 import React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { useQueryClient } from '@tanstack/react-query'
 import { MobileNav } from '@/components/app/mobile/nav'
 import { PageAI } from '@/components/app/pages/ai'
 import { ProjectListView } from '@/components/app/pages/project-list'
 import { ProjectPanel } from '@/components/app/detail-panel/project-panel'
 import { MemberDetailPanel } from '@/components/app/detail-panel/member-panel'
-import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { MobileSettings } from '@/components/app/mobile/settings'
 import { MobileHeader } from '@/components/app/mobile/header'
@@ -26,7 +24,7 @@ import { PageNotifications } from '@/components/app/pages/notifications'
 import { PageMembers } from '@/components/app/pages/members-page'
 import { PageFiles } from '@/components/app/pages/files'
 import { PageGallery } from '@/components/app/pages/gallery'
-import { useProjectPanel } from '@/hooks/use-project-panel'
+import { useDetailPanel } from '@/hooks/use-detail-panel'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 const MOBILE_STORAGE_KEY = STORAGE_KEYS.projects_view_mob
@@ -118,14 +116,12 @@ function MobilePage({ page, projectsView, initialMemberId }: { page: string; pro
 function MobileShellInner() {
   const pathname = usePathname()
   const router = useRouter()
-  const queryClient = useQueryClient()
   const page = pageFromPathname(pathname)
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
-  const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
   const [notifOpen, setNotifOpen] = React.useState(false)
 
-  const { panelProject, openPanel } = useProjectPanel()
+  const { panelState, panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
 
   const setProjectsView = React.useCallback((view: string) => {
     if (!isValidView(view)) return
@@ -133,49 +129,31 @@ function MobileShellInner() {
     setProjectsViewState(view)
   }, [])
 
-  // プロジェクトパネルが閉じたらメンバーパネルも閉じる
-  React.useEffect(() => {
-    if (!panelProject) setSelectedMember(null)
-  }, [panelProject])
-
-  const handleMemberClick = React.useCallback((userId: string, displayName: string) => {
-    const cached = queryClient.getQueryData<WorkspaceMemberDto[]>(['workspace-members'])
-    const found = cached?.find(m => m.userId === userId)
-    setSelectedMember(found ?? {
-      userId,
-      displayName,
-      avatarUrl: null,
-      role: 'member',
-      joinedAt: new Date().toISOString().slice(0, 10),
-      projectCount: 0,
-    })
-  }, [queryClient])
-
   const handleMemberProjectClick = React.useCallback((p: MemberProjectDto) => {
-    setSelectedMember(null)
-    router.push(`/projects/${p.projectId}`, { scroll: false })
-  }, [router])
+    openProjectById(p.projectId)
+  }, [openProjectById])
 
   return (
-    <AppShellContext.Provider value={{ openPanel, openNotif: () => setNotifOpen(true), projectsView, setProjectsView }}>
+    <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), projectsView, setProjectsView }}>
       <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
         <NavigationProgress />
         {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)}/>}
-        {/* ProjectPanel・MemberDetailPanel は position:fixed でフルスクリーン表示 */}
-        {panelProject && (
+        {/* パネルは position:fixed でフルスクリーン表示。ブラウザ履歴でスタック管理する */}
+        {panelState?.type === 'project' && panelProject && (
           <ProjectPanel
             project={panelProject}
-            onClose={() => router.push('/projects', { scroll: false })}
-            onMemberClick={handleMemberClick}
+            onClose={backPanel}
+            onMemberClick={openMember}
             isMobile
+            tab={panelTab}
+            onTabChange={setPanelTab}
           />
         )}
-        {/* MemberDetailPanel は ProjectPanel の上に重なる（DOM 順で後ろ = 前面） */}
-        {selectedMember && (
+        {panelState?.type === 'member' && panelMember && (
           <MemberDetailPanel
-            member={selectedMember}
+            member={panelMember}
             onProjectClick={handleMemberProjectClick}
-            onClose={() => setSelectedMember(null)}
+            onClose={backPanel}
             isMobile
           />
         )}
