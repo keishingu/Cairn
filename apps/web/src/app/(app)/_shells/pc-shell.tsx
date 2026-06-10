@@ -18,6 +18,7 @@ import { useProjectPanel } from '@/hooks/use-project-panel'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 const PC_STORAGE_KEY = STORAGE_KEYS.projects_view_pc
+const SIDEBAR_COLLAPSED_KEY = STORAGE_KEYS.sidebar_collapsed
 type ProjectsView = 'list' | 'calendar' | 'kanban'
 
 function isValidView(v: string | null | undefined): v is ProjectsView {
@@ -49,6 +50,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
       avatarUrl: null,
       role: 'member',
       joinedAt: new Date().toISOString().slice(0, 10),
+      projectCount: 0,
     })
   }, [queryClient])
 
@@ -56,6 +58,19 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     setSelectedMember(null)
     router.push(`/projects/${p.projectId}`, { scroll: false })
   }, [router])
+
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'
+  })
+
+  const toggleSidebar = React.useCallback(() => {
+    setSidebarCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next))
+      return next
+    })
+  }, [])
 
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
 
@@ -98,7 +113,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
       <div className="app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
         <NavigationProgress />
         <div className="app" style={{ width: '100%', height: '100%', display: 'flex', background: 'var(--bg)', overflow: 'hidden' }}>
-          <Sidebar page={page} setPage={navigate} openPanel={openPanel}/>
+          <Sidebar page={page} setPage={navigate} openPanel={openPanel} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar}/>
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, position: 'relative' }}>
             <div style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0, position: 'relative' }}>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>

@@ -4,8 +4,12 @@
 'use client'
 
 import React from 'react'
-import { Icon } from '../primitives'
+import { useQuery } from '@tanstack/react-query'
+import { Icon, Avatar } from '../primitives'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import type { CurrentUserDto } from '@/app/api/me/route'
+import type { WorkspaceDto } from '@/app/api/workspaces/route'
 
 interface MobileNavProps {
   page: string
@@ -42,6 +46,17 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
   const [projectsPickerOpen, setProjectsPickerOpen] = React.useState(false)
   const projectLabel = useProjectLabel()
   const TABS = BASE_TABS.map(t => ({ ...t, label: t.label ?? projectLabel }))
+
+  const { data: me } = useQuery<CurrentUserDto>({
+    queryKey: ['me'],
+    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
+    staleTime: 60_000,
+  })
+  const { data: workspace } = useQuery<WorkspaceDto>({
+    queryKey: ['workspace'],
+    queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
+    staleTime: 60_000,
+  })
 
   const closeAll = () => { setMenuOpen(false); setProjectsPickerOpen(false) }
 
@@ -130,6 +145,54 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
           boxShadow: 'var(--shadow-lg)',
           overflow: 'hidden',
         }}>
+          {/* ワークスペース + ユーザー情報 */}
+          <div style={{ padding: '16px 20px 14px' }}>
+            {/* ワークスペース名（表示のみ） */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                background: workspace?.logoUrl ? 'var(--border)' : 'linear-gradient(135deg, #10B981, #0891B2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff', overflow: 'hidden',
+              }}>
+                {workspace?.logoUrl
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={workspace.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : workspace?.name
+                    ? <span style={{ fontSize: 15, fontWeight: 700 }}>{workspace.name.slice(0, 1)}</span>
+                    : <Icon name="mountain" size={16} strokeWidth={2.2} />
+                }
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {workspace?.name ?? '…'}
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.4 }}>ワークスペース</div>
+              </div>
+            </div>
+
+            {/* ユーザー情報 */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--divider)',
+            }}>
+              <Avatar name={me?.displayName ?? ''} url={me?.avatarUrl ?? null} size={32} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {me?.displayName ?? '…'}
+                </div>
+                {me?.email && (
+                  <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {me.email}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ height: 1, background: 'var(--divider)' }} />
+
+          {/* メニュー項目 */}
           {MENU_ITEMS.map((item, i) => (
             <button
               key={item.path}
@@ -178,7 +241,21 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
               transition: 'color .15s',
             }}>
               <div style={{ position: 'relative', display: 'inline-flex' }}>
-                <Icon name={iconName} size={22} />
+                {tab.id === 'menu'
+                  ? (
+                    <Avatar
+                      name={me?.displayName ?? ''}
+                      url={me?.avatarUrl ?? null}
+                      size={22}
+                      style={{
+                        display: 'flex',
+                        boxShadow: active ? '0 0 0 2px var(--card), 0 0 0 4px var(--accent)' : 'none',
+                        transition: 'box-shadow .15s',
+                      }}
+                    />
+                  )
+                  : <Icon name={iconName} size={22} />
+                }
                 {tab.id === 'projects' && (
                   <span style={{
                     position: 'absolute', right: -7, top: 1,

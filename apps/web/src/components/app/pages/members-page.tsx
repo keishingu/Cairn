@@ -280,7 +280,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
                 <MemberCard
                   key={m.userId}
                   member={m}
-                  projectCount={Math.max(1, 5 - i % 4)}
+                  projectCount={m.projectCount}
                   selected={false}
                   onClick={() => {
                     setMobileDetailMember(m)
@@ -345,7 +345,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
                 <MemberCard
                   key={m.userId}
                   member={m}
-                  projectCount={Math.max(1, 5 - i % 4)}
+                  projectCount={m.projectCount}
                   selected={selectedMember?.userId === m.userId}
                   onClick={() => {
                     if (selectedMember?.userId === m.userId) {

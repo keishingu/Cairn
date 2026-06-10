@@ -147,6 +147,7 @@ function MobileShellInner() {
       avatarUrl: null,
       role: 'member',
       joinedAt: new Date().toISOString().slice(0, 10),
+      projectCount: 0,
     })
   }, [queryClient])
 

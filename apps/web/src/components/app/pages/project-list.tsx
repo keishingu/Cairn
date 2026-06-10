@@ -438,6 +438,8 @@ async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
 interface CreateProjectModalProps {
   onClose: () => void
   onCreated: (project: ProjectDto) => void
+  initialStartDate?: string
+  initialEndDate?: string
 }
 
 interface FormState {
@@ -452,14 +454,14 @@ interface FormState {
   selectedPhotoName: string | null
 }
 
-export const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => {
+export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initialEndDate }: CreateProjectModalProps) => {
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
   const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])
   const [photosLoading, setPhotosLoading] = React.useState(false)
 
   const [form, setForm] = React.useState<FormState>({
     title: '', description: '', status: '',
-    startDate: '', endDate: '', tags: [],
+    startDate: initialStartDate ?? '', endDate: initialEndDate ?? '', tags: [],
     location: '', placeId: '', selectedPhotoName: null,
   })
 
@@ -708,7 +710,32 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
-  const [view, setView] = React.useState<'grid' | 'table'>('grid')
+  const [view, setView] = React.useState<'grid' | 'table'>(() => {
+    if (typeof window === 'undefined') return 'grid'
+    const saved = localStorage.getItem(STORAGE_KEYS.projects_list_view)
+    return (saved === 'grid' || saved === 'table') ? saved : 'grid'
+  })
+  const setViewPersisted = (v: 'grid' | 'table') => {
+    setView(v)
+    localStorage.setItem(STORAGE_KEYS.projects_list_view, v)
+  }
+  type SortKey = 'title' | 'status' | 'date' | 'progress'
+  type SortDir = 'asc' | 'desc'
+  const [tableSort, setTableSort] = React.useState<{ key: SortKey; dir: SortDir }>(() => {
+    if (typeof window === 'undefined') return { key: 'title', dir: 'asc' }
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.projects_table_sort) ?? 'null')
+      if (saved && ['title','status','date','progress'].includes(saved.key) && ['asc','desc'].includes(saved.dir)) return saved
+    } catch { /* ignore */ }
+    return { key: 'title', dir: 'asc' }
+  })
+  const setTableSortPersisted = (key: SortKey) => {
+    setTableSort(prev => {
+      const next = prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' as SortDir : 'asc' as SortDir } : { key, dir: 'asc' as SortDir }
+      localStorage.setItem(STORAGE_KEYS.projects_table_sort, JSON.stringify(next))
+      return next
+    })
+  }
   const [filter, setFilterState] = React.useState<string>(() => {
     if (typeof window === 'undefined') return 'all'
     return localStorage.getItem(STORAGE_KEYS.projects_filter) ?? 'all'
@@ -788,6 +815,26 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
     if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
     return result
   }, [tabFiltered, statusFilter, memberFilter, effectiveSearch, projects])
+
+  const sortedProjects = React.useMemo(() => {
+    if (view !== 'table') return filteredProjects
+    const { key, dir } = tableSort
+    return [...filteredProjects].sort((a, b) => {
+      let cmp = 0
+      if (key === 'title') {
+        cmp = a.title.localeCompare(b.title, 'ja')
+      } else if (key === 'status') {
+        cmp = (a.statusName ?? '').localeCompare(b.statusName ?? '', 'ja')
+      } else if (key === 'date') {
+        cmp = (a.startDate ?? '').localeCompare(b.startDate ?? '')
+      } else if (key === 'progress') {
+        const ap = a.taskCount > 0 ? a.completedTaskCount / a.taskCount : 0
+        const bp = b.taskCount > 0 ? b.completedTaskCount / b.taskCount : 0
+        cmp = ap - bp
+      }
+      return dir === 'asc' ? cmp : -cmp
+    })
+  }, [filteredProjects, view, tableSort])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
@@ -878,7 +925,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 { id: 'table', label: 'テーブル', icon: <Icon name="list"   size={12}/> },
               ]}
               value={view}
-              onChange={(v) => setView(v as 'grid' | 'table')}
+              onChange={(v) => setViewPersisted(v as 'grid' | 'table')}
             />
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
               <button
@@ -923,15 +970,47 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
           /* PC table view */
           <div className="card" style={{ padding: 0 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-              <span/><span>プロジェクト</span><span>ステータス</span><span>日程</span><span>メンバー</span><span>進捗</span><span/>
+              <span/>
+              {(['title','status','date'] as SortKey[]).map((col) => {
+                const labels: Record<SortKey, string> = { title: 'プロジェクト', status: 'ステータス', date: '日程', progress: '進捗' }
+                const active = tableSort.key === col
+                return (
+                  <button key={col} onClick={() => setTableSortPersisted(col)} style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                    color: active ? 'var(--text)' : 'var(--text-3)',
+                    display: 'inline-flex', alignItems: 'center', gap: 3, fontFamily: 'inherit',
+                  }}>
+                    {labels[col]}
+                    <span style={{ fontSize: 9, opacity: active ? 1 : 0.35 }}>{active ? (tableSort.dir === 'asc' ? '▲' : '▼') : '▲'}</span>
+                  </button>
+                )
+              })}
+              <span>メンバー</span>
+              {(() => {
+                const col: SortKey = 'progress'
+                const active = tableSort.key === col
+                return (
+                  <button onClick={() => setTableSortPersisted(col)} style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                    color: active ? 'var(--text)' : 'var(--text-3)',
+                    display: 'inline-flex', alignItems: 'center', gap: 3, fontFamily: 'inherit',
+                  }}>
+                    進捗
+                    <span style={{ fontSize: 9, opacity: active ? 1 : 0.35 }}>{active ? (tableSort.dir === 'asc' ? '▲' : '▼') : '▲'}</span>
+                  </button>
+                )
+              })()}
+              <span/>
             </div>
-            {filteredProjects.map((p, i) => {
+            {sortedProjects.map((p, i) => {
               const accent = p.statusColor ?? 'var(--text-3)'
               const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
               return (
                 <div key={p.id} onClick={() => openPanel?.(p)} style={{
                   display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px',
-                  gap: 16, padding: '12px 16px', borderBottom: i < filteredProjects.length - 1 ? '1px solid var(--divider)' : 'none',
+                  gap: 16, padding: '12px 16px', borderBottom: i < sortedProjects.length - 1 ? '1px solid var(--divider)' : 'none',
                   alignItems: 'center', cursor: 'pointer',
                 }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}

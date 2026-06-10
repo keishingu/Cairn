@@ -3,6 +3,7 @@
 
 import { inngest } from './client'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
 
@@ -10,6 +11,11 @@ import { sendPushToUser } from '@/lib/push/send'
 function extractMentionedUserIds(content: string): string[] {
   const matches = content.matchAll(/<@([^|>\s]+)\|[^>\n]+>/g)
   return [...new Set([...matches].map(m => m[1]!))]
+}
+
+// <@userId|displayName> を @displayName に変換する
+function stripMentions(content: string): string {
+  return content.replace(/<@[^|>\s]+\|([^>\n]+)>/g, '@$1')
 }
 
 export const onMessageCreated = inngest.createFunction(
@@ -44,7 +50,7 @@ export const onMessageCreated = inngest.createFunction(
         await Promise.allSettled(
           members.map(m => sendPushToUser(m.userId, {
             title: senderName,
-            body: content.slice(0, 100),
+            body: stripMentions(content).slice(0, 100),
             url: '/chat',
           })),
         )
@@ -84,7 +90,7 @@ export const onMessageCreated = inngest.createFunction(
             workspaceId,
             type: 'mention' as const,
             title: `${senderName} があなたをメンションしました`,
-            body: content.slice(0, 200),
+            body: stripMentions(content).slice(0, 200),
             data: { messageId, channelId, senderName },
           })),
         )
@@ -111,7 +117,7 @@ export const onMessageCreated = inngest.createFunction(
           mentionedMembers.map(m =>
             sendPushToUser(m.userId, {
               title: `${senderName} があなたをメンションしました`,
-              body: content.slice(0, 100),
+              body: stripMentions(content).slice(0, 100),
               url: `/chat?channel=${channelId}`,
             }),
           ),
@@ -212,12 +218,6 @@ export const deleteStorageObjects = inngest.createFunction(
   },
 )
 
-const INDEXABLE_MIME_TYPES = new Set([
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-])
-
 export const indexFileChunks = inngest.createFunction(
   { id: 'index-file-chunks' },
   { event: 'file/uploaded' },
@@ -229,7 +229,7 @@ export const indexFileChunks = inngest.createFunction(
       storagePath: string
     }
 
-    if (!INDEXABLE_MIME_TYPES.has(mimeType)) {
+    if (!isIndexable(mimeType)) {
       return { skipped: true, reason: 'not an indexable document type' }
     }
 

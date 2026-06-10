@@ -214,12 +214,86 @@ interface CalendarGridProps {
   events: CalEvent[]
   gcalEvents?: GcalDisplayEvent[]
   onEventClick: (project: ProjectDto) => void
+  onDateSelect: (start: string, end: string) => void
   isLoading: boolean
 }
 
-const CalendarGrid = ({ year, month, events, gcalEvents = [], onEventClick, isLoading }: CalendarGridProps) => {
+function formatISO(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const CalendarGrid = ({ year, month, events, gcalEvents = [], onEventClick, onDateSelect, isLoading }: CalendarGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const cells = buildCells(year, month)
+  const flatCells = cells.flat()
+
+  const gridBodyRef = React.useRef<HTMLDivElement>(null)
+  const isDragging = React.useRef(false)
+  const [dragStart, setDragStart] = React.useState<string | null>(null)
+  const [dragEnd, setDragEnd] = React.useState<string | null>(null)
+
+  const getCellDateFromPoint = (clientX: number, clientY: number): string | null => {
+    const el = gridBodyRef.current
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    const x = clientX - rect.left
+    const y = clientY - rect.top
+    const col = Math.floor(x / (rect.width / 7))
+    const row = Math.floor(y / (rect.height / 6))
+    if (col < 0 || col > 6 || row < 0 || row > 5) return null
+    const cell = flatCells[row * 7 + col]
+    return cell ? formatISO(cell.fullDate) : null
+  }
+
+  const getRangeEdges = (a: string | null, b: string | null): [string, string] | null => {
+    if (!a || !b) return null
+    return a <= b ? [a, b] : [b, a]
+  }
+
+  const inDragRange = (date: string): boolean => {
+    const edges = getRangeEdges(dragStart, dragEnd)
+    if (!edges) return false
+    return date >= edges[0] && date <= edges[1]
+  }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    const date = getCellDateFromPoint(e.clientX, e.clientY)
+    if (!date) return
+    e.preventDefault()
+    isDragging.current = true
+    setDragStart(date)
+    setDragEnd(date)
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging.current) return
+    const date = getCellDateFromPoint(e.clientX, e.clientY)
+    if (date) setDragEnd(date)
+  }
+
+  const finalizeDrag = (clientX: number, clientY: number) => {
+    if (!isDragging.current) return
+    isDragging.current = false
+    const endDate = getCellDateFromPoint(clientX, clientY) ?? dragEnd
+    const edges = getRangeEdges(dragStart, endDate)
+    setDragStart(null)
+    setDragEnd(null)
+    if (edges) onDateSelect(edges[0], edges[1])
+  }
+
+  const handleMouseUp = (e: React.MouseEvent) => finalizeDrag(e.clientX, e.clientY)
+
+  React.useEffect(() => {
+    const onWindowMouseUp = (e: MouseEvent) => {
+      if (isDragging.current) finalizeDrag(e.clientX, e.clientY)
+    }
+    window.addEventListener('mouseup', onWindowMouseUp)
+    return () => window.removeEventListener('mouseup', onWindowMouseUp)
+  }, [dragStart, dragEnd]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -233,17 +307,30 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], onEventClick, isLo
         ))}
       </div>
 
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      <div
+        ref={gridBodyRef}
+        style={{ flex: 1, position: 'relative', overflow: 'hidden', cursor: isDragging.current ? 'crosshair' : 'default', userSelect: 'none' }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+      >
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: 'repeat(6, 1fr)', height: '100%' }}>
-          {cells.flat().map((cell, i) => {
+          {flatCells.map((cell, i) => {
             const week = Math.floor(i / 7)
             const day = i % 7
+            const dateStr = formatISO(cell.fullDate)
+            const highlighted = inDragRange(dateStr)
             return (
               <div key={i} style={{
                 borderRight: day < 6 ? '1px solid var(--border)' : 'none',
                 borderBottom: week < 5 ? '1px solid var(--border)' : 'none',
                 padding: 6,
-                background: cell.isToday ? 'var(--accent-soft)' : 'transparent',
+                background: highlighted
+                  ? 'var(--accent-soft)'
+                  : cell.isToday
+                    ? 'var(--accent-soft)'
+                    : 'transparent',
+                transition: 'background .05s',
               }}>
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -303,6 +390,7 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], onEventClick, isLo
                       fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
                       transition: 'filter .1s',
                     }}
+                    onMouseDown={e2 => e2.stopPropagation()}
                     onMouseEnter={e2 => { (e2.currentTarget as HTMLElement).style.filter = 'brightness(0.95)' }}
                     onMouseLeave={e2 => { (e2.currentTarget as HTMLElement).style.filter = 'none' }}
                     title={e.project.title}
@@ -358,6 +446,7 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], onEventClick, isLo
                         cursor: 'pointer',
                       }}
                       title={`${e.title}（Google カレンダーで開く）`}
+                      onMouseDown={e2 => e2.stopPropagation()}
                     >
                       {e.title}
                     </a>
@@ -740,7 +829,10 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const [month, setMonth] = React.useState(today.getMonth())
   const [selectedDate, setSelectedDate] = React.useState<Date>(today)
   const [calView, setCalView] = React.useState<CalView>('month')
-  const [showCreate, setShowCreate] = React.useState(false)
+  const [createDates, setCreateDates] = React.useState<{ start: string; end: string } | null>(null)
+  const showCreate = createDates !== null
+  const openCreate = (start: string, end: string) => setCreateDates({ start, end })
+  const closeCreate = () => setCreateDates(null)
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
     if (typeof window === 'undefined') return []
@@ -923,13 +1015,15 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   // ── PC layout ──────────────────────────────────────────────────
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px 24px', overflow: 'hidden' }}>
-      {showCreate && (
+      {showCreate && createDates && (
         <CreateProjectModal
-          onClose={() => setShowCreate(false)}
+          onClose={closeCreate}
           onCreated={(p) => {
             queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), p])
-            setShowCreate(false)
+            closeCreate()
           }}
+          initialStartDate={createDates.start}
+          initialEndDate={createDates.end}
         />
       )}
       {/* Toolbar */}
@@ -991,7 +1085,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
                 />
               )}
             </div>
-            <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setShowCreate(true)}>
+            <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => { const t = formatISO(new Date()); openCreate(t, t) }}>
               <Icon name="plus" size={13} strokeWidth={2.4} /> 新規{projectLabel}
             </button>
           </>
@@ -1006,6 +1100,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           events={events}
           gcalEvents={gcalDisplayEvents}
           onEventClick={openPanel}
+          onDateSelect={openCreate}
           isLoading={isLoading}
         />
       </div>
