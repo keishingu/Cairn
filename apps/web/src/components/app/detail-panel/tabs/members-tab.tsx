@@ -1,11 +1,15 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../../primitives'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import {
+  useProjectMembers,
+  useWorkspaceMembersForInvite,
+  useAddProjectMember,
+  useRemoveProjectMember,
+} from '@/hooks/use-project-members'
 
 const ROLE_LABEL: Record<string, string> = {
   leader:    'リーダー',
@@ -265,69 +269,29 @@ interface MembersTabProps {
 }
 
 export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
-  const queryClient = useQueryClient()
   const [showInvite, setShowInvite] = React.useState(false)
   const [selectedUserId, setSelectedUserId] = React.useState('')
   const [selectedRole, setSelectedRole] = React.useState('member')
 
-  const { data: members = [], isLoading } = useQuery<ProjectMemberDto[]>({
-    queryKey: ['project-members', projectId],
-    queryFn: () => fetchWithAuth(`/api/projects/${projectId}/members`).then(r => r.json()),
-  })
-
-  const { data: wsMembers = [], isLoading: isLoadingWs } = useQuery<WorkspaceMemberDto[]>({
-    queryKey: ['workspace-members'],
-    queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
-    enabled: showInvite,
-  })
+  const { data: members = [], isLoading } = useProjectMembers(projectId)
+  const { data: wsMembers = [], isLoading: isLoadingWs } = useWorkspaceMembersForInvite(showInvite)
+  const addMutation = useAddProjectMember(projectId)
+  const removeMutation = useRemoveProjectMember(projectId)
 
   const memberUserIds = new Set(members.map(m => m.userId))
   const inviteable = wsMembers.filter(m => !memberUserIds.has(m.userId))
-
-  const addMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
-      const res = await fetchWithAuth(`/api/projects/${projectId}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, role }),
-      })
-      if (!res.ok) {
-        const data = await res.json() as { error?: string }
-        throw new Error(data.error ?? 'Failed')
-      }
-      return res.json() as Promise<ProjectMemberDto>
-    },
-    onSuccess: (newMember) => {
-      queryClient.setQueryData<ProjectMemberDto[]>(
-        ['project-members', projectId],
-        old => [...(old ?? []), newMember],
-      )
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
-      setShowInvite(false)
-      setSelectedUserId('')
-      setSelectedRole('member')
-    },
-  })
-
-  const removeMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const res = await fetchWithAuth(`/api/projects/${projectId}/members/${userId}`, {
-        method: 'DELETE',
-      })
-      if (!res.ok) throw new Error('Failed')
-    },
-    onSuccess: (_data, userId) => {
-      queryClient.setQueryData<ProjectMemberDto[]>(
-        ['project-members', projectId],
-        old => old?.filter(m => m.userId !== userId) ?? [],
-      )
-    },
-  })
 
   const closeInvite = () => {
     setShowInvite(false)
     setSelectedUserId('')
     setSelectedRole('member')
+  }
+
+  const handleConfirmInvite = () => {
+    addMutation.mutate(
+      { userId: selectedUserId, role: selectedRole },
+      { onSuccess: closeInvite },
+    )
   }
 
   return (
@@ -376,7 +340,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
           selectedRole={selectedRole}
           onSelectUser={setSelectedUserId}
           onSelectRole={setSelectedRole}
-          onConfirm={() => addMutation.mutate({ userId: selectedUserId, role: selectedRole })}
+          onConfirm={handleConfirmInvite}
           onClose={closeInvite}
           isLoading={addMutation.isPending}
           error={addMutation.error?.message}

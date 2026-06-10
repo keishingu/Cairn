@@ -1,12 +1,11 @@
 'use client'
 
 import React from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, StatusChip } from '../../primitives'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { ProjectDto } from '@/app/api/projects/route'
-import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { LocationInput } from '../../location-input'
+import { usePatchProject, useDeleteProject } from '@/hooks/use-patch-project'
+import { useProjectStatuses } from '@/hooks/use-project-statuses'
 
 
 export function formatDateRange(start: string | null, end: string | null): string {
@@ -16,25 +15,6 @@ export function formatDateRange(start: string | null, end: string | null): strin
     return `${Number(m)}/${Number(day)}`
   }
   return end && end !== start ? `${fmt(start)} ~ ${fmt(end)}` : fmt(start)
-}
-
-// ─── 1フィールドを保存するヘルパー ────────────────────────────────
-function usePatchProject(projectId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (body: Record<string, unknown>) => {
-      const res = await fetchWithAuth(`/api/projects/${projectId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(d.error ?? '更新に失敗しました')
-      }
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
-  })
 }
 
 const cardLabelStyle: React.CSSProperties = {
@@ -180,10 +160,7 @@ const InlineStatus = ({
   const [open, setOpen] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
 
-  const { data: statuses = [] } = useQuery<ProjectStatusDto[]>({
-    queryKey: ['statuses'],
-    queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
-  })
+  const { data: statuses = [] } = useProjectStatuses()
 
   React.useEffect(() => {
     if (!open) return
@@ -304,43 +281,13 @@ interface OverviewTabProps {
 }
 
 export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
-  const queryClient = useQueryClient()
   const patch = usePatchProject(project.id)
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['projects'] })
-
-  const archiveMutation = useMutation({
-    mutationFn: async (archived: boolean) => {
-      const res = await fetchWithAuth(`/api/projects/${project.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ archived }),
-      })
-      if (!res.ok) throw new Error('操作に失敗しました')
-    },
-    onSuccess: invalidate,
-  })
-
+  const archivePatch = usePatchProject(project.id)
+  const deleteMutation = useDeleteProject(project.id)
   const [confirmDelete, setConfirmDelete] = React.useState(false)
-  const [isDeleting, setIsDeleting] = React.useState(false)
-  const [deleteError, setDeleteError] = React.useState<string | null>(null)
 
-  const handleDelete = async () => {
-    setIsDeleting(true)
-    setDeleteError(null)
-    try {
-      const res = await fetchWithAuth(`/api/projects/${project.id}`, { method: 'DELETE' })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({})) as { error?: string }
-        setDeleteError(data.error ?? '削除に失敗しました')
-        return
-      }
-      invalidate()
-      onDeleted()
-    } catch {
-      setDeleteError('削除に失敗しました')
-    } finally {
-      setIsDeleting(false)
-    }
+  const handleDelete = () => {
+    deleteMutation.mutate(undefined, { onSuccess: onDeleted })
   }
 
   return (
@@ -410,17 +357,17 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
             ? 'このプロジェクトはアーカイブされています。解除するとプロジェクト一覧に再表示されます。'
             : 'アーカイブすると一覧の「アーカイブ」タブに移動します。データは保持されます。'}
         </div>
-        {archiveMutation.isError && (
+        {archivePatch.isError && (
           <div style={{ fontSize: 11.5, color: 'var(--red-text)', marginBottom: 6 }}>⚠ 操作に失敗しました</div>
         )}
         <button
-          onClick={() => archiveMutation.mutate(!project.archived)}
-          disabled={archiveMutation.isPending}
+          onClick={() => archivePatch.mutate({ archived: !project.archived })}
+          disabled={archivePatch.isPending}
           className="btn btn-ghost"
           style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}
         >
           <Icon name={project.archived ? 'refresh' : 'close'} size={11}/>
-          {archiveMutation.isPending ? '処理中…' : project.archived ? 'アーカイブを解除する' : 'アーカイブする'}
+          {archivePatch.isPending ? '処理中…' : project.archived ? 'アーカイブを解除する' : 'アーカイブする'}
         </button>
       </div>
 
@@ -439,25 +386,25 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
             <div style={{ fontSize: 11.5, color: 'var(--red-text)', lineHeight: 1.6 }}>
               チャット・ファイル・タスクを含むすべてのデータが完全に削除されます。この操作は取り消せません。
             </div>
-            {deleteError && (
+            {deleteMutation.isError && (
               <div style={{ fontSize: 11.5, color: 'var(--red-text)', padding: '5px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.08)' }}>
-                ⚠ {deleteError}
+                ⚠ {(deleteMutation.error as Error).message}
               </div>
             )}
             <div style={{ display: 'flex', gap: 6 }}>
               <button
-                onClick={() => { setConfirmDelete(false); setDeleteError(null) }}
-                disabled={isDeleting}
+                onClick={() => { setConfirmDelete(false); deleteMutation.reset() }}
+                disabled={deleteMutation.isPending}
                 style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text-2)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}
               >
                 キャンセル
               </button>
               <button
                 onClick={handleDelete}
-                disabled={isDeleting}
-                style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', background: 'var(--red)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: isDeleting ? 'default' : 'pointer', fontFamily: 'inherit', opacity: isDeleting ? 0.7 : 1 }}
+                disabled={deleteMutation.isPending}
+                style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', background: 'var(--red)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: deleteMutation.isPending ? 'default' : 'pointer', fontFamily: 'inherit', opacity: deleteMutation.isPending ? 0.7 : 1 }}
               >
-                {isDeleting ? '削除中…' : '本当に削除する'}
+                {deleteMutation.isPending ? '削除中…' : '本当に削除する'}
               </button>
             </div>
           </div>
