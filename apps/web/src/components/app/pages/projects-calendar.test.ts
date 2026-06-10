@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, test, expect } from 'vitest'
-import { buildGcalEvents } from './projects-calendar'
+import { buildGcalEvents, buildGcalWeekEvents } from './projects-calendar'
 import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
 
 function makeEvent(overrides: Partial<GcalEventDto>): GcalEventDto {
@@ -88,5 +88,43 @@ describe('buildGcalEvents', () => {
     const result = buildGcalEvents([makeEvent({ calendarColor: null })], YEAR, MONTH)
 
     expect(result[0]?.color).toBe('#4285F4')
+  })
+})
+
+describe('buildGcalWeekEvents', () => {
+  // 2026-06-07(日) 〜 2026-06-13(土)
+  const WEEK_START = new Date(2026, 5, 7)
+
+  test('週内の1日のみのイベントは day と span が正しく計算される', () => {
+    const result = buildGcalWeekEvents([makeEvent({ startDate: '2026-06-10', endDate: '2026-06-10' })], WEEK_START)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ day: 3, span: 1, week: 0 })
+  })
+
+  test('週をまたぐイベントは週の範囲内に切り詰められる', () => {
+    // 6/5(金)〜6/9(火) のうち、週内に収まるのは 6/7(日)〜6/9(火)
+    const result = buildGcalWeekEvents([makeEvent({ startDate: '2026-06-05', endDate: '2026-06-09' })], WEEK_START)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ day: 0, span: 3 })
+  })
+
+  test('週の範囲外のイベントは除外される', () => {
+    const result = buildGcalWeekEvents([makeEvent({ startDate: '2026-06-20', endDate: '2026-06-21' })], WEEK_START)
+
+    expect(result).toHaveLength(0)
+  })
+
+  test('重なる複数のイベントは異なる row に割り当てられる', () => {
+    const events = [
+      makeEvent({ id: 'ev-1', startDate: '2026-06-08', endDate: '2026-06-10' }),
+      makeEvent({ id: 'ev-2', startDate: '2026-06-09', endDate: '2026-06-11' }),
+    ]
+    const result = buildGcalWeekEvents(events, WEEK_START)
+
+    const ev1 = result.find(e => e.id === 'ev-1')!
+    const ev2 = result.find(e => e.id === 'ev-2')!
+    expect(ev1.row).not.toBe(ev2.row)
   })
 })

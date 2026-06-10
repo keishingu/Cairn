@@ -10,6 +10,7 @@ import { STORAGE_KEYS } from '@/lib/storage-keys'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
+import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import { MobileHeader } from '@/components/app/mobile/header'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
@@ -189,6 +190,70 @@ function buildEvents(projects: ProjectDto[], year: number, month: number): CalEv
   return result
 }
 
+function buildWeekEvents(projects: ProjectDto[], weekStart: Date): CalEvent[] {
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekEnd.getDate() + 6)
+
+  const raw: Omit<CalEvent, 'row'>[] = []
+
+  for (const project of projects) {
+    if (!project.startDate) continue
+
+    const start = parseLocalDate(project.startDate)
+    const end = project.endDate ? parseLocalDate(project.endDate) : new Date(start)
+
+    if (end < weekStart || start > weekEnd) continue
+
+    const visStart = start < weekStart ? new Date(weekStart) : start
+    const visEnd = end > weekEnd ? new Date(weekEnd) : end
+    const day = daysBetween(weekStart, visStart)
+    const span = daysBetween(visStart, visEnd) + 1
+    raw.push({ project, week: 0, day, span })
+  }
+
+  const result: CalEvent[] = []
+  const sorted = raw.sort((a, b) => a.day - b.day)
+  const occupiedUntil: number[] = []
+  for (const e of sorted) {
+    let row = 0
+    while ((occupiedUntil[row] ?? -1) >= e.day) row++
+    occupiedUntil[row] = e.day + e.span - 1
+    result.push({ ...e, row })
+  }
+  return result
+}
+
+export function buildGcalWeekEvents(events: GcalEventDto[], weekStart: Date): GcalDisplayEvent[] {
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekEnd.getDate() + 6)
+
+  const raw: Omit<GcalDisplayEvent, 'row'>[] = []
+
+  for (const ev of events) {
+    const start = parseLocalDate(ev.startDate)
+    const end = parseLocalDate(ev.endDate)
+
+    if (end < weekStart || start > weekEnd) continue
+
+    const visStart = start < weekStart ? new Date(weekStart) : start
+    const visEnd = end > weekEnd ? new Date(weekEnd) : end
+    const day = daysBetween(weekStart, visStart)
+    const span = daysBetween(visStart, visEnd) + 1
+    raw.push({ id: ev.id, title: ev.title, color: ev.calendarColor ?? '#4285F4', htmlLink: ev.htmlLink, week: 0, day, span })
+  }
+
+  const result: GcalDisplayEvent[] = []
+  const sorted = raw.sort((a, b) => a.day - b.day)
+  const occupiedUntil: number[] = []
+  for (const e of sorted) {
+    let row = 0
+    while ((occupiedUntil[row] ?? -1) >= e.day) row++
+    occupiedUntil[row] = e.day + e.span - 1
+    result.push({ ...e, row })
+  }
+  return result
+}
+
 function getDateProjects(projects: ProjectDto[], d: Date): ProjectDto[] {
   const ms = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())
   return projects.filter(p => {
@@ -223,6 +288,63 @@ function formatISO(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+interface GcalCalendarPopoverProps {
+  containerRef: React.RefObject<HTMLDivElement | null>
+  calendars: { name: string; color: string }[]
+  hidden: string[]
+  onChange: (hidden: string[]) => void
+  onClose: () => void
+}
+
+const GcalCalendarPopover = ({ containerRef, calendars, hidden, onChange, onClose }: GcalCalendarPopoverProps) => {
+  const ref = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        ref.current && !ref.current.contains(e.target as Node) &&
+        containerRef.current && !containerRef.current.contains(e.target as Node)
+      ) onClose()
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [containerRef, onClose])
+
+  const toggle = (name: string) =>
+    onChange(hidden.includes(name) ? hidden.filter(x => x !== name) : [...hidden, name])
+
+  return (
+    <div ref={ref} style={{
+      position: 'absolute', top: '100%', right: 0, marginTop: 4,
+      width: 220, background: 'var(--card)', border: '1px solid var(--border)',
+      borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 200, padding: 12,
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+        表示するカレンダー
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {calendars.map(c => (
+          <label
+            key={c.name}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <input
+              type="checkbox"
+              checked={!hidden.includes(c.name)}
+              onChange={() => toggle(c.name)}
+              style={{ width: 14, height: 14, accentColor: c.color, cursor: 'pointer' }}
+            />
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
+            <span style={{ fontSize: 12.5, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 const CalendarGrid = ({ year, month, events, gcalEvents = [], onEventClick, onDateSelect, isLoading }: CalendarGridProps) => {
@@ -456,6 +578,222 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], onEventClick, onDa
               })}
             </>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── PC Week grid ────────────────────────────────────────────────
+
+interface CalendarWeekGridProps {
+  weekStart: Date
+  events: CalEvent[]
+  gcalEvents?: GcalDisplayEvent[]
+  onEventClick: (project: ProjectDto) => void
+  onDateSelect: (start: string, end: string) => void
+  isLoading: boolean
+}
+
+const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], onEventClick, onDateSelect, isLoading }: CalendarWeekGridProps) => {
+  const days = ['日', '月', '火', '水', '木', '金', '土']
+  const today = new Date()
+  const cells = Array.from({ length: 7 }, (_, day) => {
+    const d = new Date(weekStart)
+    d.setDate(d.getDate() + day)
+    return { date: d.getDate(), fullDate: d, isToday: d.toDateString() === today.toDateString() }
+  })
+
+  const gridBodyRef = React.useRef<HTMLDivElement>(null)
+  const isDragging = React.useRef(false)
+  const [dragStart, setDragStart] = React.useState<string | null>(null)
+  const [dragEnd, setDragEnd] = React.useState<string | null>(null)
+
+  const getCellDateFromPoint = (clientX: number): string | null => {
+    const el = gridBodyRef.current
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    const x = clientX - rect.left
+    const col = Math.floor(x / (rect.width / 7))
+    if (col < 0 || col > 6) return null
+    return formatISO(cells[col]!.fullDate)
+  }
+
+  const getRangeEdges = (a: string | null, b: string | null): [string, string] | null => {
+    if (!a || !b) return null
+    return a <= b ? [a, b] : [b, a]
+  }
+
+  const inDragRange = (date: string): boolean => {
+    const edges = getRangeEdges(dragStart, dragEnd)
+    if (!edges) return false
+    return date >= edges[0] && date <= edges[1]
+  }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    const date = getCellDateFromPoint(e.clientX)
+    if (!date) return
+    e.preventDefault()
+    isDragging.current = true
+    setDragStart(date)
+    setDragEnd(date)
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging.current) return
+    const date = getCellDateFromPoint(e.clientX)
+    if (date) setDragEnd(date)
+  }
+
+  const finalizeDrag = (clientX: number) => {
+    if (!isDragging.current) return
+    isDragging.current = false
+    const endDate = getCellDateFromPoint(clientX) ?? dragEnd
+    const edges = getRangeEdges(dragStart, endDate)
+    setDragStart(null)
+    setDragEnd(null)
+    if (edges) onDateSelect(edges[0], edges[1])
+  }
+
+  const handleMouseUp = (e: React.MouseEvent) => finalizeDrag(e.clientX)
+
+  React.useEffect(() => {
+    const onWindowMouseUp = (e: MouseEvent) => {
+      if (isDragging.current) finalizeDrag(e.clientX)
+    }
+    window.addEventListener('mouseup', onWindowMouseUp)
+    return () => window.removeEventListener('mouseup', onWindowMouseUp)
+  }, [dragStart, dragEnd]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const maxRow = Math.max(0, ...events.map(e => e.row), ...gcalEvents.map(e => e.row))
+  const bodyHeight = DATE_AREA + (maxRow + 1) * (EVENT_H + EVENT_GAP) + EVENT_GAP
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        {cells.map((cell, i) => (
+          <div key={i} style={{
+            padding: '8px 12px', fontSize: 11, fontWeight: 600,
+            color: i === 0 ? 'var(--red)' : i === 6 ? 'var(--blue)' : 'var(--text-3)',
+            textAlign: 'left', letterSpacing: '0.04em', textTransform: 'uppercase',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            {days[i]}
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12.5, fontWeight: cell.isToday ? 700 : 500,
+              width: 22, height: 22, borderRadius: '50%',
+              background: cell.isToday ? 'var(--accent)' : 'transparent',
+              color: cell.isToday ? 'var(--on-accent)' : 'var(--text-2)',
+            }}>{cell.date}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        <div
+          ref={gridBodyRef}
+          style={{ position: 'relative', minHeight: Math.max(bodyHeight, 120), cursor: isDragging.current ? 'crosshair' : 'default', userSelect: 'none' }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', position: 'absolute', inset: 0 }}>
+            {cells.map((cell, i) => {
+              const dateStr = formatISO(cell.fullDate)
+              const highlighted = inDragRange(dateStr)
+              return (
+                <div key={i} style={{
+                  borderRight: i < 6 ? '1px solid var(--border)' : 'none',
+                  background: highlighted || cell.isToday ? 'var(--accent-soft)' : 'transparent',
+                  transition: 'background .05s',
+                }} />
+              )
+            })}
+          </div>
+
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+            {isLoading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} style={{
+                  position: 'absolute',
+                  left: `calc(${(i % 7) / 7 * 100}% + 4px)`,
+                  top: DATE_AREA + i * (EVENT_H + EVENT_GAP),
+                  width: `calc(${(2 / 7) * 100}% - 8px)`,
+                  height: EVENT_H, borderRadius: 5,
+                  background: 'var(--card-2)', animation: 'pulse 1.5s infinite',
+                }} />
+              ))
+            ) : (
+              <>
+                {events.map((e, i) => {
+                  const barColor = e.project.statusColor ?? '#9CA3AF'
+                  const cfg = { bg: barColor + '18', bar: barColor, text: barColor }
+                  const colW = 100 / 7
+                  const left = `calc(${e.day * colW}% + 4px)`
+                  const width = `calc(${e.span * colW}% - 8px)`
+                  const top = DATE_AREA + e.row * (EVENT_H + EVENT_GAP)
+                  return (
+                    <button
+                      key={`c-${i}`}
+                      onClick={() => onEventClick(e.project)}
+                      style={{
+                        position: 'absolute', left, top, width,
+                        height: EVENT_H, borderRadius: 5,
+                        background: cfg.bg, color: cfg.text,
+                        border: 'none', borderLeft: `3px solid ${cfg.bar}`,
+                        fontSize: 11, fontWeight: 600,
+                        padding: '0 7px', textAlign: 'left',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
+                        transition: 'filter .1s',
+                      }}
+                      onMouseDown={e2 => e2.stopPropagation()}
+                      onMouseEnter={e2 => { (e2.currentTarget as HTMLElement).style.filter = 'brightness(0.95)' }}
+                      onMouseLeave={e2 => { (e2.currentTarget as HTMLElement).style.filter = 'none' }}
+                      title={e.project.title}
+                    >
+                      {e.project.title}
+                    </button>
+                  )
+                })}
+                {gcalEvents.map((e, i) => {
+                  const colW = 100 / 7
+                  const left = `calc(${e.day * colW}% + 4px)`
+                  const width = `calc(${e.span * colW}% - 8px)`
+                  const top = DATE_AREA + e.row * (EVENT_H + EVENT_GAP)
+                  const style: React.CSSProperties = {
+                    position: 'absolute', left, top, width,
+                    height: EVENT_H, borderRadius: 5,
+                    background: e.color + '15', color: e.color,
+                    borderLeft: `3px dashed ${e.color}`,
+                    fontSize: 11, fontWeight: 500,
+                    padding: '0 7px',
+                    display: 'flex', alignItems: 'center',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    opacity: 0.85,
+                  }
+                  if (e.htmlLink) {
+                    return (
+                      <a
+                        key={`g-${i}`}
+                        href={e.htmlLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ ...style, textDecoration: 'none', pointerEvents: 'auto', cursor: 'pointer' }}
+                        title={`${e.title}（Google カレンダーで開く）`}
+                        onMouseDown={e2 => e2.stopPropagation()}
+                      >
+                        {e.title}
+                      </a>
+                    )
+                  }
+                  return <div key={`g-${i}`} style={style} title={e.title}>{e.title}</div>
+                })}
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -860,15 +1198,48 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
   })
 
+  const { data: gcalStatus } = useQuery<GcalStatusDto>({
+    queryKey: ['gcal-status'],
+    queryFn: () => fetchWithAuth('/api/calendar/google/status').then(r => r.json()),
+    staleTime: 60 * 1000,
+  })
+  const gcalConnected = gcalStatus?.connected ?? false
+
+  const [hiddenGcalCalendars, setHiddenGcalCalendars] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.calendar_gcal_hidden) ?? '[]') } catch { return [] }
+  })
+  const setHiddenGcalCalendarsPersisted = (v: string[]) => {
+    setHiddenGcalCalendars(v)
+    localStorage.setItem(STORAGE_KEYS.calendar_gcal_hidden, JSON.stringify(v))
+  }
+  const [gcalFilterOpen, setGcalFilterOpen] = React.useState(false)
+  const gcalFilterBtnRef = React.useRef<HTMLDivElement>(null)
+
   const { data: gcalEventsRaw = [] } = useQuery<GcalEventDto[]>({
     queryKey: ['gcal-events', year, month],
     queryFn: () => fetchWithAuth(`/api/calendar/google/events?year=${year}&month=${month}`).then(r => r.json()),
     staleTime: 15 * 60 * 1000,
+    enabled: gcalConnected,
   })
 
+  const gcalCalendars = React.useMemo(() => {
+    const map = new Map<string, string>()
+    for (const ev of gcalEventsRaw) {
+      const name = ev.calendarName ?? '（名称なし）'
+      if (!map.has(name)) map.set(name, ev.calendarColor ?? '#4285F4')
+    }
+    return [...map.entries()].map(([name, color]) => ({ name, color }))
+  }, [gcalEventsRaw])
+
+  const visibleGcalEvents = React.useMemo(
+    () => gcalEventsRaw.filter(ev => !hiddenGcalCalendars.includes(ev.calendarName ?? '（名称なし）')),
+    [gcalEventsRaw, hiddenGcalCalendars],
+  )
+
   const gcalDisplayEvents = React.useMemo(
-    () => buildGcalEvents(gcalEventsRaw, year, month),
-    [gcalEventsRaw, year, month],
+    () => (gcalConnected ? buildGcalEvents(visibleGcalEvents, year, month) : []),
+    [visibleGcalEvents, year, month, gcalConnected],
   )
 
   const allMembers = React.useMemo(
@@ -889,6 +1260,16 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   )
 
   const weekStart = getWeekStart(selectedDate)
+
+  const weekEvents = React.useMemo(
+    () => buildWeekEvents(visibleProjects, weekStart),
+    [visibleProjects, weekStart],
+  )
+
+  const gcalWeekDisplayEvents = React.useMemo(
+    () => (gcalConnected ? buildGcalWeekEvents(visibleGcalEvents, weekStart) : []),
+    [visibleGcalEvents, weekStart, gcalConnected],
+  )
 
   const goToday = () => {
     setYear(today.getFullYear())
@@ -1063,6 +1444,27 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               value={calView}
               onChange={(v) => setCalView(v as CalView)}
             />
+            {gcalConnected && gcalCalendars.length > 0 && (
+              <div ref={gcalFilterBtnRef} style={{ position: 'relative' }}>
+                <button
+                  className="btn"
+                  onClick={() => setGcalFilterOpen(o => !o)}
+                  title="Google カレンダーの表示切り替え"
+                  style={hiddenGcalCalendars.length > 0 ? { opacity: 0.6 } : { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' }}
+                >
+                  <Icon name={hiddenGcalCalendars.length < gcalCalendars.length ? 'eye' : 'eye-off'} size={13} /> Google カレンダー
+                </button>
+                {gcalFilterOpen && (
+                  <GcalCalendarPopover
+                    containerRef={gcalFilterBtnRef}
+                    calendars={gcalCalendars}
+                    hidden={hiddenGcalCalendars}
+                    onChange={setHiddenGcalCalendarsPersisted}
+                    onClose={() => setGcalFilterOpen(false)}
+                  />
+                )}
+              </div>
+            )}
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
               <button
                 className="btn"
@@ -1094,15 +1496,26 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
 
       {/* Calendar grid */}
       <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
-        <CalendarGrid
-          year={year}
-          month={month}
-          events={events}
-          gcalEvents={gcalDisplayEvents}
-          onEventClick={openPanel}
-          onDateSelect={openCreate}
-          isLoading={isLoading}
-        />
+        {calView === 'week' ? (
+          <CalendarWeekGrid
+            weekStart={weekStart}
+            events={weekEvents}
+            gcalEvents={gcalWeekDisplayEvents}
+            onEventClick={openPanel}
+            onDateSelect={openCreate}
+            isLoading={isLoading}
+          />
+        ) : (
+          <CalendarGrid
+            year={year}
+            month={month}
+            events={events}
+            gcalEvents={gcalDisplayEvents}
+            onEventClick={openPanel}
+            onDateSelect={openCreate}
+            isLoading={isLoading}
+          />
+        )}
       </div>
 
       {/* Legend */}
