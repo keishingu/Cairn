@@ -64,7 +64,11 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
           )
         } catch (err: unknown) {
           const status = (err as { statusCode?: number }).statusCode
-          if (status === 404 || status === 410) expiredIds.push(s.id)
+          if (status === 404 || status === 410) {
+            expiredIds.push(s.id)
+          } else {
+            console.error('[sendPushToUser] webpush error', { status, subscriptionId: s.id, message: (err as Error).message })
+          }
         }
       }),
     )

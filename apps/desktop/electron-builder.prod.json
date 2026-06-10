@@ -1,0 +1,27 @@
+{
+  "appId": "com.oss-cairn.desktop",
+  "productName": "Cairn",
+  "directories": {
+    "output": "dist"
+  },
+  "files": [
+    "src/**/*",
+    "package.json"
+  ],
+  "extraMetadata": {
+    "config": {
+      "appUrl": "https://oss-cairn.com"
+    }
+  },
+  "mac": {
+    "icon": "resources/icons/prod/icon.icns",
+    "category": "public.app-category.productivity"
+  },
+  "win": {
+    "icon": "resources/icons/prod/icon.ico"
+  },
+  "linux": {
+    "icon": "resources/icons/prod/icon512.png",
+    "category": "Office"
+  }
+}
