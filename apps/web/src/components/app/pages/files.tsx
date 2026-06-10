@@ -16,6 +16,14 @@ const DOC_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ]
 
+const REINDEXABLE_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'text/markdown',
+])
+
 const PAGE_SIZE = 20
 
 function formatFileSize(bytes: number | null): string {
@@ -38,14 +46,72 @@ function matchesFilter(file: FileDto, filter: FilterKey): boolean {
   return true
 }
 
+// ─── FileRowMenu ──────────────────────────────────────────────────
+
+const FileRowMenu = ({ file, onDelete, onReindex }: { file: FileDto; onDelete: () => void; onReindex: () => void }) => {
+  const [open, setOpen] = React.useState(false)
+  const btnRef = React.useRef<HTMLButtonElement>(null)
+  const menuRef = React.useRef<HTMLDivElement>(null)
+  const canReindex = REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
+
+  React.useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node) && !btnRef.current?.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const btnRect = btnRef.current?.getBoundingClientRect()
+  const menuStyle: React.CSSProperties = btnRect
+    ? { position: 'fixed', top: btnRect.bottom + 4, right: window.innerWidth - btnRect.right, zIndex: 300, minWidth: 120 }
+    : { position: 'absolute', top: '100%', right: 0, zIndex: 300, minWidth: 120 }
+
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        ref={btnRef}
+        onClick={e => { e.preventDefault(); setOpen(p => !p) }}
+        style={{ border: 'none', background: open ? 'var(--card-hover)' : 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        title="操作"
+      >
+        <Icon name="more" size={15}/>
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          style={{ ...menuStyle, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden', padding: '4px 0' }}
+        >
+          {canReindex && (
+            <button
+              onMouseDown={e => { e.preventDefault(); setOpen(false); onReindex() }}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', border: 'none', background: 'transparent', color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', whiteSpace: 'nowrap' }}
+            >
+              <Icon name="refresh" size={13}/> 再インデックス
+            </button>
+          )}
+          <button
+            onMouseDown={e => { e.preventDefault(); setOpen(false); onDelete() }}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', border: 'none', background: 'transparent', color: 'var(--red-text)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', whiteSpace: 'nowrap' }}
+          >
+            <Icon name="trash" size={13}/> 削除
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── FileRow ──────────────────────────────────────────────────────
 
-const FileRow = ({ file, isMobile, onDelete }: { file: FileDto; isMobile: boolean; onDelete: (id: string, name: string) => void }) => {
+const FileRow = ({ file, isMobile, onDelete, onReindex }: { file: FileDto; isMobile: boolean; onDelete: (id: string, name: string) => void; onReindex: (id: string) => void }) => {
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
   const projectLabel = file.projectTitle ?? file.channelName ?? 'チャット'
   const metaParts = [projectLabel, sizeStr, dateStr].filter(Boolean).join(' · ')
-  const [hovered, setHovered] = React.useState(false)
 
   return (
     <div
@@ -53,10 +119,7 @@ const FileRow = ({ file, isMobile, onDelete }: { file: FileDto; isMobile: boolea
         display: 'flex', alignItems: 'center', gap: 10,
         padding: isMobile ? '10px 12px' : '10px 16px',
         borderBottom: '1px solid var(--divider)',
-        background: hovered ? 'var(--card-2)' : 'transparent',
       }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
       <a
         href={file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`}
@@ -84,17 +147,11 @@ const FileRow = ({ file, isMobile, onDelete }: { file: FileDto; isMobile: boolea
         </div>
       </a>
       <Avatar name={file.uploaderName} url={file.uploaderAvatarUrl} size={22} />
-      <button
-        onClick={() => onDelete(file.id, file.fileName)}
-        style={{
-          border: 'none', background: 'transparent', color: 'var(--text-4)',
-          cursor: 'pointer', padding: 4, borderRadius: 4, flexShrink: 0,
-          opacity: hovered ? 1 : 0, transition: 'opacity .12s',
-        }}
-        title="削除"
-      >
-        <Icon name="trash" size={14}/>
-      </button>
+      <FileRowMenu
+        file={file}
+        onDelete={() => onDelete(file.id, file.fileName)}
+        onReindex={() => onReindex(file.id)}
+      />
     </div>
   )
 }
@@ -112,9 +169,11 @@ const FileRowSkeleton = () => (
 
 // ─── PageFiles ────────────────────────────────────────────────────
 
-export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
+export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boolean; externalSearch?: string }) => {
   const queryClient = useQueryClient()
   const [filter, setFilter] = React.useState<FilterKey>('all')
+  const [search, setSearch] = React.useState('')
+  const effectiveSearch = isMobile ? search : (externalSearch ?? search)
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
   const sentinelRef = React.useRef<HTMLDivElement>(null)
 
@@ -134,17 +193,37 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
     },
   })
 
+  const reindexFile = useMutation({
+    mutationFn: (fileId: string) =>
+      fetchWithAuth(`/api/attachments/${fileId}/reindex`, { method: 'POST' }).then(r => {
+        if (!r.ok) throw new Error('再インデックスに失敗しました')
+      }),
+    onMutate: (fileId: string) => {
+      queryClient.setQueryData<FileDto[]>(['files'], prev =>
+        prev?.map(f => f.id === fileId ? { ...f, indexingStatus: 'pending' } : f),
+      )
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['files'] }),
+  })
+
   const handleDelete = (fileId: string, fileName: string) => {
     if (!confirm(`「${fileName}」を削除しますか？この操作は取り消せません。`)) return
     deleteFile.mutate(fileId)
   }
 
-  const filtered = React.useMemo(
-    () => files.filter(f => matchesFilter(f, filter)),
-    [files, filter],
-  )
+  const handleReindex = (fileId: string) => {
+    reindexFile.mutate(fileId)
+  }
 
-  React.useEffect(() => { setVisibleCount(PAGE_SIZE) }, [filter])
+  const filtered = React.useMemo(() => {
+    const q = effectiveSearch.trim().toLowerCase()
+    return files.filter(f =>
+      matchesFilter(f, filter) &&
+      (!q || f.fileName.toLowerCase().includes(q) || (f.projectTitle ?? f.channelName ?? '').toLowerCase().includes(q)),
+    )
+  }, [files, filter, effectiveSearch])
+
+  React.useEffect(() => { setVisibleCount(PAGE_SIZE) }, [filter, effectiveSearch])
 
   React.useEffect(() => {
     const sentinel = sentinelRef.current
@@ -177,25 +256,42 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Toolbar */}
       <div style={{
-        padding: isMobile ? '8px 12px' : '14px 20px',
+        padding: isMobile ? '8px 12px' : '10px 20px',
         borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0,
-        overflowX: 'auto',
+        display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0,
       }}>
-        {filterDefs.map(f => (
-          <button
-            key={f.id}
-            onClick={() => setFilter(f.id)}
-            style={{
-              padding: isMobile ? '6px 8px' : '6px 10px',
-              borderRadius: 6, border: 'none',
-              background: filter === f.id ? 'var(--card-hover)' : 'transparent',
-              color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
-              fontSize: isMobile ? 12 : 12.5, fontWeight: filter === f.id ? 600 : 500,
-              cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-            }}
-          >{f.label}</button>
-        ))}
+        {isMobile && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 7, padding: '0 10px', height: 32 }}>
+            <Icon name="search" size={13} color="var(--text-4)"/>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="ファイル名・プロジェクトで検索"
+              style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+            />
+            {search && (
+              <button onClick={() => setSearch('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>
+                <Icon name="close" size={12}/>
+              </button>
+            )}
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, overflowX: 'auto' }}>
+          {filterDefs.map(f => (
+            <button
+              key={f.id}
+              onClick={() => setFilter(f.id)}
+              style={{
+                padding: isMobile ? '6px 8px' : '6px 10px',
+                borderRadius: 6, border: 'none',
+                background: filter === f.id ? 'var(--card-hover)' : 'transparent',
+                color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
+                fontSize: isMobile ? 12 : 12.5, fontWeight: filter === f.id ? 600 : 500,
+                cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+              }}
+            >{f.label}</button>
+          ))}
+        </div>
       </div>
 
       {/* Content */}
@@ -216,7 +312,7 @@ export const PageFiles = ({ isMobile = false }: { isMobile?: boolean }) => {
           </div>
         ) : (
           <>
-            {visibleFiles.map(f => <FileRow key={f.id} file={f} isMobile={isMobile} onDelete={handleDelete} />)}
+            {visibleFiles.map(f => <FileRow key={f.id} file={f} isMobile={isMobile} onDelete={handleDelete} onReindex={handleReindex} />)}
             <div ref={sentinelRef} />
           </>
         )}

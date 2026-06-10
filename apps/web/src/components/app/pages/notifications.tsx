@@ -20,6 +20,10 @@ const TYPE_CONFIG: Record<NotificationDto['type'], { icon: string; c: string; bg
   reaction: { icon: 'heart',    c: 'var(--rose)',    bg: 'var(--rose-soft)' },
 }
 
+function parseMentionText(text: string): string {
+  return text.replace(/<@[^|>]+\|([^>]+)>/g, '@$1')
+}
+
 const FILTERS = [
   { id: 'all',     label: 'すべて' },
   { id: 'mention', label: '@メンション' },
@@ -72,13 +76,12 @@ export const PageNotifications = ({ onClose }: PageNotificationsProps) => {
             {push.permission !== 'unsupported' && push.permission !== 'denied' && (
               <button
                 className="btn btn-ghost"
-                style={{ height: 28, fontSize: 12, padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                style={{ width: 28, height: 28, padding: 0, justifyContent: 'center', color: push.permission === 'granted' ? 'var(--accent)' : 'var(--text-3)' }}
                 onClick={push.permission === 'granted' ? push.unsubscribe : push.subscribe}
                 disabled={push.loading}
                 title={push.permission === 'granted' ? 'プッシュ通知を無効化' : 'プッシュ通知を有効化'}
               >
-                <Icon name={push.permission === 'granted' ? 'bell-off' : 'bell'} size={12} />
-                {push.permission === 'granted' ? 'OFF' : 'ON'}
+                <Icon name="bell" size={14}/>
               </button>
             )}
             <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -124,7 +127,7 @@ export const PageNotifications = ({ onClose }: PageNotificationsProps) => {
                       {n.title.replace(senderName + ' ', '')}
                     </div>
                   )}
-                  <div style={{ fontSize: 12.5, color: 'var(--text-3)', lineHeight: 1.5 }}>{n.body}</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--text-3)', lineHeight: 1.5 }}>{parseMentionText(n.body)}</div>
                 </div>
               </div>
             )

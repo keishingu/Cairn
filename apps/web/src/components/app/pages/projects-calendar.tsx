@@ -1,8 +1,12 @@
 'use client'
 
 import React from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, StatusChip } from '../primitives'
+import { PageToolbar, SegmentedControl } from './page-toolbar'
+import { CreateProjectModal, FilterPopover } from './project-list'
+import { useProjectLabel } from '@/lib/use-workspace-settings'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '@/components/app/mobile/header'
@@ -153,12 +157,86 @@ interface CalendarGridProps {
   month: number
   events: CalEvent[]
   onEventClick: (project: ProjectDto) => void
+  onDateSelect: (start: string, end: string) => void
   isLoading: boolean
 }
 
-const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: CalendarGridProps) => {
+function formatISO(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const CalendarGrid = ({ year, month, events, onEventClick, onDateSelect, isLoading }: CalendarGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const cells = buildCells(year, month)
+  const flatCells = cells.flat()
+
+  const gridBodyRef = React.useRef<HTMLDivElement>(null)
+  const isDragging = React.useRef(false)
+  const [dragStart, setDragStart] = React.useState<string | null>(null)
+  const [dragEnd, setDragEnd] = React.useState<string | null>(null)
+
+  const getCellDateFromPoint = (clientX: number, clientY: number): string | null => {
+    const el = gridBodyRef.current
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    const x = clientX - rect.left
+    const y = clientY - rect.top
+    const col = Math.floor(x / (rect.width / 7))
+    const row = Math.floor(y / (rect.height / 6))
+    if (col < 0 || col > 6 || row < 0 || row > 5) return null
+    const cell = flatCells[row * 7 + col]
+    return cell ? formatISO(cell.fullDate) : null
+  }
+
+  const getRangeEdges = (a: string | null, b: string | null): [string, string] | null => {
+    if (!a || !b) return null
+    return a <= b ? [a, b] : [b, a]
+  }
+
+  const inDragRange = (date: string): boolean => {
+    const edges = getRangeEdges(dragStart, dragEnd)
+    if (!edges) return false
+    return date >= edges[0] && date <= edges[1]
+  }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    const date = getCellDateFromPoint(e.clientX, e.clientY)
+    if (!date) return
+    e.preventDefault()
+    isDragging.current = true
+    setDragStart(date)
+    setDragEnd(date)
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging.current) return
+    const date = getCellDateFromPoint(e.clientX, e.clientY)
+    if (date) setDragEnd(date)
+  }
+
+  const finalizeDrag = (clientX: number, clientY: number) => {
+    if (!isDragging.current) return
+    isDragging.current = false
+    const endDate = getCellDateFromPoint(clientX, clientY) ?? dragEnd
+    const edges = getRangeEdges(dragStart, endDate)
+    setDragStart(null)
+    setDragEnd(null)
+    if (edges) onDateSelect(edges[0], edges[1])
+  }
+
+  const handleMouseUp = (e: React.MouseEvent) => finalizeDrag(e.clientX, e.clientY)
+
+  React.useEffect(() => {
+    const onWindowMouseUp = (e: MouseEvent) => {
+      if (isDragging.current) finalizeDrag(e.clientX, e.clientY)
+    }
+    window.addEventListener('mouseup', onWindowMouseUp)
+    return () => window.removeEventListener('mouseup', onWindowMouseUp)
+  }, [dragStart, dragEnd]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -172,17 +250,30 @@ const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: Calendar
         ))}
       </div>
 
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      <div
+        ref={gridBodyRef}
+        style={{ flex: 1, position: 'relative', overflow: 'hidden', cursor: isDragging.current ? 'crosshair' : 'default', userSelect: 'none' }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+      >
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: 'repeat(6, 1fr)', height: '100%' }}>
-          {cells.flat().map((cell, i) => {
+          {flatCells.map((cell, i) => {
             const week = Math.floor(i / 7)
             const day = i % 7
+            const dateStr = formatISO(cell.fullDate)
+            const highlighted = inDragRange(dateStr)
             return (
               <div key={i} style={{
                 borderRight: day < 6 ? '1px solid var(--border)' : 'none',
                 borderBottom: week < 5 ? '1px solid var(--border)' : 'none',
                 padding: 6,
-                background: cell.isToday ? 'var(--accent-soft)' : 'transparent',
+                background: highlighted
+                  ? 'var(--accent-soft)'
+                  : cell.isToday
+                    ? 'var(--accent-soft)'
+                    : 'transparent',
+                transition: 'background .05s',
               }}>
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -241,6 +332,7 @@ const CalendarGrid = ({ year, month, events, onEventClick, isLoading }: Calendar
                     fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
                     transition: 'filter .1s',
                   }}
+                  onMouseDown={e2 => e2.stopPropagation()}
                   onMouseEnter={e2 => { (e2.currentTarget as HTMLElement).style.filter = 'brightness(0.95)' }}
                   onMouseLeave={e2 => { (e2.currentTarget as HTMLElement).style.filter = 'none' }}
                   title={e.project.title}
@@ -617,10 +709,34 @@ const CAL_VIEWS: CalView[] = ['month', 'week', 'timeline']
 
 export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps) => {
   const today = new Date()
+  const queryClient = useQueryClient()
+  const projectLabel = useProjectLabel()
   const [year, setYear] = React.useState(today.getFullYear())
   const [month, setMonth] = React.useState(today.getMonth())
   const [selectedDate, setSelectedDate] = React.useState<Date>(today)
   const [calView, setCalView] = React.useState<CalView>('month')
+  const [createDates, setCreateDates] = React.useState<{ start: string; end: string } | null>(null)
+  const showCreate = createDates !== null
+  const openCreate = (start: string, end: string) => setCreateDates({ start, end })
+  const closeCreate = () => setCreateDates(null)
+  const [filterOpen, setFilterOpen] = React.useState(false)
+  const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.calendar_status_filter) ?? '[]') } catch { return [] }
+  })
+  const setStatusFilterPersisted = (v: string[]) => {
+    setStatusFilter(v)
+    localStorage.setItem(STORAGE_KEYS.calendar_status_filter, JSON.stringify(v))
+  }
+  const [memberFilter, setMemberFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.calendar_member_filter) ?? '[]') } catch { return [] }
+  })
+  const setMemberFilterPersisted = (v: string[]) => {
+    setMemberFilter(v)
+    localStorage.setItem(STORAGE_KEYS.calendar_member_filter, JSON.stringify(v))
+  }
+  const filterBtnRef = React.useRef<HTMLDivElement>(null)
   const { data: projects = [], isLoading } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
@@ -630,9 +746,21 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
   })
 
+  const allMembers = React.useMemo(
+    () => [...new Set(projects.flatMap(p => p.memberNames))].sort(),
+    [projects],
+  )
+
+  const visibleProjects = React.useMemo(() => {
+    let result = projects
+    if (statusFilter.length > 0) result = result.filter(p => p.statusName != null && statusFilter.includes(p.statusName))
+    if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
+    return result
+  }, [projects, statusFilter, memberFilter])
+
   const events = React.useMemo(
-    () => buildEvents(projects, year, month),
-    [projects, year, month],
+    () => buildEvents(visibleProjects, year, month),
+    [visibleProjects, year, month],
   )
 
   const weekStart = getWeekStart(selectedDate)
@@ -724,7 +852,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <MobileCalendarGrid
             year={year}
             month={month}
-            projects={projects}
+            projects={visibleProjects}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             onProjectClick={openPanel}
@@ -734,13 +862,13 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <>
             <MobileWeekStrip
               weekStart={weekStart}
-              projects={projects}
+              projects={visibleProjects}
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
             />
             <MobileDayEvents
               date={selectedDate}
-              projects={projects}
+              projects={visibleProjects}
               onProjectClick={openPanel}
               isLoading={isLoading}
             />
@@ -750,7 +878,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <MobileTimelineView
             year={year}
             month={month}
-            projects={projects}
+            projects={visibleProjects}
             onProjectClick={openPanel}
             isLoading={isLoading}
           />
@@ -762,48 +890,82 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   // ── PC layout ──────────────────────────────────────────────────
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px 24px', overflow: 'hidden' }}>
+      {showCreate && createDates && (
+        <CreateProjectModal
+          onClose={closeCreate}
+          onCreated={(p) => {
+            queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), p])
+            closeCreate()
+          }}
+          initialStartDate={createDates.start}
+          initialEndDate={createDates.end}
+        />
+      )}
       {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            className="btn"
-            style={{ height: 32, opacity: isCurrentPeriod ? 0.5 : 1 }}
-            onClick={goToday}
-            disabled={isCurrentPeriod}
-          >
-            今日
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goPrev}>
-              <Icon name="chevLeft" size={15} />
+      <PageToolbar
+        style={{ marginBottom: 14 }}
+        left={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              className="btn"
+              style={{ opacity: isCurrentPeriod ? 0.5 : 1 }}
+              onClick={goToday}
+              disabled={isCurrentPeriod}
+            >
+              今日
             </button>
-            <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goNext}>
-              <Icon name="chevRight" size={15} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goPrev}>
+                <Icon name="chevLeft" size={15} />
+              </button>
+              <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goNext}>
+                <Icon name="chevRight" size={15} />
+              </button>
+            </div>
+            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', padding: '0 4px', whiteSpace: 'nowrap' }}>
+              {periodLabel}
+            </span>
+          </div>
+        }
+        right={
+          <>
+            <SegmentedControl
+              options={[
+                { id: 'month',    label: '月' },
+                { id: 'week',     label: '週' },
+                { id: 'timeline', label: 'リスト' },
+              ]}
+              value={calView}
+              onChange={(v) => setCalView(v as CalView)}
+            />
+            <div ref={filterBtnRef} style={{ position: 'relative' }}>
+              <button
+                className="btn"
+                onClick={() => setFilterOpen(o => !o)}
+                style={(statusFilter.length + memberFilter.length) > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
+              >
+                <Icon name="filter" size={13} /> フィルター
+                {(statusFilter.length + memberFilter.length) > 0 && (
+                  <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
+                    {statusFilter.length + memberFilter.length}
+                  </span>
+                )}
+              </button>
+              {filterOpen && (
+                <FilterPopover
+                  containerRef={filterBtnRef}
+                  allStatuses={allStatuses} selected={statusFilter} onChange={setStatusFilterPersisted}
+                  allMembers={allMembers} selectedMembers={memberFilter} onChangeMembers={setMemberFilterPersisted}
+                  onClose={() => setFilterOpen(false)}
+                />
+              )}
+            </div>
+            <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => { const t = formatISO(new Date()); openCreate(t, t) }}>
+              <Icon name="plus" size={13} strokeWidth={2.4} /> 新規{projectLabel}
             </button>
-          </div>
-          <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', padding: '0 4px' }}>
-            {formatYM(year, month)}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button className="btn"><Icon name="filter" size={13} /> フィルター</button>
-          <div style={{ display: 'flex', background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: 2, gap: 0 }}>
-            {['月', '週', 'リスト'].map((v, i) => (
-              <button key={v} style={{
-                padding: '5px 14px', borderRadius: 6, border: 'none',
-                background: i === 0 ? 'var(--card)' : 'transparent',
-                color: i === 0 ? 'var(--text)' : 'var(--text-3)',
-                fontSize: 12.5, fontWeight: i === 0 ? 600 : 500,
-                cursor: 'pointer', fontFamily: 'inherit',
-                boxShadow: i === 0 ? 'var(--shadow-sm)' : 'none',
-              }}>{v}</button>
-            ))}
-          </div>
-          <button className="btn btn-primary" style={{ height: 32, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Icon name="plus" size={13} strokeWidth={2.4} /> 予定を追加
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Calendar grid */}
       <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
@@ -812,6 +974,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           month={month}
           events={events}
           onEventClick={openPanel}
+          onDateSelect={openCreate}
           isLoading={isLoading}
         />
       </div>

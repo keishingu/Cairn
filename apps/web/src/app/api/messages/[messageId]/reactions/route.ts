@@ -30,10 +30,6 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   const { emoji } = parsed.data
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ added: true, emoji })
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { messageReactions } = await import('@cairn/db')

@@ -6,6 +6,7 @@ import type { JSONValue, ToolInvocation } from 'ai'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, TypingDots } from '../primitives'
 import { MobileHeader } from '../mobile/header'
+import { BellButton } from '../sidebar'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
@@ -324,11 +325,9 @@ function ChatView({
               </button>
             </div>
           </form>
-          {!isMobile && (
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-4)', textAlign: 'center' }}>
-              AIは間違えることもあります。重要な判断はリーダーに相談してください。
-            </div>
-          )}
+          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-4)', textAlign: 'center' }}>
+            AIは間違えることもあります。重要な判断はリーダーに相談してください。
+          </div>
         </div>
       </div>
     </div>
@@ -340,7 +339,7 @@ function ChatView({
 export function PageAI({ isMobile }: { isMobile?: boolean }) {
   const queryClient = useQueryClient()
   const [activeId, setActiveId] = React.useState<string | null>(null)
-  const [mobilePane, setMobilePane] = React.useState<'list' | 'chat'>('list')
+  const [mobilePane, setMobilePane] = React.useState<'welcome' | 'list' | 'chat'>('welcome')
 
   const { data: conversations = [] } = useQuery<ConversationDto[]>({
     queryKey: ['ai-conversations'],
@@ -360,6 +359,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
       setActiveId(conv.id)
       if (isMobile) setMobilePane('chat')
     },
+
   })
 
   const selectConversation = (id: string) => {
@@ -367,12 +367,8 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     if (isMobile) setMobilePane('chat')
   }
 
-  // PCのみ最新会話を自動選択
-  React.useEffect(() => {
-    if (!isMobile && !activeId && conversations.length > 0) {
-      setActiveId(conversations[0]!.id)
-    }
-  }, [conversations, activeId, isMobile])
+
+
 
   // ---- モバイル ----
 
@@ -391,18 +387,16 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
       const title = conversations.find(c => c.id === activeId)?.title ?? 'AIアシスタント'
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
-          <MobileHeader title={title} onBack={() => setMobilePane('list')} right={newButton}/>
+          <MobileHeader title={title} onBack={() => setMobilePane('welcome')} right={newButton}/>
           <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages} isMobile/>
         </div>
       )
     }
 
-    return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
-        <MobileHeader title="AIアシスタント" right={newButton}/>
-        {conversations.length === 0 ? (
-          <WelcomeScreen onNew={() => createConversation.mutate()} isCreating={createConversation.isPending} isMobile/>
-        ) : (
+    if (mobilePane === 'list') {
+      return (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
+          <MobileHeader title="過去の会話" onBack={() => setMobilePane('welcome')} right={newButton}/>
           <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
             {conversations.map(c => (
               <button
@@ -424,7 +418,23 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
               </button>
             ))}
           </div>
-        )}
+        </div>
+      )
+    }
+
+    // welcome pane（デフォルト）
+    const historyButton = conversations.length > 0 ? (
+      <button
+        onClick={() => setMobilePane('list')}
+        style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}
+      >
+        <Icon name="clock" size={20}/>
+      </button>
+    ) : undefined
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
+        <MobileHeader title="AIアシスタント" right={historyButton}/>
+        <WelcomeScreen onNew={() => createConversation.mutate()} isCreating={createConversation.isPending} isMobile/>
       </div>
     )
   }
@@ -432,7 +442,12 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
   // ---- PC ----
 
   return (
-    <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <header style={{ height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 24px', borderBottom: '1px solid var(--border)', background: 'var(--card)', gap: 16 }}>
+        <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', flex: 1 }}>AIアシスタント</h1>
+        <BellButton />
+      </header>
+      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <ConversationSidebar
         conversations={conversations}
         activeId={activeId}
@@ -445,6 +460,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
       ) : (
         <WelcomeScreen onNew={() => createConversation.mutate()} isCreating={createConversation.isPending}/>
       )}
+      </div>
     </div>
   )
 }

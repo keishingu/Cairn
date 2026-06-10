@@ -6,10 +6,13 @@ import { chatQueryKeys } from '@/lib/chat/client'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
-import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { LocationInput } from '../location-input'
+import type { PlacePhoto } from '@/app/api/places/photos/route'
+import { PageToolbar, SegmentedControl } from './page-toolbar'
+import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 // ─── Tag presets ──────────────────────────────────────────────────
@@ -117,13 +120,13 @@ const StatusChipSelector = ({ statuses, value, onChange }: StatusChipSelectorPro
 
 // ─── Cover photo picker ───────────────────────────────────────────
 interface CoverPickerProps {
-  value: string | null
-  onChange: (v: string | null) => void
-  workspacePhotos: WorkspaceCoverPhoto[]
+  onPhotoNameChange: (name: string | null) => void
+  placePhotos: PlacePhoto[]
+  selectedPhotoName: string | null
 }
 
-const CoverPickerThumb = ({ selected, children }: { selected: boolean; children: React.ReactNode }) => (
-  <button type="button" style={{
+const CoverPickerThumb = ({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: React.ReactNode }) => (
+  <button type="button" onClick={onClick} style={{
     flexShrink: 0, width: 96, height: 64, padding: 0,
     borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
     border: `2px solid ${selected ? 'var(--accent)' : 'transparent'}`,
@@ -144,29 +147,29 @@ const CoverPickerThumb = ({ selected, children }: { selected: boolean; children:
   </button>
 )
 
-const CoverPicker = ({ value, onChange, workspacePhotos }: CoverPickerProps) => {
-  if (workspacePhotos.length === 0) {
+const CoverPicker = ({ onPhotoNameChange, placePhotos, selectedPhotoName }: CoverPickerProps) => {
+  if (placePhotos.length === 0) {
     return (
       <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
         <Icon name="image" size={16} color="var(--text-4)"/>
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>カバー写真は自動設定されます</div>
-          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>ワークスペース設定からアップロードすると選択できます</div>
+          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>場所を入力すると、その場所の写真から選べます</div>
         </div>
       </div>
     )
   }
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-        {/* 「なし（自動）」 option */}
         <button
           type="button"
-          onClick={() => onChange(null)}
+          onClick={() => onPhotoNameChange(null)}
           style={{
             flexShrink: 0, width: 72, height: 48, borderRadius: 8,
-            border: `2px solid ${value === null ? 'var(--accent)' : 'var(--border)'}`,
-            background: 'var(--card-2)', color: value === null ? 'var(--accent-text)' : 'var(--text-3)',
+            border: `2px solid ${selectedPhotoName === null ? 'var(--accent)' : 'var(--border)'}`,
+            background: 'var(--card-2)', color: selectedPhotoName === null ? 'var(--accent-text)' : 'var(--text-3)',
             cursor: 'pointer', fontSize: 10, fontWeight: 600, fontFamily: 'inherit',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
           }}
@@ -175,14 +178,15 @@ const CoverPicker = ({ value, onChange, workspacePhotos }: CoverPickerProps) => 
           自動
         </button>
       </div>
+
       <div style={{ position: 'relative' }}>
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '2px 2px 8px', scrollbarWidth: 'thin' }}>
-          {workspacePhotos.map(photo => {
-            const selected = value === photo.url
+          {placePhotos.map(photo => {
+            const selected = selectedPhotoName === photo.photoName
             return (
-              <CoverPickerThumb key={photo.id} selected={selected}>
-                {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
-                <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onClick={() => onChange(photo.url)}/>
+              <CoverPickerThumb key={photo.photoName} selected={selected} onClick={() => onPhotoNameChange(photo.photoName)}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photo.thumbnailUri} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
               </CoverPickerThumb>
             )
           })}
@@ -253,26 +257,46 @@ const TagPicker = ({ value, onChange, available = TAG_PRESETS }: TagPickerProps)
 
 // ─── Filter popover ───────────────────────────────────────────────
 interface FilterPopoverProps {
+  containerRef: React.RefObject<HTMLDivElement | null>
   allStatuses: ProjectStatusDto[]
   selected: string[]
   onChange: (statuses: string[]) => void
+  allMembers?: string[]
+  selectedMembers?: string[]
+  onChangeMembers?: (members: string[]) => void
   onClose: () => void
 }
 
-const FilterPopover = ({ allStatuses, selected, onChange, onClose }: FilterPopoverProps) => {
+const checkRowStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8,
+  padding: '6px 8px', borderRadius: 6, cursor: 'pointer',
+}
+
+export const FilterPopover = ({
+  containerRef, allStatuses, selected, onChange,
+  allMembers = [], selectedMembers = [], onChangeMembers,
+  onClose,
+}: FilterPopoverProps) => {
   const ref = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      if (
+        ref.current && !ref.current.contains(e.target as Node) &&
+        containerRef.current && !containerRef.current.contains(e.target as Node)
+      ) onClose()
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [onClose])
+  }, [containerRef, onClose])
 
-  const toggle = (name: string) => {
+  const toggleStatus = (name: string) =>
     onChange(selected.includes(name) ? selected.filter(x => x !== name) : [...selected, name])
-  }
+
+  const toggleMember = (name: string) =>
+    onChangeMembers?.(selectedMembers.includes(name) ? selectedMembers.filter(x => x !== name) : [...selectedMembers, name])
+
+  const hasAny = selected.length > 0 || selectedMembers.length > 0
 
   return (
     <div ref={ref} style={{
@@ -285,29 +309,72 @@ const FilterPopover = ({ allStatuses, selected, onChange, onClose }: FilterPopov
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {allStatuses.map(s => {
-          const checked = selected.includes(s.name)
+          const isChecked = selected.includes(s.name)
           return (
-            <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer' }}
+            <label
+              key={s.id}
+              style={checkRowStyle}
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
-              <input type="checkbox" checked={checked} onChange={() => toggle(s.name)}
+              <input
+                type="checkbox"
+                checked={isChecked}
+                onChange={() => toggleStatus(s.name)}
                 style={{ width: 14, height: 14, accentColor: s.color, cursor: 'pointer' }}
               />
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }}/>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
               <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{s.name}</span>
             </label>
           )
         })}
       </div>
-      {selected.length > 0 && (
-        <button onClick={() => onChange([])} style={{
+
+      {allMembers.length > 0 && (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8, marginTop: 12 }}>
+            参加者
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {allMembers.map(name => {
+              const isChecked = selectedMembers.includes(name)
+              return (
+                <label
+                  key={name}
+                  style={checkRowStyle}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleMember(name)}
+                    style={{ width: 14, height: 14, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                  />
+                  <span style={{
+                    width: 20, height: 20, borderRadius: '50%',
+                    background: 'var(--accent-soft)', color: 'var(--accent)',
+                    fontSize: 10, fontWeight: 700, flexShrink: 0,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {name.charAt(0)}
+                  </span>
+                  <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{name}</span>
+                </label>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {hasAny && (
+        <button onClick={() => { onChange([]); onChangeMembers?.([]) }} style={{
           marginTop: 10, width: '100%', padding: '7px 0',
           border: '1px solid var(--border)', borderRadius: 6,
           background: 'transparent', color: 'var(--text-3)',
           fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
         }}>
-          フィルターをクリア
+          すべてクリア
         </button>
       )}
     </div>
@@ -318,6 +385,7 @@ const FilterPopover = ({ allStatuses, selected, onChange, onClose }: FilterPopov
 interface ProjectListViewProps {
   openPanel?: (project?: ProjectDto) => void
   isMobile?: boolean
+  externalSearch?: string
 }
 
 function formatDates(start: string | null, end: string | null): string {
@@ -341,12 +409,6 @@ async function fetchStatuses(): Promise<ProjectStatusDto[]> {
   return res.json() as Promise<ProjectStatusDto[]>
 }
 
-async function fetchWorkspaceCoverPhotos(): Promise<WorkspaceCoverPhoto[]> {
-  const res = await fetchWithAuth('/api/workspaces/cover-photos')
-  if (!res.ok) return []
-  return res.json() as Promise<WorkspaceCoverPhoto[]>
-}
-
 async function createProject(body: {
   title: string
   description?: string | undefined
@@ -354,6 +416,9 @@ async function createProject(body: {
   startDate?: string | undefined
   endDate?: string | undefined
   coverPhotoUrl?: string | undefined
+  location?: string | undefined
+  placeId?: string | undefined
+  placePhotoName?: string | undefined
 }): Promise<ProjectDto> {
   const res = await fetchWithAuth('/api/projects', {
     method: 'POST',
@@ -364,9 +429,17 @@ async function createProject(body: {
   return res.json() as Promise<ProjectDto>
 }
 
+async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
+  const res = await fetchWithAuth(`/api/places/photos?placeId=${encodeURIComponent(placeId)}`)
+  if (!res.ok) return []
+  return res.json() as Promise<PlacePhoto[]>
+}
+
 interface CreateProjectModalProps {
   onClose: () => void
   onCreated: (project: ProjectDto) => void
+  initialStartDate?: string
+  initialEndDate?: string
 }
 
 interface FormState {
@@ -375,20 +448,21 @@ interface FormState {
   status: string
   startDate: string
   endDate: string
-  cover: string | null
   tags: string[]
+  location: string
+  placeId: string
+  selectedPhotoName: string | null
 }
 
-const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => {
+export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initialEndDate }: CreateProjectModalProps) => {
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
-  const { data: workspacePhotos = [] } = useQuery({
-    queryKey: ['workspace-cover-photos'],
-    queryFn: fetchWorkspaceCoverPhotos,
-  })
+  const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])
+  const [photosLoading, setPhotosLoading] = React.useState(false)
 
   const [form, setForm] = React.useState<FormState>({
     title: '', description: '', status: '',
-    startDate: '', endDate: '', cover: null, tags: [],
+    startDate: initialStartDate ?? '', endDate: initialEndDate ?? '', tags: [],
+    location: '', placeId: '', selectedPhotoName: null,
   })
 
   React.useEffect(() => {
@@ -431,6 +505,28 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
     return Object.keys(e).length === 0
   }
 
+  const handleLocationSelect = React.useCallback(async (description: string, placeId: string) => {
+    set('location', description)
+    set('placeId', placeId)
+    setPhotosLoading(true)
+    try {
+      const photos = await fetchPlacePhotos(placeId)
+      setPlacePhotos(photos)
+      if (photos.length > 0 && form.selectedPhotoName === null) {
+        set('selectedPhotoName', photos[0]!.photoName)
+      }
+    } finally {
+      setPhotosLoading(false)
+    }
+  }, [form.selectedPhotoName]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleLocationClear = () => {
+    set('location', '')
+    set('placeId', '')
+    set('selectedPhotoName', null)
+    setPlacePhotos([])
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!validate()) return
@@ -441,7 +537,9 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
       statusId: selectedStatus?.id,
       startDate: form.startDate || undefined,
       endDate: form.endDate || undefined,
-      coverPhotoUrl: form.cover ?? undefined,
+      location: form.location.trim() || undefined,
+      placeId: form.placeId || undefined,
+      placePhotoName: form.selectedPhotoName ?? undefined,
     })
   }
 
@@ -509,6 +607,16 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
               />
             </Field>
 
+            <Field label="場所" hint="任意" htmlFor="cpm-location">
+              <LocationInput
+                value={form.location}
+                onSelect={(desc, pid) => { void handleLocationSelect(desc, pid) }}
+                onClear={handleLocationClear}
+                inputStyle={fieldInputStyle(false)}
+                placeholder="例: 北アルプス、槍ヶ岳"
+              />
+            </Field>
+
             <Field label="ステータス" required>
               <StatusChipSelector statuses={statuses} value={form.status} onChange={v => set('status', v)}/>
             </Field>
@@ -543,22 +651,40 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
             </Field>
 
             <Field label="カバー写真" hint="一覧・パネルで表示">
-              <CoverPicker value={form.cover} onChange={v => set('cover', v)} workspacePhotos={workspacePhotos}/>
-              {form.cover !== null && (
-                <div style={{ marginTop: 10, position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={form.cover} alt="カバー" style={{ width: '100%', height: 90, objectFit: 'cover', display: 'block' }}/>
-                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px', gap: 8 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {form.title || 'プロジェクト名'}
-                    </span>
-                    {form.status && (() => {
-                      const s = statuses.find(x => x.name === form.status)
-                      return s ? <StatusChip name={s.name} color={s.color}/> : null
-                    })()}
-                  </div>
+              {photosLoading && (
+                <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon name="loader" size={14}/>
+                  場所の写真を取得中…
                 </div>
               )}
+              {!photosLoading && (
+                <CoverPicker
+                  onPhotoNameChange={v => set('selectedPhotoName', v)}
+                  placePhotos={placePhotos}
+                  selectedPhotoName={form.selectedPhotoName}
+                />
+              )}
+              {(() => {
+                const previewUrl = form.selectedPhotoName
+                  ? placePhotos.find(p => p.photoName === form.selectedPhotoName)?.thumbnailUri
+                  : null
+                if (!previewUrl) return null
+                return (
+                  <div style={{ marginTop: 10, position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={previewUrl} alt="カバー" style={{ width: '100%', height: 90, objectFit: 'cover', display: 'block' }}/>
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px', gap: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {form.title || 'プロジェクト名'}
+                      </span>
+                      {form.status && (() => {
+                        const s = statuses.find(x => x.name === form.status)
+                        return s ? <StatusChip name={s.name} color={s.color}/> : null
+                      })()}
+                    </div>
+                  </div>
+                )
+              })()}
             </Field>
           </div>
         </div>
@@ -580,10 +706,36 @@ const CreateProjectModal = ({ onClose, onCreated }: CreateProjectModalProps) => 
   )
 }
 
-export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) => {
+export const ProjectListView = ({ openPanel, isMobile, externalSearch }: ProjectListViewProps) => {
   const queryClient = useQueryClient()
+  const projectLabel = useProjectLabel()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
-  const [view, setView] = React.useState<'grid' | 'table'>('grid')
+  const [view, setView] = React.useState<'grid' | 'table'>(() => {
+    if (typeof window === 'undefined') return 'grid'
+    const saved = localStorage.getItem(STORAGE_KEYS.projects_list_view)
+    return (saved === 'grid' || saved === 'table') ? saved : 'grid'
+  })
+  const setViewPersisted = (v: 'grid' | 'table') => {
+    setView(v)
+    localStorage.setItem(STORAGE_KEYS.projects_list_view, v)
+  }
+  type SortKey = 'title' | 'status' | 'date' | 'progress'
+  type SortDir = 'asc' | 'desc'
+  const [tableSort, setTableSort] = React.useState<{ key: SortKey; dir: SortDir }>(() => {
+    if (typeof window === 'undefined') return { key: 'title', dir: 'asc' }
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.projects_table_sort) ?? 'null')
+      if (saved && ['title','status','date','progress'].includes(saved.key) && ['asc','desc'].includes(saved.dir)) return saved
+    } catch { /* ignore */ }
+    return { key: 'title', dir: 'asc' }
+  })
+  const setTableSortPersisted = (key: SortKey) => {
+    setTableSort(prev => {
+      const next = prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' as SortDir : 'asc' as SortDir } : { key, dir: 'asc' as SortDir }
+      localStorage.setItem(STORAGE_KEYS.projects_table_sort, JSON.stringify(next))
+      return next
+    })
+  }
   const [filter, setFilterState] = React.useState<string>(() => {
     if (typeof window === 'undefined') return 'all'
     return localStorage.getItem(STORAGE_KEYS.projects_filter) ?? 'all'
@@ -595,8 +747,26 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
   const [showCreate, setShowCreate] = React.useState(false)
   const [filterOpen, setFilterOpen] = React.useState(false)
   const { data: allStatuses = [] } = useQuery({ queryKey: ['statuses'], queryFn: fetchStatuses })
-  const [statusFilter, setStatusFilter] = React.useState<string[]>([])
+  const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.projects_status_filter) ?? '[]') } catch { return [] }
+  })
+  const setStatusFilterPersisted = (v: string[]) => {
+    setStatusFilter(v)
+    localStorage.setItem(STORAGE_KEYS.projects_status_filter, JSON.stringify(v))
+  }
+  const [memberFilter, setMemberFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.projects_member_filter) ?? '[]') } catch { return [] }
+  })
+  const setMemberFilterPersisted = (v: string[]) => {
+    setMemberFilter(v)
+    localStorage.setItem(STORAGE_KEYS.projects_member_filter, JSON.stringify(v))
+  }
   const filterBtnRef = React.useRef<HTMLDivElement>(null)
+  const [search, setSearch] = React.useState('')
+  const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false)
+  const searchInputRef = React.useRef<HTMLInputElement>(null)
 
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
@@ -629,10 +799,42 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
     }
   }, [projects, filter])
 
+  const allMembers = React.useMemo(
+    () => [...new Set(projects.flatMap(p => p.memberNames))].sort(),
+    [projects],
+  )
+
+  const effectiveSearch = isMobile ? search : (externalSearch ?? search)
+  const isSearching = effectiveSearch.trim().length > 0
+
   const filteredProjects = React.useMemo(() => {
-    if (statusFilter.length === 0) return tabFiltered
-    return tabFiltered.filter(p => p.statusName !== null && statusFilter.includes(p.statusName))
-  }, [tabFiltered, statusFilter])
+    const q = effectiveSearch.trim().toLowerCase()
+    if (q) return projects.filter(p => p.title.toLowerCase().includes(q))
+    let result = tabFiltered
+    if (statusFilter.length > 0) result = result.filter(p => p.statusName !== null && statusFilter.includes(p.statusName))
+    if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
+    return result
+  }, [tabFiltered, statusFilter, memberFilter, effectiveSearch, projects])
+
+  const sortedProjects = React.useMemo(() => {
+    if (view !== 'table') return filteredProjects
+    const { key, dir } = tableSort
+    return [...filteredProjects].sort((a, b) => {
+      let cmp = 0
+      if (key === 'title') {
+        cmp = a.title.localeCompare(b.title, 'ja')
+      } else if (key === 'status') {
+        cmp = (a.statusName ?? '').localeCompare(b.statusName ?? '', 'ja')
+      } else if (key === 'date') {
+        cmp = (a.startDate ?? '').localeCompare(b.startDate ?? '')
+      } else if (key === 'progress') {
+        const ap = a.taskCount > 0 ? a.completedTaskCount / a.taskCount : 0
+        const bp = b.taskCount > 0 ? b.completedTaskCount / b.taskCount : 0
+        cmp = ap - bp
+      }
+      return dir === 'asc' ? cmp : -cmp
+    })
+  }, [filteredProjects, view, tableSort])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
@@ -645,95 +847,114 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
 
       {/* Mobile header */}
       {isMobile && (
-        <MobileHeader
-          title="プロジェクト一覧"
-          right={
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
-                <Icon name="search" size={20}/>
-              </button>
-              <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
-                <Icon name="bell" size={20}/>
-              </button>
+        <>
+          <MobileHeader
+            title="プロジェクト一覧"
+            right={
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  onClick={() => { setMobileSearchOpen(o => !o); setTimeout(() => searchInputRef.current?.focus(), 50) }}
+                  style={{ border: 'none', background: mobileSearchOpen ? 'var(--card-hover)' : 'transparent', borderRadius: 8, color: mobileSearchOpen ? 'var(--accent)' : 'var(--text-3)', cursor: 'pointer', padding: 4 }}
+                >
+                  <Icon name="search" size={20}/>
+                </button>
+                <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
+                  <Icon name="bell" size={20}/>
+                </button>
+              </div>
+            }
+          />
+          {mobileSearchOpen && (
+            <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card)', flexShrink: 0 }}>
+              <Icon name="search" size={14} color="var(--text-3)"/>
+              <input
+                ref={searchInputRef}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="アーカイブを含むすべてのプロジェクトを検索…"
+                style={{ flex: 1, fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+                onKeyDown={e => { if (e.key === 'Escape') { setMobileSearchOpen(false); setSearch('') } }}
+              />
+              {search && (
+                <button onClick={() => setSearch('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>
+                  <Icon name="close" size={12}/>
+                </button>
+              )}
             </div>
-          }
-        />
+          )}
+        </>
       )}
 
-      {/* Toolbar: filter tabs + PC controls */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        borderBottom: '1px solid var(--border)',
-        flexShrink: 0,
-        padding: isMobile ? '10px 16px' : '0',
-        gap: isMobile ? 6 : 0,
-        overflowX: isMobile ? 'auto' : 'visible',
-        scrollbarWidth: 'none',
-      }}>
-        {filterTabs.map(f => (
-          <button key={f.id} onClick={() => setFilter(f.id)} style={isMobile ? {
-            padding: '6px 14px', borderRadius: 999, border: 'none', flexShrink: 0,
-            background: filter === f.id ? 'var(--accent)' : 'var(--card-2)',
-            color: filter === f.id ? 'var(--on-accent)' : 'var(--text-3)',
-            fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
-            cursor: 'pointer', fontFamily: 'inherit',
-          } : {
-            padding: '10px 14px', border: 'none', background: 'transparent',
-            color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
-            fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
-            cursor: 'pointer', fontFamily: 'inherit',
-            borderBottom: filter === f.id ? '2px solid var(--accent)' : '2px solid transparent',
-            marginBottom: -1,
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-          }}>
-            {f.label}
-            {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>{f.n}</span>}
-          </button>
-        ))}
-
-        {/* PC only: view toggle + status filter + create button */}
-        {!isMobile && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingBottom: 8, marginLeft: 'auto' }}>
-            <div style={{ display: 'flex', background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: 2 }}>
-              {([
-                { id: 'grid'  as const, i: 'kanban', l: 'カード' },
-                { id: 'table' as const, i: 'list',   l: 'テーブル' },
-              ]).map(v => (
-                <button key={v.id} onClick={() => setView(v.id)} style={{
-                  padding: '5px 10px', borderRadius: 6, border: 'none',
-                  background: view === v.id ? 'var(--card)' : 'transparent',
-                  color: view === v.id ? 'var(--text)' : 'var(--text-3)',
-                  fontSize: 12, fontWeight: view === v.id ? 600 : 500,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                  boxShadow: view === v.id ? 'var(--shadow-sm)' : 'none',
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                }}><Icon name={v.i} size={12}/> {v.l}</button>
-              ))}
-            </div>
+      {/* Toolbar */}
+      <PageToolbar
+        style={{
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+          padding: isMobile ? '10px 16px' : '0 16px 0 0',
+        }}
+        left={
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 0, opacity: isSearching ? 0.4 : 1, pointerEvents: isSearching ? 'none' : undefined, transition: 'opacity .15s' }}>
+            {filterTabs.map(f => (
+              <button key={f.id} onClick={() => setFilter(f.id)} style={isMobile ? {
+                padding: '6px 14px', borderRadius: 999, border: 'none', flexShrink: 0,
+                background: filter === f.id ? 'var(--accent)' : 'var(--card-2)',
+                color: filter === f.id ? 'var(--on-accent)' : 'var(--text-3)',
+                fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
+                cursor: 'pointer', fontFamily: 'inherit',
+              } : {
+                padding: '10px 14px', border: 'none', background: 'transparent',
+                color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
+                fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
+                cursor: 'pointer', fontFamily: 'inherit',
+                borderBottom: filter === f.id ? '2px solid var(--accent)' : '2px solid transparent',
+                marginBottom: -1,
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                whiteSpace: 'nowrap',
+              }}>
+                {f.label}
+                {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>{f.n}</span>}
+              </button>
+            ))}
+          </div>
+        }
+        right={!isMobile ? (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 0' }}>
+            <SegmentedControl
+              options={[
+                { id: 'grid',  label: 'カード',   icon: <Icon name="kanban" size={12}/> },
+                { id: 'table', label: 'テーブル', icon: <Icon name="list"   size={12}/> },
+              ]}
+              value={view}
+              onChange={(v) => setViewPersisted(v as 'grid' | 'table')}
+            />
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
               <button
                 className="btn"
                 onClick={() => setFilterOpen(o => !o)}
-                style={statusFilter.length > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
+                style={(statusFilter.length + memberFilter.length) > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
               >
                 <Icon name="filter" size={13}/> フィルター
-                {statusFilter.length > 0 && (
+                {(statusFilter.length + memberFilter.length) > 0 && (
                   <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
-                    {statusFilter.length}
+                    {statusFilter.length + memberFilter.length}
                   </span>
                 )}
               </button>
               {filterOpen && (
-                <FilterPopover allStatuses={allStatuses} selected={statusFilter} onChange={setStatusFilter} onClose={() => setFilterOpen(false)}/>
+                <FilterPopover
+                  containerRef={filterBtnRef}
+                  allStatuses={allStatuses} selected={statusFilter} onChange={setStatusFilterPersisted}
+                  allMembers={allMembers} selectedMembers={memberFilter} onChangeMembers={setMemberFilterPersisted}
+                  onClose={() => setFilterOpen(false)}
+                />
               )}
             </div>
             <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-              <Icon name="plus" size={13}/> 新規プロジェクト
+              <Icon name="plus" size={13}/> 新規{projectLabel}
             </button>
           </div>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* Content */}
       <div style={{
@@ -749,15 +970,47 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
           /* PC table view */
           <div className="card" style={{ padding: 0 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-              <span/><span>プロジェクト</span><span>ステータス</span><span>日程</span><span>メンバー</span><span>進捗</span><span/>
+              <span/>
+              {(['title','status','date'] as SortKey[]).map((col) => {
+                const labels: Record<SortKey, string> = { title: 'プロジェクト', status: 'ステータス', date: '日程', progress: '進捗' }
+                const active = tableSort.key === col
+                return (
+                  <button key={col} onClick={() => setTableSortPersisted(col)} style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                    color: active ? 'var(--text)' : 'var(--text-3)',
+                    display: 'inline-flex', alignItems: 'center', gap: 3, fontFamily: 'inherit',
+                  }}>
+                    {labels[col]}
+                    <span style={{ fontSize: 9, opacity: active ? 1 : 0.35 }}>{active ? (tableSort.dir === 'asc' ? '▲' : '▼') : '▲'}</span>
+                  </button>
+                )
+              })}
+              <span>メンバー</span>
+              {(() => {
+                const col: SortKey = 'progress'
+                const active = tableSort.key === col
+                return (
+                  <button onClick={() => setTableSortPersisted(col)} style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                    color: active ? 'var(--text)' : 'var(--text-3)',
+                    display: 'inline-flex', alignItems: 'center', gap: 3, fontFamily: 'inherit',
+                  }}>
+                    進捗
+                    <span style={{ fontSize: 9, opacity: active ? 1 : 0.35 }}>{active ? (tableSort.dir === 'asc' ? '▲' : '▼') : '▲'}</span>
+                  </button>
+                )
+              })()}
+              <span/>
             </div>
-            {filteredProjects.map((p, i) => {
+            {sortedProjects.map((p, i) => {
               const accent = p.statusColor ?? 'var(--text-3)'
               const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
               return (
                 <div key={p.id} onClick={() => openPanel?.(p)} style={{
                   display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px',
-                  gap: 16, padding: '12px 16px', borderBottom: i < filteredProjects.length - 1 ? '1px solid var(--divider)' : 'none',
+                  gap: 16, padding: '12px 16px', borderBottom: i < sortedProjects.length - 1 ? '1px solid var(--divider)' : 'none',
                   alignItems: 'center', cursor: 'pointer',
                 }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
@@ -765,7 +1018,12 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                 >
                   <span style={{ width: 10, height: 10, borderRadius: 3, background: accent }}/>
                   <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
-                  <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
+                    {isSearching && p.archived && (
+                      <span className="chip" style={{ background: 'var(--text-4)', color: 'var(--bg)', fontSize: 10 }}>アーカイブ</span>
+                    )}
+                  </div>
                   <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{formatDates(p.startDate, p.endDate)}</span>
                   <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={22}/>
                   <div style={{ height: 6, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
@@ -812,6 +1070,9 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
+                        {isSearching && p.archived && (
+                          <span className="chip" style={{ background: 'var(--text-4)', color: 'var(--bg)', fontSize: 10 }}>アーカイブ</span>
+                        )}
                         <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={20}/>
                         <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 2 }}>{p.memberCount}人</span>
                       </div>
@@ -834,8 +1095,11 @@ export const ProjectListView = ({ openPanel, isMobile }: ProjectListViewProps) =
                       ? <img src={p.coverPhotoUrl} alt="" style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }}/>
                       : <MountainPhoto idx={p.coverPhotoIdx} height={120} flat/>
                     }
-                    <div style={{ position: 'absolute', top: 10, left: 10 }}>
+                    <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                       <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
+                      {isSearching && p.archived && (
+                        <span className="chip" style={{ background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 10, backdropFilter: 'blur(4px)' }}>アーカイブ</span>
+                      )}
                     </div>
                   </div>
                   <div style={{ padding: '12px 14px 14px' }}>

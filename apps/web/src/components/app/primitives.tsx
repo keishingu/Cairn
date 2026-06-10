@@ -1,7 +1,21 @@
 'use client'
 
 import React from 'react'
-import { photoUrl } from './data'
+
+const PHOTO_IDS = [
+  '1464822759023-fed622ff2c3b', '1483728642387-6c3bdd6c93e5', '1454391304352-2bf4678b1a7a',
+  '1519681393784-d120267933ba', '1486870591958-9b9d0d1dda99', '1454496522488-7a8e488e8606',
+  '1469854523086-cc02fe5d8800', '1426604966848-d7adac402bff', '1418065460487-3956c3a83d04',
+  '1551632811-561732d1e306',    '1506905925346-21bda4d32df4', '1444930694458-01babe71870e',
+  '1502082553048-f009c37129b9', '1601925240970-98447a0e0cb0', '1542202229-7d93c33f5d07',
+  '1464822759023-fed622ff2c3b', '1543946207-39bd91e70ca7', '1496614932623-0a3a9743552e',
+  '1517524008697-84bbe3c3fd98', '1483356046701-7565d31be5c5',
+]
+
+const photoUrl = (idx: number, w = 600, h = 400) => {
+  const id = PHOTO_IDS[Math.abs(idx) % PHOTO_IDS.length]
+  return `https://images.unsplash.com/photo-${id}?w=${w}&h=${h}&fit=crop&auto=format&q=70`
+}
 
 // ─── Icon ─────────────────────────────────────────────────────────
 interface IconProps {
@@ -19,6 +33,7 @@ const PATHS: Record<string, React.ReactNode> = {
   check:       <><polyline points="20 6 9 17 4 12"/></>,
   chat:        <><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z"/></>,
   file:        <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/></>,
+  'file-text': <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></>,
   users:       <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
   userPlus:    <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></>,
   settings:    <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></>,
@@ -32,6 +47,8 @@ const PATHS: Record<string, React.ReactNode> = {
   chevDown:    <><polyline points="6 9 12 15 18 9"/></>,
   chevRight:   <><polyline points="9 6 15 12 9 18"/></>,
   chevLeft:    <><polyline points="15 6 9 12 15 18"/></>,
+  chevronsLeft:  <><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></>,
+  chevronsRight: <><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></>,
   close:       <><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></>,
   more:        <><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></>,
   filter:      <><polygon points="22 3 2 3 10 12.5 10 19 14 21 14 12.5"/></>,
@@ -62,6 +79,7 @@ const PATHS: Record<string, React.ReactNode> = {
   tent:        <><path d="M3 20l9-15 9 15z"/><path d="M12 5v15"/><path d="M9 20l3-4 3 4"/></>,
   mic:         <><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 12a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></>,
   map:         <><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21"/><line x1="8" y1="3" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="21"/></>,
+  'map-pin':   <><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></>,
   logout:      <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
   monitor:     <><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></>,
   refresh:     <><polyline points="23 4 23 10 17 10"/><path d="M20.5 16a9 9 0 1 1-2.5-9.4L23 10"/></>,
@@ -195,11 +213,25 @@ export const MountainPhoto = ({ idx = 0, height = 200, flat = false, radius }: M
 )
 
 // ─── TopBar search box ────────────────────────────────────────────
-export const TopBarSearch = () => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '0 10px', height: 32, width: 280 }}>
-    <Icon name="search" size={14} color="var(--text-3)"/>
-    <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-4)' }}>プロジェクト・人・ファイルを検索</span>
-    <span className="kbd">⌘K</span>
+export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+}) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: `1px solid ${value ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8, padding: '0 10px', height: 32, width: 260, transition: 'border-color .12s' }}>
+    <Icon name="search" size={14} color={value ? 'var(--accent)' : 'var(--text-3)'}/>
+    <input
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+      onKeyDown={e => { if (e.key === 'Escape') onChange('') }}
+    />
+    {value && (
+      <button onClick={() => onChange('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>
+        <Icon name="close" size={12}/>
+      </button>
+    )}
   </div>
 )
 

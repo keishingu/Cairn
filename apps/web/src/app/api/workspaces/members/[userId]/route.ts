@@ -1,0 +1,98 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+import { NextResponse } from 'next/server'
+import { getAuthContext } from '@/lib/get-auth-context'
+import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
+
+const VALID_ROLES = ['owner', 'admin', 'member', 'guest'] as const
+type WorkspaceRole = (typeof VALID_ROLES)[number]
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ userId: string }> },
+) {
+  const { userId: targetUserId } = await params
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const { role: newRole } = body as { role?: string }
+  if (!newRole || !VALID_ROLES.includes(newRole as WorkspaceRole)) {
+    return NextResponse.json(
+      { error: 'role は owner/admin/member/guest のいずれかが必要です' },
+      { status: 422 },
+    )
+  }
+
+  try {
+    const { db } = await import('@cairn/db')
+    const { workspaceMembers } = await import('@cairn/db')
+    const { eq, and, count } = await import('drizzle-orm')
+
+    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    if (!isWorkspaceAdmin(callerRole)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const [target] = await db
+      .select({ role: workspaceMembers.role })
+      .from(workspaceMembers)
+      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
+      .limit(1)
+
+    if (!target) {
+      return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+    }
+
+    const currentRole = target.role
+
+    // admin は owner に関わる変更を行えない
+    if (callerRole !== 'owner') {
+      if (newRole === 'owner') {
+        return NextResponse.json(
+          { error: 'owner への昇格は owner のみ実行できます' },
+          { status: 403 },
+        )
+      }
+      if (currentRole === 'owner') {
+        return NextResponse.json(
+          { error: 'owner のロール変更は owner のみ実行できます' },
+          { status: 403 },
+        )
+      }
+    }
+
+    // owner を降格する場合、ワークスペースに最低1人の owner が残るか確認
+    if (currentRole === 'owner' && newRole !== 'owner') {
+      const ownerCountRows = await db
+        .select({ ownerCount: count() })
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.role, 'owner')))
+      const ownerCount = Number(ownerCountRows[0]?.ownerCount ?? 0)
+
+      if (ownerCount <= 1) {
+        return NextResponse.json(
+          { error: 'ワークスペースには最低1人の owner が必要です' },
+          { status: 422 },
+        )
+      }
+    }
+
+    await db
+      .update(workspaceMembers)
+      .set({ role: newRole as WorkspaceRole })
+      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
+
+    return NextResponse.json({ userId: targetUserId, role: newRole })
+  } catch (err) {
+    console.error('[PATCH /api/workspaces/members/[userId]]', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

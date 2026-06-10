@@ -4,8 +4,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 
-const DEV_TOKEN = 'dev-ical-token-00000000000000000000000000000001'
-
 function generateToken(): string {
   const bytes = new Uint8Array(24)
   crypto.getRandomValues(bytes)
@@ -15,10 +13,6 @@ function generateToken(): string {
 export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ token: DEV_TOKEN })
-  }
 
   try {
     const { db } = await import('@cairn/db')
@@ -50,10 +44,6 @@ export async function GET() {
 export async function POST() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ token: DEV_TOKEN })
-  }
 
   try {
     const { db } = await import('@cairn/db')

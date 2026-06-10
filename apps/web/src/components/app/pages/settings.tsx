@@ -4,13 +4,13 @@ import React from 'react'
 import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
+import { BellButton } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
-import type { WorkspaceCoverPhoto } from '@/app/api/workspaces/cover-photos/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 const Toggle = ({ on }: { on: boolean }) => (
@@ -507,8 +507,7 @@ const SettingsAI = () => (
       <div className="card">
         {[
           { l: 'ファイルアップロード時に自動要約', s: 'PDF / XLSX / GPX', on: true },
-          { l: 'チャットで @AI でメンション呼び出し', s: '即時応答', on: true },
-          { l: 'ダッシュボードに自動サマリー生成', s: '毎日 7:00 / 22:00', on: true },
+{ l: 'ダッシュボードに自動サマリー生成', s: '毎日 7:00 / 22:00', on: true },
           { l: '危険情報を検知して通知', s: '天候・遭難情報・装備不足', on: false },
         ].map((r, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderBottom: i < 3 ? '1px solid var(--divider)' : 'none' }}>
@@ -768,167 +767,6 @@ const SettingsWorkspaceGeneral = () => {
   )
 }
 
-const SettingsCoverPhotos = () => {
-  const queryClient = useQueryClient()
-  const { data: photos = [], isLoading } = useQuery<WorkspaceCoverPhoto[]>({
-    queryKey: ['workspace-cover-photos'],
-    queryFn: () => fetchWithAuth('/api/workspaces/cover-photos').then(r => r.json()),
-  })
-  const fileInputRef = React.useRef<HTMLInputElement>(null)
-  const [uploading, setUploading] = React.useState(false)
-  const [uploadError, setUploadError] = React.useState('')
-  const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null)
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    setUploadError('')
-    try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await fetchWithAuth('/api/workspaces/cover-photos', { method: 'POST', body: fd })
-      if (!res.ok) {
-        const body = await res.json() as { error?: string }
-        throw new Error(body.error ?? 'アップロードに失敗しました')
-      }
-      const newPhoto = await res.json() as WorkspaceCoverPhoto
-      queryClient.setQueryData<WorkspaceCoverPhoto[]>(['workspace-cover-photos'], old => [...(old ?? []), newPhoto])
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'エラーが発生しました')
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }
-
-  const deletePhoto = useMutation({
-    mutationFn: (id: string) => fetchWithAuth('/api/workspaces/cover-photos', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    }).then(r => { if (!r.ok && r.status !== 204) throw new Error('削除に失敗しました') }),
-    onSuccess: (_data, id) => {
-      queryClient.setQueryData<WorkspaceCoverPhoto[]>(['workspace-cover-photos'], old => (old ?? []).filter(p => p.id !== id))
-      setConfirmDeleteId(null)
-    },
-  })
-
-  return (
-    <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>カバー写真ライブラリ</h1>
-      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
-        プロジェクト作成時に選択できるカバー写真をここでまとめてアップロードできます。
-      </p>
-
-      <section style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>写真一覧</h2>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="btn btn-primary"
-            style={{ height: 32, padding: '0 14px', fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          >
-            <Icon name={uploading ? 'loader' : 'upload'} size={13}/>
-            {uploading ? 'アップロード中…' : '写真を追加'}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif,image/heic"
-            style={{ display: 'none' }}
-            onChange={handleUpload}
-          />
-        </div>
-
-        {uploadError && (
-          <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 12.5 }}>
-            {uploadError}
-          </div>
-        )}
-
-        {isLoading ? (
-          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>読み込み中…</div>
-        ) : photos.length === 0 ? (
-          <div className="card" style={{ padding: 32, textAlign: 'center' }}>
-            <Icon name="image" size={28} color="var(--text-4)"/>
-            <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>写真がまだありません</div>
-            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-3)' }}>「写真を追加」からアップロードしてください</div>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
-            {photos.map(photo => (
-              <div key={photo.id} style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', aspectRatio: '16/9', background: 'var(--card-2)' }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
-                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.6) 100%)', opacity: 0, transition: 'opacity .15s' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '0' }}
-                >
-                  <button
-                    onClick={() => setConfirmDeleteId(photo.id)}
-                    style={{ position: 'absolute', top: 6, right: 6, width: 26, height: 26, borderRadius: 6, border: 'none', background: 'rgba(0,0,0,0.5)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <Icon name="trash" size={13}/>
-                  </button>
-                  <div style={{ position: 'absolute', bottom: 6, left: 8, right: 8, fontSize: 11, color: '#fff', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {photo.name}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Delete confirmation dialog */}
-      {confirmDeleteId !== null && (() => {
-        const photo = photos.find(p => p.id === confirmDeleteId)
-        return (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
-            onClick={e => { if (e.target === e.currentTarget) setConfirmDeleteId(null) }}
-          >
-            <div className="card" style={{ width: 360, borderRadius: 14, padding: 20, boxShadow: 'var(--shadow-xl)' }}>
-              {photo && (
-                <div style={{ borderRadius: 8, overflow: 'hidden', marginBottom: 16, aspectRatio: '16/9' }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photo.url} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
-                </div>
-              )}
-              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>写真を削除しますか？</div>
-              <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginBottom: 18, lineHeight: 1.6 }}>
-                「{photo?.name ?? ''}」を削除します。この写真をカバーに設定しているプロジェクトはデフォルトの写真に戻ります。
-              </div>
-              {deletePhoto.error && (
-                <div style={{ marginBottom: 12, padding: '7px 10px', borderRadius: 7, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 12 }}>
-                  {deletePhoto.error instanceof Error ? deletePhoto.error.message : '削除に失敗しました'}
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => setConfirmDeleteId(null)}
-                  disabled={deletePhoto.isPending}
-                  style={{ flex: 1, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
-                >
-                  キャンセル
-                </button>
-                <button
-                  onClick={() => deletePhoto.mutate(confirmDeleteId)}
-                  disabled={deletePhoto.isPending}
-                  style={{ flex: 1, height: 36, borderRadius: 8, border: 'none', background: 'var(--red)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: deletePhoto.isPending ? 'default' : 'pointer', fontFamily: 'inherit', opacity: deletePhoto.isPending ? 0.7 : 1 }}
-                >
-                  {deletePhoto.isPending ? '削除中…' : '削除する'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-    </div>
-  )
-}
-
 const SettingsIntegrations = () => {
   const { data, refetch } = useQuery<{ token: string }>({
     queryKey: ['ical-token'],
@@ -1020,12 +858,13 @@ const STATUS_CONFIG: Record<ServiceStatus['status'], { label: string; color: str
 }
 
 type ServiceKey = Exclude<keyof DevStatusDto, 'env'>
-const SERVICE_META: { key: ServiceKey; label: string; icon: string }[] = [
-  { key: 'supabaseDb',      label: 'Supabase Database', icon: 'database' },
-  { key: 'supabaseStorage', label: 'Supabase Storage',  icon: 'archive' },
-  { key: 'inngest',         label: 'Inngest',            icon: 'sparkles' },
-  { key: 'openai',          label: 'OpenAI',             icon: 'sparkles' },
-  { key: 'tavily',          label: 'Tavily',             icon: 'search' },
+const SERVICE_META: { key: ServiceKey; label: string; icon: string; purpose: string }[] = [
+  { key: 'supabaseDb',      label: 'Supabase Database',   icon: 'database',  purpose: 'プロジェクト・タスク・メッセージなど全データの永続化に必要' },
+  { key: 'supabaseStorage', label: 'Supabase Storage',    icon: 'archive',   purpose: 'カバー写真・ギャラリー画像・添付ファイルの保存に必要' },
+  { key: 'inngest',         label: 'Inngest',              icon: 'sparkles',  purpose: 'AI エージェント・通知・外部連携などの非同期ジョブ実行に必要' },
+  { key: 'openai',          label: 'OpenAI',               icon: 'sparkles',  purpose: 'AI アシスタント・ドキュメント要約・ベクトル検索に必要' },
+  { key: 'googleMaps',      label: 'Google Maps Platform', icon: 'map-pin',   purpose: 'プロジェクト作成時の場所オートコンプリートとカバー写真取得に必要' },
+  { key: 'tavily',          label: 'Tavily',               icon: 'search',    purpose: 'AI エージェントのウェブ検索機能に必要（省略可）' },
 ]
 
 const SettingsDeveloper = () => {
@@ -1055,7 +894,7 @@ const SettingsDeveloper = () => {
       <section style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>外部サービス</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
-          {SERVICE_META.map(({ key, label, icon }) => {
+          {SERVICE_META.map(({ key, label, icon, purpose }) => {
             const s = data?.[key]
             const cfg = s ? STATUS_CONFIG[s.status] : null
             return (
@@ -1065,8 +904,9 @@ const SettingsDeveloper = () => {
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{label}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 1 }}>{purpose}</div>
                   {s?.detail && (
-                    <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>{s.detail}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{s.detail}</div>
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
@@ -1093,7 +933,6 @@ const SettingsDeveloper = () => {
           <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
             {[
               { label: 'NODE_ENV',      value: data.env.nodeEnv },
-              { label: 'DATABASE_URL',  value: data.env.hasDatabase ? '設定済み' : '未設定（モックモード）' },
               { label: 'VAPID',         value: data.env.hasVapid  ? '設定済み' : '未設定（Push 通知無効）' },
             ].map(({ label, value }, i, arr) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: 'var(--card)', borderBottom: i < arr.length - 1 ? '1px solid var(--divider)' : 'none' }}>
@@ -1120,7 +959,6 @@ const NAV_GROUPS = [
     label: 'ワークスペース',
     items: [
       { id: 'general',       l: 'ワークスペース設定',   i: 'settings' },
-      { id: 'cover-photos',  l: 'カバー写真',           i: 'image' },
       { id: 'workflow',      l: 'ワークフロー',         i: 'flag' },
       { id: 'ai',            l: 'AIエージェント',       i: 'sparkles' },
       { id: 'members',       l: 'メンバー',             i: 'users' },
@@ -1141,7 +979,10 @@ export const PageSettings = () => {
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={{ width: 220, borderRight: '1px solid var(--border)', padding: '20px 14px', background: 'var(--card)' }}>
-        <h2 style={{ margin: '0 8px 14px', fontSize: 16, fontWeight: 700 }}>設定</h2>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
+          <h2 style={{ margin: '0 8px 0', fontSize: 16, fontWeight: 700, flex: 1 }}>設定</h2>
+          <BellButton />
+        </div>
         {NAV_GROUPS.map((group, gi) => (
           <div key={group.label} style={{ marginBottom: gi < NAV_GROUPS.length - 1 ? 16 : 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0 10px', marginBottom: 4 }}>
@@ -1166,12 +1007,11 @@ export const PageSettings = () => {
         {section === 'account'       && <SettingsAccount/>}
         {section === 'appearance'    && <SettingsAppearance/>}
         {section === 'general'       && <SettingsWorkspaceGeneral/>}
-        {section === 'cover-photos'  && <SettingsCoverPhotos/>}
         {section === 'workflow'      && <SettingsWorkflow/>}
         {section === 'ai'            && <SettingsAI/>}
         {section === 'integrations'  && <SettingsIntegrations/>}
         {section === 'developer'     && <SettingsDeveloper/>}
-        {section !== 'account' && section !== 'appearance' && section !== 'general' && section !== 'cover-photos' && section !== 'workflow' && section !== 'ai' && section !== 'integrations' && section !== 'developer' && (
+        {section !== 'account' && section !== 'appearance' && section !== 'general' && section !== 'workflow' && section !== 'ai' && section !== 'integrations' && section !== 'developer' && (
           <div>
             <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
               {{ members: 'メンバー', billing: '請求' }[section] ?? section}

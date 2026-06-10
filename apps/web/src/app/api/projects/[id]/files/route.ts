@@ -23,10 +23,6 @@ export async function GET(_req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json([] satisfies ProjectFileDto[])
-  }
-
   try {
     const { db, files, profiles, projects, galleryItems, documentChunks } = await import('@cairn/db')
     const { eq, and, isNull, desc, inArray } = await import('drizzle-orm')

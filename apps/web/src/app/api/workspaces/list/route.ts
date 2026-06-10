@@ -16,12 +16,6 @@ export async function GET() {
   const { userId, error } = await getAuthUser()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json([
-      { id: '10000000-0000-0000-0000-000000000001', name: 'Dev Workspace', slug: 'dev', logoUrl: null, role: 'owner' },
-    ] satisfies WorkspaceListItemDto[])
-  }
-
   try {
     const { db, workspaces, workspaceMembers } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')

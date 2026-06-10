@@ -4,24 +4,13 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireWorkspaceAdmin } from '@/lib/permissions'
 
 const createInviteSchema = z.object({
   expiresIn: z.enum(['1h', '30d', 'never']).default('1h'),
   maxUses: z.number().int().positive().nullable().optional(),
   role: z.enum(['member', 'guest']).default('member'),
 })
-
-async function requireAdminRole(workspaceId: string, userId: string): Promise<boolean> {
-  const { db } = await import('@cairn/db')
-  const { workspaceMembers } = await import('@cairn/db')
-  const { eq, and } = await import('drizzle-orm')
-  const [caller] = await db
-    .select({ role: workspaceMembers.role })
-    .from(workspaceMembers)
-    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
-    .limit(1)
-  return !!caller && (caller.role === 'owner' || caller.role === 'admin')
-}
 
 export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
@@ -39,19 +28,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
 
-  if (!process.env['DATABASE_URL']) {
-    const mockToken = 'mock-invite-token-dev'
-    return NextResponse.json({
-      token: mockToken,
-      url: `${new URL(req.url).origin}/invite/${mockToken}`,
-      expiresAt: null,
-    })
-  }
-
   try {
-    if (!(await requireAdminRole(ctx.workspaceId, ctx.userId))) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+    if (forbidden) return forbidden
 
     const { db } = await import('@cairn/db')
     const { workspaceInvites } = await import('@cairn/db')
@@ -96,9 +75,8 @@ export async function GET(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ invites: [] })
-  }
+  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')

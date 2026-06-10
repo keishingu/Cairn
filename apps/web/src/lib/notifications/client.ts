@@ -35,6 +35,11 @@ export function useNotifications(filter: string) {
   })
 }
 
+export function useUnreadNotificationCount(): number {
+  const { data = [] } = useNotifications('unread')
+  return data.length
+}
+
 export function useMarkNotificationsRead() {
   const queryClient = useQueryClient()
   return useMutation({

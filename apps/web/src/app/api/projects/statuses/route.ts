@@ -3,23 +3,13 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireWorkspaceAdmin } from '@/lib/permissions'
 
 export interface ProjectStatusDto {
   id: string
   name: string
   color: string
   sortOrder: string
-}
-
-function mockStatuses(): ProjectStatusDto[] {
-  return [
-    { id: '20000000-0000-0000-0000-000000000001', name: '計画中',     color: '#3B82F6', sortOrder: '1' },
-    { id: '20000000-0000-0000-0000-000000000002', name: '審議中',     color: '#F59E0B', sortOrder: '2' },
-    { id: '20000000-0000-0000-0000-000000000003', name: '実施待ち',   color: '#10B981', sortOrder: '3' },
-    { id: '20000000-0000-0000-0000-000000000004', name: '実施中',     color: '#8B5CF6', sortOrder: '4' },
-    { id: '20000000-0000-0000-0000-000000000005', name: '振り返り中', color: '#F43F5E', sortOrder: '5' },
-    { id: '20000000-0000-0000-0000-000000000006', name: '完了',       color: '#6B7280', sortOrder: '6' },
-  ]
 }
 
 export async function POST(req: Request) {
@@ -42,14 +32,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'name is required' }, { status: 422 })
   }
 
-  if (!process.env['DATABASE_URL']) {
-    const newId = crypto.randomUUID()
-    const existing = mockStatuses()
-    const sortOrder = String(existing.length + 1)
-    return NextResponse.json({
-      id: newId, name: name.trim(), color, sortOrder,
-    } satisfies ProjectStatusDto, { status: 201 })
-  }
+  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
@@ -92,10 +76,6 @@ export async function GET() {
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(mockStatuses())
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { projectStatuses } = await import('@cairn/db')
@@ -114,7 +94,7 @@ export async function GET() {
 
     return NextResponse.json(rows satisfies ProjectStatusDto[])
   } catch (err) {
-    console.error('[/api/projects/statuses] DB query failed, using mock data:', err)
-    return NextResponse.json(mockStatuses())
+    console.error('[/api/projects/statuses] DB query failed:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

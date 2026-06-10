@@ -3,16 +3,19 @@
 
 'use client'
 
-import { useAppShell } from '@/components/app/app-shell-context'
+import React from 'react'
 import { TopBar } from '@/components/app/sidebar'
+import { TopBarSearch } from '@/components/app/primitives'
 import { PageFiles } from '@/components/app/pages/files'
 
 export default function FilesPage() {
-  const { openNotif } = useAppShell()
+  const [search, setSearch] = React.useState('')
   return (
     <>
-      <TopBar title="ファイル" onBell={openNotif}/>
-      <PageFiles />
+      <TopBar title="ファイル">
+        <TopBarSearch value={search} onChange={setSearch} placeholder="ファイルを検索…"/>
+      </TopBar>
+      <PageFiles externalSearch={search}/>
     </>
   )
 }

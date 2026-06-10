@@ -10,14 +10,36 @@
       "resizeMode": "contain",
       "backgroundColor": "#0B0F14"
     },
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "ios": {
-      "bundleIdentifier": "com.cairn.app",
+      "bundleIdentifier": "com.oss-cairn",
       "infoPlist": {
-        "NSUserNotificationsUsageDescription": "プロジェクトのメンションやタスクの更新を通知します"
+        "NSUserNotificationsUsageDescription": "プロジェクトのメンションやタスクの更新を通知します",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
-    "android": { "package": "com.cairn.app" },
-    "plugins": ["expo-router", "expo-secure-store"]
+    "android": {
+      "package": "com.oss_cairn"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "46195650-8dc8-4c73-9b32-c1b5134c0326"
+      }
+    },
+    "owner": "keishingu",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/46195650-8dc8-4c73-9b32-c1b5134c0326"
+    }
   }
 }

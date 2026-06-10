@@ -18,40 +18,37 @@ export async function middleware(request: NextRequest) {
 
   let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
 
-  const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL']
-  const supabasePublishableKey = process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']
+  const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL']!
+  const supabasePublishableKey = process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']!
 
-  // Supabase 環境変数が揃っているときのみ認証チェックを行う
-  if (supabaseUrl && supabasePublishableKey) {
-    const supabase = createServerClient(supabaseUrl, supabasePublishableKey, {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
-          )
-        },
+  const supabase = createServerClient(supabaseUrl, supabasePublishableKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll()
       },
-    })
+      setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+        supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
+        cookiesToSet.forEach(({ name, value, options }) =>
+          supabaseResponse.cookies.set(name, value, options),
+        )
+      },
+    },
+  })
 
-    const { data: { user } } = await supabase.auth.getUser()
-    const { pathname } = request.nextUrl
-    const isAuthRoute = pathname.startsWith('/auth')
-    // 未ログインでもアクセスできるパブリックルート
-    const isPublicRoute = pathname.startsWith('/invite')
-    // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
-    const isOnboardingRoute = pathname.startsWith('/onboarding')
+  const { data: { user } } = await supabase.auth.getUser()
+  const { pathname } = request.nextUrl
+  const isAuthRoute = pathname.startsWith('/auth')
+  // 未ログインでもアクセスできるパブリックルート
+  const isPublicRoute = pathname.startsWith('/invite') || pathname.startsWith('/lp')
+  // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
+  const isOnboardingRoute = pathname.startsWith('/onboarding')
 
-    if (!user && !isAuthRoute && !isPublicRoute) {
-      return NextResponse.redirect(new URL('/auth/login', request.url))
-    }
-    if (user && isAuthRoute && !isOnboardingRoute) {
-      return NextResponse.redirect(new URL('/projects', request.url))
-    }
+  if (!user && !isAuthRoute && !isPublicRoute) {
+    return NextResponse.redirect(new URL('/auth/login', request.url))
+  }
+  if (user && isAuthRoute && !isOnboardingRoute) {
+    return NextResponse.redirect(new URL('/projects', request.url))
   }
 
   return supabaseResponse

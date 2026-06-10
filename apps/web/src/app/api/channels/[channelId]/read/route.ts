@@ -11,10 +11,6 @@ export async function POST(_req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ ok: true })
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { channelReadStates, messages } = await import('@cairn/db')

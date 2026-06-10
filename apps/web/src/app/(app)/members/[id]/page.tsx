@@ -3,8 +3,7 @@
 
 'use client'
 
-import { use } from 'react'
-import { useAppShell } from '@/components/app/app-shell-context'
+import React, { use } from 'react'
 import { TopBar } from '@/components/app/sidebar'
 import { TopBarSearch } from '@/components/app/primitives'
 import { PageMembers } from '@/components/app/pages/members-page'
@@ -15,13 +14,13 @@ interface Props {
 
 export default function MemberDetailPage({ params }: Props) {
   const { id } = use(params)
-  const { openNotif } = useAppShell()
+  const [search, setSearch] = React.useState('')
   return (
     <>
-      <TopBar title="メンバー" onBell={openNotif}>
-        <TopBarSearch />
+      <TopBar title="メンバー">
+        <TopBarSearch value={search} onChange={setSearch} placeholder="メンバーを検索…"/>
       </TopBar>
-      <PageMembers initialUserId={id} />
+      <PageMembers initialUserId={id} externalSearch={search}/>
     </>
   )
 }

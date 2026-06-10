@@ -11,10 +11,6 @@ export async function GET(_req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return new NextResponse(null, { status: 404 })
-  }
-
   const { fileId } = await params
 
   try {
@@ -76,10 +72,6 @@ export async function GET(_req: Request, { params }: RouteContext) {
 export async function DELETE(_req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ success: true })
-  }
 
   const { fileId } = await params
 

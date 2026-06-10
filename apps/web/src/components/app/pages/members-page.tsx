@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import { Icon, Avatar } from '../primitives'
@@ -97,13 +97,21 @@ const MemberCard = ({ member, projectCount, selected, onClick }: MemberCardProps
 interface PageMembersProps {
   initialUserId?: string
   isMobile?: boolean
+  externalSearch?: string
 }
 
-export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
+export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMembersProps) => {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [search, setSearch] = React.useState('')
+  const effectiveSearch = isMobile ? search : (externalSearch ?? search)
   const [roleFilter, setRoleFilter] = React.useState<WorkspaceMemberDto['role'] | 'all'>('all')
-  const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
+  // ナビゲーション時の remount でパネルが一瞬消えないよう、キャッシュから初期値を復元する
+  const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(() => {
+    if (!initialUserId || isMobile) return null
+    const cached = queryClient.getQueryData<WorkspaceMemberDto[]>(['workspace-members'])
+    return cached?.find(m => m.userId === initialUserId) ?? null
+  })
   const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
   const [mobileDetailMember, setMobileDetailMember] = React.useState<WorkspaceMemberDto | null>(null)
   const [showInviteModal, setShowInviteModal] = React.useState(false)
@@ -127,6 +135,8 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
       archived:           false,
       coverPhotoIdx:      p.coverPhotoIdx,
       coverPhotoUrl:      null,
+      location:           null,
+      placeId:            null,
     })
   }
 
@@ -152,11 +162,11 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
 
   const filtered = React.useMemo(() => {
     return members.filter(m => {
-      const matchSearch = search === '' || m.displayName.includes(search)
+      const matchSearch = effectiveSearch === '' || m.displayName.toLowerCase().includes(effectiveSearch.toLowerCase())
       const matchRole = roleFilter === 'all' || m.role === roleFilter
       return matchSearch && matchRole
     })
-  }, [members, search, roleFilter])
+  }, [members, effectiveSearch, roleFilter])
 
   const counts = React.useMemo(() => {
     const c = new Map<string, number>([['all', members.length]])
@@ -291,22 +301,6 @@ export const PageMembers = ({ initialUserId, isMobile }: PageMembersProps) => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {/* Toolbar */}
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <div style={{ flex: 1, position: 'relative' }}>
-            <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-4)', pointerEvents: 'none' }}>
-              <Icon name="search" size={14} />
-            </div>
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="メンバーを検索…"
-              style={{
-                width: '100%', maxWidth: 280, height: 34, padding: '0 12px 0 32px',
-                border: '1px solid var(--border)', borderRadius: 8,
-                background: 'var(--card)', color: 'var(--text)', fontSize: 13,
-                fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
-              }}
-            />
-          </div>
           <div style={{ display: 'flex', gap: 2 }}>
             {roleFilters.map(f => (
               <button
@@ -393,12 +387,37 @@ const EXPIRES_OPTIONS: { value: ExpiresIn; label: string }[] = [
   { value: 'never', label: '無期限' },
 ]
 
+interface InviteRecord {
+  id: string
+  token: string
+  url: string
+  expiresAt: string | null
+  maxUses: number | null
+  useCount: number
+  role: string
+  createdAt: string
+  createdByName: string
+}
+
 function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boolean }) {
   const [expiresIn, setExpiresIn] = React.useState<ExpiresIn>('1h')
   const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
   const [generating, setGenerating] = React.useState(false)
   const [generateError, setGenerateError] = React.useState<string | null>(null)
   const [copied, setCopied] = React.useState(false)
+  const [existingInvites, setExistingInvites] = React.useState<InviteRecord[]>([])
+  const [revoking, setRevoking] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    void fetchExistingInvites()
+  }, [])
+
+  async function fetchExistingInvites() {
+    const res = await fetch('/api/workspaces/invites')
+    if (!res.ok) return
+    const data = await res.json().catch(() => ({})) as { invites?: InviteRecord[] }
+    setExistingInvites(data.invites ?? [])
+  }
 
   async function generateLink() {
     setGenerating(true)
@@ -412,10 +431,19 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
     const data = await res.json().catch(() => ({})) as { url?: string; error?: string }
     if (res.ok && data.url) {
       setInviteUrl(data.url)
+      void fetchExistingInvites()
     } else {
       setGenerateError(data.error ?? '招待リンクの生成に失敗しました')
     }
     setGenerating(false)
+  }
+
+  async function revokeInvite(token: string) {
+    setRevoking(token)
+    await fetch(`/api/workspaces/invites/${token}`, { method: 'DELETE' })
+    setExistingInvites(prev => prev.filter(inv => inv.token !== token))
+    if (inviteUrl?.includes(token)) setInviteUrl(null)
+    setRevoking(null)
   }
 
   async function copyLink() {
@@ -550,6 +578,51 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
               >
                 別のリンクを生成
               </button>
+            </div>
+          )}
+
+          {existingInvites.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>有効なリンク</div>
+              {existingInvites.map(inv => {
+                const expiresLabel = inv.expiresAt
+                  ? `${new Date(inv.expiresAt).toLocaleDateString('ja-JP')} まで`
+                  : '無期限'
+                const roleLabel = inv.role === 'guest' ? 'ゲスト' : 'メンバー'
+                return (
+                  <div
+                    key={inv.token}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '8px 10px', borderRadius: 8,
+                      background: 'var(--bg)', border: '1px solid var(--border-2)',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {inv.url}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>
+                        {roleLabel} · {expiresLabel}{inv.maxUses != null ? ` · ${inv.useCount}/${inv.maxUses}回使用` : ''}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => revokeInvite(inv.token)}
+                      disabled={revoking === inv.token}
+                      style={{
+                        flexShrink: 0, padding: '4px 10px', borderRadius: 6,
+                        border: '1px solid var(--red)', background: 'transparent',
+                        color: revoking === inv.token ? 'var(--text-4)' : 'var(--red-text)',
+                        fontSize: 11.5, fontWeight: 600, cursor: revoking === inv.token ? 'default' : 'pointer',
+                        fontFamily: 'inherit', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {revoking === inv.token ? '処理中...' : '無効化'}
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

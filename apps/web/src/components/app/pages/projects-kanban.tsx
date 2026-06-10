@@ -1,10 +1,17 @@
 'use client'
 
 import React from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import { KanbanBoard } from '../kanban'
 import { MobileHeader } from '@/components/app/mobile/header'
+import { PageToolbar } from './page-toolbar'
+import { CreateProjectModal, FilterPopover } from './project-list'
+import { useProjectLabel } from '@/lib/use-workspace-settings'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 
 interface PageKanbanProps {
   openPanel: (project?: ProjectDto) => void
@@ -12,6 +19,53 @@ interface PageKanbanProps {
 }
 
 export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => {
+  const queryClient = useQueryClient()
+  const projectLabel = useProjectLabel()
+  const [showCreate, setShowCreate] = React.useState(false)
+  const [filterOpen, setFilterOpen] = React.useState(false)
+  const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.kanban_status_filter) ?? '[]') } catch { return [] }
+  })
+  const setStatusFilterPersisted = (v: string[]) => {
+    setStatusFilter(v)
+    localStorage.setItem(STORAGE_KEYS.kanban_status_filter, JSON.stringify(v))
+  }
+  const [memberFilter, setMemberFilter] = React.useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.kanban_member_filter) ?? '[]') } catch { return [] }
+  })
+  const setMemberFilterPersisted = (v: string[]) => {
+    setMemberFilter(v)
+    localStorage.setItem(STORAGE_KEYS.kanban_member_filter, JSON.stringify(v))
+  }
+
+  const filterBtnRef = React.useRef<HTMLDivElement>(null)
+
+  const { data: allStatuses = [] } = useQuery<ProjectStatusDto[]>({
+    queryKey: ['statuses'],
+    queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
+  })
+  const { data: projects = [] } = useQuery<ProjectDto[]>({
+    queryKey: ['projects'],
+    queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
+  })
+
+  const allMembers = React.useMemo(
+    () => [...new Set(projects.flatMap(p => p.memberNames))].sort(),
+    [projects],
+  )
+
+  const handleCreated = (project: ProjectDto) => {
+    queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
+    setShowCreate(false)
+  }
+
+  const projectFilter = React.useCallback(
+    (p: ProjectDto) => memberFilter.length === 0 || memberFilter.some(m => p.memberNames.includes(m)),
+    [memberFilter],
+  )
+
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
@@ -25,23 +79,47 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px 24px', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn"><Icon name="filter" size={13} /> フィルター</button>
-          <button className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            グループ: ステータス <Icon name="chevDown" size={13} />
-          </button>
-          <button className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            すべてのプロジェクト <Icon name="chevDown" size={13} />
-          </button>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn"><Icon name="settings" size={13} /> ステージ設定</button>
-          <button className="btn btn-primary"><Icon name="plus" size={13} /> 新規プロジェクト</button>
-        </div>
-      </div>
+      {showCreate && (
+        <CreateProjectModal onClose={() => setShowCreate(false)} onCreated={handleCreated} />
+      )}
+      <PageToolbar
+        style={{ marginBottom: 14 }}
+        right={
+          <>
+            <div ref={filterBtnRef} style={{ position: 'relative' }}>
+              <button
+                className="btn"
+                onClick={() => setFilterOpen(o => !o)}
+                style={(statusFilter.length + memberFilter.length) > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
+              >
+                <Icon name="filter" size={13} /> フィルター
+                {(statusFilter.length + memberFilter.length) > 0 && (
+                  <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
+                    {statusFilter.length + memberFilter.length}
+                  </span>
+                )}
+              </button>
+              {filterOpen && (
+                <FilterPopover
+                  containerRef={filterBtnRef}
+                  allStatuses={allStatuses} selected={statusFilter} onChange={setStatusFilterPersisted}
+                  allMembers={allMembers} selectedMembers={memberFilter} onChangeMembers={setMemberFilterPersisted}
+                  onClose={() => setFilterOpen(false)}
+                />
+              )}
+            </div>
+            <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+              <Icon name="plus" size={13} /> 新規{projectLabel}
+            </button>
+          </>
+        }
+      />
       <div style={{ flex: 1, minHeight: 0 }}>
-        <KanbanBoard onCardClick={openPanel} />
+        <KanbanBoard
+          onCardClick={openPanel}
+          statusFilter={statusFilter}
+          projectFilter={projectFilter}
+        />
       </div>
     </div>
   )

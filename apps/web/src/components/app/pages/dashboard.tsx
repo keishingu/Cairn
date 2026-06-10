@@ -4,7 +4,6 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { Icon, AvatarStack, StatusChip } from '../primitives'
-import { MEMBERS } from '../data'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
@@ -191,7 +190,7 @@ export const PageDashboard = ({ openPanel, isMobile }: PageDashboardProps) => {
                         <div style={{ fontSize: isMobile ? 13 : 13.5, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{p.title}</div>
                         <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{formatDateRange(p.startDate, p.endDate)}</div>
                       </div>
-                      {!isMobile && <AvatarStack names={MEMBERS.slice(0, Math.min(p.memberCount, 4))} size={22} max={4} />}
+                      {!isMobile && <AvatarStack names={p.memberNames} size={22} max={4} />}
                     </div>
                   )
                 })
@@ -275,7 +274,7 @@ export const PageDashboard = ({ openPanel, isMobile }: PageDashboardProps) => {
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{formatDateRange(p.startDate, p.endDate)}</div>
                     <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'} />
-                    <AvatarStack names={MEMBERS.slice(0, Math.min(p.memberCount, 4))} size={22} />
+                    <AvatarStack names={p.memberNames} size={22} />
                     <div style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                       <Icon name="users" size={12} /> {p.memberCount}人
                     </div>

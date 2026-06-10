@@ -7,9 +7,6 @@ import { createClient } from '@/lib/supabase/server'
 import type { User } from '@supabase/supabase-js'
 import { WORKSPACE_COOKIE } from './workspace-cookie'
 
-const DEV_USER_ID      = '00000000-0000-0000-0000-000000000001'
-const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
-
 export { WORKSPACE_COOKIE } from './workspace-cookie'
 
 // サーバーレス関数インスタンス内でワークスペース ID をキャッシュし、
@@ -31,10 +28,6 @@ type UserResult =
 
 /** ワークスペース所属を問わずユーザー認証だけを行う（招待受け入れ等で使用） */
 export async function getAuthUser(): Promise<UserResult> {
-  if (!process.env['DATABASE_URL']) {
-    return { userId: DEV_USER_ID, error: null }
-  }
-
   const supabase = await createClient()
   const headersList = await headers()
   const authorization = headersList.get('Authorization')
@@ -56,10 +49,6 @@ export async function getAuthUser(): Promise<UserResult> {
 }
 
 export async function getAuthContext(): Promise<AuthResult> {
-  if (!process.env['DATABASE_URL']) {
-    return { ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID }, error: null }
-  }
-
   const supabase = await createClient()
   const headersList = await headers()
   const authorization = headersList.get('Authorization')

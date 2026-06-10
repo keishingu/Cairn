@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireWorkspaceAdmin } from '@/lib/permissions'
 
 const MAX_SIZE = 5 * 1024 * 1024
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
@@ -12,16 +13,15 @@ export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ error: 'ローカル開発モードではロゴのアップロードは利用できません' }, { status: 501 })
-  }
-
   let formData: FormData
   try {
     formData = await req.formData()
   } catch {
     return NextResponse.json({ error: 'Invalid form data' }, { status: 400 })
   }
+
+  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  if (forbidden) return forbidden
 
   const file = formData.get('file')
   if (!(file instanceof File)) {

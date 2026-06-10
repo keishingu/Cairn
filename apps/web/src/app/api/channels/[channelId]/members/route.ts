@@ -18,10 +18,6 @@ export async function GET(
 
   const { channelId } = await params
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json([] satisfies ChannelMemberDto[])
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { channels, channelMembers } = await import('@cairn/db')
@@ -62,10 +58,6 @@ export async function POST(
 
   if (!userId) {
     return NextResponse.json({ error: 'userIdが必要です' }, { status: 400 })
-  }
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ userId, channelId } satisfies ChannelMemberDto, { status: 201 })
   }
 
   try {

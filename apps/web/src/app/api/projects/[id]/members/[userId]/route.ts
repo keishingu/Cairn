@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireProjectManager } from '@/lib/permissions'
 
 export async function DELETE(
   _req: Request,
@@ -11,13 +12,6 @@ export async function DELETE(
   const { id: projectId, userId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    void projectId
-    void userId
-    void ctx
-    return NextResponse.json({ success: true })
-  }
 
   try {
     const { db } = await import('@cairn/db')
@@ -31,6 +25,12 @@ export async function DELETE(
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    // 自分自身の退出は常に許可、他メンバーの削除は project manager 以上が必要
+    if (userId !== ctx.userId) {
+      const forbidden = await requireProjectManager(projectId, ctx.userId, ctx.workspaceId)
+      if (forbidden) return forbidden
     }
 
     const [deleted] = await db

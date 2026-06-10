@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireWorkspaceAdmin } from '@/lib/permissions'
 import type { WorkspaceCoverPhoto } from '@cairn/db'
 
 export type { WorkspaceCoverPhoto }
@@ -16,10 +17,6 @@ const ALLOWED_MIME_TYPES = new Set([
 export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json([] satisfies WorkspaceCoverPhoto[])
-  }
 
   try {
     const { db } = await import('@cairn/db')
@@ -43,12 +40,8 @@ export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(
-      { error: 'ローカル開発モードではアップロードは利用できません' },
-      { status: 501 },
-    )
-  }
+  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  if (forbidden) return forbidden
 
   let formData: FormData
   try {
@@ -132,9 +125,8 @@ export async function DELETE(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ error: 'ローカル開発モードでは利用できません' }, { status: 501 })
-  }
+  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  if (forbidden) return forbidden
 
   let body: { id: string } | null = null
   try {

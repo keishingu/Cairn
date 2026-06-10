@@ -11,7 +11,8 @@
     "clean": "turbo clean",
     "desktop:electron:dev": "pnpm --filter @cairn/desktop-electron dev",
     "desktop:electron:build:prod": "pnpm --filter @cairn/desktop-electron build:prod",
-    "desktop:electron:build:dev": "pnpm --filter @cairn/desktop-electron build:dev"
+    "desktop:electron:build:dev": "pnpm --filter @cairn/desktop-electron build:dev",
+    "setup:mobile-lan": "node scripts/setup-mobile-lan.mjs"
   },
   "devDependencies": {
     "prettier": "^3.4.2",

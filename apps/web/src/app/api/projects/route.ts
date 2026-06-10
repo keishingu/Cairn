@@ -3,7 +3,6 @@
 
 import { NextResponse } from 'next/server'
 import { createProjectSchema } from '@cairn/shared'
-import { PROJECTS, MEMBERS } from '@/components/app/data'
 import { getAuthContext } from '@/lib/get-auth-context'
 
 export interface ProjectDto {
@@ -24,37 +23,8 @@ export interface ProjectDto {
   archived: boolean
   coverPhotoIdx: number
   coverPhotoUrl: string | null
-}
-
-const STATUS_COLOR_MAP: Record<string, string> = {
-  '計画中':     '#3B82F6',
-  '審議中':     '#F59E0B',
-  '実施待ち':   '#10B981',
-  '実施中':     '#8B5CF6',
-  '振り返り中': '#F43F5E',
-  '完了':       '#6B7280',
-}
-
-function mockProjects(): ProjectDto[] {
-  return PROJECTS.map((p, i) => ({
-    id: p.id,
-    title: p.name,
-    description: null,
-    statusName: p.status,
-    statusColor: STATUS_COLOR_MAP[p.status] ?? '#6B7280',
-    startDate: p.startDate,
-    endDate: p.endDate,
-    memberCount: p.members,
-    memberNames: MEMBERS.slice(0, Math.min(p.members, 4)),
-    memberAvatarUrls: MEMBERS.slice(0, Math.min(p.members, 4)).map(() => null),
-    taskCount: 5 + (i * 3) % 8,
-    completedTaskCount: 1 + (i * 2) % 5,
-    isOwner: i % 3 === 0,
-    isMember: true,
-    archived: false,
-    coverPhotoIdx: p.photoIdx,
-    coverPhotoUrl: null,
-  }))
+  location: string | null
+  placeId: string | null
 }
 
 function coverPhotoIdxFromId(id: string): number {
@@ -66,10 +36,6 @@ function coverPhotoIdxFromId(id: string): number {
 export async function GET() {
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json(mockProjects())
-  }
 
   try {
     const { db } = await import('@cairn/db')
@@ -89,6 +55,8 @@ export async function GET() {
         archived: projects.archived,
         createdBy: projects.createdBy,
         coverPhotoUrl: projects.coverPhotoUrl,
+        location: projects.location,
+        placeId: projects.placeId,
       })
       .from(projects)
       .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
@@ -157,12 +125,14 @@ export async function GET() {
       isMember: userProjectIds.has(r.id),
       coverPhotoIdx: coverPhotoIdxFromId(r.id),
       coverPhotoUrl: r.coverPhotoUrl ?? null,
+      location: r.location ?? null,
+      placeId: r.placeId ?? null,
     }))
 
     return NextResponse.json(result)
   } catch (err) {
-    console.error('[/api/projects] DB query failed, using mock data:', err)
-    return NextResponse.json(mockProjects())
+    console.error('[/api/projects] DB query failed:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -182,33 +152,47 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
 
-  if (!process.env['DATABASE_URL']) {
-    const newId = crypto.randomUUID()
-    return NextResponse.json({
-      id: newId,
-      title: parsed.data.title,
-      description: parsed.data.description ?? null,
-      statusName: null,
-      statusColor: null,
-      startDate: parsed.data.startDate ?? null,
-      endDate: parsed.data.endDate ?? null,
-      memberCount: 1,
-      memberNames: [],
-      memberAvatarUrls: [],
-      taskCount: 0,
-      completedTaskCount: 0,
-      isOwner: true,
-      isMember: true,
-      archived: false,
-      coverPhotoIdx: coverPhotoIdxFromId(newId),
-      coverPhotoUrl: parsed.data.coverPhotoUrl ?? null,
-    } satisfies ProjectDto, { status: 201 })
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { projects, channels, projectStatuses } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
+
+    let coverPhotoUrl = parsed.data.coverPhotoUrl ?? null
+
+    if (parsed.data.placePhotoName && !coverPhotoUrl) {
+      const apiKey = process.env['GOOGLE_MAPS_API_KEY']
+      if (apiKey) {
+        try {
+          const mediaRes = await fetch(
+            `https://places.googleapis.com/v1/${parsed.data.placePhotoName}/media?maxWidthPx=1200&skipHttpRedirect=true&key=${apiKey}`,
+          )
+          if (mediaRes.ok) {
+            const media = await mediaRes.json() as { photoUri?: string }
+            if (media.photoUri) {
+              const imgRes = await fetch(media.photoUri)
+              if (imgRes.ok) {
+                const buffer = await imgRes.arrayBuffer()
+                const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
+                const ext = contentType.includes('png') ? 'png' : 'jpg'
+                const slug = parsed.data.placePhotoName.split('/').join('_')
+                const storagePath = `place-photos/${slug}.${ext}`
+                const { createServiceRoleClient } = await import('@/lib/supabase/service')
+                const supabase = createServiceRoleClient()
+                const { error: uploadError } = await supabase.storage
+                  .from('covers')
+                  .upload(storagePath, buffer, { contentType, upsert: false })
+                if (!uploadError || uploadError.message.toLowerCase().includes('already exist')) {
+                  const { data: { publicUrl } } = supabase.storage.from('covers').getPublicUrl(storagePath)
+                  coverPhotoUrl = publicUrl
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[/api/projects POST] place photo upload failed (skipped):', e)
+        }
+      }
+    }
 
     const [inserted] = await db
       .insert(projects)
@@ -219,10 +203,12 @@ export async function POST(req: Request) {
         statusId: parsed.data.statusId ?? null,
         startDate: parsed.data.startDate ?? null,
         endDate: parsed.data.endDate ?? null,
-        coverPhotoUrl: parsed.data.coverPhotoUrl ?? null,
+        coverPhotoUrl,
+        location: parsed.data.location ?? null,
+        placeId: parsed.data.placeId ?? null,
         createdBy: ctx.userId,
       })
-      .returning({ id: projects.id, title: projects.title, description: projects.description, startDate: projects.startDate, endDate: projects.endDate, coverPhotoUrl: projects.coverPhotoUrl })
+      .returning({ id: projects.id, title: projects.title, description: projects.description, startDate: projects.startDate, endDate: projects.endDate, coverPhotoUrl: projects.coverPhotoUrl, location: projects.location })
 
     if (!inserted) throw new Error('Insert returned no rows')
 
@@ -242,6 +228,14 @@ export async function POST(req: Request) {
       workspaceId: ctx.workspaceId,
       projectId: inserted.id,
       type: 'project',
+    })
+
+    const { projectMembers } = await import('@cairn/db')
+    await db.insert(projectMembers).values({
+      projectId: inserted.id,
+      userId: ctx.userId,
+      role: 'leader',
+      attendance: 'attending',
     })
 
     try {
@@ -272,6 +266,8 @@ export async function POST(req: Request) {
       archived: false,
       coverPhotoIdx: coverPhotoIdxFromId(inserted.id),
       coverPhotoUrl: inserted.coverPhotoUrl ?? null,
+      location: inserted.location ?? null,
+      placeId: parsed.data.placeId ?? null,
     } satisfies ProjectDto, { status: 201 })
   } catch (err) {
     console.error('[/api/projects POST] DB query failed:', err)

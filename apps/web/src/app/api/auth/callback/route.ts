@@ -17,6 +17,8 @@ export async function GET(request: Request) {
       const user = data.user
       const displayName =
         (user.user_metadata?.['display_name'] as string | undefined) ??
+        (user.user_metadata?.['full_name'] as string | undefined) ??
+        (user.user_metadata?.['name'] as string | undefined) ??
         user.email ??
         'ユーザー'
 

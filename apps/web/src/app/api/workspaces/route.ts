@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireWorkspaceAdmin } from '@/lib/permissions'
 
 export interface WorkspaceDto {
   id: string
@@ -15,16 +16,6 @@ export interface WorkspaceDto {
 export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({
-      id: ctx.workspaceId,
-      name: '山岳部',
-      slug: 'alpine-club',
-      description: null,
-      logoUrl: null,
-    } satisfies WorkspaceDto)
-  }
 
   try {
     const { db, workspaces } = await import('@cairn/db')
@@ -73,9 +64,8 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'ワークスペース名は必須です' }, { status: 422 })
   }
 
-  if (!process.env['DATABASE_URL']) {
-    return NextResponse.json({ id: ctx.workspaceId, ...b })
-  }
+  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  if (forbidden) return forbidden
 
   try {
     const { db, workspaces } = await import('@cairn/db')
