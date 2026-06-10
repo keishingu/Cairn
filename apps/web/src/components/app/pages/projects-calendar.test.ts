@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, test, expect } from 'vitest'
-import { buildGcalEvents } from './projects-calendar'
+import { buildGcalEvents, buildGcalWeekEvents, buildGcalTimedEvents } from './projects-calendar'
 import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
 
 function makeEvent(overrides: Partial<GcalEventDto>): GcalEventDto {
@@ -11,6 +11,8 @@ function makeEvent(overrides: Partial<GcalEventDto>): GcalEventDto {
     title: 'テストイベント',
     startDate: '2026-06-10',
     endDate: '2026-06-10',
+    startTime: null,
+    endTime: null,
     isAllDay: true,
     calendarName: 'メイン',
     calendarColor: '#4285F4',
@@ -88,5 +90,101 @@ describe('buildGcalEvents', () => {
     const result = buildGcalEvents([makeEvent({ calendarColor: null })], YEAR, MONTH)
 
     expect(result[0]?.color).toBe('#4285F4')
+  })
+})
+
+describe('buildGcalWeekEvents', () => {
+  // 2026-06-07(日) 〜 2026-06-13(土)
+  const WEEK_START = new Date(2026, 5, 7)
+
+  test('週内の1日のみのイベントは day と span が正しく計算される', () => {
+    const result = buildGcalWeekEvents([makeEvent({ startDate: '2026-06-10', endDate: '2026-06-10' })], WEEK_START)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ day: 3, span: 1, week: 0 })
+  })
+
+  test('週をまたぐイベントは週の範囲内に切り詰められる', () => {
+    // 6/5(金)〜6/9(火) のうち、週内に収まるのは 6/7(日)〜6/9(火)
+    const result = buildGcalWeekEvents([makeEvent({ startDate: '2026-06-05', endDate: '2026-06-09' })], WEEK_START)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ day: 0, span: 3 })
+  })
+
+  test('週の範囲外のイベントは除外される', () => {
+    const result = buildGcalWeekEvents([makeEvent({ startDate: '2026-06-20', endDate: '2026-06-21' })], WEEK_START)
+
+    expect(result).toHaveLength(0)
+  })
+
+  test('重なる複数のイベントは異なる row に割り当てられる', () => {
+    const events = [
+      makeEvent({ id: 'ev-1', startDate: '2026-06-08', endDate: '2026-06-10' }),
+      makeEvent({ id: 'ev-2', startDate: '2026-06-09', endDate: '2026-06-11' }),
+    ]
+    const result = buildGcalWeekEvents(events, WEEK_START)
+
+    const ev1 = result.find(e => e.id === 'ev-1')!
+    const ev2 = result.find(e => e.id === 'ev-2')!
+    expect(ev1.row).not.toBe(ev2.row)
+  })
+})
+
+describe('buildGcalTimedEvents', () => {
+  // 2026-06-07(日) 〜 2026-06-13(土)
+  const WEEK_START = new Date(2026, 5, 7)
+
+  test('終日イベントは除外される', () => {
+    const result = buildGcalTimedEvents([makeEvent({ isAllDay: true, startTime: null, endTime: null })], WEEK_START)
+
+    expect(result).toHaveLength(0)
+  })
+
+  test('時刻指定イベントは曜日と分単位の開始・終了位置に変換される', () => {
+    const result = buildGcalTimedEvents([
+      makeEvent({ startDate: '2026-06-10', endDate: '2026-06-10', isAllDay: false, startTime: '09:30', endTime: '10:00' }),
+    ], WEEK_START)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ day: 3, startMin: 9 * 60 + 30, endMin: 10 * 60, col: 0, cols: 1 })
+  })
+
+  test('終了時刻が開始時刻以前の場合は最低30分の長さになる', () => {
+    const result = buildGcalTimedEvents([
+      makeEvent({ startDate: '2026-06-10', endDate: '2026-06-10', isAllDay: false, startTime: '09:00', endTime: '09:00' }),
+    ], WEEK_START)
+
+    expect(result[0]).toMatchObject({ startMin: 9 * 60, endMin: 9 * 60 + 30 })
+  })
+
+  test('日をまたぐイベントは当日の24時までで終了する', () => {
+    const result = buildGcalTimedEvents([
+      makeEvent({ startDate: '2026-06-10', endDate: '2026-06-11', isAllDay: false, startTime: '22:00', endTime: '02:00' }),
+    ], WEEK_START)
+
+    expect(result[0]).toMatchObject({ startMin: 22 * 60, endMin: 24 * 60 })
+  })
+
+  test('週の範囲外のイベントは除外される', () => {
+    const result = buildGcalTimedEvents([
+      makeEvent({ startDate: '2026-06-20', endDate: '2026-06-20', isAllDay: false, startTime: '09:00', endTime: '10:00' }),
+    ], WEEK_START)
+
+    expect(result).toHaveLength(0)
+  })
+
+  test('同じ曜日で重なる時刻指定イベントは異なる列に割り当てられる', () => {
+    const events = [
+      makeEvent({ id: 'ev-1', startDate: '2026-06-10', endDate: '2026-06-10', isAllDay: false, startTime: '09:00', endTime: '10:00' }),
+      makeEvent({ id: 'ev-2', startDate: '2026-06-10', endDate: '2026-06-10', isAllDay: false, startTime: '09:30', endTime: '10:30' }),
+    ]
+    const result = buildGcalTimedEvents(events, WEEK_START)
+
+    const ev1 = result.find(e => e.id === 'ev-1')!
+    const ev2 = result.find(e => e.id === 'ev-2')!
+    expect(ev1.col).not.toBe(ev2.col)
+    expect(ev1.cols).toBe(2)
+    expect(ev2.cols).toBe(2)
   })
 })

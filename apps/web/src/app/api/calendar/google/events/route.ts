@@ -11,6 +11,8 @@ export interface GcalEventDto {
   title: string
   startDate: string
   endDate: string
+  startTime: string | null
+  endTime: string | null
   isAllDay: boolean
   calendarName: string | null
   calendarColor: string | null
@@ -89,6 +91,8 @@ export async function GET(req: NextRequest) {
         title: r.title,
         startDate: r.startDate!,
         endDate: r.endDate ?? r.startDate!,
+        startTime: r.startTime,
+        endTime: r.endTime,
         isAllDay: r.isAllDay,
         calendarName: r.calendarName,
         calendarColor: r.calendarColor,
@@ -135,6 +139,8 @@ async function syncEvents(
       const isAllDay = Boolean(ev.start.date)
       let startDate: string | null = null
       let endDate: string | null = null
+      let startTime: string | null = null
+      let endTime: string | null = null
 
       if (isAllDay && ev.start.date && ev.end.date) {
         startDate = ev.start.date
@@ -145,6 +151,9 @@ async function syncEvents(
       } else if (ev.start.dateTime) {
         startDate = ev.start.dateTime.slice(0, 10)
         endDate = ev.end.dateTime ? ev.end.dateTime.slice(0, 10) : startDate
+        // dateTime は "YYYY-MM-DDTHH:mm:ss+09:00" 形式。イベントのタイムゾーンでの時刻を HH:mm として保存する
+        startTime = ev.start.dateTime.slice(11, 16)
+        endTime = ev.end.dateTime ? ev.end.dateTime.slice(11, 16) : startTime
       }
 
       if (!startDate) continue
@@ -157,6 +166,8 @@ async function syncEvents(
         title: ev.summary ?? '（タイトルなし）',
         startDate,
         endDate,
+        startTime,
+        endTime,
         isAllDay,
         description: ev.description ?? null,
         calendarName: cal.name,
@@ -182,6 +193,8 @@ async function syncEvents(
           title: sql`excluded.title`,
           startDate: sql`excluded.start_date`,
           endDate: sql`excluded.end_date`,
+          startTime: sql`excluded.start_time`,
+          endTime: sql`excluded.end_time`,
           syncedAt: sql`excluded.synced_at`,
         },
       })

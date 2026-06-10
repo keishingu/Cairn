@@ -919,9 +919,18 @@ const SettingsIntegrations = () => {
 
       {/* ── Google カレンダー読み込みセクション ──────────────────────── */}
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>Google カレンダー → Cairn（イベント読み込み）</h2>
+        <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+          Google カレンダー → Cairn（イベント読み込み）
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 700,
+            color: 'var(--accent-text)', background: 'var(--accent-soft)', border: '1px solid var(--accent)',
+            borderRadius: 999, padding: '1px 7px',
+          }}>
+            <Icon name="flask" size={11} /> Lab
+          </span>
+        </h2>
         <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
-          Google カレンダーの予定をカレンダービューにオーバーレイ表示します。
+          Google カレンダーの予定をカレンダービューにオーバーレイ表示します。試験的な機能のため、今後仕様が変更される場合があります。
         </p>
 
         {gcalMsg && (
