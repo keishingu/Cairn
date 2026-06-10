@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Icon } from '../primitives'
+import { Modal, ModalHeader, fieldInputStyle } from '../primitives'
 import type { TaskDto } from '@/app/api/tasks/route'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -50,59 +50,23 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
     })
   }
 
-  const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) onClose()
-  }
-
-  const fieldLabel: React.CSSProperties = {
-    fontSize: 12, fontWeight: 600, color: 'var(--text-3)',
-    display: 'block', marginBottom: 6,
-  }
-  const fieldInput: React.CSSProperties = {
-    width: '100%', padding: '9px 12px', borderRadius: 8,
-    border: '1.5px solid var(--border-2)', background: 'var(--bg)',
-    color: 'var(--text)', fontSize: 14, fontFamily: 'inherit',
-    boxSizing: 'border-box' as const, outline: 'none',
-  }
-
   return (
-    <div
-      onClick={handleBackdrop}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 200,
-        background: 'rgba(0,0,0,0.4)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '0 16px',
-      }}
-    >
+    <Modal onClose={onClose}>
       <div style={{
-        background: 'var(--card)', borderRadius: 12,
+        position: 'relative',
+        background: 'var(--card)', borderRadius: 14,
         width: '100%', maxWidth: 480,
-        boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+        boxShadow: 'var(--shadow-lg)',
+        display: 'flex', flexDirection: 'column',
+        overflow: 'hidden',
         animation: 'fadeSlideIn .15s ease',
       }}>
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '16px 20px', borderBottom: '1px solid var(--border)',
-        }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>タスクを追加</span>
-          <button
-            onClick={onClose}
-            style={{
-              width: 28, height: 28, borderRadius: 6, border: 'none',
-              background: 'transparent', color: 'var(--text-3)', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <Icon name="close" size={15} />
-          </button>
-        </div>
+        <ModalHeader title="タスクを追加" onClose={onClose}/>
 
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <label style={fieldLabel}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
               タイトル <span style={{ color: 'var(--red)' }}>*</span>
             </label>
             <input
@@ -113,19 +77,19 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
               required
               // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
-              style={fieldInput}
+              style={fieldInputStyle(false)}
             />
           </div>
 
           <div>
-            <label style={fieldLabel}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
               プロジェクト <span style={{ color: 'var(--red)' }}>*</span>
             </label>
             <select
               value={projectId}
               onChange={e => setProjectId(e.target.value)}
               required
-              style={{ ...fieldInput, color: projectId ? 'var(--text)' : 'var(--text-4)' }}
+              style={{ ...fieldInputStyle(false), color: projectId ? 'var(--text)' : 'var(--text-4)' }}
             >
               <option value="" disabled>プロジェクトを選択...</option>
               {projects.map(p => (
@@ -136,11 +100,11 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
 
           <div style={{ display: 'flex', gap: 12 }}>
             <div style={{ flex: 1 }}>
-              <label style={fieldLabel}>優先度</label>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>優先度</label>
               <select
                 value={priority}
                 onChange={e => setPriority(e.target.value as TaskDto['priority'])}
-                style={fieldInput}
+                style={fieldInputStyle(false)}
               >
                 <option value="high">高</option>
                 <option value="medium">中</option>
@@ -148,12 +112,12 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
               </select>
             </div>
             <div style={{ flex: 1 }}>
-              <label style={fieldLabel}>期限日</label>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>期限日</label>
               <input
                 type="date"
                 value={dueDate}
                 onChange={e => setDueDate(e.target.value)}
-                style={fieldInput}
+                style={fieldInputStyle(false)}
               />
             </div>
           </div>
@@ -182,6 +146,6 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
           </div>
         </form>
       </div>
-    </div>
+    </Modal>
   )
 }

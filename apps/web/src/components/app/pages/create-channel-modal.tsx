@@ -1,54 +1,9 @@
 'use client'
 
 import React from 'react'
-import { Icon } from '../primitives'
+import { Icon, Modal, ModalHeader, Field, fieldInputStyle, onFocusRing, onBlurRing } from '../primitives'
 import { useCreateChannel } from '@/lib/chat/client'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
-
-// ─── スタイルヘルパー（project-list と同じパターン）─────────────────
-
-function fieldInputStyle(invalid: boolean): React.CSSProperties {
-  return {
-    width: '100%', height: 36, padding: '0 12px',
-    border: `1px solid ${invalid ? 'var(--red)' : 'var(--border)'}`,
-    borderRadius: 8, background: 'var(--card)', color: 'var(--text)',
-    fontSize: 13, fontFamily: 'inherit', outline: 'none',
-    transition: 'border-color .12s, box-shadow .12s',
-    boxSizing: 'border-box',
-  }
-}
-
-function onFocusRing(e: React.FocusEvent<HTMLInputElement>) {
-  e.currentTarget.style.borderColor = 'var(--accent)'
-  e.currentTarget.style.boxShadow = 'var(--ring)'
-}
-
-function onBlurRing(e: React.FocusEvent<HTMLInputElement>, invalid: boolean) {
-  e.currentTarget.style.borderColor = invalid ? 'var(--red)' : 'var(--border)'
-  e.currentTarget.style.boxShadow = 'none'
-}
-
-const Field = ({ label, hint, required, error, children, htmlFor }: {
-  label: string; hint?: string; required?: boolean; error?: string
-  children: React.ReactNode; htmlFor?: string
-}) => (
-  <label htmlFor={htmlFor} style={{ display: 'block' }}>
-    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', letterSpacing: '0.01em' }}>
-        {label}
-        {required && <span style={{ color: 'var(--red)', marginLeft: 4 }}>*</span>}
-      </span>
-      {hint && <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{hint}</span>}
-    </div>
-    {children}
-    {error && (
-      <div style={{ marginTop: 5, fontSize: 11.5, color: 'var(--red-text)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ width: 13, height: 13, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>!</span>
-        {error}
-      </div>
-    )}
-  </label>
-)
 
 // ─── モーダル本体 ─────────────────────────────────────────────────
 
@@ -64,12 +19,6 @@ export function CreateChannelModal({ onClose, onCreated }: CreateChannelModalPro
   const nameRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => { setTimeout(() => nameRef.current?.focus(), 80) }, [])
-
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
 
   const mutation = useCreateChannel()
 
@@ -88,9 +37,7 @@ export function CreateChannelModal({ onClose, onCreated }: CreateChannelModalPro
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
-
+    <Modal onClose={onClose}>
       <form onSubmit={handleSubmit} style={{
         position: 'relative',
         width: '100%', maxWidth: 480,
@@ -100,22 +47,7 @@ export function CreateChannelModal({ onClose, onCreated }: CreateChannelModalPro
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
       }}>
-        {/* Header */}
-        <header style={{ padding: '16px 20px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="hash" size={16}/>
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>新規チャンネル</h2>
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>チャンネルを作成してチームで会話できます</div>
-          </div>
-          <button type="button" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-          >
-            <Icon name="close" size={16}/>
-          </button>
-        </header>
+        <ModalHeader icon="hash" title="新規チャンネル" subtitle="チャンネルを作成してチームで会話できます" onClose={onClose}/>
 
         {/* Body */}
         <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -180,6 +112,6 @@ export function CreateChannelModal({ onClose, onCreated }: CreateChannelModalPro
           </button>
         </footer>
       </form>
-    </div>
+    </Modal>
   )
 }

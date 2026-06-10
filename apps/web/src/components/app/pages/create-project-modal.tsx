@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Icon, StatusChip } from '../primitives'
+import { Icon, StatusChip, Modal, ModalHeader, Field, fieldInputStyle, fieldTextareaStyle, onFocusRing, onBlurRing } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { LocationInput } from '../location-input'
@@ -24,60 +24,6 @@ const TAG_PRESETS = [
   { id: 't11', name: '装備強化',     color: 'var(--text-3)' },
   { id: 't12', name: '危険度: 高',   color: 'var(--red)' },
 ] as const
-
-// ─── Form atoms ───────────────────────────────────────────────────
-interface FieldProps {
-  label: string
-  hint?: string
-  required?: boolean
-  error?: string | undefined
-  htmlFor?: string
-  children: React.ReactNode
-}
-
-const Field = ({ label, hint, required, error, children, htmlFor }: FieldProps) => (
-  <label htmlFor={htmlFor} style={{ display: 'block' }}>
-    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', letterSpacing: '0.01em' }}>
-        {label}
-        {required && <span style={{ color: 'var(--red)', marginLeft: 4 }}>*</span>}
-      </span>
-      {hint && <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{hint}</span>}
-    </div>
-    {children}
-    {error && (
-      <div style={{ marginTop: 5, fontSize: 11.5, color: 'var(--red-text)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ width: 13, height: 13, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>!</span>
-        {error}
-      </div>
-    )}
-  </label>
-)
-
-function fieldInputStyle(invalid: boolean): React.CSSProperties {
-  return {
-    width: '100%', height: 36, padding: '0 12px',
-    border: `1px solid ${invalid ? 'var(--red)' : 'var(--border)'}`,
-    borderRadius: 8, background: 'var(--card)', color: 'var(--text)',
-    fontSize: 13, fontFamily: 'inherit', outline: 'none',
-    transition: 'border-color .12s, box-shadow .12s',
-    boxSizing: 'border-box',
-  }
-}
-
-function fieldTextareaStyle(invalid: boolean): React.CSSProperties {
-  return { ...fieldInputStyle(invalid), height: 'auto', padding: '10px 12px', resize: 'vertical', lineHeight: 1.55, minHeight: 80 }
-}
-
-function onFocusRing(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
-  e.currentTarget.style.borderColor = 'var(--accent)'
-  e.currentTarget.style.boxShadow = 'var(--ring)'
-}
-
-function onBlurRing(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>, invalid: boolean) {
-  e.currentTarget.style.borderColor = invalid ? 'var(--red)' : 'var(--border)'
-  e.currentTarget.style.boxShadow = 'none'
-}
 
 // ─── Status chip selector ─────────────────────────────────────────
 interface StatusChipSelectorProps {
@@ -325,12 +271,6 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
     setTimeout(() => titleRef.current?.focus(), 80)
   }, [])
 
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm(prev => ({ ...prev, [k]: v }))
 
@@ -392,13 +332,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
   }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 24,
-    }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
-
+    <Modal onClose={onClose}>
       <form onSubmit={handleSubmit} style={{
         position: 'relative',
         width: '100%', maxWidth: 960,
@@ -409,24 +343,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
       }}>
-        {/* Header */}
-        <header style={{ padding: '16px 20px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="folder" size={16}/>
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>新規プロジェクト</h2>
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>
-              山行・合宿・講習会など、計画単位のプロジェクトを作成します
-            </div>
-          </div>
-          <button type="button" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-          >
-            <Icon name="close" size={16}/>
-          </button>
-        </header>
+        <ModalHeader icon="folder" title="新規プロジェクト" subtitle="山行・合宿・講習会など、計画単位のプロジェクトを作成します" onClose={onClose}/>
 
         {/* Body — 2 columns */}
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) 360px' }}>
@@ -550,6 +467,6 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
           </button>
         </footer>
       </form>
-    </div>
+    </Modal>
   )
 }
