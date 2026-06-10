@@ -84,6 +84,8 @@ export const workspaceInvites = pgTable('workspace_invites', {
   maxUses: integer('max_uses'),
   useCount: integer('use_count').notNull().default(0),
   role: workspaceRoleEnum('role').notNull().default('member'),
+  // ゲスト招待の場合、参加時に自動追加するプロジェクト（循環参照回避のため FK は migration SQL のみ）
+  projectId: uuid('project_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
