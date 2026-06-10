@@ -93,6 +93,8 @@ supabase db reset  # マイグレーションを最初から適用（データ�
 cairn/
   apps/
     web/          # Next.js 15 (メインWebアプリ)
+    desktop/
+      electron/   # Electron デスクトップアプリ (リモートシェル)
   packages/
     core/         # ドメイン / ユースケース / ポート定義
     db/           # Drizzle ORM スキーマ・クライアント
@@ -190,6 +192,48 @@ node scripts/generate-icons.mjs
 2. `scripts/generate-icons.mjs` の `ACCENT_PRESETS` 配列にも同じ `id` と `swatch` 色を追加する
 3. `node scripts/generate-icons.mjs` を実行して PNG を生成する
 4. 生成されたファイルをコミットする
+
+---
+
+## Electron デスクトップアプリ
+
+`apps/desktop/electron/` に、リモートの Next.js デプロイ先 URL を読み込むだけの薄い Electron シェルがある。
+ローカルに静的ファイルはバンドルせず、常にネット経由で `apps/web` のデプロイ先に接続する（オフライン非対応）。
+
+Chromium ベースのため `PushManager` / Web Push API をフルサポートしており、既存の Web Push 通知機能（VAPID + Service Worker）をそのまま利用できる。
+
+### 接続先 URL とアイコン（環境別）
+
+| 環境 | URL | アイコン |
+|---|---|---|
+| prod | `https://oss-cairn.com` | `icon-emerald-dark-512.png`（濃紺 + 緑） |
+| dev | `https://develop.oss-cairn.com` | `icon-blue-light-512.png`（白 + 青） |
+
+### コマンド
+
+```bash
+# 開発起動（dev URL を読み込み、DevTools を自動オープン）
+pnpm desktop:electron:dev
+
+# ビルド
+pnpm desktop:electron:build:prod   # prod URL + emerald-dark アイコン
+pnpm desktop:electron:build:dev    # dev URL + blue-light アイコン
+```
+
+### アイコンの再生成
+
+`apps/web/public/` のソース PNG から `.icns` / `.ico` / `.png` 一式を `apps/desktop/electron/resources/icons/{prod,dev}/` に生成する。
+
+```bash
+cd apps/desktop/electron
+pnpm generate-icons
+```
+
+### Web Push の動作確認
+
+1. `pnpm desktop:electron:dev` でアプリを起動
+2. DevTools のコンソールで `'serviceWorker' in navigator && 'PushManager' in window` が `true` になることを確認
+3. 通知パネル（ベルアイコン）の ON/OFF トグルを操作し、ブラウザの通知許可ダイアログが表示されることを確認
 
 ---
 

@@ -8,7 +8,10 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
-    "clean": "turbo clean"
+    "clean": "turbo clean",
+    "desktop:electron:dev": "pnpm --filter @cairn/desktop-electron dev",
+    "desktop:electron:build:prod": "pnpm --filter @cairn/desktop-electron build:prod",
+    "desktop:electron:build:dev": "pnpm --filter @cairn/desktop-electron build:dev"
   },
   "devDependencies": {
     "canvas": "^3.2.3",
