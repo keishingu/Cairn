@@ -2,13 +2,14 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from './primitives'
 import { Avatar } from './primitives'
 import { useAppShell } from './app-shell-context'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { createClient } from '@/lib/supabase/client'
 import type { CurrentUserDto } from '@/app/api/me/route'
+import type { UserStatus } from '@/lib/user-status'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import type { WorkspaceListItemDto } from '@/app/api/workspaces/list/route'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
@@ -203,8 +204,6 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
     staleTime: 30_000,
   })
-
-  const isProjectsActive = page === 'projects' || page === 'calendar' || page === 'kanban'
 
   const logoEl = (
     <div style={{
@@ -542,8 +541,28 @@ const CollapsedNavItem = ({ icon, label, active, badge, onClick }: CollapsedNavI
   </button>
 )
 
+const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
+  { value: 'online',  label: 'オンライン',   color: '#22C55E' },
+  { value: 'away',    label: '退席中',       color: '#F59E0B' },
+  { value: 'busy',    label: '取り込み中',   color: '#EF4444' },
+  { value: 'offline', label: 'オフライン',   color: '#9CA3AF' },
+]
+
+const statusLabel = (status: UserStatus | undefined) =>
+  STATUS_OPTIONS.find(s => s.value === status)?.label ?? STATUS_OPTIONS[0]!.label
+const statusColor = (status: UserStatus | undefined) =>
+  STATUS_OPTIONS.find(s => s.value === status)?.color ?? STATUS_OPTIONS[0]!.color
+
+const StatusDot = ({ status, size = 10 }: { status: UserStatus | undefined; size?: number }) => (
+  <span style={{
+    position: 'absolute', right: -1, bottom: -1, width: size, height: size, borderRadius: '50%',
+    background: statusColor(status), border: '2px solid var(--card)', boxSizing: 'content-box',
+  }}/>
+)
+
 function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolean | undefined; onToggle?: (() => void) | undefined }) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
 
@@ -553,6 +572,53 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
     staleTime: 60_000,
   })
   const displayName = me?.displayName ?? '…'
+
+  const statusMutation = useMutation({
+    mutationFn: async (status: UserStatus) => {
+      const res = await fetchWithAuth('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(d.error ?? 'ステータスの更新に失敗しました')
+      }
+      return status
+    },
+    onSuccess: (status) => {
+      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status } : prev)
+    },
+  })
+
+  const statusMessageMutation = useMutation({
+    mutationFn: async (statusMessage: string | null) => {
+      const res = await fetchWithAuth('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statusMessage }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(d.error ?? 'ステータスメッセージの更新に失敗しました')
+      }
+      return statusMessage
+    },
+    onSuccess: (statusMessage) => {
+      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, statusMessage } : prev)
+    },
+  })
+
+  const [statusMessageDraft, setStatusMessageDraft] = React.useState('')
+  React.useEffect(() => {
+    if (menuOpen) setStatusMessageDraft(me?.statusMessage ?? '')
+  }, [menuOpen, me?.statusMessage])
+
+  function commitStatusMessage() {
+    const trimmed = statusMessageDraft.trim()
+    if (trimmed === (me?.statusMessage ?? '')) return
+    statusMessageMutation.mutate(trimmed || null)
+  }
 
   React.useEffect(() => {
     if (!menuOpen) return
@@ -570,13 +636,58 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
     router.refresh()
   }
 
-  const logoutMenu = menuOpen && (
+  const userMenu = menuOpen && (
     <div style={{
       position: 'absolute', bottom: '100%', left: collapsed ? -4 : 12, right: collapsed ? -4 : 12,
       background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 100,
-      minWidth: 140,
+      minWidth: 160,
     }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase' }}>
+        ステータス
+      </div>
+      {STATUS_OPTIONS.map(opt => (
+        <button
+          key={opt.value}
+          onClick={() => statusMutation.mutate(opt.value)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            width: '100%', padding: '7px 10px', borderRadius: 7, border: 'none',
+            background: 'transparent', color: 'var(--text)', fontSize: 13,
+            fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+          }}
+          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
+          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+        >
+          <span style={{ width: 9, height: 9, borderRadius: '50%', background: opt.color, flexShrink: 0 }}/>
+          <span style={{ flex: 1 }}>{opt.label}</span>
+          {(me?.status ?? 'online') === opt.value && <Icon name="check" size={14} color="var(--accent)"/>}
+        </button>
+      ))}
+      <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }}/>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase' }}>
+        ステータスメッセージ
+      </div>
+      <input
+        value={statusMessageDraft}
+        onChange={e => setStatusMessageDraft(e.target.value)}
+        onBlur={commitStatusMessage}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            commitStatusMessage()
+            ;(e.currentTarget as HTMLInputElement).blur()
+          }
+        }}
+        placeholder="例: 7/10〜17休みます"
+        maxLength={100}
+        style={{
+          width: '100%', boxSizing: 'border-box', padding: '6px 10px', margin: '0 0 6px',
+          borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)',
+          color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit',
+        }}
+      />
+      <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }}/>
       <button
         onClick={handleLogout}
         style={{
@@ -594,14 +705,11 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
     </div>
   )
 
-  const avatarBtn = (
-    <button
-      onClick={() => setMenuOpen(v => !v)}
-      title={collapsed ? displayName : undefined}
-      style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, borderRadius: '50%', flexShrink: 0 }}
-    >
+  const avatarWithDot = (
+    <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
       <Avatar name={displayName} url={me?.avatarUrl ?? null} size={32}/>
-    </button>
+      <StatusDot status={me?.status}/>
+    </span>
   )
 
   const toggleBtn = (
@@ -623,22 +731,38 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   if (collapsed) {
     return (
       <div style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, position: 'relative' }} ref={menuRef}>
-        {avatarBtn}
+        <button
+          onClick={() => setMenuOpen(v => !v)}
+          title={me?.statusMessage ? `${displayName}（${statusLabel(me?.status)} / ${me.statusMessage}）` : `${displayName}（${statusLabel(me?.status)}）`}
+          style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, borderRadius: '50%', flexShrink: 0 }}
+        >
+          {avatarWithDot}
+        </button>
         {toggleBtn}
-        {logoutMenu}
+        {userMenu}
       </div>
     )
   }
 
   return (
     <div style={{ padding: '10px 12px', borderTop: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }} ref={menuRef}>
-      {avatarBtn}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2 }}>{displayName}</div>
-        <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3 }}>オンライン</div>
-      </div>
+      <button
+        onClick={() => setMenuOpen(v => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0,
+          border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, textAlign: 'left',
+        }}
+      >
+        {avatarWithDot}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {me?.statusMessage ? me.statusMessage : statusLabel(me?.status)}
+          </div>
+        </div>
+      </button>
       {toggleBtn}
-      {logoutMenu}
+      {userMenu}
     </div>
   )
 }
