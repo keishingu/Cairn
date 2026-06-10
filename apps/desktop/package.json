@@ -2,10 +2,18 @@
   "name": "@cairn/desktop",
   "version": "0.1.0",
   "private": true,
+  "main": "src/main.js",
+  "config": {
+    "appUrl": "https://develop.oss-cairn.com"
+  },
   "scripts": {
-    "dev": "pnpm --filter @cairn/desktop-electron dev",
-    "build:prod": "pnpm --filter @cairn/desktop-electron build:prod",
-    "build:dev": "pnpm --filter @cairn/desktop-electron build:dev",
-    "generate-icons": "pnpm --filter @cairn/desktop-electron generate-icons"
+    "dev": "cross-env NODE_ENV=development DESKTOP_APP_URL=https://develop.oss-cairn.com electron .",
+    "generate-icons": "pnpm dlx --package=icon-gen@5 node scripts/generate-icons.mjs",
+    "build:prod": "pnpm dlx electron-builder@26 --config electron-builder.prod.json",
+    "build:dev": "pnpm dlx electron-builder@26 --config electron-builder.dev.json"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^42.4.0"
   }
 }

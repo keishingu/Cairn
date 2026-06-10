@@ -18,9 +18,7 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
-  apps/desktop: {}
-
-  apps/desktop/electron:
+  apps/desktop:
     devDependencies:
       cross-env:
         specifier: ^7.0.3
