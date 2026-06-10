@@ -34,12 +34,12 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages, channels, tasks } = await import('@cairn/db')
+    const { messages, channels, channelMembers, tasks } = await import('@cairn/db')
     const { eq, and, isNull } = await import('drizzle-orm')
 
     // ワークスペースメンバーならチェックボックス操作を許可（送信者以外も可）
     const [target] = await db
-      .select({ id: messages.id, content: messages.content })
+      .select({ id: messages.id, content: messages.content, channelId: messages.channelId, isPrivate: channels.isPrivate })
       .from(messages)
       .innerJoin(channels, eq(messages.channelId, channels.id))
       .where(and(
@@ -51,6 +51,19 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
     if (!target) {
       return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
+    }
+
+    // プライベートチャンネルはメンバーのみ操作可
+    if (target.isPrivate) {
+      const [membership] = await db
+        .select({ userId: channelMembers.userId })
+        .from(channelMembers)
+        .where(and(eq(channelMembers.channelId, target.channelId), eq(channelMembers.userId, ctx.userId)))
+        .limit(1)
+
+      if (!membership) {
+        return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
+      }
     }
 
     const newContent = toggleCheckboxAt(target.content, index, checked)
