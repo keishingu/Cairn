@@ -12,6 +12,7 @@ export interface CurrentUserDto {
   email: string | null
   bio: string | null
   status: UserStatus
+  statusMessage: string | null
 }
 
 export async function GET() {
@@ -37,6 +38,7 @@ export async function GET() {
         avatarUrl: workspaceMembers.avatarUrl,
         bio: profiles.bio,
         status: workspaceMembers.status,
+        statusMessage: workspaceMembers.statusMessage,
       })
       .from(profiles)
       .leftJoin(
@@ -56,6 +58,7 @@ export async function GET() {
       email,
       bio: row.bio,
       status: row.status ?? 'online',
+      statusMessage: row.statusMessage ?? null,
     } satisfies CurrentUserDto)
   } catch (err) {
     console.error('[/api/me] DB query failed:', err)
@@ -74,12 +77,13 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const b = body as { displayName?: string; bio?: string | null; status?: UserStatus }
+  const b = body as { displayName?: string; bio?: string | null; status?: UserStatus; statusMessage?: string | null }
   const hasDisplayName = b.displayName !== undefined
   const hasBio = 'bio' in (b as object)
   const hasStatus = b.status !== undefined
+  const hasStatusMessage = 'statusMessage' in (b as object)
 
-  if (!hasDisplayName && !hasBio && !hasStatus) {
+  if (!hasDisplayName && !hasBio && !hasStatus && !hasStatusMessage) {
     return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
   }
   if (hasDisplayName && !b.displayName?.trim()) {
@@ -87,6 +91,9 @@ export async function PATCH(req: Request) {
   }
   if (hasStatus && !USER_STATUSES.includes(b.status!)) {
     return NextResponse.json({ error: 'ステータスの値が不正です' }, { status: 422 })
+  }
+  if (hasStatusMessage && b.statusMessage != null && b.statusMessage.length > 100) {
+    return NextResponse.json({ error: 'ステータスメッセージは100文字以内で入力してください' }, { status: 422 })
   }
 
   try {
@@ -100,10 +107,13 @@ export async function PATCH(req: Request) {
       await db.update(profiles).set(set).where(eq(profiles.id, ctx.userId))
     }
 
-    if (hasStatus) {
+    if (hasStatus || hasStatusMessage) {
+      const set: { status?: UserStatus; statusMessage?: string | null } = {}
+      if (hasStatus) set.status = b.status!
+      if (hasStatusMessage) set.statusMessage = b.statusMessage?.trim() || null
       await db
         .update(workspaceMembers)
-        .set({ status: b.status })
+        .set(set)
         .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
     }
 

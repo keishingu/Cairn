@@ -591,6 +591,35 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
     },
   })
 
+  const statusMessageMutation = useMutation({
+    mutationFn: async (statusMessage: string | null) => {
+      const res = await fetchWithAuth('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statusMessage }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(d.error ?? 'ステータスメッセージの更新に失敗しました')
+      }
+      return statusMessage
+    },
+    onSuccess: (statusMessage) => {
+      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, statusMessage } : prev)
+    },
+  })
+
+  const [statusMessageDraft, setStatusMessageDraft] = React.useState('')
+  React.useEffect(() => {
+    if (menuOpen) setStatusMessageDraft(me?.statusMessage ?? '')
+  }, [menuOpen, me?.statusMessage])
+
+  function commitStatusMessage() {
+    const trimmed = statusMessageDraft.trim()
+    if (trimmed === (me?.statusMessage ?? '')) return
+    statusMessageMutation.mutate(trimmed || null)
+  }
+
   React.useEffect(() => {
     if (!menuOpen) return
     function close(e: MouseEvent) {
@@ -635,6 +664,29 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
           {(me?.status ?? 'online') === opt.value && <Icon name="check" size={14} color="var(--accent)"/>}
         </button>
       ))}
+      <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }}/>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase' }}>
+        ステータスメッセージ
+      </div>
+      <input
+        value={statusMessageDraft}
+        onChange={e => setStatusMessageDraft(e.target.value)}
+        onBlur={commitStatusMessage}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            commitStatusMessage()
+            ;(e.currentTarget as HTMLInputElement).blur()
+          }
+        }}
+        placeholder="例: 7/10〜17休みます"
+        maxLength={100}
+        style={{
+          width: '100%', boxSizing: 'border-box', padding: '6px 10px', margin: '0 0 6px',
+          borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)',
+          color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit',
+        }}
+      />
       <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }}/>
       <button
         onClick={handleLogout}
@@ -681,7 +733,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       <div style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, position: 'relative' }} ref={menuRef}>
         <button
           onClick={() => setMenuOpen(v => !v)}
-          title={`${displayName}（${statusLabel(me?.status)}）`}
+          title={me?.statusMessage ? `${displayName}（${statusLabel(me?.status)} / ${me.statusMessage}）` : `${displayName}（${statusLabel(me?.status)}）`}
           style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, borderRadius: '50%', flexShrink: 0 }}
         >
           {avatarWithDot}
@@ -704,7 +756,9 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
         {avatarWithDot}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3 }}>{statusLabel(me?.status)}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {me?.statusMessage ? me.statusMessage : statusLabel(me?.status)}
+          </div>
         </div>
       </button>
       {toggleBtn}
