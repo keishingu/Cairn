@@ -40,8 +40,26 @@ export async function GET() {
   try {
     const { db } = await import('@cairn/db')
     const { projects, projectStatuses, projectMembers, tasks, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, count, and } = await import('drizzle-orm')
+    const { eq, count, and, inArray } = await import('drizzle-orm')
     const { sql } = await import('drizzle-orm')
+
+    // ゲストは参加中のプロジェクトのみ参照可能
+    const [wsMember] = await db
+      .select({ role: workspaceMembers.role })
+      .from(workspaceMembers)
+      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, ctx.userId)))
+      .limit(1)
+
+    const isGuest = wsMember?.role === 'guest'
+    let visibleProjectIds: string[] | null = null
+    if (isGuest) {
+      const memberRows = await db
+        .select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .where(eq(projectMembers.userId, ctx.userId))
+      visibleProjectIds = memberRows.map(r => r.projectId)
+      if (visibleProjectIds.length === 0) return NextResponse.json([])
+    }
 
     const rows = await db
       .select({
@@ -60,7 +78,11 @@ export async function GET() {
       })
       .from(projects)
       .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
-      .where(eq(projects.workspaceId, ctx.workspaceId))
+      .where(
+        visibleProjectIds
+          ? and(eq(projects.workspaceId, ctx.workspaceId), inArray(projects.id, visibleProjectIds))
+          : eq(projects.workspaceId, ctx.workspaceId),
+      )
 
     const counts = await db
       .select({ projectId: projectMembers.projectId, n: count() })
