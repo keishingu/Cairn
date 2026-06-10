@@ -15,9 +15,9 @@ export function isIndexable(mimeType: string): boolean {
 
 export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
   if (mimeType === 'application/pdf') {
-    const { PDFParse } = await import('pdf-parse')
-    const parser = new PDFParse({ data: buffer })
-    const result = await parser.getText()
+    const pdfParse = await import('pdf-parse')
+    const parse = (pdfParse.default ?? pdfParse) as (buf: Buffer) => Promise<{ text: string }>
+    const result = await parse(buffer)
     return result.text
   }
 
