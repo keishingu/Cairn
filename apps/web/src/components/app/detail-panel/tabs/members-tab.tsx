@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../../primitives'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
+import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 const ROLE_LABEL: Record<string, string> = {
@@ -266,19 +267,23 @@ interface GuestInvitePanelProps {
 
 const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
   const [url, setUrl] = React.useState<string | null>(null)
+  const [token, setToken] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [isLoading, setIsLoading] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
+  const [revoking, setRevoking] = React.useState(false)
+  const [revoked, setRevoked] = React.useState(false)
 
   React.useEffect(() => {
     setIsLoading(true)
     fetchWithAuth(`/api/projects/${projectId}/guest-invite`, { method: 'POST' })
       .then(async (res) => {
-        const data = await res.json() as { url?: string; error?: string }
+        const data = await res.json() as { url?: string; token?: string; error?: string }
         if (!res.ok) {
           setError(data.error ?? '招待リンクの生成に失敗しました')
         } else {
           setUrl(data.url ?? null)
+          setToken(data.token ?? null)
         }
       })
       .catch(() => setError('招待リンクの生成に失敗しました'))
@@ -291,6 +296,26 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
+  }
+
+  const handleRevoke = async () => {
+    if (!token) return
+    setRevoking(true)
+    try {
+      const res = await fetchWithAuth(`/api/workspaces/invites/${token}`, { method: 'DELETE' })
+      if (res.ok) {
+        setUrl(null)
+        setToken(null)
+        setRevoked(true)
+      } else {
+        const data = await res.json() as { error?: string }
+        setError(data.error ?? '無効化に失敗しました')
+      }
+    } catch {
+      setError('無効化に失敗しました')
+    } finally {
+      setRevoking(false)
+    }
   }
 
   return (
@@ -338,39 +363,63 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
           <p style={{ fontSize: 12, color: 'var(--red)', marginBottom: 0 }}>{error}</p>
         )}
 
-        {url && (
-          <div style={{
-            background: 'var(--card-2)', borderRadius: 8,
-            border: '1px solid var(--border)', padding: '10px 12px',
-            display: 'flex', alignItems: 'center', gap: 8,
-          }}>
-            <span style={{
-              flex: 1, fontSize: 12, color: 'var(--text-3)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              fontFamily: 'monospace',
-            }}>
-              {url}
-            </span>
-            <button
-              onClick={handleCopy}
-              style={{
-                flexShrink: 0, padding: '5px 10px', borderRadius: 6,
-                border: 'none',
-                background: copied ? 'var(--green-soft)' : 'var(--accent)',
-                color: copied ? 'var(--green-text)' : 'var(--on-accent)',
-                fontSize: 12, fontWeight: 700,
-                cursor: 'pointer', fontFamily: 'inherit',
-                transition: 'background 0.15s',
-              }}
-            >
-              {copied ? 'コピー済み' : 'コピー'}
-            </button>
+        {revoked && (
+          <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>
+            招待リンクを無効化しました
           </div>
         )}
 
-        <p style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 12, lineHeight: 1.5 }}>
-          有効期限: 30日間
-        </p>
+        {url && (
+          <>
+            <div style={{
+              background: 'var(--card-2)', borderRadius: 8,
+              border: '1px solid var(--border)', padding: '10px 12px',
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span style={{
+                flex: 1, fontSize: 12, color: 'var(--text-3)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                fontFamily: 'monospace',
+              }}>
+                {url}
+              </span>
+              <button
+                onClick={handleCopy}
+                style={{
+                  flexShrink: 0, padding: '5px 10px', borderRadius: 6,
+                  border: 'none',
+                  background: copied ? 'var(--green-soft)' : 'var(--accent)',
+                  color: copied ? 'var(--green-text)' : 'var(--on-accent)',
+                  fontSize: 12, fontWeight: 700,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  transition: 'background 0.15s',
+                }}
+              >
+                {copied ? 'コピー済み' : 'コピー'}
+              </button>
+            </div>
+
+            <p style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 12, lineHeight: 1.5 }}>
+              有効期限: 30日間
+            </p>
+
+            <button
+              onClick={() => { void handleRevoke() }}
+              disabled={revoking}
+              style={{
+                marginTop: 20, width: '100%', padding: '9px',
+                borderRadius: 8, border: '1px solid var(--red)',
+                background: 'transparent',
+                color: revoking ? 'var(--text-4)' : 'var(--red)',
+                fontSize: 12.5, fontWeight: 600,
+                cursor: revoking ? 'not-allowed' : 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              {revoking ? '無効化中…' : 'このリンクを無効化'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
@@ -390,6 +439,12 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
   const [selectedUserId, setSelectedUserId] = React.useState('')
   const [selectedRole, setSelectedRole] = React.useState('member')
 
+  const { data: currentUser } = useQuery<CurrentUserDto>({
+    queryKey: ['current-user'],
+    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
+    staleTime: 5 * 60 * 1000,
+  })
+
   const { data: members = [], isLoading } = useQuery<ProjectMemberDto[]>({
     queryKey: ['project-members', projectId],
     queryFn: () => fetchWithAuth(`/api/projects/${projectId}/members`).then(r => r.json()),
@@ -403,6 +458,13 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
 
   const memberUserIds = new Set(members.map(m => m.userId))
   const inviteable = wsMembers.filter(m => !memberUserIds.has(m.userId))
+
+  // プロジェクトのleader/subleader または WSのadmin/owner のみゲスト招待可能
+  const myProjectRole = members.find(m => m.userId === currentUser?.id)?.role
+  const canInviteGuest = currentUser != null && (
+    currentUser.wsRole === 'owner' || currentUser.wsRole === 'admin' ||
+    myProjectRole === 'leader' || myProjectRole === 'subleader'
+  )
 
   const addMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
@@ -486,18 +548,20 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
           <Icon name="plus" size={13}/> メンバーを招待
         </button>
 
-        <button
-          onClick={() => setShowGuestInvite(true)}
-          style={{
-            marginTop: 6, width: '100%', padding: '10px',
-            borderRadius: 8, border: '1px dashed var(--border-2)',
-            background: 'transparent', color: 'var(--text-4)',
-            fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-            fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          }}
-        >
-          <Icon name="link" size={13}/> 外部ゲストを招待
-        </button>
+        {canInviteGuest && (
+          <button
+            onClick={() => setShowGuestInvite(true)}
+            style={{
+              marginTop: 6, width: '100%', padding: '10px',
+              borderRadius: 8, border: '1px dashed var(--border-2)',
+              background: 'transparent', color: 'var(--text-4)',
+              fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+              fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Icon name="link" size={13}/> 外部ゲストを招待
+          </button>
+        )}
       </div>
 
       {/* Invite panel — overlays within this tab only */}

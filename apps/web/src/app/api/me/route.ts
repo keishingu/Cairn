@@ -13,6 +13,7 @@ export interface CurrentUserDto {
   bio: string | null
   status: UserStatus
   statusMessage: string | null
+  wsRole: 'owner' | 'admin' | 'member' | 'guest'
 }
 
 export async function GET() {
@@ -39,6 +40,7 @@ export async function GET() {
         bio: profiles.bio,
         status: workspaceMembers.status,
         statusMessage: workspaceMembers.statusMessage,
+        wsRole: workspaceMembers.role,
       })
       .from(profiles)
       .leftJoin(
@@ -59,6 +61,7 @@ export async function GET() {
       bio: row.bio,
       status: row.status ?? 'online',
       statusMessage: row.statusMessage ?? null,
+      wsRole: row.wsRole ?? 'member',
     } satisfies CurrentUserDto)
   } catch (err) {
     console.error('[/api/me] DB query failed:', err)
