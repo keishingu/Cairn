@@ -3,10 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-
-export type UserStatus = 'online' | 'away' | 'busy' | 'offline'
-
-export const USER_STATUSES: UserStatus[] = ['online', 'away', 'busy', 'offline']
+import { USER_STATUSES, type UserStatus } from '@/lib/user-status'
 
 export interface CurrentUserDto {
   id: string
