@@ -318,7 +318,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onImageSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted, onCreateTextFile }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted, onCreateTextFile }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -330,22 +330,66 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   setIsComposing: (v: boolean) => void
   compact?: boolean
   pendingAttachments: PendingAttachment[]
-  onImageSelect: (file: File) => void
+  onFilesSelect: (files: File[]) => void
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
   mentionMembers?: { userId: string; displayName: string }[]
   onMentionInserted?: (userId: string, displayName: string) => void
   onCreateTextFile: () => void
 }) => {
+  const [isDragOver, setIsDragOver] = React.useState(false)
+  const dragCounterRef = React.useRef(0)
+
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData.items)
-    const imageItem = items.find(item => item.type.startsWith('image/'))
-    if (imageItem) {
+    const files = items
+      .filter(item => item.kind === 'file')
+      .map(item => item.getAsFile())
+      .filter((f): f is File => f !== null)
+    if (files.length > 0) {
       e.preventDefault()
-      const file = imageItem.getAsFile()
-      if (file) onImageSelect(file)
+      onFilesSelect(files)
     }
   }
+
+  const hasFileDrag = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files')
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current += 1
+    setIsDragOver(true)
+  }
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+    e.stopPropagation()
+  }
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) setIsDragOver(false)
+  }
+  const handleDrop = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.stopPropagation()
+    e.preventDefault()
+    dragCounterRef.current = 0
+    setIsDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) onFilesSelect(files)
+  }
+
+  const dropHandlers = {
+    onDragEnter: handleDragEnter,
+    onDragOver: handleDragOver,
+    onDragLeave: handleDragLeave,
+    onDrop: handleDrop,
+  }
+
   const [showPicker, setShowPicker] = React.useState(false)
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
   const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
@@ -492,9 +536,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     </div>
   ) : null
 
-  const makeFileHandler = (ref: React.RefObject<HTMLInputElement | null>) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) { onImageSelect(file); e.target.value = '' }
+  const makeFileHandler = () => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length > 0) { onFilesSelect(files); e.target.value = '' }
   }
 
   const hiddenFileInput = (
@@ -502,8 +546,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       ref={fileInputRef}
       type="file"
       accept={ACCEPT_FILE_TYPES}
+      multiple
       style={{ display: 'none' }}
-      onChange={makeFileHandler(fileInputRef)}
+      onChange={makeFileHandler()}
     />
   )
 
@@ -512,8 +557,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       ref={imageInputRef}
       type="file"
       accept="image/*"
+      multiple
       style={{ display: 'none' }}
-      onChange={makeFileHandler(imageInputRef)}
+      onChange={makeFileHandler()}
     />
   )
 
@@ -521,19 +567,25 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     <input
       ref={docInputRef}
       type="file"
+      multiple
       style={{ display: 'none' }}
-      onChange={makeFileHandler(docInputRef)}
+      onChange={makeFileHandler()}
     />
   )
 
   if (compact) {
     return (
-      <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--divider)' }}>
+      <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--divider)', position: 'relative' }} {...dropHandlers}>
         {hiddenFileInput}
         {sendError && (
           <div style={{ marginBottom: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)', fontSize: 11.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span>⚠️ {sendError}</span>
             <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'transparent', color: 'var(--red-text)', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+          </div>
+        )}
+        {isDragOver && (
+          <div style={{ position: 'absolute', inset: 6, zIndex: 10, borderRadius: 10, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--accent)' }}>ドロップしてアップロード</span>
           </div>
         )}
         <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
@@ -588,7 +640,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   }
 
   return (
-    <div style={{ padding: '8px 24px 18px', background: 'var(--bg)' }}>
+    <div style={{ padding: '8px 24px 18px', background: 'var(--bg)', position: 'relative' }} {...dropHandlers}>
       {hiddenFileInput}
       {hiddenImageInput}
       {hiddenDocInput}
@@ -596,6 +648,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         <div style={{ marginBottom: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>⚠️ {sendError}</span>
           <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'transparent', color: 'var(--red-text)', cursor: 'pointer', fontSize: 12, padding: '0 4px' }}>✕</button>
+        </div>
+      )}
+      {isDragOver && (
+        <div style={{ position: 'absolute', inset: '8px 24px 18px', zIndex: 10, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--accent)' }}>ドロップしてアップロード</span>
         </div>
       )}
       <div style={{ background: 'var(--card)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
@@ -805,9 +862,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     return () => { clearTimeout(t); el.classList.remove('message-highlight') }
   }, [targetMessageId, isLoading])
 
-  const handleImageSelect = async (file: File) => {
-    if (!channelId) return
-    setIsUploading(true)
+  const uploadFile = async (file: File): Promise<PendingAttachment | null> => {
+    if (!channelId) return null
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -816,16 +872,57 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       if (!res.ok) {
         const data = await res.json().catch(() => ({})) as { error?: string }
         setSendError(data.error ?? 'アップロードに失敗しました')
-        return
+        return null
       }
       const data = await res.json() as { fileId: string; fileName: string; mimeType: string | null; fileSize: number | null }
       const previewUrl = URL.createObjectURL(file)
-      setPendingAttachments(prev => [...prev, { ...data, previewUrl }])
+      return { ...data, previewUrl }
     } catch {
       setSendError('アップロードに失敗しました')
+      return null
+    }
+  }
+
+  const handleFilesSelect = async (files: File[]) => {
+    if (!channelId || files.length === 0) return
+    setIsUploading(true)
+    try {
+      const results = await Promise.all(files.map(uploadFile))
+      const successful = results.filter((r): r is PendingAttachment => r !== null)
+      if (successful.length > 0) setPendingAttachments(prev => [...prev, ...successful])
     } finally {
       setIsUploading(false)
     }
+  }
+
+  // メッセージ一覧エリアへのドラッグ&ドロップ
+  const [isListDragOver, setIsListDragOver] = React.useState(false)
+  const listDragCounterRef = React.useRef(0)
+  const hasFileDrag = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files')
+
+  const handleListDragEnter = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+    listDragCounterRef.current += 1
+    setIsListDragOver(true)
+  }
+  const handleListDragOver = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+  }
+  const handleListDragLeave = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+    listDragCounterRef.current = Math.max(0, listDragCounterRef.current - 1)
+    if (listDragCounterRef.current === 0) setIsListDragOver(false)
+  }
+  const handleListDrop = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return
+    e.preventDefault()
+    listDragCounterRef.current = 0
+    setIsListDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) void handleFilesSelect(files)
   }
 
   const handleRemoveAttachment = (fileId: string) => {
@@ -893,16 +990,27 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
 
   const handleTextFileCreated = (file: File) => {
     setShowTextFileDialog(false)
-    void handleImageSelect(file)
+    void handleFilesSelect([file])
   }
 
   return (
-    <>
+    <div
+      style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}
+      onDragEnter={handleListDragEnter}
+      onDragOver={handleListDragOver}
+      onDragLeave={handleListDragLeave}
+      onDrop={handleListDrop}
+    >
       {showTextFileDialog && (
         <CreateTextFileDialog
           onClose={() => setShowTextFileDialog(false)}
           onCreated={handleTextFileCreated}
         />
+      )}
+      {isListDragOver && (
+        <div style={{ position: 'absolute', inset: 8, zIndex: 50, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)' }}>ファイルをドロップしてアップロード</span>
+        </div>
       )}
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
         {isLoading ? (
@@ -946,7 +1054,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         isComposing={isComposing}
         setIsComposing={setIsComposing}
         pendingAttachments={pendingAttachments}
-        onImageSelect={handleImageSelect}
+        onFilesSelect={handleFilesSelect}
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
         mentionMembers={mentionMembers}
@@ -954,6 +1062,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         onCreateTextFile={() => setShowTextFileDialog(true)}
         {...(compact ? { compact: true } : {})}
       />
-    </>
+    </div>
   )
 }
