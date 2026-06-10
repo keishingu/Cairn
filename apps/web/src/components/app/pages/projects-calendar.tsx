@@ -99,7 +99,7 @@ interface GcalDisplayEvent {
   row: number
 }
 
-function buildGcalEvents(events: GcalEventDto[], year: number, month: number): GcalDisplayEvent[] {
+export function buildGcalEvents(events: GcalEventDto[], year: number, month: number): GcalDisplayEvent[] {
   const calStart = getCalendarStart(year, month)
   const calEnd = new Date(calStart)
   calEnd.setDate(calEnd.getDate() + 41)
