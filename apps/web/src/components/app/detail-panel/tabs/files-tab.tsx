@@ -1,11 +1,10 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useProjectFiles } from '@/hooks/use-project-files'
 
 function IndexingBadge({ status }: { status: string | undefined }) {
   if (!status || status === 'indexed' || status === 'skipped') return null
@@ -39,34 +38,8 @@ function formatDate(iso: string): string {
 }
 
 export const FilesTab = ({ projectId }: { projectId: string }) => {
-  const queryClient = useQueryClient()
   const [menuOpenId, setMenuOpenId] = React.useState<string | null>(null)
-
-  const { data: files = [], isLoading, isError } = useQuery<ProjectFileDto[]>({
-    queryKey: ['project-files', projectId],
-    queryFn: async () => {
-      const res = await fetchWithAuth(`/api/projects/${projectId}/files`)
-      if (!res.ok) throw new Error('Failed to fetch files')
-      return res.json() as Promise<ProjectFileDto[]>
-    },
-    // pending なリンクがある間は 3 秒ごとに再フェッチして名前・ステータスを最新化
-    refetchInterval: (query) => {
-      const data = query.state.data
-      return Array.isArray(data) && data.some(f => f.indexingStatus === 'pending') ? 3000 : false
-    },
-  })
-
-  const deleteFile = useMutation({
-    mutationFn: (fileId: string) =>
-      fetchWithAuth(`/api/attachments/${fileId}`, { method: 'DELETE' }).then(r => {
-        if (!r.ok) throw new Error('削除に失敗しました')
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['project-files', projectId] })
-      void queryClient.invalidateQueries({ queryKey: ['files'] })
-      setMenuOpenId(null)
-    },
-  })
+  const { data: files = [], isLoading, isError, deleteMutation } = useProjectFiles(projectId)
 
   // メニュー外クリックで閉じる
   React.useEffect(() => {
@@ -102,7 +75,7 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '12px 12px 16px' }}>
-      {files.map((f, i) => {
+      {files.map((f: ProjectFileDto, i: number) => {
         const sizeStr = formatFileSize(f.fileSize)
         const dateStr = formatDate(f.createdAt)
         const meta = [sizeStr, dateStr].filter(Boolean).join(' · ')
@@ -155,14 +128,14 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
                   <button
                     onClick={() => {
                       if (!confirm(`「${f.fileName}」を削除しますか？この操作は取り消せません。`)) return
-                      deleteFile.mutate(f.id)
+                      deleteMutation.mutate(f.id, { onSuccess: () => setMenuOpenId(null) })
                     }}
-                    disabled={deleteFile.isPending}
+                    disabled={deleteMutation.isPending}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                       padding: '7px 10px', border: 'none', background: 'transparent',
                       color: 'var(--red)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit',
-                      borderRadius: 5, opacity: deleteFile.isPending ? 0.5 : 1,
+                      borderRadius: 5, opacity: deleteMutation.isPending ? 0.5 : 1,
                     }}
                   >
                     <Icon name="trash" size={13}/>

@@ -23,6 +23,7 @@ import { CreateChannelSheet } from '../mobile/create-channel-sheet'
 import { CreateChannelModal } from './create-channel-modal'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 import { BellButton } from '../sidebar'
+import { useDebounce } from '@/hooks/use-debounce'
 
 // ─── Sidebar ─────────────────────────────────────────────────────
 
@@ -93,15 +94,6 @@ const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, dot, labe
 )
 
 // ─── Message search ───────────────────────────────────────────────
-
-function useDebounce(value: string, ms: number) {
-  const [debounced, setDebounced] = React.useState(value)
-  React.useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), ms)
-    return () => clearTimeout(t)
-  }, [value, ms])
-  return debounced
-}
 
 function highlightMatch(text: string, query: string) {
   if (!query) return <>{text}</>
