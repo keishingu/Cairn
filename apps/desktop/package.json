@@ -1,5 +1,5 @@
 {
-  "name": "@cairn/desktop-electron",
+  "name": "@cairn/desktop",
   "version": "0.1.0",
   "private": true,
   "main": "src/main.js",

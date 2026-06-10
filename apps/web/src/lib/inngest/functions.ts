@@ -13,6 +13,11 @@ function extractMentionedUserIds(content: string): string[] {
   return [...new Set([...matches].map(m => m[1]!))]
 }
 
+// <@userId|displayName> を @displayName に変換する
+function stripMentions(content: string): string {
+  return content.replace(/<@[^|>\s]+\|([^>\n]+)>/g, '@$1')
+}
+
 export const onMessageCreated = inngest.createFunction(
   { id: 'on-message-created' },
   { event: 'message/created' satisfies MessageCreatedEvent['name'] },
@@ -45,7 +50,7 @@ export const onMessageCreated = inngest.createFunction(
         await Promise.allSettled(
           members.map(m => sendPushToUser(m.userId, {
             title: senderName,
-            body: content.slice(0, 100),
+            body: stripMentions(content).slice(0, 100),
             url: '/chat',
           })),
         )
@@ -85,7 +90,7 @@ export const onMessageCreated = inngest.createFunction(
             workspaceId,
             type: 'mention' as const,
             title: `${senderName} があなたをメンションしました`,
-            body: content.slice(0, 200),
+            body: stripMentions(content).slice(0, 200),
             data: { messageId, channelId, senderName },
           })),
         )
@@ -112,7 +117,7 @@ export const onMessageCreated = inngest.createFunction(
           mentionedMembers.map(m =>
             sendPushToUser(m.userId, {
               title: `${senderName} があなたをメンションしました`,
-              body: content.slice(0, 100),
+              body: stripMentions(content).slice(0, 100),
               url: `/chat?channel=${channelId}`,
             }),
           ),
