@@ -1355,9 +1355,13 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const [gcalFilterOpen, setGcalFilterOpen] = React.useState(false)
   const gcalFilterBtnRef = React.useRef<HTMLDivElement>(null)
 
-  const { data: gcalEventsRaw = [] } = useQuery<GcalEventDto[]>({
+  const { data: gcalEventsRaw = [], isError: gcalEventsError } = useQuery<GcalEventDto[]>({
     queryKey: ['gcal-events', year, month],
-    queryFn: () => fetchWithAuth(`/api/calendar/google/events?year=${year}&month=${month}`).then(r => r.json()),
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/calendar/google/events?year=${year}&month=${month}`)
+      if (!res.ok) throw new Error('Googleカレンダーの予定取得に失敗しました')
+      return res.json()
+    },
     staleTime: 15 * 60 * 1000,
     enabled: gcalConnected,
   })
@@ -1637,6 +1641,16 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           </>
         }
       />
+
+      {gcalEventsError && (
+        <div style={{
+          marginBottom: 14, padding: '10px 14px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8,
+          color: 'var(--red-text)', fontSize: 13, border: '1px solid var(--red)', background: 'var(--red-soft)',
+        }}>
+          <Icon name="alertTriangle" size={15} />
+          Googleカレンダーの予定の取得に失敗しました。時間をおいて再読み込みしてください。
+        </div>
+      )}
 
       {/* Calendar grid */}
       <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
