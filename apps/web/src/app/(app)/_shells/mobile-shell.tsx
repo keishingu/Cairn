@@ -121,7 +121,7 @@ function MobileShellInner() {
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
   const [notifOpen, setNotifOpen] = React.useState(false)
 
-  const { panelState, panelProject, panelMember, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
+  const { panelState, panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
 
   const setProjectsView = React.useCallback((view: string) => {
     if (!isValidView(view)) return
@@ -145,6 +145,8 @@ function MobileShellInner() {
             onClose={backPanel}
             onMemberClick={openMember}
             isMobile
+            tab={panelTab}
+            onTabChange={setPanelTab}
           />
         )}
         {panelState?.type === 'member' && panelMember && (

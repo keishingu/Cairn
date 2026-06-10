@@ -32,7 +32,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
 
-  const { panelProject, panelMember, openPanel, openProjectById, openMember, closePanel } = useDetailPanel()
+  const { panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, closePanel } = useDetailPanel()
 
   const [notifOpen, setNotifOpen] = React.useState(false)
 
@@ -102,6 +102,8 @@ export function PCShell({ children }: { children: React.ReactNode }) {
                   project={panelProject}
                   onClose={closePanel}
                   onMemberClick={handleMemberClick}
+                  tab={panelTab}
+                  onTabChange={setPanelTab}
                 />
               ) : null}
               {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)}/>}

@@ -31,6 +31,10 @@ export interface UseDetailPanelResult {
   panelState: PanelState
   panelProject: ProjectDto | null
   panelMember: WorkspaceMemberDto | null
+  /** プロジェクトパネルのアクティブタブ（?tab=、未指定なら 'chat'） */
+  panelTab: string
+  /** タブ切替: 履歴を汚さないよう router.replace で ?tab を更新する */
+  setPanelTab: (tab: string) => void
   /** プロジェクトパネルを開く。引数なしで閉じる（AppShellContext 後方互換） */
   openPanel: (project?: ProjectDto) => void
   /** MemberProjectDto から遷移するとき用（ID のみ渡す） */
@@ -81,6 +85,8 @@ export function useDetailPanel(): UseDetailPanelResult {
       ? (members.find(m => m.userId === panelState.id) ?? null)
       : null
 
+  const panelTab = searchParams.get('tab') ?? 'chat'
+
   const buildUrl = useCallback(
     (openValue: string | null): string => {
       const params = new URLSearchParams(searchParams.toString())
@@ -89,10 +95,22 @@ export function useDetailPanel(): UseDetailPanelResult {
       } else {
         params.delete('open')
       }
+      // パネルの切り替え時は前のパネルのタブ状態を引き継がない
+      params.delete('tab')
       const qs = params.toString()
       return qs ? `${pathname}?${qs}` : pathname
     },
     [pathname, searchParams],
+  )
+
+  const setPanelTab = useCallback(
+    (tabValue: string) => {
+      const params = new URLSearchParams(searchParams.toString())
+      params.set('tab', tabValue)
+      const qs = params.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    },
+    [router, pathname, searchParams],
   )
 
   const openPanel = useCallback(
@@ -126,5 +144,5 @@ export function useDetailPanel(): UseDetailPanelResult {
     [router],
   )
 
-  return { panelState, panelProject, panelMember, openPanel, openProjectById, openMember, closePanel, backPanel }
+  return { panelState, panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, closePanel, backPanel }
 }

@@ -10,6 +10,7 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 
 const mockPush = vi.fn()
+const mockReplace = vi.fn()
 const mockBack = vi.fn()
 let mockPathname = '/projects'
 let mockSearchParams = new URLSearchParams()
@@ -17,7 +18,7 @@ let mockSearchParams = new URLSearchParams()
 vi.mock('next/navigation', () => ({
   usePathname: () => mockPathname,
   useSearchParams: () => mockSearchParams,
-  useRouter: () => ({ push: mockPush, back: mockBack }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace, back: mockBack }),
 }))
 
 const STUB_PROJECT: ProjectDto = {
@@ -101,6 +102,7 @@ describe('useDetailPanel — panelState の導出', () => {
 describe('useDetailPanel — 操作関数', () => {
   beforeEach(() => {
     mockPush.mockClear()
+    mockReplace.mockClear()
     mockBack.mockClear()
     mockPathname = '/projects'
     mockSearchParams = new URLSearchParams()
@@ -149,5 +151,42 @@ describe('useDetailPanel — 操作関数', () => {
     const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
     act(() => result.current.openMember('user-1'))
     expect(mockPush).toHaveBeenCalledWith('/chat?open=member-user-1', { scroll: false })
+  })
+
+  it('openMember は遷移元の ?tab を引き継がない（buildUrl が tab を削除する）', () => {
+    mockSearchParams = new URLSearchParams('open=project-proj-1&tab=members')
+    const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
+    act(() => result.current.openMember('user-1'))
+    expect(mockPush).toHaveBeenCalledWith('/projects?open=member-user-1', { scroll: false })
+  })
+})
+
+describe('useDetailPanel — panelTab / setPanelTab', () => {
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockReplace.mockClear()
+    mockBack.mockClear()
+    mockPathname = '/projects'
+    mockSearchParams = new URLSearchParams()
+  })
+
+  it('?tab なしでは panelTab が "chat"', () => {
+    mockSearchParams = new URLSearchParams('open=project-proj-1')
+    const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
+    expect(result.current.panelTab).toBe('chat')
+  })
+
+  it('?tab=members では panelTab が "members"', () => {
+    mockSearchParams = new URLSearchParams('open=project-proj-1&tab=members')
+    const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
+    expect(result.current.panelTab).toBe('members')
+  })
+
+  it('setPanelTab は router.replace で ?tab を更新する（履歴を汚さない）', () => {
+    mockSearchParams = new URLSearchParams('open=project-proj-1')
+    const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
+    act(() => result.current.setPanelTab('members'))
+    expect(mockReplace).toHaveBeenCalledWith('/projects?open=project-proj-1&tab=members', { scroll: false })
+    expect(mockPush).not.toHaveBeenCalled()
   })
 })
