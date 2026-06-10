@@ -49,6 +49,7 @@ const STUB_MEMBER: WorkspaceMemberDto = {
   avatarUrl: null,
   role: 'member',
   joinedAt: '2026-01-01',
+  projectCount: 0,
 }
 
 function makeWrapper(projects: ProjectDto[] = [STUB_PROJECT], members: WorkspaceMemberDto[] = [STUB_MEMBER]) {
