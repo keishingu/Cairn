@@ -14,9 +14,11 @@ import type { ProjectDto } from '@/app/api/projects/route'
 
 const mockPush = vi.fn()
 let mockPathname = '/projects'
+let mockSearchParams = new URLSearchParams()
 
 vi.mock('next/navigation', () => ({
   usePathname: () => mockPathname,
+  useSearchParams: () => mockSearchParams,
   useRouter: () => ({ push: mockPush }),
 }))
 
@@ -103,8 +105,9 @@ function makeQC(projects: ProjectDto[] = [STUB_PROJECT]) {
   return qc
 }
 
-function renderShell(pathname: string, { projects }: { projects?: ProjectDto[] } = {}) {
+function renderShell(pathname: string, searchParams = new URLSearchParams(), { projects }: { projects?: ProjectDto[] } = {}) {
   mockPathname = pathname
+  mockSearchParams = searchParams
   return render(
     <QueryClientProvider client={makeQC(projects)}>
       <PCShell>
@@ -117,22 +120,25 @@ function renderShell(pathname: string, { projects }: { projects?: ProjectDto[] }
 // ─── テスト ────────────────────────────────────────────────────────
 
 describe('PCShell — URL からパネル表示の導出', () => {
-  beforeEach(() => mockPush.mockClear())
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockSearchParams = new URLSearchParams()
+  })
 
-  it('/projects では ProjectPanel を表示しない', () => {
+  it('?open なしでは ProjectPanel を表示しない', () => {
     renderShell('/projects')
     expect(screen.queryByTestId('project-panel')).toBeNull()
   })
 
-  it('/projects/{id} では対応するプロジェクトの ProjectPanel を表示する', () => {
-    renderShell('/projects/proj-abc')
+  it('?open=project-{id} では対応するプロジェクトの ProjectPanel を表示する', () => {
+    renderShell('/projects', new URLSearchParams('open=project-proj-abc'))
     const panel = screen.getByTestId('project-panel')
     expect(panel).toBeInTheDocument()
     expect(panel).toHaveAttribute('data-project-id', 'proj-abc')
   })
 
   it('キャッシュに存在しない ID では ProjectPanel を表示しない', () => {
-    renderShell('/projects/no-such-id')
+    renderShell('/projects', new URLSearchParams('open=project-no-such-id'))
     expect(screen.queryByTestId('project-panel')).toBeNull()
   })
 
@@ -143,16 +149,20 @@ describe('PCShell — URL からパネル表示の導出', () => {
 })
 
 describe('PCShell — openPanel の URL 更新', () => {
-  beforeEach(() => mockPush.mockClear())
-
-  it('openPanel(project) は /projects/{id} に router.push する', async () => {
-    renderShell('/projects')
-    await userEvent.click(screen.getByTestId('open-btn'))
-    expect(mockPush).toHaveBeenCalledWith('/projects/proj-abc', { scroll: false })
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockSearchParams = new URLSearchParams()
   })
 
-  it('openPanel() は /projects に router.push する', async () => {
+  it('openPanel(project) は ?open=project-{id} へ router.push する', async () => {
+    renderShell('/projects')
+    await userEvent.click(screen.getByTestId('open-btn'))
+    expect(mockPush).toHaveBeenCalledWith('/projects?open=project-proj-abc', { scroll: false })
+  })
+
+  it('openPanel() は ?open なし URL へ router.push する', async () => {
     mockPathname = '/projects'
+    mockSearchParams = new URLSearchParams('open=project-proj-abc')
     render(
       <QueryClientProvider client={makeQC()}>
         <PCShell>
@@ -166,10 +176,13 @@ describe('PCShell — openPanel の URL 更新', () => {
 })
 
 describe('PCShell — ProjectPanel の閉じるボタン', () => {
-  beforeEach(() => mockPush.mockClear())
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockSearchParams = new URLSearchParams()
+  })
 
-  it('パネルの閉じるボタンは /projects に router.push する', async () => {
-    renderShell('/projects/proj-abc')
+  it('パネルの閉じるボタンは ?open なし URL へ router.push する', async () => {
+    renderShell('/projects', new URLSearchParams('open=project-proj-abc'))
     await userEvent.click(screen.getByText('閉じる'))
     expect(mockPush).toHaveBeenCalledWith('/projects', { scroll: false })
   })

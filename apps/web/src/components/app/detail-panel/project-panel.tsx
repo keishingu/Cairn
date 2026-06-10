@@ -135,10 +135,15 @@ interface ProjectPanelProps {
   onClose: () => void
   onMemberClick?: ((userId: string, displayName: string) => void) | undefined
   isMobile?: boolean
+  /** アクティブタブ（未指定の場合は内部 state で管理） */
+  tab?: string
+  onTabChange?: (tab: string) => void
 }
 
-export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile }: ProjectPanelProps) => {
-  const [tab, setTab] = React.useState('chat')
+export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: tabProp, onTabChange }: ProjectPanelProps) => {
+  const [internalTab, setInternalTab] = React.useState('chat')
+  const tab = tabProp ?? internalTab
+  const setTab = onTabChange ?? setInternalTab
   const [moreOpen, setMoreOpen] = React.useState(false)
   const [editingCover, setEditingCover] = React.useState(false)
   const moreRef = React.useRef<HTMLDivElement>(null)

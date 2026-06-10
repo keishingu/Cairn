@@ -5,16 +5,14 @@
 
 import React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { useQueryClient } from '@tanstack/react-query'
 import { Sidebar, type PageId } from '@/components/app/sidebar'
 import { ProjectPanel } from '@/components/app/detail-panel/project-panel'
 import { MemberDetailPanel } from '@/components/app/detail-panel/member-panel'
-import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { PageNotifications } from '@/components/app/pages/notifications'
 import { AppShellContext } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
-import { useProjectPanel } from '@/hooks/use-project-panel'
+import { useDetailPanel } from '@/hooks/use-detail-panel'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 const PC_STORAGE_KEY = STORAGE_KEYS.projects_view_pc
@@ -34,30 +32,18 @@ function loadStoredView(): ProjectsView {
 export function PCShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const queryClient = useQueryClient()
 
-  const { panelProject, openPanel } = useProjectPanel()
+  const { panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, closePanel } = useDetailPanel()
 
-  const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(null)
   const [notifOpen, setNotifOpen] = React.useState(false)
 
-  const handleMemberClick = React.useCallback((userId: string, displayName: string) => {
-    const cached = queryClient.getQueryData<WorkspaceMemberDto[]>(['workspace-members'])
-    const found = cached?.find(m => m.userId === userId)
-    setSelectedMember(found ?? {
-      userId,
-      displayName,
-      avatarUrl: null,
-      role: 'member',
-      joinedAt: new Date().toISOString().slice(0, 10),
-      projectCount: 0,
-    })
-  }, [queryClient])
+  const handleMemberClick = React.useCallback((userId: string) => {
+    openMember(userId)
+  }, [openMember])
 
   const handleMemberProjectClick = React.useCallback((p: MemberProjectDto) => {
-    setSelectedMember(null)
-    router.push(`/projects/${p.projectId}`, { scroll: false })
-  }, [router])
+    openProjectById(p.projectId)
+  }, [openProjectById])
 
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => {
     if (typeof window === 'undefined') return false
@@ -92,7 +78,6 @@ export function PCShell({ children }: { children: React.ReactNode }) {
 
   const pathnameSection = pathname.split('/')[1] ?? ''
   React.useEffect(() => {
-    setSelectedMember(null)
     setNotifOpen(false)
   }, [pathnameSection])
 
@@ -106,6 +91,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
   return (
     <AppShellContext.Provider value={{
       openPanel,
+      openMember,
       openNotif: () => setNotifOpen(true),
       projectsView,
       setProjectsView,
@@ -119,17 +105,19 @@ export function PCShell({ children }: { children: React.ReactNode }) {
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
                 {children}
               </div>
-              {selectedMember ? (
+              {panelMember ? (
                 <MemberDetailPanel
-                  member={selectedMember}
+                  member={panelMember}
                   onProjectClick={handleMemberProjectClick}
-                  onClose={() => setSelectedMember(null)}
+                  onClose={closePanel}
                 />
               ) : panelProject ? (
                 <ProjectPanel
                   project={panelProject}
-                  onClose={() => router.push('/projects', { scroll: false })}
+                  onClose={closePanel}
                   onMemberClick={handleMemberClick}
+                  tab={panelTab}
+                  onTabChange={setPanelTab}
                 />
               ) : null}
               {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)}/>}

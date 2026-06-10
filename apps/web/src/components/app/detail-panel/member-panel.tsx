@@ -5,10 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar, StatusChip } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
-import type { ProjectDto } from '@/app/api/projects/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import { ProjectPanel } from './project-panel'
 
 const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -54,16 +52,6 @@ function formatDateRange(start: string | null, end: string | null): string {
   return end && end !== start ? `${fmt(start)}–${fmt(end)}` : fmt(start)
 }
 
-function memberProjectToProjectDto(p: MemberProjectDto): ProjectDto {
-  return {
-    id: p.projectId, title: p.title, description: null, statusName: p.statusName,
-    statusColor: p.statusColor,
-    startDate: p.startDate, endDate: p.endDate, memberCount: p.memberCount,
-    memberNames: [], memberAvatarUrls: [], taskCount: 0, completedTaskCount: 0,
-    isOwner: p.role === 'leader', isMember: true, archived: false,
-    coverPhotoIdx: p.coverPhotoIdx, coverPhotoUrl: null, location: null, placeId: null,
-  }
-}
 
 interface ProjectRowProps {
   project: MemberProjectDto
@@ -220,7 +208,6 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
   // ---- /ロール変更 ----
 
   const rs = WS_ROLE_STYLE[currentRole]
-  const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
 
   const { data: projects = [], isLoading } = useQuery<MemberProjectDto[]>({
     queryKey: ['member-projects', member.userId],
@@ -229,11 +216,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
   })
 
   const handleProjectClick = (p: MemberProjectDto) => {
-    if (isMobile) {
-      setSelectedProject(memberProjectToProjectDto(p))
-    } else {
-      onProjectClick(p)
-    }
+    onProjectClick(p)
   }
 
   const containerStyle: React.CSSProperties = isMobile
@@ -255,10 +238,6 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
 
   return (
     <aside style={containerStyle}>
-      {selectedProject && isMobile && (
-        <ProjectPanel project={selectedProject} onClose={() => setSelectedProject(null)} isMobile/>
-      )}
-
       {/* Mobile header */}
       {isMobile && (
         <div style={{

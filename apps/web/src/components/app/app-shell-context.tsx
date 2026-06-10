@@ -8,6 +8,7 @@ import type { ProjectDto } from '@/app/api/projects/route'
 
 interface AppShellContextValue {
   openPanel: (project?: ProjectDto) => void
+  openMember: (userId: string) => void
   openNotif: () => void
   projectsView: string
   setProjectsView: (view: string) => void
@@ -15,6 +16,7 @@ interface AppShellContextValue {
 
 export const AppShellContext = createContext<AppShellContextValue>({
   openPanel: () => {},
+  openMember: () => {},
   openNotif: () => {},
   projectsView: 'list',
   setProjectsView: () => {},
