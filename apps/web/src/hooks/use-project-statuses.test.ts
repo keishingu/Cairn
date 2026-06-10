@@ -17,8 +17,8 @@ function makeWrapper() {
 }
 
 const STUB_STATUSES: ProjectStatusDto[] = [
-  { id: 's1', name: '実施中', color: '#8B5CF6', workspaceId: 'ws-1', order: 0 },
-  { id: 's2', name: '完了', color: '#10B981', workspaceId: 'ws-1', order: 1 },
+  { id: 's1', name: '実施中', color: '#8B5CF6', sortOrder: '0' },
+  { id: 's2', name: '完了', color: '#10B981', sortOrder: '1' },
 ]
 
 describe('useProjectStatuses', () => {
