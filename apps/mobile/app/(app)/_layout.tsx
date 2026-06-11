@@ -1,6 +1,6 @@
 import React from 'react'
 import { Platform } from 'react-native'
-import { Tabs } from 'expo-router'
+import { Tabs, useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
 import Constants from 'expo-constants'
 import { apiFetch } from '../../lib/api-fetch'
@@ -41,10 +41,38 @@ async function registerPushToken() {
   }
 }
 
+// Push の data.url（Web ルート）をネイティブのトップレベルタブへマップする。
+// 個別チャンネルへのディープリンクは Phase 2 で対応予定。まずは該当セクションまで遷移させる
+function routeFromNotificationResponse(
+  response: Notifications.NotificationResponse,
+  router: ReturnType<typeof useRouter>,
+) {
+  const data = response.notification.request.content.data as { url?: string } | undefined
+  const url = data?.url
+  if (!url) return
+  if (url.startsWith('/chat')) router.push('/(app)/chats')
+  else if (url.startsWith('/tasks')) router.push('/(app)/tasks')
+  else router.push('/(app)/notifications')
+}
+
 export default function AppLayout() {
+  const router = useRouter()
+
   React.useEffect(() => {
     void registerPushToken()
   }, [])
+
+  // 通知タップでの遷移。起動時（コールドスタート）とアプリ起動中の両方を処理する
+  React.useEffect(() => {
+    if (!supportsNotifications) return
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) routeFromNotificationResponse(response, router)
+    })
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      routeFromNotificationResponse(response, router)
+    })
+    return () => sub.remove()
+  }, [router])
 
   return (
     <Tabs screenOptions={{ headerShown: false, tabBarStyle: { display: 'none' } }}>

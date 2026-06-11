@@ -20,7 +20,7 @@ export async function GET() {
 
     const { db } = await import('@cairn/db')
     const { channels, projects, channelReadStates, messages } = await import('@cairn/db')
-    const { eq, and, isNull, gt, count, sql, inArray } = await import('drizzle-orm')
+    const { eq, and, isNull, gt, count, sql, inArray, ne } = await import('drizzle-orm')
 
     const rows = await db
       .select({
@@ -50,6 +50,7 @@ export async function GET() {
           and(
             inArray(messages.channelId, channelIds),
             isNull(messages.deletedAt),
+            ne(messages.senderId, ctx.userId),
             gt(messages.createdAt, sql`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`),
           ),
         )

@@ -52,6 +52,8 @@ cp apps/web/.env.local.example apps/web/.env.local
 pnpm dev
 ```
 
+- **通知・AIインデックスは Inngest ジョブ経由**。ローカルで Inngest dev server を起動していないと、メンション・DM・ファイルの通知が**サイレントに生成されない**（API は `inngest.send()` 失敗を warn ログに残すのみ）。通知周りを動作確認する際は Inngest dev server を併せて起動すること
+
 
 ## 決定済みの技術判断
 
