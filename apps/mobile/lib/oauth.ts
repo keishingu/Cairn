@@ -1,0 +1,48 @@
+import * as WebBrowser from 'expo-web-browser'
+import * as Linking from 'expo-linking'
+import { supabase } from './supabase'
+import { apiFetch } from './api-fetch'
+
+// 認可後に WebBrowser のセッションを確実に閉じる（iOS で必要）
+WebBrowser.maybeCompleteAuthSession()
+
+export type OAuthResult = 'success' | 'cancelled'
+
+// ネイティブの Google ログイン。
+// Web のリダイレクト方式は使えないため、アプリスキーム（cairn://）を
+// redirect 先にして WebBrowser で認可コードを受け取り、PKCE で交換する。
+export async function signInWithGoogle(): Promise<OAuthResult> {
+  const redirectTo = Linking.createURL('auth/callback')
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo, skipBrowserRedirect: true },
+  })
+  if (error) throw error
+  if (!data.url) throw new Error('OAuth の認可 URL を取得できませんでした')
+
+  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo)
+  if (result.type !== 'success') {
+    // ユーザーがブラウザを閉じた / キャンセルした
+    return 'cancelled'
+  }
+
+  const { queryParams } = Linking.parse(result.url)
+  const code = queryParams?.['code']
+  if (typeof code !== 'string') {
+    throw new Error('認可コードを取得できませんでした')
+  }
+
+  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+  if (exchangeError) throw exchangeError
+
+  // 初回 Google ログインでも profiles を作成する（省くと以降の全 API が 403 になる）
+  const res = await apiFetch('/api/auth/setup', { method: 'POST', body: JSON.stringify({}) })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error((body as { error?: string }).error ?? 'プロフィールの作成に失敗しました')
+  }
+
+  // 成功時は _layout.tsx の onAuthStateChange が /(app)/projects へリダイレクト
+  return 'success'
+}
