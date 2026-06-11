@@ -124,14 +124,77 @@
 
 付随修正: `GET /api/notifications` に `workspace_id` フィルタを追加（マルチ WS で他 WS の通知混入を防止）。
 
-### Phase 2: 配信のリアルタイム化（Supabase Realtime へ移行）
+### Phase 2: 配信のリアルタイム化（Supabase Realtime へ移行）— スコープ改訂版
 
 CLAUDE.md の方針「ポーリングで実装し、必要に応じて Supabase Realtime へ移行する」をここで発動する。
+当初案では「メッセージ本文は 5 秒ポーリング据え置き」としていたが、**メッセージ本文（新着・編集・削除・リアクション）も含めて Realtime 化する**ようスコープを拡張した。
 
-- `notifications` の INSERT を postgres_changes で購読 → インボックス・ベルバッジ即時更新
-- `channel_read_states` の UPDATE を購読 → **他デバイスで既読にしたら即バッジ消去**（Slack 的な既読同期）
-- `messages` の INSERT 購読でチャンネル一覧の unread を invalidate（メッセージ本文の 5 秒ポーリングは当面据え置き可）
-- ポーリングは Realtime 切断時のフォールバックとして 30–60 秒で残す
+#### 設計原則: 「Realtime はシグナル、データは既存 API」
+
+postgres_changes のペイロードから直接メッセージを組み立てて描画は**しない**。
+
+- ペイロードは生の行データのみで、表示に必要な JOIN（送信者名・アバター・リアクション集計・添付ファイル）を再現できず、DTO 組み立てロジックが API と二重化する
+- 代わりに **イベント受信 → 該当する TanStack Query を invalidate → 既存 REST API から再取得**という構成にする
+- 楽観的更新（送信・編集・削除・リアクション）は現行実装のまま変更しない
+- ポーリングは廃止せず、Realtime 接続中は間隔を伸ばして**切断時フォールバック**に役割変更する
+
+これにより、データの単一情報源は REST API のまま、配信レイテンシだけを 5〜30 秒 → 1 秒未満に短縮できる。
+
+#### 認可設計（最重要・前提作業）
+
+現状、public スキーマのテーブルには **RLS が一切なく、`supabase_realtime` publication にも未登録**（RLS は storage.objects のみ）。
+postgres_changes は購読者ごとに RLS で行をフィルタするため、**RLS なしで `messages` を publication に追加すると、認証済みユーザー全員に全チャンネル（プライベート・DM 含む）の本文が配信される**。よって Realtime 化の前提として:
+
+1. `messages` / `message_reactions` / `notifications` / `channel_read_states` に RLS を有効化し、SELECT ポリシーを追加
+   - `messages`: 非プライベートチャンネル（workspace / project）は同一 WS メンバー全員、プライベート / DM は `channel_members` 所属者のみ
+   - `message_reactions`: 親メッセージと同条件（`EXISTS` で messages を参照）
+   - `notifications` / `channel_read_states`: `user_id = auth.uid()` のみ
+2. `alter publication supabase_realtime add table ...` で 4 テーブルを公開
+3. **API レイヤー（Drizzle）への影響はない**: テーブルオーナー（postgres ロール）接続は FORCE しない限り RLS をバイパスする。INSERT/UPDATE/DELETE ポリシーは定義しない（書き込みは全て API 経由のため）
+   - 本番反映時に `DATABASE_URL` のロールがテーブルオーナーであることを要確認
+
+#### クライアント購読構成（Web）
+
+アプリシェルに `RealtimeProvider`（`useRealtimeSync`）を 1 つ配置。**1 WebSocket / 4 購読**:
+
+| 購読 | フィルタ | 受信時の動作 |
+|---|---|---|
+| `messages` INSERT/UPDATE | なし（RLS でスコープ） | 表示中チャンネルなら messages クエリを invalidate。常にチャンネル一覧 3 種を invalidate（デバウンス 1s） |
+| `message_reactions` *（全イベント） | なし（RLS でスコープ） | 表示中チャンネルの messages クエリを invalidate（デバウンス 1s） |
+| `notifications` INSERT | `user_id=eq.{me}` | notifications クエリを invalidate → ベル・インボックス即時更新 |
+| `channel_read_states` UPDATE | `user_id=eq.{me}` | チャンネル一覧 + notifications を invalidate → **他デバイス既読の即時同期** |
+
+- メッセージの削除はソフトデリート（`deleted_at`）のため UPDATE イベントで拾える。DELETE イベント・REPLICA IDENTITY の変更は不要
+- 認証: `supabase.realtime.setAuth(accessToken)`。トークンリフレッシュ時に再設定
+- **再接続時（CHANNEL の再 SUBSCRIBED）に対象クエリを一括 invalidate**し、オフライン中の取りこぼしを回収する
+
+#### ポーリングのフォールバック化
+
+Realtime の接続状態を context で公開し、`refetchInterval` を動的に切り替える:
+
+| クエリ | 接続中 | 切断時（現行値） |
+|---|---|---|
+| messages（表示中チャンネル） | 30s | 5s |
+| notifications | 60s | 30s |
+| チャンネル一覧 3 種 | 60s | 15s |
+
+#### モバイルのスコープ
+
+- WebView ベースの画面（通知・チャット詳細ほか）は Web の実装がそのまま効く
+- ネイティブ画面（チャンネル一覧・タスク等）は当面ポーリング維持。supabase-js は React Native でも動作するため、必要になれば同じ「シグナル → invalidate」方式を移植する
+
+#### やらないこと / 将来の選択肢
+
+- WS ペイロードからのメッセージ直接描画（上記の理由で不採用）
+- タイピングインジケータ・オンラインプレゼンス（Phase 3 以降で Realtime Presence を検討）
+- 大規模化で postgres_changes の RLS 評価コストが問題になったら、Broadcast-from-DB（`realtime.broadcast_changes` + private channel + `realtime.messages` の RLS）へ移行する
+
+#### 実装ステップ
+
+1. マイグレーション: RLS 有効化 + SELECT ポリシー + publication 追加
+2. `RealtimeProvider` + シグナル → invalidate 配線
+3. 接続状態に応じた `refetchInterval` の動的化
+4. 検証: 2 ブラウザ間で新着・編集・リアクション・DM・既読同期・切断/復帰（取りこぼし回収）を確認
 
 ### Phase 3: プレゼンス連動の Push 抑制
 
