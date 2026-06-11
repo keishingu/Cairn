@@ -199,10 +199,12 @@ postgres_changes は購読者ごとに RLS で行をフィルタするため、*
 
 #### 実装ステップ
 
-1. マイグレーション: RLS 有効化 + SELECT ポリシー + publication 追加
-2. `RealtimeProvider` + シグナル → invalidate 配線
-3. 既存 `refetchInterval` の削除 + 切断インジケータの追加
-4. 検証: 2 ブラウザ間で新着・編集・リアクション・DM・既読同期・切断/復帰（取りこぼし回収）を確認
+1. ✅ マイグレーション: RLS 有効化 + SELECT ポリシー + publication 追加（`supabase/migrations/0033_realtime_rls.sql`、`can_access_channel()` で messages/reactions のアクセス判定を共有）
+2. ✅ `RealtimeProvider` + シグナル → invalidate 配線（`components/realtime/realtime-provider.tsx`。`(app)/layout.tsx` に 1 つ配置）
+3. ✅ 既存 `refetchInterval` の削除（messages/通知/チャンネル一覧）+ `refetchOnWindowFocus` 有効化 + 切断インジケータ（`realtime-indicator.tsx`）
+4. ◔ 検証: 2 ブラウザ間で新着・編集・リアクション・DM・既読同期・切断/復帰（取りこぼし回収）を手動確認（要 `supabase start` + 実環境）
+
+> 本番反映時の注意: `DATABASE_URL` のロールが対象テーブルのオーナー（= RLS バイパス）であることを要確認。ローカル/標準 Supabase は `postgres` ロールのため問題ない。
 
 ### Phase 3: プレゼンス連動の Push 抑制
 
