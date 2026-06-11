@@ -58,6 +58,9 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
   // Web 側でログアウトして /auth/login に遷移したらネイティブセッションも破棄する
   function handleNavigationStateChange(state: WebViewNavigation) {
     const url = state.url
+    // handoff → /projects → /auth/login（Cookie 問題）か handoff で直接失敗かを
+    // 切り分けられるよう、開発時は遷移の系列を残す
+    if (__DEV__) console.log(`[AppWebView] nav: ${url}`)
     if (url.includes('/auth/login') || url.includes('/auth/signup')) {
       // handoff 失敗（Web 側で setSession できず login へ戻された）でもここに到達する。
       // 「ログインしてもすぐログイン画面に戻る」調査の起点になるため URL を必ず残す
@@ -68,12 +71,16 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
     }
   }
 
-  // Web 側（mobile-shell.tsx）からの postMessage を受け取る。
-  // クライアントサイド遷移で /chats に入った場合はネイティブのチャットタブへ委譲する
+  // Web 側（mobile-shell.tsx / mobile-handoff）からの postMessage を受け取る
   function handleMessage(event: WebViewMessageEvent) {
     try {
-      const msg = JSON.parse(event.nativeEvent.data) as { type?: string }
+      const msg = JSON.parse(event.nativeEvent.data) as { type?: string; message?: string }
+      // クライアントサイド遷移で /chats に入った場合はネイティブのチャットタブへ委譲する
       if (msg.type === 'open-chats') router.push('/(app)/chats')
+      // 認証引き継ぎの失敗理由を Metro のログへ転送する
+      if (msg.type === 'handoff-error') {
+        console.error(`[AppWebView] 認証引き継ぎに失敗しました: ${msg.message ?? '(詳細なし)'}`)
+      }
     } catch {
       // WebView 内の他ライブラリ由来のメッセージは無視する
     }
