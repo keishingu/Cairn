@@ -59,6 +59,9 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
   function handleNavigationStateChange(state: WebViewNavigation) {
     const url = state.url
     if (url.includes('/auth/login') || url.includes('/auth/signup')) {
+      // handoff 失敗（Web 側で setSession できず login へ戻された）でもここに到達する。
+      // 「ログインしてもすぐログイン画面に戻る」調査の起点になるため URL を必ず残す
+      console.warn(`[AppWebView] WebView が認証画面へ遷移したためネイティブセッションを破棄します: ${url}`)
       supabase.auth.signOut().then(() => {
         router.replace('/(auth)/login')
       })

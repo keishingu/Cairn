@@ -80,16 +80,19 @@ export default function AppLayout() {
     <ProjectsViewProvider>
       <Tabs
         // フッターはネイティブ実装の MobileNav に委譲する（圏外でもタブ切替を可能にし、
-        // WebView 内の Web フッターと二重にならないようにするため）
+        // WebView 内の Web フッターと二重にならないようにするため）。
+        // ディレクトリ配下に _layout がないため、ルート名は "projects/index" のように
+        // ファイル単位になる点に注意（"projects" では一致しない）
         tabBar={(props) => <MobileNav {...props} />}
         screenOptions={{ headerShown: false }}
       >
-        <Tabs.Screen name="projects" />
-        <Tabs.Screen name="chats" />
-        <Tabs.Screen name="tasks" />
-        <Tabs.Screen name="ai" />
+        <Tabs.Screen name="projects/index" />
+        <Tabs.Screen name="chats/index" />
+        <Tabs.Screen name="tasks/index" />
+        <Tabs.Screen name="ai/index" />
         {/* 以下はタブに出さず、通知タップ・メニューからの遷移先としてのみ使う */}
-        <Tabs.Screen name="notifications" options={{ href: null }} />
+        <Tabs.Screen name="projects/[id]" options={{ href: null }} />
+        <Tabs.Screen name="notifications/index" options={{ href: null }} />
         <Tabs.Screen name="files" options={{ href: null }} />
         <Tabs.Screen name="gallery" options={{ href: null }} />
         <Tabs.Screen name="members" options={{ href: null }} />

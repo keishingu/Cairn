@@ -15,11 +15,12 @@ const COLORS = {
   dark: { card: '#11161D', border: '#1F2630', divider: '#1A2027', text: '#E5E7EB', textMuted: '#8A94A3', accent: '#22D3EE', cardAlt: '#1A2027' },
 }
 
+// route はナビゲーターの実ルート名（ディレクトリ配下に _layout がないためファイル単位）
 const TABS: { id: string; route: string; icon: IoniconName; label: string }[] = [
-  { id: 'projects', route: 'projects', icon: 'grid-outline', label: 'プロジェクト' },
-  { id: 'chats', route: 'chats', icon: 'chatbubble-outline', label: 'チャット' },
-  { id: 'tasks', route: 'tasks', icon: 'checkmark-circle-outline', label: 'タスク' },
-  { id: 'ai', route: 'ai', icon: 'sparkles-outline', label: 'AI' },
+  { id: 'projects', route: 'projects/index', icon: 'grid-outline', label: 'プロジェクト' },
+  { id: 'chats', route: 'chats/index', icon: 'chatbubble-outline', label: 'チャット' },
+  { id: 'tasks', route: 'tasks/index', icon: 'checkmark-circle-outline', label: 'タスク' },
+  { id: 'ai', route: 'ai/index', icon: 'sparkles-outline', label: 'AI' },
   { id: 'menu', route: '', icon: 'menu-outline', label: 'メニュー' },
 ]
 
@@ -52,7 +53,9 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   // ポップアップは Modal（フルスクリーン座標系）で出すため、タブバーの実高さを測って真上に配置する
   const [navHeight, setNavHeight] = React.useState(64 + insets.bottom)
 
-  const current = state.routes[state.index]?.name ?? 'projects'
+  const current = state.routes[state.index]?.name ?? 'projects/index'
+  // projects/[id]（プロジェクト詳細）でもプロジェクトタブをアクティブ表示する
+  const isProjectsActive = current.startsWith('projects/')
   const closeAll = () => { setMenuOpen(false); setPickerOpen(false) }
 
   const unreadTotal = (channels ?? []).reduce((sum, ch) => sum + ch.unreadCount, 0)
@@ -65,11 +68,11 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
     }
     if (tab.id === 'projects') {
       setMenuOpen(false)
-      if (current === 'projects') {
+      if (isProjectsActive) {
         setPickerOpen((o) => !o)
       } else {
         setPickerOpen(false)
-        navigation.navigate('projects')
+        navigation.navigate('projects/index')
       }
       return
     }
@@ -95,7 +98,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
                 <TouchableOpacity
                   key={v.id}
                   style={[styles.popupRow, i > 0 && { borderTopWidth: 1, borderTopColor: c.divider }, active && { backgroundColor: c.cardAlt }]}
-                  onPress={() => { closeAll(); setView(v.id); navigation.navigate('projects') }}
+                  onPress={() => { closeAll(); setView(v.id); navigation.navigate('projects/index') }}
                 >
                   <Ionicons name={v.icon} size={16} color={active ? c.accent : c.textMuted} />
                   <Text style={[styles.popupLabel, { color: active ? c.accent : c.text, fontWeight: active ? '700' : '500' }]}>{v.label}</Text>
@@ -153,7 +156,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
         {TABS.map((tab) => {
           const active =
             tab.id === 'menu' ? isMenuActive :
-            tab.id === 'projects' ? (pickerOpen || current === 'projects') :
+            tab.id === 'projects' ? (pickerOpen || isProjectsActive) :
             current === tab.route
           const color = active ? c.accent : c.textMuted
           const iconName = tab.id === 'projects' ? projectsIcon : tab.icon
