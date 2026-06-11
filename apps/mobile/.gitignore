@@ -1,0 +1,7 @@
+# expo run:ios / run:android（prebuild）が生成するネイティブプロジェクト。
+# app.json から再生成できる成果物のためコミットしない（CNG 運用）
+/ios
+/android
+
+# Expo
+.expo/

@@ -83,6 +83,8 @@ pnpm dev
 
 ネイティブビルドのやり直しが必要なのは、ネイティブモジュールの追加や `app.json` のネイティブ設定変更時のみ。JS の変更は Metro のホットリロードで反映される。
 
+`expo run:ios` / `run:android` が生成する `ios/` `android/` ディレクトリは `app.json` から再生成できる成果物のため、コミットしない（`apps/mobile/.gitignore` で除外済み）。また、ネイティブプロジェクトが存在すると runtime version のポリシー（`appVersion` 等）が使えないため、`app.json` の `runtimeVersion` は固定文字列で管理する。**ネイティブモジュールを追加・更新したら `runtimeVersion` を手動で上げる**こと（古いネイティブビルドに非互換な EAS Update が配信されるのを防ぐため）。
+
 実機で使う場合は `pnpm dev` で表示される QR コードを読み込む（開発クライアントがインストール済みであること）。Xcode / Android Studio がないメンバーには、EAS の development プロファイル（`eas build --profile development`）でビルド済み開発クライアントを配布できる（iOS シミュレータ向けビルドにも対応済み）。
 
 > **接続先 URL は自動導出される（IP の手動設定は不要）**
