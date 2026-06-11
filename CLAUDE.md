@@ -10,6 +10,8 @@ pnpm Workspace + Turborepo のモノレポ。
 
 ```
 apps/web/          Next.js 15 (メインWebアプリ)
+apps/mobile/       Expo (Web版を表示する WebView ラッパー + Push通知)
+apps/desktop/      Electron (Web版を表示するデスクトップラッパー)
 packages/core/     ドメイン型・ユースケース・ポートインターフェース
 packages/db/       Drizzle ORM スキーマ・クライアント (Supabase PostgreSQL)
 packages/shared/   共有型 (TypeScript) + Zod バリデーションスキーマ
@@ -58,7 +60,7 @@ pnpm dev
 - **tsconfig の extends は相対パス**で書く（`../../packages/config/tsconfig/base.json`）
   - Vite/Vitest の `tsconfck` が workspace パッケージ参照を解決できないため
 - **AIモデルは OpenAI**（gpt-4o / gpt-4o-mini）。Claude は使用しない
-- Mobile (Expo) は Phase 2 以降のため、現時点では実装しない
+- Mobile は **Expo の WebView ラッパー**（`apps/mobile`）として実装済み。ネイティブ化のロードマップは [`docs/08_expo_roadmap.md`](docs/08_expo_roadmap.md) を参照
 - **UA ベースのデバイス出し分け**: middleware で `x-device` ヘッダーをセットし、`app/(app)/layout.tsx` で PC シェル / モバイルシェルを切り替える。レスポンシブ CSS は使わない
 - **プロジェクトビューは localStorage で管理**: 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクト済み。ビュー切替（一覧 / カレンダー / カンバン）はURLパラメータを使わず localStorage のみで永続化（`STORAGE_KEYS.projects_view_pc` / `STORAGE_KEYS.projects_view_mob`）。`/projects/[id]` はプロジェクト詳細（現在は `/projects?open={id}` にリダイレクト）
 - **API 認証は Bearer トークン（Supabase JWT）**: Web クライアントも Expo も同じ Next.js Route Handlers を呼び出し、`Authorization: Bearer <token>` で認証する。`getAuthContext()` は `Authorization` ヘッダを優先し、なければ Cookie にフォールバックする。Hono API 分離は「Next.js からの独立スケール・デプロイ分離が必要」になった時点で改めて検討する
@@ -103,6 +105,8 @@ pnpm dev
 
 
 ## 詳細ドキュメント
+
+ドキュメント全体の一覧と各文書のステータス（現行リファレンス / 設計時スナップショット / アーカイブ）は [`docs/README.md`](docs/README.md) を参照。**ドキュメントと実装が矛盾する場合はコードと本ファイルを正とする。**
 
 特定の作業時に参照:
 

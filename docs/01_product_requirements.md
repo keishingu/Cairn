@@ -1,6 +1,9 @@
 # プロダクト要件定義書
 ## Project Collaboration OS / Cairn（仮）
 
+> **ステータス**: 設計時スナップショット（作成: 2026-05-22）
+> 初期構想の記録であり、未実装の機能（Slack / Teams 連携、AGENTS.md カスタマイズ等）を含む。実装の現状と矛盾する場合は、コードと [`CLAUDE.md`](../CLAUDE.md) を正とする。一覧は [`docs/README.md`](./README.md) を参照。
+
 ---
 
 ## 1. 概要
