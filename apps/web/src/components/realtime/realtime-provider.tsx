@@ -118,7 +118,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       )
 
     const subscribe = () => {
-      channel.subscribe((subStatus) => {
+      channel.subscribe((subStatus, err) => {
         if (cancelled) return
         if (subStatus === 'SUBSCRIBED') {
           setStatus('connected')
@@ -127,6 +127,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           invalidateChannelLists(queryClient)
         } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT' || subStatus === 'CLOSED') {
+          // 購読失敗の原因（publication 未登録・RLS 拒否等）を隠さない
+          console.error('[Realtime] subscription failed:', subStatus, err?.message ?? err)
           setStatus('disconnected')
         }
       })
