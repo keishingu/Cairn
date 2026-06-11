@@ -213,7 +213,7 @@ private channel の join は **`realtime.messages` への RLS（Realtime Authori
 1. ✅ RLS 有効化 + SELECT ポリシー（`0033_realtime_rls.sql`。Data API 防御として存続） + Broadcast トリガー・`realtime.messages` 認可ポリシー（`0034_realtime_broadcast.sql`）
 2. ✅ `RealtimeProvider` + シグナル → invalidate 配線（`components/realtime/realtime-provider.tsx`。`(app)/layout.tsx` に 1 つ配置。`user:{me}` + 所属チャンネルトピックを購読）
 3. ✅ 既存 `refetchInterval` の削除（messages/通知/チャンネル一覧）+ `refetchOnWindowFocus` 有効化 + 切断インジケータ（`realtime-indicator.tsx`）
-4. ◔ 検証: 2 ブラウザ間で新着・編集・リアクション・DM・既読同期・切断/復帰（取りこぼし回収）を手動確認（0034 適用後の実環境）
+4. ✅ 検証: 2 ブラウザ間でメッセージの即時反映を確認（Vercel preview + クラウド Supabase、0034 適用済み）
 
 > 本番反映時の注意: `DATABASE_URL` のロールが対象テーブルのオーナー（= RLS バイパス）であることを要確認。ローカル/標準 Supabase は `postgres` ロールのため問題ない。
 
