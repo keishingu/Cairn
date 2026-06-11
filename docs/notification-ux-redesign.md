@@ -108,19 +108,21 @@
 
 ## 4. 実装ロードマップ
 
-### Phase 1: 信頼性・整合性の修正（最優先・既存構造のまま）
+### Phase 1: 信頼性・整合性の修正（最優先・既存構造のまま）— 実装済み
 
-1. **Push URL を実ルートに修正**（`/chat` → `/chats/${channelId}`）
-2. **sw.js `notificationclick` で遷移**: 既存ウィンドウは `client.navigate(url)`（不可なら `postMessage` でクライアント側ルーティング）、なければ `openWindow(url)`
-3. **Expo に `addNotificationResponseReceivedListener` を追加**し、`data.url` で `router.push`
-4. **通知パネルのクリックで遷移**: `data.channelId` / `messageId` から該当メッセージへジャンプ（既読化と同時）
-5. **自分の発言を未読に数えない**: 未読クエリに `sender_id != :userId` を追加 + Web も送信成功時に既読化（モバイルと挙動統一）
-6. **閲覧中チャンネルの自動既読化**: メッセージ到着時、`document.visibilityState === 'visible'` かつ表示中なら mark-read（デバウンス付き）
-7. **チャンネル参加時に read state 行を作成**（`joined_at` 起点）→ 新規参加者の全履歴未読を解消
-8. **チャンネル既読時にメンション通知も既読化**（`notifications.data->>'channelId'` で連動）
-9. **DM のインボックス通知を追加**（Push を逃しても回収できる）
-10. **Inngest 依存の可視化**: `inngest.send()` 失敗時のエラーログ+リトライ。ローカル開発手順に Inngest dev server 起動を明記（README / CLAUDE.md）
-11. 暫定: チャンネル一覧クエリに `refetchInterval: 15_000` を付与（Phase 2 で Realtime に置換）
+1. ✅ **Push URL を実ルートに修正**（`/chat` → `/chats/${channelId}`）— `lib/inngest/functions.ts`
+2. ✅ **sw.js `notificationclick` で遷移**: 既存ウィンドウを `client.focus()` 後 `client.navigate(url)`、なければ `openWindow(url)`
+3. ✅ **Expo に `addNotificationResponseReceivedListener` を追加**: `data.url` を該当トップレベルタブへマップ（個別チャンネルへのディープリンクは Phase 2）+ コールドスタート対応
+4. ✅ **通知パネルのクリックで遷移**: `data.channelId` から `/chats/{channelId}` へ遷移（既読化と同時にパネルを閉じる）
+5. ✅ **自分の発言を未読に数えない**: 未読クエリ 3 本に `sender_id != :userId` を追加。送信時の既読化は item 6 の自動既読でカバー
+6. ✅ **閲覧中チャンネルの自動既読化**: `ChatThread` で最新メッセージ ID 変化時、`document.visibilityState === 'visible'` なら mark-read
+7. ✅ **チャンネル参加時に read state 行を作成**（参加時点を起点）→ 新規参加者の全履歴未読を解消。メンバー追加・DM 作成の両方
+8. ✅ **チャンネル既読時にメンション/DM 通知も既読化**（`notifications.data->>'channelId'` で連動）
+9. ✅ **DM のインボックス通知を追加**（`notification_type` に `dm` を追加。Push を逃しても回収できる）
+10. ◐ **Inngest 依存の可視化**: `inngest.send()` 失敗は warn ログ済み。ローカル開発で Inngest dev server が必要な旨を CLAUDE.md に明記。リトライ強化は今後
+11. ✅ チャンネル一覧クエリに `refetchInterval: 15_000` を付与（Phase 2 で Realtime に置換）
+
+付随修正: `GET /api/notifications` に `workspace_id` フィルタを追加（マルチ WS で他 WS の通知混入を防止）。
 
 ### Phase 2: 配信のリアルタイム化（Supabase Realtime へ移行）
 

@@ -46,12 +46,28 @@ export const onMessageCreated = inngest.createFunction(
     })
 
     if (isDm) {
+      // DM はアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
+      await step.run('create-dm-notifications', async () => {
+        if (members.length === 0) return
+        const { db, notifications } = await import('@cairn/db')
+        await db.insert(notifications).values(
+          members.map(m => ({
+            userId: m.userId,
+            workspaceId,
+            type: 'dm' as const,
+            title: senderName,
+            body: stripMentions(content).slice(0, 200),
+            data: { messageId, channelId, senderName },
+          })),
+        )
+      })
+
       await step.run('send-dm-push', async () => {
         await Promise.allSettled(
           members.map(m => sendPushToUser(m.userId, {
             title: senderName,
             body: stripMentions(content).slice(0, 100),
-            url: '/chat',
+            url: `/chats/${channelId}`,
           })),
         )
       })
@@ -118,7 +134,7 @@ export const onMessageCreated = inngest.createFunction(
             sendPushToUser(m.userId, {
               title: `${senderName} があなたをメンションしました`,
               body: stripMentions(content).slice(0, 100),
-              url: `/chat?channel=${channelId}`,
+              url: `/chats/${channelId}`,
             }),
           ),
         )

@@ -56,14 +56,14 @@ export async function GET() {
     const channelIds = rows.map(r => r.id)
     if (channelIds.length > 0) {
       const { channelReadStates, messages } = await import('@cairn/db')
-      const { isNull, gt, count, sql: sql2, inArray } = await import('drizzle-orm')
+      const { isNull, gt, count, sql: sql2, inArray, ne } = await import('drizzle-orm')
 
       const [unreadRows, mentionRows] = await Promise.all([
         db
           .select({ channelId: messages.channelId, cnt: count() })
           .from(messages)
           .leftJoin(channelReadStates, and(eq(channelReadStates.channelId, messages.channelId), eq(channelReadStates.userId, ctx.userId)))
-          .where(and(inArray(messages.channelId, channelIds), isNull(messages.deletedAt), gt(messages.createdAt, sql2`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
+          .where(and(inArray(messages.channelId, channelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), gt(messages.createdAt, sql2`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
           .groupBy(messages.channelId),
         db
           .select({ channelId: channelReadStates.channelId, cnt: channelReadStates.unreadMentionCount })
@@ -105,7 +105,7 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers } = await import('@cairn/db')
+    const { channels, channelMembers, channelReadStates } = await import('@cairn/db')
     const { and, eq, inArray, sql } = await import('drizzle-orm')
 
     // 既存の DM チャンネルを探す（両者が参加している）
@@ -147,6 +147,12 @@ export async function POST(req: Request) {
       { channelId: ch.id, userId: ctx.userId },
       { channelId: ch.id, userId: targetUserId },
     ])
+
+    // 両参加者の既読起点を作成時点にする（参加直後の過去履歴未読を防ぐ。新規DMでは履歴ゼロだが一貫性のため）
+    await db.insert(channelReadStates).values([
+      { channelId: ch.id, userId: ctx.userId, lastReadAt: new Date() },
+      { channelId: ch.id, userId: targetUserId, lastReadAt: new Date() },
+    ]).onConflictDoNothing()
 
     void sql // suppress unused import warning
 

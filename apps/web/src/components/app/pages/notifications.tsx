@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useRouter } from 'next/navigation'
 import { Icon } from '../primitives'
 import {
   useNotifications,
@@ -12,6 +13,7 @@ import { usePushNotifications } from '@/lib/push/client'
 
 const TYPE_CONFIG: Record<NotificationDto['type'], { icon: string; c: string; bg: string }> = {
   mention:  { icon: 'chat',     c: 'var(--blue)',    bg: 'var(--blue-soft)' },
+  dm:       { icon: 'chat',     c: 'var(--blue)',    bg: 'var(--blue-soft)' },
   file:     { icon: 'file',     c: 'var(--violet)',  bg: 'var(--violet-soft)' },
   status:   { icon: 'flag',     c: 'var(--amber)',   bg: 'var(--amber-soft)' },
   ai:       { icon: 'sparkles', c: 'var(--accent)',  bg: 'var(--accent-soft)' },
@@ -31,12 +33,29 @@ const FILTERS = [
   { id: 'unread',  label: '未読' },
 ]
 
+// 通知の遷移先を決める。チャンネル系は data.channelId のスレッドへ、タスクはマイタスクへ
+function notificationHref(n: NotificationDto): string | null {
+  const channelId = n.data?.['channelId']
+  switch (n.type) {
+    case 'mention':
+    case 'dm':
+    case 'file':
+    case 'reaction':
+      return channelId ? `/chats/${channelId}` : null
+    case 'task':
+      return '/tasks'
+    default:
+      return null
+  }
+}
+
 interface PageNotificationsProps {
   onClose: () => void
 }
 
 export const PageNotifications = ({ onClose }: PageNotificationsProps) => {
   const [filter, setFilter] = React.useState('all')
+  const router = useRouter()
   const { data: notifications = [], isLoading } = useNotifications(filter)
   const markRead = useMarkNotificationsRead()
   const push = usePushNotifications()
@@ -48,9 +67,13 @@ export const PageNotifications = ({ onClose }: PageNotificationsProps) => {
 
   const handleMarkAllRead = () => markRead.mutate(undefined)
 
-  const handleMarkOneRead = (id: string, isUnread: boolean) => {
-    if (!isUnread) return
-    markRead.mutate([id])
+  const handleNotificationClick = (n: NotificationDto) => {
+    if (n.readAt === null) markRead.mutate([n.id])
+    const href = notificationHref(n)
+    if (href) {
+      router.push(href)
+      onClose()
+    }
   }
 
   return (
@@ -107,7 +130,7 @@ export const PageNotifications = ({ onClose }: PageNotificationsProps) => {
             return (
               <div key={n.id}
                 style={{ display: 'flex', gap: 12, padding: '12px 18px', borderBottom: '1px solid var(--divider)', background: isUnread ? 'var(--accent-soft)' : 'transparent', cursor: 'pointer', position: 'relative' }}
-                onClick={() => handleMarkOneRead(n.id, isUnread)}
+                onClick={() => handleNotificationClick(n)}
                 onMouseEnter={e => { if (!isUnread) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
                 onMouseLeave={e => { if (!isUnread) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
               >

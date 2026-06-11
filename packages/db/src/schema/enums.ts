@@ -52,6 +52,7 @@ export const channelTypeEnum = pgEnum('channel_type', ['workspace', 'project', '
 
 export const notificationTypeEnum = pgEnum('notification_type', [
   'mention',
+  'dm',
   'task',
   'file',
   'status',

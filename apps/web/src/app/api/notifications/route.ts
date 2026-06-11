@@ -6,7 +6,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 
 export interface NotificationDto {
   id: string
-  type: 'mention' | 'task' | 'file' | 'status' | 'invite' | 'reaction' | 'ai'
+  type: 'mention' | 'dm' | 'task' | 'file' | 'status' | 'invite' | 'reaction' | 'ai'
   title: string
   body: string
   data: Record<string, string> | null
@@ -25,7 +25,10 @@ export async function GET(req: Request) {
     const { db, notifications } = await import('@cairn/db')
     const { eq, isNull, and, desc } = await import('drizzle-orm')
 
-    const conditions = [eq(notifications.userId, ctx.userId)]
+    const conditions = [
+      eq(notifications.userId, ctx.userId),
+      eq(notifications.workspaceId, ctx.workspaceId),
+    ]
     if (filter === 'unread') conditions.push(isNull(notifications.readAt))
     if (filter === 'mention') conditions.push(eq(notifications.type, 'mention'))
     if (filter === 'ai') conditions.push(eq(notifications.type, 'ai'))

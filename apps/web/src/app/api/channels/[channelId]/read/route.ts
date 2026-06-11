@@ -13,8 +13,8 @@ export async function POST(_req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelReadStates, messages } = await import('@cairn/db')
-    const { eq, and, isNull, desc } = await import('drizzle-orm')
+    const { channelReadStates, messages, notifications } = await import('@cairn/db')
+    const { eq, and, isNull, desc, inArray, sql } = await import('drizzle-orm')
 
     const [latest] = await db
       .select({ id: messages.id })
@@ -41,6 +41,17 @@ export async function POST(_req: Request, { params }: RouteContext) {
           updatedAt: new Date(),
         },
       })
+
+    // チャンネルを読んだらベルのメンション/DM 通知も既読にする（既読状態を2系統に分裂させない）
+    await db
+      .update(notifications)
+      .set({ readAt: new Date() })
+      .where(and(
+        eq(notifications.userId, ctx.userId),
+        isNull(notifications.readAt),
+        inArray(notifications.type, ['mention', 'dm']),
+        sql`${notifications.data}->>'channelId' = ${channelId}`,
+      ))
 
     return NextResponse.json({ ok: true })
   } catch (err) {
