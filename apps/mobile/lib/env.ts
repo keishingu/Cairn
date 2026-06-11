@@ -34,7 +34,7 @@ export const SUPABASE_URL = resolveBaseUrl(
 export const API_BASE_URL = resolveBaseUrl(
   'EXPO_PUBLIC_API_BASE_URL',
   process.env['EXPO_PUBLIC_API_BASE_URL'],
-  3000,
+  3128,
 )
 
 // 接続先の取り違え（古い .env.local の値が自動導出を上書きしている等）を
