@@ -36,3 +36,9 @@ export const API_BASE_URL = resolveBaseUrl(
   process.env['EXPO_PUBLIC_API_BASE_URL'],
   3000,
 )
+
+// 接続先の取り違え（古い .env.local の値が自動導出を上書きしている等）を
+// すぐ発見できるよう、開発時は解決結果を必ずログに出す
+if (__DEV__) {
+  console.log(`[env] SUPABASE_URL=${SUPABASE_URL} API_BASE_URL=${API_BASE_URL}`)
+}
