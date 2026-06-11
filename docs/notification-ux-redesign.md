@@ -129,44 +129,55 @@
 CLAUDE.md の方針「ポーリングで実装し、必要に応じて Supabase Realtime へ移行する」をここで発動する。
 当初案では「メッセージ本文は 5 秒ポーリング据え置き」としていたが、**メッセージ本文（新着・編集・削除・リアクション）も含めて Realtime 化する**ようスコープを拡張した。
 
+#### 配信方式: Broadcast from Database（postgres_changes からの変更）
+
+当初は postgres_changes（WAL 購読）で実装したが、**本プロジェクトの Realtime サーバーは postgres_changes の購読要求を処理しない**ことが検証で判明した（join 応答に postgres_changes の確認が含まれず `realtime.subscription` に登録されない・Realtime ログでも Broadcast 用レプリケーションのみ起動・ダッシュボードにも有効化設定なし）。Supabase 公式も Broadcast を推奨方式としているため、**`realtime.broadcast_changes()` + DB トリガーの Broadcast from Database 方式**を採用する。
+
+トピック設計（いずれも private channel）:
+
+| トピック | 配信元トリガー | 用途 |
+|---|---|---|
+| `channel:{channelId}` | `messages` INSERT/UPDATE、`message_reactions` 全イベント | チャット本文・リアクションの更新シグナル |
+| `user:{userId}` | `notifications` INSERT、`channel_read_states` INSERT/UPDATE | ベル・インボックス更新、既読のデバイス間同期 |
+
+- メッセージの削除はソフトデリート（`deleted_at`）のため UPDATE トリガーで拾える
+- `message_reactions` は行に `channel_id` がないため、トリガー内で親メッセージから引く
+
 #### 設計原則: 「Realtime はシグナル、データは既存 API」
 
-postgres_changes のペイロードから直接メッセージを組み立てて描画は**しない**。
+Broadcast ペイロード（`record`）から直接メッセージを組み立てて描画は**しない**。
 
 - ペイロードは生の行データのみで、表示に必要な JOIN（送信者名・アバター・リアクション集計・添付ファイル）を再現できず、DTO 組み立てロジックが API と二重化する
-- 代わりに **イベント受信 → 該当する TanStack Query を invalidate → 既存 REST API から再取得**という構成にする
+- 代わりに **イベント受信 → 該当する TanStack Query を invalidate → 既存 REST API から再取得**という構成にする（ペイロードは `table` の判別のみに使用）
 - 楽観的更新（送信・編集・削除・リアクション）は現行実装のまま変更しない
 - **ポーリング（`refetchInterval`）は廃止し、配信経路を Realtime に一本化する**（理由は後述）
 
 これにより、データの単一情報源は REST API のまま、配信レイテンシだけを 5〜30 秒 → 1 秒未満に短縮できる。
 
-#### 認可設計（最重要・前提作業）
+#### 認可設計
 
-現状、public スキーマのテーブルには **RLS が一切なく、`supabase_realtime` publication にも未登録**（RLS は storage.objects のみ）。
-postgres_changes は購読者ごとに RLS で行をフィルタするため、**RLS なしで `messages` を publication に追加すると、認証済みユーザー全員に全チャンネル（プライベート・DM 含む）の本文が配信される**。よって Realtime 化の前提として:
+private channel の join は **`realtime.messages` への RLS（Realtime Authorization）**で認可する:
 
-1. `messages` / `message_reactions` / `notifications` / `channel_read_states` に RLS を有効化し、SELECT ポリシーを追加
-   - `messages`: 非プライベートチャンネル（workspace / project）は同一 WS メンバー全員、プライベート / DM は `channel_members` 所属者のみ
-   - `message_reactions`: 親メッセージと同条件（`EXISTS` で messages を参照）
-   - `notifications` / `channel_read_states`: `user_id = auth.uid()` のみ
-2. `alter publication supabase_realtime add table ...` で 4 テーブルを公開
-3. **API レイヤー（Drizzle）への影響はない**: テーブルオーナー（postgres ロール）接続は FORCE しない限り RLS をバイパスする。INSERT/UPDATE/DELETE ポリシーは定義しない（書き込みは全て API 経由のため）
-   - 本番反映時に `DATABASE_URL` のロールがテーブルオーナーであることを要確認
+- `user:{userId}` トピック: `realtime.topic() = 'user:' || auth.uid()`
+- `channel:{channelId}` トピック: `can_access_channel_topic()` → `can_access_channel()` で判定
+  - 非プライベートチャンネル（workspace / project）は同一 WS メンバー全員、プライベート / DM は `channel_members` 所属者のみ
+- 0033 で追加した public テーブル側の RLS SELECT ポリシーは、**Data API（PostgREST）経由の直接読み取りを防ぐ防御**としてそのまま残す（従来は RLS なし = publishable key で全行読めた）
+- **API レイヤー（Drizzle）への影響はない**: テーブルオーナー（postgres ロール）接続は RLS をバイパスする
+  - 本番反映時に `DATABASE_URL` のロールがテーブルオーナーであることを要確認
 
 #### クライアント購読構成（Web）
 
-アプリシェルに `RealtimeProvider`（`useRealtimeSync`）を 1 つ配置。**1 WebSocket / 4 購読**:
+アプリシェルに `RealtimeProvider` を 1 つ配置。**1 WebSocket** 上で `user:{me}` + 所属チャンネル分の `channel:{id}` トピックを購読する。チャンネル一覧クエリの結果に追従して join/leave を差分反映する。
 
-| 購読 | フィルタ | 受信時の動作 |
-|---|---|---|
-| `messages` INSERT/UPDATE | なし（RLS でスコープ） | 表示中チャンネルなら messages クエリを invalidate。常にチャンネル一覧 3 種を invalidate（デバウンス 1s） |
-| `message_reactions` *（全イベント） | なし（RLS でスコープ） | 表示中チャンネルの messages クエリを invalidate（デバウンス 1s） |
-| `notifications` INSERT | `user_id=eq.{me}` | notifications クエリを invalidate → ベル・インボックス即時更新 |
-| `channel_read_states` UPDATE | `user_id=eq.{me}` | チャンネル一覧 + notifications を invalidate → **他デバイス既読の即時同期** |
+| 受信イベント | 動作 |
+|---|---|
+| `channel:{id}` の `messages` | 該当チャンネルの messages クエリを invalidate + チャンネル一覧 3 種を invalidate（デバウンス 0.8s） |
+| `channel:{id}` の `message_reactions` | 該当チャンネルの messages クエリを invalidate |
+| `user:{me}` の `notifications` | notifications を invalidate + 一覧 invalidate（未参加チャンネル・新規 DM の活動を回収） |
+| `user:{me}` の `channel_read_states` | チャンネル一覧 + notifications を invalidate → **他デバイス既読の即時同期** |
 
-- メッセージの削除はソフトデリート（`deleted_at`）のため UPDATE イベントで拾える。DELETE イベント・REPLICA IDENTITY の変更は不要
-- 認証: `supabase.realtime.setAuth(accessToken)`。トークンリフレッシュ時に再設定
-- **再接続時（CHANNEL の再 SUBSCRIBED）に対象クエリを一括 invalidate**し、オフライン中の取りこぼしを回収する
+- 認証: 購読前に `supabase.realtime.setAuth(accessToken)`。トークンリフレッシュ時に再設定。チャンネルトピックの join は `user:{me}` の接続成功後に行う（認可前 join を防ぐ）
+- **再接続時（`user:{me}` の再 SUBSCRIBED）に対象クエリを一括 invalidate**し、オフライン中の取りこぼしを回収する
 
 #### ポーリングは廃止する（フォールバックも持たない）
 
@@ -195,14 +206,14 @@ postgres_changes は購読者ごとに RLS で行をフィルタするため、*
 
 - WS ペイロードからのメッセージ直接描画（上記の理由で不採用）
 - タイピングインジケータ・オンラインプレゼンス（Phase 3 以降で Realtime Presence を検討）
-- 大規模化で postgres_changes の RLS 評価コストが問題になったら、Broadcast-from-DB（`realtime.broadcast_changes` + private channel + `realtime.messages` の RLS）へ移行する
+- postgres_changes 方式（本プロジェクトの Realtime サーバーが処理しないため不採用。0033 の publication 登録は 0034 で撤去済み）
 
 #### 実装ステップ
 
-1. ✅ マイグレーション: RLS 有効化 + SELECT ポリシー + publication 追加（`supabase/migrations/0033_realtime_rls.sql`、`can_access_channel()` で messages/reactions のアクセス判定を共有）
-2. ✅ `RealtimeProvider` + シグナル → invalidate 配線（`components/realtime/realtime-provider.tsx`。`(app)/layout.tsx` に 1 つ配置）
+1. ✅ RLS 有効化 + SELECT ポリシー（`0033_realtime_rls.sql`。Data API 防御として存続） + Broadcast トリガー・`realtime.messages` 認可ポリシー（`0034_realtime_broadcast.sql`）
+2. ✅ `RealtimeProvider` + シグナル → invalidate 配線（`components/realtime/realtime-provider.tsx`。`(app)/layout.tsx` に 1 つ配置。`user:{me}` + 所属チャンネルトピックを購読）
 3. ✅ 既存 `refetchInterval` の削除（messages/通知/チャンネル一覧）+ `refetchOnWindowFocus` 有効化 + 切断インジケータ（`realtime-indicator.tsx`）
-4. ◔ 検証: 2 ブラウザ間で新着・編集・リアクション・DM・既読同期・切断/復帰（取りこぼし回収）を手動確認（要 `supabase start` + 実環境）
+4. ◔ 検証: 2 ブラウザ間で新着・編集・リアクション・DM・既読同期・切断/復帰（取りこぼし回収）を手動確認（0034 適用後の実環境）
 
 > 本番反映時の注意: `DATABASE_URL` のロールが対象テーブルのオーナー（= RLS バイパス）であることを要確認。ローカル/標準 Supabase は `postgres` ロールのため問題ない。
 
