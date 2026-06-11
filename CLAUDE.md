@@ -26,7 +26,7 @@ packages/config/   tsconfig / ESLint の共有設定
 - **状態管理**: TanStack Query (サーバー状態), Zustand (グローバルUI), nuqs (URL状態)
 - **DB**: Supabase PostgreSQL + Drizzle ORM + pgvector
 - **認証・リアルタイム・ストレージ**: Supabase Auth / Realtime / Storage
-- チャット同期は TanStack Query のポーリングで実装し、必要に応じて Supabase Realtime へ移行する
+- チャット・通知・未読の同期は **Supabase Realtime（Broadcast from Database）** で配信。DB トリガー + `realtime.broadcast_changes()` → `RealtimeProvider` が該当クエリを invalidate → REST 再取得（ポーリング・フォールバックなし）。**postgres_changes は本プロジェクトの Realtime では動作しないため使用しない**。詳細は [`docs/notification-ux-redesign.md`](docs/notification-ux-redesign.md) の Phase 2
 - **AI**: Vercel AI SDK + OpenAI API (gpt-4o / gpt-4o-mini)
 - **非同期ジョブ**: Inngest
 

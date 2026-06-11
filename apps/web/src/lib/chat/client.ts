@@ -158,14 +158,12 @@ async function fetchCurrentUser(): Promise<CurrentUserDto> {
   return res.json()
 }
 
-// サイドバーの未読バッジを定期更新する。Phase 2 で Supabase Realtime に置換予定
-const CHANNEL_LIST_REFETCH_INTERVAL = 15_000
-
+// 未読バッジの更新は RealtimeProvider 経由（messages / channel_read_states の購読）。
+// 配線は apps/web/src/components/realtime/realtime-provider.tsx を参照
 export function useProjectChannels() {
   return useQuery({
     queryKey: chatQueryKeys.projectChannels,
     queryFn: fetchProjectChannels,
-    refetchInterval: CHANNEL_LIST_REFETCH_INTERVAL,
   })
 }
 
@@ -173,7 +171,6 @@ export function useWorkspaceChannels() {
   return useQuery({
     queryKey: chatQueryKeys.workspaceChannels,
     queryFn: fetchWorkspaceChannels,
-    refetchInterval: CHANNEL_LIST_REFETCH_INTERVAL,
   })
 }
 
@@ -188,7 +185,6 @@ export function useWorkspaceDms() {
   return useQuery({
     queryKey: chatQueryKeys.dms,
     queryFn: fetchDms,
-    refetchInterval: CHANNEL_LIST_REFETCH_INTERVAL,
   })
 }
 
@@ -241,12 +237,12 @@ export function useCurrentUser() {
 }
 
 export function useChannelMessages(channelId: string | null) {
+  // 新着・編集・削除・リアクションは RealtimeProvider が messages / message_reactions の
+  // 購読で invalidate するためポーリングしない
   return useQuery({
     queryKey: chatQueryKeys.messages(channelId),
     queryFn: () => fetchChannelMessages(channelId!),
     enabled: !!channelId,
-    refetchInterval: 5000,
-    refetchIntervalInBackground: false,
   })
 }
 

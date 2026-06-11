@@ -4,11 +4,15 @@
 import { headers } from 'next/headers'
 import { PCShell } from './_shells/pc-shell'
 import { MobileShell } from './_shells/mobile-shell'
+import { RealtimeProvider } from '@/components/realtime/realtime-provider'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const headersList = await headers()
   const isMobile = headersList.get('x-device') === 'mobile'
 
-  if (isMobile) return <MobileShell />
-  return <PCShell>{children}</PCShell>
+  return (
+    <RealtimeProvider>
+      {isMobile ? <MobileShell /> : <PCShell>{children}</PCShell>}
+    </RealtimeProvider>
+  )
 }

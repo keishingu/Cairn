@@ -28,10 +28,10 @@ async function markNotificationsRead(ids?: string[]): Promise<{ updated: number 
 }
 
 export function useNotifications(filter: string) {
+  // 通知の即時更新は RealtimeProvider 経由（notifications / channel_read_states の購読）
   return useQuery({
     queryKey: notificationQueryKeys.list(filter),
     queryFn: () => fetchNotifications(filter),
-    refetchInterval: 30_000,
   })
 }
 
