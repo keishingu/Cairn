@@ -3,7 +3,7 @@ import { Platform, View, StyleSheet, useColorScheme } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
-import type { WebViewNavigation } from 'react-native-webview'
+import type { WebViewMessageEvent, WebViewNavigation } from 'react-native-webview'
 import { supabase } from '../lib/supabase'
 import { API_BASE_URL as WEB_BASE } from '../lib/env'
 
@@ -11,17 +11,30 @@ import { API_BASE_URL as WEB_BASE } from '../lib/env'
 const BG_DARK = '#0B0F14'
 const BG_LIGHT = '#F8FAFC'
 
-interface Props {
-  path: string
+export interface AppWebViewHandle {
+  injectJavaScript: (js: string) => void
 }
 
-export function AppWebView({ path }: Props) {
+interface Props {
+  path: string
+  // WebView の読み込み完了時。ネイティブの状態を inject で再反映する用途に使う
+  onLoadEnd?: () => void
+}
+
+export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function AppWebView(
+  { path, onLoadEnd },
+  ref,
+) {
   const webViewRef = React.useRef<WebView>(null)
   const [uri, setUri] = React.useState<string | null>(null)
   const insets = useSafeAreaInsets()
   const colorScheme = useColorScheme()
   const bg = colorScheme === 'dark' ? BG_DARK : BG_LIGHT
   const router = useRouter()
+
+  React.useImperativeHandle(ref, () => ({
+    injectJavaScript: (js: string) => webViewRef.current?.injectJavaScript(js),
+  }), [])
 
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -52,11 +65,30 @@ export function AppWebView({ path }: Props) {
     }
   }
 
-  // 信頼済みオリジン以外へのナビゲーションをブロック（HTTPS のみ許可）
+  // Web 側（mobile-shell.tsx）からの postMessage を受け取る。
+  // クライアントサイド遷移で /chats に入った場合はネイティブのチャットタブへ委譲する
+  function handleMessage(event: WebViewMessageEvent) {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data) as { type?: string }
+      if (msg.type === 'open-chats') router.push('/(app)/chats')
+    } catch {
+      // WebView 内の他ライブラリ由来のメッセージは無視する
+    }
+  }
+
+  // 信頼済みオリジン以外へのナビゲーションをブロック（HTTPS のみ許可）。
+  // チャットへのリンクは WebView 内で開かず、ネイティブのチャットタブへ委譲する。
   function handleShouldStartLoadWithRequest(request: WebViewNavigation) {
     const url = request.url
     // about:blank など内部リソースは通す
     if (url === 'about:blank' || url.startsWith('about:')) return true
+
+    const chatPath = `${trustedOrigin}/chats`
+    if (url === chatPath || url.startsWith(`${chatPath}/`) || url.startsWith(`${chatPath}?`)) {
+      router.push('/(app)/chats')
+      return false
+    }
+
     // 信頼済みオリジンの HTTPS のみ許可
     return url.startsWith(`${trustedOrigin}/`) || url === trustedOrigin
   }
@@ -64,7 +96,7 @@ export function AppWebView({ path }: Props) {
   if (!uri) return <View style={[styles.fill, { backgroundColor: bg }]} />
 
   return (
-    <View style={[styles.fill, { backgroundColor: bg, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.fill, { backgroundColor: bg, paddingTop: insets.top }]}>
       <WebView
         ref={webViewRef}
         source={{ uri }}
@@ -76,10 +108,12 @@ export function AppWebView({ path }: Props) {
         // iOS スワイプバック（ブラウザの進む/戻るジェスチャー）
         allowsBackForwardNavigationGestures={Platform.OS === 'ios'}
         onNavigationStateChange={handleNavigationStateChange}
+        onMessage={handleMessage}
+        {...(onLoadEnd ? { onLoadEnd } : {})}
       />
     </View>
   )
-}
+})
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },

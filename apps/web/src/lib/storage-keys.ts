@@ -24,6 +24,7 @@ export const STORAGE_KEYS = {
   sidebar_collapsed:         'cairn:sidebar_collapsed',
   projects_list_view:        'cairn:projects_list_view',
   projects_table_sort:       'cairn:projects_table_sort',
+  webview_mode:              'cairn:webview_mode',
 } as const
 
 export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS]

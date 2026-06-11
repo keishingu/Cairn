@@ -13,8 +13,9 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-device', detectMobile(ua) ? 'mobile' : 'desktop')
 
-  const isWebView = request.nextUrl.searchParams.get('webview') === '1'
-  if (isWebView) requestHeaders.set('x-webview', '1')
+  // WebView 表示時の Web フッター抑制は ?webview=1 をクライアント側で sessionStorage に
+  // 記録して判定する（middleware ヘッダは初回リクエストにしか付かないため使わない）。
+  // 詳細は mobile-shell.tsx の loadWebViewMode を参照。
 
   let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
 

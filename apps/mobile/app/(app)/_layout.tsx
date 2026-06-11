@@ -4,6 +4,8 @@ import { Tabs, useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
 import Constants from 'expo-constants'
 import { apiFetch } from '../../lib/api-fetch'
+import { MobileNav } from '../../components/mobile-nav'
+import { ProjectsViewProvider } from '../../components/projects-view-context'
 
 // Expo Go の Android は SDK 53 以降プッシュ通知非対応のためスキップ
 const isExpoGo = Constants.appOwnership === 'expo'
@@ -75,13 +77,24 @@ export default function AppLayout() {
   }, [router])
 
   return (
-    <Tabs screenOptions={{ headerShown: false, tabBarStyle: { display: 'none' } }}>
-      <Tabs.Screen name="projects" />
-      <Tabs.Screen name="chats" />
-      <Tabs.Screen name="tasks" />
-      <Tabs.Screen name="notifications" />
-      <Tabs.Screen name="ai" />
-      <Tabs.Screen name="menu" />
-    </Tabs>
+    <ProjectsViewProvider>
+      <Tabs
+        // フッターはネイティブ実装の MobileNav に委譲する（圏外でもタブ切替を可能にし、
+        // WebView 内の Web フッターと二重にならないようにするため）
+        tabBar={(props) => <MobileNav {...props} />}
+        screenOptions={{ headerShown: false }}
+      >
+        <Tabs.Screen name="projects" />
+        <Tabs.Screen name="chats" />
+        <Tabs.Screen name="tasks" />
+        <Tabs.Screen name="ai" />
+        {/* 以下はタブに出さず、通知タップ・メニューからの遷移先としてのみ使う */}
+        <Tabs.Screen name="notifications" options={{ href: null }} />
+        <Tabs.Screen name="files" options={{ href: null }} />
+        <Tabs.Screen name="gallery" options={{ href: null }} />
+        <Tabs.Screen name="members" options={{ href: null }} />
+        <Tabs.Screen name="settings" options={{ href: null }} />
+      </Tabs>
+    </ProjectsViewProvider>
   )
 }

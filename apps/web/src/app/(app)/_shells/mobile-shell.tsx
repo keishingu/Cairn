@@ -40,6 +40,24 @@ function loadStoredView(): ProjectsView {
   return isValidView(saved) ? saved : 'list'
 }
 
+// Expo の WebView から開かれた場合、ネイティブ側にタブバーがあるため Web 側の
+// フッター（MobileNav）を表示しない。?webview=1 は handoff の初回 URL にしか付かず、
+// クライアントナビゲーション後に失われるため、初回に sessionStorage へ記録して以降はそれを読む。
+function loadWebViewMode(): boolean {
+  if (typeof window === 'undefined') return false
+  if (new URLSearchParams(window.location.search).get('webview') === '1') {
+    sessionStorage.setItem(STORAGE_KEYS.webview_mode, '1')
+    return true
+  }
+  return sessionStorage.getItem(STORAGE_KEYS.webview_mode) === '1'
+}
+
+declare global {
+  interface Window {
+    ReactNativeWebView?: { postMessage: (message: string) => void }
+  }
+}
+
 function pageFromPathname(pathname: string): string {
   if (pathname.startsWith('/projects')) return 'projects'
   if (pathname.startsWith('/chats') || pathname.startsWith('/chat')) return 'chats'
@@ -119,7 +137,25 @@ function MobileShellInner() {
   const page = pageFromPathname(pathname)
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
+  const [isWebView] = React.useState(loadWebViewMode)
   const [notifOpen, setNotifOpen] = React.useState(false)
+
+  // ネイティブのビュー切替ピッカーが localStorage を書き換えてイベントを発火するので、
+  // それを受けて WebView 内の表示をリロードなしで切り替える（作業 3 のブリッジ受信側）。
+  React.useEffect(() => {
+    const handler = () => setProjectsViewState(loadStoredView())
+    window.addEventListener('cairn:projects-view-changed', handler)
+    return () => window.removeEventListener('cairn:projects-view-changed', handler)
+  }, [])
+
+  // WebView 内ではチャットを表示せずネイティブのチャットタブへ委譲する。
+  // フルページロードは AppWebView の onShouldStartLoadWithRequest が捕捉するが、
+  // Next.js のクライアントサイド遷移（router.push）はそこを通らないため postMessage で伝える。
+  React.useEffect(() => {
+    if (!isWebView || page !== 'chats') return
+    window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'open-chats' }))
+    router.back()
+  }, [isWebView, page, router])
 
   const { panelState, panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
 
@@ -159,9 +195,14 @@ function MobileShellInner() {
         )}
         <div className="app" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-            <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} />
+            {/* WebView 内のチャットはネイティブへ委譲するため、戻る遷移が完了するまで描画しない */}
+            {!(isWebView && page === 'chats') && (
+              <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} />
+            )}
           </div>
-          <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
+          {!isWebView && (
+            <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
+          )}
         </div>
       </div>
     </AppShellContext.Provider>

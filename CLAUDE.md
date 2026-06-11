@@ -61,7 +61,9 @@ pnpm dev
 - **tsconfig の extends は相対パス**で書く（`../../packages/config/tsconfig/base.json`）
   - Vite/Vitest の `tsconfck` が workspace パッケージ参照を解決できないため
 - **AIモデルは OpenAI**（gpt-4o / gpt-4o-mini）。Claude は使用しない
-- **Mobile (Expo) は `apps/mobile/`**: チャット以外は WebView で Web 版を表示する方針（`docs/08_expo_roadmap.md`）
+- **Mobile (Expo) は `apps/mobile/`**: フッター（タブナビ）とチャットはネイティブ、その他の画面コンテンツは WebView で Web 版を表示する方針（`docs/08_expo_roadmap.md`）
+  - フッターをネイティブにするのは、圏外でもタブ切替・チャット到達を可能にするため。WebView 表示時は `?webview=1` → sessionStorage 判定で Web 側フッター（`MobileNav`）を非表示にする（`mobile-shell.tsx`）
+  - WebView 内から `/chats` への遷移はネイティブのチャットタブへ委譲する（フルページロードは `onShouldStartLoadWithRequest`、SPA 遷移は `postMessage` で捕捉）
   - 開発は expo-dev-client を使う。`pnpm ios` / `pnpm android` でローカルビルド（単体アプリとしてインストール）、2回目以降は `pnpm dev` で Metro 起動のみ
   - ネイティブ側の接続先 URL は `EXPO_PUBLIC_*` 未設定時に Metro の接続先ホストから自動導出する（`apps/mobile/lib/env.ts`）。シミュレータ・実機・Android エミュレータで IP の手動設定は不要
   - 実機で WebView 画面を使う場合のみ `pnpm setup:mobile-lan` で `apps/web/.env.local` の `NEXT_PUBLIC_SUPABASE_URL` を LAN IP に書き換える
