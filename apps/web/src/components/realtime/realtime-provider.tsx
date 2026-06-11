@@ -121,6 +121,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       channel.subscribe((subStatus, err) => {
         if (cancelled) return
         if (subStatus === 'SUBSCRIBED') {
+          // デプロイにRealtimeコードが入っているか・接続できているかを判別できるよう成功も1行出す
+          console.info('[Realtime] connected')
           setStatus('connected')
           // (再)接続直後に一括 invalidate して切断中の取りこぼしを回収する
           void queryClient.invalidateQueries({ queryKey: ['messages'] })
