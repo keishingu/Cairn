@@ -70,9 +70,13 @@ export async function PATCH(req: Request) {
     const { eq, and, isNull, inArray } = await import('drizzle-orm')
 
     const now = new Date()
-    const where = ids?.length
-      ? and(eq(notifications.userId, ctx.userId), isNull(notifications.readAt), inArray(notifications.id, ids))
-      : and(eq(notifications.userId, ctx.userId), isNull(notifications.readAt))
+    // GET と同様に表示中のワークスペースへスコープする。「すべて既読」が他 WS の未読まで消さないように
+    const base = and(
+      eq(notifications.userId, ctx.userId),
+      eq(notifications.workspaceId, ctx.workspaceId),
+      isNull(notifications.readAt),
+    )
+    const where = ids?.length ? and(base, inArray(notifications.id, ids)) : base
 
     const updated = await db
       .update(notifications)
