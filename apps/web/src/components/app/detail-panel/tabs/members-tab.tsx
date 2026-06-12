@@ -3,6 +3,7 @@
 import React from 'react'
 import { Icon, Avatar } from '../../primitives'
 import { ConfirmDialog } from '../../confirm-dialog'
+import { RowActionMenu } from '../../row-action-menu'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import {
@@ -69,20 +70,11 @@ const MemberRow = ({ member, onRemove, removing, onMemberClick }: MemberRowProps
       }}>
         {ROLE_LABEL[member.role] ?? member.role}
       </span>
-      <button
-        onClick={onRemove}
-        disabled={removing}
-        title="削除"
-        style={{
-          width: 24, height: 24, borderRadius: 5,
-          border: 'none', background: 'transparent',
-          color: 'var(--text-4)', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        <Icon name="close" size={11}/>
-      </button>
+      <RowActionMenu
+        actions={[
+          { icon: 'trash', label: '削除', danger: true, onSelect: onRemove },
+        ]}
+      />
     </div>
   )
 }

@@ -142,15 +142,6 @@ const KanbanColumn = ({
             />
           ))
         }
-        <button style={{
-          border: 'none', background: 'transparent',
-          padding: '8px 6px', fontSize: 12, fontWeight: 500,
-          color: text, opacity: 0.8, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: 6,
-          fontFamily: 'inherit', textAlign: 'left',
-        }}>
-          <Icon name="plus" size={13} /> カードを追加
-        </button>
       </div>
     </div>
   )

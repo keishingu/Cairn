@@ -4,6 +4,7 @@ import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
+import { RowActionMenu } from '../row-action-menu'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
 import type { FileDto } from '@/app/api/files/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -45,65 +46,6 @@ function matchesFilter(file: FileDto, filter: FilterKey): boolean {
   if (filter === 'img') return file.mimeType?.startsWith('image/') ?? false
   if (filter === 'doc') return DOC_MIME_TYPES.includes(file.mimeType ?? '')
   return true
-}
-
-// ─── FileRowMenu ──────────────────────────────────────────────────
-
-const FileRowMenu = ({ file, onDelete, onReindex }: { file: FileDto; onDelete: () => void; onReindex: () => void }) => {
-  const [open, setOpen] = React.useState(false)
-  const btnRef = React.useRef<HTMLButtonElement>(null)
-  const menuRef = React.useRef<HTMLDivElement>(null)
-  const canReindex = REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
-
-  React.useEffect(() => {
-    if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node) && !btnRef.current?.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
-
-  const btnRect = btnRef.current?.getBoundingClientRect()
-  const menuStyle: React.CSSProperties = btnRect
-    ? { position: 'fixed', top: btnRect.bottom + 4, right: window.innerWidth - btnRect.right, zIndex: 300, minWidth: 120 }
-    : { position: 'absolute', top: '100%', right: 0, zIndex: 300, minWidth: 120 }
-
-  return (
-    <div style={{ position: 'relative', flexShrink: 0 }}>
-      <button
-        ref={btnRef}
-        onClick={e => { e.preventDefault(); setOpen(p => !p) }}
-        style={{ border: 'none', background: open ? 'var(--card-hover)' : 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        title="操作"
-      >
-        <Icon name="more" size={15}/>
-      </button>
-      {open && (
-        <div
-          ref={menuRef}
-          style={{ ...menuStyle, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden', padding: '4px 0' }}
-        >
-          {canReindex && (
-            <button
-              onMouseDown={e => { e.preventDefault(); setOpen(false); onReindex() }}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', border: 'none', background: 'transparent', color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', whiteSpace: 'nowrap' }}
-            >
-              <Icon name="refresh" size={13}/> 再インデックス
-            </button>
-          )}
-          <button
-            onMouseDown={e => { e.preventDefault(); setOpen(false); onDelete() }}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', border: 'none', background: 'transparent', color: 'var(--red-text)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', whiteSpace: 'nowrap' }}
-          >
-            <Icon name="trash" size={13}/> 削除
-          </button>
-        </div>
-      )}
-    </div>
-  )
 }
 
 // ─── FileRow ──────────────────────────────────────────────────────
@@ -148,10 +90,13 @@ const FileRow = ({ file, isMobile, onDelete, onReindex }: { file: FileDto; isMob
         </div>
       </a>
       <Avatar name={file.uploaderName} url={file.uploaderAvatarUrl} size={22} />
-      <FileRowMenu
-        file={file}
-        onDelete={() => onDelete(file.id, file.fileName)}
-        onReindex={() => onReindex(file.id)}
+      <RowActionMenu
+        actions={[
+          ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
+            ? [{ icon: 'refresh', label: '再インデックス', onSelect: () => onReindex(file.id) }]
+            : []),
+          { icon: 'trash', label: '削除', danger: true, onSelect: () => onDelete(file.id, file.fileName) },
+        ]}
       />
     </div>
   )

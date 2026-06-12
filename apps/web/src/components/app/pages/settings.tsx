@@ -5,6 +5,7 @@ import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
+import { RowActionMenu } from '../row-action-menu'
 import { BellButton } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
@@ -325,12 +326,12 @@ const StatusRow = ({
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px' }}>
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: status.color, flexShrink: 0 }}/>
         <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{status.name}</span>
-        <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0 }} onClick={() => setEditing(true)}>
-          <Icon name="edit" size={12}/>
-        </button>
-        <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0, color: 'var(--red-text)' }} onClick={() => setConfirmDel(true)}>
-          <Icon name="trash" size={12}/>
-        </button>
+        <RowActionMenu
+          actions={[
+            { icon: 'edit', label: '編集', onSelect: () => setEditing(true) },
+            { icon: 'trash', label: '削除', danger: true, onSelect: () => setConfirmDel(true) },
+          ]}
+        />
         <ConfirmDialog
           open={confirmDel}
           title="ステータスを削除"
@@ -462,12 +463,14 @@ const SettingsWorkflow = () => {
               </div>
             </div>
           ) : (
-            <button
-              onClick={() => setShowAdd(true)}
-              style={{ width: '100%', padding: '10px', border: 'none', background: 'transparent', color: 'var(--text-3)', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderTop: statuses.length > 0 ? '1px solid var(--divider)' : 'none' }}
-            >
-              <Icon name="plus" size={13}/> ステータスを追加
-            </button>
+            <div style={{ padding: 10, borderTop: statuses.length > 0 ? '1px solid var(--divider)' : 'none' }}>
+              <button
+                onClick={() => setShowAdd(true)}
+                style={{ width: '100%', padding: '10px', borderRadius: 8, border: '1px dashed var(--border-2)', background: 'transparent', color: 'var(--text-3)', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+              >
+                <Icon name="plus" size={13}/> ステータスを追加
+              </button>
+            </div>
           )}
         </div>
       </section>

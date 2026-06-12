@@ -341,6 +341,28 @@ export function onBlurRing(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaEl
   e.currentTarget.style.boxShadow = 'none'
 }
 
+// ─── FAB（モバイルの新規作成ボタン）──────────────────────────────
+// ボトムナビの上・右下固定。モバイルのページ主要作成アクションはこれに統一する
+export const Fab = ({ onClick, label }: { onClick: () => void; label: string }) => (
+  <button
+    onClick={onClick}
+    aria-label={label}
+    style={{
+      position: 'fixed',
+      right: 16,
+      bottom: 'calc(80px + env(safe-area-inset-bottom) + 16px)',
+      width: 52, height: 52, borderRadius: '50%',
+      background: 'var(--accent)', color: 'var(--on-accent)',
+      border: 'none', cursor: 'pointer',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+      zIndex: 50,
+    }}
+  >
+    <Icon name="plus" size={22}/>
+  </button>
+)
+
 // ─── Typing dots animation ────────────────────────────────────────
 export const TypingDots = () => (
   <span style={{ display: 'inline-flex', gap: 3 }}>

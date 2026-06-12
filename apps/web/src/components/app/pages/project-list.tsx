@@ -3,7 +3,7 @@
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
-import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
+import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '../mobile/header'
@@ -464,24 +464,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       </div>
 
       {/* Mobile FAB */}
-      {isMobile && (
-        <button
-          onClick={() => setShowCreate(true)}
-          style={{
-            position: 'fixed',
-            right: 16,
-            bottom: 'calc(80px + env(safe-area-inset-bottom) + 16px)',
-            width: 52, height: 52, borderRadius: '50%',
-            background: 'var(--accent)', color: 'var(--on-accent)',
-            border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-            zIndex: 50,
-          }}
-        >
-          <Icon name="plus" size={22}/>
-        </button>
-      )}
+      {isMobile && <Fab onClick={() => setShowCreate(true)} label={`新規${projectLabel}`}/>}
     </div>
   )
 }
