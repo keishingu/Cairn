@@ -16,11 +16,18 @@
 
 | 課金ポイント | Free | Stone 1口ごと | 執行ポイント（実コード） |
 |---|---|---|---|
-| ストレージ総量 | 10GB | +50GB | 下記アップロード系 Route Handler |
-| 画像（ギャラリー・添付） | **自動圧縮版のみ**（LINE方式: 長辺2048px・品質80目安、1枚300〜800KB。EXIF の撮影日時・GPS は保持） | **オリジナル保存可** | gallery / attachments 系 Route Handler + クライアント側圧縮 |
-| 文書等のファイル | 5MB/ファイル（テキスト中心の PDF が通り、画像満載の PDF は通らない閾値） | 緩和（上限は未決） | files / attachments 系 Route Handler |
-| 動画アップロード | 不可 | 可 | gallery 系 Route Handler（MIME 判定） |
-| AIクレジット | 月少量（お試し） | +月次付与（WS共有プール） | AI メッセージ生成 API・AIメンバーの行動 |
+| ストレージ総量 | 10GB | +50GB（**WS共有プール**） | 下記アップロード系 Route Handler |
+| 画像（ギャラリー・添付） | **自動圧縮版のみ**（LINE方式: 長辺2048px・品質80目安、1枚300〜800KB。EXIF の撮影日時・GPS は保持） | **支援者本人のみ**オリジナル保存可 | gallery / attachments 系 Route Handler + クライアント側圧縮 |
+| 文書等のファイル | 5MB/ファイル（テキスト中心の PDF が通り、画像満載の PDF は通らない閾値） | **支援者本人のみ**上限緩和（上限値は未決） | files / attachments 系 Route Handler |
+| 動画アップロード | 不可 | **支援者本人のみ**可 | gallery 系 Route Handler（MIME 判定） |
+| AIクレジット | 月少量（お試し） | +月次付与（**WS共有プール**） | AI メッセージ生成 API・AIメンバーの行動 |
+
+**権利と資源の分離**が本設計の骨格:
+
+- **本人帰属（アップロード権）**: オリジナル画像・動画・大容量ファイルを*アップロードできる*のは、アクティブな支援（積み石）を持つ本人のみ
+- **WS帰属（資源・閲覧）**: 容量プール・AIクレジット・**閲覧/ダウンロードは全メンバー**。支援者がアップロードした動画やオリジナル写真は、Free のメンバーも見られる
+- 理由: アップロード権まで WS 一括解放にすると「メンバーが管理者に解放を頼む → 管理者が渋る → 誰も使えない」というデッドロックが起きる。本人課金なら ¥300 で自己解決でき、撮影・資料作成をする少数のメンバーから自然に課金が始まる。また Party プラン（全員が支援者相当）への移行動線（→ §4）が成立する
+- 閲覧を無料にする分、実コストの主因である転送（egress）は支援者以外にも発生するが、アップロード権が重いコンテンツの発生源を絞るため間接的に制御される。閲覧はサムネイル / 変換画像の配信を基本とする（→ §11）
 
 画像の自動圧縮は**アップロード前のクライアントサイド圧縮**を基本とする（ingress 帯域と処理コストの節約。`process-image.ts` の EXIF 抽出と統合する）。圧縮で撮影日時・GPS を失わないこと（ギャラリーの地図・タイムライン機能の前提）。
 
@@ -80,22 +87,39 @@ stripe_events              Webhook 冪等性
 
 ## 4. エンタイトルメント解決
 
-`packages/core` に純粋関数として置く（DB・Stripe 非依存、テスト容易）:
+`packages/core` に純粋関数として置く（DB・Stripe 非依存、テスト容易）。権利と資源の分離（§2）に対応して2系統に分ける:
 
 ```ts
-resolveEntitlements(activeSupportUnits: number, billingEnabled: boolean): Entitlements
-// billingEnabled=false → 全項目無制限（セルフホスト = Expedition 相当）
-// それ以外 → storageLimit = 10GB + 50GB × activeSupportUnits, など
+// WS 帰属（資源）: 容量プール・AIクレジット
+resolveWorkspaceEntitlements(activeSupportUnits: number, billingEnabled: boolean)
+// storageLimit = 10GB + 50GB × activeSupportUnits, など
+
+// 本人帰属（アップロード権）: オリジナル画像・動画・ファイルサイズ上限
+resolveUploadRights(isActiveSupporter: boolean, billingEnabled: boolean)
+// isActiveSupporter = そのユーザーがこの WS にアクティブな support_subscriptions を持つか
+// （Party 導入後は wsPlan === 'party' でも true になる）
 ```
 
 - `activeSupportUnits` = その WS の `support_subscriptions` で `status='active'` な `quantity` 合計
-- エンタイトルメントの数値定義はこの関数に集約し、Route Handler には散在させない
+- `billingEnabled=false`（セルフホスト）→ 両系統とも無制限（Expedition 相当）
+- **同一人物の複数口**: アップロード権は1口で付与され、追加口は容量・クレジットの上積みのみ（「もっと容量を」のための重ね掛け）
+- エンタイトルメントの数値定義はこの2関数に集約し、Route Handler には散在させない
+
+### Party プランへの移行動線
+
+Party（WS 定額）は「**全メンバーが支援者相当のアップロード権を持つ**」プランとして設計する。これにより:
+
+- 個人の石が増えるほど「人数 × ¥300 が Party 価格に近づく」ため、自然な移行の後押しが生まれる（Party ¥3,000 なら石10口が損益分岐）
+- アクティブ口数が閾値（例: Party 価格 ÷ ¥300）を超えた WS には、設定画面で Party への切り替えを提案する
+- Party 加入時の既存 Stone の扱い（容量上積みとして併存か、停止を案内するか）は未決（§12）
 
 ## 5. 執行の方針
 
 - **超過時はエラーを表示する**（CLAUDE.md のエラー表示方針に従う）。サイレントに劣化させず、「容量が不足しています。石を積むと +50GB/口」という明確なメッセージ + 課金導線を出す
 - **失効時にデータは消さない**。Stone が切れて使用量が上限超過になっても、既存データの閲覧・ダウンロードは常に可能。ブロックするのは新規アップロードのみ（猶予期間の有無は未決）
 - 容量チェックは「現在使用量 + アップロードサイズ ≤ 上限」の事前判定。多少の競合超過は許容する（厳密なロックはしない）
+- アップロード系 Route Handler は「**アップロード本人の権利**（`resolveUploadRights`）」と「**WS の容量プール**（`resolveWorkspaceEntitlements`）」の両方を判定する。権利がない場合のエラーには「石を積む」導線を、容量不足の場合には WS の使用量と追加口の案内を出し分ける
+- 支援者がアップロードしたコンテンツの**閲覧・ダウンロードは全メンバー可**。支援の失効・本人の退会後もコンテンツは残り、閲覧可能のまま（消えるのはアップロード権と容量プールのみ）
 
 ## 6. AIクレジット
 
@@ -169,6 +193,8 @@ resolveEntitlements(activeSupportUnits: number, billingEnabled: boolean): Entitl
 - クレジット係数・月次付与量・パック価格（原価シミュレーション要）
 - 画像圧縮の最終パラメータ（長辺 px・品質）と、文書 5MB 上限の妥当性（Phase 0 の計測データで検証）
 - オリジナル一括ダウンロードの回数制限の要否（egress 対策）
+- Party 加入時の既存 Stone の扱い（容量上積みとして併存か、停止を案内するか）
+- 支援者本人のファイルサイズ上限値
 - クレジット繰越の有無、月次付与のタイミング（暦月 cron か `invoice.paid` 連動か）
 - Stone 失効時の猶予期間と超過データの長期的な扱い
 - Stone 有料時の1ファイルサイズ上限
