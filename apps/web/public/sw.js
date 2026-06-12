@@ -76,11 +76,19 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = event.notification.data?.url ?? '/dashboard';
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+    (async () => {
+      const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+      // 既存ウィンドウがあればフォーカスして通知の URL へ遷移させる
       for (const client of clientList) {
-        if ('focus' in client) return client.focus();
+        if ('focus' in client) {
+          await client.focus();
+          if ('navigate' in client) {
+            try { await client.navigate(url); } catch { /* クロスオリジン等で失敗しても focus 済み */ }
+          }
+          return;
+        }
       }
-      if (clients.openWindow) return clients.openWindow(url);
-    })
+      if (clients.openWindow) await clients.openWindow(url);
+    })()
   );
 });

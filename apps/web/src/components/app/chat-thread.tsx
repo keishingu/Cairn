@@ -19,6 +19,7 @@ import {
   useCurrentUser,
   useDeleteMessage,
   useEditMessage,
+  useMarkChannelRead,
   useSendChannelMessage,
   useToggleMessageReaction,
   useWorkspaceMembers,
@@ -814,6 +815,21 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const reactMutation = useToggleMessageReaction(channelId)
   const editMutation = useEditMessage(channelId)
   const deleteMutation = useDeleteMessage(channelId)
+  const markChannelRead = useMarkChannelRead()
+  const markChannelReadFn = markChannelRead.mutate
+  const lastReadMessageIdRef = React.useRef<string | null>(null)
+
+  // 表示中チャンネルに新着が届いたら自動で既読化する。
+  // 開いて読んでいるのにバッジが増え続ける問題への対処。タブ非表示時は既読にしない
+  React.useEffect(() => {
+    if (!channelId || messages.length === 0) return
+    const lastId = messages[messages.length - 1]?.id
+    if (!lastId || lastId.startsWith('optimistic-')) return
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+    if (lastReadMessageIdRef.current === lastId) return
+    lastReadMessageIdRef.current = lastId
+    markChannelReadFn(channelId)
+  }, [channelId, messages, markChannelReadFn])
 
   const handleCheckboxToggle = React.useCallback(async (messageId: string, index: number, checked: boolean) => {
     try {

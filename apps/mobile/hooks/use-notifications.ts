@@ -3,7 +3,7 @@ import { apiFetch } from '../lib/api-fetch'
 
 export interface NotificationDto {
   id: string
-  type: 'mention' | 'task' | 'file' | 'status' | 'invite' | 'reaction' | 'ai'
+  type: 'mention' | 'dm' | 'task' | 'file' | 'status' | 'invite' | 'reaction' | 'ai'
   title: string
   body: string
   data: Record<string, string> | null

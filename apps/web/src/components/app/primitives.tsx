@@ -253,6 +253,94 @@ export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) 
   </div>
 )
 
+// ─── Modal ────────────────────────────────────────────────────────
+export const Modal = ({ onClose, children }: { onClose: () => void; children: React.ReactNode }) => {
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
+      {children}
+    </div>
+  )
+}
+
+export const ModalHeader = ({ icon, title, subtitle, onClose }: {
+  icon?: string; title: string; subtitle?: string; onClose: () => void
+}) => (
+  <header style={{ padding: '16px 20px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}>
+    {icon && (
+      <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name={icon} size={16}/>
+      </div>
+    )}
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
+      {subtitle && <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>{subtitle}</div>}
+    </div>
+    <button type="button" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
+      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+    >
+      <Icon name="close" size={16}/>
+    </button>
+  </header>
+)
+
+// ─── Form field ───────────────────────────────────────────────────
+interface FieldProps {
+  label: string; hint?: string; required?: boolean; error?: string | undefined
+  children: React.ReactNode; htmlFor?: string
+}
+
+export const Field = ({ label, hint, required, error, children, htmlFor }: FieldProps) => (
+  <label htmlFor={htmlFor} style={{ display: 'block' }}>
+    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', letterSpacing: '0.01em' }}>
+        {label}
+        {required && <span style={{ color: 'var(--red)', marginLeft: 4 }}>*</span>}
+      </span>
+      {hint && <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{hint}</span>}
+    </div>
+    {children}
+    {error && (
+      <div style={{ marginTop: 5, fontSize: 11.5, color: 'var(--red-text)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ width: 13, height: 13, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>!</span>
+        {error}
+      </div>
+    )}
+  </label>
+)
+
+export function fieldInputStyle(invalid: boolean): React.CSSProperties {
+  return {
+    width: '100%', height: 36, padding: '0 12px',
+    border: `1px solid ${invalid ? 'var(--red)' : 'var(--border)'}`,
+    borderRadius: 8, background: 'var(--card)', color: 'var(--text)',
+    fontSize: 13, fontFamily: 'inherit', outline: 'none',
+    transition: 'border-color .12s, box-shadow .12s',
+    boxSizing: 'border-box',
+  }
+}
+
+export function fieldTextareaStyle(invalid: boolean): React.CSSProperties {
+  return { ...fieldInputStyle(invalid), height: 'auto', padding: '10px 12px', resize: 'vertical' as const, lineHeight: 1.55, minHeight: 80 }
+}
+
+export function onFocusRing(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
+  e.currentTarget.style.borderColor = 'var(--accent)'
+  e.currentTarget.style.boxShadow = 'var(--ring)'
+}
+
+export function onBlurRing(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>, invalid: boolean) {
+  e.currentTarget.style.borderColor = invalid ? 'var(--red)' : 'var(--border)'
+  e.currentTarget.style.boxShadow = 'none'
+}
+
 // ─── Typing dots animation ────────────────────────────────────────
 export const TypingDots = () => (
   <span style={{ display: 'inline-flex', gap: 3 }}>

@@ -5,8 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 import type { WebViewNavigation } from 'react-native-webview'
 import { supabase } from '../lib/supabase'
-
-const WEB_BASE = process.env['EXPO_PUBLIC_API_BASE_URL']!
+import { API_BASE_URL as WEB_BASE } from '../lib/env'
 
 // Web 側の globals.css --bg と揃える
 const BG_DARK = '#0B0F14'

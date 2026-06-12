@@ -1,14 +1,16 @@
-// 実機・シミュレータから WebView 経由でローカル開発環境に繋ぐための、
-// .env.local の localhost / 127.0.0.1 を Mac の LAN IP へ一括置換するスクリプト。
+// 実機の WebView から Web バンドル経由でローカル Supabase に繋ぐための、
+// apps/web/.env.local の NEXT_PUBLIC_SUPABASE_URL を Mac の LAN IP へ置換するスクリプト。
 //
 // 背景: WebView 内 JS は端末上で実行されるため 127.0.0.1 は端末自身を指してしまう。
-//       apps/mobile と apps/web の両方の .env.local を LAN IP に揃える必要がある
-//       （片方だけ変更し忘れると、ログイン後に画面が真っ白になりネイティブの
-//       ログイン画面に戻されるタイムアウトが発生する）。
+//       Web バンドルに埋め込まれる NEXT_PUBLIC_SUPABASE_URL が 127.0.0.1 のままだと、
+//       ログイン後に画面が真っ白になりネイティブのログイン画面に戻されるタイムアウトが発生する。
+//
+// ネイティブ側（apps/mobile）の接続先 URL は Metro の接続先ホストから自動導出される
+// （apps/mobile/lib/env.ts）ため、このスクリプトの対象外。EXPO_PUBLIC_* を .env.local で
+// 設定している場合は固定 URL への明示的な上書きとみなし、書き換えない。
 //
 // Usage: node scripts/setup-mobile-lan.mjs
-//   事前に apps/mobile/.env.local と apps/web/.env.local を
-//   .env.local.example からコピーしておくこと。
+//   事前に apps/web/.env.local を .env.local.example からコピーしておくこと。
 
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { networkInterfaces } from 'os'
@@ -64,5 +66,4 @@ function patchEnvFile(path, keys, lanIp) {
 const lanIp = detectLanIp()
 console.log(`LAN IP: ${lanIp}`)
 
-patchEnvFile(join(root, 'apps/mobile/.env.local'), ['EXPO_PUBLIC_SUPABASE_URL', 'EXPO_PUBLIC_API_BASE_URL'], lanIp)
 patchEnvFile(join(root, 'apps/web/.env.local'), ['NEXT_PUBLIC_SUPABASE_URL'], lanIp)
