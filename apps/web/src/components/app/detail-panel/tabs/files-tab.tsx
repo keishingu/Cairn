@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { Icon } from '../../primitives'
+import { ConfirmDialog } from '../../confirm-dialog'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
 import { useProjectFiles } from '@/hooks/use-project-files'
@@ -39,6 +40,7 @@ function formatDate(iso: string): string {
 
 export const FilesTab = ({ projectId }: { projectId: string }) => {
   const [menuOpenId, setMenuOpenId] = React.useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
   const { data: files = [], isLoading, isError, deleteMutation } = useProjectFiles(projectId)
 
   // メニュー外クリックで閉じる
@@ -127,15 +129,14 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
                 >
                   <button
                     onClick={() => {
-                      if (!confirm(`「${f.fileName}」を削除しますか？この操作は取り消せません。`)) return
-                      deleteMutation.mutate(f.id, { onSuccess: () => setMenuOpenId(null) })
+                      setMenuOpenId(null)
+                      setDeleteTarget({ id: f.id, name: f.fileName })
                     }}
-                    disabled={deleteMutation.isPending}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                       padding: '7px 10px', border: 'none', background: 'transparent',
                       color: 'var(--red)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit',
-                      borderRadius: 5, opacity: deleteMutation.isPending ? 0.5 : 1,
+                      borderRadius: 5,
                     }}
                   >
                     <Icon name="trash" size={13}/>
@@ -147,6 +148,14 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
           </div>
         )
       })}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="ファイルを削除"
+        message={`「${deleteTarget?.name}」を削除しますか？この操作は取り消せません。`}
+        onConfirm={async () => { if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.id) }}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

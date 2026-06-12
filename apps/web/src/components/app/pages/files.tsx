@@ -3,6 +3,7 @@
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
+import { ConfirmDialog } from '../confirm-dialog'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
 import type { FileDto } from '@/app/api/files/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -175,6 +176,7 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
   const [search, setSearch] = React.useState('')
   const effectiveSearch = isMobile ? search : (externalSearch ?? search)
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
+  const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
   const sentinelRef = React.useRef<HTMLDivElement>(null)
 
   const { data: files = [], isLoading } = useQuery<FileDto[]>({
@@ -207,8 +209,7 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
   })
 
   const handleDelete = (fileId: string, fileName: string) => {
-    if (!confirm(`「${fileName}」を削除しますか？この操作は取り消せません。`)) return
-    deleteFile.mutate(fileId)
+    setDeleteTarget({ id: fileId, name: fileName })
   }
 
   const handleReindex = (fileId: string) => {
@@ -317,6 +318,14 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
           </>
         )}
       </div>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="ファイルを削除"
+        message={`「${deleteTarget?.name}」を削除しますか？この操作は取り消せません。`}
+        onConfirm={async () => { if (deleteTarget) await deleteFile.mutateAsync(deleteTarget.id) }}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

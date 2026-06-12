@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { Icon, Avatar } from '../../primitives'
+import { ConfirmDialog } from '../../confirm-dialog'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import {
@@ -272,6 +273,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
   const [showInvite, setShowInvite] = React.useState(false)
   const [selectedUserId, setSelectedUserId] = React.useState('')
   const [selectedRole, setSelectedRole] = React.useState('member')
+  const [removeTarget, setRemoveTarget] = React.useState<ProjectMemberDto | null>(null)
 
   const { data: members = [], isLoading } = useProjectMembers(projectId)
   const { data: wsMembers = [], isLoading: isLoadingWs } = useWorkspaceMembersForInvite(showInvite)
@@ -311,7 +313,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
           <MemberRow
             key={m.userId}
             member={m}
-            onRemove={() => removeMutation.mutate(m.userId)}
+            onRemove={() => setRemoveTarget(m)}
             removing={removeMutation.isPending && removeMutation.variables === m.userId}
             onMemberClick={onMemberClick}
           />
@@ -346,6 +348,14 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
           error={addMutation.error?.message}
         />
       )}
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title="メンバーを削除"
+        message={`「${removeTarget?.displayName}」をこのプロジェクトから削除しますか？`}
+        onConfirm={async () => { if (removeTarget) await removeMutation.mutateAsync(removeTarget.userId) }}
+        onClose={() => setRemoveTarget(null)}
+      />
     </div>
   )
 }

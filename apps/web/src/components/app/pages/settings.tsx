@@ -4,6 +4,7 @@ import React from 'react'
 import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
+import { ConfirmDialog } from '../confirm-dialog'
 import { BellButton } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
@@ -327,22 +328,16 @@ const StatusRow = ({
         <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0 }} onClick={() => setEditing(true)}>
           <Icon name="edit" size={12}/>
         </button>
-        {!confirmDel ? (
-          <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0, color: 'var(--red-text)' }} onClick={() => setConfirmDel(true)}>
-            <Icon name="trash" size={12}/>
-          </button>
-        ) : (
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button className="btn btn-ghost" style={{ height: 26, fontSize: 11.5, padding: '0 8px' }} onClick={() => setConfirmDel(false)}>キャンセル</button>
-            <button
-              onClick={() => deleteMutation.mutate()}
-              disabled={deleteMutation.isPending}
-              style={{ height: 26, fontSize: 11.5, padding: '0 8px', borderRadius: 6, border: 'none', background: 'var(--red)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}
-            >
-              {deleteMutation.isPending ? '削除中…' : '削除'}
-            </button>
-          </div>
-        )}
+        <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0, color: 'var(--red-text)' }} onClick={() => setConfirmDel(true)}>
+          <Icon name="trash" size={12}/>
+        </button>
+        <ConfirmDialog
+          open={confirmDel}
+          title="ステータスを削除"
+          message={`ステータス「${status.name}」を削除しますか？この操作は取り消せません。`}
+          onConfirm={() => deleteMutation.mutateAsync()}
+          onClose={() => setConfirmDel(false)}
+        />
       </div>
     )
   }

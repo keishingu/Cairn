@@ -50,7 +50,7 @@ export function useRemoveProjectMember(projectId: string) {
       const res = await fetchWithAuth(`/api/projects/${projectId}/members/${userId}`, {
         method: 'DELETE',
       })
-      if (!res.ok) throw new Error('Failed')
+      if (!res.ok) throw new Error('削除に失敗しました')
     },
     onSuccess: (_data, userId) => {
       queryClient.setQueryData<ProjectMemberDto[]>(

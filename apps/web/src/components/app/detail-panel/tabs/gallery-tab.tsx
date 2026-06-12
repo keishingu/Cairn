@@ -3,6 +3,7 @@
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
+import { ConfirmDialog } from '../../confirm-dialog'
 import type { GalleryItemDto } from '@/app/api/projects/[id]/gallery/route'
 import { processImageForUpload } from '@/lib/process-image'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -33,6 +34,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
   const [hoveredId, setHoveredId] = React.useState<string | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const [uploadState, setUploadState] = React.useState<UploadState | null>(null)
+  const [deleteTargetId, setDeleteTargetId] = React.useState<string | null>(null)
 
   const { data: items = [], isLoading, isError } = useQuery<GalleryItemDto[]>({
     queryKey: ['project-gallery', projectId],
@@ -179,8 +181,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
                   <button
                     onClick={e => {
                       e.stopPropagation()
-                      if (!confirm('この写真を削除しますか？')) return
-                      void deleteItem(item.id)
+                      setDeleteTargetId(item.id)
                     }}
                     style={{
                       position: 'absolute', top: 4, right: 4,
@@ -198,6 +199,14 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={deleteTargetId !== null}
+        title="写真を削除"
+        message="この写真を削除しますか？この操作は取り消せません。"
+        onConfirm={async () => { if (deleteTargetId) await deleteItem(deleteTargetId) }}
+        onClose={() => setDeleteTargetId(null)}
+      />
 
       {/* ライトボックス */}
       {lightboxUrl && lightboxIndex !== null && (
