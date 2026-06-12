@@ -7,6 +7,8 @@ import { useProjectChannels } from '../hooks/use-projects'
 import { useMe, useWorkspace } from '../hooks/use-account'
 import { useProjectsView, type ProjectsView } from './projects-view-context'
 import { THEME } from '../lib/theme'
+import { supabase } from '../lib/supabase'
+import { useQueryClient } from '@tanstack/react-query'
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
 
@@ -42,6 +44,16 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const { data: channels } = useProjectChannels()
   const { data: me } = useMe()
   const { data: workspace } = useWorkspace()
+  const queryClient = useQueryClient()
+
+  // 401（認証切れ）からの復帰手段として、メニューから直接サインアウトできるようにする。
+  // セッション破棄で AuthGuard（app/_layout.tsx）がログイン画面へリダイレクトする
+  const handleLogout = async () => {
+    closeAll()
+    await supabase.auth.signOut().catch(() => undefined)
+    // 前のユーザーのキャッシュ（チャンネル・メッセージ等）を次のログインに持ち越さない
+    queryClient.clear()
+  }
 
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [pickerOpen, setPickerOpen] = React.useState(false)
@@ -142,6 +154,15 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
                 <Ionicons name="chevron-forward" size={14} color={c.text3} style={{ marginLeft: 'auto' }} />
               </TouchableOpacity>
             ))}
+            <TouchableOpacity
+              style={[styles.menuItem, { borderTopColor: c.divider }]}
+              onPress={() => void handleLogout()}
+            >
+              <View style={[styles.menuItemIcon, { backgroundColor: c.cardHover }]}>
+                <Ionicons name="log-out-outline" size={18} color={c.redText} />
+              </View>
+              <Text style={[styles.menuItemLabel, { color: c.redText }]}>ログアウト</Text>
+            </TouchableOpacity>
           </View>
         )}
       </Modal>
