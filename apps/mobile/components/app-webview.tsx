@@ -71,7 +71,9 @@ export function AppWebView({ path }: Props) {
         // トークンは URL フラグメント（#th=...）で渡す。
         // フラグメントはサーバーに送信されないためアクセスログに残らない。
         setUri(`${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}#th=${th}`)
-      } catch {
+      } catch (err) {
+        // 失敗理由が Metro ログで追えるように必ず出力する
+        console.error('[AppWebView] ハンドオフに失敗:', err)
         setError(true)
       }
     },
