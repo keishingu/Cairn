@@ -1,87 +1,150 @@
 import React from 'react'
 import {
   View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Image, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Image, KeyboardAvoidingView, Platform, useColorScheme,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useSession } from '../../../lib/session-context'
-import { useMessages, useMarkChannelRead, parseMentions } from '../../../hooks/use-messages'
+import { API_BASE_URL } from '../../../lib/env'
+import { useMessages, useMarkChannelRead } from '../../../hooks/use-messages'
 import type { MessageDto } from '../../../hooks/use-messages'
 import { useMessageQueue } from '../../../hooks/use-message-queue'
 import type { QueuedMessage } from '../../../hooks/use-message-queue'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
+import { useMe } from '../../../hooks/use-account'
+import { THEME } from '../../../lib/theme'
+import type { Theme } from '../../../lib/theme'
 
+// Web 側 formatChatMessageTime と同じ「M/D HH:mm」表記
 function formatTime(iso: string): string {
   const d = new Date(iso)
-  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-function MessageRow({ message, isMine }: { message: MessageDto; isMine: boolean }) {
+const STRUCTURED_MENTION_RE = /<@[^|>\s]+\|[^>\n]+>/g
+
+// 構造化メンション <@id|名前> を Web 版と同じチップ表示（accent-soft 背景）に変換する
+function renderContent(content: string, c: Theme): React.ReactNode[] {
+  const nodes: React.ReactNode[] = []
+  let last = 0
+  let match: RegExpExecArray | null
+  const re = new RegExp(STRUCTURED_MENTION_RE.source, 'g')
+  while ((match = re.exec(content)) !== null) {
+    if (match.index > last) nodes.push(content.slice(last, match.index))
+    const token = match[0]
+    const displayName = token.slice(token.indexOf('|') + 1, -1)
+    nodes.push(
+      <Text key={match.index} style={{ backgroundColor: c.accentSoft, color: c.accentText, fontWeight: '600' }}>
+        {` @${displayName} `}
+      </Text>,
+    )
+    last = match.index + token.length
+  }
+  if (last < content.length) nodes.push(content.slice(last))
+  return nodes
+}
+
+function isImageMime(mimeType: string | null): boolean {
+  return !!mimeType?.startsWith('image/')
+}
+
+function SenderAvatar({ name, url, c }: { name: string; url: string | null; c: Theme }) {
+  if (url) return <Image source={{ uri: url }} style={styles.avatar} />
   return (
-    <View style={[styles.row, isMine && styles.rowMine]}>
-      {!isMine && (
-        message.senderAvatarUrl
-          ? <Image source={{ uri: message.senderAvatarUrl }} style={styles.avatar} />
-          : <View style={[styles.avatar, styles.avatarFallback]}>
-              <Text style={styles.avatarInitial}>{message.senderName.slice(0, 1)}</Text>
-            </View>
-      )}
-      <View style={[styles.bubbleWrap, isMine && styles.bubbleWrapMine]}>
-        {!isMine && <Text style={styles.senderName}>{message.senderName}</Text>}
-        <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
-          <Text style={[styles.messageText, isMine && styles.messageTextMine]}>
-            {parseMentions(message.content)}
-          </Text>
+    <View style={[styles.avatar, { backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }]}>
+      <Text style={{ color: c.onAccent, fontSize: 14, fontWeight: '700' }}>{name.slice(0, 1)}</Text>
+    </View>
+  )
+}
+
+function MessageRow({ message, accessToken, c }: { message: MessageDto; accessToken?: string; c: Theme }) {
+  return (
+    <View style={styles.row}>
+      <SenderAvatar name={message.senderName} url={message.senderAvatarUrl} c={c} />
+      <View style={styles.rowBody}>
+        <View style={styles.rowHeader}>
+          <Text style={[styles.senderName, { color: c.text }]}>{message.senderName}</Text>
+          <Text style={[styles.time, { color: c.text4 }]}>{formatTime(message.createdAt)}</Text>
         </View>
-        {message.attachments.map(att => (
-          <View key={att.id} style={styles.attachment}>
-            <Ionicons name="document-attach-outline" size={14} color="#6B7280" />
-            <Text style={styles.attachmentName} numberOfLines={1}>{att.fileName}</Text>
+        {message.content.length > 0 && (
+          <Text style={[styles.messageText, { color: c.text2 }]}>{renderContent(message.content, c)}</Text>
+        )}
+        {message.attachments.length > 0 && (
+          <View style={styles.attachments}>
+            {message.attachments.map(att =>
+              isImageMime(att.mimeType) && accessToken ? (
+                <Image
+                  key={att.id}
+                  source={{
+                    uri: `${API_BASE_URL}/api/attachments/${att.fileId}`,
+                    headers: { Authorization: `Bearer ${accessToken}` },
+                  }}
+                  style={[styles.attachmentImage, { backgroundColor: c.card2 }]}
+                />
+              ) : (
+                <View key={att.id} style={[styles.attachmentCard, { backgroundColor: c.card2, borderColor: c.border }]}>
+                  <View style={[styles.fileIcon, { backgroundColor: c.accentSoft }]}>
+                    <Ionicons name="document-text-outline" size={16} color={c.accentText} />
+                  </View>
+                  <Text style={[styles.attachmentName, { color: c.text2 }]} numberOfLines={1}>{att.fileName}</Text>
+                </View>
+              ),
+            )}
           </View>
-        ))}
+        )}
         {message.reactions.length > 0 && (
           <View style={styles.reactions}>
             {message.reactions.map(r => (
-              <View key={r.emoji} style={[styles.reaction, r.mine && styles.reactionMine]}>
-                <Text style={styles.reactionText}>{r.emoji} {r.count}</Text>
+              <View
+                key={r.emoji}
+                style={[
+                  styles.reaction,
+                  { backgroundColor: r.mine ? c.accentSoft : c.card2, borderColor: r.mine ? c.accent : c.border },
+                ]}
+              >
+                <Text style={[styles.reactionText, { color: r.mine ? c.accentText : c.text2 }]}>{r.emoji} {r.count}</Text>
               </View>
             ))}
           </View>
         )}
-        <Text style={styles.time}>{formatTime(message.createdAt)}</Text>
       </View>
     </View>
   )
 }
 
-function QueuedRow({ message, onRetry }: { message: QueuedMessage; onRetry: (tempId: string) => void }) {
+function QueuedRow({ message, me, onRetry, c }: {
+  message: QueuedMessage
+  me: { displayName: string; avatarUrl: string | null } | undefined
+  onRetry: (tempId: string) => void
+  c: Theme
+}) {
   const failed = message.status === 'failed'
   return (
-    <View style={[styles.row, styles.rowMine]}>
-      <TouchableOpacity
-        style={styles.bubbleWrapMine}
-        disabled={!failed}
-        onPress={() => onRetry(message.tempId)}
-        activeOpacity={0.7}
-      >
-        <View style={[styles.bubble, styles.bubbleQueued]}>
-          <Text style={styles.messageTextQueued}>{message.content}</Text>
+    <TouchableOpacity style={styles.row} disabled={!failed} onPress={() => onRetry(message.tempId)} activeOpacity={0.7}>
+      <SenderAvatar name={me?.displayName ?? '…'} url={me?.avatarUrl ?? null} c={c} />
+      <View style={styles.rowBody}>
+        <View style={styles.rowHeader}>
+          <Text style={[styles.senderName, { color: c.text }]}>{me?.displayName ?? '…'}</Text>
+          <Text style={[styles.time, { color: c.text4 }]}>{formatTime(message.createdAt)}</Text>
         </View>
-        {failed ? (
-          <View style={styles.queueStatus}>
-            <Ionicons name="alert-circle" size={13} color="#DC2626" />
-            <Text style={styles.queueStatusFailed}>送信失敗・タップして再送</Text>
-          </View>
-        ) : (
-          <View style={styles.queueStatus}>
-            <Ionicons name="time-outline" size={13} color="#9CA3AF" />
-            <Text style={styles.queueStatusPending}>送信中…</Text>
-          </View>
-        )}
-      </TouchableOpacity>
-    </View>
+        <Text style={[styles.messageText, { color: c.text4 }]}>{renderContent(message.content, c)}</Text>
+        <View style={styles.queueStatus}>
+          {failed ? (
+            <>
+              <Ionicons name="alert-circle" size={13} color={c.redText} />
+              <Text style={[styles.queueStatusText, { color: c.redText, fontWeight: '600' }]}>送信失敗・タップして再送</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="time-outline" size={13} color={c.text4} />
+              <Text style={[styles.queueStatusText, { color: c.text4 }]}>送信中…</Text>
+            </>
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
   )
 }
 
@@ -91,13 +154,15 @@ export default function ChatChannelScreen() {
   }>()
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const scheme = useColorScheme()
+  const c = scheme === 'dark' ? THEME.dark : THEME.light
   const session = useSession()
-  const myUserId = session?.user.id
 
   const { data: messages, isLoading, error } = useMessages(channelId)
   const { queued, send, retry } = useMessageQueue(channelId)
   const { mutate: markRead } = useMarkChannelRead(channelId)
   const upload = useAttachmentUpload(channelId)
+  const { data: me } = useMe()
 
   const [draft, setDraft] = React.useState('')
 
@@ -126,14 +191,14 @@ export default function ChatChannelScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: c.bg, paddingTop: insets.top }]}>
+      <View style={[styles.header, { borderBottomColor: c.divider }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton} hitSlop={8}>
-          <Ionicons name="chevron-back" size={24} color="#111" />
+          <Ionicons name="chevron-back" size={24} color={c.text} />
         </TouchableOpacity>
         <View style={styles.headerText}>
-          <Text style={styles.headerTitle} numberOfLines={1}>#{name ?? 'チャンネル'}</Text>
-          {project && <Text style={styles.headerSub} numberOfLines={1}>{project}</Text>}
+          <Text style={[styles.headerTitle, { color: c.text }]} numberOfLines={1}>#{name ?? 'チャンネル'}</Text>
+          {project && <Text style={[styles.headerSub, { color: c.text4 }]} numberOfLines={1}>{project}</Text>}
         </View>
       </View>
 
@@ -142,9 +207,9 @@ export default function ChatChannelScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         {isLoading ? (
-          <View style={styles.center}><ActivityIndicator size="large" /></View>
+          <View style={styles.center}><ActivityIndicator size="large" color={c.accent} /></View>
         ) : error ? (
-          <View style={styles.center}><Text style={styles.errorText}>{error.message}</Text></View>
+          <View style={styles.center}><Text style={[styles.errorText, { color: c.redText }]}>{error.message}</Text></View>
         ) : (
           <FlatList
             inverted
@@ -152,58 +217,78 @@ export default function ChatChannelScreen() {
             keyExtractor={item => (item.kind === 'message' ? item.message.id : item.queued.tempId)}
             renderItem={({ item }) =>
               item.kind === 'message'
-                ? <MessageRow message={item.message} isMine={item.message.senderId === myUserId} />
-                : <QueuedRow message={item.queued} onRetry={retry} />
+                ? <MessageRow
+                    message={item.message}
+                    c={c}
+                    {...(session?.access_token ? { accessToken: session.access_token } : {})}
+                  />
+                : <QueuedRow
+                    message={item.queued}
+                    me={me ? { displayName: me.displayName, avatarUrl: me.avatarUrl } : undefined}
+                    onRetry={retry}
+                    c={c}
+                  />
             }
             contentContainerStyle={styles.list}
             ListEmptyComponent={
-              <Text style={styles.empty}>まだメッセージがありません</Text>
+              <Text style={[styles.empty, { color: c.text4 }]}>まだメッセージがありません</Text>
             }
           />
         )}
 
-        {upload.uploads.length > 0 && (
-          <View style={styles.uploadList}>
-            {upload.uploads.map(u => (
-              <View key={u.id} style={styles.uploadRow}>
-                {u.status === 'uploading' && <ActivityIndicator size="small" />}
-                {u.status === 'done' && <Ionicons name="checkmark-circle" size={16} color="#059669" />}
-                {u.status === 'error' && <Ionicons name="alert-circle" size={16} color="#DC2626" />}
-                <Text style={styles.uploadName} numberOfLines={1}>{u.fileName}</Text>
-                {u.status === 'uploading' && (
-                  <View style={styles.progressTrack}>
-                    <View style={[styles.progressBar, { width: `${Math.round(u.progress * 100)}%` }]} />
-                  </View>
-                )}
-                <TouchableOpacity onPress={() => upload.removeUpload(u.id)} hitSlop={8}>
-                  <Ionicons name="close" size={16} color="#9CA3AF" />
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        )}
+        {/* 入力欄。Web 版モバイルと同じ「カード + 上段アクションチップ + 入力行」構成 */}
+        <View style={[styles.composerWrap, { paddingBottom: 8 }]}>
+          <View style={[styles.composer, { backgroundColor: c.card, borderColor: c.border2 }]}>
+            <View style={[styles.composerActions, { borderBottomColor: c.divider }]}>
+              <TouchableOpacity onPress={() => void upload.pickImage()} style={styles.actionChip} hitSlop={4}>
+                <Ionicons name="image-outline" size={13} color={c.text3} />
+                <Text style={[styles.actionChipLabel, { color: c.text3 }]}>画像</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => void upload.pickDocument()} style={styles.actionChip} hitSlop={4}>
+                <Ionicons name="attach-outline" size={13} color={c.text3} />
+                <Text style={[styles.actionChipLabel, { color: c.text3 }]}>ファイル</Text>
+              </TouchableOpacity>
+            </View>
 
-        <View style={[styles.composer, { paddingBottom: 8 }]}>
-          <TouchableOpacity onPress={() => void upload.pickImage()} style={styles.iconButton} hitSlop={4}>
-            <Ionicons name="image-outline" size={22} color="#6B7280" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => void upload.pickDocument()} style={styles.iconButton} hitSlop={4}>
-            <Ionicons name="attach-outline" size={22} color="#6B7280" />
-          </TouchableOpacity>
-          <TextInput
-            style={styles.input}
-            placeholder="メッセージを入力"
-            value={draft}
-            onChangeText={setDraft}
-            multiline
-          />
-          <TouchableOpacity
-            onPress={() => void handleSend()}
-            disabled={!canSend}
-            style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
-          >
-            <Ionicons name="send" size={18} color="#fff" />
-          </TouchableOpacity>
+            {upload.uploads.length > 0 && (
+              <View style={[styles.uploadList, { borderBottomColor: c.divider }]}>
+                {upload.uploads.map(u => (
+                  <View key={u.id} style={styles.uploadRow}>
+                    {u.status === 'uploading' && <ActivityIndicator size="small" color={c.accent} />}
+                    {u.status === 'done' && <Ionicons name="checkmark-circle" size={16} color={c.accent} />}
+                    {u.status === 'error' && <Ionicons name="alert-circle" size={16} color={c.redText} />}
+                    <Text style={[styles.uploadName, { color: c.text2 }]} numberOfLines={1}>{u.fileName}</Text>
+                    {u.status === 'uploading' && (
+                      <View style={[styles.progressTrack, { backgroundColor: c.border }]}>
+                        <View style={[styles.progressBar, { backgroundColor: c.accent, width: `${Math.round(u.progress * 100)}%` }]} />
+                      </View>
+                    )}
+                    <TouchableOpacity onPress={() => upload.removeUpload(u.id)} hitSlop={8}>
+                      <Ionicons name="close" size={16} color={c.text4} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <View style={styles.inputRow}>
+              <TextInput
+                style={[styles.input, { color: c.text }]}
+                placeholder={`# ${name ?? 'チャンネル'} にメッセージ送信`}
+                placeholderTextColor={c.text4}
+                value={draft}
+                onChangeText={setDraft}
+                multiline
+              />
+              <TouchableOpacity
+                onPress={() => void handleSend()}
+                disabled={!canSend}
+                style={[styles.sendButton, { backgroundColor: canSend ? c.accent : c.border2 }]}
+              >
+                <Ionicons name="send" size={13} color={canSend ? c.onAccent : c.text4} />
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </View>
@@ -211,75 +296,58 @@ export default function ChatChannelScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  container: { flex: 1 },
   fill: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  errorText: { color: '#b91c1c', fontSize: 14, textAlign: 'center', padding: 24 },
+  errorText: { fontSize: 14, textAlign: 'center', padding: 24 },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e8e8e8',
+    paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1,
   },
   backButton: { padding: 2 },
   headerText: { flex: 1, minWidth: 0 },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: '#111' },
-  headerSub: { fontSize: 11.5, color: '#888' },
-  list: { padding: 12, gap: 10 },
-  empty: { textAlign: 'center', color: '#999', marginTop: 48, transform: [{ scaleY: -1 }] },
-  row: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
-  rowMine: { justifyContent: 'flex-end' },
-  avatar: { width: 30, height: 30, borderRadius: 15 },
-  avatarFallback: { backgroundColor: '#0891B2', alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  bubbleWrap: { maxWidth: '78%', gap: 3, alignItems: 'flex-start' },
-  bubbleWrapMine: { maxWidth: '78%', gap: 3, alignItems: 'flex-end' },
-  senderName: { fontSize: 11, color: '#888', marginLeft: 4 },
-  bubble: { borderRadius: 14, paddingVertical: 8, paddingHorizontal: 12 },
-  bubbleOther: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e8e8e8' },
-  bubbleMine: { backgroundColor: '#0070f3' },
-  bubbleQueued: { backgroundColor: '#E5E7EB' },
-  messageText: { fontSize: 14.5, color: '#111', lineHeight: 20 },
-  messageTextMine: { color: '#fff' },
-  messageTextQueued: { fontSize: 14.5, color: '#6B7280', lineHeight: 20 },
-  queueStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 4 },
-  queueStatusPending: { fontSize: 11, color: '#9CA3AF' },
-  queueStatusFailed: { fontSize: 11, color: '#DC2626', fontWeight: '600' },
-  attachment: {
+  headerTitle: { fontSize: 16, fontWeight: '700' },
+  headerSub: { fontSize: 11.5 },
+  list: { paddingHorizontal: 12, paddingVertical: 10, gap: 16 },
+  empty: { textAlign: 'center', marginTop: 48, transform: [{ scaleY: -1 }] },
+  row: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  rowBody: { flex: 1, minWidth: 0 },
+  rowHeader: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 3 },
+  avatar: { width: 36, height: 36, borderRadius: 18 },
+  senderName: { fontSize: 14, fontWeight: '700' },
+  time: { fontSize: 11 },
+  messageText: { fontSize: 13.5, lineHeight: 21 },
+  queueStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  queueStatusText: { fontSize: 11 },
+  attachments: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  attachmentImage: { width: 200, height: 150, borderRadius: 8 },
+  attachmentCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: 8, borderWidth: 1, maxWidth: 260,
+  },
+  fileIcon: { width: 28, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  attachmentName: { fontSize: 12.5, flexShrink: 1 },
+  reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
+  reaction: { height: 24, paddingHorizontal: 7, borderRadius: 12, borderWidth: 1, justifyContent: 'center' },
+  reactionText: { fontSize: 11, fontWeight: '600' },
+  composerWrap: { paddingHorizontal: 8, paddingTop: 4 },
+  composer: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+  composerActions: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#fff', borderWidth: 1, borderColor: '#e8e8e8',
-    borderRadius: 8, paddingVertical: 5, paddingHorizontal: 8, maxWidth: 240,
+    paddingHorizontal: 10, paddingVertical: 6, borderBottomWidth: 1,
   },
-  attachmentName: { fontSize: 12, color: '#374151', flexShrink: 1 },
-  reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
-  reaction: {
-    backgroundColor: '#fff', borderWidth: 1, borderColor: '#e8e8e8',
-    borderRadius: 10, paddingVertical: 2, paddingHorizontal: 7,
+  actionChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5,
   },
-  reactionMine: { borderColor: '#0070f3', backgroundColor: '#EFF6FF' },
-  reactionText: { fontSize: 12 },
-  time: { fontSize: 10, color: '#aaa', marginHorizontal: 4 },
-  uploadList: {
-    borderTopWidth: 1, borderTopColor: '#e8e8e8', backgroundColor: '#fff',
-    paddingHorizontal: 12, paddingVertical: 6, gap: 6,
-  },
+  actionChipLabel: { fontSize: 11.5, fontWeight: '500' },
+  uploadList: { paddingHorizontal: 12, paddingVertical: 6, gap: 6, borderBottomWidth: 1 },
   uploadRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  uploadName: { flexShrink: 1, fontSize: 12.5, color: '#374151' },
-  progressTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', overflow: 'hidden' },
-  progressBar: { height: 4, backgroundColor: '#0070f3' },
-  composer: {
-    flexDirection: 'row', alignItems: 'flex-end', gap: 6,
-    paddingHorizontal: 10, paddingTop: 8,
-    backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e8e8e8',
-  },
-  iconButton: { paddingVertical: 8, paddingHorizontal: 2 },
-  input: {
-    flex: 1, fontSize: 15, maxHeight: 120,
-    backgroundColor: '#f1f3f5', borderRadius: 18,
-    paddingHorizontal: 14, paddingVertical: 8,
-  },
-  sendButton: {
-    backgroundColor: '#0070f3', borderRadius: 18,
-    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
-  },
-  sendButtonDisabled: { backgroundColor: '#9CA3AF' },
+  uploadName: { flexShrink: 1, fontSize: 12.5 },
+  progressTrack: { flex: 1, height: 4, borderRadius: 2, overflow: 'hidden' },
+  progressBar: { height: 4 },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  input: { flex: 1, fontSize: 14, maxHeight: 120, paddingTop: 4, paddingBottom: 4 },
+  sendButton: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
 })

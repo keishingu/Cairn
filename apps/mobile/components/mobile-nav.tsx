@@ -6,14 +6,9 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs'
 import { useProjectChannels } from '../hooks/use-projects'
 import { useMe, useWorkspace } from '../hooks/use-account'
 import { useProjectsView, type ProjectsView } from './projects-view-context'
+import { THEME } from '../lib/theme'
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
-
-// Web 側の globals.css のカラートークンに合わせる（ライト / ダーク）
-const COLORS = {
-  light: { card: '#FFFFFF', border: '#E5E7EB', divider: '#F1F3F5', text: '#0B0F14', textMuted: '#6B7280', accent: '#0891B2', cardAlt: '#F3F4F6' },
-  dark: { card: '#11161D', border: '#1F2630', divider: '#1A2027', text: '#E5E7EB', textMuted: '#8A94A3', accent: '#22D3EE', cardAlt: '#1A2027' },
-}
 
 // route はナビゲーターの実ルート名（ディレクトリ配下に _layout がないためファイル単位）
 const TABS: { id: string; route: string; icon: IoniconName; label: string }[] = [
@@ -42,7 +37,7 @@ const MENU_ROUTES = new Set(MENU_ITEMS.map((i) => i.route))
 export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets()
   const scheme = useColorScheme()
-  const c = scheme === 'dark' ? COLORS.dark : COLORS.light
+  const c = scheme === 'dark' ? THEME.dark : THEME.light
   const { view, setView } = useProjectsView()
   const { data: channels } = useProjectChannels()
   const { data: me } = useMe()
@@ -99,10 +94,10 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
               return (
                 <TouchableOpacity
                   key={v.id}
-                  style={[styles.popupRow, i > 0 && { borderTopWidth: 1, borderTopColor: c.divider }, active && { backgroundColor: c.cardAlt }]}
+                  style={[styles.popupRow, i > 0 && { borderTopWidth: 1, borderTopColor: c.divider }, active && { backgroundColor: c.cardHover }]}
                   onPress={() => { closeAll(); setView(v.id); navigation.navigate('projects/index') }}
                 >
-                  <Ionicons name={v.icon} size={16} color={active ? c.accent : c.textMuted} />
+                  <Ionicons name={v.icon} size={16} color={active ? c.accent : c.text3} />
                   <Text style={[styles.popupLabel, { color: active ? c.accent : c.text, fontWeight: active ? '700' : '500' }]}>{v.label}</Text>
                   {active && <Ionicons name="checkmark" size={14} color={c.accent} />}
                 </TouchableOpacity>
@@ -121,7 +116,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
                   : <View style={[styles.wsLogo, styles.wsLogoFallback]}><Text style={styles.wsLogoText}>{workspace?.name?.slice(0, 1) ?? '?'}</Text></View>}
                 <View style={styles.menuHeaderText}>
                   <Text style={[styles.wsName, { color: c.text }]} numberOfLines={1}>{workspace?.name ?? '…'}</Text>
-                  <Text style={[styles.wsSub, { color: c.textMuted }]}>ワークスペース</Text>
+                  <Text style={[styles.wsSub, { color: c.text3 }]}>ワークスペース</Text>
                 </View>
               </View>
               <View style={[styles.userRow, { borderTopColor: c.divider }]}>
@@ -130,7 +125,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
                   : <View style={[styles.avatar, styles.wsLogoFallback]}><Ionicons name="person" size={16} color="#fff" /></View>}
                 <View style={styles.menuHeaderText}>
                   <Text style={[styles.userName, { color: c.text }]} numberOfLines={1}>{me?.displayName ?? '…'}</Text>
-                  {me?.email && <Text style={[styles.wsSub, { color: c.textMuted }]} numberOfLines={1}>{me.email}</Text>}
+                  {me?.email && <Text style={[styles.wsSub, { color: c.text3 }]} numberOfLines={1}>{me.email}</Text>}
                 </View>
               </View>
             </View>
@@ -140,11 +135,11 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
                 style={[styles.menuItem, { borderTopColor: c.divider }]}
                 onPress={() => { closeAll(); navigation.navigate(item.route) }}
               >
-                <View style={[styles.menuItemIcon, { backgroundColor: c.cardAlt }]}>
-                  <Ionicons name={item.icon} size={18} color={c.textMuted} />
+                <View style={[styles.menuItemIcon, { backgroundColor: c.cardHover }]}>
+                  <Ionicons name={item.icon} size={18} color={c.text3} />
                 </View>
                 <Text style={[styles.menuItemLabel, { color: c.text }]}>{item.label}</Text>
-                <Ionicons name="chevron-forward" size={14} color={c.textMuted} style={{ marginLeft: 'auto' }} />
+                <Ionicons name="chevron-forward" size={14} color={c.text3} style={{ marginLeft: 'auto' }} />
               </TouchableOpacity>
             ))}
           </View>
@@ -161,7 +156,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
             tab.id === 'projects' ? (pickerOpen || isProjectsActive) :
             tab.id === 'chats' ? isChatsActive :
             current === tab.route
-          const color = active ? c.accent : c.textMuted
+          const color = active ? c.accent : c.text3
           const iconName = tab.id === 'projects' ? projectsIcon : tab.icon
           return (
             <TouchableOpacity key={tab.id} style={styles.tab} onPress={() => handlePress(tab)} activeOpacity={0.7}>
@@ -206,7 +201,7 @@ const styles = StyleSheet.create({
   menuHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   menuHeaderText: { flex: 1, minWidth: 0 },
   wsLogo: { width: 36, height: 36, borderRadius: 10 },
-  wsLogoFallback: { backgroundColor: '#0891B2', alignItems: 'center', justifyContent: 'center' },
+  wsLogoFallback: { backgroundColor: '#10B981', alignItems: 'center', justifyContent: 'center' },
   wsLogoText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   wsName: { fontSize: 14, fontWeight: '700' },
   wsSub: { fontSize: 11.5 },
