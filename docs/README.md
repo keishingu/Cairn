@@ -18,6 +18,7 @@
 | [`api-conventions.md`](./api-conventions.md) | API ルート実装規約・認証・サインアップフロー | 2026-06-10 |
 | [`frontend-guidelines.md`](./frontend-guidelines.md) | コンポーネント設計・Domain Hook パターン・UIディレクトリ構成 | 2026-06-10 |
 | [`notification-design.md`](./notification-design.md) | 通知・未読の現行仕様 | 2026-06-10 |
+| [`notification-ux-redesign.md`](./notification-ux-redesign.md) | 通知・未読・Push の再設計案（Realtime 移行を含む） | 2026-06 |
 | [`10_ai_member_design.md`](./10_ai_member_design.md) | AIメンバー設計（構想段階の現行合意。実装着手時に更新する） | 2026-06-11 |
 | [`pricing-plan-design.md`](./pricing-plan-design.md) | 料金プラン設計（Free / Stone / Party / Expedition。実装着手時に更新する） | 2026-06-12 |
 
