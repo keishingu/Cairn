@@ -19,6 +19,7 @@
 | [`frontend-guidelines.md`](./frontend-guidelines.md) | コンポーネント設計・Domain Hook パターン・UIディレクトリ構成 | 2026-06-10 |
 | [`notification-design.md`](./notification-design.md) | 通知・未読の現行仕様 | 2026-06-10 |
 | [`10_ai_member_design.md`](./10_ai_member_design.md) | AIメンバー設計（構想段階の現行合意。実装着手時に更新する） | 2026-06-11 |
+| [`pricing-plan-design.md`](./pricing-plan-design.md) | 料金プラン設計（Free / Stone / Party / Expedition。実装着手時に更新する） | 2026-06-12 |
 
 ## 設計時スナップショット
 
