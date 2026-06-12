@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireProjectManager } from '@/lib/permissions'
+import { requireWorkspaceAdmin } from '@/lib/permissions'
 
 export async function POST(
   req: Request,
@@ -13,7 +13,7 @@ export async function POST(
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  const forbidden = await requireProjectManager(projectId, ctx.userId, ctx.workspaceId)
+  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
   if (forbidden) return forbidden
 
   try {

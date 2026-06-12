@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { requireProjectLeader, requireProjectManager } from '@/lib/permissions'
+import { requireWorkspaceAdmin, requireWorkspaceMember } from '@/lib/permissions'
 
 export async function DELETE(
   _req: Request,
@@ -29,7 +29,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    const forbidden = await requireProjectLeader(projectId, ctx.userId, ctx.workspaceId)
+    const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
     if (forbidden) return forbidden
 
     // CASCADE 前にストレージパスを収集する
@@ -119,7 +119,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    const forbidden = await requireProjectManager(id, ctx.userId, ctx.workspaceId)
+    const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
     if (forbidden) return forbidden
 
     let resolvedCoverPhotoUrl: string | null | undefined = undefined

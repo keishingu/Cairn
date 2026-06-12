@@ -94,6 +94,12 @@ STORAGE_KEYS.projects_filter   // → 'cairn:projects_filter'
 - **プロジェクトビューは localStorage で管理**: 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクト済み。ビュー切替（一覧 / カレンダー / カンバン）はURLパラメータを使わず localStorage のみで永続化（`STORAGE_KEYS.projects_view_pc` / `STORAGE_KEYS.projects_view_mob`）。`/projects/[id]` はプロジェクト詳細（現在は `/projects?open={id}` にリダイレクト）
 - **API 認証は Bearer トークン（Supabase JWT）**: Web クライアントも Expo も同じ Next.js Route Handlers を呼び出し、`Authorization: Bearer <token>` で認証する。`getAuthContext()` は `Authorization` ヘッダを優先し、なければ Cookie にフォールバックする。Hono API 分離は「Next.js からの独立スケール・デプロイ分離が必要」になった時点で改めて検討する
 - **メール機能はアプリが持たない**: ログイン確認・パスワードリセット等のトランザクショナルメールは Supabase Auth が管理する。招待はリンク共有（30日有効）で行い、アプリ側にメール送信ロジックは実装しない。将来的に通知メール等の要望が出た場合は Resend 等を検討する
+- **権限モデルはワークスペースロールのみで決定する**（プロジェクトロールは業務上の役割であり、システム権限に影響させない）
+  - `owner`: WS設定（名前・ロゴ等）変更 + admin の全権限
+  - `admin`: メンバー管理・招待、プロジェクト作成・削除、ゲスト招待リンク発行 + member の全権限
+  - `member`: プロジェクト編集・メンバー追加削除、日常操作（チャット・タスク・ファイル等）
+  - `guest`: 参加プロジェクトのみ参照・書き込み可。プロジェクト一覧・チャンネル一覧はメンバーのみの参加プロジェクトに制限
+  - 権限ヘルパーは `apps/web/src/lib/permissions.ts` に集約（`requireWorkspaceOwner` / `requireWorkspaceAdmin` / `requireWorkspaceMember`）
 
 
 ## Detail Panel コンポーネントの方針

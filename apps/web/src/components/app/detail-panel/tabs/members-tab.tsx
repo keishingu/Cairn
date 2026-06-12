@@ -459,12 +459,8 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
   const memberUserIds = new Set(members.map(m => m.userId))
   const inviteable = wsMembers.filter(m => !memberUserIds.has(m.userId))
 
-  // プロジェクトのleader/subleader または WSのadmin/owner のみゲスト招待可能
-  const myProjectRole = members.find(m => m.userId === currentUser?.id)?.role
-  const canInviteGuest = currentUser != null && (
-    currentUser.wsRole === 'owner' || currentUser.wsRole === 'admin' ||
-    myProjectRole === 'leader' || myProjectRole === 'subleader'
-  )
+  // WSのadmin/owner のみゲスト招待可能
+  const canInviteGuest = currentUser?.wsRole === 'owner' || currentUser?.wsRole === 'admin'
 
   const addMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
