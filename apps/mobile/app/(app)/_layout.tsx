@@ -92,6 +92,7 @@ export default function AppLayout() {
         <Tabs.Screen name="ai/index" />
         {/* 以下はタブに出さず、通知タップ・メニューからの遷移先としてのみ使う */}
         <Tabs.Screen name="projects/[id]" options={{ href: null }} />
+        <Tabs.Screen name="chats/[channelId]" options={{ href: null }} />
         <Tabs.Screen name="notifications/index" options={{ href: null }} />
         <Tabs.Screen name="files" options={{ href: null }} />
         <Tabs.Screen name="gallery" options={{ href: null }} />

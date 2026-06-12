@@ -56,6 +56,8 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const current = state.routes[state.index]?.name ?? 'projects/index'
   // projects/[id]（プロジェクト詳細）でもプロジェクトタブをアクティブ表示する
   const isProjectsActive = current.startsWith('projects/')
+  // chats/[channelId]（会話画面）でもチャットタブをアクティブ表示する
+  const isChatsActive = current.startsWith('chats/')
   const closeAll = () => { setMenuOpen(false); setPickerOpen(false) }
 
   const unreadTotal = (channels ?? []).reduce((sum, ch) => sum + ch.unreadCount, 0)
@@ -157,6 +159,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
           const active =
             tab.id === 'menu' ? isMenuActive :
             tab.id === 'projects' ? (pickerOpen || isProjectsActive) :
+            tab.id === 'chats' ? isChatsActive :
             current === tab.route
           const color = active ? c.accent : c.textMuted
           const iconName = tab.id === 'projects' ? projectsIcon : tab.icon

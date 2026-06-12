@@ -210,8 +210,8 @@ const { status } = await Notifications.requestPermissionsAsync()
 | 2-2 | ネイティブ画面実装（projects / chats / tasks / notifications） | ✅ 完了（PR #68） |
 | 2-3 | Expo Push Notifications 統合 | ✅ 完了（PR #68） |
 | 2-4 | WebView 化（projects / tasks / notifications）+ セッション橋渡し | ✅ 完了 |
-| 2-4.5 | フッター（タブナビ）のネイティブ化（圏外でもチャットへ遷移できるように） | ✅ 完了（`docs/prompts/phase2b-4.5-native-footer.md`） |
-| 2-5 | ネイティブチャット強化（オフライン送信キュー・バックグラウンドアップロード） | 未着手 → `docs/prompts/phase2b-5-native-chat.md` |
+| 2-4.5 | フッター（タブナビ）のネイティブ化（圏外でもチャットへ遷移できるように） | ✅ 完了（`docs/archive/prompts/phase2b-4.5-native-footer.md`） |
+| 2-5 | ネイティブチャット会話画面 + オフライン送信キュー・バックグラウンドアップロード | ✅ 完了（`docs/archive/prompts/phase2b-5-native-chat.md`） |
 
 ### Phase 3（仕上げ・マイルストーン等）
 
