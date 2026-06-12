@@ -22,20 +22,8 @@ export const onMessageCreated = inngest.createFunction(
   { id: 'on-message-created' },
   { event: 'message/created' satisfies MessageCreatedEvent['name'] },
   async ({ event, step }) => {
-    const { messageId, channelId, workspaceId, senderId, senderName, content, attachmentFileIds } =
+    const { messageId, channelId, workspaceId, senderId, senderName, content } =
       event.data as MessageCreatedEvent['data']
-
-    // チャンネルメンバー（送信者を除く）を取得
-    const members = await step.run('fetch-members', async () => {
-      const { db, channelMembers, profiles } = await import('@cairn/db')
-      const { eq } = await import('drizzle-orm')
-      return db
-        .select({ userId: channelMembers.userId, displayName: profiles.displayName })
-        .from(channelMembers)
-        .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
-        .where(eq(channelMembers.channelId, channelId))
-        .then(rows => rows.filter(r => r.userId !== senderId))
-    })
 
     // DM チャンネルの場合は相手に Push を送って終了
     const isDm = await step.run('check-dm', async () => {
@@ -46,6 +34,18 @@ export const onMessageCreated = inngest.createFunction(
     })
 
     if (isDm) {
+      // チャンネルメンバー（送信者を除く）を取得
+      const members = await step.run('fetch-members', async () => {
+        const { db, channelMembers, profiles } = await import('@cairn/db')
+        const { eq } = await import('drizzle-orm')
+        return db
+          .select({ userId: channelMembers.userId, displayName: profiles.displayName })
+          .from(channelMembers)
+          .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
+          .where(eq(channelMembers.channelId, channelId))
+          .then(rows => rows.filter(r => r.userId !== senderId))
+      })
+
       // DM はアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
       await step.run('create-dm-notifications', async () => {
         if (members.length === 0) return
@@ -71,28 +71,27 @@ export const onMessageCreated = inngest.createFunction(
           })),
         )
       })
-      return { mentionNotifications: 0, fileNotifications: 0, dm: true }
+      return { mentionNotifications: 0, dm: true }
     }
 
     // @メンション通知（チャンネル未参加でもワークスペースメンバーなら通知）
+    // ファイル添付だけでは通知しない。共有を知らせたい場合は送信者がメンションを付ける運用
     const mentionedIds = extractMentionedUserIds(content)
 
-    if (members.length === 0 && mentionedIds.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
-    const mentionedMembers = mentionedIds.length > 0
-      ? await step.run('fetch-mentioned-members', async () => {
-          const { db, workspaceMembers, profiles } = await import('@cairn/db')
-          const { eq, inArray, and, ne } = await import('drizzle-orm')
-          return db
-            .select({ userId: workspaceMembers.userId, displayName: profiles.displayName })
-            .from(workspaceMembers)
-            .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
-            .where(and(
-              eq(workspaceMembers.workspaceId, workspaceId),
-              inArray(workspaceMembers.userId, mentionedIds),
-              ne(workspaceMembers.userId, senderId),
-            ))
-        })
-      : []
+    if (mentionedIds.length === 0) return { mentionNotifications: 0 }
+    const mentionedMembers = await step.run('fetch-mentioned-members', async () => {
+      const { db, workspaceMembers, profiles } = await import('@cairn/db')
+      const { eq, inArray, and, ne } = await import('drizzle-orm')
+      return db
+        .select({ userId: workspaceMembers.userId, displayName: profiles.displayName })
+        .from(workspaceMembers)
+        .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
+        .where(and(
+          eq(workspaceMembers.workspaceId, workspaceId),
+          inArray(workspaceMembers.userId, mentionedIds),
+          ne(workspaceMembers.userId, senderId),
+        ))
+    })
 
     let mentionNotifications = 0
     if (mentionedMembers.length > 0) {
@@ -141,40 +140,7 @@ export const onMessageCreated = inngest.createFunction(
       })
     }
 
-    // ファイル添付通知（送信者以外の全メンバーへ）
-    let fileNotifications = 0
-    if (attachmentFileIds.length > 0) {
-      await step.run('create-file-notifications', async () => {
-        const { db, notifications, files } = await import('@cairn/db')
-        const { eq } = await import('drizzle-orm')
-
-        const [file] = await db
-          .select({ fileName: files.fileName })
-          .from(files)
-          .where(eq(files.id, attachmentFileIds[0]!))
-          .limit(1)
-
-        const fileName = file?.fileName ?? 'ファイル'
-        const extraCount = attachmentFileIds.length - 1
-        const body = extraCount > 0
-          ? `${fileName} ほか ${extraCount} 件`
-          : fileName
-
-        await db.insert(notifications).values(
-          members.map(m => ({
-            userId: m.userId,
-            workspaceId,
-            type: 'file' as const,
-            title: `${senderName} がファイルを共有しました`,
-            body,
-            data: { messageId, channelId, senderName },
-          })),
-        )
-      })
-      fileNotifications = members.length
-    }
-
-    return { mentionNotifications, fileNotifications }
+    return { mentionNotifications }
   },
 )
 

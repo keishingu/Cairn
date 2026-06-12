@@ -8,7 +8,7 @@
 
 | シナリオ | Push通知 | アプリ内通知（`notifications` テーブル） |
 |---------|---------|----------------------------------------|
-| チャンネル発言（ファイル添付あり） | なし | チャンネルメンバー全員に記録 |
+| チャンネル発言（ファイル添付の有無問わず） | なし | なし（未読バッジのみ） |
 | チャンネル発言（`<@userId\|name>` メンション） | メンションされた WS メンバーへ送信 | メンションされた WS メンバーに記録 |
 | DM 発言（メンション有無問わず） | 参加者全員へ送信 | 参加者全員に記録（`type='dm'`） |
 
@@ -18,5 +18,11 @@
 - チャンネルを既読にすると、そのチャンネルに紐づく `mention` / `dm` 通知（`data->>'channelId'` で判定）も既読化する。既読状態をチャンネルとベルで分裂させないため
 - 未読カウントは自分の発言を除外する（`messages.sender_id != userId`）。チャンネル参加時には `channel_read_states` 行を作成し、参加時点を既読起点にする
 - 実装: `apps/web/src/lib/inngest/functions.ts` の `onMessageCreated`、既読化は `apps/web/src/app/api/channels/[channelId]/read/route.ts`
+
+## 通知しないもの（ポリシー決定済み）
+
+- **ファイル添付**: 添付だけではアプリ内通知・Push とも生成しない（通常発言と同じ未読バッジ止まり）。共有を確実に知らせたい場合は送信者がメンションを付ける運用とする。Slack/Discord/Notion と同じ方針（[`notification-ux-redesign.md`](notification-ux-redesign.md) §5）
+- **プロジェクトのステータス変更**: 通知しない。関心を持つのは主に管理者以上のため、需要が出たら Phase 4 の通知設定（`notification_preferences`）でオプトイン提供を検討する
+- 過去に生成済みの `type='file'` 通知行は DB に残るため、`notification_type` enum と通知一覧 UI の `file` 表示は互換のため維持する
 
 > 通知・未読の全体的な再設計方針は [`docs/notification-ux-redesign.md`](notification-ux-redesign.md) を参照。上記は Phase 1（整合性修正）反映後の動作。

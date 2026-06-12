@@ -243,7 +243,6 @@ export async function POST(req: Request, { params }: RouteContext) {
         senderId: ctx.userId,
         senderName,
         content: inserted.content,
-        attachmentFileIds: parsed.data.attachmentFileIds ?? [],
       },
     } satisfies MessageCreatedEvent).catch((err: unknown) => {
       console.warn('[inngest] message/created send failed (Inngest not running?):', err)

@@ -10,7 +10,6 @@ export type MessageCreatedEvent = {
     senderId: string
     senderName: string
     content: string
-    attachmentFileIds: string[]
   }
 }
 
