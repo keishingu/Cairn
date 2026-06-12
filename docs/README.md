@@ -21,6 +21,7 @@
 | [`notification-ux-redesign.md`](./notification-ux-redesign.md) | 通知・未読・Push の再設計案（Realtime 移行を含む） | 2026-06 |
 | [`10_ai_member_design.md`](./10_ai_member_design.md) | AIメンバー設計（構想段階の現行合意。実装着手時に更新する） | 2026-06-11 |
 | [`pricing-plan-design.md`](./pricing-plan-design.md) | 料金プラン設計（Free / Stone / Party / Expedition。実装着手時に更新する） | 2026-06-12 |
+| [`billing-implementation-design.md`](./billing-implementation-design.md) | 課金の実装設計（データモデル・Stripe統合・執行ポイント。実装着手時に更新する） | 2026-06-12 |
 
 ## 設計時スナップショット
 
