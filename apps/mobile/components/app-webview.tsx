@@ -1,10 +1,11 @@
 import React from 'react'
-import { Platform, View, StyleSheet, useColorScheme } from 'react-native'
+import { Platform, View, Text, Pressable, StyleSheet, useColorScheme } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
-import type { WebViewNavigation } from 'react-native-webview'
+import type { WebViewNavigation, WebViewMessageEvent } from 'react-native-webview'
 import { supabase } from '../lib/supabase'
+import { apiFetch } from '../lib/api-fetch'
 import { API_BASE_URL as WEB_BASE } from '../lib/env'
 
 // Web 側の globals.css --bg と揃える
@@ -15,35 +16,134 @@ interface Props {
   path: string
 }
 
+function webUrl(path: string): string {
+  return `${WEB_BASE}${path}?webview=1`
+}
+
 export function AppWebView({ path }: Props) {
   const webViewRef = React.useRef<WebView>(null)
   const [uri, setUri] = React.useState<string | null>(null)
+  const [error, setError] = React.useState(false)
   const insets = useSafeAreaInsets()
   const colorScheme = useColorScheme()
   const bg = colorScheme === 'dark' ? BG_DARK : BG_LIGHT
   const router = useRouter()
 
-  React.useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) return
-      const { access_token, refresh_token } = session
-      const redirect = encodeURIComponent(`${path}?webview=1`)
-
-      // トークンを URL フラグメント（#）で渡す。
-      // フラグメントはサーバーに送信されないためアクセスログに残らない。
-      // injectedJavaScriptBeforeContentLoaded の sessionStorage 書き込みは
-      // iOS/Android 実機では別 JS コンテキストで実行されページから参照できないため廃止。
-      const at = encodeURIComponent(access_token)
-      const rt = encodeURIComponent(refresh_token)
-      setUri(`${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}#at=${at}&rt=${rt}`)
-    })
-  }, [path])
+  // 最新の path を参照するための ref（onLoadEnd など描画外コールバックから使う）
+  const pathRef = React.useRef(path)
+  pathRef.current = path
+  // ハンドオフに使った初期 path。これと異なる path への切り替えは内部遷移で処理する
+  const initialPathRef = React.useRef<string | null>(null)
+  // 初回ロード完了フラグ。完了前は injectJavaScript が失われるため遷移を保留する
+  const loadedRef = React.useRef(false)
+  // HANDOFF_FAILED 起因の再ハンドオフは 1 回だけ（無限リトライ防止）
+  const retriedRef = React.useRef(false)
+  // 復帰処理中は URL 監視による signOut を一時停止する
+  const recoveringRef = React.useRef(false)
 
   // WEB_BASE のオリジン（scheme+host+port）を抽出して信頼済みオリジンとする
   const trustedOrigin = WEB_BASE.replace(/\/$/, '').replace(/(https?:\/\/[^/]+).*/, '$1')
 
+  const performHandoff = React.useCallback(
+    async (targetPath: string) => {
+      setError(false)
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        // 通常は AuthGuard がセッションを保証するため到達しない
+        router.replace('/(auth)/login')
+        return
+      }
+
+      try {
+        // ネイティブの refresh_token を WebView に渡さず、使い捨ての hashed_token を発行する。
+        // WebView 側は verifyOtp で独立したセッションを確立する
+        // （docs/mobile-webview-auth-handoff.md）。
+        const res = await apiFetch('/api/auth/webview-handoff', { method: 'POST' })
+        if (!res.ok) throw new Error(`handoff failed: ${res.status}`)
+        const data = (await res.json()) as { tokenHash?: string }
+        if (!data.tokenHash) throw new Error('handoff response missing tokenHash')
+
+        const redirect = encodeURIComponent(webUrl(targetPath))
+        const th = encodeURIComponent(data.tokenHash)
+        initialPathRef.current = targetPath
+        loadedRef.current = false
+        // トークンは URL フラグメント（#th=...）で渡す。
+        // フラグメントはサーバーに送信されないためアクセスログに残らない。
+        setUri(`${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}#th=${th}`)
+      } catch (err) {
+        // 失敗理由が Metro ログで追えるように必ず出力する
+        console.error('[AppWebView] ハンドオフに失敗:', err)
+        setError(true)
+      }
+    },
+    [router],
+  )
+
+  // WebView 内の同一オリジンへ内部遷移する（Cookie セッションは生きているため再認証不要）
+  const navigateTo = React.useCallback((targetPath: string) => {
+    webViewRef.current?.injectJavaScript(
+      `window.location.assign(${JSON.stringify(webUrl(targetPath))}); true;`,
+    )
+  }, [])
+
+  React.useEffect(() => {
+    if (initialPathRef.current === null) {
+      // 初回マウント時のみハンドオフを実行する
+      void performHandoff(path)
+    } else if (loadedRef.current && path !== initialPathRef.current) {
+      // ハンドオフ済み・ロード完了後の path 切り替えは内部遷移で処理する
+      navigateTo(path)
+    }
+    // ロード未完了中の path 変更は onLoadEnd 側で反映する
+  }, [path, performHandoff, navigateTo])
+
+  function handleLoadEnd() {
+    if (loadedRef.current) return
+    loadedRef.current = true
+    // ロード完了前に切り替えられていた場合は、最新の path へ追従する
+    if (initialPathRef.current !== null && pathRef.current !== initialPathRef.current) {
+      navigateTo(pathRef.current)
+    }
+  }
+
+  async function recoverFromHandoffFailure() {
+    recoveringRef.current = true
+
+    if (retriedRef.current) {
+      // 2 回目の失敗：トークンを更新しても復帰できないためログアウトする
+      await supabase.auth.signOut().catch(() => undefined)
+      router.replace('/(auth)/login')
+      return
+    }
+    retriedRef.current = true
+
+    const { data, error: refreshError } = await supabase.auth.refreshSession()
+    if (refreshError || !data.session) {
+      await supabase.auth.signOut().catch(() => undefined)
+      router.replace('/(auth)/login')
+      return
+    }
+
+    recoveringRef.current = false
+    void performHandoff(pathRef.current)
+  }
+
+  function handleMessage(event: WebViewMessageEvent) {
+    let msg: { type?: string } | null = null
+    try {
+      msg = JSON.parse(event.nativeEvent.data) as { type?: string }
+    } catch {
+      return
+    }
+    if (msg?.type === 'HANDOFF_FAILED') {
+      void recoverFromHandoffFailure()
+    }
+  }
+
   // Web 側でログアウトして /auth/login に遷移したらネイティブセッションも破棄する
   function handleNavigationStateChange(state: WebViewNavigation) {
+    if (recoveringRef.current) return
     const url = state.url
     if (url.includes('/auth/login') || url.includes('/auth/signup')) {
       supabase.auth.signOut().then(() => {
@@ -61,6 +161,17 @@ export function AppWebView({ path }: Props) {
     return url.startsWith(`${trustedOrigin}/`) || url === trustedOrigin
   }
 
+  if (error) {
+    return (
+      <View style={[styles.fill, styles.center, { backgroundColor: bg, paddingTop: insets.top }]}>
+        <Text style={styles.errorText}>読み込みに失敗しました</Text>
+        <Pressable style={styles.retryButton} onPress={() => void performHandoff(pathRef.current)}>
+          <Text style={styles.retryLabel}>再試行</Text>
+        </Pressable>
+      </View>
+    )
+  }
+
   if (!uri) return <View style={[styles.fill, { backgroundColor: bg }]} />
 
   return (
@@ -75,6 +186,8 @@ export function AppWebView({ path }: Props) {
         javaScriptCanOpenWindowsAutomatically={false}
         // iOS スワイプバック（ブラウザの進む/戻るジェスチャー）
         allowsBackForwardNavigationGestures={Platform.OS === 'ios'}
+        onLoadEnd={handleLoadEnd}
+        onMessage={handleMessage}
         onNavigationStateChange={handleNavigationStateChange}
       />
     </View>
@@ -83,5 +196,9 @@ export function AppWebView({ path }: Props) {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  center: { alignItems: 'center', justifyContent: 'center', gap: 16 },
   webview: { flex: 1 },
+  errorText: { fontSize: 15, color: '#94A3B8' },
+  retryButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, backgroundColor: '#2563EB' },
+  retryLabel: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
 })
