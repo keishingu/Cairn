@@ -195,9 +195,6 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 >
                   <Icon name="search" size={20}/>
                 </button>
-                <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
-                  <Icon name="bell" size={20}/>
-                </button>
               </div>
             }
           />

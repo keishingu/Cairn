@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
 import { RowActionMenu } from '../row-action-menu'
-import { BellButton } from '../sidebar'
+import { TopBar } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
@@ -1171,12 +1171,10 @@ export const PageSettings = () => {
     return new URLSearchParams(window.location.search).get('tab') ?? 'account'
   })
   return (
-    <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <TopBar title="設定"/>
+      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={{ width: 220, borderRight: '1px solid var(--border)', padding: '20px 14px', background: 'var(--card)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
-          <h2 style={{ margin: '0 8px 0', fontSize: 16, fontWeight: 700, flex: 1 }}>設定</h2>
-          <BellButton />
-        </div>
         {NAV_GROUPS.map((group, gi) => (
           <div key={group.label} style={{ marginBottom: gi < NAV_GROUPS.length - 1 ? 16 : 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0 10px', marginBottom: 4 }}>
@@ -1213,6 +1211,7 @@ export const PageSettings = () => {
             <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションの設定は準備中です。</p>
           </div>
         )}
+      </div>
       </div>
     </div>
   )
