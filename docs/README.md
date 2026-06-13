@@ -32,6 +32,7 @@
 | [`06_integration_strategy.md`](./06_integration_strategy.md) | 外部連携方針（Slack / Teams / Outlook は未実装） | 2026-05-22 |
 | [`07_notifications_and_unread.md`](./07_notifications_and_unread.md) | 通知・未読の設計検討 → 現行仕様は `notification-design.md` | 2026-05-27 |
 | [`08_expo_roadmap.md`](./08_expo_roadmap.md) | Expo ネイティブ化ロードマップ（一部実施済み） | 2026-05-27 |
+| [`landing-page-routing-design.md`](./landing-page-routing-design.md) | `/` を公開 LP にするルーティング再構成案（実装未着手） | 2026-06-13 |
 
 ## 記録
 
