@@ -77,7 +77,10 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
         const data = (await res.json()) as { tokenHash?: string }
         if (!data.tokenHash) throw new Error('handoff response missing tokenHash')
 
-        const redirect = encodeURIComponent(webUrl(targetPath))
+        // redirect は相対パス（/path?webview=1）で渡す。絶対URLを渡すと handoff 側の
+        // isSafeRedirect（/ で始まることが条件）に弾かれ、webview=1 が欠落して
+        // Web 側フッター（MobileNav）が二重表示される
+        const redirect = encodeURIComponent(`${targetPath}?webview=1`)
         const th = encodeURIComponent(data.tokenHash)
         initialPathRef.current = targetPath
         loadedRef.current = false
