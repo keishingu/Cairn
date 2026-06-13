@@ -147,6 +147,16 @@ secret = "env(AUTH_GITHUB_SECRET)"
 # Overrides the default auth redirectUrl.
 # redirect_uri = ""
 
+# ローカルで Google ログインを試す場合は enabled = true にし、Google Cloud の
+# OAuth 2.0 クライアント（種別: ウェブ アプリケーション）の認証情報を env で渡す。
+# Google 側の「承認済みのリダイレクト URI」に Supabase のコールバックを登録する:
+#   http://127.0.0.1:54321/auth/v1/callback
+[auth.external.google]
+enabled = false
+client_id = "env(AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(AUTH_GOOGLE_SECRET)"
+# redirect_uri = ""
+
 [edge_runtime]
 enabled = true
 # Configure one of the supported request policies: `oneshot`, `per_worker`.
