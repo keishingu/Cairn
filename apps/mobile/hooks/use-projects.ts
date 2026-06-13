@@ -92,11 +92,15 @@ export function useDms() {
   })
 }
 
-// API はエラー本文を { error: string | ... } で返すため、文字列のときだけ拾う
+// API はエラー本文を { error: string | ... } で返すため、文字列のときだけ拾う。
+// 403 は権限不足を意味するため、原因が分かる日本語メッセージに置き換える
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+  if (res.status === 403) {
+    return 'この操作を行う権限がありません（ワークスペースの管理者のみ実行できます）'
+  }
   try {
     const body = (await res.json()) as { error?: unknown }
-    return typeof body.error === 'string' ? body.error : fallback
+    return typeof body.error === 'string' && body.error !== 'Forbidden' ? body.error : fallback
   } catch {
     return fallback
   }
