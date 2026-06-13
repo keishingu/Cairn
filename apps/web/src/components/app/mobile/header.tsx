@@ -134,6 +134,8 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
         <h1 style={{ margin: 0, fontSize: subtitle ? 15 : 17, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h1>
         {subtitle && <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-4)', marginTop: 1 }}>{subtitle}</p>}
       </div>
+      {/* ベルは常に右端に固定し、その他のアイコン（検索など）はベルの左に並べる */}
+      {right}
       <button
         onClick={openNotif}
         className="btn btn-ghost"
@@ -142,7 +144,6 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
         <Icon name="bell" size={17}/>
         <UnreadBadge count={unreadCount} size="sm" style={{ position: 'absolute', top: 1, right: 1, border: '2px solid var(--card)' }} />
       </button>
-      {right}
     </header>
   )
 }
