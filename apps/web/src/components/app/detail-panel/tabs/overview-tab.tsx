@@ -98,6 +98,7 @@ const InlineDatePair = ({
   const [editing, setEditing] = React.useState(false)
   const [start, setStart] = React.useState(startDate ?? '')
   const [end, setEnd]     = React.useState(endDate ?? '')
+  const wrapRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => { setStart(startDate ?? ''); setEnd(endDate ?? '') }, [startDate, endDate])
 
@@ -106,6 +107,18 @@ const InlineDatePair = ({
     const ns = start || null
     const ne = end || null
     if (ns !== startDate || ne !== endDate) onSave(ns, ne)
+  }
+
+  const cancel = () => {
+    setEditing(false)
+    setStart(startDate ?? '')
+    setEnd(endDate ?? '')
+  }
+
+  // フォーカスがペア全体から外れた時だけ確定する（開始↔終了の移動では確定しない）
+  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    if (wrapRef.current?.contains(e.relatedTarget as Node | null)) return
+    commit()
   }
 
   const inputStyle: React.CSSProperties = {
@@ -134,20 +147,27 @@ const InlineDatePair = ({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-        <input type="date" value={start} onChange={e => setStart(e.target.value)} style={inputStyle}/>
-        <span style={{ color: 'var(--text-4)', fontSize: 12 }}>〜</span>
-        <input type="date" value={end} onChange={e => setEnd(e.target.value)} style={inputStyle}/>
-      </div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={commit} className="btn btn-primary" style={{ height: 28, padding: '0 10px', fontSize: 12 }}>確定</button>
-        <button
-          onClick={() => { setEditing(false); setStart(startDate ?? ''); setEnd(endDate ?? '') }}
-          className="btn btn-ghost"
-          style={{ height: 28, padding: '0 8px', fontSize: 12 }}
-        >取消</button>
-      </div>
+    <div
+      ref={wrapRef}
+      onBlur={handleBlur}
+      style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}
+    >
+      <input
+        type="date"
+        value={start}
+        autoFocus
+        onChange={e => setStart(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
+        style={inputStyle}
+      />
+      <span style={{ color: 'var(--text-4)', fontSize: 12 }}>〜</span>
+      <input
+        type="date"
+        value={end}
+        onChange={e => setEnd(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
+        style={inputStyle}
+      />
     </div>
   )
 }
