@@ -7,6 +7,7 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import { LocationInput } from '../../location-input'
 import { usePatchProject, useDeleteProject } from '@/hooks/use-patch-project'
 import { useProjectStatuses } from '@/hooks/use-project-statuses'
+import { toast } from '@/lib/toast'
 
 
 export function formatDateRange(start: string | null, end: string | null): string {
@@ -374,11 +375,14 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
             ? 'このプロジェクトはアーカイブされています。解除するとプロジェクト一覧に再表示されます。'
             : 'アーカイブすると一覧の「アーカイブ」タブに移動します。データは保持されます。'}
         </div>
-        {archivePatch.isError && (
-          <div style={{ fontSize: 11.5, color: 'var(--red-text)', marginBottom: 6 }}>⚠ 操作に失敗しました</div>
-        )}
         <button
-          onClick={() => archivePatch.mutate({ archived: !project.archived })}
+          onClick={() => archivePatch.mutate(
+            { archived: !project.archived },
+            {
+              onSuccess: () => toast.success(project.archived ? 'アーカイブを解除しました' : 'アーカイブしました'),
+              onError: () => toast.error('操作に失敗しました'),
+            },
+          )}
           disabled={archivePatch.isPending}
           className="btn btn-ghost"
           style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}
