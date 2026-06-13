@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Icon, Avatar } from '../primitives'
+import { Icon, Avatar, Fab } from '../primitives'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { CreateTaskModal } from './create-task-modal'
@@ -277,16 +277,18 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
             >{f.label}</button>
           ))}
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
-          <button
-            className="btn btn-primary"
-            onClick={() => setShowAddModal(true)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-          >
-            <Icon name="plus" size={13} strokeWidth={2.4} />
-            {!isMobile && 'タスクを追加'}
-          </button>
-        </div>
+        {!isMobile && (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowAddModal(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+            >
+              <Icon name="plus" size={13} strokeWidth={2.4} />
+              タスクを追加
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -322,6 +324,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
         )}
       </div>
 
+      {isMobile && <Fab onClick={() => setShowAddModal(true)} label="タスクを追加"/>}
       {showAddModal && <CreateTaskModal onClose={() => setShowAddModal(false)} />}
     </div>
   )

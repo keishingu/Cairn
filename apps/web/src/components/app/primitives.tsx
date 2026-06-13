@@ -197,6 +197,36 @@ export const StatusChip = ({ name, color, size = 11 }: StatusChipProps) => (
   </span>
 )
 
+// ─── Unread badge ─────────────────────────────────────────────────
+// 未読件数バッジ。ヘッダーのベル・サイドバー・チャンネル一覧・通知パネルで
+// 形・色・サイズを揃えるための共通コンポーネント。0 件では何も描画しない。
+interface UnreadBadgeProps {
+  count: number
+  /** これを超える件数は `${max}+` 表記にする */
+  max?: number
+  /** sm: アイコン重ね用の小サイズ / md: 行内の標準サイズ */
+  size?: 'sm' | 'md'
+  /** 絶対配置・枠線などの位置調整を呼び出し側から渡す */
+  style?: React.CSSProperties
+}
+
+export const UnreadBadge = ({ count, max = 99, size = 'md', style }: UnreadBadgeProps) => {
+  if (count <= 0) return null
+  const sm = size === 'sm'
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      height: sm ? 16 : 18, minWidth: sm ? 16 : 18, padding: '0 5px',
+      borderRadius: 999, boxSizing: 'border-box', lineHeight: 1,
+      background: 'var(--accent)', color: 'var(--on-accent)',
+      fontSize: sm ? 10 : 11, fontWeight: 700,
+      ...style,
+    }}>
+      {count > max ? `${max}+` : count}
+    </span>
+  )
+}
+
 // ─── Mountain photo ───────────────────────────────────────────────
 interface MountainPhotoProps {
   idx?: number
@@ -340,6 +370,28 @@ export function onBlurRing(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaEl
   e.currentTarget.style.borderColor = invalid ? 'var(--red)' : 'var(--border)'
   e.currentTarget.style.boxShadow = 'none'
 }
+
+// ─── FAB（モバイルの新規作成ボタン）──────────────────────────────
+// ボトムナビの上・右下固定。モバイルのページ主要作成アクションはこれに統一する
+export const Fab = ({ onClick, label }: { onClick: () => void; label: string }) => (
+  <button
+    onClick={onClick}
+    aria-label={label}
+    style={{
+      position: 'fixed',
+      right: 16,
+      bottom: 'calc(80px + env(safe-area-inset-bottom) + 16px)',
+      width: 52, height: 52, borderRadius: '50%',
+      background: 'var(--accent)', color: 'var(--on-accent)',
+      border: 'none', cursor: 'pointer',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+      zIndex: 50,
+    }}
+  >
+    <Icon name="plus" size={22}/>
+  </button>
+)
 
 // ─── Typing dots animation ────────────────────────────────────────
 export const TypingDots = () => (
