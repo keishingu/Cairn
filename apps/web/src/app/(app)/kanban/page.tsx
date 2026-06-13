@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
 
 export default function KanbanPage() {
-  redirect('/projects?view=kanban')
+  redirect('/projects')
 }

@@ -5,7 +5,7 @@
 
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Icon } from '../primitives'
+import { Icon, UnreadBadge } from '../primitives'
 import { useAppShell } from '../app-shell-context'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -134,15 +134,16 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
         <h1 style={{ margin: 0, fontSize: subtitle ? 15 : 17, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h1>
         {subtitle && <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-4)', marginTop: 1 }}>{subtitle}</p>}
       </div>
+      {/* ベルは常に右端に固定し、その他のアイコン（検索など）はベルの左に並べる */}
+      {right}
       <button
         onClick={openNotif}
         className="btn btn-ghost"
         style={{ width: 34, padding: 0, justifyContent: 'center', position: 'relative', flexShrink: 0 }}
       >
         <Icon name="bell" size={17}/>
-        {unreadCount > 0 && <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', border: '2px solid var(--card)' }}/>}
+        <UnreadBadge count={unreadCount} size="sm" style={{ position: 'absolute', top: 1, right: 1, border: '2px solid var(--card)' }} />
       </button>
-      {right}
     </header>
   )
 }

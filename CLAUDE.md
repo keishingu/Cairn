@@ -10,7 +10,8 @@ pnpm Workspace + Turborepo のモノレポ。
 
 ```
 apps/web/          Next.js 15 (メインWebアプリ)
-apps/mobile/       Expo (WebView ラッパー + ネイティブチャット)
+apps/mobile/       Expo (WebView ラッパー + ネイティブチャット + Push通知)
+apps/desktop/      Electron (Web版を表示するデスクトップラッパー)
 packages/core/     ドメイン型・ユースケース・ポートインターフェース
 packages/db/       Drizzle ORM スキーマ・クライアント (Supabase PostgreSQL)
 packages/shared/   共有型 (TypeScript) + Zod バリデーションスキーマ
@@ -26,7 +27,7 @@ packages/config/   tsconfig / ESLint の共有設定
 - **状態管理**: TanStack Query (サーバー状態), Zustand (グローバルUI), nuqs (URL状態)
 - **DB**: Supabase PostgreSQL + Drizzle ORM + pgvector
 - **認証・リアルタイム・ストレージ**: Supabase Auth / Realtime / Storage
-- チャット同期は TanStack Query のポーリングで実装し、必要に応じて Supabase Realtime へ移行する
+- チャット・通知・未読の同期は **Supabase Realtime（Broadcast from Database）** で配信。DB トリガー + `realtime.broadcast_changes()` → `RealtimeProvider` が該当クエリを invalidate → REST 再取得（ポーリング・フォールバックなし）。**postgres_changes は本プロジェクトの Realtime では動作しないため使用しない**。詳細は [`docs/notification-ux-redesign.md`](docs/notification-ux-redesign.md) の Phase 2
 - **AI**: Vercel AI SDK + OpenAI API (gpt-4o / gpt-4o-mini)
 - **非同期ジョブ**: Inngest
 
@@ -61,7 +62,7 @@ pnpm dev
 - **tsconfig の extends は相対パス**で書く（`../../packages/config/tsconfig/base.json`）
   - Vite/Vitest の `tsconfck` が workspace パッケージ参照を解決できないため
 - **AIモデルは OpenAI**（gpt-4o / gpt-4o-mini）。Claude は使用しない
-- **Mobile (Expo) は `apps/mobile/`**: チャット以外は WebView で Web 版を表示する方針（`docs/08_expo_roadmap.md`）
+- **Mobile (Expo) は `apps/mobile/`**: チャット以外は WebView で Web 版を表示する方針。ネイティブ化のロードマップは [`docs/08_expo_roadmap.md`](docs/08_expo_roadmap.md) を参照
   - 開発は expo-dev-client を使う。`pnpm ios` / `pnpm android` でローカルビルド（単体アプリとしてインストール）、2回目以降は `pnpm dev` で Metro 起動のみ
   - ネイティブ側の接続先 URL は `EXPO_PUBLIC_*` 未設定時に Metro の接続先ホストから自動導出する（`apps/mobile/lib/env.ts`）。シミュレータ・実機・Android エミュレータで IP の手動設定は不要
   - 実機で WebView 画面を使う場合のみ `pnpm setup:mobile-lan` で `apps/web/.env.local` の `NEXT_PUBLIC_SUPABASE_URL` を LAN IP に書き換える
@@ -110,6 +111,8 @@ pnpm dev
 
 
 ## 詳細ドキュメント
+
+ドキュメント全体の一覧と各文書のステータス（現行リファレンス / 設計時スナップショット / アーカイブ）は [`docs/README.md`](docs/README.md) を参照。**ドキュメントと実装が矛盾する場合はコードと本ファイルを正とする。**
 
 特定の作業時に参照:
 

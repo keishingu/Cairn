@@ -2,10 +2,12 @@
 
 import React from 'react'
 import { Icon, StatusChip } from '../../primitives'
+import { ConfirmDialog } from '../../confirm-dialog'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { LocationInput } from '../../location-input'
 import { usePatchProject, useDeleteProject } from '@/hooks/use-patch-project'
 import { useProjectStatuses } from '@/hooks/use-project-statuses'
+import { toast } from '@/lib/toast'
 
 
 export function formatDateRange(start: string | null, end: string | null): string {
@@ -97,6 +99,7 @@ const InlineDatePair = ({
   const [editing, setEditing] = React.useState(false)
   const [start, setStart] = React.useState(startDate ?? '')
   const [end, setEnd]     = React.useState(endDate ?? '')
+  const wrapRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => { setStart(startDate ?? ''); setEnd(endDate ?? '') }, [startDate, endDate])
 
@@ -105,6 +108,18 @@ const InlineDatePair = ({
     const ns = start || null
     const ne = end || null
     if (ns !== startDate || ne !== endDate) onSave(ns, ne)
+  }
+
+  const cancel = () => {
+    setEditing(false)
+    setStart(startDate ?? '')
+    setEnd(endDate ?? '')
+  }
+
+  // フォーカスがペア全体から外れた時だけ確定する（開始↔終了の移動では確定しない）
+  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    if (wrapRef.current?.contains(e.relatedTarget as Node | null)) return
+    commit()
   }
 
   const inputStyle: React.CSSProperties = {
@@ -133,20 +148,27 @@ const InlineDatePair = ({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-        <input type="date" value={start} onChange={e => setStart(e.target.value)} style={inputStyle}/>
-        <span style={{ color: 'var(--text-4)', fontSize: 12 }}>〜</span>
-        <input type="date" value={end} onChange={e => setEnd(e.target.value)} style={inputStyle}/>
-      </div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={commit} className="btn btn-primary" style={{ height: 28, padding: '0 10px', fontSize: 12 }}>確定</button>
-        <button
-          onClick={() => { setEditing(false); setStart(startDate ?? ''); setEnd(endDate ?? '') }}
-          className="btn btn-ghost"
-          style={{ height: 28, padding: '0 8px', fontSize: 12 }}
-        >取消</button>
-      </div>
+    <div
+      ref={wrapRef}
+      onBlur={handleBlur}
+      style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}
+    >
+      <input
+        type="date"
+        value={start}
+        autoFocus
+        onChange={e => setStart(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
+        style={inputStyle}
+      />
+      <span style={{ color: 'var(--text-4)', fontSize: 12 }}>〜</span>
+      <input
+        type="date"
+        value={end}
+        onChange={e => setEnd(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
+        style={inputStyle}
+      />
     </div>
   )
 }
@@ -286,10 +308,6 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
   const deleteMutation = useDeleteProject(project.id)
   const [confirmDelete, setConfirmDelete] = React.useState(false)
 
-  const handleDelete = () => {
-    deleteMutation.mutate(undefined, { onSuccess: onDeleted })
-  }
-
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
@@ -357,11 +375,14 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
             ? 'このプロジェクトはアーカイブされています。解除するとプロジェクト一覧に再表示されます。'
             : 'アーカイブすると一覧の「アーカイブ」タブに移動します。データは保持されます。'}
         </div>
-        {archivePatch.isError && (
-          <div style={{ fontSize: 11.5, color: 'var(--red-text)', marginBottom: 6 }}>⚠ 操作に失敗しました</div>
-        )}
         <button
-          onClick={() => archivePatch.mutate({ archived: !project.archived })}
+          onClick={() => archivePatch.mutate(
+            { archived: !project.archived },
+            {
+              onSuccess: () => toast.success(project.archived ? 'アーカイブを解除しました' : 'アーカイブしました'),
+              onError: () => toast.error('操作に失敗しました'),
+            },
+          )}
           disabled={archivePatch.isPending}
           className="btn btn-ghost"
           style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}
@@ -374,42 +395,24 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       {/* 削除 */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
         <div style={cardLabelStyle}>削除</div>
-        {!confirmDelete ? (
-          <button
-            onClick={() => setConfirmDelete(true)}
-            style={{ width: '100%', padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-          >
-            プロジェクトを削除する
-          </button>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: 11.5, color: 'var(--red-text)', lineHeight: 1.6 }}>
-              チャット・ファイル・タスクを含むすべてのデータが完全に削除されます。この操作は取り消せません。
-            </div>
-            {deleteMutation.isError && (
-              <div style={{ fontSize: 11.5, color: 'var(--red-text)', padding: '5px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.08)' }}>
-                ⚠ {(deleteMutation.error as Error).message}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button
-                onClick={() => { setConfirmDelete(false); deleteMutation.reset() }}
-                disabled={deleteMutation.isPending}
-                style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text-2)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleteMutation.isPending}
-                style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', background: 'var(--red)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: deleteMutation.isPending ? 'default' : 'pointer', fontFamily: 'inherit', opacity: deleteMutation.isPending ? 0.7 : 1 }}
-              >
-                {deleteMutation.isPending ? '削除中…' : '本当に削除する'}
-              </button>
-            </div>
-          </div>
-        )}
+        <button
+          onClick={() => setConfirmDelete(true)}
+          style={{ width: '100%', padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+        >
+          プロジェクトを削除する
+        </button>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="プロジェクトを削除"
+        message={`「${project.title}」を削除しますか？チャット・ファイル・タスクを含むすべてのデータが完全に削除されます。この操作は取り消せません。`}
+        onConfirm={async () => {
+          await deleteMutation.mutateAsync()
+          onDeleted()
+        }}
+        onClose={() => setConfirmDelete(false)}
+      />
 
     </div>
   )
