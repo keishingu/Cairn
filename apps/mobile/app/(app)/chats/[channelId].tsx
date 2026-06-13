@@ -2,13 +2,14 @@ import React from 'react'
 import {
   View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet,
   ActivityIndicator, Image, KeyboardAvoidingView, Platform, useColorScheme,
+  Modal, Pressable,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useSession } from '../../../lib/session-context'
 import { API_BASE_URL } from '../../../lib/env'
-import { useMessages, useMarkChannelRead } from '../../../hooks/use-messages'
+import { useMessages, useMarkChannelRead, useToggleReaction } from '../../../hooks/use-messages'
 import type { MessageDto } from '../../../hooks/use-messages'
 import { useMessageQueue } from '../../../hooks/use-message-queue'
 import type { QueuedMessage } from '../../../hooks/use-message-queue'
@@ -59,7 +60,13 @@ function SenderAvatar({ name, url, c }: { name: string; url: string | null; c: T
   )
 }
 
-function MessageRow({ message, accessToken, c }: { message: MessageDto; accessToken?: string; c: Theme }) {
+function MessageRow({ message, accessToken, c, onToggleReaction, onOpenPicker }: {
+  message: MessageDto
+  accessToken?: string
+  c: Theme
+  onToggleReaction: (messageId: string, emoji: string) => void
+  onOpenPicker: (messageId: string) => void
+}) {
   return (
     <View style={styles.row}>
       <SenderAvatar name={message.senderName} url={message.senderAvatarUrl} c={c} />
@@ -94,23 +101,56 @@ function MessageRow({ message, accessToken, c }: { message: MessageDto; accessTo
             )}
           </View>
         )}
-        {message.reactions.length > 0 && (
-          <View style={styles.reactions}>
-            {message.reactions.map(r => (
-              <View
-                key={r.emoji}
-                style={[
-                  styles.reaction,
-                  { backgroundColor: r.mine ? c.accentSoft : c.card2, borderColor: r.mine ? c.accent : c.border },
-                ]}
-              >
-                <Text style={[styles.reactionText, { color: r.mine ? c.accentText : c.text2 }]}>{r.emoji} {r.count}</Text>
-              </View>
-            ))}
-          </View>
-        )}
+        <View style={styles.reactions}>
+          {message.reactions.map(r => (
+            <TouchableOpacity
+              key={r.emoji}
+              onPress={() => onToggleReaction(message.id, r.emoji)}
+              style={[
+                styles.reaction,
+                { backgroundColor: r.mine ? c.accentSoft : c.card2, borderColor: r.mine ? c.accent : c.border },
+              ]}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.reactionText, { color: r.mine ? c.accentText : c.text2 }]}>{r.emoji} {r.count}</Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity
+            onPress={() => onOpenPicker(message.id)}
+            style={[styles.reactionAdd, { backgroundColor: c.card2, borderColor: c.border }]}
+            activeOpacity={0.7}
+            hitSlop={6}
+          >
+            <Ionicons name="happy-outline" size={14} color={c.text3} />
+            <Ionicons name="add" size={11} color={c.text3} />
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
+  )
+}
+
+// よく使う絵文字のクイックリアクション。Web は emoji-mart 全量だが、モバイルは
+// 片手操作しやすい定番セットに絞る
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '😮', '😢', '🙏', '👀', '🔥', '✅']
+
+function ReactionPicker({ visible, onClose, onSelect, c }: {
+  visible: boolean
+  onClose: () => void
+  onSelect: (emoji: string) => void
+  c: Theme
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.pickerBackdrop} onPress={onClose} />
+      <View style={[styles.pickerCard, { backgroundColor: c.card, borderColor: c.border }]}>
+        {QUICK_EMOJIS.map(emoji => (
+          <TouchableOpacity key={emoji} style={styles.pickerEmoji} onPress={() => onSelect(emoji)} activeOpacity={0.6}>
+            <Text style={styles.pickerEmojiText}>{emoji}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </Modal>
   )
 }
 
@@ -162,10 +202,13 @@ export default function ChatChannelScreen() {
   const { data: messages, isLoading, error } = useMessages(channelId)
   const { queued, send, retry } = useMessageQueue(channelId)
   const { mutate: markRead } = useMarkChannelRead(channelId)
+  const { mutate: toggleReaction } = useToggleReaction(channelId)
   const upload = useAttachmentUpload(channelId)
   const { data: me } = useMe()
 
   const [draft, setDraft] = React.useState('')
+  // リアクション絵文字ピッカーの対象メッセージ。null のとき非表示
+  const [pickerTarget, setPickerTarget] = React.useState<string | null>(null)
 
   // 開いたとき・新着を受け取ったときに既読にする
   const messageCount = messages?.length ?? 0
@@ -228,6 +271,8 @@ export default function ChatChannelScreen() {
                 ? <MessageRow
                     message={item.message}
                     c={c}
+                    onToggleReaction={(messageId, emoji) => toggleReaction({ messageId, emoji })}
+                    onOpenPicker={setPickerTarget}
                     {...(session?.access_token ? { accessToken: session.access_token } : {})}
                   />
                 : <QueuedRow
@@ -296,6 +341,16 @@ export default function ChatChannelScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <ReactionPicker
+        visible={pickerTarget !== null}
+        onClose={() => setPickerTarget(null)}
+        onSelect={(emoji) => {
+          if (pickerTarget) toggleReaction({ messageId: pickerTarget, emoji })
+          setPickerTarget(null)
+        }}
+        c={c}
+      />
     </View>
   )
 }
@@ -333,9 +388,21 @@ const styles = StyleSheet.create({
   },
   fileIcon: { width: 28, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   attachmentName: { fontSize: 12.5, flexShrink: 1 },
-  reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
+  reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6, alignItems: 'center' },
   reaction: { height: 24, paddingHorizontal: 7, borderRadius: 12, borderWidth: 1, justifyContent: 'center' },
   reactionText: { fontSize: 11, fontWeight: '600' },
+  reactionAdd: {
+    height: 24, paddingHorizontal: 6, borderRadius: 12, borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center',
+  },
+  pickerBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)' },
+  pickerCard: {
+    position: 'absolute', alignSelf: 'center', top: '40%',
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center',
+    maxWidth: 320, gap: 4, padding: 12, borderRadius: 16, borderWidth: 1,
+  },
+  pickerEmoji: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  pickerEmojiText: { fontSize: 26 },
   composerWrap: { paddingHorizontal: 8, paddingTop: 4 },
   composer: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
   composerActions: {

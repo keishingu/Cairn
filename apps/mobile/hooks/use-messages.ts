@@ -54,6 +54,21 @@ export function useSendMessage(channelId: string) {
   })
 }
 
+export function useToggleReaction(channelId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ messageId, emoji }: { messageId: string; emoji: string }) => {
+      const res = await apiFetch(`/api/messages/${messageId}/reactions`, {
+        method: 'POST',
+        body: JSON.stringify({ emoji }),
+      })
+      if (!res.ok) throw new Error(`リアクションの更新に失敗しました (${res.status})`)
+      return res.json() as Promise<{ added: boolean; emoji: string; count: number }>
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['messages', channelId] }),
+  })
+}
+
 export function useMarkChannelRead(channelId: string) {
   return useMutation({
     mutationFn: async () => {
