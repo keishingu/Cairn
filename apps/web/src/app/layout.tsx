@@ -6,6 +6,7 @@ import { Inter, Noto_Sans_JP } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AccentColorProvider } from '@/components/accent-color-provider'
 import { QueryProvider } from '@/components/query-provider'
+import { Toaster } from '@/components/app/toaster'
 import { ServiceWorkerRegistrar } from '@/components/service-worker-registrar'
 import { ThemeCookieSync } from '@/components/theme-cookie-sync'
 import { DynamicAppleTouchIcon } from '@/components/dynamic-apple-touch-icon'
@@ -52,6 +53,7 @@ export default function RootLayout({
             <DynamicAppleTouchIcon />
             <DynamicFavicon />
           </AccentColorProvider>
+          <Toaster />
         </ThemeProvider>
         <ServiceWorkerRegistrar />
       </body>

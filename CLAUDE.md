@@ -10,6 +10,8 @@ pnpm Workspace + Turborepo のモノレポ。
 
 ```
 apps/web/          Next.js 15 (メインWebアプリ)
+apps/mobile/       Expo (WebView ラッパー + ネイティブチャット + Push通知)
+apps/desktop/      Electron (Web版を表示するデスクトップラッパー)
 packages/core/     ドメイン型・ユースケース・ポートインターフェース
 packages/db/       Drizzle ORM スキーマ・クライアント (Supabase PostgreSQL)
 packages/shared/   共有型 (TypeScript) + Zod バリデーションスキーマ
@@ -25,7 +27,7 @@ packages/config/   tsconfig / ESLint の共有設定
 - **状態管理**: TanStack Query (サーバー状態), Zustand (グローバルUI), nuqs (URL状態)
 - **DB**: Supabase PostgreSQL + Drizzle ORM + pgvector
 - **認証・リアルタイム・ストレージ**: Supabase Auth / Realtime / Storage
-- チャット同期は TanStack Query のポーリングで実装し、必要に応じて Supabase Realtime へ移行する
+- チャット・通知・未読の同期は **Supabase Realtime（Broadcast from Database）** で配信。DB トリガー + `realtime.broadcast_changes()` → `RealtimeProvider` が該当クエリを invalidate → REST 再取得（ポーリング・フォールバックなし）。**postgres_changes は本プロジェクトの Realtime では動作しないため使用しない**。詳細は [`docs/notification-ux-redesign.md`](docs/notification-ux-redesign.md) の Phase 2
 - **AI**: Vercel AI SDK + OpenAI API (gpt-4o / gpt-4o-mini)
 - **非同期ジョブ**: Inngest
 
@@ -52,36 +54,7 @@ cp apps/web/.env.local.example apps/web/.env.local
 pnpm dev
 ```
 
-
-## localStorage キー命名規則
-
-アプリが管理するすべての localStorage キーは **`cairn:<snake_case>`** 形式に統一する。
-
-- プレフィックス `cairn:` は必須（他ライブラリのキーとの衝突を防ぐ）
-- `:` 以降は `snake_case`（小文字英数字とアンダースコアのみ）
-- キー定数は `apps/web/src/lib/storage-keys.ts` の `STORAGE_KEYS` オブジェクトで一元管理する
-- インラインの文字列リテラルで書かない
-
-```
-// ✅ Good
-STORAGE_KEYS.projects_filter   // → 'cairn:projects_filter'
-
-// ❌ Bad
-'cairn-accent'    // ハイフン区切り
-'cairn_filter'    // コロンなし
-'projects_filter' // プレフィックスなし
-```
-
-**例外**: `next-themes` が設定する `theme` キーはライブラリ管理のため対象外。
-
-### 現在登録済みのキー（`storage-keys.ts` より）
-
-| 定数名 | キー値 | 用途 |
-|---|---|---|
-| `STORAGE_KEYS.accent` | `cairn:accent` | アクセントカラー |
-| `STORAGE_KEYS.projects_view_pc` | `cairn:projects_view_pc` | PC プロジェクトビュー（list/calendar/kanban） |
-| `STORAGE_KEYS.projects_view_mob` | `cairn:projects_view_mobile` | モバイル プロジェクトビュー |
-| `STORAGE_KEYS.projects_filter` | `cairn:projects_filter` | プロジェクト一覧のタブ選択 |
+- **通知・AIインデックスは Inngest ジョブ経由**。ローカルで Inngest dev server を起動していないと、メンション・DM・ファイルの通知が**サイレントに生成されない**（API は `inngest.send()` 失敗を warn ログに残すのみ）。通知周りを動作確認する際は Inngest dev server を併せて起動すること
 
 
 ## 決定済みの技術判断
@@ -89,7 +62,10 @@ STORAGE_KEYS.projects_filter   // → 'cairn:projects_filter'
 - **tsconfig の extends は相対パス**で書く（`../../packages/config/tsconfig/base.json`）
   - Vite/Vitest の `tsconfck` が workspace パッケージ参照を解決できないため
 - **AIモデルは OpenAI**（gpt-4o / gpt-4o-mini）。Claude は使用しない
-- Mobile (Expo) は Phase 2 以降のため、現時点では実装しない
+- **Mobile (Expo) は `apps/mobile/`**: チャット以外は WebView で Web 版を表示する方針。ネイティブ化のロードマップは [`docs/08_expo_roadmap.md`](docs/08_expo_roadmap.md) を参照
+  - 開発は expo-dev-client を使う。`pnpm ios` / `pnpm android` でローカルビルド（単体アプリとしてインストール）、2回目以降は `pnpm dev` で Metro 起動のみ
+  - ネイティブ側の接続先 URL は `EXPO_PUBLIC_*` 未設定時に Metro の接続先ホストから自動導出する（`apps/mobile/lib/env.ts`）。シミュレータ・実機・Android エミュレータで IP の手動設定は不要
+  - 実機で WebView 画面を使う場合のみ `pnpm setup:mobile-lan` で `apps/web/.env.local` の `NEXT_PUBLIC_SUPABASE_URL` を LAN IP に書き換える
 - **UA ベースのデバイス出し分け**: middleware で `x-device` ヘッダーをセットし、`app/(app)/layout.tsx` で PC シェル / モバイルシェルを切り替える。レスポンシブ CSS は使わない
 - **プロジェクトビューは localStorage で管理**: 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクト済み。ビュー切替（一覧 / カレンダー / カンバン）はURLパラメータを使わず localStorage のみで永続化（`STORAGE_KEYS.projects_view_pc` / `STORAGE_KEYS.projects_view_mob`）。`/projects/[id]` はプロジェクト詳細（現在は `/projects?open={id}` にリダイレクト）
 - **API 認証は Bearer トークン（Supabase JWT）**: Web クライアントも Expo も同じ Next.js Route Handlers を呼び出し、`Authorization: Bearer <token>` で認証する。`getAuthContext()` は `Authorization` ヘッダを優先し、なければ Cookie にフォールバックする。Hono API 分離は「Next.js からの独立スケール・デプロイ分離が必要」になった時点で改めて検討する
@@ -102,94 +78,7 @@ STORAGE_KEYS.projects_filter   // → 'cairn:projects_filter'
   - 権限ヘルパーは `apps/web/src/lib/permissions.ts` に集約（`requireWorkspaceOwner` / `requireWorkspaceAdmin` / `requireWorkspaceMember`）
 
 
-## Detail Panel コンポーネントの方針
-
-`src/components/app/detail-panel/` 配下のコンポーネントは、**PC 版の右側 Detail Panel（Inspector）向けに設計し、モバイルでも同じコンポーネントを再利用する**前提で開発する。
-
-- Detail Panel コンポーネントは PC シェルへの依存（`AppShellContext` の `openPanel` 等）を持たないよう設計する
-- PC 固有の機能が必要な場合は props や Context 経由で注入する
-- `MobileShell` / `MobileNav` はモバイルブラウザ専用のラッパーのため `_shells/` 配下に残す
-
-
-## UI ディレクトリ構成と PC / モバイルの使い分け
-
-```
-components/app/
-  pages/             PC・モバイル共通のメインビュー
-                     isMobile prop で1ペイン／多ペインを切り替える
-                     （例: pages/chat.tsx は PC で3カラム、モバイルで1カラム遷移）
-
-  detail-panel/      PC 右側 Detail Panel（Inspector）の中身
-                     モバイルのプロジェクト詳細画面でも同じコンポーネントを再利用する
-                     panel.tsx        … PC Detail Panel のシェル（420px 固定パネル）
-                     tabs/            … プロジェクト詳細のタブ内容（chat / tasks / files など）
-                     pages/           … モバイルナビバーの行き先ページ（暫定置き場）
-
-  mobile/            モバイルブラウザ専用 UI（PC とナビゲーション構造が根本的に違う場合のみ）
-                     project-screen.tsx … モバイル用プロジェクト詳細シェル
-                                          （中身は detail-panel/tabs/* を使用）
-```
-
-### コンポーネントを「共用」「個別」のどちらにするかの判断基準
-
-- **`pages/` で共用（isMobile prop）**: PC とモバイルでレイアウト・ペイン数が違うが、ロジックは同じケース（チャット、タスク一覧等）
-- **`mobile/` で個別実装**: ナビゲーション構造そのものが根本的に異なり、共用コンポーネントに isMobile を足しても複雑になりすぎるケース
-
-「シェル全体は UA で切り分け、コンポーネント内は isMobile prop またはメディアクエリで密度・レイアウトを調整する」のが基本方針。
-
-### チャットとタスクの「プロジェクト紐付け」「野良」の扱い
-
-- プロジェクト紐付けのチャット / タスクは `detail-panel/tabs/chat-tab.tsx` / `detail-panel/tabs/tasks-tab.tsx` で扱う（単一プロジェクトスコープ）
-- 野良も含めた全体一覧は `pages/chat.tsx` / `pages/tasks.tsx`（PC・モバイル共通、isMobile prop で切り替え）
-
-
-## 認証・API ルート実装規約
-
-認証は常に必須。`DATABASE_URL` と Supabase の設定が必要。未認証は `/auth/login` へリダイレクト。
-
-### API ルートでのユーザー取得
-
-新しい API ルートを作るときは、必ず `getAuthContext()` を使ってユーザー ID とワークスペース ID を取得する。`DEV_*` のハードコード ID は書かない。
-
-```ts
-import { getAuthContext } from '@/lib/get-auth-context'
-
-export async function POST(req: Request) {
-  const { ctx, error } = await getAuthContext()
-  if (error) return error  // 未認証なら 401 を返す
-
-  // ctx.userId, ctx.workspaceId が使える
-}
-```
-
-### サインアップフロー
-
-1. `/auth/signup` でメール・パスワード・表示名を入力
-2. Supabase Auth でユーザー作成（`auth.users`）
-3. `/api/auth/setup` を呼び出し、`profiles` テーブルへのプロフィール作成とデフォルトワークスペースの作成を行う
-4. `/dashboard` へリダイレクト
-
-
-## 通知設計
-
-### メンション形式
-
-チャット入力でピッカーから選択すると `<@userId|displayName>` 形式でメッセージ本文に埋め込まれる。この構造化形式により、スペースを含む名前でも正確に userId を抽出できる。手打ちの `@名前` はメンション通知の対象外（表示上のハイライトはされる）。
-
-### シナリオ別の通知動作
-
-| シナリオ | Push通知 | アプリ内通知（`notifications` テーブル） |
-|---------|---------|----------------------------------------|
-| チャンネル発言（ファイル添付あり） | なし | チャンネルメンバー全員に記録 |
-| チャンネル発言（`<@userId\|name>` メンション） | メンションされた WS メンバーへ送信 | メンションされた WS メンバーに記録 |
-| DM 発言（メンション有無問わず） | 参加者全員へ送信 | なし |
-
-- メンション通知は **チャンネルメンバーに限定しない**。ワークスペースメンバーであれば通知対象（チャンネル未参加でも可）
-- DM は `check-dm` ステップで早期リターンするため、メンション検出・ファイル通知は行わない
-- 実装: `apps/web/src/lib/inngest/functions.ts` の `onMessageCreated`
-
-
-
+## エラー表示
 
 - **明示的なフォールバック指示がない限り、エラーを表示する**
 - データが取得できない・見つからない場合は、サイレントに代替データへ fallback せず、ユーザーにエラーメッセージを見せる
@@ -221,6 +110,18 @@ export async function POST(req: Request) {
 
 
 ## GitHubレビュー指摘への返信
+
 - レビュー指摘へ返信する際は、「妥当な指摘のため、対応しました」のような汎用文だけで済ませない。
 - 指摘が問題になる理由・影響と、どのように修正したかを1文で具体的に書く。
 - 対応 commit がある場合は、commit hash だけでなく「コミットメッセージ + GitHubのcommitリンク」をMarkdownリンクで含める。
+
+
+## 詳細ドキュメント
+
+ドキュメント全体の一覧と各文書のステータス（現行リファレンス / 設計時スナップショット / アーカイブ）は [`docs/README.md`](docs/README.md) を参照。**ドキュメントと実装が矛盾する場合はコードと本ファイルを正とする。**
+
+特定の作業時に参照:
+
+- [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md) — コンポーネント設計・Domain Hook パターン・UIディレクトリ構成
+- [`docs/api-conventions.md`](docs/api-conventions.md) — API ルート実装規約・認証・サインアップフロー
+- [`docs/notification-design.md`](docs/notification-design.md) — 通知設計（メンション・Push・アプリ内通知）

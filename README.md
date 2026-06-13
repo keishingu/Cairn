@@ -62,40 +62,44 @@ supabase stop
 
 ## モバイル（Expo）
 
-Expo Go アプリ内の WebView で Web 版（`apps/web`）を表示するラッパー。Web 側の開発サーバーが必要なため、まず上記の Web 環境を起動しておく。
+WebView で Web 版（`apps/web`）を表示するラッパー + ネイティブチャット。Web 側の開発サーバーが必要なため、まず上記の Web 環境を起動しておく。
+
+開発は **expo-dev-client（単体アプリとしてインストールされる開発ビルド）** を基本とする。Expo Go は不要。
 
 ```bash
 # 1〜5（Supabase起動・環境変数コピー・マイグレーション・pnpm dev）はWebと共通
 
-# 6. モバイル用環境変数をコピーして編集
+# 6. モバイル用環境変数をコピー（ANON_KEY のみ設定。IP の書き換えは不要）
 cp apps/mobile/.env.local.example apps/mobile/.env.local
+
+# 7. 開発クライアントをビルドして起動
+cd apps/mobile
+pnpm ios       # iOS シミュレータ（初回はネイティブビルドが走る）
+pnpm android   # Android エミュレータ
+
+# 2回目以降（ネイティブ依存に変更がなければ）は Metro 起動だけで接続できる
+pnpm dev
 ```
 
-実機・シミュレータ問わず Expo Go で動作確認する場合は、`apps/mobile/.env.local` と `apps/web/.env.local` の両方で `localhost` / `127.0.0.1` を PC の LAN IP に書き換える必要がある。WebView 内 JS は端末上で実行されるため、`127.0.0.1` は端末自身を指してしまう。
+ネイティブビルドのやり直しが必要なのは、ネイティブモジュールの追加や `app.json` のネイティブ設定変更時のみ。JS の変更は Metro のホットリロードで反映される。
 
-```bash
-# .env.local.example からコピー後、LAN IP を自動検出して両方の .env.local を書き換える
-# Wi-Fi 切替などで LAN IP が変わったときも、再実行すれば古い IP を現在の IP に上書きする
-pnpm setup:mobile-lan
-```
+`expo run:ios` / `run:android` が生成する `ios/` `android/` ディレクトリは `app.json` から再生成できる成果物のため、コミットしない（`apps/mobile/.gitignore` で除外済み）。また、ネイティブプロジェクトが存在すると runtime version のポリシー（`appVersion` 等）が使えないため、`app.json` の `runtimeVersion` は固定文字列で管理する。**ネイティブモジュールを追加・更新したら `runtimeVersion` を手動で上げる**こと（古いネイティブビルドに非互換な EAS Update が配信されるのを防ぐため）。
 
-> **`apps/web/.env.local` の `NEXT_PUBLIC_SUPABASE_URL` の変更を忘れやすいので注意**
+実機で使う場合は `pnpm dev` で表示される QR コードを読み込む（開発クライアントがインストール済みであること）。Xcode / Android Studio がないメンバーには、EAS の development プロファイル（`eas build --profile development`）でビルド済み開発クライアントを配布できる（iOS シミュレータ向けビルドにも対応済み）。
+
+> **接続先 URL は自動導出される（IP の手動設定は不要）**
 >
-> `mobile-handoff` ページは WebView（端末側）でブラウザとして動く Next.js の JS バンドルなので、そこに埋め込まれた `NEXT_PUBLIC_SUPABASE_URL` が `127.0.0.1` のままだと端末から見て「自分自身」にアクセスしようとして繋がらない。
-> ログイン後に画面が真っ白になり、しばらくしてネイティブのログイン画面に戻されてしまう場合は、これが原因の可能性が高い（ミドルウェアの `getUser()` がタイムアウトして `/auth/login` にリダイレクトされ、それを WebView 側が検知してネイティブもサインアウトしてしまう）。`pnpm setup:mobile-lan` を使えば両方まとめて書き換わるので忘れにくい。
+> ネイティブ側の Supabase / API の接続先は、`EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_API_BASE_URL` が未設定なら **Metro の接続先ホストから自動導出される**（`apps/mobile/lib/env.ts`）。シミュレータでは `localhost`、実機では開発マシンの LAN IP、Android エミュレータでは `10.0.2.2` に自動的になるため、Wi-Fi 切替で IP が変わっても追従する。検証環境など固定 URL に向けたい場合のみ `.env.local` で明示的に設定する。
+
+> **実機で WebView 画面を使う場合のみ `pnpm setup:mobile-lan` が必要**
+>
+> `mobile-handoff` ページは WebView（端末側）でブラウザとして動く Next.js の JS バンドルなので、そこに埋め込まれた `NEXT_PUBLIC_SUPABASE_URL`（`apps/web/.env.local`）が `127.0.0.1` のままだと端末から見て「自分自身」にアクセスしようとして繋がらない。
+> ログイン後に画面が真っ白になり、しばらくしてネイティブのログイン画面に戻されてしまう場合は、これが原因の可能性が高い（ミドルウェアの `getUser()` がタイムアウトして `/auth/login` にリダイレクトされ、それを WebView 側が検知してネイティブもサインアウトしてしまう）。`pnpm setup:mobile-lan` を実行すると LAN IP を自動検出して `apps/web/.env.local` を書き換える（Wi-Fi 切替時も再実行で追従）。
 
 > **画面が真っ白になる場合は `allowedDevOrigins` も疑う**
 >
 > Next.js 15 の開発サーバーは、デフォルトで `localhost` 以外のオリジンから `/_next/*` への CORS リクエストをブロックする。LAN IP 経由で WebView からアクセスすると JS バンドルの読み込みがブロックされ、React がハイドレーションされず画面が真っ白になる。
 > `apps/web/next.config.ts` で開発機の LAN IP を自動検出して `allowedDevOrigins` に設定済みのため、通常は対応不要。ターミナルに `Cross origin request detected from <IP> to /_next/* resource` という警告が出ている場合はこの設定が効いていないので確認すること。
-
-```bash
-# 7. Expo 開発サーバー起動
-cd apps/mobile
-pnpm start
-```
-
-表示された QR コードを Expo Go アプリで読み込む。
 
 ---
 

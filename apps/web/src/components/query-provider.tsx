@@ -14,7 +14,8 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         defaultOptions: {
           queries: {
             staleTime: 60 * 1000,
-            refetchOnWindowFocus: false,
+            // Realtime 切断中のスリープ/タブ復帰時に取りこぼしを回収する（ポーリング廃止に伴う catch-up）
+            refetchOnWindowFocus: true,
           },
         },
       }),

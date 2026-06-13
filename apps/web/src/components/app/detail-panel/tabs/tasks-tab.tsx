@@ -1,11 +1,10 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useProjectTasks, useCreateTask } from '@/hooks/use-project-tasks'
 
 // ─── AddTaskModal ─────────────────────────────────────────────────
 
@@ -15,36 +14,17 @@ interface AddTaskModalProps {
 }
 
 const AddTaskModal = ({ project, onClose }: AddTaskModalProps) => {
-  const queryClient = useQueryClient()
   const [title, setTitle] = React.useState('')
   const [priority, setPriority] = React.useState<TaskDto['priority']>('medium')
   const [dueDate, setDueDate] = React.useState('')
 
-  const mutation = useMutation({
-    mutationFn: async (data: { title: string; projectId: string; priority: string; dueDate?: string }) => {
-      const res = await fetchWithAuth('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      if (!res.ok) throw new Error('Failed to create task')
-      return res.json() as Promise<TaskDto>
-    },
-    onSuccess: (newTask) => {
-      queryClient.setQueryData<TaskDto[]>(['tasks', project.id], old =>
-        old ? [newTask, ...old] : [newTask],
-      )
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      onClose()
-    },
-  })
+  const mutation = useCreateTask(project.id, onClose)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
     mutation.mutate({
       title: title.trim(),
-      projectId: project.id,
       priority,
       ...(dueDate ? { dueDate } : {}),
     })
@@ -189,48 +169,17 @@ interface TasksTabProps {
 }
 
 export const TasksTab = ({ project }: TasksTabProps) => {
-  const queryClient = useQueryClient()
   const [showAddModal, setShowAddModal] = React.useState(false)
-
-  const { data: tasks = [], isLoading } = useQuery<TaskDto[]>({
-    queryKey: ['tasks', project.id],
-    queryFn: () => fetchWithAuth(`/api/tasks?projectId=${project.id}`).then(r => r.json()),
-  })
-
+  const { data: tasks = [], isLoading, toggleMutation } = useProjectTasks(project.id)
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
-
-  const toggleMutation = useMutation({
-    mutationFn: async ({ id, newStatus }: { id: string; newStatus: TaskDto['status'] }) => {
-      const res = await fetchWithAuth(`/api/tasks/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      })
-      if (!res.ok) throw new Error('Failed')
-    },
-    onMutate: async ({ id, newStatus }) => {
-      setTogglingId(id)
-      await queryClient.cancelQueries({ queryKey: ['tasks', project.id] })
-      const prev = queryClient.getQueryData<TaskDto[]>(['tasks', project.id])
-      queryClient.setQueryData<TaskDto[]>(
-        ['tasks', project.id],
-        old => old?.map(t => t.id === id ? { ...t, status: newStatus } : t) ?? [],
-      )
-      return { prev }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(['tasks', project.id], ctx.prev)
-    },
-    onSettled: () => {
-      setTogglingId(null)
-      queryClient.invalidateQueries({ queryKey: ['tasks', project.id] })
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-    },
-  })
 
   const handleToggle = (task: TaskDto) => {
     const newStatus: TaskDto['status'] = task.status === 'done' ? 'todo' : 'done'
-    toggleMutation.mutate({ id: task.id, newStatus })
+    setTogglingId(task.id)
+    toggleMutation.mutate(
+      { id: task.id, newStatus },
+      { onSettled: () => setTogglingId(null) },
+    )
   }
 
   if (isLoading) {

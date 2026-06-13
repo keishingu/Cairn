@@ -1,6 +1,5 @@
 import { supabase } from './supabase'
-
-const API_BASE = process.env['EXPO_PUBLIC_API_BASE_URL']!
+import { API_BASE_URL as API_BASE } from './env'
 
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const { data: { session } } = await supabase.auth.getSession()

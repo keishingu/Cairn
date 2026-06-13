@@ -4,7 +4,9 @@ import React from 'react'
 import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
-import { BellButton } from '../sidebar'
+import { ConfirmDialog } from '../confirm-dialog'
+import { RowActionMenu } from '../row-action-menu'
+import { TopBar } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
@@ -324,25 +326,19 @@ const StatusRow = ({
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px' }}>
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: status.color, flexShrink: 0 }}/>
         <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{status.name}</span>
-        <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0 }} onClick={() => setEditing(true)}>
-          <Icon name="edit" size={12}/>
-        </button>
-        {!confirmDel ? (
-          <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0, color: 'var(--red-text)' }} onClick={() => setConfirmDel(true)}>
-            <Icon name="trash" size={12}/>
-          </button>
-        ) : (
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button className="btn btn-ghost" style={{ height: 26, fontSize: 11.5, padding: '0 8px' }} onClick={() => setConfirmDel(false)}>キャンセル</button>
-            <button
-              onClick={() => deleteMutation.mutate()}
-              disabled={deleteMutation.isPending}
-              style={{ height: 26, fontSize: 11.5, padding: '0 8px', borderRadius: 6, border: 'none', background: 'var(--red)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}
-            >
-              {deleteMutation.isPending ? '削除中…' : '削除'}
-            </button>
-          </div>
-        )}
+        <RowActionMenu
+          actions={[
+            { icon: 'edit', label: '編集', onSelect: () => setEditing(true) },
+            { icon: 'trash', label: '削除', danger: true, onSelect: () => setConfirmDel(true) },
+          ]}
+        />
+        <ConfirmDialog
+          open={confirmDel}
+          title="ステータスを削除"
+          message={`ステータス「${status.name}」を削除しますか？この操作は取り消せません。`}
+          onConfirm={() => deleteMutation.mutateAsync()}
+          onClose={() => setConfirmDel(false)}
+        />
       </div>
     )
   }
@@ -467,12 +463,14 @@ const SettingsWorkflow = () => {
               </div>
             </div>
           ) : (
-            <button
-              onClick={() => setShowAdd(true)}
-              style={{ width: '100%', padding: '10px', border: 'none', background: 'transparent', color: 'var(--text-3)', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderTop: statuses.length > 0 ? '1px solid var(--divider)' : 'none' }}
-            >
-              <Icon name="plus" size={13}/> ステータスを追加
-            </button>
+            <div style={{ padding: 10, borderTop: statuses.length > 0 ? '1px solid var(--divider)' : 'none' }}>
+              <button
+                onClick={() => setShowAdd(true)}
+                style={{ width: '100%', padding: '10px', borderRadius: 8, border: '1px dashed var(--border-2)', background: 'transparent', color: 'var(--text-3)', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+              >
+                <Icon name="plus" size={13}/> ステータスを追加
+              </button>
+            </div>
           )}
         </div>
       </section>
@@ -919,9 +917,18 @@ const SettingsIntegrations = () => {
 
       {/* ── Google カレンダー読み込みセクション ──────────────────────── */}
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>Google カレンダー → Cairn（イベント読み込み）</h2>
+        <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+          Google カレンダー → Cairn（イベント読み込み）
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 700,
+            color: 'var(--accent-text)', background: 'var(--accent-soft)', border: '1px solid var(--accent)',
+            borderRadius: 999, padding: '1px 7px',
+          }}>
+            <Icon name="flask" size={11} /> Lab
+          </span>
+        </h2>
         <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
-          Google カレンダーの予定をカレンダービューにオーバーレイ表示します。
+          Google カレンダーの予定をカレンダービューにオーバーレイ表示します。試験的な機能のため、今後仕様が変更される場合があります。
         </p>
 
         {gcalMsg && (
@@ -1164,12 +1171,10 @@ export const PageSettings = () => {
     return new URLSearchParams(window.location.search).get('tab') ?? 'account'
   })
   return (
-    <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <TopBar title="設定"/>
+      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={{ width: 220, borderRight: '1px solid var(--border)', padding: '20px 14px', background: 'var(--card)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
-          <h2 style={{ margin: '0 8px 0', fontSize: 16, fontWeight: 700, flex: 1 }}>設定</h2>
-          <BellButton />
-        </div>
         {NAV_GROUPS.map((group, gi) => (
           <div key={group.label} style={{ marginBottom: gi < NAV_GROUPS.length - 1 ? 16 : 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0 10px', marginBottom: 4 }}>
@@ -1206,6 +1211,7 @@ export const PageSettings = () => {
             <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションの設定は準備中です。</p>
           </div>
         )}
+      </div>
       </div>
     </div>
   )

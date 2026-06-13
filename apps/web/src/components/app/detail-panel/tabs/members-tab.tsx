@@ -1,12 +1,20 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Icon, Avatar } from '../../primitives'
+import { ConfirmDialog } from '../../confirm-dialog'
+import { RowActionMenu } from '../../row-action-menu'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import {
+  useProjectMembers,
+  useWorkspaceMembersForInvite,
+  useAddProjectMember,
+  useRemoveProjectMember,
+} from '@/hooks/use-project-members'
 
 const ROLE_LABEL: Record<string, string> = {
   leader:    'リーダー',
@@ -65,20 +73,11 @@ const MemberRow = ({ member, onRemove, removing, onMemberClick }: MemberRowProps
       }}>
         {ROLE_LABEL[member.role] ?? member.role}
       </span>
-      <button
-        onClick={onRemove}
-        disabled={removing}
-        title="削除"
-        style={{
-          width: 24, height: 24, borderRadius: 5,
-          border: 'none', background: 'transparent',
-          color: 'var(--text-4)', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        <Icon name="close" size={11}/>
-      </button>
+      <RowActionMenu
+        actions={[
+          { icon: 'trash', label: '削除', danger: true, onSelect: onRemove },
+        ]}
+      />
     </div>
   )
 }
@@ -433,28 +432,22 @@ interface MembersTabProps {
 }
 
 export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
-  const queryClient = useQueryClient()
   const [showInvite, setShowInvite] = React.useState(false)
   const [showGuestInvite, setShowGuestInvite] = React.useState(false)
   const [selectedUserId, setSelectedUserId] = React.useState('')
   const [selectedRole, setSelectedRole] = React.useState('member')
+  const [removeTarget, setRemoveTarget] = React.useState<ProjectMemberDto | null>(null)
 
   const { data: currentUser } = useQuery<CurrentUserDto>({
-    queryKey: ['current-user'],
+    queryKey: ['me'],
     queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60_000,
   })
 
-  const { data: members = [], isLoading } = useQuery<ProjectMemberDto[]>({
-    queryKey: ['project-members', projectId],
-    queryFn: () => fetchWithAuth(`/api/projects/${projectId}/members`).then(r => r.json()),
-  })
-
-  const { data: wsMembers = [], isLoading: isLoadingWs } = useQuery<WorkspaceMemberDto[]>({
-    queryKey: ['workspace-members'],
-    queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
-    enabled: showInvite,
-  })
+  const { data: members = [], isLoading } = useProjectMembers(projectId)
+  const { data: wsMembers = [], isLoading: isLoadingWs } = useWorkspaceMembersForInvite(showInvite)
+  const addMutation = useAddProjectMember(projectId)
+  const removeMutation = useRemoveProjectMember(projectId)
 
   const memberUserIds = new Set(members.map(m => m.userId))
   const inviteable = wsMembers.filter(m => !memberUserIds.has(m.userId))
@@ -462,50 +455,17 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
   // WSのadmin/owner のみゲスト招待可能
   const canInviteGuest = currentUser?.wsRole === 'owner' || currentUser?.wsRole === 'admin'
 
-  const addMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
-      const res = await fetchWithAuth(`/api/projects/${projectId}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, role }),
-      })
-      if (!res.ok) {
-        const data = await res.json() as { error?: string }
-        throw new Error(data.error ?? 'Failed')
-      }
-      return res.json() as Promise<ProjectMemberDto>
-    },
-    onSuccess: (newMember) => {
-      queryClient.setQueryData<ProjectMemberDto[]>(
-        ['project-members', projectId],
-        old => [...(old ?? []), newMember],
-      )
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
-      setShowInvite(false)
-      setSelectedUserId('')
-      setSelectedRole('member')
-    },
-  })
-
-  const removeMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const res = await fetchWithAuth(`/api/projects/${projectId}/members/${userId}`, {
-        method: 'DELETE',
-      })
-      if (!res.ok) throw new Error('Failed')
-    },
-    onSuccess: (_data, userId) => {
-      queryClient.setQueryData<ProjectMemberDto[]>(
-        ['project-members', projectId],
-        old => old?.filter(m => m.userId !== userId) ?? [],
-      )
-    },
-  })
-
   const closeInvite = () => {
     setShowInvite(false)
     setSelectedUserId('')
     setSelectedRole('member')
+  }
+
+  const handleConfirmInvite = () => {
+    addMutation.mutate(
+      { userId: selectedUserId, role: selectedRole },
+      { onSuccess: closeInvite },
+    )
   }
 
   return (
@@ -525,7 +485,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
           <MemberRow
             key={m.userId}
             member={m}
-            onRemove={() => removeMutation.mutate(m.userId)}
+            onRemove={() => setRemoveTarget(m)}
             removing={removeMutation.isPending && removeMutation.variables === m.userId}
             onMemberClick={onMemberClick}
           />
@@ -569,7 +529,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
           selectedRole={selectedRole}
           onSelectUser={setSelectedUserId}
           onSelectRole={setSelectedRole}
-          onConfirm={() => addMutation.mutate({ userId: selectedUserId, role: selectedRole })}
+          onConfirm={handleConfirmInvite}
           onClose={closeInvite}
           isLoading={addMutation.isPending}
           error={addMutation.error?.message}
@@ -583,6 +543,14 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
           onClose={() => setShowGuestInvite(false)}
         />
       )}
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title="メンバーを削除"
+        message={`「${removeTarget?.displayName}」をこのプロジェクトから削除しますか？`}
+        onConfirm={async () => { if (removeTarget) await removeMutation.mutateAsync(removeTarget.userId) }}
+        onClose={() => setRemoveTarget(null)}
+      />
     </div>
   )
 }

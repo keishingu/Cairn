@@ -20,7 +20,7 @@ export async function GET() {
 
     const { db } = await import('@cairn/db')
     const { channels, projects, projectMembers, workspaceMembers, channelReadStates, messages } = await import('@cairn/db')
-    const { eq, and, isNull, gt, count, sql, inArray } = await import('drizzle-orm')
+    const { eq, and, isNull, gt, count, sql, inArray, ne } = await import('drizzle-orm')
 
     // ゲストは参加中のプロジェクトのチャンネルのみ参照可能
     const [wsMember] = await db
@@ -74,6 +74,7 @@ export async function GET() {
           and(
             inArray(messages.channelId, channelIds),
             isNull(messages.deletedAt),
+            ne(messages.senderId, ctx.userId),
             gt(messages.createdAt, sql`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`),
           ),
         )

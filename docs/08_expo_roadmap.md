@@ -1,5 +1,8 @@
 # Expo ネイティブアプリ化 ロードマップ
 
+> **ステータス**: 設計時スナップショット（作成: 2026-05-27 / 最終更新: 2026-05-29）
+> 作成時点のロードマップ。一部は実施済み（`apps/mobile` の WebView ラッパー等、[`docs/archive/prompts/`](./archive/prompts/) の Phase 2-B 参照）。進捗はコードを正とする。
+
 ---
 
 ## 1. 現状の整理
@@ -227,3 +230,34 @@ const { status } = await Notifications.requestPermissionsAsync()
 | スタイリング | React Native StyleSheet / NativeWind | CSS 変数は使えないため別管理 |
 | Push 通知 | expo-notifications | EAS でトークン管理、iOS/Android 統一 API |
 | ビルド | EAS Build | Expo の managed workflow でクラウドビルド |
+
+---
+
+## 7. 今後の課題: 環境定義の一元化（app.config.ts 化）
+
+現状の環境管理は以下の構成になっている:
+
+- `app.json`（静的）でアプリ設定を管理
+- 接続先 URL は `EXPO_PUBLIC_*` 環境変数 + 未設定時の自動導出（`lib/env.ts` が Metro の接続先ホストから導出）
+- CI（mobile-preview.yml）は EAS Update 発行時に環境変数で検証環境の URL を注入
+
+ストアリリース対応（Phase 3）に着手する際、以下の構成へ移行する:
+
+### 移行内容
+
+1. **`app.json` → `app.config.ts` 化**
+   - `APP_VARIANT` 環境変数（`development` / `preview` / `production`）で bundle ID・アプリ名・アイコンを分岐
+   - 同一端末に開発版・プレビュー版・本番版を共存インストールできるようにする（例: `com.oss-cairn.dev` / `com.oss-cairn.preview` / `com.oss-cairn`）
+   - `eas.json` の各ビルドプロファイルに `env: { APP_VARIANT: ... }` を追加
+
+2. **環境定義モジュール（`lib/environment.ts`）の導入**
+   - `expo-updates` の `Updates.channel` を見て dev / preview / production を実行時判定する（`isDev` / `isPreview` / `isProd`）
+   - API・Supabase・Web の接続先 URL を環境ごとに一元定義し、`lib/env.ts` の自動導出は dev 環境のフォールバックとして統合する
+   - Sentry 等の計測系を導入する場合のサンプリング設定もここに集約する
+
+### 移行のトリガー
+
+- App Store / Google Play への提出準備を始めたとき
+- もしくは preview / production の接続先が CI の環境変数注入だけでは管理しきれなくなったとき（環境数の増加・チャンネル分岐の複雑化）
+
+それまでは現状の「環境変数 + 自動導出」で十分なため、先行して導入しない。

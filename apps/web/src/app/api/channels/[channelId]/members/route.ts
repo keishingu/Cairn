@@ -62,7 +62,7 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers } = await import('@cairn/db')
+    const { channels, channelMembers, channelReadStates } = await import('@cairn/db')
     const { and, eq } = await import('drizzle-orm')
 
     // チャンネルが同じワークスペースに属するか確認
@@ -79,6 +79,12 @@ export async function POST(
     await db
       .insert(channelMembers)
       .values({ channelId, userId })
+      .onConflictDoNothing()
+
+    // 参加時点を既読の起点にする。これがないと参加直後に過去メッセージ全件が未読として表示される
+    await db
+      .insert(channelReadStates)
+      .values({ userId, channelId, lastReadAt: new Date() })
       .onConflictDoNothing()
 
     return NextResponse.json({ userId, channelId } satisfies ChannelMemberDto, { status: 201 })
