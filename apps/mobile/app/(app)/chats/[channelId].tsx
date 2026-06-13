@@ -9,6 +9,7 @@ import {
 // ライブラリ内部の型エラーになるため。use-attachment-upload.ts と同じ回避策）
 import type * as FileSystemTypes from 'expo-file-system/build/legacy/index'
 import * as Sharing from 'expo-sharing'
+import { WebView } from 'react-native-webview'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const FileSystem = require('expo-file-system/legacy') as typeof FileSystemTypes
@@ -111,7 +112,7 @@ function SenderAvatar({ name, url, c }: { name: string; url: string | null; c: T
   )
 }
 
-function MessageRow({ message, accessToken, c, onToggleReaction, onOpenPicker, onShowReactors, onOpenImage }: {
+function MessageRow({ message, accessToken, c, onToggleReaction, onOpenPicker, onShowReactors, onOpenImage, onOpenFile }: {
   message: MessageDto
   accessToken?: string
   c: Theme
@@ -119,6 +120,7 @@ function MessageRow({ message, accessToken, c, onToggleReaction, onOpenPicker, o
   onOpenPicker: (messageId: string) => void
   onShowReactors: (emoji: string, userNames: string[]) => void
   onOpenImage: (fileId: string) => void
+  onOpenFile: (fileId: string, fileName: string) => void
 }) {
   return (
     <View style={styles.row}>
@@ -148,14 +150,14 @@ function MessageRow({ message, accessToken, c, onToggleReaction, onOpenPicker, o
                 <TouchableOpacity
                   key={att.id}
                   style={[styles.attachmentCard, { backgroundColor: c.card2, borderColor: c.border }]}
-                  onPress={() => { if (accessToken) void openAttachmentFile(att.fileId, att.fileName, accessToken) }}
+                  onPress={() => onOpenFile(att.fileId, att.fileName)}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.fileIcon, { backgroundColor: c.accentSoft }]}>
                     <Ionicons name="document-text-outline" size={16} color={c.accentText} />
                   </View>
                   <Text style={[styles.attachmentName, { color: c.text2 }]} numberOfLines={1}>{att.fileName}</Text>
-                  <Ionicons name="download-outline" size={15} color={c.text4} />
+                  <Ionicons name="chevron-forward" size={15} color={c.text4} />
                 </TouchableOpacity>
               ),
             )}
@@ -246,6 +248,55 @@ function ImageViewer({ fileId, accessToken, onClose }: {
   )
 }
 
+// PDF・Office 文書などをアプリ内で表示する全画面ビューア。
+// /api/attachments は Bearer 認証必須なので WebView の初回リクエストに認証ヘッダーを付ける。
+// iOS の WKWebView は PDF・Word・Excel・PowerPoint をネイティブ表示できる。
+// （Android の WebView は PDF を表示できないため「別アプリで開く」で対応）
+function DocViewer({ doc, accessToken, c, onClose }: {
+  doc: { fileId: string; fileName: string } | null
+  accessToken?: string
+  c: Theme
+  onClose: () => void
+}) {
+  const insets = useSafeAreaInsets()
+  const [loading, setLoading] = React.useState(true)
+
+  React.useEffect(() => { if (doc) setLoading(true) }, [doc])
+
+  return (
+    <Modal visible={doc !== null} animationType="slide" onRequestClose={onClose}>
+      <View style={[styles.docContainer, { backgroundColor: c.bg, paddingTop: insets.top }]}>
+        <View style={[styles.docHeader, { borderBottomColor: c.divider }]}>
+          <TouchableOpacity onPress={onClose} hitSlop={8} style={styles.backButton}>
+            <Ionicons name="close" size={24} color={c.text} />
+          </TouchableOpacity>
+          <Text style={[styles.docTitle, { color: c.text }]} numberOfLines={1}>{doc?.fileName ?? ''}</Text>
+          <TouchableOpacity
+            onPress={() => { if (doc && accessToken) void openAttachmentFile(doc.fileId, doc.fileName, accessToken) }}
+            hitSlop={8}
+            style={styles.backButton}
+          >
+            <Ionicons name="share-outline" size={22} color={c.text2} />
+          </TouchableOpacity>
+        </View>
+        {doc && accessToken && (
+          <WebView
+            source={{ uri: attachmentUrl(doc.fileId), headers: { Authorization: `Bearer ${accessToken}` } }}
+            style={{ flex: 1, backgroundColor: c.bg }}
+            onLoadEnd={() => setLoading(false)}
+            startInLoadingState
+          />
+        )}
+        {loading && (
+          <View style={[styles.docLoading, { backgroundColor: c.bg }]} pointerEvents="none">
+            <ActivityIndicator size="large" color={c.accent} />
+          </View>
+        )}
+      </View>
+    </Modal>
+  )
+}
+
 function QueuedRow({ message, me, onRetry, c }: {
   message: QueuedMessage
   me: { displayName: string; avatarUrl: string | null } | undefined
@@ -305,6 +356,8 @@ export default function ChatChannelScreen() {
   const [reactorsTarget, setReactorsTarget] = React.useState<{ emoji: string; userNames: string[] } | null>(null)
   // 全画面画像ビューアの対象 fileId。null のとき非表示
   const [viewerFileId, setViewerFileId] = React.useState<string | null>(null)
+  // ドキュメント（PDF・Office等）ビューアの対象。null のとき非表示
+  const [docTarget, setDocTarget] = React.useState<{ fileId: string; fileName: string } | null>(null)
 
   // 開いたとき・新着を受け取ったときに既読にする
   const messageCount = messages?.length ?? 0
@@ -371,6 +424,7 @@ export default function ChatChannelScreen() {
                     onOpenPicker={setPickerTarget}
                     onShowReactors={(emoji, userNames) => setReactorsTarget({ emoji, userNames })}
                     onOpenImage={setViewerFileId}
+                    onOpenFile={(fileId, fileName) => setDocTarget({ fileId, fileName })}
                     {...(session?.access_token ? { accessToken: session.access_token } : {})}
                   />
                 : <QueuedRow
@@ -466,6 +520,13 @@ export default function ChatChannelScreen() {
         onClose={() => setViewerFileId(null)}
         {...(session?.access_token ? { accessToken: session.access_token } : {})}
       />
+
+      <DocViewer
+        doc={docTarget}
+        c={c}
+        onClose={() => setDocTarget(null)}
+        {...(session?.access_token ? { accessToken: session.access_token } : {})}
+      />
     </View>
   )
 }
@@ -526,6 +587,13 @@ const styles = StyleSheet.create({
   viewerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
   viewerImage: { width: '100%', height: '100%' },
   viewerClose: { position: 'absolute', right: 16 },
+  docContainer: { flex: 1 },
+  docHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1,
+  },
+  docTitle: { flex: 1, fontSize: 15, fontWeight: '600' },
+  docLoading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   composerWrap: { paddingHorizontal: 8, paddingTop: 4 },
   composer: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
   composerActions: {
