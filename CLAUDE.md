@@ -75,7 +75,8 @@ pnpm dev
   - `admin`: メンバー管理・招待、プロジェクト作成・削除、ゲスト招待リンク発行 + member の全権限
   - `member`: プロジェクト編集・メンバー追加削除、日常操作（チャット・タスク・ファイル等）
   - `guest`: 参加プロジェクトのみ参照・書き込み可。プロジェクト一覧・チャンネル一覧はメンバーのみの参加プロジェクトに制限
-  - 権限ヘルパーは `apps/web/src/lib/permissions.ts` に集約（`requireWorkspaceOwner` / `requireWorkspaceAdmin` / `requireWorkspaceMember`）
+  - 権限ヘルパーは `apps/web/src/lib/permissions.ts` に集約（`requireWorkspaceOwner` / `requireWorkspaceAdmin` / `requireWorkspaceMember`）。403 時はロールを明示した日本語メッセージを返す（例「この操作には管理者以上の権限が必要です」）。フロントは生の 401/403 を出さない
+  - UI 側は `apps/web/src/hooks/use-current-user.ts` の `useWorkspacePermissions()`（`isOwner` / `isAdmin` / `isMember` / `isGuest`）で操作ボタンを disable・非表示にし、権限不足を事前に示す。サーバー側チェックは常に必須（UI ガードは UX 上の補助に過ぎない）
 
 
 ## エラー表示

@@ -1,14 +1,13 @@
 'use client'
 
 import React from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { Icon, Avatar } from '../../primitives'
 import { ConfirmDialog } from '../../confirm-dialog'
 import { RowActionMenu } from '../../row-action-menu'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
-import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import {
   useProjectMembers,
   useWorkspaceMembersForInvite,
@@ -40,10 +39,11 @@ interface MemberRowProps {
   member: ProjectMemberDto
   onRemove: () => void
   removing: boolean
+  canRemove: boolean
   onMemberClick?: ((userId: string, displayName: string) => void) | undefined
 }
 
-const MemberRow = ({ member, onRemove, removing, onMemberClick }: MemberRowProps) => {
+const MemberRow = ({ member, onRemove, removing, canRemove, onMemberClick }: MemberRowProps) => {
   const style = ROLE_STYLE[member.role] ?? DEFAULT_ROLE_STYLE
   return (
     <div style={{
@@ -73,11 +73,13 @@ const MemberRow = ({ member, onRemove, removing, onMemberClick }: MemberRowProps
       }}>
         {ROLE_LABEL[member.role] ?? member.role}
       </span>
-      <RowActionMenu
-        actions={[
-          { icon: 'trash', label: '削除', danger: true, onSelect: onRemove },
-        ]}
-      />
+      {canRemove && (
+        <RowActionMenu
+          actions={[
+            { icon: 'trash', label: '削除', danger: true, onSelect: onRemove },
+          ]}
+        />
+      )}
     </div>
   )
 }
@@ -438,11 +440,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
   const [selectedRole, setSelectedRole] = React.useState('member')
   const [removeTarget, setRemoveTarget] = React.useState<ProjectMemberDto | null>(null)
 
-  const { data: currentUser } = useQuery<CurrentUserDto>({
-    queryKey: ['me'],
-    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
-    staleTime: 60_000,
-  })
+  const { isMember: canManageMembers, isAdmin: canInviteGuest } = useWorkspacePermissions()
 
   const { data: members = [], isLoading } = useProjectMembers(projectId)
   const { data: wsMembers = [], isLoading: isLoadingWs } = useWorkspaceMembersForInvite(showInvite)
@@ -451,9 +449,6 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
 
   const memberUserIds = new Set(members.map(m => m.userId))
   const inviteable = wsMembers.filter(m => !memberUserIds.has(m.userId))
-
-  // WSのadmin/owner のみゲスト招待可能
-  const canInviteGuest = currentUser?.wsRole === 'owner' || currentUser?.wsRole === 'admin'
 
   const closeInvite = () => {
     setShowInvite(false)
@@ -487,17 +482,22 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
             member={m}
             onRemove={() => setRemoveTarget(m)}
             removing={removeMutation.isPending && removeMutation.variables === m.userId}
+            canRemove={canManageMembers}
             onMemberClick={onMemberClick}
           />
         ))}
 
         <button
           onClick={() => setShowInvite(true)}
+          disabled={!canManageMembers}
+          title={canManageMembers ? undefined : 'メンバーの追加にはメンバー以上の権限が必要です'}
           style={{
             marginTop: 12, width: '100%', padding: '10px',
             borderRadius: 8, border: '1px dashed var(--border-2)',
             background: 'transparent', color: 'var(--text-3)',
-            fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+            fontSize: 12.5, fontWeight: 600,
+            cursor: canManageMembers ? 'pointer' : 'not-allowed',
+            opacity: canManageMembers ? 1 : 0.5,
             fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}
         >

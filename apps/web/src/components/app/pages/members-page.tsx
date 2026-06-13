@@ -12,6 +12,7 @@ import { ProjectPanel } from '../detail-panel/project-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -103,6 +104,7 @@ interface PageMembersProps {
 export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMembersProps) => {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const { isAdmin: canInvite } = useWorkspacePermissions()
   const [search, setSearch] = React.useState('')
   const effectiveSearch = isMobile ? search : (externalSearch ?? search)
   const [roleFilter, setRoleFilter] = React.useState<WorkspaceMemberDto['role'] | 'all'>('all')
@@ -200,7 +202,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
         )}
         <MobileHeader title="メンバー" />
         {showInviteModal && <InviteModal onClose={() => setShowInviteModal(false)} isMobile />}
-        <Fab onClick={() => setShowInviteModal(true)} label="メンバーを招待"/>
+        {canInvite && <Fab onClick={() => setShowInviteModal(true)} label="メンバーを招待"/>}
 
         {/* Search */}
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
@@ -295,7 +297,9 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
           <button
             className="btn btn-primary"
             onClick={() => setShowInviteModal(true)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}
+            disabled={!canInvite}
+            title={canInvite ? undefined : 'メンバーの招待には管理者以上の権限が必要です'}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto', ...(canInvite ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
           >
             <Icon name="plus" size={13} strokeWidth={2.4} /> メンバーを招待
           </button>

@@ -37,7 +37,7 @@ export async function requireWorkspaceOwner(
 ): Promise<NextResponse | null> {
   const role = await getWorkspaceRole(workspaceId, userId)
   if (!isWorkspaceOwner(role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    return NextResponse.json({ error: 'この操作にはオーナー権限が必要です' }, { status: 403 })
   }
   return null
 }
@@ -49,7 +49,7 @@ export async function requireWorkspaceAdmin(
 ): Promise<NextResponse | null> {
   const role = await getWorkspaceRole(workspaceId, userId)
   if (!isWorkspaceAdmin(role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    return NextResponse.json({ error: 'この操作には管理者以上の権限が必要です' }, { status: 403 })
   }
   return null
 }
@@ -61,7 +61,7 @@ export async function requireWorkspaceMember(
 ): Promise<NextResponse | null> {
   const role = await getWorkspaceRole(workspaceId, userId)
   if (!isWorkspaceMember(role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    return NextResponse.json({ error: 'ゲストはこの操作を実行できません' }, { status: 403 })
   }
   return null
 }
