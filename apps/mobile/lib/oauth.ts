@@ -12,7 +12,11 @@ export type OAuthResult = 'success' | 'cancelled'
 // Web のリダイレクト方式は使えないため、アプリスキーム（cairn://）を
 // redirect 先にして WebBrowser で認可コードを受け取り、PKCE で交換する。
 export async function signInWithGoogle(): Promise<OAuthResult> {
-  const redirectTo = Linking.createURL('auth/callback')
+  // scheme を明示する。明示しないと dev ビルドで exp:// 形式や
+  // スラッシュ3つの cairn:///... を返すことがあり、それだと Supabase の
+  // 許可リストに一致せず Site URL（web）へフォールバックして 500 になる。
+  const redirectTo = Linking.createURL('auth/callback', { scheme: 'cairn' })
+  console.log('[oauth] redirectTo =', redirectTo)
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
@@ -20,8 +24,10 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
   })
   if (error) throw error
   if (!data.url) throw new Error('OAuth の認可 URL を取得できませんでした')
+  console.log('[oauth] authorize url =', data.url)
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo)
+  console.log('[oauth] result =', result.type, result.type === 'success' ? result.url : '')
   if (result.type !== 'success') {
     // ユーザーがブラウザを閉じた / キャンセルした
     return 'cancelled'
