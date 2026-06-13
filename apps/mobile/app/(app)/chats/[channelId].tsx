@@ -17,6 +17,7 @@ import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { THEME } from '../../../lib/theme'
 import type { Theme } from '../../../lib/theme'
+import EmojiPicker, { ja as emojiJa, type EmojiType } from 'rn-emoji-keyboard'
 
 // Web 側 formatChatMessageTime と同じ「M/D HH:mm」表記
 function formatTime(iso: string): string {
@@ -60,12 +61,13 @@ function SenderAvatar({ name, url, c }: { name: string; url: string | null; c: T
   )
 }
 
-function MessageRow({ message, accessToken, c, onToggleReaction, onOpenPicker }: {
+function MessageRow({ message, accessToken, c, onToggleReaction, onOpenPicker, onShowReactors }: {
   message: MessageDto
   accessToken?: string
   c: Theme
   onToggleReaction: (messageId: string, emoji: string) => void
   onOpenPicker: (messageId: string) => void
+  onShowReactors: (emoji: string, userNames: string[]) => void
 }) {
   return (
     <View style={styles.row}>
@@ -106,6 +108,8 @@ function MessageRow({ message, accessToken, c, onToggleReaction, onOpenPicker }:
             <TouchableOpacity
               key={r.emoji}
               onPress={() => onToggleReaction(message.id, r.emoji)}
+              onLongPress={() => onShowReactors(r.emoji, r.userNames)}
+              delayLongPress={300}
               style={[
                 styles.reaction,
                 { backgroundColor: r.mine ? c.accentSoft : c.card2, borderColor: r.mine ? c.accent : c.border },
@@ -130,24 +134,29 @@ function MessageRow({ message, accessToken, c, onToggleReaction, onOpenPicker }:
   )
 }
 
-// よく使う絵文字のクイックリアクション。Web は emoji-mart 全量だが、モバイルは
-// 片手操作しやすい定番セットに絞る
-const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '😮', '😢', '🙏', '👀', '🔥', '✅']
-
-function ReactionPicker({ visible, onClose, onSelect, c }: {
-  visible: boolean
+// リアクションした人の一覧（絵文字長押しで表示）
+function ReactorsSheet({ target, onClose, c }: {
+  target: { emoji: string; userNames: string[] } | null
   onClose: () => void
-  onSelect: (emoji: string) => void
   c: Theme
 }) {
+  const insets = useSafeAreaInsets()
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.pickerBackdrop} onPress={onClose} />
-      <View style={[styles.pickerCard, { backgroundColor: c.card, borderColor: c.border }]}>
-        {QUICK_EMOJIS.map(emoji => (
-          <TouchableOpacity key={emoji} style={styles.pickerEmoji} onPress={() => onSelect(emoji)} activeOpacity={0.6}>
-            <Text style={styles.pickerEmojiText}>{emoji}</Text>
-          </TouchableOpacity>
+    <Modal visible={target !== null} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.reactorsBackdrop} onPress={onClose} />
+      <View style={[styles.reactorsSheet, { backgroundColor: c.card, borderColor: c.border, paddingBottom: insets.bottom + 12 }]}>
+        <View style={[styles.grip, { backgroundColor: c.border2 }]} />
+        <View style={styles.reactorsHeader}>
+          <Text style={styles.reactorsEmoji}>{target?.emoji}</Text>
+          <Text style={[styles.reactorsCount, { color: c.text3 }]}>{target?.userNames.length ?? 0} 人がリアクション</Text>
+        </View>
+        {(target?.userNames ?? []).map((nm, i) => (
+          <View key={`${nm}-${i}`} style={[styles.reactorRow, { borderTopColor: c.divider }]}>
+            <View style={[styles.reactorAvatar, { backgroundColor: c.accent }]}>
+              <Text style={{ color: c.onAccent, fontSize: 13, fontWeight: '700' }}>{nm.slice(0, 1)}</Text>
+            </View>
+            <Text style={[styles.reactorName, { color: c.text }]}>{nm}</Text>
+          </View>
         ))}
       </View>
     </Modal>
@@ -209,6 +218,8 @@ export default function ChatChannelScreen() {
   const [draft, setDraft] = React.useState('')
   // リアクション絵文字ピッカーの対象メッセージ。null のとき非表示
   const [pickerTarget, setPickerTarget] = React.useState<string | null>(null)
+  // リアクションした人一覧シートの対象（絵文字長押し）。null のとき非表示
+  const [reactorsTarget, setReactorsTarget] = React.useState<{ emoji: string; userNames: string[] } | null>(null)
 
   // 開いたとき・新着を受け取ったときに既読にする
   const messageCount = messages?.length ?? 0
@@ -273,6 +284,7 @@ export default function ChatChannelScreen() {
                     c={c}
                     onToggleReaction={(messageId, emoji) => toggleReaction({ messageId, emoji })}
                     onOpenPicker={setPickerTarget}
+                    onShowReactors={(emoji, userNames) => setReactorsTarget({ emoji, userNames })}
                     {...(session?.access_token ? { accessToken: session.access_token } : {})}
                   />
                 : <QueuedRow
@@ -342,15 +354,26 @@ export default function ChatChannelScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      <ReactionPicker
-        visible={pickerTarget !== null}
+      <EmojiPicker
+        open={pickerTarget !== null}
         onClose={() => setPickerTarget(null)}
-        onSelect={(emoji) => {
-          if (pickerTarget) toggleReaction({ messageId: pickerTarget, emoji })
+        onEmojiSelected={(e: EmojiType) => {
+          if (pickerTarget) toggleReaction({ messageId: pickerTarget, emoji: e.emoji })
           setPickerTarget(null)
         }}
-        c={c}
+        enableSearchBar
+        translation={emojiJa}
+        theme={{
+          backdrop: '#00000066',
+          knob: c.border2,
+          container: c.card,
+          header: c.text,
+          category: { icon: c.text3, iconActive: c.onAccent, container: c.card2, containerActive: c.accent },
+          search: { text: c.text, placeholder: c.text4, icon: c.text3, background: c.card2 },
+        }}
       />
+
+      <ReactorsSheet target={reactorsTarget} onClose={() => setReactorsTarget(null)} c={c} />
     </View>
   )
 }
@@ -395,14 +418,19 @@ const styles = StyleSheet.create({
     height: 24, paddingHorizontal: 6, borderRadius: 12, borderWidth: 1,
     flexDirection: 'row', alignItems: 'center',
   },
-  pickerBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)' },
-  pickerCard: {
-    position: 'absolute', alignSelf: 'center', top: '40%',
-    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center',
-    maxWidth: 320, gap: 4, padding: 12, borderRadius: 16, borderWidth: 1,
+  reactorsBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
+  reactorsSheet: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1,
+    paddingHorizontal: 20, paddingTop: 10,
   },
-  pickerEmoji: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
-  pickerEmojiText: { fontSize: 26 },
+  grip: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 14 },
+  reactorsHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 8 },
+  reactorsEmoji: { fontSize: 28 },
+  reactorsCount: { fontSize: 13, fontWeight: '600' },
+  reactorRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, borderTopWidth: 1 },
+  reactorAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  reactorName: { fontSize: 15 },
   composerWrap: { paddingHorizontal: 8, paddingTop: 4 },
   composer: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
   composerActions: {

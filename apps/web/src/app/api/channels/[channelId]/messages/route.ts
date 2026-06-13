@@ -12,6 +12,8 @@ export interface ReactionDto {
   emoji: string
   count: number
   mine: boolean
+  // リアクションしたユーザーの表示名（誰が押したかの表示に使う）
+  userNames: string[]
 }
 
 export interface MessageDto {
@@ -72,8 +74,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
               messageId: messageReactions.messageId,
               emoji: messageReactions.emoji,
               userId: messageReactions.userId,
+              userName: profiles.displayName,
             })
             .from(messageReactions)
+            .innerJoin(profiles, eq(messageReactions.userId, profiles.id))
             .where(inArray(messageReactions.messageId, messageIds))
         : Promise.resolve([]),
       messageIds.length > 0
@@ -101,9 +105,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
       const existing = reactionMap.get(r.messageId)!.find(x => x.emoji === r.emoji)
       if (existing) {
         existing.count++
+        existing.userNames.push(r.userName)
         if (r.userId === ctx.userId) existing.mine = true
       } else {
-        reactionMap.get(r.messageId)!.push({ emoji: r.emoji, count: 1, mine: r.userId === ctx.userId })
+        reactionMap.get(r.messageId)!.push({ emoji: r.emoji, count: 1, mine: r.userId === ctx.userId, userNames: [r.userName] })
       }
       void key
     }

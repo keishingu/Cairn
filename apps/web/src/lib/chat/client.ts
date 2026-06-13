@@ -386,7 +386,8 @@ export function useToggleMessageReaction(channelId: string | null) {
               newReactions = m.reactions.map((r) => r.emoji === emoji ? { ...r, count: r.count + 1, mine: true } : r)
             }
           } else {
-            newReactions = [...m.reactions, { emoji, count: 1, mine: true }]
+            // userNames は楽観更新では空のままにし、サーバー再取得で確定させる
+            newReactions = [...m.reactions, { emoji, count: 1, mine: true, userNames: [] }]
           }
           return { ...m, reactions: newReactions }
         }),

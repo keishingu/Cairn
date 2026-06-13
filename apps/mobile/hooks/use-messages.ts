@@ -8,7 +8,7 @@ export interface MessageDto {
   senderName: string
   senderAvatarUrl: string | null
   createdAt: string
-  reactions: { emoji: string; count: number; mine: boolean }[]
+  reactions: { emoji: string; count: number; mine: boolean; userNames: string[] }[]
   attachments: {
     id: string
     fileId: string
