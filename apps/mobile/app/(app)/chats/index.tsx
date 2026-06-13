@@ -6,14 +6,19 @@ import { Ionicons } from '@expo/vector-icons'
 import { useProjectChannels, useWorkspaceChannels, useDms } from '../../../hooks/use-projects'
 import { THEME } from '../../../lib/theme'
 import type { Theme } from '../../../lib/theme'
+import { CreateChannelSheet, CreateDmSheet } from '../../../components/chat-create-sheets'
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
 
-function SectionHeader({ title, c }: { title: string; c: Theme }) {
+function SectionHeader({ title, c, onAdd }: { title: string; c: Theme; onAdd?: () => void }) {
   return (
     <View style={styles.sectionHeader}>
       <Text style={[styles.sectionTitle, { color: c.text4 }]}>{title}</Text>
-      <Ionicons name="add" size={16} color={c.text4} />
+      {onAdd && (
+        <TouchableOpacity onPress={onAdd} hitSlop={10}>
+          <Ionicons name="add" size={18} color={c.text4} />
+        </TouchableOpacity>
+      )}
     </View>
   )
 }
@@ -84,6 +89,9 @@ export default function ChatsScreen() {
   const workspaceChannelsQ = useWorkspaceChannels()
   const dmsQ = useDms()
 
+  const [channelSheet, setChannelSheet] = React.useState(false)
+  const [dmSheet, setDmSheet] = React.useState(false)
+
   const isLoading = projectChannelsQ.isLoading || workspaceChannelsQ.isLoading || dmsQ.isLoading
   // どれか一つでも失敗したらサイレントに隠さずエラーを見せる（CLAUDE.md のエラー表示方針）
   const error = projectChannelsQ.error ?? workspaceChannelsQ.error ?? dmsQ.error
@@ -148,7 +156,7 @@ export default function ChatsScreen() {
           />
         ))}
 
-        <SectionHeader title="チャンネル" c={c} />
+        <SectionHeader title="チャンネル" c={c} onAdd={() => setChannelSheet(true)} />
         {workspaceChannels.map(ch => (
           <ChatRow
             key={ch.id}
@@ -161,7 +169,7 @@ export default function ChatsScreen() {
           />
         ))}
 
-        <SectionHeader title="ダイレクトメッセージ" c={c} />
+        <SectionHeader title="ダイレクトメッセージ" c={c} onAdd={() => setDmSheet(true)} />
         {dms.map(dm => (
           <ChatRow
             key={dm.id}
@@ -183,6 +191,19 @@ export default function ChatsScreen() {
           <Ionicons name="chevron-forward" size={16} color={c.text4} />
         </TouchableOpacity>
       </ScrollView>
+
+      <CreateChannelSheet
+        visible={channelSheet}
+        onClose={() => setChannelSheet(false)}
+        onCreated={(id, chName) => openChannel(id, chName)}
+        c={c}
+      />
+      <CreateDmSheet
+        visible={dmSheet}
+        onClose={() => setDmSheet(false)}
+        onCreated={(id, participantName) => openChannel(id, participantName, { dm: true })}
+        c={c}
+      />
     </View>
   )
 }

@@ -12,6 +12,15 @@ export interface WorkspaceDto {
   logoUrl: string | null
 }
 
+export interface WorkspaceMemberDto {
+  userId: string
+  displayName: string
+  avatarUrl: string | null
+  role: 'owner' | 'admin' | 'member' | 'guest'
+  joinedAt: string
+  projectCount: number
+}
+
 export function useMe() {
   return useQuery<MeDto>({
     queryKey: ['me'],
@@ -31,6 +40,18 @@ export function useWorkspace() {
       const res = await apiFetch('/api/workspaces')
       if (!res.ok) throw new Error(`ワークスペース情報の取得に失敗しました (${res.status})`)
       return res.json() as Promise<WorkspaceDto>
+    },
+    staleTime: 60_000,
+  })
+}
+
+export function useWorkspaceMembers() {
+  return useQuery<WorkspaceMemberDto[]>({
+    queryKey: ['workspace-members'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/workspaces/members')
+      if (!res.ok) throw new Error(`メンバーの取得に失敗しました (${res.status})`)
+      return res.json() as Promise<WorkspaceMemberDto[]>
     },
     staleTime: 60_000,
   })
