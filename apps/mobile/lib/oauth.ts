@@ -16,7 +16,9 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
   // スラッシュ3つの cairn:///... を返すことがあり、それだと Supabase の
   // 許可リストに一致せず Site URL（web）へフォールバックして 500 になる。
   const redirectTo = Linking.createURL('auth/callback', { scheme: 'cairn' })
-  console.log('[oauth] redirectTo =', redirectTo)
+  // redirectTo はクエリを含まないため出力可。認可 URL / 戻り URL は
+  // PKCE チャレンジや認可コードを含むため、クエリを除いたオリジンのみ出す。
+  if (__DEV__) console.log('[oauth] redirectTo =', redirectTo)
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
@@ -24,10 +26,12 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
   })
   if (error) throw error
   if (!data.url) throw new Error('OAuth の認可 URL を取得できませんでした')
-  console.log('[oauth] authorize url =', data.url)
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo)
-  console.log('[oauth] result =', result.type, result.type === 'success' ? result.url : '')
+  if (__DEV__) {
+    const landedOrigin = result.type === 'success' ? result.url.split('?')[0] : ''
+    console.log('[oauth] result =', result.type, landedOrigin)
+  }
   if (result.type !== 'success') {
     // ユーザーがブラウザを閉じた / キャンセルした
     return 'cancelled'
