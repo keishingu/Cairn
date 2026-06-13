@@ -3,7 +3,7 @@
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Icon } from './primitives'
+import { Icon, UnreadBadge } from './primitives'
 import { Avatar } from './primitives'
 import { useAppShell } from './app-shell-context'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
@@ -48,13 +48,7 @@ const SidebarItem = ({ icon, label, active, badge, onClick, indent }: SidebarIte
     {active && <span style={{ position: 'absolute', left: -12, top: 6, bottom: 6, width: 3, borderRadius: 2, background: 'var(--accent)' }}/>}
     {icon && <Icon name={icon} size={17}/>}
     <span style={{ flex: 1 }}>{label}</span>
-    {badge != null && badge > 0 && (
-      <span style={{
-        background: 'var(--accent)', color: 'var(--on-accent)',
-        fontSize: 10.5, fontWeight: 700, padding: '1px 6px',
-        borderRadius: 999, minWidth: 18, textAlign: 'center',
-      }}>{badge}</span>
-    )}
+    {badge != null && <UnreadBadge count={badge} />}
   </button>
 )
 
@@ -530,13 +524,8 @@ const CollapsedNavItem = ({ icon, label, active, badge, onClick }: CollapsedNavI
     onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
   >
     <Icon name={icon} size={18}/>
-    {badge != null && badge > 0 && (
-      <span style={{
-        position: 'absolute', top: 4, right: 8,
-        background: 'var(--accent)', color: 'var(--on-accent)',
-        fontSize: 9, fontWeight: 700, padding: '1px 4px',
-        borderRadius: 999, minWidth: 14, textAlign: 'center',
-      }}>{badge}</span>
+    {badge != null && (
+      <UnreadBadge count={badge} size="sm" style={{ position: 'absolute', top: 4, right: 8 }} />
     )}
   </button>
 )
@@ -773,7 +762,7 @@ export function BellButton({ size = 16 }: { size?: number }) {
   return (
     <button onClick={openNotif} className="btn btn-ghost" style={{ width: 34, padding: 0, justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
       <Icon name="bell" size={size}/>
-      {unreadCount > 0 && <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', border: '2px solid var(--card)' }}/>}
+      <UnreadBadge count={unreadCount} size="sm" style={{ position: 'absolute', top: 1, right: 1, border: '2px solid var(--card)' }} />
     </button>
   )
 }

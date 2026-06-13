@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Icon, Avatar, AvatarStack } from '../primitives'
+import { Icon, Avatar, AvatarStack, UnreadBadge } from '../primitives'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
@@ -64,9 +64,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       </div>
     )}
     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
-    {badge != null && badge > 0 && (
-      <span style={{ background: 'var(--accent)', color: 'var(--on-accent)', fontSize: mobile ? 12 : 10, fontWeight: 700, padding: mobile ? '2px 8px' : '1px 6px', borderRadius: 999, minWidth: 20, textAlign: 'center' }}>{badge}</span>
-    )}
+    {badge != null && <UnreadBadge count={badge} size={mobile ? 'md' : 'sm'} />}
     {memberNames && memberNames.length > 0 && mobile && (
       <AvatarStack names={memberNames} size={22} max={3}/>
     )}
