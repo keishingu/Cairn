@@ -149,9 +149,10 @@ function QueuedRow({ message, me, onRetry, c }: {
 }
 
 export default function ChatChannelScreen() {
-  const { channelId, name, project } = useLocalSearchParams<{
-    channelId: string; name?: string; project?: string
+  const { channelId, name, project, dm } = useLocalSearchParams<{
+    channelId: string; name?: string; project?: string; dm?: string
   }>()
+  const isDm = dm === '1'
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const scheme = useColorScheme()
@@ -197,7 +198,9 @@ export default function ChatChannelScreen() {
           <Ionicons name="chevron-back" size={24} color={c.text} />
         </TouchableOpacity>
         <View style={styles.headerText}>
-          <Text style={[styles.headerTitle, { color: c.text }]} numberOfLines={1}>#{name ?? 'チャンネル'}</Text>
+          <Text style={[styles.headerTitle, { color: c.text }]} numberOfLines={1}>
+            {isDm ? (name ?? 'ダイレクトメッセージ') : `#${name ?? 'チャンネル'}`}
+          </Text>
           {project && <Text style={[styles.headerSub, { color: c.text4 }]} numberOfLines={1}>{project}</Text>}
         </View>
       </View>
@@ -274,7 +277,7 @@ export default function ChatChannelScreen() {
             <View style={styles.inputRow}>
               <TextInput
                 style={[styles.input, { color: c.text }]}
-                placeholder={`# ${name ?? 'チャンネル'} にメッセージ送信`}
+                placeholder={isDm ? `${name ?? ''} にメッセージ送信` : `# ${name ?? 'チャンネル'} にメッセージ送信`}
                 placeholderTextColor={c.text4}
                 value={draft}
                 onChangeText={setDraft}

@@ -28,6 +28,26 @@ export interface ProjectChannelDto {
   unreadMentionCount: number
 }
 
+export interface WorkspaceChannelDto {
+  id: string
+  name: string | null
+  isPrivate: boolean
+  memberCount: number
+  memberNames: string[]
+  memberAvatarUrls: (string | null)[]
+  unreadCount: number
+  unreadMentionCount: number
+}
+
+export interface DmChannelDto {
+  id: string
+  participantId: string
+  participantName: string
+  participantAvatarUrl: string | null
+  unreadCount: number
+  unreadMentionCount: number
+}
+
 export function useProjects() {
   return useQuery<ProjectDto[]>({
     queryKey: ['projects'],
@@ -46,6 +66,28 @@ export function useProjectChannels() {
       const res = await apiFetch('/api/projects/channels')
       if (!res.ok) throw new Error(`チャンネルの取得に失敗しました (${res.status})`)
       return res.json() as Promise<ProjectChannelDto[]>
+    },
+  })
+}
+
+export function useWorkspaceChannels() {
+  return useQuery<WorkspaceChannelDto[]>({
+    queryKey: ['workspace-channels'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/workspaces/channels')
+      if (!res.ok) throw new Error(`チャンネルの取得に失敗しました (${res.status})`)
+      return res.json() as Promise<WorkspaceChannelDto[]>
+    },
+  })
+}
+
+export function useDms() {
+  return useQuery<DmChannelDto[]>({
+    queryKey: ['dms'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/workspaces/dms')
+      if (!res.ok) throw new Error(`ダイレクトメッセージの取得に失敗しました (${res.status})`)
+      return res.json() as Promise<DmChannelDto[]>
     },
   })
 }
