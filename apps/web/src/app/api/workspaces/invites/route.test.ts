@@ -115,7 +115,7 @@ describe('POST /api/workspaces/invites', () => {
 
     expect(res.status).toBe(403)
     const body = await res.json() as { error: string }
-    expect(body.error).toBe('Forbidden')
+    expect(body.error).toBe('この操作には管理者以上の権限が必要です')
   })
 
   it('メンバーシップなし（ゲストも含む）は 403', async () => {
