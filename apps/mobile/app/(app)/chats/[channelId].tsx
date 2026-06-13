@@ -2,8 +2,16 @@ import React from 'react'
 import {
   View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet,
   ActivityIndicator, Image, KeyboardAvoidingView, Platform, useColorScheme,
-  Modal, Pressable,
+  Modal, Pressable, Linking, Alert,
 } from 'react-native'
+// legacy の downloadAsync を使う（型は build の .d.ts から取り、実体は require で解決。
+// 'expo-file-system/legacy' を直接 import すると exactOptionalPropertyTypes で
+// ライブラリ内部の型エラーになるため。use-attachment-upload.ts と同じ回避策）
+import type * as FileSystemTypes from 'expo-file-system/build/legacy/index'
+import * as Sharing from 'expo-sharing'
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const FileSystem = require('expo-file-system/legacy') as typeof FileSystemTypes
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -25,23 +33,39 @@ function formatTime(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+// Web 側 markdown-content.tsx と揃える（構造化メンションと URL を検出）
 const STRUCTURED_MENTION_RE = /<@[^|>\s]+\|[^>\n]+>/g
+const URL_RE = /https?:\/\/[^\s<>"']+/g
 
-// 構造化メンション <@id|名前> を Web 版と同じチップ表示（accent-soft 背景）に変換する
+// 構造化メンション <@id|名前> はチップ表示、URL はタップで外部ブラウザを開くリンクにする
 function renderContent(content: string, c: Theme): React.ReactNode[] {
   const nodes: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
-  const re = new RegExp(STRUCTURED_MENTION_RE.source, 'g')
+  const re = new RegExp(`${STRUCTURED_MENTION_RE.source}|${URL_RE.source}`, 'g')
   while ((match = re.exec(content)) !== null) {
     if (match.index > last) nodes.push(content.slice(last, match.index))
     const token = match[0]
-    const displayName = token.slice(token.indexOf('|') + 1, -1)
-    nodes.push(
-      <Text key={match.index} style={{ backgroundColor: c.accentSoft, color: c.accentText, fontWeight: '600' }}>
-        {` @${displayName} `}
-      </Text>,
-    )
+    if (token.startsWith('<@')) {
+      const displayName = token.slice(token.indexOf('|') + 1, -1)
+      nodes.push(
+        <Text key={match.index} style={{ backgroundColor: c.accentSoft, color: c.accentText, fontWeight: '600' }}>
+          {` @${displayName} `}
+        </Text>,
+      )
+    } else {
+      // 末尾の句読点・閉じ括弧はリンクに含めない（Web 版と同じ処理）
+      const url = token.replace(/[.,;:!?)>\]]+$/, '')
+      nodes.push(
+        <Text
+          key={match.index}
+          style={{ color: c.accentText, textDecorationLine: 'underline' }}
+          onPress={() => { void Linking.openURL(url) }}
+        >
+          {url}
+        </Text>,
+      )
+    }
     last = match.index + token.length
   }
   if (last < content.length) nodes.push(content.slice(last))
@@ -50,6 +74,32 @@ function renderContent(content: string, c: Theme): React.ReactNode[] {
 
 function isImageMime(mimeType: string | null): boolean {
   return !!mimeType?.startsWith('image/')
+}
+
+function attachmentUrl(fileId: string): string {
+  return `${API_BASE_URL}/api/attachments/${fileId}`
+}
+
+// 添付ファイルを開く。/api/attachments は Bearer 認証が必要なため、
+// 認証ヘッダー付きでローカルにダウンロードしてから OS の共有/プレビューシートで開く。
+// （外部ブラウザに直接 URL を渡すと認証が効かず開けない）
+async function openAttachmentFile(fileId: string, fileName: string, accessToken: string) {
+  try {
+    const safeName = fileName.replace(/[^\w.\-]/g, '_')
+    const target = `${FileSystem.cacheDirectory}${fileId}_${safeName}`
+    const { uri, status } = await FileSystem.downloadAsync(attachmentUrl(fileId), target, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (status !== 200) throw new Error(`ダウンロードに失敗しました (${status})`)
+    if (!(await Sharing.isAvailableAsync())) {
+      Alert.alert('この端末ではファイルを開けません')
+      return
+    }
+    await Sharing.shareAsync(uri)
+  } catch (err) {
+    console.error('[chat] 添付ファイルを開けませんでした:', err)
+    Alert.alert('ファイルを開けませんでした', err instanceof Error ? err.message : String(err))
+  }
 }
 
 function SenderAvatar({ name, url, c }: { name: string; url: string | null; c: Theme }) {
@@ -61,13 +111,14 @@ function SenderAvatar({ name, url, c }: { name: string; url: string | null; c: T
   )
 }
 
-function MessageRow({ message, accessToken, c, onToggleReaction, onOpenPicker, onShowReactors }: {
+function MessageRow({ message, accessToken, c, onToggleReaction, onOpenPicker, onShowReactors, onOpenImage }: {
   message: MessageDto
   accessToken?: string
   c: Theme
   onToggleReaction: (messageId: string, emoji: string) => void
   onOpenPicker: (messageId: string) => void
   onShowReactors: (emoji: string, userNames: string[]) => void
+  onOpenImage: (fileId: string) => void
 }) {
   return (
     <View style={styles.row}>
@@ -84,21 +135,28 @@ function MessageRow({ message, accessToken, c, onToggleReaction, onOpenPicker, o
           <View style={styles.attachments}>
             {message.attachments.map(att =>
               isImageMime(att.mimeType) && accessToken ? (
-                <Image
-                  key={att.id}
-                  source={{
-                    uri: `${API_BASE_URL}/api/attachments/${att.fileId}`,
-                    headers: { Authorization: `Bearer ${accessToken}` },
-                  }}
-                  style={[styles.attachmentImage, { backgroundColor: c.card2 }]}
-                />
+                <TouchableOpacity key={att.id} onPress={() => onOpenImage(att.fileId)} activeOpacity={0.85}>
+                  <Image
+                    source={{
+                      uri: attachmentUrl(att.fileId),
+                      headers: { Authorization: `Bearer ${accessToken}` },
+                    }}
+                    style={[styles.attachmentImage, { backgroundColor: c.card2 }]}
+                  />
+                </TouchableOpacity>
               ) : (
-                <View key={att.id} style={[styles.attachmentCard, { backgroundColor: c.card2, borderColor: c.border }]}>
+                <TouchableOpacity
+                  key={att.id}
+                  style={[styles.attachmentCard, { backgroundColor: c.card2, borderColor: c.border }]}
+                  onPress={() => { if (accessToken) void openAttachmentFile(att.fileId, att.fileName, accessToken) }}
+                  activeOpacity={0.7}
+                >
                   <View style={[styles.fileIcon, { backgroundColor: c.accentSoft }]}>
                     <Ionicons name="document-text-outline" size={16} color={c.accentText} />
                   </View>
                   <Text style={[styles.attachmentName, { color: c.text2 }]} numberOfLines={1}>{att.fileName}</Text>
-                </View>
+                  <Ionicons name="download-outline" size={15} color={c.text4} />
+                </TouchableOpacity>
               ),
             )}
           </View>
@@ -163,6 +221,31 @@ function ReactorsSheet({ target, onClose, c }: {
   )
 }
 
+// 画像添付のタップで開く全画面ビューア
+function ImageViewer({ fileId, accessToken, onClose }: {
+  fileId: string | null
+  accessToken?: string
+  onClose: () => void
+}) {
+  const insets = useSafeAreaInsets()
+  return (
+    <Modal visible={fileId !== null} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.viewerBackdrop} onPress={onClose}>
+        {fileId && accessToken && (
+          <Image
+            source={{ uri: attachmentUrl(fileId), headers: { Authorization: `Bearer ${accessToken}` } }}
+            style={styles.viewerImage}
+            resizeMode="contain"
+          />
+        )}
+        <TouchableOpacity style={[styles.viewerClose, { top: insets.top + 8 }]} onPress={onClose} hitSlop={10}>
+          <Ionicons name="close" size={28} color="#fff" />
+        </TouchableOpacity>
+      </Pressable>
+    </Modal>
+  )
+}
+
 function QueuedRow({ message, me, onRetry, c }: {
   message: QueuedMessage
   me: { displayName: string; avatarUrl: string | null } | undefined
@@ -220,6 +303,8 @@ export default function ChatChannelScreen() {
   const [pickerTarget, setPickerTarget] = React.useState<string | null>(null)
   // リアクションした人一覧シートの対象（絵文字長押し）。null のとき非表示
   const [reactorsTarget, setReactorsTarget] = React.useState<{ emoji: string; userNames: string[] } | null>(null)
+  // 全画面画像ビューアの対象 fileId。null のとき非表示
+  const [viewerFileId, setViewerFileId] = React.useState<string | null>(null)
 
   // 開いたとき・新着を受け取ったときに既読にする
   const messageCount = messages?.length ?? 0
@@ -285,6 +370,7 @@ export default function ChatChannelScreen() {
                     onToggleReaction={(messageId, emoji) => toggleReaction({ messageId, emoji })}
                     onOpenPicker={setPickerTarget}
                     onShowReactors={(emoji, userNames) => setReactorsTarget({ emoji, userNames })}
+                    onOpenImage={setViewerFileId}
                     {...(session?.access_token ? { accessToken: session.access_token } : {})}
                   />
                 : <QueuedRow
@@ -374,6 +460,12 @@ export default function ChatChannelScreen() {
       />
 
       <ReactorsSheet target={reactorsTarget} onClose={() => setReactorsTarget(null)} c={c} />
+
+      <ImageViewer
+        fileId={viewerFileId}
+        onClose={() => setViewerFileId(null)}
+        {...(session?.access_token ? { accessToken: session.access_token } : {})}
+      />
     </View>
   )
 }
@@ -431,6 +523,9 @@ const styles = StyleSheet.create({
   reactorRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, borderTopWidth: 1 },
   reactorAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   reactorName: { fontSize: 15 },
+  viewerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
+  viewerImage: { width: '100%', height: '100%' },
+  viewerClose: { position: 'absolute', right: 16 },
   composerWrap: { paddingHorizontal: 8, paddingTop: 4 },
   composer: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
   composerActions: {
