@@ -213,6 +213,11 @@ export default function ChatChannelScreen() {
           <View style={styles.center}><ActivityIndicator size="large" color={c.accent} /></View>
         ) : error ? (
           <View style={styles.center}><Text style={[styles.errorText, { color: c.redText }]}>{error.message}</Text></View>
+        ) : items.length === 0 ? (
+          // 空状態は inverted FlatList の外に出す（中に置くと上下反転して表示される）
+          <View style={styles.center}>
+            <Text style={[styles.empty, { color: c.text4 }]}>まだメッセージがありません</Text>
+          </View>
         ) : (
           <FlatList
             inverted
@@ -233,9 +238,6 @@ export default function ChatChannelScreen() {
                   />
             }
             contentContainerStyle={styles.list}
-            ListEmptyComponent={
-              <Text style={[styles.empty, { color: c.text4 }]}>まだメッセージがありません</Text>
-            }
           />
         )}
 
@@ -312,7 +314,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '700' },
   headerSub: { fontSize: 11.5 },
   list: { paddingHorizontal: 12, paddingVertical: 10, gap: 16 },
-  empty: { textAlign: 'center', marginTop: 48, transform: [{ scaleY: -1 }] },
+  empty: { textAlign: 'center', fontSize: 13 },
   row: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   rowBody: { flex: 1, minWidth: 0 },
   rowHeader: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 3 },
