@@ -90,8 +90,11 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     else router.push(`/${p}`)
   }, [router, setProjectsView])
 
-  // Esc=閉じる: 最前面のオーバーレイ（通知 → 詳細パネル）を1つ閉じる
+  // Esc=閉じる: 最前面のオーバーレイ（通知 → 詳細パネル）を1つ閉じる。
+  // Modal（ConfirmDialog や各種作成モーダル）が前面にある時は、その Modal 自身が
+  // Esc を処理するので shell は介入しない（パネルごと閉じてしまうのを防ぐ）
   const closeTopOverlay = React.useCallback(() => {
+    if (typeof document !== 'undefined' && document.querySelector('[data-cairn-modal]')) return false
     if (notifOpen) { setNotifOpen(false); return true }
     if (panelMember || panelProject) { closePanel(); return true }
     return false

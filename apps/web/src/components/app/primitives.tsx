@@ -293,7 +293,7 @@ export const Modal = ({ onClose, children }: { onClose: () => void; children: Re
   }, [onClose])
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+    <div data-cairn-modal style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
       {children}
     </div>
