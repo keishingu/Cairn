@@ -39,13 +39,28 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
   const isAuthRoute = pathname.startsWith('/auth')
+  // トップ（/）は公開 LP。next.config の rewrite で public/lp/index.html を配信する
+  const isLandingRoute = pathname === '/'
+  // 旧 LP の人間向け入口 URL。CSS/JS（/lp/*.css|js）はリダイレクト対象に含めない
+  const isLegacyLpEntry =
+    pathname === '/lp' || pathname === '/lp/' || pathname === '/lp/index.html'
   // 未ログインでもアクセスできるパブリックルート
-  const isPublicRoute = pathname.startsWith('/invite') || pathname.startsWith('/lp')
+  const isPublicRoute =
+    pathname.startsWith('/invite') || pathname.startsWith('/lp') || isLandingRoute
   // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
   const isOnboardingRoute = pathname.startsWith('/onboarding')
 
+  // 旧 /lp の入口は公開 LP を /（トップ）に集約するため恒久リダイレクト
+  if (isLegacyLpEntry) {
+    return NextResponse.redirect(new URL('/', request.url), 308)
+  }
+
   if (!user && !isAuthRoute && !isPublicRoute) {
     return NextResponse.redirect(new URL('/auth/login', request.url))
+  }
+  // 認証済みユーザーはトップの LP ではなくアプリ本体へ誘導する
+  if (user && isLandingRoute) {
+    return NextResponse.redirect(new URL('/projects', request.url))
   }
   if (user && isAuthRoute && !isOnboardingRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))

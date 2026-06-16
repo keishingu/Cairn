@@ -173,7 +173,7 @@ CLAUDE.md の方針どおり、デバイス判定は middleware の `x-device` �
 Cairn は OSS かつ自己ホスト可能なため、これらの CTA は「**クラウドホスティング版（Cairn Cloud）を使ってみる**」動線に変更し、`/auth/login`（= 公式ホスティングのログイン/サインアップ入口）へ向ける。
 
 - リンク先: `https://<本番ドメイン>/auth/login`（LP 内では相対パス `/auth/login` で可）
-- ラベル: 「Try Demo」は実態（=製品本体を試す）と食い違うため、「**クラウド版を試す / Try Cairn Cloud**」等に置き換える（最終文言は別途確定）
+- ラベル: 「Try Demo」は実態（=製品本体を試す）と食い違うため、「**クラウド版を試す / Try Cairn Cloud**」に置き換える（確定）
 - 自己ホスト派の導線（GitHub / Self-Hosted / Docs）は現行のまま温存し、Cloud 導線と併存させる
 
 ### 4.5 触らないもの

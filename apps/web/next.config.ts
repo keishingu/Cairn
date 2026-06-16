@@ -21,6 +21,11 @@ function lanDevOrigins(): string[] {
 const nextConfig: NextConfig = {
   transpilePackages: ['@cairn/core', '@cairn/db', '@cairn/shared'],
   allowedDevOrigins: lanDevOrigins(),
+  async rewrites() {
+    // トップ（/）では既存の静的 LP（public/lp/index.html）をそのまま配信する。
+    // 認証済みユーザーを /projects へ送る分岐は middleware 側で処理する。
+    return [{ source: '/', destination: '/lp/index.html' }]
+  },
   async headers() {
     return [
       {
