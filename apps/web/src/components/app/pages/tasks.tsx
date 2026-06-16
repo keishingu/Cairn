@@ -178,6 +178,13 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
   const [showAddModal, setShowAddModal] = React.useState(false)
 
+  // ⌥N: 新規タスク
+  React.useEffect(() => {
+    const onCreate = () => setShowAddModal(true)
+    window.addEventListener('cairn:create', onCreate)
+    return () => window.removeEventListener('cairn:create', onCreate)
+  }, [])
+
   const { data: tasks = [], isLoading } = useQuery<TaskDto[]>({
     queryKey: ['tasks'],
     queryFn: () => fetchWithAuth('/api/tasks').then(r => r.json()),

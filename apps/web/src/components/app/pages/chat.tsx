@@ -290,6 +290,23 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setTargetMessageId(messageId)
   }
 
+  // ⌥N: 新規チャンネル / ⌘⇧F: 横断検索
+  React.useEffect(() => {
+    const onCreate = () => setShowCreateChannel(true)
+    const onCross = () => setGlobalSearchOpen(true)
+    window.addEventListener('cairn:create', onCreate)
+    window.addEventListener('cairn:cross-search', onCross)
+    // ⌘⇧F で他画面から chats へ遷移してきた直後はフラグで開く
+    if (window.__cairnOpenCrossSearch) {
+      window.__cairnOpenCrossSearch = false
+      setGlobalSearchOpen(true)
+    }
+    return () => {
+      window.removeEventListener('cairn:create', onCreate)
+      window.removeEventListener('cairn:cross-search', onCross)
+    }
+  }, [])
+
   // ⌥↑↓（順送り）: チャンネル一覧（プロジェクト → 全体 → DM の表示順）を前/次へ
   React.useEffect(() => {
     const orderedIds = [

@@ -24,17 +24,21 @@ const APP_HINTS: Hint[] = [
   { keys: ['4'], label: 'マイタスク' },
 ]
 
+const CREATE_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban', 'tasks', 'chats', 'ai'])
+
 function contextHints(page: PageId): Hint[] {
+  const items: Hint[] = []
   if (page === 'calendar') {
-    return [
+    items.push(
       { keys: ['M'], label: '月表示' },
       { keys: ['W'], label: '週表示' },
-      { keys: ['↑', '↓'], label: '前 / 次の期間' },
-    ]
+      { keys: ['←', '→'], label: '前 / 次の期間' },
+    )
   }
-  if (page === 'chats') return [{ keys: ['↑', '↓'], label: '前 / 次のチャンネル' }]
-  if (page === 'ai') return [{ keys: ['↑', '↓'], label: '前 / 次の会話' }]
-  return []
+  if (page === 'chats') items.push({ keys: ['↑', '↓'], label: '前 / 次のチャンネル' })
+  if (page === 'ai') items.push({ keys: ['↑', '↓'], label: '前 / 次の会話' })
+  if (CREATE_PAGES.has(page)) items.push({ keys: ['N'], label: '新規作成' })
+  return items
 }
 
 function isMac(): boolean {

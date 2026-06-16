@@ -8,16 +8,17 @@ import { STORAGE_KEYS } from '@/lib/storage-keys'
 import type { PageId } from '@/components/app/sidebar'
 
 /**
- * グローバルなキーボードショートカット（第1段）。
+ * グローバルなキーボードショートカット。哲学は docs/keyboard-shortcuts.md を参照。
  *
- * 哲学は docs/keyboard-shortcuts.md を参照。
  *  - アプリ層（数字ナビ・Web）: Mac=⌘⌥+数字 / Win・Linux=Ctrl⇧+数字
  *    （⌘+数字 はタブ切替に取られる。Mac は ⌘⇧3/4 がスクショ予約のため ⌘⌥ を使う）
- *  - コンテキスト層（⌥/Alt）: カレンダーの月/週/タイムライン切替・順送り
- *  - Desktop（Electron）はネイティブメニュー ⌘+数字 を preload 経由で受ける
+ *  - グローバル操作: ⌘K パレット / ⌘⇧F 横断検索 / ⌘⇧U 通知 / ? ヘルプ（英字は ⌘⇧ で Mac/Win 共通）
+ *  - コンテキスト層（⌥/Alt）: ⌥M/W カレンダー表示、⌥←→ 期間送り（時間=水平）、
+ *    ⌥↑↓ 順送り（リスト=垂直）、⌥N 新規作成
+ *  - Desktop（Electron）: ネイティブメニュー ⌘+数字、および Ctrl+Tab/Ctrl+Shift+Tab を
+ *    preload 経由で受ける
  *
- * 入力欄（input / textarea / contentEditable）にフォーカスがある時、⌥ 系は
- * 特殊文字入力・単語移動を尊重して無効化する。数字ナビは画面移動なので常に有効。
+ * 入力欄（input/textarea/select/contentEditable）では ⌥ 系・? を無効化する。
  */
 
 const NAV_BY_DIGIT: Record<string, PageId> = {
@@ -40,7 +41,11 @@ declare global {
     /** Electron preload が公開するブリッジ（Web 単体では undefined） */
     cairnDesktop?: {
       onNavigate?: (cb: (action: string) => void) => (() => void) | void
+      /** Ctrl+Tab / Ctrl+Shift+Tab の順送り（Desktop 特権） */
+      onSeq?: (cb: (dir: 'prev' | 'next') => void) => (() => void) | void
     }
+    /** ⌘⇧F で chats へ遷移した直後、横断検索を開くための受け渡しフラグ */
+    __cairnOpenCrossSearch?: boolean
   }
 }
 
@@ -60,19 +65,31 @@ export interface UseAppShortcutsArgs {
   navigate: (page: PageId) => void
   /** Esc 押下時に呼ばれる。何か閉じたら true を返すと preventDefault する */
   onEscape?: () => boolean
+  /** ⌘K コマンドパレットを開く */
+  onCommandPalette?: () => void
+  /** ? ショートカット一覧を開く */
+  onHelp?: () => void
+  /** ⌘⇧U 通知を開く */
+  onNotifications?: () => void
 }
 
-export function useAppShortcuts({ navigate, onEscape }: UseAppShortcutsArgs) {
-  // navigate は毎レンダー再生成されうるので ref で最新を参照（リスナーは1回だけ登録）
+export function useAppShortcuts({ navigate, onEscape, onCommandPalette, onHelp, onNotifications }: UseAppShortcutsArgs) {
+  // ハンドラは毎レンダー再生成されうるので ref で最新を参照（リスナーは1回だけ登録）
   const navRef = React.useRef(navigate)
   navRef.current = navigate
   const escRef = React.useRef(onEscape)
   escRef.current = onEscape
+  const paletteRef = React.useRef(onCommandPalette)
+  paletteRef.current = onCommandPalette
+  const helpRef = React.useRef(onHelp)
+  helpRef.current = onHelp
+  const notifRef = React.useRef(onNotifications)
+  notifRef.current = onNotifications
 
   React.useEffect(() => {
     const mac = isMac()
 
-    // ⌥M/W/T: カレンダービュー切替。永続化 → カレンダーへ遷移 → マウント済みなら即反映
+    // ⌥M/W: カレンダービュー切替。永続化 → カレンダーへ遷移 → マウント済みなら即反映
     const applyCalView = (view: CalView) => {
       localStorage.setItem(STORAGE_KEYS.calendar_view, view)
       navRef.current('calendar')
@@ -80,14 +97,41 @@ export function useAppShortcuts({ navigate, onEscape }: UseAppShortcutsArgs) {
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
+      const editable = isEditableTarget(e.target)
+
       // Esc=閉じる（全画面共通）。入力欄では各自の Esc 挙動を尊重して素通り
-      if (e.key === 'Escape' && !isEditableTarget(e.target)) {
+      if (e.key === 'Escape' && !editable) {
         if (escRef.current?.()) e.preventDefault()
         return
       }
 
-      // アプリ層: 数字ナビ。Web では ⌘+数字 がタブ切替に取られるため修飾を足すが、
-      // Mac の ⌘⇧3/⌘⇧4 はスクリーンショット予約と衝突するため Mac は ⌘⌥、Win/Linux は Ctrl⇧
+      const primary = mac ? e.metaKey : e.ctrlKey // ⌘ / Ctrl
+
+      // グローバル操作（⌘/Ctrl 系・英字は Mac/Win 共通）
+      if (primary && !e.altKey) {
+        // ⌘K: コマンドパレット
+        if (!e.shiftKey && e.code === 'KeyK') {
+          e.preventDefault()
+          paletteRef.current?.()
+          return
+        }
+        // ⌘⇧F: 横断検索（chats へ遷移して開く）
+        if (e.shiftKey && e.code === 'KeyF') {
+          e.preventDefault()
+          window.__cairnOpenCrossSearch = true
+          navRef.current('chats')
+          window.dispatchEvent(new CustomEvent('cairn:cross-search'))
+          return
+        }
+        // ⌘⇧U: 通知
+        if (e.shiftKey && e.code === 'KeyU') {
+          e.preventDefault()
+          notifRef.current?.()
+          return
+        }
+      }
+
+      // アプリ層: 数字ナビ。Mac は ⌘⌥（⌘⇧3/4 がスクショ予約のため）、Win/Linux は Ctrl⇧
       const appMod = mac
         ? (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey)
         : (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey)
@@ -98,9 +142,16 @@ export function useAppShortcuts({ navigate, onEscape }: UseAppShortcutsArgs) {
         return
       }
 
+      // ? : ヘルプ（修飾なし・入力欄以外）
+      if (e.key === '?' && !primary && !e.altKey && !editable) {
+        e.preventDefault()
+        helpRef.current?.()
+        return
+      }
+
       // コンテキスト層: ⌥/Alt 単独。入力欄では無効化
       const ctxMod = e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey
-      if (!ctxMod || isEditableTarget(e.target)) return
+      if (!ctxMod || editable) return
 
       const calView = CAL_VIEW_BY_CODE[e.code]
       if (calView) {
@@ -108,22 +159,36 @@ export function useAppShortcuts({ navigate, onEscape }: UseAppShortcutsArgs) {
         applyCalView(calView)
         return
       }
+      // 時間軸は水平: ⌥←/→ でカレンダーの前/次の期間
+      if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:period', { detail: e.code === 'ArrowLeft' ? 'prev' : 'next' }))
+        return
+      }
+      // リストは垂直: ⌥↑/↓ で順送り（チャンネル・会話）
       if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
-        // 順送り（前/次）。今アクティブな画面が cairn:seq を解釈する
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:seq', { detail: e.code === 'ArrowUp' ? 'prev' : 'next' }))
+        return
+      }
+      // ⌥N: 新規作成（今アクティブな画面が cairn:create を解釈する）
+      if (e.code === 'KeyN') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:create'))
       }
     }
 
     window.addEventListener('keydown', onKeyDown)
-    // Desktop（Electron）のネイティブメニュー ⌘+数字 経由のナビゲーション
-    const offDesktop = window.cairnDesktop?.onNavigate?.((action) => {
-      navRef.current(action as PageId)
+    // Desktop（Electron）の preload ブリッジ
+    const offNavigate = window.cairnDesktop?.onNavigate?.((action) => navRef.current(action as PageId))
+    const offSeq = window.cairnDesktop?.onSeq?.((dir) => {
+      window.dispatchEvent(new CustomEvent('cairn:seq', { detail: dir }))
     })
 
     return () => {
       window.removeEventListener('keydown', onKeyDown)
-      offDesktop?.()
+      offNavigate?.()
+      offSeq?.()
     }
   }, [])
 }

@@ -1468,22 +1468,33 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     }
   }
 
-  // グローバルショートカット（⌥M/W/T・⌥↑↓）からの操作を受ける。
+  // グローバルショートカット（⌥M/W・⌥←→）からの操作を受ける。
   // goPrev/goNext は month・calView を参照するので依存に含めて最新の closure を購読する
   React.useEffect(() => {
     const onCalView = (e: Event) => setCalView((e as CustomEvent<CalView>).detail)
-    const onSeq = (e: Event) => {
+    const onPeriod = (e: Event) => {
       if ((e as CustomEvent<'prev' | 'next'>).detail === 'prev') goPrev()
       else goNext()
     }
     window.addEventListener('cairn:cal-view', onCalView)
-    window.addEventListener('cairn:seq', onSeq)
+    window.addEventListener('cairn:period', onPeriod)
     return () => {
       window.removeEventListener('cairn:cal-view', onCalView)
-      window.removeEventListener('cairn:seq', onSeq)
+      window.removeEventListener('cairn:period', onPeriod)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calView, month])
+
+  // ⌥N: 新規プロジェクト（今日の日付で作成モーダルを開く）
+  React.useEffect(() => {
+    const onCreate = () => {
+      const iso = new Date().toISOString().slice(0, 10)
+      openCreate(iso, iso)
+    }
+    window.addEventListener('cairn:create', onCreate)
+    return () => window.removeEventListener('cairn:create', onCreate)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const isCurrentPeriod = calView === 'week'
     ? weekStart.toDateString() === getWeekStart(today).toDateString()

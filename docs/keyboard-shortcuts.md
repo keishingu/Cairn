@@ -65,34 +65,45 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 
 ※番号は**サイドメニューの表示順と一致**させる（Teams の強さの本質）。
 
-### グローバル操作（`⌘⇧`英字）
+### グローバル操作（英字は `⌘`/`Ctrl` 系・Mac/Win 共通）
 
 | キー | 操作 |
 |---|---|
 | `⌘K` | コマンドパレット（Web の本命。`⌘⇧P` は Firefox のプライベートウィンドウと衝突のため不採用） |
-| `⌘⇧F` | 横断検索（全チャンネル / 全会話 / 全ファイル） |
+| `⌘⇧F` | 横断検索（チャットへ遷移して開く） |
+| `⌘⇧U` | 通知を開く |
 | `?` | ショートカット一覧 |
+| `Esc` | 最前面のパネル/モーダルを閉じる |
 
 ### 画面内操作（`⌥`／全画面共通の語彙）
 
 | キー | 操作 |
 |---|---|
-| `⌥↑` `⌥↓` | 順送り（スレッド / チャンネル / 会話 / メッセージ） |
+| `⌥←` `⌥→` | 時間軸（水平）= カレンダーの前 / 次の期間 |
+| `⌥↑` `⌥↓` | リスト（垂直）= 順送り（チャンネル / 会話） |
 | `⌥M` `⌥W` | カレンダー 月 / 週（タイムラインは PC に描画ビューが無いため割当なし） |
-| `⌥V` | 一覧 グリッド ⇔ 表 |
 | `⌥N` | 新規作成（その画面の主役を作る） |
-| `⌥F` | フィルタ popover を開く |
+| `⌥V` | 一覧 グリッド ⇔ 表（未実装） |
+| `⌥F` | フィルタ popover を開く（未実装） |
+
+> **軸の使い分け**: 時間の前後は水平 `⌥←→`、縦に並ぶリストの前後は垂直 `⌥↑↓`。
+
+### デスクトップ特権（Electron のみ・ブラウザが奪うキーを奪還）
+
+| キー | 操作 |
+|---|---|
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | 次 / 前（チャンネル・会話）。`before-input-event` で横取りし `cairn:seq` を発火 |
 
 ### 画面ごとの適用
 
 | 画面 | 主なショートカット |
 |---|---|
-| Projects（一覧/カレンダー/カンバン） | `⌥N`新規プロジェクト、`⌥V`グリッド⇔表、`⌥M/W/T`月/週/タイムライン、`⌥↑↓`月送り、`⌥F`フィルタ |
-| Tasks（マイタスク） | `⌥N`新規タスク、`⌥F`フィルタ |
-| Chats | `⌥N`新規チャンネル、`⌥↑↓`チャンネル/メッセージ順送り、`⌘⇧F`横断検索、`Enter`/`Shift+Enter`送信/改行、`Esc`composer 離脱 |
-| Files | `⌥F`フィルタ、`⌘⇧F`横断検索 |
+| Projects（一覧/カレンダー/カンバン） | `⌥N`新規プロジェクト、`⌥M/W`月/週、`⌥←→`期間送り（カレンダー） |
+| Tasks（マイタスク） | `⌥N`新規タスク |
+| Chats | `⌥N`新規チャンネル、`⌥↑↓`/`Ctrl+Tab`チャンネル順送り、`⌘⇧F`横断検索、`Enter`/`Shift+Enter`送信/改行 |
+| Files | `⌘⇧F`横断検索 |
 | Gallery | `←`/`→`前後、`Esc`閉じる（既存維持） |
-| AI | `⌥N`新規会話、`⌥↑↓`会話切替、`⌘⇧F`会話横断検索、`Enter`/`Shift+Enter`送信/改行 |
+| AI | `⌥N`新規会話、`⌥↑↓`/`Ctrl+Tab`会話切替、`Enter`/`Shift+Enter`送信/改行 |
 | Members | `⌥F`ロールフィルタ、`⌥N`/`i`招待（admin のみ・権限で無効化）、`Esc`パネル閉じる |
 | Settings | `⌘Enter`保存、`Esc`ダイアログ閉じる |
 
@@ -141,14 +152,15 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 
 ## 6. 段階導入
 
-1. **第1段（◎・実装済み）**: 数字ナビ + `⌥M/W`カレンダービュー + `⌥↑↓`順送り（カレンダー期間・Chats チャンネル・AI 会話）+ `Esc`=閉じる + ショートカットヒント表示。
-   - Web: `apps/web/src/hooks/use-app-shortcuts.ts`（`PCShell` でマウント）。`⌥M/W/T` は `calendar_view` を localStorage 永続化し `cairn:cal-view` を発火、`⌥↑↓` は `cairn:seq` を発火。`PageCalendar` / `PageChat` / `PageAI` が `cairn:seq` を購読し、それぞれ期間・チャンネル・会話を前後に送る。
+1. **第1段（◎・実装済み）**: 数字ナビ + `⌥M/W`カレンダービュー + 順送り（`⌥←→`カレンダー期間 / `⌥↑↓`Chats・AI）+ `Esc`=閉じる + ショートカットヒント表示。
+   - Web: `apps/web/src/hooks/use-app-shortcuts.ts`（`PCShell` でマウント）。`⌥M/W` は `calendar_view` を localStorage 永続化し `cairn:cal-view` を発火、`⌥←→` は `cairn:period`、`⌥↑↓` は `cairn:seq` を発火。`PageCalendar` が `cairn:period`、`PageChat`/`PageAI` が `cairn:seq` を購読する。
    - Desktop: `apps/desktop/src/main.js` のネイティブメニュー（`CmdOrCtrl+1..4`）→ `apps/desktop/src/preload.js` の `window.cairnDesktop.onNavigate` → Web の同フックが受ける。
-   - `Esc`: shell（`PCShell`）レベルで最前面のオーバーレイ（通知 → 詳細パネル）を1つ閉じる。`onEscape` を `use-app-shortcuts` に渡す。入力欄にフォーカスがある時は各自の Esc 挙動を尊重して素通り。
+   - `Esc`: shell（`PCShell`）レベルで最前面のオーバーレイ（通知 → 詳細パネル）を1つ閉じる。`onEscape` を `use-app-shortcuts` に渡す。前面に `[data-cairn-modal]`（Modal primitive）がある間は介入しない。入力欄フォーカス時も素通り。
    - ヒント表示（cmux/vimium 風）: `apps/web/src/components/app/shortcut-hints.tsx`。⌘（Mac）/ Ctrl（Win）または ⌥/Alt を約 350ms 押し続けると、次に押せるキーと操作を画面下中央に一覧表示。実キー押下・修飾キー解放・フォーカス喪失で消える。表示専用で実行はフックが担う。
    - **未了（次段送り）**: `Enter`=開く/送信の全画面統一は、リスト内フォーカス（`j/k`）の概念が要るため Vim モード（第3段）と併せて実装する。
-2. **第2段（○）**: `⌥N`作成 / `⌥V` / `⌥F` / `⌘K`パレット / `⌘⇧F`横断検索 / `?`ヘルプ。
-3. **第3段（△）**: Vim モード（設定トグル + 単キー層 + チャット modal + `Enter`=開く統一）。
+2. **第2段（○・実装済み）**: `⌥N`作成（projects/calendar/kanban/tasks/chats/ai が `cairn:create` を購読）/ `⌘K`パレット（`command-palette.tsx`・静的アクション）/ `⌘⇧F`横断検索（chats へ遷移して開く）/ `⌘⇧U`通知 / `?`ヘルプ（`shortcut-help.tsx`）。`⌥V`グリッド⇔表・`⌥F`フィルタは未実装。
+3. **第1.5段（Desktop 特権・実装済み）**: `Ctrl+Tab`/`Ctrl+Shift+Tab` を Electron の `before-input-event` で横取りし、`preload` の `onSeq` 経由で `cairn:seq` を発火（チャンネル・会話の順送り）。
+4. **第3段（△）**: Vim モード（設定トグル + 単キー層 + チャット modal + `Enter`=開く統一）。グローバルのクイックキャプチャ・トレイ常駐等の Desktop 特権も候補。
 
 ---
 
