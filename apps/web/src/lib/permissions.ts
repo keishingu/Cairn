@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { db, workspaceMembers } from '@cairn/db'
+import { db, workspaceMembers, channels, channelMembers } from '@cairn/db'
 import { eq, and } from 'drizzle-orm'
 
 async function getWorkspaceRole(workspaceId: string, userId: string) {
@@ -63,5 +63,39 @@ export async function requireWorkspaceMember(
   if (!isWorkspaceMember(role)) {
     return NextResponse.json({ error: 'ゲストはこの操作を実行できません' }, { status: 403 })
   }
+  return null
+}
+
+// チャンネルへのアクセス可否を検証する。
+// - 指定ワークスペースに属さないチャンネルは 403（チャンネルID総当たりによる越境アクセスを防ぐ）
+// - プライベートチャンネルは channel_members に参加しているユーザーのみ許可
+// アクセス可なら null、不可なら 403 の NextResponse を返す。
+export async function requireChannelAccess(
+  workspaceId: string,
+  userId: string,
+  channelId: string,
+): Promise<NextResponse | null> {
+  const [channel] = await db
+    .select({ id: channels.id, isPrivate: channels.isPrivate })
+    .from(channels)
+    .where(and(eq(channels.id, channelId), eq(channels.workspaceId, workspaceId)))
+    .limit(1)
+
+  if (!channel) {
+    return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+  }
+
+  if (channel.isPrivate) {
+    const [membership] = await db
+      .select({ userId: channelMembers.userId })
+      .from(channelMembers)
+      .where(and(eq(channelMembers.channelId, channelId), eq(channelMembers.userId, userId)))
+      .limit(1)
+
+    if (!membership) {
+      return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+    }
+  }
+
   return null
 }
