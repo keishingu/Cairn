@@ -14,6 +14,7 @@ import { AppShellContext } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { useDetailPanel } from '@/hooks/use-detail-panel'
 import { useAppShortcuts } from '@/hooks/use-app-shortcuts'
+import { ShortcutHints } from '@/components/app/shortcut-hints'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 const PC_STORAGE_KEY = STORAGE_KEYS.projects_view_pc
@@ -89,7 +90,17 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     else router.push(`/${p}`)
   }, [router, setProjectsView])
 
-  useAppShortcuts({ navigate })
+  // Esc=閉じる: 最前面のオーバーレイ（通知 → 詳細パネル）を1つ閉じる。
+  // Modal（ConfirmDialog や各種作成モーダル）が前面にある時は、その Modal 自身が
+  // Esc を処理するので shell は介入しない（パネルごと閉じてしまうのを防ぐ）
+  const closeTopOverlay = React.useCallback(() => {
+    if (typeof document !== 'undefined' && document.querySelector('[data-cairn-modal]')) return false
+    if (notifOpen) { setNotifOpen(false); return true }
+    if (panelMember || panelProject) { closePanel(); return true }
+    return false
+  }, [notifOpen, panelMember, panelProject, closePanel])
+
+  useAppShortcuts({ navigate, onEscape: closeTopOverlay })
 
   return (
     <AppShellContext.Provider value={{
@@ -127,6 +138,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
             </div>
           </main>
         </div>
+        <ShortcutHints page={page} />
       </div>
     </AppShellContext.Provider>
   )

@@ -38,7 +38,7 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 
 | 名前空間 | Mac | Win/Linux | 役割 |
 |---|---|---|---|
-| 数字ナビ | `⌘`+数字（Web は `⌘⇧`+数字） | `Ctrl`+数字（Web は `Ctrl⇧`+数字） | サイドメニューのページ移動 |
+| 数字ナビ | `⌘`+数字（Web は `⌘⌥`+数字） | `Ctrl`+数字（Web は `Ctrl⇧`+数字） | サイドメニューのページ移動 |
 | グローバル操作 | `⌘⇧`+英字 | `Ctrl⇧`+英字 | パレット・横断検索・ヘルプ（全画面で不変） |
 | 順送り | `⌥↑` `⌥↓` | `Alt↑` `Alt↓` | スレッド/チャンネル/会話/メッセージの前後（Teams 準拠） |
 | 画面内操作 | `⌥`+英字 | `Alt`+英字 | 今の画面のビュー切替・作成・フィルタ |
@@ -46,7 +46,7 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 ### 予約・回避
 
 - **`⌘F` はブラウザのネイティブ検索に温存**（アプリ内検索に奪わない）。
-- **Web の `⌘`+数字（1–9）はタブ切替に取られる**ため、サイドメニューは `⌘⇧`+数字へ退避。
+- **Web の `⌘`+数字（1–9）はタブ切替に取られる**ため、サイドメニューは修飾を足して退避。ただし Mac の `⌘⇧3`〜`⌘⇧6` はスクリーンショットとして OS がグローバル予約しブラウザに届かないため、**Mac Web は `⌘⌥`+数字**、**Win/Linux Web は `Ctrl⇧`+数字**（スクショ予約が無く安全）に分ける。Desktop は素の `⌘`/`Ctrl`+数字（ネイティブメニュー）。
 - **Win の `Alt`+英字はメニューニーモニックと衝突**しうるため、`D / E / F / Home` は使わず `M / W / V / N / T` 等の空き英字に限定。
 - `⌥`+英字は Mac では入力欄で特殊文字（µ, ∑…）になるため、**入力欄フォーカス中・IME 変換中は無効化**（`e.code` で判定）。
 
@@ -141,12 +141,14 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 
 ## 6. 段階導入
 
-1. **第1段（◎・実装済み）**: 数字ナビ（Desktop `⌘`数字 / Web `⌘⇧`数字）+ `⌥M/W/T`カレンダービュー + `⌥↑↓`順送り（現状はカレンダーの月/週送りのみ）。
-   - Web: `apps/web/src/hooks/use-app-shortcuts.ts`（`PCShell` でマウント）。`⌥M/W/T` は `calendar_view` を localStorage 永続化し `cairn:cal-view` を発火、`⌥↑↓` は `cairn:seq` を発火。`PageCalendar` が両イベントを購読。
+1. **第1段（◎・実装済み）**: 数字ナビ + `⌥M/W/T`カレンダービュー + `⌥↑↓`順送り（カレンダー期間・Chats チャンネル・AI 会話）+ `Esc`=閉じる + ショートカットヒント表示。
+   - Web: `apps/web/src/hooks/use-app-shortcuts.ts`（`PCShell` でマウント）。`⌥M/W/T` は `calendar_view` を localStorage 永続化し `cairn:cal-view` を発火、`⌥↑↓` は `cairn:seq` を発火。`PageCalendar` / `PageChat` / `PageAI` が `cairn:seq` を購読し、それぞれ期間・チャンネル・会話を前後に送る。
    - Desktop: `apps/desktop/src/main.js` のネイティブメニュー（`CmdOrCtrl+1..4`）→ `apps/desktop/src/preload.js` の `window.cairnDesktop.onNavigate` → Web の同フックが受ける。
-   - **未了（第1段の残り）**: `⌥↑↓` の Chats（チャンネル/メッセージ順送り）・AI（会話順送り）への接続、`Esc`/`Enter` の全画面統一リファクタ。各画面が `cairn:seq` を購読すれば拡張できる。
+   - `Esc`: shell（`PCShell`）レベルで最前面のオーバーレイ（通知 → 詳細パネル）を1つ閉じる。`onEscape` を `use-app-shortcuts` に渡す。入力欄にフォーカスがある時は各自の Esc 挙動を尊重して素通り。
+   - ヒント表示（cmux/vimium 風）: `apps/web/src/components/app/shortcut-hints.tsx`。⌘（Mac）/ Ctrl（Win）または ⌥/Alt を約 350ms 押し続けると、次に押せるキーと操作を画面下中央に一覧表示。実キー押下・修飾キー解放・フォーカス喪失で消える。表示専用で実行はフックが担う。
+   - **未了（次段送り）**: `Enter`=開く/送信の全画面統一は、リスト内フォーカス（`j/k`）の概念が要るため Vim モード（第3段）と併せて実装する。
 2. **第2段（○）**: `⌥N`作成 / `⌥V` / `⌥F` / `⌘K`パレット / `⌘⇧F`横断検索 / `?`ヘルプ。
-3. **第3段（△）**: Vim モード（設定トグル + 単キー層 + チャット modal）。
+3. **第3段（△）**: Vim モード（設定トグル + 単キー層 + チャット modal + `Enter`=開く統一）。
 
 ---
 
