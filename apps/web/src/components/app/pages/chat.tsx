@@ -293,7 +293,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // ⌥N: 新規チャンネル / ⌘⇧F: 横断検索
   React.useEffect(() => {
     const onCreate = () => setShowCreateChannel(true)
-    const onCross = () => setGlobalSearchOpen(true)
+    const onCross = () => { window.__cairnOpenCrossSearch = false; setGlobalSearchOpen(true) }
     window.addEventListener('cairn:create', onCreate)
     window.addEventListener('cairn:cross-search', onCross)
     // ⌘⇧F で他画面から chats へ遷移してきた直後はフラグで開く
