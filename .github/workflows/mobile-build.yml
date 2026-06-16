@@ -1,0 +1,77 @@
+name: Mobile Build
+
+# ネイティブ構成（依存・app.json・eas.json）が変わった PR で、
+# インストール可能なバイナリを EAS Build で作成する。
+# OTA(eas update) ではネイティブモジュールを追加できないため、
+# ネイティブ変更を含む PR はこのワークフローでビルドし直す必要がある。
+# EAS のビルド枠を消費するため、対象を最小限のパスに限定している。
+# 手動で作り直したい場合は workflow_dispatch から実行できる。
+on:
+  pull_request:
+    paths:
+      - 'apps/mobile/package.json'
+      - 'apps/mobile/app.json'
+      - 'apps/mobile/eas.json'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: EAS Build (preview)
+    runs-on: ubuntu-latest
+    environment: Preview
+    permissions:
+      contents: read
+      pull-requests: write
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # iOS の内部配布ビルドは事前に `eas credentials` で証明書/プロビジョニングの
+      # 設定が必要。未設定だと iOS は失敗するが、Android(APK) は資格情報不要で通る。
+      - name: Trigger EAS build
+        working-directory: apps/mobile
+        run: eas build --profile preview --platform all --non-interactive --no-wait
+        env:
+          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.MOBILE_PREVIEW_EAS_PROJECT_ID }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_API_BASE_URL: ${{ vars.MOBILE_PREVIEW_API_BASE_URL }}
+
+      - name: Comment build link on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                '📱 **EAS Build (preview) を開始しました。**',
+                '',
+                'ネイティブ構成の変更を含むため、OTA(eas update) プレビューではなく',
+                'このビルドをインストールして検証してください。',
+                '',
+                'ビルドの進捗・成果物（インストールリンク）はこちら:',
+                'https://expo.dev/accounts/keishingu/projects/cairn/builds',
+              ].join('\n'),
+            })
