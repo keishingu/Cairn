@@ -161,6 +161,21 @@ CLAUDE.md の方針どおり、デバイス判定は middleware の `x-device` �
 
 **推奨は A 案**（既存資産の再利用 + `/lp` を `/` に集約）。いずれの案でも、**最終的に公開 LP は `/`（実体は1つ）に統一し、`/lp` の旧 URL は `/` へリダイレクトする**ことを必須条件とする。CTA のリンク先は `/auth/login`（ログインのパス変更はしない）。
 
+### 4.4.1 CTA 動線（Try Demo → クラウド版を試す）
+
+現行 LP の主要 CTA「**Try Demo / デモを試す**」は、いずれも `href="#demo"`（ページ内アンカー）で、実体のあるデモには繋がっていない。該当箇所:
+
+- ナビの「デモを試す / Try Demo」ボタン（`apps/web/public/lp/index.html`）
+- ヒーローの「Try Demo」ボタン
+- 最終 CTA セクション（`id="demo"`）の「Try Demo」ボタン
+- フッターの `#demo` リンク（「Demo」「Cairn Cloud」）
+
+Cairn は OSS かつ自己ホスト可能なため、これらの CTA は「**クラウドホスティング版（Cairn Cloud）を使ってみる**」動線に変更し、`/auth/login`（= 公式ホスティングのログイン/サインアップ入口）へ向ける。
+
+- リンク先: `https://<本番ドメイン>/auth/login`（LP 内では相対パス `/auth/login` で可）
+- ラベル: 「Try Demo」は実態（=製品本体を試す）と食い違うため、「**クラウド版を試す / Try Cairn Cloud**」等に置き換える（最終文言は別途確定）
+- 自己ホスト派の導線（GitHub / Self-Hosted / Docs）は現行のまま温存し、Cloud 導線と併存させる
+
 ### 4.5 触らないもの
 
 - `auth/login` / `auth/signup` / `onboarding` / `invite/[token]` のパスと中身
@@ -214,6 +229,7 @@ CLAUDE.md の方針どおり、デバイス判定は middleware の `x-device` �
 - [ ] ログイン後の `/onboarding` / `/projects` 振り分けが従来どおり動く
 - [ ] LP が `(app)` の認証前提コンテキストに依存していない
 - [ ] 旧 `/lp/*` URL が `/` にリダイレクトされ、公開 LP が `/` の1つに集約されている
+- [ ] LP の主要 CTA（旧「Try Demo」）が `/auth/login` に遷移する（`#demo` アンカー止まりでない）
 
 
 ## 9. 工数目安
