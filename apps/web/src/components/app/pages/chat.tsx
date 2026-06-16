@@ -270,7 +270,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // PC: チャンネル未選択時に最初のプロジェクトチャンネルへ自動遷移
   React.useEffect(() => {
     if (!channelId && projectChannels.length > 0 && !isMobile) {
-      const firstId = projectChannels[0]!.channelId
+      // アーカイブ済みは折りたたみ表示なので、初期選択は非アーカイブを優先する
+      const firstId = (projectChannels.find(c => !c.archived) ?? projectChannels[0]!).channelId
       setChannelId(firstId)
       router.replace('/chats/' + firstId)
     }
