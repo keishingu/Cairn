@@ -9,11 +9,24 @@ import type { DmChannelDto } from '@/app/api/workspaces/dms/route'
 
 // ─── ChatSidebarSection ───────────────────────────────────────────
 
-// 見出し横の追加ボタン: プライマリ色の角丸四角に白抜きの「+」
+// 見出し横の追加ボタン: 低頻度の補助アクションなので ghost。
+// accent 色は未読バッジに独占させ、視線誘導が競合しないようにする。
+// 通常時は薄いグレーのアイコンのみ、hover 時だけ濃く＋背景を付けて押下可能を示す。
 const sectionAddButtonStyle: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   width: 20, height: 20, borderRadius: 6, flexShrink: 0,
-  background: 'var(--accent)', border: 'none', cursor: 'pointer', padding: 0,
+  background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+  color: 'var(--text-4)',
+}
+
+// hover で濃いグレー＋うっすら背景（ChatSidebarItem の hover と同じトーン）
+const onAddButtonEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
+  e.currentTarget.style.background = 'var(--card)'
+  e.currentTarget.style.color = 'var(--text-2)'
+}
+const onAddButtonLeave = (e: React.MouseEvent<HTMLButtonElement>) => {
+  e.currentTarget.style.background = 'transparent'
+  e.currentTarget.style.color = 'var(--text-4)'
 }
 
 export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; children: React.ReactNode; onAdd?: () => void }) => (
@@ -21,8 +34,8 @@ export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; 
     <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <span>{title}</span>
       {onAdd && (
-        <button onClick={onAdd} aria-label={`${title}を追加`} style={sectionAddButtonStyle}>
-          <Icon name="plus" size={13} strokeWidth={2.4} color="var(--on-accent)"/>
+        <button onClick={onAdd} aria-label={`${title}を追加`} style={sectionAddButtonStyle} onMouseEnter={onAddButtonEnter} onMouseLeave={onAddButtonLeave}>
+          <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
         </button>
       )}
     </div>
@@ -102,8 +115,8 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
 
   return (
     <div style={{ position: 'relative' }} ref={ref}>
-      <button onClick={() => setOpen(p => !p)} aria-label="ダイレクトメッセージを開始" style={sectionAddButtonStyle}>
-        <Icon name="plus" size={13} strokeWidth={2.4} color="var(--on-accent)"/>
+      <button onClick={() => setOpen(p => !p)} aria-label="ダイレクトメッセージを開始" style={sectionAddButtonStyle} onMouseEnter={onAddButtonEnter} onMouseLeave={onAddButtonLeave}>
+        <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
       </button>
       {open && (
         <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 50, minWidth: 160, overflow: 'hidden' }}>
