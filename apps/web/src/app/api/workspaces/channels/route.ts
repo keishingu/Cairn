@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { getWorkspaceMemberRole, requireWorkspaceAdmin } from '@/lib/permissions'
 
 export interface WorkspaceChannelDto {
   id: string
@@ -25,11 +25,28 @@ export async function GET() {
     const { channels, channelMembers, profiles } = await import('@cairn/db')
     const { and, eq, inArray } = await import('drizzle-orm')
 
-    const channelRows = await db
+    const allChannelRows = await db
       .select({ id: channels.id, name: channels.name, isPrivate: channels.isPrivate })
       .from(channels)
       .where(and(eq(channels.workspaceId, ctx.workspaceId), eq(channels.type, 'workspace')))
       .orderBy(channels.createdAt)
+
+    // ワークスペースチャンネルはWS全体向け。ゲストには自分が参加しているチャンネルのみに絞り、
+    // 参加していないチャンネルの存在やメンバー構成が漏れないようにする。
+    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    let channelRows = allChannelRows
+    if (callerRole === 'guest') {
+      if (allChannelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
+      const joined = await db
+        .select({ channelId: channelMembers.channelId })
+        .from(channelMembers)
+        .where(and(
+          eq(channelMembers.userId, ctx.userId),
+          inArray(channelMembers.channelId, allChannelRows.map(c => c.id)),
+        ))
+      const joinedIds = new Set(joined.map(r => r.channelId))
+      channelRows = allChannelRows.filter(c => joinedIds.has(c.id))
+    }
 
     if (channelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
 
