@@ -18,7 +18,7 @@ export async function GET(req: Request, { params }: RouteContext) {
   try {
     const { db } = await import('@cairn/db')
     const { channels, channelMembers, messages, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, isNull, and, ilike } = await import('drizzle-orm')
+    const { eq, ne, isNull, and, ilike } = await import('drizzle-orm')
     const { desc } = await import('drizzle-orm')
 
     // チャンネルがこのワークスペースに属するか確認
@@ -45,6 +45,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       .select({
         id: messages.id,
         content: messages.content,
+        messageType: messages.messageType,
         senderId: messages.senderId,
         senderName: profiles.displayName,
         senderAvatarUrl: workspaceMembers.avatarUrl,
@@ -60,6 +61,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       .where(and(
         eq(messages.channelId, channelId),
         isNull(messages.deletedAt),
+        ne(messages.messageType, 'system'),
         ilike(messages.content, `%${q}%`),
       ))
       .orderBy(desc(messages.createdAt))
@@ -68,6 +70,7 @@ export async function GET(req: Request, { params }: RouteContext) {
     const result: MessageDto[] = rows.map(r => ({
       id: r.id,
       content: r.content,
+      messageType: r.messageType,
       senderId: r.senderId,
       senderName: r.senderName,
       senderAvatarUrl: r.senderAvatarUrl ?? null,
@@ -75,6 +78,9 @@ export async function GET(req: Request, { params }: RouteContext) {
       isEdited: r.updatedAt.getTime() > r.createdAt.getTime(),
       reactions: [],
       attachments: [],
+      parentMessageId: null,
+      replyTo: null,
+      bookmarked: false,
     }))
 
     return NextResponse.json(result)

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { type AttachmentDto, postMessageSchema } from '@cairn/shared'
+import { type AttachmentDto, type MessageType, postMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { inngest } from '@/lib/inngest/client'
 import type { MessageCreatedEvent } from '@/lib/inngest/events'
@@ -12,11 +12,22 @@ export interface ReactionDto {
   emoji: string
   count: number
   mine: boolean
+  // リアクションしたユーザーの表示名（PC ではホバーで一覧表示する）
+  userNames: string[]
+}
+
+// 引用返信の参照先メッセージのサマリ
+export interface ReplyToDto {
+  id: string
+  senderName: string
+  content: string
+  isDeleted: boolean
 }
 
 export interface MessageDto {
   id: string
   content: string
+  messageType: MessageType
   senderId: string
   senderName: string
   senderAvatarUrl: string | null
@@ -24,6 +35,9 @@ export interface MessageDto {
   isEdited: boolean
   reactions: ReactionDto[]
   attachments: AttachmentDto[]
+  parentMessageId: string | null
+  replyTo: ReplyToDto | null
+  bookmarked: boolean
 }
 
 type RouteContext = { params: Promise<{ channelId: string }> }
@@ -35,7 +49,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages, profiles, messageReactions, messageAttachments, files } = await import('@cairn/db')
+    const { messages, profiles, messageReactions, messageAttachments, messageBookmarks, files } = await import('@cairn/db')
     const { eq, isNull, inArray, and } = await import('drizzle-orm')
     const { desc } = await import('drizzle-orm')
 
@@ -45,6 +59,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .select({
         id: messages.id,
         content: messages.content,
+        messageType: messages.messageType,
+        parentMessageId: messages.parentMessageId,
         senderId: messages.senderId,
         senderName: profiles.displayName,
         senderAvatarUrl: workspaceMembers.avatarUrl,
@@ -64,16 +80,20 @@ export async function GET(_req: Request, { params }: RouteContext) {
     rows.reverse()
 
     const messageIds = rows.map(r => r.id)
+    // 引用返信の参照先（表示中の100件の外にある可能性があるので別クエリで取得）
+    const parentIds = [...new Set(rows.map(r => r.parentMessageId).filter((id): id is string => !!id))]
 
-    const [reactionRows, attachmentRows] = await Promise.all([
+    const [reactionRows, attachmentRows, bookmarkRows, parentRows] = await Promise.all([
       messageIds.length > 0
         ? db
             .select({
               messageId: messageReactions.messageId,
               emoji: messageReactions.emoji,
               userId: messageReactions.userId,
+              userName: profiles.displayName,
             })
             .from(messageReactions)
+            .innerJoin(profiles, eq(messageReactions.userId, profiles.id))
             .where(inArray(messageReactions.messageId, messageIds))
         : Promise.resolve([]),
       messageIds.length > 0
@@ -92,20 +112,37 @@ export async function GET(_req: Request, { params }: RouteContext) {
             .where(inArray(messageAttachments.messageId, messageIds))
             .orderBy(messageAttachments.displayOrder)
         : Promise.resolve([]),
+      messageIds.length > 0
+        ? db
+            .select({ messageId: messageBookmarks.messageId })
+            .from(messageBookmarks)
+            .where(and(eq(messageBookmarks.userId, ctx.userId), inArray(messageBookmarks.messageId, messageIds)))
+        : Promise.resolve([]),
+      parentIds.length > 0
+        ? db
+            .select({
+              id: messages.id,
+              content: messages.content,
+              senderName: profiles.displayName,
+              deletedAt: messages.deletedAt,
+            })
+            .from(messages)
+            .innerJoin(profiles, eq(messages.senderId, profiles.id))
+            .where(inArray(messages.id, parentIds))
+        : Promise.resolve([]),
     ])
 
     const reactionMap = new Map<string, ReactionDto[]>()
     for (const r of reactionRows) {
-      const key = `${r.messageId}:${r.emoji}`
       if (!reactionMap.has(r.messageId)) reactionMap.set(r.messageId, [])
       const existing = reactionMap.get(r.messageId)!.find(x => x.emoji === r.emoji)
       if (existing) {
         existing.count++
+        existing.userNames.push(r.userName)
         if (r.userId === ctx.userId) existing.mine = true
       } else {
-        reactionMap.get(r.messageId)!.push({ emoji: r.emoji, count: 1, mine: r.userId === ctx.userId })
+        reactionMap.get(r.messageId)!.push({ emoji: r.emoji, count: 1, mine: r.userId === ctx.userId, userNames: [r.userName] })
       }
-      void key
     }
 
     const attachmentMap = new Map<string, AttachmentDto[]>()
@@ -121,9 +158,22 @@ export async function GET(_req: Request, { params }: RouteContext) {
       })
     }
 
+    const bookmarkedIds = new Set(bookmarkRows.map(b => b.messageId))
+
+    const parentMap = new Map<string, ReplyToDto>()
+    for (const p of parentRows) {
+      parentMap.set(p.id, {
+        id: p.id,
+        senderName: p.senderName,
+        content: p.deletedAt ? '' : p.content,
+        isDeleted: !!p.deletedAt,
+      })
+    }
+
     const result: MessageDto[] = rows.map(r => ({
       id: r.id,
       content: r.content,
+      messageType: r.messageType,
       senderId: r.senderId,
       senderName: r.senderName,
       senderAvatarUrl: r.senderAvatarUrl ?? null,
@@ -131,6 +181,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
       isEdited: r.updatedAt.getTime() > r.createdAt.getTime(),
       reactions: reactionMap.get(r.id) ?? [],
       attachments: attachmentMap.get(r.id) ?? [],
+      parentMessageId: r.parentMessageId,
+      replyTo: r.parentMessageId ? parentMap.get(r.parentMessageId) ?? null : null,
+      bookmarked: bookmarkedIds.has(r.id),
     }))
 
     return NextResponse.json(result)
@@ -252,6 +305,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json({
       id: inserted.id,
       content: inserted.content,
+      messageType: parsed.data.messageType ?? 'text',
       senderId: inserted.senderId,
       senderName,
       senderAvatarUrl: profile?.avatarUrl ?? null,
@@ -259,6 +313,9 @@ export async function POST(req: Request, { params }: RouteContext) {
       isEdited: false,
       reactions: [],
       attachments: [],
+      parentMessageId: parsed.data.parentMessageId ?? null,
+      replyTo: null,
+      bookmarked: false,
     } satisfies MessageDto, { status: 201 })
   } catch (err) {
     console.error('[/api/channels/[channelId]/messages POST] DB query failed:', err)

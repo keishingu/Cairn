@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { MessageSearchResultDto } from '@/app/api/search/messages/route'
+import type { BookmarkDto } from '@/app/api/me/bookmarks/route'
 import {
   useProjectChannels,
   useWorkspaceChannels,
@@ -18,6 +19,7 @@ import {
   useCreateDm,
   useMarkChannelRead,
   useCurrentUser,
+  useBookmarks,
 } from '@/lib/chat/client'
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
@@ -225,6 +227,63 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
   )
 }
 
+// ─── Bookmarks panel ──────────────────────────────────────────────
+
+interface BookmarksPanelProps {
+  onClose: () => void
+  onJump: (channelId: string, messageId: string) => void
+  isMobile?: boolean
+}
+
+const BookmarksPanel = ({ onClose, onJump, isMobile = false }: BookmarksPanelProps) => {
+  const { data: bookmarks = [], isFetching } = useBookmarks(true)
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ padding: isMobile ? '8px 12px' : '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card)', flexShrink: 0 }}>
+        <Icon name="bookmark" size={14} color="var(--accent)"/>
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>ブックマーク</span>
+        <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-3)', padding: 2 }}>
+          <Icon name="close" size={14}/>
+        </button>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {isFetching && bookmarks.length === 0 ? (
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+        ) : bookmarks.length === 0 ? (
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+            ブックマークしたメッセージはまだありません
+          </div>
+        ) : (
+          bookmarks.map((msg: BookmarkDto) => (
+            <div
+              key={msg.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => onJump(msg.channelId, msg.id)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onJump(msg.channelId, msg.id) }}
+              style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', cursor: 'pointer' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
+                  {msg.channelName}
+                </span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                {msg.content.replace(/<@[^|>\s]+\|([^>\n]+)>/g, '@$1')}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Pending cross-channel jump (survives component remount) ─────
 let _pendingJump: { channelId: string; messageId: string } | null = null
 
@@ -245,7 +304,16 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [showMemberInvite, setShowMemberInvite] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
+  const [bookmarksOpen, setBookmarksOpen] = React.useState(false)
   const [targetMessageId, setTargetMessageId] = React.useState<string | null>(null)
+
+  // パーマリンク (/chats/<channelId>?m=<messageId>) で開いたとき、該当メッセージへジャンプする。
+  // useSearchParams は Suspense 境界を要求するため、クライアント側で location から読む
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const m = new URLSearchParams(window.location.search).get('m')
+    if (m) setTargetMessageId(m)
+  }, [pathname])
 
   // ブラウザの戻る/進むでURLが変わったとき状態を同期
   React.useEffect(() => {
@@ -280,6 +348,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setChannelId(id)
     setSearchOpen(false)
     setGlobalSearchOpen(false)
+    setBookmarksOpen(false)
     setTargetMessageId(null)
     router.push('/chats/' + id)
     markChannelRead.mutate(id)
@@ -293,6 +362,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const jumpToChannelMessage = (chanId: string, messageId: string) => {
     _pendingJump = { channelId: chanId, messageId }
     setGlobalSearchOpen(false)
+    setBookmarksOpen(false)
     setChannelId(chanId)
     router.push('/chats/' + chanId)
     markChannelRead.mutate(chanId)
@@ -364,14 +434,21 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           <MobileHeader
             title="チャット"
             right={
-              <button className="btn" onClick={() => setGlobalSearchOpen(s => !s)} style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}>
-                <Icon name="search" size={16}/>
-              </button>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button className="btn" onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false) }} style={{ background: bookmarksOpen ? 'var(--card-hover)' : undefined }}>
+                  <Icon name="bookmark" size={16}/>
+                </button>
+                <button className="btn" onClick={() => { setGlobalSearchOpen(s => !s); setBookmarksOpen(false) }} style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}>
+                  <Icon name="search" size={16}/>
+                </button>
+              </div>
             }
           />
-          {globalSearchOpen
-            ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage} isMobile/>
-            : channelListNode
+          {bookmarksOpen
+            ? <BookmarksPanel onClose={() => setBookmarksOpen(false)} onJump={jumpToChannelMessage} isMobile/>
+            : globalSearchOpen
+              ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage} isMobile/>
+              : channelListNode
           }
           {createChannelUI}
         </div>
@@ -413,20 +490,30 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       <aside style={{ width: 240, background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>チャット</h2>
-          <button
-            className="btn"
-            onClick={() => setGlobalSearchOpen(s => !s)}
-            style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}
-            title="全チャンネル検索"
-          >
-            <Icon name="search" size={13}/>
-          </button>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              className="btn"
+              onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false) }}
+              style={{ background: bookmarksOpen ? 'var(--card-hover)' : undefined }}
+              title="ブックマーク"
+            >
+              <Icon name="bookmark" size={13}/>
+            </button>
+            <button
+              className="btn"
+              onClick={() => { setGlobalSearchOpen(s => !s); setBookmarksOpen(false) }}
+              style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}
+              title="全チャンネル検索"
+            >
+              <Icon name="search" size={13}/>
+            </button>
+          </div>
         </div>
         {channelListNode}
       </aside>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-        {!globalSearchOpen && (
+        {!globalSearchOpen && !bookmarksOpen && (
           <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -451,11 +538,13 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
 
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
-            {globalSearchOpen
-              ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
-              : searchOpen && channelId
-                ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-                : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
+            {bookmarksOpen
+              ? <BookmarksPanel onClose={() => setBookmarksOpen(false)} onJump={jumpToChannelMessage}/>
+              : globalSearchOpen
+                ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
+                : searchOpen && channelId
+                  ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
+                  : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
             }
           </main>
 

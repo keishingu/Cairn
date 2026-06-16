@@ -6,7 +6,8 @@ import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { DmChannelDto } from '@/app/api/workspaces/dms/route'
-import type { MessageDto, ReactionDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { MessageDto, ReactionDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { BookmarkDto } from '@/app/api/me/bookmarks/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 
 export const chatQueryKeys = {
@@ -111,15 +112,33 @@ interface SendMessageInput {
   content: string
   attachmentFileIds?: string[]
   optimisticAttachments?: AttachmentDto[]
+  parentMessageId?: string
+  optimisticReplyTo?: ReplyToDto | null
 }
 
 async function postChannelMessage(channelId: string, input: SendMessageInput): Promise<MessageDto> {
   const res = await fetchWithAuth(`/api/channels/${channelId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: input.content, attachmentFileIds: input.attachmentFileIds }),
+    body: JSON.stringify({
+      content: input.content,
+      attachmentFileIds: input.attachmentFileIds,
+      parentMessageId: input.parentMessageId,
+    }),
   })
   if (!res.ok) throw new Error('メッセージの送信に失敗しました')
+  return res.json()
+}
+
+async function toggleMessageBookmark(messageId: string): Promise<{ bookmarked: boolean }> {
+  const res = await fetchWithAuth(`/api/messages/${messageId}/bookmark`, { method: 'POST' })
+  if (!res.ok) throw new Error('ブックマークの更新に失敗しました')
+  return res.json()
+}
+
+async function fetchBookmarks(): Promise<BookmarkDto[]> {
+  const res = await fetchWithAuth('/api/me/bookmarks')
+  if (!res.ok) throw new Error('ブックマークの取得に失敗しました')
   return res.json()
 }
 
@@ -262,6 +281,7 @@ export function useSendChannelMessage(
         const optimisticMsg: MessageDto = {
           id: `optimistic-${generateId()}`,
           content: input.content,
+          messageType: 'text',
           senderId: currentUser.id,
           senderName: currentUser.displayName,
           senderAvatarUrl: currentUser.avatarUrl,
@@ -269,6 +289,9 @@ export function useSendChannelMessage(
           isEdited: false,
           reactions: [],
           attachments: input.optimisticAttachments ?? [],
+          parentMessageId: input.parentMessageId ?? null,
+          replyTo: input.optimisticReplyTo ?? null,
+          bookmarked: false,
         }
         queryClient.setQueryData<MessageDto[]>(
           chatQueryKeys.messages(channelId),
@@ -285,12 +308,13 @@ export function useSendChannelMessage(
       }
     },
     onSuccess: (newMessage, input, context) => {
-      // POST レスポンスの attachments は空のため、楽観的データを維持して次のポーリングまで表示を保つ
+      // POST レスポンスの attachments・replyTo は空のため、楽観的データを維持して次の再取得まで表示を保つ
       const finalMessage: MessageDto = {
         ...newMessage,
         attachments: newMessage.attachments.length > 0
           ? newMessage.attachments
           : (input.optimisticAttachments ?? []),
+        replyTo: newMessage.replyTo ?? input.optimisticReplyTo ?? null,
       }
       queryClient.setQueryData<MessageDto[]>(
         chatQueryKeys.messages(channelId),
@@ -360,8 +384,9 @@ export function useDeleteMessage(channelId: string | null) {
   })
 }
 
-export function useToggleMessageReaction(channelId: string | null) {
+export function useToggleMessageReaction(channelId: string | null, currentUserName?: string) {
   const queryClient = useQueryClient()
+  const myName = currentUserName ?? 'あなた'
 
   return useMutation({
     mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
@@ -380,13 +405,13 @@ export function useToggleMessageReaction(channelId: string | null) {
             if (existing.mine) {
               const newCount = existing.count - 1
               newReactions = newCount > 0
-                ? m.reactions.map((r) => r.emoji === emoji ? { ...r, count: newCount, mine: false } : r)
+                ? m.reactions.map((r) => r.emoji === emoji ? { ...r, count: newCount, mine: false, userNames: r.userNames.filter(n => n !== myName) } : r)
                 : m.reactions.filter((r) => r.emoji !== emoji)
             } else {
-              newReactions = m.reactions.map((r) => r.emoji === emoji ? { ...r, count: r.count + 1, mine: true } : r)
+              newReactions = m.reactions.map((r) => r.emoji === emoji ? { ...r, count: r.count + 1, mine: true, userNames: [...r.userNames, myName] } : r)
             }
           } else {
-            newReactions = [...m.reactions, { emoji, count: 1, mine: true }]
+            newReactions = [...m.reactions, { emoji, count: 1, mine: true, userNames: [myName] }]
           }
           return { ...m, reactions: newReactions }
         }),
@@ -399,5 +424,38 @@ export function useToggleMessageReaction(channelId: string | null) {
         queryClient.setQueryData(chatQueryKeys.messages(channelId), context.prev)
       }
     },
+  })
+}
+
+export function useToggleBookmark(channelId: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (messageId: string) => toggleMessageBookmark(messageId),
+    onMutate: async (messageId) => {
+      await queryClient.cancelQueries({ queryKey: chatQueryKeys.messages(channelId) })
+      const prev = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
+      queryClient.setQueryData<MessageDto[]>(
+        chatQueryKeys.messages(channelId),
+        (old) => (old ?? []).map((m) => m.id === messageId ? { ...m, bookmarked: !m.bookmarked } : m),
+      )
+      return { prev }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prev !== undefined) {
+        queryClient.setQueryData(chatQueryKeys.messages(channelId), context.prev)
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['bookmarks'] })
+    },
+  })
+}
+
+export function useBookmarks(enabled: boolean) {
+  return useQuery({
+    queryKey: ['bookmarks'] as const,
+    queryFn: fetchBookmarks,
+    enabled,
   })
 }
