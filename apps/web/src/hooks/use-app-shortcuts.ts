@@ -1,0 +1,115 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+'use client'
+
+import React from 'react'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
+import type { PageId } from '@/components/app/sidebar'
+
+/**
+ * グローバルなキーボードショートカット（第1段）。
+ *
+ * 哲学は docs/keyboard-shortcuts.md を参照。
+ *  - アプリ層（数字ナビ）: Mac=⌘⇧+数字 / Win・Linux=Ctrl⇧+数字
+ *    （Web では ⌘+数字 がブラウザのタブ切替に取られるため Shift を足す）
+ *  - コンテキスト層（⌥/Alt）: カレンダーの月/週/タイムライン切替・順送り
+ *  - Desktop（Electron）はネイティブメニュー ⌘+数字 を preload 経由で受ける
+ *
+ * 入力欄（input / textarea / contentEditable）にフォーカスがある時、⌥ 系は
+ * 特殊文字入力・単語移動を尊重して無効化する。数字ナビは画面移動なので常に有効。
+ */
+
+const NAV_BY_DIGIT: Record<string, PageId> = {
+  Digit1: 'projects',
+  Digit2: 'calendar',
+  Digit3: 'kanban',
+  Digit4: 'tasks',
+}
+
+type CalView = 'month' | 'week' | 'timeline'
+
+const CAL_VIEW_BY_CODE: Record<string, CalView> = {
+  KeyM: 'month',
+  KeyW: 'week',
+  KeyT: 'timeline',
+}
+
+declare global {
+  interface Window {
+    /** Electron preload が公開するブリッジ（Web 単体では undefined） */
+    cairnDesktop?: {
+      onNavigate?: (cb: (action: string) => void) => (() => void) | void
+    }
+  }
+}
+
+function isMac(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return /Mac|iPhone|iPad|iPod/.test(navigator.platform) || /Mac OS X/.test(navigator.userAgent)
+}
+
+function isEditableTarget(el: EventTarget | null): boolean {
+  if (!(el instanceof HTMLElement)) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable
+}
+
+export interface UseAppShortcutsArgs {
+  navigate: (page: PageId) => void
+}
+
+export function useAppShortcuts({ navigate }: UseAppShortcutsArgs) {
+  // navigate は毎レンダー再生成されうるので ref で最新を参照（リスナーは1回だけ登録）
+  const navRef = React.useRef(navigate)
+  navRef.current = navigate
+
+  React.useEffect(() => {
+    const mac = isMac()
+
+    // ⌥M/W/T: カレンダービュー切替。永続化 → カレンダーへ遷移 → マウント済みなら即反映
+    const applyCalView = (view: CalView) => {
+      localStorage.setItem(STORAGE_KEYS.calendar_view, view)
+      navRef.current('calendar')
+      window.dispatchEvent(new CustomEvent('cairn:cal-view', { detail: view }))
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      // アプリ層: 数字ナビ
+      const appMod = (mac ? e.metaKey : e.ctrlKey) && e.shiftKey && !e.altKey
+      const navPage = NAV_BY_DIGIT[e.code]
+      if (appMod && navPage) {
+        e.preventDefault()
+        navRef.current(navPage)
+        return
+      }
+
+      // コンテキスト層: ⌥/Alt 単独。入力欄では無効化
+      const ctxMod = e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey
+      if (!ctxMod || isEditableTarget(e.target)) return
+
+      const calView = CAL_VIEW_BY_CODE[e.code]
+      if (calView) {
+        e.preventDefault()
+        applyCalView(calView)
+        return
+      }
+      if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+        // 順送り（前/次）。今アクティブな画面が cairn:seq を解釈する
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:seq', { detail: e.code === 'ArrowUp' ? 'prev' : 'next' }))
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    // Desktop（Electron）のネイティブメニュー ⌘+数字 経由のナビゲーション
+    const offDesktop = window.cairnDesktop?.onNavigate?.((action) => {
+      navRef.current(action as PageId)
+    })
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      offDesktop?.()
+    }
+  }, [])
+}

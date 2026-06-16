@@ -10,6 +10,7 @@ import { TopBar } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
@@ -533,6 +534,8 @@ const SettingsWorkspaceGeneral = () => {
   const queryClient = useQueryClient()
   const { data: wsSettings } = useWorkspaceSettings()
   const updateSettings = useUpdateWorkspaceSettings()
+  const { isOwner } = useWorkspacePermissions()
+  const readOnly = !isOwner
 
   const { data: ws } = useQuery<WorkspaceDto>({
     queryKey: ['workspace'],
@@ -625,6 +628,18 @@ const SettingsWorkspaceGeneral = () => {
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>ワークスペース設定</h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>ワークスペース全体の表示・動作に関する設定です。</p>
 
+      {readOnly && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '10px 14px', marginBottom: 20, borderRadius: 9,
+          background: 'var(--amber-soft, var(--card-2))', border: '1px solid var(--border)',
+          color: 'var(--text-2)', fontSize: 12.5,
+        }}>
+          <Icon name="alertTriangle" size={14}/>
+          ワークスペース設定の変更にはオーナー権限が必要です。閲覧のみ可能です。
+        </div>
+      )}
+
       {/* ワークスペース情報 */}
       <section style={{ marginBottom: 24 }}>
         <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>ワークスペース情報</h2>
@@ -656,9 +671,10 @@ const SettingsWorkspaceGeneral = () => {
             />
             <button
               className="btn btn-ghost"
-              style={{ height: 30, fontSize: 12, padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+              style={{ height: 30, fontSize: 12, padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 5, ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
               onClick={() => logoInputRef.current?.click()}
-              disabled={logoMutation.isPending}
+              disabled={logoMutation.isPending || readOnly}
+              title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
             >
               <Icon name="image" size={12}/>
               {logoMutation.isPending ? 'アップロード中…' : 'アイコンを変更'}
@@ -681,13 +697,15 @@ const SettingsWorkspaceGeneral = () => {
                 value={wsName}
                 onChange={e => setWsName(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && wsName.trim() && nameMutation.mutate()}
+                readOnly={readOnly}
                 style={{ ...inputStyle, width: 180 }}
               />
               <button
                 onClick={() => nameMutation.mutate()}
-                disabled={nameMutation.isPending || !wsName.trim() || wsName === ws?.name}
+                disabled={nameMutation.isPending || !wsName.trim() || wsName === ws?.name || readOnly}
+                title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
                 className="btn btn-primary"
-                style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0 }}
+                style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0, ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
               >
                 {nameSaved ? '保存済み' : nameMutation.isPending ? '保存中…' : '保存'}
               </button>
@@ -711,13 +729,15 @@ const SettingsWorkspaceGeneral = () => {
                 onChange={e => setWsDesc(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && descMutation.mutate()}
                 placeholder="例: 東京工科大学"
+                readOnly={readOnly}
                 style={{ ...inputStyle, width: 180 }}
               />
               <button
                 onClick={() => descMutation.mutate()}
-                disabled={descMutation.isPending || wsDesc === (ws?.description ?? '')}
+                disabled={descMutation.isPending || wsDesc === (ws?.description ?? '') || readOnly}
+                title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
                 className="btn btn-primary"
-                style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0 }}
+                style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0, ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
               >
                 {descSaved ? '保存済み' : descMutation.isPending ? '保存中…' : '保存'}
               </button>
@@ -748,14 +768,16 @@ const SettingsWorkspaceGeneral = () => {
                 value={label}
                 onChange={e => setLabel(e.target.value)}
                 placeholder="プロジェクト"
+                readOnly={readOnly}
                 style={{ ...inputStyle, width: 160 }}
                 onKeyDown={e => e.key === 'Enter' && handleLabelSave()}
               />
               <button
                 onClick={handleLabelSave}
-                disabled={updateSettings.isPending}
+                disabled={updateSettings.isPending || readOnly}
+                title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
                 className="btn btn-primary"
-                style={{ height: 32, padding: '0 14px', fontSize: 12.5 }}
+                style={{ height: 32, padding: '0 14px', fontSize: 12.5, ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
               >
                 {labelSaved ? '保存済み' : '保存'}
               </button>

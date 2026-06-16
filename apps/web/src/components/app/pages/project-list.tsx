@@ -14,6 +14,7 @@ import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 
 // ─── Main component ───────────────────────────────────────────────
 interface ProjectListViewProps {
@@ -46,6 +47,7 @@ async function fetchStatuses(): Promise<ProjectStatusDto[]> {
 export const ProjectListView = ({ openPanel, isMobile, externalSearch }: ProjectListViewProps) => {
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
+  const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
   const [view, setView] = React.useState<'grid' | 'table'>(() => {
     if (typeof window === 'undefined') return 'grid'
@@ -283,7 +285,13 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 />
               )}
             </div>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowCreate(true)}
+              disabled={!canCreateProject}
+              title={canCreateProject ? undefined : `${projectLabel}の作成には管理者以上の権限が必要です`}
+              style={canCreateProject ? {} : { opacity: 0.5, cursor: 'not-allowed' }}
+            >
               <Icon name="plus" size={13}/> 新規{projectLabel}
             </button>
           </div>
@@ -461,7 +469,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       </div>
 
       {/* Mobile FAB */}
-      {isMobile && <Fab onClick={() => setShowCreate(true)} label={`新規${projectLabel}`}/>}
+      {isMobile && canCreateProject && <Fab onClick={() => setShowCreate(true)} label={`新規${projectLabel}`}/>}
     </div>
   )
 }

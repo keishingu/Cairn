@@ -9,16 +9,22 @@ import type { DmChannelDto } from '@/app/api/workspaces/dms/route'
 
 // ─── ChatSidebarSection ───────────────────────────────────────────
 
+// 見出し横の追加ボタン: プライマリ色の角丸四角に白抜きの「+」
+const sectionAddButtonStyle: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+  background: 'var(--accent)', border: 'none', cursor: 'pointer', padding: 0,
+}
+
 export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; children: React.ReactNode; onAdd?: () => void }) => (
   <div style={{ marginBottom: 10 }}>
     <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <span>{title}</span>
-      <button
-        onClick={onAdd}
-        style={{ background: 'transparent', border: 'none', cursor: onAdd ? 'pointer' : 'default', color: 'var(--text-4)', padding: 2, lineHeight: 1 }}
-      >
-        <Icon name="plus" size={11} color="var(--text-4)"/>
-      </button>
+      {onAdd && (
+        <button onClick={onAdd} aria-label={`${title}を追加`} style={sectionAddButtonStyle}>
+          <Icon name="plus" size={13} strokeWidth={2.4} color="var(--on-accent)"/>
+        </button>
+      )}
     </div>
     <div>{children}</div>
   </div>
@@ -96,11 +102,8 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
 
   return (
     <div style={{ position: 'relative' }} ref={ref}>
-      <button
-        onClick={() => setOpen(p => !p)}
-        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-4)', padding: 2, lineHeight: 1 }}
-      >
-        <Icon name="plus" size={11} color="var(--text-4)"/>
+      <button onClick={() => setOpen(p => !p)} aria-label="ダイレクトメッセージを開始" style={sectionAddButtonStyle}>
+        <Icon name="plus" size={13} strokeWidth={2.4} color="var(--on-accent)"/>
       </button>
       {open && (
         <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 50, minWidth: 160, overflow: 'hidden' }}>

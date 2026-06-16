@@ -11,16 +11,18 @@ export async function GET(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceInvites, workspaces, profiles } = await import('@cairn/db')
+    const { workspaceInvites, workspaces, profiles, projects } = await import('@cairn/db')
     const { eq, and, or, isNull, gt } = await import('drizzle-orm')
 
     const now = new Date()
+
     const [invite] = await db
       .select({
         role: workspaceInvites.role,
         expiresAt: workspaceInvites.expiresAt,
         maxUses: workspaceInvites.maxUses,
         useCount: workspaceInvites.useCount,
+        projectId: workspaceInvites.projectId,
         workspaceName: workspaces.name,
         createdByName: profiles.displayName,
       })
@@ -43,11 +45,22 @@ export async function GET(
       return NextResponse.json({ error: 'Invite link has reached its usage limit' }, { status: 410 })
     }
 
+    let projectName: string | null = null
+    if (invite.projectId) {
+      const [project] = await db
+        .select({ title: projects.title })
+        .from(projects)
+        .where(eq(projects.id, invite.projectId))
+        .limit(1)
+      projectName = project?.title ?? null
+    }
+
     return NextResponse.json({
       workspaceName: invite.workspaceName,
       createdByName: invite.createdByName,
       role: invite.role,
       expiresAt: invite.expiresAt,
+      projectName,
     })
   } catch (err) {
     console.error('[/api/invite/[token]] GET failed:', err)
