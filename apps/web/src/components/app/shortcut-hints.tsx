@@ -58,6 +58,7 @@ export function ShortcutHints({ page }: { page: PageId }) {
 
   React.useEffect(() => {
     const mac = isMac()
+    const isDesktop = typeof window !== 'undefined' && !!window.cairnDesktop
     let timer: ReturnType<typeof setTimeout> | null = null
     let shown: Layer | null = null
 
@@ -67,8 +68,13 @@ export function ShortcutHints({ page }: { page: PageId }) {
     }
 
     const desiredLayer = (e: KeyboardEvent): Layer | null => {
+      // context: 素の ⌥/Alt
       if (e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) return 'context'
-      if ((mac ? e.metaKey : e.ctrlKey) && !e.altKey) return 'app'
+      // app: Desktop=素の ⌘/Ctrl（ネイティブメニュー） / Web=Mac ⌘⌥・Win Ctrl⇧
+      const appHeld = mac
+        ? (isDesktop ? (e.metaKey && !e.ctrlKey && !e.shiftKey) : (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey))
+        : (isDesktop ? (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) : (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey))
+      if (appHeld) return 'app'
       return null
     }
 
@@ -106,7 +112,7 @@ export function ShortcutHints({ page }: { page: PageId }) {
   if (hints.length === 0) return null
 
   const prefix = layer === 'app'
-    ? (isDesktop ? (mac ? '⌘' : 'Ctrl') : (mac ? '⌘⇧' : 'Ctrl ⇧'))
+    ? (isDesktop ? (mac ? '⌘' : 'Ctrl') : (mac ? '⌘⌥' : 'Ctrl ⇧'))
     : (mac ? '⌥' : 'Alt')
   const title = layer === 'app' ? '移動' : '今の画面'
 

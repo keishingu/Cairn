@@ -85,8 +85,11 @@ export function useAppShortcuts({ navigate, onEscape }: UseAppShortcutsArgs) {
         return
       }
 
-      // アプリ層: 数字ナビ
-      const appMod = (mac ? e.metaKey : e.ctrlKey) && e.shiftKey && !e.altKey
+      // アプリ層: 数字ナビ。Web では ⌘+数字 がタブ切替に取られるため修飾を足すが、
+      // Mac の ⌘⇧3/⌘⇧4 はスクリーンショット予約と衝突するため Mac は ⌘⌥、Win/Linux は Ctrl⇧
+      const appMod = mac
+        ? (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey)
+        : (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey)
       const navPage = NAV_BY_DIGIT[e.code]
       if (appMod && navPage) {
         e.preventDefault()
