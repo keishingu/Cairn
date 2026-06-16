@@ -13,8 +13,32 @@ export async function POST(_req: Request, { params }: RouteContext) {
   if (authError) return authError
 
   try {
-    const { db, messageBookmarks } = await import('@cairn/db')
+    const { db, messageBookmarks, messages, channels, channelMembers } = await import('@cairn/db')
     const { and, eq } = await import('drizzle-orm')
+
+    // 閲覧権限のないメッセージをブックマークできないよう、対象メッセージの可視性を確認する。
+    // ワークスペース外、または未参加のプライベートチャンネルは存在を秘匿して 404 を返す
+    const [msg] = await db
+      .select({ channelId: channels.id, isPrivate: channels.isPrivate, workspaceId: channels.workspaceId })
+      .from(messages)
+      .innerJoin(channels, eq(messages.channelId, channels.id))
+      .where(eq(messages.id, messageId))
+      .limit(1)
+
+    if (!msg || msg.workspaceId !== ctx.workspaceId) {
+      return NextResponse.json({ error: 'Message not found' }, { status: 404 })
+    }
+
+    if (msg.isPrivate) {
+      const [membership] = await db
+        .select({ userId: channelMembers.userId })
+        .from(channelMembers)
+        .where(and(eq(channelMembers.channelId, msg.channelId), eq(channelMembers.userId, ctx.userId)))
+        .limit(1)
+      if (!membership) {
+        return NextResponse.json({ error: 'Message not found' }, { status: 404 })
+      }
+    }
 
     const [existing] = await db
       .select({ id: messageBookmarks.id })

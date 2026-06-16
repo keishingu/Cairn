@@ -22,8 +22,14 @@ export async function GET(_req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messageBookmarks, messages, channels, profiles, workspaceMembers, projects } = await import('@cairn/db')
-    const { eq, isNull, and, desc, sql } = await import('drizzle-orm')
+    const { messageBookmarks, messages, channels, channelMembers, profiles, workspaceMembers, projects } = await import('@cairn/db')
+    const { eq, isNull, and, or, exists, desc, sql } = await import('drizzle-orm')
+
+    // プライベートチャンネルは現在もメンバーである場合のみ表示する（アクセスを失った後のブックマーク内容漏洩を防ぐ）
+    const memberSubquery = db
+      .select({ one: sql<number>`1` })
+      .from(channelMembers)
+      .where(and(eq(channelMembers.channelId, channels.id), eq(channelMembers.userId, ctx.userId)))
 
     const rows = await db
       .select({
@@ -49,6 +55,10 @@ export async function GET(_req: Request) {
         eq(messageBookmarks.userId, ctx.userId),
         eq(channels.workspaceId, ctx.workspaceId),
         isNull(messages.deletedAt),
+        or(
+          eq(channels.isPrivate, false),
+          exists(memberSubquery),
+        ),
       ))
       .orderBy(desc(messageBookmarks.createdAt))
       .limit(100)
