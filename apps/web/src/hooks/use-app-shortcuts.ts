@@ -11,8 +11,8 @@ import type { PageId } from '@/components/app/sidebar'
  * グローバルなキーボードショートカット（第1段）。
  *
  * 哲学は docs/keyboard-shortcuts.md を参照。
- *  - アプリ層（数字ナビ）: Mac=⌘⇧+数字 / Win・Linux=Ctrl⇧+数字
- *    （Web では ⌘+数字 がブラウザのタブ切替に取られるため Shift を足す）
+ *  - アプリ層（数字ナビ・Web）: Mac=⌘⌥+数字 / Win・Linux=Ctrl⇧+数字
+ *    （⌘+数字 はタブ切替に取られる。Mac は ⌘⇧3/4 がスクショ予約のため ⌘⌥ を使う）
  *  - コンテキスト層（⌥/Alt）: カレンダーの月/週/タイムライン切替・順送り
  *  - Desktop（Electron）はネイティブメニュー ⌘+数字 を preload 経由で受ける
  *
