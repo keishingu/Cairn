@@ -11,8 +11,10 @@ export interface LightboxImage {
   key: string
   src: string
   alt?: string
-  /** 下部に表示するキャプション（ファイル名など） */
+  /** 下部に表示するキャプション（ファイル名・プロジェクト名など） */
   caption?: React.ReactNode
+  /** 枚数カウンタの横に表示する補足情報（撮影日など） */
+  meta?: React.ReactNode
 }
 
 // ギャラリーと同じ Lightroom 風の拡大表示。チャット・ギャラリーで共用する
@@ -77,7 +79,7 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
       </div>
 
       {/* メタ情報 */}
-      {(item.caption || images.length > 1) && (
+      {(item.caption || item.meta || images.length > 1) && (
         <div style={{
           position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
@@ -88,12 +90,14 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
               {item.caption}
             </div>
           )}
-          {images.length > 1 && (
+          {(images.length > 1 || item.meta) && (
             <div style={{
               fontSize: 12, color: 'rgba(255,255,255,0.65)',
               background: 'rgba(0,0,0,0.4)', padding: '3px 10px', borderRadius: 20,
             }}>
-              {index + 1} / {images.length}
+              {images.length > 1 ? `${index + 1} / ${images.length}` : ''}
+              {images.length > 1 && item.meta ? ' · ' : ''}
+              {item.meta}
             </div>
           )}
         </div>
