@@ -29,10 +29,10 @@ const NAV_BY_DIGIT: Record<string, PageId> = {
 
 type CalView = 'month' | 'week' | 'timeline'
 
+// timeline は PC に描画ビューが無いため、現状ショートカットは月/週のみ割り当てる
 const CAL_VIEW_BY_CODE: Record<string, CalView> = {
   KeyM: 'month',
   KeyW: 'week',
-  KeyT: 'timeline',
 }
 
 declare global {
@@ -52,7 +52,8 @@ function isMac(): boolean {
 function isEditableTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false
   const tag = el.tagName
-  return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable
+  // SELECT も含める: Alt+↑↓ はネイティブのドロップダウン操作なので奪わない
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
 }
 
 export interface UseAppShortcutsArgs {

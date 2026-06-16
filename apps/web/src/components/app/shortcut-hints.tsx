@@ -29,7 +29,6 @@ function contextHints(page: PageId): Hint[] {
     return [
       { keys: ['M'], label: '月表示' },
       { keys: ['W'], label: '週表示' },
-      { keys: ['T'], label: 'タイムライン' },
       { keys: ['↑', '↓'], label: '前 / 次の期間' },
     ]
   }
@@ -46,7 +45,7 @@ function isMac(): boolean {
 function isEditable(el: Element | null): boolean {
   if (!(el instanceof HTMLElement)) return false
   const tag = el.tagName
-  return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
 }
 
 const SHOW_DELAY_MS = 350

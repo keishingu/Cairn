@@ -78,7 +78,7 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 | キー | 操作 |
 |---|---|
 | `⌥↑` `⌥↓` | 順送り（スレッド / チャンネル / 会話 / メッセージ） |
-| `⌥M` `⌥W` `⌥T` | カレンダー 月 / 週 / タイムライン |
+| `⌥M` `⌥W` | カレンダー 月 / 週（タイムラインは PC に描画ビューが無いため割当なし） |
 | `⌥V` | 一覧 グリッド ⇔ 表 |
 | `⌥N` | 新規作成（その画面の主役を作る） |
 | `⌥F` | フィルタ popover を開く |
@@ -141,7 +141,7 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 
 ## 6. 段階導入
 
-1. **第1段（◎・実装済み）**: 数字ナビ + `⌥M/W/T`カレンダービュー + `⌥↑↓`順送り（カレンダー期間・Chats チャンネル・AI 会話）+ `Esc`=閉じる + ショートカットヒント表示。
+1. **第1段（◎・実装済み）**: 数字ナビ + `⌥M/W`カレンダービュー + `⌥↑↓`順送り（カレンダー期間・Chats チャンネル・AI 会話）+ `Esc`=閉じる + ショートカットヒント表示。
    - Web: `apps/web/src/hooks/use-app-shortcuts.ts`（`PCShell` でマウント）。`⌥M/W/T` は `calendar_view` を localStorage 永続化し `cairn:cal-view` を発火、`⌥↑↓` は `cairn:seq` を発火。`PageCalendar` / `PageChat` / `PageAI` が `cairn:seq` を購読し、それぞれ期間・チャンネル・会話を前後に送る。
    - Desktop: `apps/desktop/src/main.js` のネイティブメニュー（`CmdOrCtrl+1..4`）→ `apps/desktop/src/preload.js` の `window.cairnDesktop.onNavigate` → Web の同フックが受ける。
    - `Esc`: shell（`PCShell`）レベルで最前面のオーバーレイ（通知 → 詳細パネル）を1つ閉じる。`onEscape` を `use-app-shortcuts` に渡す。入力欄にフォーカスがある時は各自の Esc 挙動を尊重して素通り。
