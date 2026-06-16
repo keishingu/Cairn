@@ -6,6 +6,11 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
+import { hasReadMessage } from '@/lib/push/suppress'
+
+// Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
+// 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
+const PUSH_GRACE_PERIOD = '10s'
 
 // <@userId|displayName> 形式の構造化メンションから userId を抽出する
 function extractMentionedUserIds(content: string): string[] {
@@ -16,6 +21,44 @@ function extractMentionedUserIds(content: string): string[] {
 // <@userId|displayName> を @displayName に変換する
 function stripMentions(content: string): string {
   return content.replace(/<@[^|>\s]+\|([^>\n]+)>/g, '@$1')
+}
+
+// 猶予期間中に対象メッセージを既読にした受信者を Push 対象から除外する
+async function filterUnreadRecipients<T extends { userId: string }>(
+  messageId: string,
+  channelId: string,
+  recipients: T[],
+): Promise<T[]> {
+  if (recipients.length === 0) return []
+
+  const { db, messages, channelReadStates } = await import('@cairn/db')
+  const { eq, and, inArray } = await import('drizzle-orm')
+
+  const [msg] = await db
+    .select({ createdAt: messages.createdAt, deletedAt: messages.deletedAt })
+    .from(messages)
+    .where(eq(messages.id, messageId))
+    .limit(1)
+
+  // 猶予中に削除されたメッセージの Push は送らない
+  if (!msg || msg.deletedAt) return []
+
+  const states = await db
+    .select({
+      userId: channelReadStates.userId,
+      lastReadAt: channelReadStates.lastReadAt,
+      lastReadMessageId: channelReadStates.lastReadMessageId,
+    })
+    .from(channelReadStates)
+    .where(and(
+      eq(channelReadStates.channelId, channelId),
+      inArray(channelReadStates.userId, recipients.map(r => r.userId)),
+    ))
+
+  const stateMap = new Map(states.map(s => [s.userId, s]))
+  return recipients.filter(
+    r => !hasReadMessage(stateMap.get(r.userId), { id: messageId, createdAt: msg.createdAt }),
+  )
 }
 
 export const onMessageCreated = inngest.createFunction(
@@ -62,15 +105,22 @@ export const onMessageCreated = inngest.createFunction(
         )
       })
 
-      await step.run('send-dm-push', async () => {
-        await Promise.allSettled(
-          members.map(m => sendPushToUser(m.userId, {
-            title: senderName,
-            body: stripMentions(content).slice(0, 100),
-            url: `/chats/${channelId}`,
-          })),
-        )
-      })
+      if (members.length > 0) {
+        // 閲覧中の相手に Push を出さないため、猶予後に既読を再確認してから送る
+        await step.sleep('push-grace', PUSH_GRACE_PERIOD)
+        const unreadMembers = await step.run('filter-dm-push-targets', () =>
+          filterUnreadRecipients(messageId, channelId, members))
+
+        await step.run('send-dm-push', async () => {
+          await Promise.allSettled(
+            unreadMembers.map(m => sendPushToUser(m.userId, {
+              title: senderName,
+              body: stripMentions(content).slice(0, 100),
+              url: `/chats/${channelId}`,
+            })),
+          )
+        })
+      }
       return { mentionNotifications: 0, fileNotifications: 0, dm: true }
     }
 
@@ -127,18 +177,6 @@ export const onMessageCreated = inngest.createFunction(
           })
       })
       mentionNotifications = mentionedMembers.length
-
-      await step.run('send-mention-push', async () => {
-        await Promise.allSettled(
-          mentionedMembers.map(m =>
-            sendPushToUser(m.userId, {
-              title: `${senderName} があなたをメンションしました`,
-              body: stripMentions(content).slice(0, 100),
-              url: `/chats/${channelId}`,
-            }),
-          ),
-        )
-      })
     }
 
     // ファイル添付通知（送信者以外の全メンバーへ）
@@ -172,6 +210,25 @@ export const onMessageCreated = inngest.createFunction(
         )
       })
       fileNotifications = members.length
+    }
+
+    // メンション Push は猶予後に既読を再確認してから送る（アプリ内通知・バッジは上で記録済み）
+    if (mentionedMembers.length > 0) {
+      await step.sleep('push-grace', PUSH_GRACE_PERIOD)
+      const unreadMembers = await step.run('filter-mention-push-targets', () =>
+        filterUnreadRecipients(messageId, channelId, mentionedMembers))
+
+      await step.run('send-mention-push', async () => {
+        await Promise.allSettled(
+          unreadMembers.map(m =>
+            sendPushToUser(m.userId, {
+              title: `${senderName} があなたをメンションしました`,
+              body: stripMentions(content).slice(0, 100),
+              url: `/chats/${channelId}`,
+            }),
+          ),
+        )
+      })
     }
 
     return { mentionNotifications, fileNotifications }
