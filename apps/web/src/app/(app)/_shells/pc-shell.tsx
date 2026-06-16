@@ -14,6 +14,7 @@ import { AppShellContext } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { useDetailPanel } from '@/hooks/use-detail-panel'
 import { useAppShortcuts } from '@/hooks/use-app-shortcuts'
+import { ShortcutHints } from '@/components/app/shortcut-hints'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 const PC_STORAGE_KEY = STORAGE_KEYS.projects_view_pc
@@ -89,7 +90,14 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     else router.push(`/${p}`)
   }, [router, setProjectsView])
 
-  useAppShortcuts({ navigate })
+  // Esc=閉じる: 最前面のオーバーレイ（通知 → 詳細パネル）を1つ閉じる
+  const closeTopOverlay = React.useCallback(() => {
+    if (notifOpen) { setNotifOpen(false); return true }
+    if (panelMember || panelProject) { closePanel(); return true }
+    return false
+  }, [notifOpen, panelMember, panelProject, closePanel])
+
+  useAppShortcuts({ navigate, onEscape: closeTopOverlay })
 
   return (
     <AppShellContext.Provider value={{
@@ -127,6 +135,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
             </div>
           </main>
         </div>
+        <ShortcutHints page={page} />
       </div>
     </AppShellContext.Provider>
   )

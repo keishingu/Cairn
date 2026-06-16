@@ -57,12 +57,16 @@ function isEditableTarget(el: EventTarget | null): boolean {
 
 export interface UseAppShortcutsArgs {
   navigate: (page: PageId) => void
+  /** Esc 押下時に呼ばれる。何か閉じたら true を返すと preventDefault する */
+  onEscape?: () => boolean
 }
 
-export function useAppShortcuts({ navigate }: UseAppShortcutsArgs) {
+export function useAppShortcuts({ navigate, onEscape }: UseAppShortcutsArgs) {
   // navigate は毎レンダー再生成されうるので ref で最新を参照（リスナーは1回だけ登録）
   const navRef = React.useRef(navigate)
   navRef.current = navigate
+  const escRef = React.useRef(onEscape)
+  escRef.current = onEscape
 
   React.useEffect(() => {
     const mac = isMac()
@@ -75,6 +79,12 @@ export function useAppShortcuts({ navigate }: UseAppShortcutsArgs) {
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
+      // Esc=閉じる（全画面共通）。入力欄では各自の Esc 挙動を尊重して素通り
+      if (e.key === 'Escape' && !isEditableTarget(e.target)) {
+        if (escRef.current?.()) e.preventDefault()
+        return
+      }
+
       // アプリ層: 数字ナビ
       const appMod = (mac ? e.metaKey : e.ctrlKey) && e.shiftKey && !e.altKey
       const navPage = NAV_BY_DIGIT[e.code]

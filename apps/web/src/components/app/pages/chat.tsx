@@ -290,6 +290,28 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setTargetMessageId(messageId)
   }
 
+  // ⌥↑↓（順送り）: チャンネル一覧（プロジェクト → 全体 → DM の表示順）を前/次へ
+  React.useEffect(() => {
+    const orderedIds = [
+      ...projectChannels.map(c => c.channelId),
+      ...workspaceChannels.map(c => c.id),
+      ...dms.map(d => d.id),
+    ]
+    if (orderedIds.length === 0) return
+    const onSeq = (e: Event) => {
+      const dir = (e as CustomEvent<'prev' | 'next'>).detail
+      const idx = channelId ? orderedIds.indexOf(channelId) : -1
+      const nextIdx = idx === -1
+        ? (dir === 'next' ? 0 : orderedIds.length - 1)
+        : Math.min(Math.max(idx + (dir === 'next' ? 1 : -1), 0), orderedIds.length - 1)
+      const nextId = orderedIds[nextIdx]
+      if (nextId && nextId !== channelId) selectChannel(nextId)
+    }
+    window.addEventListener('cairn:seq', onSeq)
+    return () => window.removeEventListener('cairn:seq', onSeq)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId, projectChannels, workspaceChannels, dms])
+
   const jumpToChannelMessage = (chanId: string, messageId: string) => {
     _pendingJump = { channelId: chanId, messageId }
     setGlobalSearchOpen(false)
