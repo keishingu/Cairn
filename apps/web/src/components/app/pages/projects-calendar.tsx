@@ -1488,7 +1488,9 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   // ⌥N: 新規プロジェクト（今日の日付で作成モーダルを開く）
   React.useEffect(() => {
     const onCreate = () => {
-      const iso = new Date().toISOString().slice(0, 10)
+      // クリック導線（ツールバーの新規ボタン）と同じローカル日付を使う。
+      // toISOString() は UTC なので、US 等で日付がズレる
+      const iso = formatISO(new Date())
       openCreate(iso, iso)
     }
     window.addEventListener('cairn:create', onCreate)

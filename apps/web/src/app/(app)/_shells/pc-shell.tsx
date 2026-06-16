@@ -106,6 +106,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
 
   useAppShortcuts({
     navigate,
+    page,
     onEscape: closeTopOverlay,
     onCommandPalette: () => setPaletteOpen(true),
     onHelp: () => setHelpOpen(true),

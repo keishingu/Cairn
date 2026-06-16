@@ -36,6 +36,10 @@ const CAL_VIEW_BY_CODE: Record<string, CalView> = {
   KeyW: 'week',
 }
 
+// ⌥←→（期間）と ⌥↑↓（順送り）・⌥N（作成）は、対応する画面でのみ既定動作を奪う
+const SEQ_PAGES = new Set<PageId>(['chats', 'ai'])
+const CREATE_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban', 'tasks', 'chats', 'ai'])
+
 declare global {
   interface Window {
     /** Electron preload が公開するブリッジ（Web 単体では undefined） */
@@ -63,6 +67,8 @@ function isEditableTarget(el: EventTarget | null): boolean {
 
 export interface UseAppShortcutsArgs {
   navigate: (page: PageId) => void
+  /** 現在の画面。⌥←→/↑↓/N の既定動作を奪う対象を絞るのに使う */
+  page: PageId
   /** Esc 押下時に呼ばれる。何か閉じたら true を返すと preventDefault する */
   onEscape?: () => boolean
   /** ⌘K コマンドパレットを開く */
@@ -73,10 +79,12 @@ export interface UseAppShortcutsArgs {
   onNotifications?: () => void
 }
 
-export function useAppShortcuts({ navigate, onEscape, onCommandPalette, onHelp, onNotifications }: UseAppShortcutsArgs) {
+export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, onHelp, onNotifications }: UseAppShortcutsArgs) {
   // ハンドラは毎レンダー再生成されうるので ref で最新を参照（リスナーは1回だけ登録）
   const navRef = React.useRef(navigate)
   navRef.current = navigate
+  const pageRef = React.useRef(page)
+  pageRef.current = page
   const escRef = React.useRef(onEscape)
   escRef.current = onEscape
   const paletteRef = React.useRef(onCommandPalette)
@@ -159,20 +167,25 @@ export function useAppShortcuts({ navigate, onEscape, onCommandPalette, onHelp, 
         applyCalView(calView)
         return
       }
-      // 時間軸は水平: ⌥←/→ でカレンダーの前/次の期間
+      // 時間軸は水平: ⌥←/→ でカレンダーの前/次の期間。
+      // カレンダー以外では受け手がいないので、ブラウザの戻る/進む（Alt+←→）を奪わない
       if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+        if (pageRef.current !== 'calendar') return
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:period', { detail: e.code === 'ArrowLeft' ? 'prev' : 'next' }))
         return
       }
-      // リストは垂直: ⌥↑/↓ で順送り（チャンネル・会話）
+      // リストは垂直: ⌥↑/↓ で順送り（チャンネル・会話）。対象画面のみ
       if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+        if (!SEQ_PAGES.has(pageRef.current)) return
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:seq', { detail: e.code === 'ArrowUp' ? 'prev' : 'next' }))
         return
       }
-      // ⌥N: 新規作成（今アクティブな画面が cairn:create を解釈する）
+      // ⌥N: 新規作成（今アクティブな画面が cairn:create を解釈する）。
+      // 長押しのオートリピートで多重発火しないよう e.repeat を弾く
       if (e.code === 'KeyN') {
+        if (e.repeat || !CREATE_PAGES.has(pageRef.current)) return
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:create'))
       }
