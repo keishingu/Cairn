@@ -128,7 +128,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
             })
             .from(messages)
             .innerJoin(profiles, eq(messages.senderId, profiles.id))
-            .where(inArray(messages.id, parentIds))
+            // 引用バーに他チャンネル/他ワークスペースの内容が漏れないよう、親は同一チャンネルに限定する
+            .where(and(inArray(messages.id, parentIds), eq(messages.channelId, channelId)))
         : Promise.resolve([]),
     ])
 
@@ -213,7 +214,24 @@ export async function POST(req: Request, { params }: RouteContext) {
   try {
     const { db } = await import('@cairn/db')
     const { messages, profiles, messageAttachments } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { eq, and, isNull } = await import('drizzle-orm')
+
+    // 引用返信の親は、同一チャンネルの未削除メッセージに限定する。
+    // 他チャンネルの ID を親に偽装して内容を引用バーに漏らす攻撃を防ぐ
+    if (parsed.data.parentMessageId) {
+      const [parent] = await db
+        .select({ id: messages.id })
+        .from(messages)
+        .where(and(
+          eq(messages.id, parsed.data.parentMessageId),
+          eq(messages.channelId, channelId),
+          isNull(messages.deletedAt),
+        ))
+        .limit(1)
+      if (!parent) {
+        return NextResponse.json({ error: '返信先のメッセージが見つかりません' }, { status: 422 })
+      }
+    }
 
     const attachmentFileIds = parsed.data.attachmentFileIds ?? []
 
