@@ -1321,7 +1321,12 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const [calView, setCalView] = React.useState<CalView>(() => {
     if (typeof window === 'undefined') return 'month'
     const saved = localStorage.getItem(STORAGE_KEYS.calendar_view)
-    return saved === 'month' || saved === 'week' || saved === 'timeline' ? saved : 'month'
+    // calendar_view は PC/モバイル共有。timeline は PC に描画ビューが無いため、
+    // モバイルで保存された timeline を PC が復元しても月グリッドにフォールバックして
+    // 表示が食い違う。PC では timeline を月へクランプする
+    if (saved === 'week') return 'week'
+    if (saved === 'timeline' && isMobile) return 'timeline'
+    return 'month'
   })
   // UI 操作・ショートカット双方で表示を永続化し、リロード後も維持する
   const setCalViewPersisted = React.useCallback((v: CalView) => {
