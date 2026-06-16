@@ -6,7 +6,7 @@ import type { JSONValue, ToolInvocation } from 'ai'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, TypingDots } from '../primitives'
 import { MobileHeader } from '../mobile/header'
-import { BellButton } from '../sidebar'
+import { TopBar } from '../sidebar'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
@@ -443,10 +443,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <header style={{ height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 24px', borderBottom: '1px solid var(--border)', background: 'var(--card)', gap: 16 }}>
-        <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', flex: 1 }}>AIアシスタント</h1>
-        <BellButton />
-      </header>
+      <TopBar title="AIアシスタント"/>
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <ConversationSidebar
         conversations={conversations}

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { db, workspaceMembers, projectMembers } from '@cairn/db'
+import { db, workspaceMembers } from '@cairn/db'
 import { eq, and } from 'drizzle-orm'
 
 async function getWorkspaceRole(workspaceId: string, userId: string) {
@@ -14,61 +14,54 @@ async function getWorkspaceRole(workspaceId: string, userId: string) {
   return member?.role ?? null
 }
 
+export function isWorkspaceOwner(role: string | null): boolean {
+  return role === 'owner'
+}
+
 export function isWorkspaceAdmin(role: string | null): boolean {
   return role === 'owner' || role === 'admin'
+}
+
+export function isWorkspaceMember(role: string | null): boolean {
+  return role === 'owner' || role === 'admin' || role === 'member'
 }
 
 export async function getWorkspaceMemberRole(workspaceId: string, userId: string) {
   return getWorkspaceRole(workspaceId, userId)
 }
 
-// workspace の admin または owner のみ許可。それ以外は 403 を返す
+// workspace の owner のみ許可（WS名・ロゴ等の設定変更）
+export async function requireWorkspaceOwner(
+  workspaceId: string,
+  userId: string,
+): Promise<NextResponse | null> {
+  const role = await getWorkspaceRole(workspaceId, userId)
+  if (!isWorkspaceOwner(role)) {
+    return NextResponse.json({ error: 'この操作にはオーナー権限が必要です' }, { status: 403 })
+  }
+  return null
+}
+
+// workspace の admin または owner のみ許可（メンバー管理・プロジェクト作成削除・ゲスト招待）
 export async function requireWorkspaceAdmin(
   workspaceId: string,
   userId: string,
 ): Promise<NextResponse | null> {
   const role = await getWorkspaceRole(workspaceId, userId)
   if (!isWorkspaceAdmin(role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    return NextResponse.json({ error: 'この操作には管理者以上の権限が必要です' }, { status: 403 })
   }
   return null
 }
 
-async function getProjectRole(projectId: string, userId: string) {
-  const [member] = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-    .limit(1)
-  return member?.role ?? null
-}
-
-// project の leader/subleader または workspace admin+ のみ許可
-export async function requireProjectManager(
-  projectId: string,
-  userId: string,
+// workspace の member 以上（owner/admin/member）を許可。guest は不可（プロジェクト編集・メンバー追加削除）
+export async function requireWorkspaceMember(
   workspaceId: string,
-): Promise<NextResponse | null> {
-  const [wsRole, projRole] = await Promise.all([
-    getWorkspaceRole(workspaceId, userId),
-    getProjectRole(projectId, userId),
-  ])
-  if (isWorkspaceAdmin(wsRole)) return null
-  if (projRole === 'leader' || projRole === 'subleader') return null
-  return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-}
-
-// project の leader または workspace admin+ のみ削除を許可
-export async function requireProjectLeader(
-  projectId: string,
   userId: string,
-  workspaceId: string,
 ): Promise<NextResponse | null> {
-  const [wsRole, projRole] = await Promise.all([
-    getWorkspaceRole(workspaceId, userId),
-    getProjectRole(projectId, userId),
-  ])
-  if (isWorkspaceAdmin(wsRole)) return null
-  if (projRole === 'leader') return null
-  return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const role = await getWorkspaceRole(workspaceId, userId)
+  if (!isWorkspaceMember(role)) {
+    return NextResponse.json({ error: 'ゲストはこの操作を実行できません' }, { status: 403 })
+  }
+  return null
 }

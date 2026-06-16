@@ -14,6 +14,7 @@ interface InviteInfo {
   createdByName: string
   role: string
   expiresAt: string | null
+  projectName: string | null
 }
 
 export default function InvitePage() {
@@ -102,13 +103,16 @@ export default function InvitePage() {
   const expiresLabel = info.expiresAt
     ? `${new Date(info.expiresAt).toLocaleDateString('ja-JP')} まで有効`
     : '無期限'
+  const subtitle = info.projectName
+    ? `「${info.projectName}」プロジェクトへの招待`
+    : 'ワークスペースへの招待'
 
   return (
     <div style={centeredStyle}>
       <div style={{ width: '100%', maxWidth: 400 }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={logoStyle}>Cairn</div>
-          <div style={{ fontSize: 14, color: 'var(--text-3)' }}>ワークスペースへの招待</div>
+          <div style={{ fontSize: 14, color: 'var(--text-3)' }}>{subtitle}</div>
         </div>
 
         <div style={cardStyle}>
@@ -119,6 +123,11 @@ export default function InvitePage() {
             <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', marginBottom: 8 }}>
               {info.workspaceName}
             </div>
+            {info.projectName && (
+              <div style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 8 }}>
+                {info.projectName}
+              </div>
+            )}
             <div style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
               <span style={badgeStyle}>{roleLabel}として参加</span>
               <span style={{ ...badgeStyle, background: 'var(--bg)', color: 'var(--text-3)' }}>{expiresLabel}</span>

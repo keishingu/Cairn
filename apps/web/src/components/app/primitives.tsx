@@ -88,6 +88,7 @@ const PATHS: Record<string, React.ReactNode> = {
   code:        <><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></>,
   copy:        <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
   trash:       <><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></>,
+  link:        <><path d="M10 13a5 5 0 0 0 7.5.7l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.7l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></>,
   flask:       <><path d="M9 2v6L4 19a2 2 0 0 0 1.8 3h12.4a2 2 0 0 0 1.8-3L15 8V2"/><path d="M8.5 2h7"/><path d="M6.5 14h11"/></>,
   alertTriangle: <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,
 }
@@ -196,6 +197,36 @@ export const StatusChip = ({ name, color, size = 11 }: StatusChipProps) => (
     {name}
   </span>
 )
+
+// ─── Unread badge ─────────────────────────────────────────────────
+// 未読件数バッジ。ヘッダーのベル・サイドバー・チャンネル一覧・通知パネルで
+// 形・色・サイズを揃えるための共通コンポーネント。0 件では何も描画しない。
+interface UnreadBadgeProps {
+  count: number
+  /** これを超える件数は `${max}+` 表記にする */
+  max?: number
+  /** sm: アイコン重ね用の小サイズ / md: 行内の標準サイズ */
+  size?: 'sm' | 'md'
+  /** 絶対配置・枠線などの位置調整を呼び出し側から渡す */
+  style?: React.CSSProperties
+}
+
+export const UnreadBadge = ({ count, max = 99, size = 'md', style }: UnreadBadgeProps) => {
+  if (count <= 0) return null
+  const sm = size === 'sm'
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      height: sm ? 16 : 18, minWidth: sm ? 16 : 18, padding: '0 5px',
+      borderRadius: 999, boxSizing: 'border-box', lineHeight: 1,
+      background: 'var(--accent)', color: 'var(--on-accent)',
+      fontSize: sm ? 10 : 11, fontWeight: 700,
+      ...style,
+    }}>
+      {count > max ? `${max}+` : count}
+    </span>
+  )
+}
 
 // ─── Mountain photo ───────────────────────────────────────────────
 interface MountainPhotoProps {
@@ -340,6 +371,28 @@ export function onBlurRing(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaEl
   e.currentTarget.style.borderColor = invalid ? 'var(--red)' : 'var(--border)'
   e.currentTarget.style.boxShadow = 'none'
 }
+
+// ─── FAB（モバイルの新規作成ボタン）──────────────────────────────
+// ボトムナビの上・右下固定。モバイルのページ主要作成アクションはこれに統一する
+export const Fab = ({ onClick, label }: { onClick: () => void; label: string }) => (
+  <button
+    onClick={onClick}
+    aria-label={label}
+    style={{
+      position: 'fixed',
+      right: 16,
+      bottom: 'calc(80px + env(safe-area-inset-bottom) + 16px)',
+      width: 52, height: 52, borderRadius: '50%',
+      background: 'var(--accent)', color: 'var(--on-accent)',
+      border: 'none', cursor: 'pointer',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+      zIndex: 50,
+    }}
+  >
+    <Icon name="plus" size={22}/>
+  </button>
+)
 
 // ─── Typing dots animation ────────────────────────────────────────
 export const TypingDots = () => (

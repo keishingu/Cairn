@@ -4,10 +4,13 @@ import React from 'react'
 import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
-import { BellButton } from '../sidebar'
+import { ConfirmDialog } from '../confirm-dialog'
+import { RowActionMenu } from '../row-action-menu'
+import { TopBar } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
@@ -324,25 +327,19 @@ const StatusRow = ({
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px' }}>
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: status.color, flexShrink: 0 }}/>
         <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{status.name}</span>
-        <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0 }} onClick={() => setEditing(true)}>
-          <Icon name="edit" size={12}/>
-        </button>
-        {!confirmDel ? (
-          <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0, color: 'var(--red-text)' }} onClick={() => setConfirmDel(true)}>
-            <Icon name="trash" size={12}/>
-          </button>
-        ) : (
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button className="btn btn-ghost" style={{ height: 26, fontSize: 11.5, padding: '0 8px' }} onClick={() => setConfirmDel(false)}>キャンセル</button>
-            <button
-              onClick={() => deleteMutation.mutate()}
-              disabled={deleteMutation.isPending}
-              style={{ height: 26, fontSize: 11.5, padding: '0 8px', borderRadius: 6, border: 'none', background: 'var(--red)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}
-            >
-              {deleteMutation.isPending ? '削除中…' : '削除'}
-            </button>
-          </div>
-        )}
+        <RowActionMenu
+          actions={[
+            { icon: 'edit', label: '編集', onSelect: () => setEditing(true) },
+            { icon: 'trash', label: '削除', danger: true, onSelect: () => setConfirmDel(true) },
+          ]}
+        />
+        <ConfirmDialog
+          open={confirmDel}
+          title="ステータスを削除"
+          message={`ステータス「${status.name}」を削除しますか？この操作は取り消せません。`}
+          onConfirm={() => deleteMutation.mutateAsync()}
+          onClose={() => setConfirmDel(false)}
+        />
       </div>
     )
   }
@@ -467,12 +464,14 @@ const SettingsWorkflow = () => {
               </div>
             </div>
           ) : (
-            <button
-              onClick={() => setShowAdd(true)}
-              style={{ width: '100%', padding: '10px', border: 'none', background: 'transparent', color: 'var(--text-3)', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderTop: statuses.length > 0 ? '1px solid var(--divider)' : 'none' }}
-            >
-              <Icon name="plus" size={13}/> ステータスを追加
-            </button>
+            <div style={{ padding: 10, borderTop: statuses.length > 0 ? '1px solid var(--divider)' : 'none' }}>
+              <button
+                onClick={() => setShowAdd(true)}
+                style={{ width: '100%', padding: '10px', borderRadius: 8, border: '1px dashed var(--border-2)', background: 'transparent', color: 'var(--text-3)', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+              >
+                <Icon name="plus" size={13}/> ステータスを追加
+              </button>
+            </div>
           )}
         </div>
       </section>
@@ -535,6 +534,8 @@ const SettingsWorkspaceGeneral = () => {
   const queryClient = useQueryClient()
   const { data: wsSettings } = useWorkspaceSettings()
   const updateSettings = useUpdateWorkspaceSettings()
+  const { isOwner } = useWorkspacePermissions()
+  const readOnly = !isOwner
 
   const { data: ws } = useQuery<WorkspaceDto>({
     queryKey: ['workspace'],
@@ -627,6 +628,18 @@ const SettingsWorkspaceGeneral = () => {
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>ワークスペース設定</h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>ワークスペース全体の表示・動作に関する設定です。</p>
 
+      {readOnly && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '10px 14px', marginBottom: 20, borderRadius: 9,
+          background: 'var(--amber-soft, var(--card-2))', border: '1px solid var(--border)',
+          color: 'var(--text-2)', fontSize: 12.5,
+        }}>
+          <Icon name="alertTriangle" size={14}/>
+          ワークスペース設定の変更にはオーナー権限が必要です。閲覧のみ可能です。
+        </div>
+      )}
+
       {/* ワークスペース情報 */}
       <section style={{ marginBottom: 24 }}>
         <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>ワークスペース情報</h2>
@@ -658,9 +671,10 @@ const SettingsWorkspaceGeneral = () => {
             />
             <button
               className="btn btn-ghost"
-              style={{ height: 30, fontSize: 12, padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+              style={{ height: 30, fontSize: 12, padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 5, ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
               onClick={() => logoInputRef.current?.click()}
-              disabled={logoMutation.isPending}
+              disabled={logoMutation.isPending || readOnly}
+              title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
             >
               <Icon name="image" size={12}/>
               {logoMutation.isPending ? 'アップロード中…' : 'アイコンを変更'}
@@ -683,13 +697,15 @@ const SettingsWorkspaceGeneral = () => {
                 value={wsName}
                 onChange={e => setWsName(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && wsName.trim() && nameMutation.mutate()}
+                readOnly={readOnly}
                 style={{ ...inputStyle, width: 180 }}
               />
               <button
                 onClick={() => nameMutation.mutate()}
-                disabled={nameMutation.isPending || !wsName.trim() || wsName === ws?.name}
+                disabled={nameMutation.isPending || !wsName.trim() || wsName === ws?.name || readOnly}
+                title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
                 className="btn btn-primary"
-                style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0 }}
+                style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0, ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
               >
                 {nameSaved ? '保存済み' : nameMutation.isPending ? '保存中…' : '保存'}
               </button>
@@ -713,13 +729,15 @@ const SettingsWorkspaceGeneral = () => {
                 onChange={e => setWsDesc(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && descMutation.mutate()}
                 placeholder="例: 東京工科大学"
+                readOnly={readOnly}
                 style={{ ...inputStyle, width: 180 }}
               />
               <button
                 onClick={() => descMutation.mutate()}
-                disabled={descMutation.isPending || wsDesc === (ws?.description ?? '')}
+                disabled={descMutation.isPending || wsDesc === (ws?.description ?? '') || readOnly}
+                title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
                 className="btn btn-primary"
-                style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0 }}
+                style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0, ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
               >
                 {descSaved ? '保存済み' : descMutation.isPending ? '保存中…' : '保存'}
               </button>
@@ -750,14 +768,16 @@ const SettingsWorkspaceGeneral = () => {
                 value={label}
                 onChange={e => setLabel(e.target.value)}
                 placeholder="プロジェクト"
+                readOnly={readOnly}
                 style={{ ...inputStyle, width: 160 }}
                 onKeyDown={e => e.key === 'Enter' && handleLabelSave()}
               />
               <button
                 onClick={handleLabelSave}
-                disabled={updateSettings.isPending}
+                disabled={updateSettings.isPending || readOnly}
+                title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
                 className="btn btn-primary"
-                style={{ height: 32, padding: '0 14px', fontSize: 12.5 }}
+                style={{ height: 32, padding: '0 14px', fontSize: 12.5, ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
               >
                 {labelSaved ? '保存済み' : '保存'}
               </button>
@@ -1173,12 +1193,10 @@ export const PageSettings = () => {
     return new URLSearchParams(window.location.search).get('tab') ?? 'account'
   })
   return (
-    <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <TopBar title="設定"/>
+      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={{ width: 220, borderRight: '1px solid var(--border)', padding: '20px 14px', background: 'var(--card)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
-          <h2 style={{ margin: '0 8px 0', fontSize: 16, fontWeight: 700, flex: 1 }}>設定</h2>
-          <BellButton />
-        </div>
         {NAV_GROUPS.map((group, gi) => (
           <div key={group.label} style={{ marginBottom: gi < NAV_GROUPS.length - 1 ? 16 : 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0 10px', marginBottom: 4 }}>
@@ -1215,6 +1233,7 @@ export const PageSettings = () => {
             <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションの設定は準備中です。</p>
           </div>
         )}
+      </div>
       </div>
     </div>
   )

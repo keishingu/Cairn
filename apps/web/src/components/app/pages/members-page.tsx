@@ -4,7 +4,7 @@ import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
-import { Icon, Avatar } from '../primitives'
+import { Icon, Avatar, Fab } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { MemberDetailPanel } from '../detail-panel/member-panel'
@@ -12,6 +12,7 @@ import { ProjectPanel } from '../detail-panel/project-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -103,6 +104,7 @@ interface PageMembersProps {
 export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMembersProps) => {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const { isAdmin: canInvite } = useWorkspacePermissions()
   const [search, setSearch] = React.useState('')
   const effectiveSearch = isMobile ? search : (externalSearch ?? search)
   const [roleFilter, setRoleFilter] = React.useState<WorkspaceMemberDto['role'] | 'all'>('all')
@@ -200,31 +202,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
         )}
         <MobileHeader title="メンバー" />
         {showInviteModal && <InviteModal onClose={() => setShowInviteModal(false)} isMobile />}
-
-        {/* 招待ボタン */}
-        <div style={{ padding: '10px 16px', flexShrink: 0 }}>
-          <button
-            onClick={() => setShowInviteModal(true)}
-            style={{
-              width: '100%',
-              padding: '10px 16px',
-              borderRadius: 10,
-              border: 'none',
-              background: 'var(--accent)',
-              color: 'var(--on-accent)',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-            }}
-          >
-            <Icon name="plus" size={14} strokeWidth={2.4} /> メンバーを招待
-          </button>
-        </div>
+        {canInvite && <Fab onClick={() => setShowInviteModal(true)} label="メンバーを招待"/>}
 
         {/* Search */}
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
@@ -319,7 +297,9 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
           <button
             className="btn btn-primary"
             onClick={() => setShowInviteModal(true)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}
+            disabled={!canInvite}
+            title={canInvite ? undefined : 'メンバーの招待には管理者以上の権限が必要です'}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto', ...(canInvite ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
           >
             <Icon name="plus" size={13} strokeWidth={2.4} /> メンバーを招待
           </button>

@@ -14,7 +14,7 @@ export default function ProjectsPage() {
   const [search, setSearch] = React.useState('')
   return (
     <>
-      <TopBar title="プロジェクト" subtitle="8 件 · 進行中 7">
+      <TopBar title="プロジェクト">
         <TopBarSearch value={search} onChange={setSearch} placeholder="プロジェクトを検索…"/>
       </TopBar>
       <PageProjects openPanel={openPanel} search={search}/>

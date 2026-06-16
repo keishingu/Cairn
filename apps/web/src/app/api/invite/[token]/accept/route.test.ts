@@ -33,12 +33,19 @@ vi.mock('@cairn/db', () => ({
     maxUses: 'wi.maxUses',
     useCount: 'wi.useCount',
     role: 'wi.role',
+    projectId: 'wi.projectId',
   },
   workspaceMembers: {
     id: 'wm.id',
     workspaceId: 'wm.workspaceId',
     userId: 'wm.userId',
     role: 'wm.role',
+  },
+  projectMembers: {
+    projectId: 'pm.projectId',
+    userId: 'pm.userId',
+    role: 'pm.role',
+    attendance: 'pm.attendance',
   },
 }))
 

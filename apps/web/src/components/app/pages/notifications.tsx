@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { Icon } from '../primitives'
+import { Icon, UnreadBadge } from '../primitives'
 import {
   useNotifications,
   useMarkNotificationsRead,
@@ -84,9 +84,7 @@ export const PageNotifications = ({ onClose }: PageNotificationsProps) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
               通知
-              {unreadCount > 0 && (
-                <span style={{ background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999 }}>{unreadCount}</span>
-              )}
+              <UnreadBadge count={unreadCount} />
             </h2>
             <button
               className="btn btn-ghost"

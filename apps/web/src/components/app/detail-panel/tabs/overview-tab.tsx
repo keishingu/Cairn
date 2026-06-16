@@ -2,10 +2,13 @@
 
 import React from 'react'
 import { Icon, StatusChip } from '../../primitives'
+import { ConfirmDialog } from '../../confirm-dialog'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { LocationInput } from '../../location-input'
 import { usePatchProject, useDeleteProject } from '@/hooks/use-patch-project'
 import { useProjectStatuses } from '@/hooks/use-project-statuses'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { toast } from '@/lib/toast'
 
 
 export function formatDateRange(start: string | null, end: string | null): string {
@@ -24,7 +27,7 @@ const cardLabelStyle: React.CSSProperties = {
 
 // ─── インライン編集フィールド ─────────────────────────────────────
 const InlineText = ({
-  value, onSave, placeholder, multiline = false, large = false, required = false,
+  value, onSave, placeholder, multiline = false, large = false, required = false, readOnly = false,
 }: {
   value: string
   onSave: (v: string) => void
@@ -32,6 +35,7 @@ const InlineText = ({
   multiline?: boolean
   large?: boolean
   required?: boolean
+  readOnly?: boolean
 }) => {
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState(value)
@@ -56,7 +60,7 @@ const InlineText = ({
     lineHeight: 1.55,
     resize: 'none' as const,
     boxSizing: 'border-box' as const,
-    cursor: editing ? 'text' : 'pointer',
+    cursor: readOnly ? 'default' : editing ? 'text' : 'pointer',
   }
 
   if (multiline) {
@@ -65,8 +69,9 @@ const InlineText = ({
         value={draft}
         placeholder={editing ? placeholder : (value ? undefined : placeholder)}
         rows={3}
+        readOnly={readOnly}
         style={{ ...baseStyle, minHeight: 64 }}
-        onFocus={() => setEditing(true)}
+        onFocus={() => { if (!readOnly) setEditing(true) }}
         onChange={e => setDraft(e.target.value)}
         onBlur={commit}
       />
@@ -78,8 +83,9 @@ const InlineText = ({
       type="text"
       value={draft}
       placeholder={editing ? placeholder : (value ? undefined : placeholder)}
+      readOnly={readOnly}
       style={baseStyle}
-      onFocus={() => setEditing(true)}
+      onFocus={() => { if (!readOnly) setEditing(true) }}
       onChange={e => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={e => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
@@ -88,15 +94,17 @@ const InlineText = ({
 }
 
 const InlineDatePair = ({
-  startDate, endDate, onSave,
+  startDate, endDate, onSave, readOnly = false,
 }: {
   startDate: string | null
   endDate: string | null
   onSave: (start: string | null, end: string | null) => void
+  readOnly?: boolean
 }) => {
   const [editing, setEditing] = React.useState(false)
   const [start, setStart] = React.useState(startDate ?? '')
   const [end, setEnd]     = React.useState(endDate ?? '')
+  const wrapRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => { setStart(startDate ?? ''); setEnd(endDate ?? '') }, [startDate, endDate])
 
@@ -105,6 +113,18 @@ const InlineDatePair = ({
     const ns = start || null
     const ne = end || null
     if (ns !== startDate || ne !== endDate) onSave(ns, ne)
+  }
+
+  const cancel = () => {
+    setEditing(false)
+    setStart(startDate ?? '')
+    setEnd(endDate ?? '')
+  }
+
+  // フォーカスがペア全体から外れた時だけ確定する（開始↔終了の移動では確定しない）
+  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    if (wrapRef.current?.contains(e.relatedTarget as Node | null)) return
+    commit()
   }
 
   const inputStyle: React.CSSProperties = {
@@ -116,46 +136,55 @@ const InlineDatePair = ({
   if (!editing) {
     return (
       <button
-        onClick={() => setEditing(true)}
+        onClick={() => { if (!readOnly) setEditing(true) }}
+        disabled={readOnly}
         style={{
           display: 'inline-flex', alignItems: 'baseline', gap: 4,
           padding: '2px 0', border: 'none',
-          background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
+          background: 'transparent', cursor: readOnly ? 'default' : 'pointer', fontFamily: 'inherit',
         }}
-        title="クリックして編集"
+        title={readOnly ? undefined : 'クリックして編集'}
       >
         <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>
           {formatDateRange(startDate, endDate)}
         </span>
-        <Icon name="edit" size={10} color="var(--text-4)"/>
+        {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
       </button>
     )
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-        <input type="date" value={start} onChange={e => setStart(e.target.value)} style={inputStyle}/>
-        <span style={{ color: 'var(--text-4)', fontSize: 12 }}>〜</span>
-        <input type="date" value={end} onChange={e => setEnd(e.target.value)} style={inputStyle}/>
-      </div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={commit} className="btn btn-primary" style={{ height: 28, padding: '0 10px', fontSize: 12 }}>確定</button>
-        <button
-          onClick={() => { setEditing(false); setStart(startDate ?? ''); setEnd(endDate ?? '') }}
-          className="btn btn-ghost"
-          style={{ height: 28, padding: '0 8px', fontSize: 12 }}
-        >取消</button>
-      </div>
+    <div
+      ref={wrapRef}
+      onBlur={handleBlur}
+      style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}
+    >
+      <input
+        type="date"
+        value={start}
+        autoFocus
+        onChange={e => setStart(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
+        style={inputStyle}
+      />
+      <span style={{ color: 'var(--text-4)', fontSize: 12 }}>〜</span>
+      <input
+        type="date"
+        value={end}
+        onChange={e => setEnd(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
+        style={inputStyle}
+      />
     </div>
   )
 }
 
 const InlineStatus = ({
-  statusName, onSave,
+  statusName, onSave, readOnly = false,
 }: {
   statusName: string | null
   onSave: (name: string) => void
+  readOnly?: boolean
 }) => {
   const [open, setOpen] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
@@ -174,16 +203,17 @@ const InlineStatus = ({
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
       <button
-        onClick={() => setOpen(v => !v)}
+        onClick={() => { if (!readOnly) setOpen(v => !v) }}
+        disabled={readOnly}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 5,
           background: 'transparent', border: 'none',
-          padding: '2px 0', cursor: 'pointer',
+          padding: '2px 0', cursor: readOnly ? 'default' : 'pointer',
         }}
-        title="クリックして変更"
+        title={readOnly ? undefined : 'クリックして変更'}
       >
         <StatusChip name={statusName ?? '—'} color={statuses.find(s => s.name === statusName)?.color ?? '#9CA3AF'}/>
-        <Icon name="chevDown" size={11} color="var(--text-4)"/>
+        {!readOnly && <Icon name="chevDown" size={11} color="var(--text-4)"/>}
       </button>
       {open && (
         <div style={{
@@ -217,11 +247,12 @@ const InlineStatus = ({
 }
 
 const InlineLocation = ({
-  location, onSave, onClear,
+  location, onSave, onClear, readOnly = false,
 }: {
   location: string | null
   onSave: (description: string, placeId: string) => void
   onClear: () => void
+  readOnly?: boolean
 }) => {
   const [editing, setEditing] = React.useState(false)
 
@@ -236,20 +267,21 @@ const InlineLocation = ({
   if (!editing) {
     return (
       <button
-        onClick={() => setEditing(true)}
+        onClick={() => { if (!readOnly) setEditing(true) }}
+        disabled={readOnly}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
           padding: '2px 0', border: 'none',
-          background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
+          background: 'transparent', cursor: readOnly ? 'default' : 'pointer', fontFamily: 'inherit',
           maxWidth: '100%',
         }}
-        title="クリックして編集"
+        title={readOnly ? undefined : 'クリックして編集'}
       >
         <Icon name="map-pin" size={12} color={location ? 'var(--accent-text)' : 'var(--text-4)'}/>
         <span style={{ fontSize: 13, color: location ? 'var(--text)' : 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {location ?? '場所を設定…'}
+          {location ?? (readOnly ? '未設定' : '場所を設定…')}
         </span>
-        <Icon name="edit" size={10} color="var(--text-4)"/>
+        {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
       </button>
     )
   }
@@ -286,9 +318,9 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
   const deleteMutation = useDeleteProject(project.id)
   const [confirmDelete, setConfirmDelete] = React.useState(false)
 
-  const handleDelete = () => {
-    deleteMutation.mutate(undefined, { onSuccess: onDeleted })
-  }
+  // プロジェクト編集は member 以上、削除（アーカイブ含む破壊的操作のうち削除）は admin 以上
+  const { isMember: canEdit, isAdmin: canDelete } = useWorkspacePermissions()
+  const readOnly = !canEdit
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -300,6 +332,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
         placeholder="プロジェクト名"
         large
         required
+        readOnly={readOnly}
       />
 
       {patch.isError && (
@@ -316,6 +349,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
             startDate={project.startDate}
             endDate={project.endDate}
             onSave={(start, end) => patch.mutate({ startDate: start, endDate: end })}
+            readOnly={readOnly}
           />
           <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>{project.memberCount}人参加</div>
         </div>
@@ -324,6 +358,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
           <InlineStatus
             statusName={project.statusName}
             onSave={name => patch.mutate({ statusName: name })}
+            readOnly={readOnly}
           />
         </div>
       </div>
@@ -335,6 +370,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
           location={project.location}
           onSave={(desc, pid) => patch.mutate({ location: desc, placeId: pid })}
           onClear={() => patch.mutate({ location: null, placeId: null })}
+          readOnly={readOnly}
         />
       </div>
 
@@ -346,6 +382,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
           onSave={v => patch.mutate({ description: v || null })}
           placeholder="プロジェクトの概要や目標をクリックして入力…"
           multiline
+          readOnly={readOnly}
         />
       </div>
 
@@ -357,14 +394,18 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
             ? 'このプロジェクトはアーカイブされています。解除するとプロジェクト一覧に再表示されます。'
             : 'アーカイブすると一覧の「アーカイブ」タブに移動します。データは保持されます。'}
         </div>
-        {archivePatch.isError && (
-          <div style={{ fontSize: 11.5, color: 'var(--red-text)', marginBottom: 6 }}>⚠ 操作に失敗しました</div>
-        )}
         <button
-          onClick={() => archivePatch.mutate({ archived: !project.archived })}
-          disabled={archivePatch.isPending}
+          onClick={() => archivePatch.mutate(
+            { archived: !project.archived },
+            {
+              onSuccess: () => toast.success(project.archived ? 'アーカイブを解除しました' : 'アーカイブしました'),
+              onError: () => toast.error('操作に失敗しました'),
+            },
+          )}
+          disabled={archivePatch.isPending || !canEdit}
+          title={canEdit ? undefined : 'アーカイブの変更にはメンバー以上の権限が必要です'}
           className="btn btn-ghost"
-          style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+          style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5, ...(canEdit ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
         >
           <Icon name={project.archived ? 'refresh' : 'close'} size={11}/>
           {archivePatch.isPending ? '処理中…' : project.archived ? 'アーカイブを解除する' : 'アーカイブする'}
@@ -374,42 +415,26 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       {/* 削除 */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
         <div style={cardLabelStyle}>削除</div>
-        {!confirmDelete ? (
-          <button
-            onClick={() => setConfirmDelete(true)}
-            style={{ width: '100%', padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-          >
-            プロジェクトを削除する
-          </button>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: 11.5, color: 'var(--red-text)', lineHeight: 1.6 }}>
-              チャット・ファイル・タスクを含むすべてのデータが完全に削除されます。この操作は取り消せません。
-            </div>
-            {deleteMutation.isError && (
-              <div style={{ fontSize: 11.5, color: 'var(--red-text)', padding: '5px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.08)' }}>
-                ⚠ {(deleteMutation.error as Error).message}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button
-                onClick={() => { setConfirmDelete(false); deleteMutation.reset() }}
-                disabled={deleteMutation.isPending}
-                style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text-2)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleteMutation.isPending}
-                style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', background: 'var(--red)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: deleteMutation.isPending ? 'default' : 'pointer', fontFamily: 'inherit', opacity: deleteMutation.isPending ? 0.7 : 1 }}
-              >
-                {deleteMutation.isPending ? '削除中…' : '本当に削除する'}
-              </button>
-            </div>
-          </div>
-        )}
+        <button
+          onClick={() => setConfirmDelete(true)}
+          disabled={!canDelete}
+          title={canDelete ? undefined : 'プロジェクトの削除には管理者以上の権限が必要です'}
+          style={{ width: '100%', padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 12.5, fontWeight: 600, cursor: canDelete ? 'pointer' : 'not-allowed', opacity: canDelete ? 1 : 0.5, fontFamily: 'inherit' }}
+        >
+          プロジェクトを削除する
+        </button>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="プロジェクトを削除"
+        message={`「${project.title}」を削除しますか？チャット・ファイル・タスクを含むすべてのデータが完全に削除されます。この操作は取り消せません。`}
+        onConfirm={async () => {
+          await deleteMutation.mutateAsync()
+          onDeleted()
+        }}
+        onClose={() => setConfirmDelete(false)}
+      />
 
     </div>
   )

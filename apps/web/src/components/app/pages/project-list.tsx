@@ -3,7 +3,7 @@
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
-import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
+import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '../mobile/header'
@@ -14,6 +14,7 @@ import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 
 // ─── Main component ───────────────────────────────────────────────
 interface ProjectListViewProps {
@@ -46,6 +47,7 @@ async function fetchStatuses(): Promise<ProjectStatusDto[]> {
 export const ProjectListView = ({ openPanel, isMobile, externalSearch }: ProjectListViewProps) => {
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
+  const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
   const [view, setView] = React.useState<'grid' | 'table'>(() => {
     if (typeof window === 'undefined') return 'grid'
@@ -195,9 +197,6 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 >
                   <Icon name="search" size={20}/>
                 </button>
-                <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
-                  <Icon name="bell" size={20}/>
-                </button>
               </div>
             }
           />
@@ -286,7 +285,13 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 />
               )}
             </div>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowCreate(true)}
+              disabled={!canCreateProject}
+              title={canCreateProject ? undefined : `${projectLabel}の作成には管理者以上の権限が必要です`}
+              style={canCreateProject ? {} : { opacity: 0.5, cursor: 'not-allowed' }}
+            >
               <Icon name="plus" size={13}/> 新規{projectLabel}
             </button>
           </div>
@@ -464,24 +469,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       </div>
 
       {/* Mobile FAB */}
-      {isMobile && (
-        <button
-          onClick={() => setShowCreate(true)}
-          style={{
-            position: 'fixed',
-            right: 16,
-            bottom: 'calc(80px + env(safe-area-inset-bottom) + 16px)',
-            width: 52, height: 52, borderRadius: '50%',
-            background: 'var(--accent)', color: 'var(--on-accent)',
-            border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-            zIndex: 50,
-          }}
-        >
-          <Icon name="plus" size={22}/>
-        </button>
-      )}
+      {isMobile && canCreateProject && <Fab onClick={() => setShowCreate(true)} label={`新規${projectLabel}`}/>}
     </div>
   )
 }
