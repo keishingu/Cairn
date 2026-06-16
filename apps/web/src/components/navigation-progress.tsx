@@ -69,8 +69,12 @@ export function NavigationProgress() {
   useEffect(() => {
     const orig = window.history.pushState.bind(window.history)
     window.history.pushState = (...args: Parameters<typeof orig>) => {
-      start()
-      return orig(...args)
+      const ret = orig(...args)
+      // nuqs などは useInsertionEffect 内で pushState を呼ぶ。その同期実行中に
+      // start() が setState すると "useInsertionEffect must not schedule updates" になるため、
+      // 状態更新を commit フェーズ外のマイクロタスクへ逃がす
+      queueMicrotask(start)
+      return ret
     }
     return () => { window.history.pushState = orig }
   }, [start])

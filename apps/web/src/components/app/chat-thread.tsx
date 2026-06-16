@@ -7,6 +7,8 @@ import React from 'react'
 import type { AttachmentDto } from '@cairn/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { Avatar } from './primitives'
+import { ConfirmDialog } from './confirm-dialog'
+import { RowActionMenu } from './row-action-menu'
 import { EmojiPicker } from './emoji-picker'
 import { Icon } from './primitives'
 import { FileTypeIcon } from './file-type-icon'
@@ -97,7 +99,6 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   const [editDraft, setEditDraft] = React.useState('')
   const [editComposing, setEditComposing] = React.useState(false)
   const [deleteConfirm, setDeleteConfirm] = React.useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
   const addBtnRef = React.useRef<HTMLButtonElement>(null)
   const editTextareaRef = React.useRef<HTMLTextAreaElement>(null)
   const avatarSize = compact ? 30 : 36
@@ -106,7 +107,6 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   const isOwn = currentUserId === senderId
 
   const startEdit = () => {
-    setMobileMenuOpen(false)
     setEditDraft(content)
     setEditMode(true)
     requestAnimationFrame(() => {
@@ -132,63 +132,18 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
     }
   }
 
-  // PC: ホバー時に右上に表示するアクションパネル
-  const pcActions = !isMobile && hovered && isOwn && !editMode && (
-    <div style={{
-      position: 'absolute', top: 4, right: 8,
-      display: 'flex', gap: 4, alignItems: 'center',
-      background: 'var(--card)', border: '1px solid var(--border)',
-      borderRadius: 8, padding: '2px 4px', boxShadow: 'var(--shadow-sm)',
-    }}>
-      <button onClick={startEdit} title="編集"
-        style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
-      ><Icon name="edit" size={13}/></button>
-      {deleteConfirm ? (
-        <>
-          <span style={{ fontSize: 11, color: 'var(--red-text)', padding: '0 2px' }}>削除？</span>
-          <button onClick={() => { onDelete(messageId); setDeleteConfirm(false) }}
-            style={{ border: 'none', background: 'var(--red)', color: '#fff', cursor: 'pointer', padding: '2px 7px', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>はい</button>
-          <button onClick={() => setDeleteConfirm(false)}
-            style={{ border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '2px 7px', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>いいえ</button>
-        </>
-      ) : (
-        <button onClick={() => setDeleteConfirm(true)} title="削除"
-          style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
-        ><Icon name="trash" size={13}/></button>
-      )}
-    </div>
-  )
-
-  // モバイル: 常時表示の「⋯」ボタン → タップで展開
-  const mobileActions = isMobile && isOwn && !editMode && (
-    <div style={{ position: 'relative', flexShrink: 0, alignSelf: 'flex-start', paddingTop: 2 }}>
-      {mobileMenuOpen ? (
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '2px 4px', boxShadow: 'var(--shadow-sm)' }}>
-          <button onClick={startEdit}
-            style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '4px 6px', borderRadius: 5, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
-          ><Icon name="edit" size={14}/></button>
-          {deleteConfirm ? (
-            <>
-              <span style={{ fontSize: 11, color: 'var(--red-text)', padding: '0 2px' }}>削除？</span>
-              <button onClick={() => { onDelete(messageId); setDeleteConfirm(false); setMobileMenuOpen(false) }}
-                style={{ border: 'none', background: 'var(--red)', color: '#fff', cursor: 'pointer', padding: '2px 7px', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>はい</button>
-              <button onClick={() => { setDeleteConfirm(false); setMobileMenuOpen(false) }}
-                style={{ border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '2px 7px', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }}>いいえ</button>
-            </>
-          ) : (
-            <button onClick={() => setDeleteConfirm(true)}
-              style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '4px 6px', borderRadius: 5, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
-            ><Icon name="trash" size={14}/></button>
-          )}
-          <button onClick={() => { setMobileMenuOpen(false); setDeleteConfirm(false) }}
-            style={{ border: 'none', background: 'transparent', color: 'var(--text-4)', cursor: 'pointer', padding: '4px 4px', borderRadius: 5, display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
-          ><Icon name="close" size={12}/></button>
-        </div>
-      ) : (
-        <button onClick={() => setMobileMenuOpen(true)}
-          style={{ border: 'none', background: 'transparent', color: 'var(--text-4)', cursor: 'pointer', padding: '2px 4px', display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit' }}
-        ><Icon name="more" size={16}/></button>
-      )}
+  // 自分のメッセージの「…」メニュー。モバイルは常時表示、PC はホバー時に表示
+  const messageActions = isOwn && !editMode && (isMobile || hovered) && (
+    <div style={isMobile
+      ? { flexShrink: 0, alignSelf: 'flex-start', paddingTop: 2 }
+      : { position: 'absolute', top: 4, right: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '2px 4px', boxShadow: 'var(--shadow-sm)' }
+    }>
+      <RowActionMenu
+        actions={[
+          { icon: 'edit', label: '編集', onSelect: startEdit },
+          { icon: 'trash', label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
+        ]}
+      />
     </div>
   )
 
@@ -197,7 +152,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
       data-message-id={messageId}
       style={{ display: 'flex', gap: compact ? 8 : 12, padding: px, alignItems: 'flex-start', position: 'relative', background: hovered ? 'var(--card-2)' : 'transparent' }}
       onMouseEnter={() => !isMobile && setHovered(true)}
-      onMouseLeave={() => { if (!isMobile) { setHovered(false); setDeleteConfirm(false) } }}
+      onMouseLeave={() => !isMobile && setHovered(false)}
     >
       <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -311,8 +266,15 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
           )}
         </div>
       </div>
-      {pcActions}
-      {mobileActions}
+      {messageActions}
+
+      <ConfirmDialog
+        open={deleteConfirm}
+        title="メッセージを削除"
+        message="このメッセージを削除しますか？この操作は取り消せません。"
+        onConfirm={() => onDelete(messageId)}
+        onClose={() => setDeleteConfirm(false)}
+      />
     </div>
   )
 })

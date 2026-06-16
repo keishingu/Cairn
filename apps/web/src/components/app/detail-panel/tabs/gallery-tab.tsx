@@ -3,6 +3,8 @@
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
+import { ConfirmDialog } from '../../confirm-dialog'
+import { RowActionMenu } from '../../row-action-menu'
 import type { GalleryItemDto } from '@/app/api/projects/[id]/gallery/route'
 import { processImageForUpload } from '@/lib/process-image'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -30,9 +32,9 @@ async function uploadFile(projectId: string, original: File): Promise<void> {
 export const GalleryTab = ({ projectId }: { projectId: string }) => {
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
-  const [hoveredId, setHoveredId] = React.useState<string | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const [uploadState, setUploadState] = React.useState<UploadState | null>(null)
+  const [deleteTargetId, setDeleteTargetId] = React.useState<string | null>(null)
 
   const { data: items = [], isLoading, isError } = useQuery<GalleryItemDto[]>({
     queryKey: ['project-gallery', projectId],
@@ -164,8 +166,6 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
               <div
                 key={item.id}
                 style={{ position: 'relative', aspectRatio: '1/1', borderRadius: 5, overflow: 'hidden', cursor: 'pointer', background: 'var(--card-2)' }}
-                onMouseEnter={() => setHoveredId(item.id)}
-                onMouseLeave={() => setHoveredId(null)}
                 onClick={() => setLightboxIndex(items.indexOf(item))}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -175,29 +175,27 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   loading="lazy"
                 />
-                {hoveredId === item.id && (
-                  <button
-                    onClick={e => {
-                      e.stopPropagation()
-                      if (!confirm('この写真を削除しますか？')) return
-                      void deleteItem(item.id)
-                    }}
-                    style={{
-                      position: 'absolute', top: 4, right: 4,
-                      width: 24, height: 24, borderRadius: 6,
-                      border: 'none', background: 'rgba(0,0,0,0.55)',
-                      color: '#fff', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                  >
-                    <Icon name="trash" size={12}/>
-                  </button>
-                )}
+                <div style={{ position: 'absolute', top: 4, right: 4 }} onClick={e => e.stopPropagation()}>
+                  <RowActionMenu
+                    triggerStyle={{ width: 24, height: 24, padding: 0, borderRadius: 6, background: 'rgba(0,0,0,0.55)', color: '#fff' }}
+                    actions={[
+                      { icon: 'trash', label: '削除', danger: true, onSelect: () => setDeleteTargetId(item.id) },
+                    ]}
+                  />
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={deleteTargetId !== null}
+        title="写真を削除"
+        message="この写真を削除しますか？この操作は取り消せません。"
+        onConfirm={async () => { if (deleteTargetId) await deleteItem(deleteTargetId) }}
+        onClose={() => setDeleteTargetId(null)}
+      />
 
       {/* ライトボックス */}
       {lightboxUrl && lightboxIndex !== null && (

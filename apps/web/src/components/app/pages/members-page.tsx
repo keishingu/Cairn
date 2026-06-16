@@ -4,7 +4,7 @@ import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
-import { Icon, Avatar } from '../primitives'
+import { Icon, Avatar, Fab } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { MemberDetailPanel } from '../detail-panel/member-panel'
@@ -200,31 +200,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
         )}
         <MobileHeader title="メンバー" />
         {showInviteModal && <InviteModal onClose={() => setShowInviteModal(false)} isMobile />}
-
-        {/* 招待ボタン */}
-        <div style={{ padding: '10px 16px', flexShrink: 0 }}>
-          <button
-            onClick={() => setShowInviteModal(true)}
-            style={{
-              width: '100%',
-              padding: '10px 16px',
-              borderRadius: 10,
-              border: 'none',
-              background: 'var(--accent)',
-              color: 'var(--on-accent)',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-            }}
-          >
-            <Icon name="plus" size={14} strokeWidth={2.4} /> メンバーを招待
-          </button>
-        </div>
+        <Fab onClick={() => setShowInviteModal(true)} label="メンバーを招待"/>
 
         {/* Search */}
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>

@@ -2,6 +2,11 @@
 -- Project Collaboration OS / Cairn
 -- PostgreSQL / Supabase Schema
 -- =====================================================
+-- ステータス: アーカイブ（作成: 2026-05-22、以後未更新）
+-- 設計時のスキーマ案。現行スキーマは packages/db/src/schema/（Drizzle）が正。
+-- channel_read_states / notifications / push_subscriptions 等、その後追加された
+-- テーブルを含まないため、参照しないこと。
+-- =====================================================
 
 create extension if not exists "uuid-ossp";
 create extension if not exists vector;

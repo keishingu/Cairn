@@ -133,11 +133,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       })
     }
 
-    // private channel の認可（realtime.messages の RLS）のため、購読前に JWT を Realtime に渡す
-    void supabase.auth.getSession().then(({ data }) => {
+    // private channel の認可（realtime.messages の RLS）のため、購読前に JWT を Realtime に渡す。
+    // setAuth は非同期。await せずに subscribe すると JOIN が認証前トークンで送られ、
+    // 「Unauthorized: ... Channel topic」で CHANNEL_ERROR になるため必ず待つ
+    void supabase.auth.getSession().then(async ({ data }) => {
       if (cancelled) return
       const token = data.session?.access_token
-      if (token) supabase.realtime.setAuth(token)
+      if (token) await supabase.realtime.setAuth(token)
+      if (cancelled) return
       subscribe()
     })
 

@@ -2,6 +2,7 @@ import React from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
 import { Link } from 'expo-router'
 import { supabase } from '../../lib/supabase'
+import { GoogleSignInButton } from '../../components/google-sign-in-button'
 
 export default function LoginScreen() {
   const [email, setEmail] = React.useState('')
@@ -59,6 +60,14 @@ export default function LoginScreen() {
             <Text style={styles.buttonText}>サインイン</Text>
           )}
         </TouchableOpacity>
+
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>または</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <GoogleSignInButton label="Google でサインイン" onError={(m) => setError(m || null)} />
       </View>
 
       <Link href="/(auth)/signup" style={styles.link}>
@@ -119,6 +128,21 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginVertical: 4,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#e0e0e0',
+  },
+  dividerText: {
+    color: '#999',
+    fontSize: 13,
   },
   link: {
     marginTop: 24,
