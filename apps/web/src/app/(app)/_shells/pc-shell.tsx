@@ -13,6 +13,7 @@ import { PageNotifications } from '@/components/app/pages/notifications'
 import { AppShellContext } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { useDetailPanel } from '@/hooks/use-detail-panel'
+import { useAppShortcuts } from '@/hooks/use-app-shortcuts'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 const PC_STORAGE_KEY = STORAGE_KEYS.projects_view_pc
@@ -87,6 +88,8 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     else if (p === 'projects') { setProjectsView('list'); router.push('/projects') }
     else router.push(`/${p}`)
   }, [router, setProjectsView])
+
+  useAppShortcuts({ navigate })
 
   return (
     <AppShellContext.Provider value={{

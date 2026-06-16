@@ -1318,7 +1318,16 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const [year, setYear] = React.useState(today.getFullYear())
   const [month, setMonth] = React.useState(today.getMonth())
   const [selectedDate, setSelectedDate] = React.useState<Date>(today)
-  const [calView, setCalView] = React.useState<CalView>('month')
+  const [calView, setCalView] = React.useState<CalView>(() => {
+    if (typeof window === 'undefined') return 'month'
+    const saved = localStorage.getItem(STORAGE_KEYS.calendar_view)
+    return saved === 'month' || saved === 'week' || saved === 'timeline' ? saved : 'month'
+  })
+  // UI 操作・ショートカット双方で表示を永続化し、リロード後も維持する
+  const setCalViewPersisted = React.useCallback((v: CalView) => {
+    setCalView(v)
+    localStorage.setItem(STORAGE_KEYS.calendar_view, v)
+  }, [])
   const [createDates, setCreateDates] = React.useState<{ start: string; end: string } | null>(null)
   const showCreate = createDates !== null
   const openCreate = (start: string, end: string) => setCreateDates({ start, end })
@@ -1454,6 +1463,23 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     }
   }
 
+  // グローバルショートカット（⌥M/W/T・⌥↑↓）からの操作を受ける。
+  // goPrev/goNext は month・calView を参照するので依存に含めて最新の closure を購読する
+  React.useEffect(() => {
+    const onCalView = (e: Event) => setCalView((e as CustomEvent<CalView>).detail)
+    const onSeq = (e: Event) => {
+      if ((e as CustomEvent<'prev' | 'next'>).detail === 'prev') goPrev()
+      else goNext()
+    }
+    window.addEventListener('cairn:cal-view', onCalView)
+    window.addEventListener('cairn:seq', onSeq)
+    return () => {
+      window.removeEventListener('cairn:cal-view', onCalView)
+      window.removeEventListener('cairn:seq', onSeq)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calView, month])
+
   const isCurrentPeriod = calView === 'week'
     ? weekStart.toDateString() === getWeekStart(today).toDateString()
     : year === today.getFullYear() && month === today.getMonth()
@@ -1502,7 +1528,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           {CAL_VIEWS.map(v => (
             <button
               key={v}
-              onClick={() => setCalView(v)}
+              onClick={() => setCalViewPersisted(v)}
               style={{
                 flex: 1, padding: '8px 4px', border: 'none', background: 'transparent',
                 fontSize: 13, fontWeight: calView === v ? 700 : 500,
@@ -1603,7 +1629,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
                 { id: 'timeline', label: 'リスト' },
               ]}
               value={calView}
-              onChange={(v) => setCalView(v as CalView)}
+              onChange={(v) => setCalViewPersisted(v as CalView)}
             />
             {gcalConnected && gcalCalendars.length > 0 && (
               <div ref={gcalFilterBtnRef} style={{ position: 'relative' }}>

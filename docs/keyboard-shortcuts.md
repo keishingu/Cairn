@@ -1,6 +1,6 @@
 # キーボードショートカット設計
 
-> ステータス: **設計時スナップショット**（2026-06-16 時点の合意。実装は未着手）
+> ステータス: **現行リファレンス（第1段のみ実装済み）**（2026-06-16）。第2段以降は設計案
 > ドキュメントと実装が矛盾する場合はコードと [`CLAUDE.md`](../CLAUDE.md) を正とする。
 
 Cairn の Desktop（Electron）/ Web のキーボードショートカット設計。Microsoft Teams の規律（修飾キーで操作の作用範囲を分ける）を下敷きにしている。
@@ -141,7 +141,10 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 
 ## 6. 段階導入
 
-1. **第1段（◎）**: 数字ナビ（Desktop `⌘`数字 / Web `⌘⇧`数字）+ `⌥↑↓`順送り + `⌥M/W/T`カレンダービュー + `Esc`/`Enter` 統一。
+1. **第1段（◎・実装済み）**: 数字ナビ（Desktop `⌘`数字 / Web `⌘⇧`数字）+ `⌥M/W/T`カレンダービュー + `⌥↑↓`順送り（現状はカレンダーの月/週送りのみ）。
+   - Web: `apps/web/src/hooks/use-app-shortcuts.ts`（`PCShell` でマウント）。`⌥M/W/T` は `calendar_view` を localStorage 永続化し `cairn:cal-view` を発火、`⌥↑↓` は `cairn:seq` を発火。`PageCalendar` が両イベントを購読。
+   - Desktop: `apps/desktop/src/main.js` のネイティブメニュー（`CmdOrCtrl+1..4`）→ `apps/desktop/src/preload.js` の `window.cairnDesktop.onNavigate` → Web の同フックが受ける。
+   - **未了（第1段の残り）**: `⌥↑↓` の Chats（チャンネル/メッセージ順送り）・AI（会話順送り）への接続、`Esc`/`Enter` の全画面統一リファクタ。各画面が `cairn:seq` を購読すれば拡張できる。
 2. **第2段（○）**: `⌥N`作成 / `⌥V` / `⌥F` / `⌘K`パレット / `⌘⇧F`横断検索 / `?`ヘルプ。
 3. **第3段（△）**: Vim モード（設定トグル + 単キー層 + チャット modal）。
 
