@@ -8,6 +8,7 @@ export interface ProjectChannelDto {
   channelName: string
   projectId: string
   projectTitle: string
+  archived: boolean
   unreadCount: number
   unreadMentionCount: number
 }
@@ -46,17 +47,18 @@ export async function GET() {
         channelName: sql<string>`coalesce(${channels.name}, 'general')`,
         projectId: projects.id,
         projectTitle: projects.title,
+        archived: projects.archived,
       })
       .from(channels)
       .innerJoin(projects, eq(channels.projectId, projects.id))
       .where(
         and(
           eq(projects.workspaceId, ctx.workspaceId),
-          eq(projects.archived, false),
           guestProjectIds ? inArray(projects.id, guestProjectIds) : undefined,
         )
       )
-      .orderBy(projects.createdAt)
+      // アーカイブ済みは末尾にまとめる（自動選択や折りたたみ表示の前提）
+      .orderBy(projects.archived, projects.createdAt)
 
     if (rows.length === 0) return NextResponse.json([])
 

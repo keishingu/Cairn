@@ -6,6 +6,7 @@ import { Icon, Avatar } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
 import { RowActionMenu } from '../row-action-menu'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
+import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import type { FileDto } from '@/app/api/files/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
@@ -40,6 +41,10 @@ function formatDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+function isImageFile(file: FileDto): boolean {
+  return file.fileType !== 'link' && (file.mimeType?.startsWith('image/') ?? false)
+}
+
 function matchesFilter(file: FileDto, filter: FilterKey): boolean {
   if (filter === 'all') return true
   if (filter === 'pdf') return file.mimeType === 'application/pdf'
@@ -50,11 +55,12 @@ function matchesFilter(file: FileDto, filter: FilterKey): boolean {
 
 // ─── FileRow ──────────────────────────────────────────────────────
 
-const FileRow = ({ file, isMobile, onDelete, onReindex }: { file: FileDto; isMobile: boolean; onDelete: (id: string, name: string) => void; onReindex: (id: string) => void }) => {
+const FileRow = ({ file, isMobile, onDelete, onReindex, onImageClick }: { file: FileDto; isMobile: boolean; onDelete: (id: string, name: string) => void; onReindex: (id: string) => void; onImageClick: (id: string) => void }) => {
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
   const projectLabel = file.projectTitle ?? file.channelName ?? 'チャット'
   const metaParts = [projectLabel, sizeStr, dateStr].filter(Boolean).join(' · ')
+  const isImage = isImageFile(file)
 
   return (
     <div
@@ -68,7 +74,8 @@ const FileRow = ({ file, isMobile, onDelete, onReindex }: { file: FileDto; isMob
         href={file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`}
         target="_blank"
         rel="noopener noreferrer"
-        style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, textDecoration: 'none' }}
+        onClick={isImage ? (e => { e.preventDefault(); onImageClick(file.id) }) : undefined}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, textDecoration: 'none', cursor: 'pointer' }}
       >
         <div style={{ position: 'relative', flexShrink: 0 }}>
           {file.fileType === 'link' && file.externalUrl
@@ -122,6 +129,7 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
   const effectiveSearch = isMobile ? search : (externalSearch ?? search)
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
+  const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const sentinelRef = React.useRef<HTMLDivElement>(null)
 
   const { data: files = [], isLoading } = useQuery<FileDto[]>({
@@ -168,6 +176,18 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
       (!q || f.fileName.toLowerCase().includes(q) || (f.projectTitle ?? f.channelName ?? '').toLowerCase().includes(q)),
     )
   }, [files, filter, effectiveSearch])
+
+  // 現在の絞り込み結果に含まれる画像だけをライトボックスで前後送りできるようにする
+  const imageFiles = React.useMemo(() => filtered.filter(isImageFile), [filtered])
+  const lightboxImages = React.useMemo<LightboxImage[]>(() => imageFiles.map(f => ({
+    key: f.id,
+    src: `/api/attachments/${f.id}`,
+    caption: f.fileName,
+  })), [imageFiles])
+  const openLightbox = React.useCallback((fileId: string) => {
+    const idx = imageFiles.findIndex(f => f.id === fileId)
+    if (idx >= 0) setLightboxIndex(idx)
+  }, [imageFiles])
 
   React.useEffect(() => { setVisibleCount(PAGE_SIZE) }, [filter, effectiveSearch])
 
@@ -258,7 +278,7 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
           </div>
         ) : (
           <>
-            {visibleFiles.map(f => <FileRow key={f.id} file={f} isMobile={isMobile} onDelete={handleDelete} onReindex={handleReindex} />)}
+            {visibleFiles.map(f => <FileRow key={f.id} file={f} isMobile={isMobile} onDelete={handleDelete} onReindex={handleReindex} onImageClick={openLightbox} />)}
             <div ref={sentinelRef} />
           </>
         )}
@@ -271,6 +291,15 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
         onConfirm={async () => { if (deleteTarget) await deleteFile.mutateAsync(deleteTarget.id) }}
         onClose={() => setDeleteTarget(null)}
       />
+
+      {lightboxIndex !== null && lightboxImages.length > 0 && (
+        <ImageLightbox
+          images={lightboxImages}
+          index={Math.min(lightboxIndex, lightboxImages.length - 1)}
+          onIndexChange={setLightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
     </div>
   )
 }

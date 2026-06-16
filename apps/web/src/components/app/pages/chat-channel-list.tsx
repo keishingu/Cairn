@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { Icon, Avatar, AvatarStack, UnreadBadge } from '../primitives'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
@@ -42,6 +43,44 @@ export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; 
     <div>{children}</div>
   </div>
 )
+
+// ─── ChatSidebarCollapsibleSection ────────────────────────────────
+
+// アーカイブ済みプロジェクトなど、通常は隠しておきたいセクション。
+// 既定で折りたたみ、開閉状態は localStorage に保存する。
+const ChatSidebarCollapsibleSection = ({ title, count, defaultCollapsed = true, children }: { title: string; count: number; defaultCollapsed?: boolean; children: React.ReactNode }) => {
+  const [collapsed, setCollapsed] = React.useState(defaultCollapsed)
+
+  React.useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.chat_archived_collapsed)
+    if (saved !== null) setCollapsed(saved === 'true')
+  }, [])
+
+  const toggle = () => setCollapsed(prev => {
+    const next = !prev
+    localStorage.setItem(STORAGE_KEYS.chat_archived_collapsed, String(next))
+    return next
+  })
+
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <button
+        onClick={toggle}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 4,
+          fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em',
+          padding: '6px 10px', textTransform: 'uppercase',
+          background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+        }}
+      >
+        <Icon name="chevRight" size={12} color="currentColor" style={{ transform: collapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform .12s' }}/>
+        <span>{title}</span>
+        <span style={{ color: 'var(--text-4)', fontWeight: 600 }}>{count}</span>
+      </button>
+      {!collapsed && <div>{children}</div>}
+    </div>
+  )
+}
 
 // ─── ChatSidebarItem ──────────────────────────────────────────────
 
@@ -155,13 +194,24 @@ export interface ChannelListProps {
 export const ChannelList = ({
   channelId, onSelectChannel, projectChannels, workspaceChannels,
   dms, members, isMobile = false, onAddChannel, onStartDm,
-}: ChannelListProps) => (
+}: ChannelListProps) => {
+  const activeProjectChannels = projectChannels.filter(c => !c.archived)
+  const archivedProjectChannels = projectChannels.filter(c => c.archived)
+
+  return (
   <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
     <ChatSidebarSection title="プロジェクト">
-      {projectChannels.map(c => (
+      {activeProjectChannels.map(c => (
         <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
       ))}
     </ChatSidebarSection>
+    {archivedProjectChannels.length > 0 && (
+      <ChatSidebarCollapsibleSection title="アーカイブ済み" count={archivedProjectChannels.length}>
+        {archivedProjectChannels.map(c => (
+          <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
+        ))}
+      </ChatSidebarCollapsibleSection>
+    )}
     <ChatSidebarSection title="チャンネル" onAdd={onAddChannel}>
       {workspaceChannels.map(c => (
         <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => onSelectChannel(c.id)} prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''} badge={c.unreadCount} mobile={isMobile} memberNames={c.memberNames} memberCount={c.memberCount}/>
@@ -182,4 +232,5 @@ export const ChannelList = ({
       <ChatSidebarItem prefix="✨" label="AIアシスタント" mobile={isMobile}/>
     </ChatSidebarSection>
   </div>
-)
+  )
+}
