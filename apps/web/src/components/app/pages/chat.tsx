@@ -26,7 +26,6 @@ import { BellButton } from '../sidebar'
 import { useDebounce } from '@/hooks/use-debounce'
 import { ChannelList } from './chat-channel-list'
 import { ChatDetailSidebar } from './chat-detail-sidebar'
-import { useArrowNav } from '@/hooks/use-arrow-nav'
 
 // ─── Message search ───────────────────────────────────────────────
 
@@ -267,17 +266,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const { data: dms = [] } = useWorkspaceDms()
   const markChannelRead = useMarkChannelRead()
   const createDmMutation = useCreateDm()
-
-  const totalChannelCount = projectChannels.length + workspaceChannels.length + dms.length
-  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useArrowNav(totalChannelCount, React.useCallback((idx: number) => {
-    const allIds = [
-      ...projectChannels.map(c => c.channelId),
-      ...workspaceChannels.map(c => c.id),
-      ...dms.map(d => d.id),
-    ]
-    const id = allIds[idx]
-    if (id) selectChannel(id)
-  }, [projectChannels, workspaceChannels, dms]))
 
   // PC: チャンネル未選択時に最初のプロジェクトチャンネルへ自動遷移
   React.useEffect(() => {

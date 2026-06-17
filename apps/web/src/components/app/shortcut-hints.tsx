@@ -42,7 +42,7 @@ function contextHints(page: PageId): Hint[] {
       { keys: ['S'], label: '検索' },
       { keys: ['G'], label: 'グリッド表示' },
       { keys: ['T'], label: 'テーブル表示' },
-      { keys: ['[', ']'], label: 'フィルタタブ切替' },
+      { keys: ['@', '['], label: 'フィルタタブ切替' },
     )
   }
   if (page === 'calendar') {
@@ -60,7 +60,7 @@ function contextHints(page: PageId): Hint[] {
   }
   if (page === 'tasks') {
     items.push(
-      { keys: ['[', ']'], label: 'フィルタタブ切替' },
+      { keys: ['@', '['], label: 'フィルタタブ切替' },
       { keys: ['⏎'], label: 'タスク完了トグル' },
     )
   }
@@ -73,7 +73,7 @@ function contextHints(page: PageId): Hint[] {
   }
   if (page === 'files') {
     items.push(
-      { keys: ['[', ']'], label: 'フィルタタブ切替' },
+      { keys: ['@', '['], label: 'フィルタタブ切替' },
       { keys: ['⌫'], label: 'ファイル削除' },
       { keys: ['R'], label: '再インデックス' },
     )
@@ -81,7 +81,7 @@ function contextHints(page: PageId): Hint[] {
   if (page === 'members') {
     items.push(
       { keys: ['S'], label: '検索' },
-      { keys: ['[', ']'], label: 'ロールフィルタ切替' },
+      { keys: ['@', '['], label: 'ロールフィルタ切替' },
     )
   }
   if (page === 'ai') items.push({ keys: ['↑', '↓'], label: '前 / 次の会話' })
