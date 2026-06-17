@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { db, workspaceMembers, channels, channelMembers } from '@cairn/db'
-import { eq, and } from 'drizzle-orm'
+import { db, workspaceMembers, channels, channelMembers, projects } from '@cairn/db'
+import { eq, and, sql } from 'drizzle-orm'
 
 async function getWorkspaceRole(workspaceId: string, userId: string) {
   const [member] = await db
@@ -68,6 +68,8 @@ export async function requireWorkspaceMember(
 
 // チャンネルへのアクセス可否を検証する。
 // - 指定ワークスペースに属さないチャンネルは 403（チャンネルID総当たりによる越境アクセスを防ぐ）
+//   旧データのプロジェクトチャンネルは channels.workspace_id が null のことがあるため、
+//   project の workspace_id にフォールバックして判定する（migration 0033 と同じ coalesce）。
 // - プライベートチャンネルと DM は channel_members に参加しているユーザーのみ許可。
 //   DM は is_private=false でも参加者を channel_members で管理するため、type も判定に含める。
 // アクセス可なら null、不可なら 403 の NextResponse を返す。
@@ -77,12 +79,17 @@ export async function requireChannelAccess(
   channelId: string,
 ): Promise<NextResponse | null> {
   const [channel] = await db
-    .select({ id: channels.id, isPrivate: channels.isPrivate, type: channels.type })
+    .select({
+      isPrivate: channels.isPrivate,
+      type: channels.type,
+      effectiveWorkspaceId: sql<string | null>`coalesce(${channels.workspaceId}, ${projects.workspaceId})`,
+    })
     .from(channels)
-    .where(and(eq(channels.id, channelId), eq(channels.workspaceId, workspaceId)))
+    .leftJoin(projects, eq(channels.projectId, projects.id))
+    .where(eq(channels.id, channelId))
     .limit(1)
 
-  if (!channel) {
+  if (!channel || channel.effectiveWorkspaceId !== workspaceId) {
     return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
   }
 
