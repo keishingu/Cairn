@@ -40,6 +40,7 @@
 | ファイル | 内容 | 作成 |
 |---|---|---|
 | [`09_product_strategy_notes.md`](./09_product_strategy_notes.md) | 展開戦略・魅力向上の優先課題の議論記録 | 2026-06-11 |
+| [`telecom-business-filing-research.md`](./telecom-business-filing-research.md) | 電気通信事業の届出要否・タイミングの調査記録 | 2026-06-17 |
 
 ## アーカイブ
 
