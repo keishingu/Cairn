@@ -122,7 +122,7 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels } = await import('@cairn/db')
+    const { channels, channelMembers } = await import('@cairn/db')
 
     const rows = await db
       .insert(channels)
@@ -136,7 +136,14 @@ export async function POST(req: Request) {
 
     const inserted = rows[0]
     if (!inserted) throw new Error('insert returned no rows')
-    const result: WorkspaceChannelDto = { ...inserted, memberCount: 0, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
+
+    // プライベートチャンネルはメンバーのみアクセス可。作成者が締め出されないよう channel_members に追加する。
+    if (isPrivate) {
+      await db.insert(channelMembers).values({ channelId: inserted.id, userId: ctx.userId })
+    }
+
+    const memberCount = isPrivate ? 1 : 0
+    const result: WorkspaceChannelDto = { ...inserted, memberCount, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('[/api/workspaces/channels POST] DB error:', err)

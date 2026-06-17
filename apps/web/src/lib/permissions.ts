@@ -68,7 +68,8 @@ export async function requireWorkspaceMember(
 
 // チャンネルへのアクセス可否を検証する。
 // - 指定ワークスペースに属さないチャンネルは 403（チャンネルID総当たりによる越境アクセスを防ぐ）
-// - プライベートチャンネルは channel_members に参加しているユーザーのみ許可
+// - プライベートチャンネルと DM は channel_members に参加しているユーザーのみ許可。
+//   DM は is_private=false でも参加者を channel_members で管理するため、type も判定に含める。
 // アクセス可なら null、不可なら 403 の NextResponse を返す。
 export async function requireChannelAccess(
   workspaceId: string,
@@ -76,7 +77,7 @@ export async function requireChannelAccess(
   channelId: string,
 ): Promise<NextResponse | null> {
   const [channel] = await db
-    .select({ id: channels.id, isPrivate: channels.isPrivate })
+    .select({ id: channels.id, isPrivate: channels.isPrivate, type: channels.type })
     .from(channels)
     .where(and(eq(channels.id, channelId), eq(channels.workspaceId, workspaceId)))
     .limit(1)
@@ -85,7 +86,8 @@ export async function requireChannelAccess(
     return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
   }
 
-  if (channel.isPrivate) {
+  const membersOnly = channel.isPrivate || channel.type === 'dm'
+  if (membersOnly) {
     const [membership] = await db
       .select({ userId: channelMembers.userId })
       .from(channelMembers)
