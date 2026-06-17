@@ -1673,6 +1673,21 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ⌥F: フィルタトグル
+  React.useEffect(() => {
+    const onFilter = () => setFilterOpen(o => !o)
+    window.addEventListener('cairn:filter', onFilter)
+    return () => window.removeEventListener('cairn:filter', onFilter)
+  }, [])
+
+  // ⌥T: 今日へジャンプ
+  React.useEffect(() => {
+    const onToday = () => goToday()
+    window.addEventListener('cairn:today', onToday)
+    return () => window.removeEventListener('cairn:today', onToday)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const isCurrentPeriod = calView === 'week'
     ? weekStart.toDateString() === getWeekStart(today).toDateString()
     : year === today.getFullYear() && month === today.getMonth()

@@ -13,6 +13,13 @@ const NAV_ITEMS = [
   { label: 'カレンダー',       accelerator: 'CmdOrCtrl+2', action: 'calendar' },
   { label: 'カンバン',         accelerator: 'CmdOrCtrl+3', action: 'kanban' },
   { label: 'マイタスク',       accelerator: 'CmdOrCtrl+4', action: 'tasks' },
+  { label: 'チャット一覧',     accelerator: 'CmdOrCtrl+5', action: 'chats' },
+  { label: 'ファイル',         accelerator: 'CmdOrCtrl+6', action: 'files' },
+  { label: 'ギャラリー',       accelerator: 'CmdOrCtrl+7', action: 'gallery' },
+  { label: 'AIアシスタント',   accelerator: 'CmdOrCtrl+8', action: 'ai' },
+  { label: 'メンバー',         accelerator: 'CmdOrCtrl+9', action: 'members' },
+  { label: 'プロフィール',     accelerator: 'CmdOrCtrl+0', action: 'settings' },
+  { label: '設定',             accelerator: 'CmdOrCtrl+,', action: 'settings' },
 ]
 
 function buildMenu() {

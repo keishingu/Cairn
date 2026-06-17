@@ -259,6 +259,30 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     { id: 'done',        label: `完了 (${counts.done})` },
   ]
 
+  // ⌥[/⌥]: フィルタタブ切替
+  React.useEffect(() => {
+    const onTab = (e: Event) => {
+      const dir = (e as CustomEvent<'prev' | 'next'>).detail
+      const idx = filters.findIndex(f => f.id === filter)
+      const next = dir === 'next'
+        ? (idx + 1) % filters.length
+        : (idx - 1 + filters.length) % filters.length
+      setFilter(filters[next]!.id)
+    }
+    window.addEventListener('cairn:filter-tab', onTab)
+    return () => window.removeEventListener('cairn:filter-tab', onTab)
+  }, [filter, filters])
+
+  // ⌥Enter: 最初の未完了タスクをトグル
+  React.useEffect(() => {
+    const onToggle = () => {
+      const first = filtered.find(t => t.status !== 'done')
+      if (first) handleToggle(first.id, first.status)
+    }
+    window.addEventListener('cairn:toggle-task', onToggle)
+    return () => window.removeEventListener('cairn:toggle-task', onToggle)
+  }, [filtered, handleToggle])
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
       {/* Toolbar */}

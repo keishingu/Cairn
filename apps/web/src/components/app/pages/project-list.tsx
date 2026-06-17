@@ -114,6 +114,27 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
     return () => window.removeEventListener('cairn:create', onCreate)
   }, [canCreateProject])
 
+  // ⌥F: フィルタトグル
+  React.useEffect(() => {
+    const onFilter = () => setFilterOpen(o => !o)
+    window.addEventListener('cairn:filter', onFilter)
+    return () => window.removeEventListener('cairn:filter', onFilter)
+  }, [])
+
+  // ⌥S: 検索フォーカス
+  React.useEffect(() => {
+    const onSearch = () => { if (!isMobile) searchInputRef.current?.focus(); else setMobileSearchOpen(true); setTimeout(() => searchInputRef.current?.focus(), 50) }
+    window.addEventListener('cairn:search-focus', onSearch)
+    return () => window.removeEventListener('cairn:search-focus', onSearch)
+  }, [isMobile])
+
+  // ⌥G/⌥T: ビュー切替
+  React.useEffect(() => {
+    const onView = (e: Event) => setViewPersisted((e as CustomEvent<'grid' | 'table'>).detail)
+    window.addEventListener('cairn:view', onView)
+    return () => window.removeEventListener('cairn:view', onView)
+  }, [setViewPersisted])
+
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
     void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
@@ -134,6 +155,20 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
     { id: 'active',   label: '進行中',     n: counts.active },
     { id: 'archived', label: 'アーカイブ', n: counts.archived },
   ]
+
+  // ⌥[/⌥]: フィルタタブ切替
+  React.useEffect(() => {
+    const onTab = (e: Event) => {
+      const dir = (e as CustomEvent<'prev' | 'next'>).detail
+      const idx = filterTabs.findIndex(f => f.id === filter)
+      const next = dir === 'next'
+        ? (idx + 1) % filterTabs.length
+        : (idx - 1 + filterTabs.length) % filterTabs.length
+      setFilter(filterTabs[next]!.id)
+    }
+    window.addEventListener('cairn:filter-tab', onTab)
+    return () => window.removeEventListener('cairn:filter-tab', onTab)
+  }, [filter, filterTabs, setFilter])
 
   const tabFiltered = React.useMemo(() => {
     switch (filter) {

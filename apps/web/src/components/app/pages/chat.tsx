@@ -308,6 +308,29 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     }
   }, [])
 
+  // ⌥S: 検索フォーカス（チャンネル検索 or 横断検索を開く）
+  React.useEffect(() => {
+    const onSearch = () => {
+      if (!isMobile) setSearchOpen(true)
+    }
+    window.addEventListener('cairn:search-focus', onSearch)
+    return () => window.removeEventListener('cairn:search-focus', onSearch)
+  }, [isMobile])
+
+  // ⌥D: 詳細パネルのトグル（PC のみ）
+  React.useEffect(() => {
+    if (isMobile) return
+    const onDetail = () => {
+      // ChatDetailSidebar の表示/非表示は channelId の有無で制御されるため、
+      // 現在の channelId を一時的にクリアして再セットすることで再描画を促す
+      // ただし、より簡潔に openPanel のトグルで対応
+      // 現状は常時表示なので、イベントを dispatch してサイドバー側で制御
+      window.dispatchEvent(new CustomEvent('cairn:detail-toggle'))
+    }
+    window.addEventListener('cairn:detail', onDetail)
+    return () => window.removeEventListener('cairn:detail', onDetail)
+  }, [isMobile])
+
   // ⌥↑↓（順送り）: チャンネル一覧（プロジェクト → 全体 → DM の表示順）を前/次へ
   React.useEffect(() => {
     const orderedIds = [

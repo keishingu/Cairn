@@ -218,6 +218,40 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
     { id: 'doc', label: `ドキュメント (${counts.doc})` },
   ]
 
+  // ⌥[/⌥]: フィルタタブ切替
+  React.useEffect(() => {
+    const onTab = (e: Event) => {
+      const dir = (e as CustomEvent<'prev' | 'next'>).detail
+      const idx = filterDefs.findIndex(f => f.id === filter)
+      const next = dir === 'next'
+        ? (idx + 1) % filterDefs.length
+        : (idx - 1 + filterDefs.length) % filterDefs.length
+      setFilter(filterDefs[next]!.id)
+    }
+    window.addEventListener('cairn:filter-tab', onTab)
+    return () => window.removeEventListener('cairn:filter-tab', onTab)
+  }, [filter, filterDefs])
+
+  // ⌥Delete: 最初のファイルを削除（選択概念がないため、リスト先頭のファイル）
+  React.useEffect(() => {
+    const onDelete = () => {
+      const first = visibleFiles[0]
+      if (first) handleDelete(first.id, first.fileName)
+    }
+    window.addEventListener('cairn:delete-selected', onDelete)
+    return () => window.removeEventListener('cairn:delete-selected', onDelete)
+  }, [visibleFiles])
+
+  // ⌥R: 最初のファイルを再インデックス
+  React.useEffect(() => {
+    const onReindex = () => {
+      const first = visibleFiles.find(f => REINDEXABLE_MIME_TYPES.has(f.mimeType ?? '') && f.fileType !== 'link')
+      if (first) handleReindex(first.id)
+    }
+    window.addEventListener('cairn:reindex-selected', onReindex)
+    return () => window.removeEventListener('cairn:reindex-selected', onReindex)
+  }, [visibleFiles])
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Toolbar */}

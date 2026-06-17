@@ -26,6 +26,11 @@ const NAV_BY_DIGIT: Record<string, PageId> = {
   Digit2: 'calendar',
   Digit3: 'kanban',
   Digit4: 'tasks',
+  Digit5: 'chats',
+  Digit6: 'files',
+  Digit7: 'gallery',
+  Digit8: 'ai',
+  Digit9: 'members',
 }
 
 type CalView = 'month' | 'week' | 'timeline'
@@ -39,6 +44,10 @@ const CAL_VIEW_BY_CODE: Record<string, CalView> = {
 // ⌥←→（期間）と ⌥↑↓（順送り）・⌥N（作成）は、対応する画面でのみ既定動作を奪う
 const SEQ_PAGES = new Set<PageId>(['chats', 'ai'])
 const CREATE_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban', 'tasks', 'chats', 'ai'])
+const FILTER_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban', 'tasks', 'files', 'members'])
+const SEARCH_FOCUS_PAGES = new Set<PageId>(['projects', 'files', 'members', 'chats'])
+const VIEW_TOGGLE_PAGES = new Set<PageId>(['projects'])
+const FILTER_TAB_PAGES = new Set<PageId>(['projects', 'tasks', 'files', 'members'])
 
 declare global {
   interface Window {
@@ -149,6 +158,19 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
         navRef.current(navPage)
         return
       }
+      // ⌘⌥+0: プロフィール（設定ページのアカウントセクションへ遷移）
+      if (appMod && e.code === 'Digit0') {
+        e.preventDefault()
+        navRef.current('settings')
+        window.dispatchEvent(new CustomEvent('cairn:profile'))
+        return
+      }
+      // ⌘⌥+, (Comma): 設定
+      if (appMod && e.code === 'Comma') {
+        e.preventDefault()
+        navRef.current('settings')
+        return
+      }
 
       // ? : ヘルプ（修飾なし・入力欄以外）
       if (e.key === '?' && !primary && !e.altKey && !editable) {
@@ -188,6 +210,87 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
         if (e.repeat || !CREATE_PAGES.has(pageRef.current)) return
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:create'))
+        return
+      }
+      // ⌥F: フィルタ popover をトグル
+      if (e.code === 'KeyF') {
+        if (!FILTER_PAGES.has(pageRef.current)) return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:filter'))
+        return
+      }
+      // ⌥S: 検索入力にフォーカス
+      if (e.code === 'KeyS') {
+        if (!SEARCH_FOCUS_PAGES.has(pageRef.current)) return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:search-focus'))
+        return
+      }
+      // ⌥G: グリッド表示（Projects のみ）
+      if (e.code === 'KeyG') {
+        if (!VIEW_TOGGLE_PAGES.has(pageRef.current)) return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:view', { detail: 'grid' }))
+        return
+      }
+      // ⌥T: テーブル表示（Projects）/ 今日へジャンプ（Calendar）
+      if (e.code === 'KeyT') {
+        if (pageRef.current === 'projects') {
+          e.preventDefault()
+          window.dispatchEvent(new CustomEvent('cairn:view', { detail: 'table' }))
+        } else if (pageRef.current === 'calendar') {
+          e.preventDefault()
+          window.dispatchEvent(new CustomEvent('cairn:today'))
+        }
+        return
+      }
+      // ⌥A: Timeline ビュー（Calendar のみ）
+      if (e.code === 'KeyA') {
+        if (pageRef.current !== 'calendar') return
+        e.preventDefault()
+        applyCalView('timeline')
+        return
+      }
+      // ⌥D: 詳細パネルをトグル（Chats のみ）
+      if (e.code === 'KeyD') {
+        if (pageRef.current !== 'chats') return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:detail'))
+        return
+      }
+      // ⌥[ / ⌥]: フィルタタブを前/次へ切替
+      if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
+        if (!FILTER_TAB_PAGES.has(pageRef.current)) return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:filter-tab', { detail: e.code === 'BracketLeft' ? 'prev' : 'next' }))
+        return
+      }
+      // ⌥Enter: タスクの完了/未完了をトグル（Tasks のみ）
+      if (e.code === 'Enter') {
+        if (pageRef.current !== 'tasks') return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:toggle-task'))
+        return
+      }
+      // ⌥Delete: ファイル削除（Files のみ）
+      if (e.code === 'Backspace' || e.code === 'Delete') {
+        if (pageRef.current !== 'files') return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:delete-selected'))
+        return
+      }
+      // ⌥R: ファイル再インデックス（Files のみ）
+      if (e.code === 'KeyR') {
+        if (pageRef.current !== 'files') return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:reindex-selected'))
+        return
+      }
+      // ⌥M: すべて既読（通知パネルが開いている時のみ有効）
+      // カレンダーの ⌥M は CAL_VIEW_BY_CODE で先に処理されるため到達しない
+      if (e.code === 'KeyM') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:mark-read'))
       }
     }
 
