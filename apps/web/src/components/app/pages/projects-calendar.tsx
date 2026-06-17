@@ -1299,6 +1299,181 @@ const MobileTimelineView = ({ year, month, projects, onProjectClick, isLoading }
   )
 }
 
+// ─── PC timeline view ──────────────────────────────────────────────
+
+interface PCTimelineViewProps {
+  year: number
+  month: number
+  projects: ProjectDto[]
+  gcalEvents?: GcalEventDto[]
+  onProjectClick: (project: ProjectDto) => void
+  isLoading: boolean
+}
+
+const PCTimelineView = ({ year, month, projects, gcalEvents = [], onProjectClick, isLoading }: PCTimelineViewProps) => {
+  const today = new Date()
+
+  const timelineItems = React.useMemo(() => {
+    const monthStart = new Date(year, month, 1)
+    const monthEnd = new Date(year, month + 1, 0)
+    const items: { date: Date; projects: ProjectDto[]; gcalEvents: GcalEventDto[] }[] = []
+
+    // 月の全日付を生成
+    const currentDate = new Date(monthStart)
+    while (currentDate <= monthEnd) {
+      const dateProjects = projects.filter(p => {
+        if (!p.startDate) return false
+        const start = parseLocalDate(p.startDate)
+        const end = p.endDate ? parseLocalDate(p.endDate) : start
+        const current = new Date(currentDate)
+        return current >= start && current <= end
+      })
+
+      const dateGcalEvents = gcalEvents.filter(ev => {
+        const start = parseLocalDate(ev.startDate)
+        const end = parseLocalDate(ev.endDate)
+        const current = new Date(currentDate)
+        return current >= start && current <= end
+      })
+
+      if (dateProjects.length > 0 || dateGcalEvents.length > 0) {
+        items.push({
+          date: new Date(currentDate),
+          projects: dateProjects,
+          gcalEvents: dateGcalEvents,
+        })
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
+
+    return items
+  }, [projects, gcalEvents, year, month])
+
+  if (isLoading) {
+    return (
+      <div style={{ flex: 1, overflow: 'auto', padding: '16px 0' }}>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} style={{ height: 80, margin: '0 24px 12px', borderRadius: 8, background: 'var(--card-2)' }} />
+        ))}
+      </div>
+    )
+  }
+
+  if (timelineItems.length === 0) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 14 }}>
+        この月の予定なし
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ flex: 1, overflow: 'auto', padding: '16px 0' }}>
+      {timelineItems.map((item, index) => {
+        const isToday = item.date.toDateString() === today.toDateString()
+        const dateLabel = formatDateLabel(item.date)
+
+        return (
+          <div key={index} style={{ marginBottom: 24 }}>
+            {/* 日付ヘッダー */}
+            <div style={{
+              padding: '8px 24px', fontSize: 13, fontWeight: 700,
+              color: isToday ? 'var(--accent)' : 'var(--text-3)',
+              letterSpacing: '0.02em',
+              position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1,
+              borderBottom: '1px solid var(--border)',
+            }}>
+              {dateLabel}
+              {isToday && (
+                <span style={{
+                  marginLeft: 8, fontSize: 11, fontWeight: 600,
+                  background: 'var(--accent)', color: 'var(--on-accent)',
+                  padding: '2px 6px', borderRadius: 4,
+                }}>
+                  今日
+                </span>
+              )}
+            </div>
+
+            {/* プロジェクト一覧 */}
+            <div style={{ padding: '8px 24px' }}>
+              {item.projects.map((p, i) => {
+                const _c = p.statusColor ?? '#9CA3AF'
+                const cfg = { bg: _c + '18', bar: _c, text: _c }
+                const dateStr = formatDateRange(p.startDate, p.endDate)
+
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => onProjectClick(p)}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '12px 16px', border: 'none', background: 'transparent',
+                      borderTop: i > 0 ? '1px solid var(--divider)' : 'none',
+                      cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                      borderRadius: 6,
+                      transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--card-hover)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <div style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.title}
+                      </div>
+                      {dateStr && (
+                        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
+                      )}
+                      {p.memberNames.length > 0 && (
+                        <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>
+                          {p.memberNames.join(', ')}
+                        </div>
+                      )}
+                    </div>
+                    <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'} />
+                  </button>
+                )
+              })}
+
+              {/* Googleカレンダーイベント */}
+              {item.gcalEvents.map((ev, i) => (
+                <div
+                  key={`gcal-${ev.id}-${i}`}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '12px 16px', border: 'none', background: 'transparent',
+                    borderTop: item.projects.length > 0 || i > 0 ? '1px solid var(--divider)' : 'none',
+                    borderRadius: 6,
+                  }}
+                >
+                  <div style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, background: ev.calendarColor ?? '#4285F4', flexShrink: 0, opacity: 0.7 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-2)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ev.title}
+                    </div>
+                    {ev.startTime && (
+                      <div style={{ fontSize: 12, color: 'var(--text-4)', marginTop: 2 }}>
+                        {ev.startTime}{ev.endTime ? ` - ${ev.endTime}` : ''}
+                      </div>
+                    )}
+                    {ev.calendarName && (
+                      <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>
+                        {ev.calendarName}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Page ──────────────────────────────────────────────────────────
 
 interface PageCalendarProps {
@@ -1600,7 +1775,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               options={[
                 { id: 'month',    label: '月' },
                 { id: 'week',     label: '週' },
-                { id: 'timeline', label: 'リスト' },
+                { id: 'timeline', label: 'タイムライン' },
               ]}
               value={calView}
               onChange={(v) => setCalView(v as CalView)}
@@ -1675,6 +1850,15 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             timedEvents={gcalTimedEvents}
             onEventClick={openPanel}
             onDateSelect={openCreate}
+            isLoading={isLoading}
+          />
+        ) : calView === 'timeline' ? (
+          <PCTimelineView
+            year={year}
+            month={month}
+            projects={visibleProjects}
+            gcalEvents={visibleGcalEvents}
+            onProjectClick={openPanel}
             isLoading={isLoading}
           />
         ) : (
