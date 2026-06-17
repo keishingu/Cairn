@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { getWorkspaceMemberRole } from '@/lib/permissions'
 
 export interface MemberProjectDto {
   projectId: string
@@ -33,7 +34,7 @@ export async function GET(
   try {
     const { db } = await import('@cairn/db')
     const { projects, projectStatuses, projectMembers, workspaceMembers } = await import('@cairn/db')
-    const { eq, and, count } = await import('drizzle-orm')
+    const { eq, and, count, inArray } = await import('drizzle-orm')
 
     // verify the target user belongs to this workspace
     const [wsMember] = await db
@@ -46,6 +47,24 @@ export async function GET(
 
     if (!wsMember) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+    }
+
+    // ゲストは対象ユーザーのプロジェクトを丸ごと見られない。
+    // 自分が参加するプロジェクトとの共通分だけに絞り、参加していないプロジェクトの存在が漏れないようにする。
+    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    let guestProjectIds: string[] | null = null
+    if (callerRole === 'guest') {
+      const ownProjects = await db
+        .select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+        .where(and(eq(projectMembers.userId, ctx.userId), eq(projects.workspaceId, ctx.workspaceId)))
+      guestProjectIds = [...new Set(ownProjects.map(r => r.projectId))]
+
+      // 共通プロジェクトが無ければ空配列を返す
+      if (guestProjectIds.length === 0) {
+        return NextResponse.json([])
+      }
     }
 
     const rows = await db
@@ -64,6 +83,7 @@ export async function GET(
       .where(and(
         eq(projectMembers.userId, userId),
         eq(projects.workspaceId, ctx.workspaceId),
+        ...(guestProjectIds ? [inArray(projects.id, guestProjectIds)] : []),
       ))
       .orderBy(projects.createdAt)
 

@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { getWorkspaceMemberRole } from '@/lib/permissions'
 
 export interface WorkspaceMemberDto {
   userId: string
@@ -20,8 +21,37 @@ export async function GET() {
   try {
     const { db } = await import('@cairn/db')
     const { profiles, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
-    const { eq, and, count, sql } = await import('drizzle-orm')
+    const { eq, and, count, sql, inArray } = await import('drizzle-orm')
 
+    // ゲストはワークスペース全体のメンバー一覧を見られない。
+    // 参加プロジェクトの共同メンバーのみに絞り、projectCount も共有プロジェクト数に限定して、
+    // 参加していないプロジェクトの存在が漏れないようにする。
+    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const isGuest = callerRole === 'guest'
+
+    let guestProjectIds: string[] = []
+    let visibleUserIds: string[] = []
+    if (isGuest) {
+      const ownProjects = await db
+        .select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+        .where(and(eq(projectMembers.userId, ctx.userId), eq(projects.workspaceId, ctx.workspaceId)))
+      guestProjectIds = [...new Set(ownProjects.map(r => r.projectId))]
+
+      if (guestProjectIds.length === 0) {
+        // どのプロジェクトにも属さないゲストは自分自身のみ見える
+        visibleUserIds = [ctx.userId]
+      } else {
+        const coMembers = await db
+          .select({ userId: projectMembers.userId })
+          .from(projectMembers)
+          .where(inArray(projectMembers.projectId, guestProjectIds))
+        visibleUserIds = [...new Set([ctx.userId, ...coMembers.map(r => r.userId)])]
+      }
+    }
+
+    // projectCount の集計対象。ゲストは共有プロジェクトのみに限定する。
     const projectCountSq = db
       .select({
         userId: projectMembers.userId,
@@ -29,7 +59,11 @@ export async function GET() {
       })
       .from(projectMembers)
       .innerJoin(projects, eq(projectMembers.projectId, projects.id))
-      .where(eq(projects.workspaceId, ctx.workspaceId))
+      .where(
+        isGuest && guestProjectIds.length > 0
+          ? and(eq(projects.workspaceId, ctx.workspaceId), inArray(projectMembers.projectId, guestProjectIds))
+          : eq(projects.workspaceId, ctx.workspaceId),
+      )
       .groupBy(projectMembers.userId)
       .as('pc')
 
@@ -45,7 +79,11 @@ export async function GET() {
       .from(workspaceMembers)
       .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
       .leftJoin(projectCountSq, eq(projectCountSq.userId, workspaceMembers.userId))
-      .where(eq(workspaceMembers.workspaceId, ctx.workspaceId))
+      .where(
+        isGuest
+          ? and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, visibleUserIds))
+          : eq(workspaceMembers.workspaceId, ctx.workspaceId),
+      )
       .orderBy(profiles.displayName)
 
     const result: WorkspaceMemberDto[] = rows.map(r => ({
