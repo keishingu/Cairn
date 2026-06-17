@@ -12,7 +12,8 @@ import type { PageId } from '@/components/app/sidebar'
  *
  *  - アプリ層（数字ナビ・Web）: Mac=⌘⌥+数字 / Win・Linux=Ctrl⇧+数字
  *    （⌘+数字 はタブ切替に取られる。Mac は ⌘⇧3/4 がスクショ予約のため ⌘⌥ を使う）
- *  - グローバル操作: ⌘K パレット / ⌘⇧F 横断検索 / ⌘⇧U 通知 / ? ヘルプ（英字は ⌘⇧ で Mac/Win 共通）
+ *  - グローバル操作: ⌘K パレット / ⌘⇧F 横断検索 / ? ヘルプ（英字は ⌘⇧ で Mac/Win 共通）
+ *  - アプリ層（数字ナビ・通知・設定）: Mac=⌘⌥+数字/U/, / Win・Linux=Ctrl⇧+数字/U/,
  *  - コンテキスト層（⌥/Alt）: ⌥M/W カレンダー表示、⌥←→ 期間送り（時間=水平）、
  *    ⌥↑↓ 順送り（リスト=垂直）、⌥N 新規作成
  *  - Desktop（Electron）: ネイティブメニュー ⌘+数字、および Ctrl+Tab/Ctrl+Shift+Tab を
@@ -140,12 +141,6 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
           window.dispatchEvent(new CustomEvent('cairn:cross-search'))
           return
         }
-        // ⌘⇧U: 通知
-        if (e.shiftKey && e.code === 'KeyU') {
-          e.preventDefault()
-          notifRef.current?.()
-          return
-        }
       }
 
       // アプリ層: 数字ナビ。Mac は ⌘⌥（⌘⇧3/4 がスクショ予約のため）、Win/Linux は Ctrl⇧
@@ -169,6 +164,12 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
       if (appMod && e.code === 'Comma') {
         e.preventDefault()
         navRef.current('settings')
+        return
+      }
+      // ⌘⌥U: 通知
+      if (appMod && e.code === 'KeyU') {
+        e.preventDefault()
+        notifRef.current?.()
         return
       }
 

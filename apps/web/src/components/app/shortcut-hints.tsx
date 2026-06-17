@@ -29,7 +29,7 @@ const APP_HINTS: Hint[] = [
   { keys: ['9'], label: 'メンバー' },
   { keys: ['0'], label: 'プロフィール' },
   { keys: [','], label: '設定' },
-  { keys: ['⇧', 'U'], label: '通知を開く' },
+  { keys: ['U'], label: '通知を開く' },
 ]
 
 const CREATE_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban', 'tasks', 'chats', 'ai'])

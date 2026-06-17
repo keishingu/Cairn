@@ -38,6 +38,7 @@ function buildSections(): Section[] {
         { keys: `${nav} 9`, label: 'メンバー' },
         { keys: `${nav} 0`, label: 'プロフィール' },
         { keys: `${nav} ,`, label: '設定' },
+        { keys: `${nav} U`, label: '通知を開く' },
       ],
     },
     {
@@ -45,7 +46,6 @@ function buildSections(): Section[] {
       rows: [
         { keys: `${g} K`, label: 'コマンドパレット' },
         { keys: `${g} ⇧ F`, label: '横断検索（チャット）' },
-        { keys: `${g} ⇧ U`, label: '通知を開く' },
         { keys: '?', label: 'このショートカット一覧' },
         { keys: 'Esc', label: '最前面のパネル/モーダルを閉じる' },
       ],
