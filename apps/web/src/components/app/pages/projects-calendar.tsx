@@ -1493,7 +1493,21 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const [year, setYear] = React.useState(today.getFullYear())
   const [month, setMonth] = React.useState(today.getMonth())
   const [selectedDate, setSelectedDate] = React.useState<Date>(today)
-  const [calView, setCalView] = React.useState<CalView>('month')
+  const [calView, setCalView] = React.useState<CalView>(() => {
+    if (typeof window === 'undefined') return 'month'
+    const saved = localStorage.getItem(STORAGE_KEYS.calendar_view)
+    // calendar_view は PC/モバイル共有。timeline は PC に描画ビューが無いため、
+    // モバイルで保存された timeline を PC が復元しても月グリッドにフォールバックして
+    // 表示が食い違う。PC では timeline を月へクランプする
+    if (saved === 'week') return 'week'
+    if (saved === 'timeline' && isMobile) return 'timeline'
+    return 'month'
+  })
+  // UI 操作・ショートカット双方で表示を永続化し、リロード後も維持する
+  const setCalViewPersisted = React.useCallback((v: CalView) => {
+    setCalView(v)
+    localStorage.setItem(STORAGE_KEYS.calendar_view, v)
+  }, [])
   const [createDates, setCreateDates] = React.useState<{ start: string; end: string } | null>(null)
   const showCreate = createDates !== null
   const openCreate = (start: string, end: string) => setCreateDates({ start, end })
@@ -1629,6 +1643,36 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     }
   }
 
+  // グローバルショートカット（⌥M/W・⌥←→）からの操作を受ける。
+  // goPrev/goNext は month・calView を参照するので依存に含めて最新の closure を購読する
+  React.useEffect(() => {
+    const onCalView = (e: Event) => setCalView((e as CustomEvent<CalView>).detail)
+    const onPeriod = (e: Event) => {
+      if ((e as CustomEvent<'prev' | 'next'>).detail === 'prev') goPrev()
+      else goNext()
+    }
+    window.addEventListener('cairn:cal-view', onCalView)
+    window.addEventListener('cairn:period', onPeriod)
+    return () => {
+      window.removeEventListener('cairn:cal-view', onCalView)
+      window.removeEventListener('cairn:period', onPeriod)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calView, month])
+
+  // ⌥N: 新規プロジェクト（今日の日付で作成モーダルを開く）
+  React.useEffect(() => {
+    const onCreate = () => {
+      // クリック導線（ツールバーの新規ボタン）と同じローカル日付を使う。
+      // toISOString() は UTC なので、US 等で日付がズレる
+      const iso = formatISO(new Date())
+      openCreate(iso, iso)
+    }
+    window.addEventListener('cairn:create', onCreate)
+    return () => window.removeEventListener('cairn:create', onCreate)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const isCurrentPeriod = calView === 'week'
     ? weekStart.toDateString() === getWeekStart(today).toDateString()
     : year === today.getFullYear() && month === today.getMonth()
@@ -1677,7 +1721,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           {CAL_VIEWS.map(v => (
             <button
               key={v}
-              onClick={() => setCalView(v)}
+              onClick={() => setCalViewPersisted(v)}
               style={{
                 flex: 1, padding: '8px 4px', border: 'none', background: 'transparent',
                 fontSize: 13, fontWeight: calView === v ? 700 : 500,
@@ -1778,7 +1822,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
                 { id: 'timeline', label: 'タイムライン' },
               ]}
               value={calView}
-              onChange={(v) => setCalView(v as CalView)}
+              onChange={(v) => setCalViewPersisted(v as CalView)}
             />
             {gcalConnected && gcalCalendars.length > 0 && (
               <div ref={gcalFilterBtnRef} style={{ position: 'relative' }}>

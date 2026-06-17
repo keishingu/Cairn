@@ -107,6 +107,13 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false)
   const searchInputRef = React.useRef<HTMLInputElement>(null)
 
+  // ⌥N: 新規プロジェクト（ボタンと同じく管理者以上のみ）
+  React.useEffect(() => {
+    const onCreate = () => { if (canCreateProject) setShowCreate(true) }
+    window.addEventListener('cairn:create', onCreate)
+    return () => window.removeEventListener('cairn:create', onCreate)
+  }, [canCreateProject])
+
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
     void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
