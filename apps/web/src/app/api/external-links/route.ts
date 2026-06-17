@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
 
 const GOOGLE_DOC_RE = /https:\/\/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/
 const GOOGLE_SHEET_RE = /https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/
@@ -73,6 +74,12 @@ export async function POST(req: Request) {
         .limit(1)
       projectId = ch?.projectId ?? null
     }
+
+    // ゲストは参加プロジェクトにのみリンクを登録できる。プロジェクト未指定（WSレベル）はゲスト不可。
+    const forbidden = projectId
+      ? await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+      : await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
+    if (forbidden) return forbidden
 
     // 同一プロジェクト内の重複チェック
     if (projectId) {

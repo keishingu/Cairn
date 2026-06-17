@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { getGuestVisibleProjectIds, getWorkspaceMemberRole } from '@/lib/permissions'
 
 export interface FileDto {
   id: string
@@ -27,6 +28,15 @@ export async function GET() {
 
     const { db, files, profiles, projects, messageAttachments, messages, channels, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
     const { eq, and, desc, isNull, inArray, sql } = await import('drizzle-orm')
+
+    // ゲストは参加プロジェクトのファイルのみ閲覧可。プロジェクト未紐付け（ワークスペース/DM）の
+    // ファイルも含めて参加外は返さない。参加プロジェクトが無ければ空配列。
+    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    let guestProjectIds: string[] | null = null
+    if (role === 'guest') {
+      guestProjectIds = await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId)
+      if (guestProjectIds.length === 0) return NextResponse.json([] satisfies FileDto[])
+    }
 
     const INDEXABLE_MIMES = new Set([
       'application/pdf',
@@ -66,6 +76,7 @@ export async function GET() {
       .where(and(
         eq(files.workspaceId, ctx.workspaceId),
         isNull(galleryItems.id),
+        ...(guestProjectIds ? [inArray(files.projectId, guestProjectIds)] : []),
       ))
       .orderBy(desc(files.createdAt))
 

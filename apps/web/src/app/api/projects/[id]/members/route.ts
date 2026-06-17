@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceMember } from '@/lib/permissions'
+import { requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
 
 export interface ProjectMemberDto {
   userId: string
@@ -35,6 +35,10 @@ export async function GET(
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
+
+    // ゲストは参加プロジェクトのメンバーのみ閲覧可
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    if (forbidden) return forbidden
 
     const rows = await db
       .select({

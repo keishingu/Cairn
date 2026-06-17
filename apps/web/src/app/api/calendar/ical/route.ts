@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
     const userId = profile.id
 
     const [membership] = await db
-      .select({ workspaceId: workspaceMembers.workspaceId })
+      .select({ workspaceId: workspaceMembers.workspaceId, role: workspaceMembers.role })
       .from(workspaceMembers)
       .where(eq(workspaceMembers.userId, userId))
 
@@ -110,7 +110,10 @@ export async function GET(req: NextRequest) {
 
     let rows: ProjectRow[]
 
-    if (scope === 'workspace') {
+    // ゲストは全体スコープを使えない。workspace 指定でも参加プロジェクトのみに絞る。
+    const allowWorkspaceScope = scope === 'workspace' && membership.role !== 'guest'
+
+    if (allowWorkspaceScope) {
       rows = await db
         .select({ id: projects.id, title: projects.title, startDate: projects.startDate, endDate: projects.endDate })
         .from(projects)
