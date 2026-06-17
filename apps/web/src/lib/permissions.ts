@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { db, workspaceMembers, channels, channelMembers, projects } from '@cairn/db'
+import { db, workspaceMembers, channels, channelMembers, projects, projectMembers } from '@cairn/db'
 import { eq, and, sql } from 'drizzle-orm'
 
 async function getWorkspaceRole(workspaceId: string, userId: string) {
@@ -72,6 +72,8 @@ export async function requireWorkspaceMember(
 //   project の workspace_id にフォールバックして判定する（migration 0033 と同じ coalesce）。
 // - プライベートチャンネルと DM は channel_members に参加しているユーザーのみ許可。
 //   DM は is_private=false でも参加者を channel_members で管理するため、type も判定に含める。
+// - プロジェクトチャンネルはゲストの場合、参加プロジェクト（project_members）のみ許可。
+//   非プライベートでもゲストが参加外プロジェクトのチャットを閲覧/投稿できないようにする。
 // アクセス可なら null、不可なら 403 の NextResponse を返す。
 export async function requireChannelAccess(
   workspaceId: string,
@@ -82,6 +84,7 @@ export async function requireChannelAccess(
     .select({
       isPrivate: channels.isPrivate,
       type: channels.type,
+      projectId: channels.projectId,
       effectiveWorkspaceId: sql<string | null>`coalesce(${channels.workspaceId}, ${projects.workspaceId})`,
     })
     .from(channels)
@@ -103,6 +106,22 @@ export async function requireChannelAccess(
 
     if (!membership) {
       return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+    }
+  }
+
+  // プロジェクトチャンネルはゲストの場合、参加プロジェクトに限定する
+  if (channel.type === 'project' && channel.projectId) {
+    const role = await getWorkspaceRole(workspaceId, userId)
+    if (role === 'guest') {
+      const [pm] = await db
+        .select({ id: projectMembers.id })
+        .from(projectMembers)
+        .where(and(eq(projectMembers.projectId, channel.projectId), eq(projectMembers.userId, userId)))
+        .limit(1)
+
+      if (!pm) {
+        return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+      }
     }
   }
 
