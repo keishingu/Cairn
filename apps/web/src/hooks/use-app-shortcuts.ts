@@ -262,7 +262,7 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
       if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
         if (!FILTER_TAB_PAGES.has(pageRef.current)) return
         e.preventDefault()
-        window.dispatchEvent(new CustomEvent('cairn:filter-tab', { detail: e.code === 'BracketLeft' ? 'prev' : 'next' }))
+        window.dispatchEvent(new CustomEvent('cairn:filter-tab', { detail: e.code === 'BracketRight' ? 'prev' : 'next' }))
         return
       }
       // ⌥Enter: タスクの完了/未完了をトグル（Tasks のみ）

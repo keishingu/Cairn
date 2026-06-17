@@ -9,6 +9,7 @@ import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import type { FileDto } from '@/app/api/files/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useArrowNav } from '@/hooks/use-arrow-nav'
 
 type FilterKey = 'all' | 'pdf' | 'img' | 'doc'
 
@@ -55,7 +56,7 @@ function matchesFilter(file: FileDto, filter: FilterKey): boolean {
 
 // ─── FileRow ──────────────────────────────────────────────────────
 
-const FileRow = ({ file, isMobile, onDelete, onReindex, onImageClick }: { file: FileDto; isMobile: boolean; onDelete: (id: string, name: string) => void; onReindex: (id: string) => void; onImageClick: (id: string) => void }) => {
+const FileRow = ({ file, isMobile, onDelete, onReindex, onImageClick, selected }: { file: FileDto; isMobile: boolean; onDelete: (id: string, name: string) => void; onReindex: (id: string) => void; onImageClick: (id: string) => void; selected?: boolean }) => {
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
   const projectLabel = file.projectTitle ?? file.channelName ?? 'チャット'
@@ -68,7 +69,10 @@ const FileRow = ({ file, isMobile, onDelete, onReindex, onImageClick }: { file: 
         display: 'flex', alignItems: 'center', gap: 10,
         padding: isMobile ? '10px 12px' : '10px 16px',
         borderBottom: '1px solid var(--divider)',
+        background: selected ? 'var(--accent-soft)' : 'transparent',
       }}
+      onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+      onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
     >
       <a
         href={file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`}
@@ -252,6 +256,14 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
     return () => window.removeEventListener('cairn:reindex-selected', onReindex)
   }, [visibleFiles])
 
+  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useArrowNav(visibleFiles.length, React.useCallback((idx: number) => {
+    const file = visibleFiles[idx]
+    if (file && isImageFile(file)) openLightbox(file.id)
+  }, [visibleFiles, openLightbox]))
+
+  // フィルタ変更で選択をリセット
+  React.useEffect(() => { setNavIdx(-1) }, [filter, effectiveSearch, setNavIdx])
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Toolbar */}
@@ -312,7 +324,7 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
           </div>
         ) : (
           <>
-            {visibleFiles.map(f => <FileRow key={f.id} file={f} isMobile={isMobile} onDelete={handleDelete} onReindex={handleReindex} onImageClick={openLightbox} />)}
+            {visibleFiles.map((f, i) => <FileRow key={f.id} file={f} isMobile={isMobile} onDelete={handleDelete} onReindex={handleReindex} onImageClick={openLightbox} selected={i === navIdx} />)}
             <div ref={sentinelRef} />
           </>
         )}

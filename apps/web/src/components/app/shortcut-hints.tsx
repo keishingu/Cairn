@@ -22,6 +22,14 @@ const APP_HINTS: Hint[] = [
   { keys: ['2'], label: 'カレンダー' },
   { keys: ['3'], label: 'カンバン' },
   { keys: ['4'], label: 'マイタスク' },
+  { keys: ['5'], label: 'チャット一覧' },
+  { keys: ['6'], label: 'ファイル' },
+  { keys: ['7'], label: 'ギャラリー' },
+  { keys: ['8'], label: 'AIアシスタント' },
+  { keys: ['9'], label: 'メンバー' },
+  { keys: ['0'], label: 'プロフィール' },
+  { keys: [','], label: '設定' },
+  { keys: ['⇧', 'U'], label: '通知を開く' },
 ]
 
 const CREATE_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban', 'tasks', 'chats', 'ai'])

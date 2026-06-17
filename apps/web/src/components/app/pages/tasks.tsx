@@ -6,6 +6,7 @@ import { Icon, Avatar, Fab } from '../primitives'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { CreateTaskModal } from './create-task-modal'
+import { useArrowNav } from '@/hooks/use-arrow-nav'
 
 type FilterKey = 'all' | 'todo' | 'in_progress' | 'done'
 
@@ -44,9 +45,10 @@ interface TaskRowProps {
   task: TaskDto
   onToggle: (id: string, current: TaskDto['status']) => void
   toggling: boolean
+  selected?: boolean
 }
 
-const TaskRow = ({ task, onToggle, toggling }: TaskRowProps) => {
+const TaskRow = ({ task, onToggle, toggling, selected }: TaskRowProps) => {
   const due = formatDueDate(task.dueDate)
   const isDone = task.status === 'done'
 
@@ -56,9 +58,10 @@ const TaskRow = ({ task, onToggle, toggling }: TaskRowProps) => {
         display: 'flex', alignItems: 'center', gap: 12,
         padding: '10px 16px', borderBottom: '1px solid var(--divider)',
         opacity: toggling ? 0.5 : 1, transition: 'opacity .15s',
+        background: selected ? 'var(--accent-soft)' : 'transparent',
       }}
-      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+      onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+      onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
     >
       <button
         onClick={() => onToggle(task.id, task.status)}
@@ -139,9 +142,10 @@ interface SectionProps {
   onToggle: (id: string, current: TaskDto['status']) => void
   togglingId: string | null
   defaultOpen?: boolean
+  selectedTaskId?: string | null
 }
 
-const Section = ({ label, count, tasks, onToggle, togglingId, defaultOpen = true }: SectionProps) => {
+const Section = ({ label, count, tasks, onToggle, togglingId, defaultOpen = true, selectedTaskId }: SectionProps) => {
   const [open, setOpen] = React.useState(defaultOpen)
   return (
     <div>
@@ -164,6 +168,7 @@ const Section = ({ label, count, tasks, onToggle, togglingId, defaultOpen = true
           task={t}
           onToggle={onToggle}
           toggling={togglingId === t.id}
+          selected={t.id === selectedTaskId}
         />
       ))}
     </div>
@@ -227,6 +232,11 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     if (filter === 'all') return tasks
     return tasks.filter(t => t.status === filter)
   }, [tasks, filter])
+
+  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useArrowNav(filtered.length)
+
+  // フィルタ変更で選択をリセット
+  React.useEffect(() => { setNavIdx(-1) }, [filter, setNavIdx])
 
   const counts = React.useMemo(() => ({
     all: tasks.length,
@@ -349,6 +359,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
                 onToggle={handleToggle}
                 togglingId={togglingId}
                 defaultOpen={idx < 3}
+                selectedTaskId={navIdx >= 0 && navIdx < filtered.length ? (filtered[navIdx]?.id ?? null) : null}
               />
             ))}
           </div>

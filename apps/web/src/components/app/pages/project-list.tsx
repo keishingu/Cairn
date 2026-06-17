@@ -15,6 +15,7 @@ import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useArrowNav } from '@/hooks/use-arrow-nav'
 
 // ─── Main component ───────────────────────────────────────────────
 interface ProjectListViewProps {
@@ -196,6 +197,14 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
     if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
     return result
   }, [tabFiltered, statusFilter, memberFilter, effectiveSearch, projects])
+
+  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useArrowNav(
+    filteredProjects.length,
+    React.useCallback((idx: number) => { openPanel?.(filteredProjects[idx]!) }, [filteredProjects, openPanel]),
+  )
+
+  // フィルタ変更で選択をリセット
+  React.useEffect(() => { setNavIdx(-1) }, [filter, statusFilter, memberFilter, effectiveSearch, setNavIdx])
 
   const sortedProjects = React.useMemo(() => {
     if (view !== 'table') return filteredProjects
@@ -391,14 +400,16 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
             {sortedProjects.map((p, i) => {
               const accent = p.statusColor ?? 'var(--text-3)'
               const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
+              const selected = i === navIdx
               return (
                 <div key={p.id} onClick={() => openPanel?.(p)} style={{
                   display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px',
                   gap: 16, padding: '12px 16px', borderBottom: i < sortedProjects.length - 1 ? '1px solid var(--divider)' : 'none',
                   alignItems: 'center', cursor: 'pointer',
+                  background: selected ? 'var(--accent-soft)' : 'transparent',
                 }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = selected ? 'var(--accent-soft)' : 'var(--card-2)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = selected ? 'var(--accent-soft)' : 'transparent'}
                 >
                   <span style={{ width: 10, height: 10, borderRadius: 3, background: accent }}/>
                   <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
@@ -467,9 +478,10 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
 
               return (
                 <div key={p.id} onClick={() => openPanel?.(p)} style={{
-                  background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12,
+                  background: 'var(--card)', borderRadius: 12,
                   overflow: 'hidden', cursor: 'pointer', boxShadow: 'var(--shadow-sm)',
                   transition: 'transform .15s, box-shadow .15s',
+                  border: i === navIdx ? '1.5px solid var(--accent)' : '1px solid var(--border)',
                 }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)' }}
