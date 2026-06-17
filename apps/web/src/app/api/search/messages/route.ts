@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   try {
     const { db } = await import('@cairn/db')
     const { channels, channelMembers, messages, profiles, workspaceMembers, projects, projectMembers } = await import('@cairn/db')
-    const { eq, isNull, and, ilike, or, exists } = await import('drizzle-orm')
+    const { eq, isNull, and, ilike, or, exists, ne } = await import('drizzle-orm')
     const { desc, sql } = await import('drizzle-orm')
 
     const memberSubquery = db
@@ -30,7 +30,8 @@ export async function GET(req: Request) {
       .where(and(eq(channelMembers.channelId, channels.id), eq(channelMembers.userId, ctx.userId)))
 
     // ゲストは参加プロジェクトのチャンネルと、自分が所属するチャンネル（DM等）のみ検索可。
-    // member 以上は公開チャンネル全体＋所属プライベートチャンネルを検索できる。
+    // member 以上は公開チャンネル全体＋所属チャンネルを検索できる。ただし DM は is_private=false でも
+    // 参加者を channel_members で管理するため、公開条件から除外しメンバーのみに限定する。
     const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
     const guestProjectAccess = db
       .select({ one: sql<number>`1` })
@@ -38,7 +39,7 @@ export async function GET(req: Request) {
       .where(and(eq(projectMembers.projectId, channels.projectId), eq(projectMembers.userId, ctx.userId)))
     const accessCondition = role === 'guest'
       ? or(exists(memberSubquery), exists(guestProjectAccess))
-      : or(eq(channels.isPrivate, false), exists(memberSubquery))
+      : or(and(eq(channels.isPrivate, false), ne(channels.type, 'dm')), exists(memberSubquery))
 
     const rows = await db
       .select({
