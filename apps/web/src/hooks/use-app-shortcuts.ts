@@ -260,10 +260,13 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
         return
       }
       // ⌥[ / ⌥]: フィルタタブを前/次へ切替
-      if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
+      // JIS: @(BracketLeft)=前, [(BracketRight)=次, ](Backslash)=次
+      // US: [(BracketLeft)=前, ](BracketRight)=次
+      if (e.code === 'BracketLeft' || e.code === 'BracketRight' || e.code === 'Backslash' || e.code === 'IntlYen') {
         if (!FILTER_TAB_PAGES.has(pageRef.current)) return
         e.preventDefault()
-        window.dispatchEvent(new CustomEvent('cairn:filter-tab', { detail: e.code === 'BracketLeft' ? 'prev' : 'next' }))
+        const isPrev = e.code === 'BracketLeft'
+        window.dispatchEvent(new CustomEvent('cairn:filter-tab', { detail: isPrev ? 'prev' : 'next' }))
         return
       }
       // ⌥Enter: タスクの完了/未完了をトグル（Tasks のみ）
