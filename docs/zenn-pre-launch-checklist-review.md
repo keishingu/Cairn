@@ -8,8 +8,8 @@
 
 ## 総括（優先度高）
 
-1. **`drizzle-orm` に SQLインジェクションの既知脆弱性（High）** — `packages/db/package.json` で `drizzle-orm: ^0.38.3` を使用しているが、`pnpm audit` で SQL識別子の不適切なエスケープによる SQLインジェクション（[GHSA-gpj5-g38j-94v9](https://github.com/advisories/GHSA-gpj5-g38j-94v9)、`>=0.45.2` で修正）が検出された。`0.45.2` 以降へのアップデートを推奨。
-2. **セキュリティレスポンスヘッダーが一切設定されていない** — `Strict-Transport-Security` / `X-Frame-Options` / `X-Content-Type-Options` / CSP のいずれも `next.config.ts` や `middleware.ts` に存在しない。
+1. ~~**`drizzle-orm` に SQLインジェクションの既知脆弱性（High）**~~ — ✅ **対応済み（2026-06-17）**。`drizzle-orm` を `^0.45.2`、`drizzle-kit` を `^0.31.10` に更新し、[GHSA-gpj5-g38j-94v9](https://github.com/advisories/GHSA-gpj5-g38j-94v9) を解消（commit [`cc6afcf`](https://github.com/keishingu/cairn/commit/cc6afcf)）
+2. ~~**セキュリティレスポンスヘッダーが一切設定されていない**~~ — ✅ **対応済み（2026-06-17）**。`apps/web/next.config.ts` の `headers()` に `Strict-Transport-Security` / `X-Frame-Options: DENY` / `X-Content-Type-Options: nosniff` を全パス共通で追加（commit [`2233d21`](https://github.com/keishingu/cairn/commit/2233d21)）。CSPは未設定のまま（要件次第のため別途検討）
 3. **エラー監視ツールが未導入** — Sentry 等は package.json に見当たらず、API ルートは `console.error` のみ。サーバーエラーの通知・検知の仕組みがない。
 4. **カスタム 404/50x ページが存在しない** — `app/not-found.tsx` / `app/error.tsx` / `app/global-error.tsx` がなく、Next.js のデフォルト画面のまま。
 5. **OGP / Twitter Card 未設定** — `app/layout.tsx` の `metadata` に `openGraph` / `twitter` フィールドがない。
@@ -32,18 +32,16 @@
 | サーバーサイドバリデーション | ✅ | `packages/shared` に Zod スキーマが集約され、API ルートで使用されている（既存の規約） |
 | URLバリデーション（protocol制限等） | ⚠️ | 個別ルートでの網羅的な確認は未実施 |
 | `dangerouslySetInnerHTML` | ✅ | 全文検索で使用箇所なし。チャットの Markdown 表示は `react-markdown`（`apps/web/src/components/app/markdown-content.tsx`）で `rehype-raw` 未使用のため、生HTMLは描画されない |
-| SQLインジェクション | ⚠️ | コード上で `sql.raw()` 等の危険なAPIは未使用（✅）。ただし上記の **drizzle-orm 既知脆弱性（High）** が残存 |
+| SQLインジェクション | ✅ | コード上で `sql.raw()` 等の危険なAPIは未使用。`drizzle-orm` も `0.45.2` に更新済みで既知脆弱性は解消 |
 | 予約ユーザー名/スラッグ | — | 現状、ユーザーが指定したハンドルネームを `https://example.com/◯◯` で公開する機能（公開プロフィールURL等）は見当たらないため対象外。将来的に追加する場合は要対応 |
 
 ### レスポンスヘッダー
 | 項目 | 状態 | 詳細 |
 |---|---|---|
-| Strict-Transport-Security | ❌ | 未設定 |
-| X-Frame-Options / CSP `frame-ancestors` | ❌ | 未設定（クリックジャッキング対策なし） |
-| X-Content-Type-Options: nosniff | ❌ | 未設定 |
+| Strict-Transport-Security | ✅ | `apps/web/next.config.ts` の `headers()` で全パスに `max-age=31536000; includeSubDomains; preload` を設定済み |
+| X-Frame-Options / CSP `frame-ancestors` | ✅ | 同上で `X-Frame-Options: DENY` を設定済み。デスクトップ(Electron `loadURL`)・モバイル(Expoネイティブ`WebView`)は同一HTMLのiframe埋め込みではないため影響なし |
+| X-Content-Type-Options: nosniff | ✅ | 同上で設定済み |
 | CSP | ❌ | 未設定（要件次第のため必須ではないが検討余地あり） |
-
-`next.config.ts` の `headers()` は `/sw.js` の `Cache-Control` のみを返しており、上記ヘッダーをグローバルに追加する余地がある。
 
 ### その他セキュリティ
 | 項目 | 状態 | 詳細 |
@@ -120,8 +118,8 @@
 
 ## 推奨アクション（優先順）
 
-1. `drizzle-orm` を `0.45.2` 以降へアップデート（既知のSQLインジェクション脆弱性対応）
-2. `next.config.ts` の `headers()` に `Strict-Transport-Security` / `X-Frame-Options` / `X-Content-Type-Options` をグローバル設定として追加
+1. ~~`drizzle-orm` を `0.45.2` 以降へアップデート（既知のSQLインジェクション脆弱性対応）~~ ✅ 対応済み
+2. ~~`next.config.ts` の `headers()` に `Strict-Transport-Security` / `X-Frame-Options` / `X-Content-Type-Options` をグローバル設定として追加~~ ✅ 対応済み
 3. `app/not-found.tsx` と `app/error.tsx` を実装し、トップページ等への導線を用意
 4. Sentry等のエラートラッキングを導入し、サーバーエラーを検知できるようにする
 5. `app/layout.tsx` の `metadata` に `openGraph` / `twitter` フィールドを追加（特に `/lp` 等のシェアされうるページ）
