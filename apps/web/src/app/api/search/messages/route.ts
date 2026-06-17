@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { getWorkspaceMemberRole } from '@/lib/permissions'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 
 export interface MessageSearchResultDto extends MessageDto {
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, messages, profiles, workspaceMembers, projects } = await import('@cairn/db')
+    const { channels, channelMembers, messages, profiles, workspaceMembers, projects, projectMembers } = await import('@cairn/db')
     const { eq, isNull, and, ilike, or, exists } = await import('drizzle-orm')
     const { desc, sql } = await import('drizzle-orm')
 
@@ -27,6 +28,17 @@ export async function GET(req: Request) {
       .select({ one: sql<number>`1` })
       .from(channelMembers)
       .where(and(eq(channelMembers.channelId, channels.id), eq(channelMembers.userId, ctx.userId)))
+
+    // ゲストは参加プロジェクトのチャンネルと、自分が所属するチャンネル（DM等）のみ検索可。
+    // member 以上は公開チャンネル全体＋所属プライベートチャンネルを検索できる。
+    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const guestProjectAccess = db
+      .select({ one: sql<number>`1` })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, channels.projectId), eq(projectMembers.userId, ctx.userId)))
+    const accessCondition = role === 'guest'
+      ? or(exists(memberSubquery), exists(guestProjectAccess))
+      : or(eq(channels.isPrivate, false), exists(memberSubquery))
 
     const rows = await db
       .select({
@@ -52,10 +64,7 @@ export async function GET(req: Request) {
         eq(channels.workspaceId, ctx.workspaceId),
         isNull(messages.deletedAt),
         ilike(messages.content, `%${q}%`),
-        or(
-          eq(channels.isPrivate, false),
-          exists(memberSubquery),
-        ),
+        accessCondition,
       ))
       .orderBy(desc(messages.createdAt))
       .limit(50)

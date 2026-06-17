@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess } from '@/lib/permissions'
 import type { MessageDto } from '../route'
 
 type RouteContext = { params: Promise<{ channelId: string }> }
@@ -15,31 +16,14 @@ export async function GET(req: Request, { params }: RouteContext) {
   const q = new URL(req.url).searchParams.get('q')?.trim() ?? ''
   if (!q) return NextResponse.json([] satisfies MessageDto[])
 
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  if (forbidden) return forbidden
+
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, messages, profiles, workspaceMembers } = await import('@cairn/db')
+    const { messages, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, isNull, and, ilike } = await import('drizzle-orm')
     const { desc } = await import('drizzle-orm')
-
-    // チャンネルがこのワークスペースに属するか確認
-    const [channel] = await db
-      .select({ id: channels.id, isPrivate: channels.isPrivate })
-      .from(channels)
-      .where(and(eq(channels.id, channelId), eq(channels.workspaceId, ctx.workspaceId)))
-      .limit(1)
-
-    if (!channel) return NextResponse.json([] satisfies MessageDto[], { status: 403 })
-
-    // プライベートチャンネルはメンバーのみアクセス可
-    if (channel.isPrivate) {
-      const [membership] = await db
-        .select({ userId: channelMembers.userId })
-        .from(channelMembers)
-        .where(and(eq(channelMembers.channelId, channelId), eq(channelMembers.userId, ctx.userId)))
-        .limit(1)
-
-      if (!membership) return NextResponse.json([] satisfies MessageDto[], { status: 403 })
-    }
 
     const rows = await db
       .select({
