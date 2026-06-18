@@ -84,9 +84,10 @@ const ChatSidebarCollapsibleSection = ({ title, count, defaultCollapsed = true, 
 
 // ─── ChatSidebarItem ──────────────────────────────────────────────
 
-// プロジェクトの期間を一覧用に短く整形（年は省略）
+// プロジェクトの期間を一覧用に短く整形（年は省略）。
+// date 列の 'YYYY-MM-DD' を UTC 解釈せずローカル日付として扱う（負オフセットで前日になるのを防ぐ）
 export function formatChannelPeriod(start: string | null, end: string | null): string | undefined {
-  const f = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}` }
+  const f = (iso: string) => { const [, m, d] = iso.slice(0, 10).split('-').map(Number); return `${m}/${d}` }
   if (start && end) return `${f(start)}〜${f(end)}`
   if (end) return `〜${f(end)}`
   if (start) return `${f(start)}〜`

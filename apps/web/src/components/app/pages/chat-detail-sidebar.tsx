@@ -43,8 +43,9 @@ const SECTION_LABEL: React.CSSProperties = {
 }
 
 function formatDate(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
+  // Postgres date 列の 'YYYY-MM-DD' を UTC 解釈せずローカル日付として扱う（負オフセットで前日になるのを防ぐ）
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
+  return `${y}/${m}/${d}`
 }
 
 function formatDateRange(start: string | null, end: string | null): string | null {

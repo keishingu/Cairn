@@ -28,6 +28,7 @@ import { ChannelList } from './chat-channel-list'
 import { ChatDetailSidebar, ChatInfoDrawer, type ChatDetailMember } from './chat-detail-sidebar'
 import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 
 // ─── Message search ───────────────────────────────────────────────
 
@@ -372,6 +373,14 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     ? (projects.find(p => p.id === currentChannel.projectId) ?? null)
     : null
 
+  // プロジェクト連動メンバー（ProjectDto.memberNames は最大4名のプレビューのため、
+  // 全員＋userId を持つ専用エンドポイントから取得する）
+  const { data: projectMembers = [] } = useQuery<ProjectMemberDto[]>({
+    queryKey: ['project-members', currentChannel?.projectId],
+    queryFn: () => fetchWithAuth(`/api/projects/${currentChannel!.projectId}/members`).then(r => r.json()),
+    enabled: isProject && !!currentChannel,
+  })
+
   const channelMembers = React.useMemo<ChatDetailMember[]>(() => {
     if (isDm) {
       return [
@@ -380,10 +389,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       ]
     }
     if (isProject) {
-      // プロジェクト連動: 紐づくプロジェクトのメンバーを表示（userId 未取得のため導線なし）
-      const names = linkedProject?.memberNames ?? []
-      const urls = linkedProject?.memberAvatarUrls ?? []
-      return names.map((name, i) => ({ name, url: urls[i] ?? null }))
+      // プロジェクト連動: 紐づくプロジェクトの全メンバーを表示
+      return projectMembers.map(m => ({ userId: m.userId, name: m.displayName, url: m.avatarUrl ?? null }))
     }
     if (isPrivate) {
       const idSet = new Set(channelMemberIds.map(m => m.userId))
@@ -393,7 +400,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     const names = currentGeneral?.memberNames ?? []
     const urls = currentGeneral?.memberAvatarUrls ?? []
     return names.map((name, i) => ({ name, url: urls[i] ?? null }))
-  }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral, linkedProject])
+  }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral, projectMembers])
 
   // メンバー欄の見出し。意味がチャンネル種別で変わるため明示。公開チャンネルは非表示(null)
   const memberLabel = isProject ? 'プロジェクトメンバー' : isPrivate ? 'チャンネル参加者' : isDm ? '参加者' : null
