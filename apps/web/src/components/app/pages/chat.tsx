@@ -25,7 +25,9 @@ import { CreateChannelModal } from './create-channel-modal'
 import { BellButton } from '../sidebar'
 import { useDebounce } from '@/hooks/use-debounce'
 import { ChannelList } from './chat-channel-list'
-import { ChatDetailSidebar } from './chat-detail-sidebar'
+import { ChatDetailSidebar, ChatInfoDrawer, type ChatDetailMember } from './chat-detail-sidebar'
+import { useAppShell } from '../app-shell-context'
+import type { ProjectDto } from '@/app/api/projects/route'
 
 // ─── Message search ───────────────────────────────────────────────
 
@@ -240,9 +242,12 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     return segments[1] === 'chats' && segments[2] ? segments[2] : null
   }, [pathname])
 
+  const { openPanel, openMember } = useAppShell()
+
   const [channelId, setChannelId] = React.useState<string | null>(urlChannelId)
   const [showCreateChannel, setShowCreateChannel] = React.useState(false)
   const [showMemberInvite, setShowMemberInvite] = React.useState(false)
+  const [showInfo, setShowInfo] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
   const [targetMessageId, setTargetMessageId] = React.useState<string | null>(null)
@@ -356,21 +361,43 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const { data: currentUser } = useCurrentUser()
   const { data: channelMemberIds = [] } = useChannelMembers(isProject || isPrivate ? channelId : null)
 
-  const channelMembers = React.useMemo<{ name: string; url: string | null }[]>(() => {
+  // 紐づくプロジェクトの概要（説明・ステータス・タスク進捗）をインフォメーション欄に出す
+  const { data: projects = [] } = useQuery<ProjectDto[]>({
+    queryKey: ['projects'],
+    queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
+    enabled: isProject,
+  })
+  const linkedProject = isProject && currentChannel
+    ? (projects.find(p => p.id === currentChannel.projectId) ?? null)
+    : null
+
+  const channelMembers = React.useMemo<ChatDetailMember[]>(() => {
     if (isDm) {
       return [
-        { name: currentDm.participantName, url: currentDm.participantAvatarUrl ?? null },
-        ...(currentUser ? [{ name: currentUser.displayName, url: currentUser.avatarUrl ?? null }] : []),
+        { userId: currentDm.participantId, name: currentDm.participantName, url: currentDm.participantAvatarUrl ?? null },
+        ...(currentUser ? [{ userId: currentUser.id, name: currentUser.displayName, url: currentUser.avatarUrl ?? null }] : []),
       ]
     }
     if (isProject || isPrivate) {
       const idSet = new Set(channelMemberIds.map(m => m.userId))
-      return members.filter(m => idSet.has(m.userId)).map(m => ({ name: m.displayName, url: m.avatarUrl ?? null }))
+      return members.filter(m => idSet.has(m.userId)).map(m => ({ userId: m.userId, name: m.displayName, url: m.avatarUrl ?? null }))
     }
+    // 全体チャンネルは memberNames/Urls のみ（userId 未取得）でプロフィール導線なし
     const names = currentGeneral?.memberNames ?? []
     const urls = currentGeneral?.memberAvatarUrls ?? []
     return names.map((name, i) => ({ name, url: urls[i] ?? null }))
   }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral])
+
+  const handleOpenProject = () => {
+    if (linkedProject) {
+      setShowInfo(false)
+      openPanel(linkedProject)
+    }
+  }
+  const handleOpenMember = (userId: string) => {
+    setShowInfo(false)
+    openMember(userId)
+  }
 
   const memberNames = channelMembers.map(m => m.name)
   const memberAvatarUrls = channelMembers.map(m => m.url)
@@ -431,7 +458,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                   <Icon name="userPlus" size={16}/>
                 </button>
               )}
-              <button className="btn"><Icon name="more" size={17}/></button>
+              <button className="btn" onClick={() => setShowInfo(true)} aria-label="チャンネル情報">
+                <Icon name="info" size={18}/>
+              </button>
             </div>
           }
         />
@@ -441,6 +470,26 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         }
         {showMemberInvite && channelId && (
           <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
+        )}
+        {showInfo && (
+          <ChatInfoDrawer
+            onClose={() => setShowInfo(false)}
+            isProject={isProject}
+            isDm={isDm}
+            isPrivate={isPrivate}
+            channelName={channelName}
+            currentDmAvatarUrl={currentDm?.participantAvatarUrl}
+            dmParticipantId={currentDm?.participantId ?? null}
+            project={linkedProject}
+            channelMembers={channelMembers}
+            channelId={channelId}
+            /* 招待シートはチャット直下で一元描画するため、ドロワー内では描画しない */
+            showMemberInvite={false}
+            onInviteMember={() => setShowMemberInvite(true)}
+            onCloseMemberInvite={() => setShowMemberInvite(false)}
+            onOpenProject={handleOpenProject}
+            onOpenMember={handleOpenMember}
+          />
         )}
       </div>
     )
@@ -505,11 +554,15 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             isPrivate={isPrivate}
             channelName={channelName}
             currentDmAvatarUrl={currentDm?.participantAvatarUrl}
+            dmParticipantId={currentDm?.participantId ?? null}
+            project={linkedProject}
             channelMembers={channelMembers}
             channelId={channelId}
             showMemberInvite={showMemberInvite}
             onInviteMember={() => setShowMemberInvite(true)}
             onCloseMemberInvite={() => setShowMemberInvite(false)}
+            onOpenProject={handleOpenProject}
+            onOpenMember={handleOpenMember}
           />
         </div>
       </div>

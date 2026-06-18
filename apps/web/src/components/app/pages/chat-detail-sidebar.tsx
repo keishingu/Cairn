@@ -1,8 +1,16 @@
 'use client'
 
 import React from 'react'
-import { Icon, Avatar } from '../primitives'
+import { Icon, Avatar, StatusChip } from '../primitives'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
+import type { ProjectDto } from '@/app/api/projects/route'
+
+export interface ChatDetailMember {
+  /** ワークスペースメンバーの userId（プロフィールを開けるときのみ。全体チャンネルでは未取得） */
+  userId?: string
+  name: string
+  url: string | null
+}
 
 export interface ChatDetailSidebarProps {
   isProject: boolean
@@ -10,33 +18,134 @@ export interface ChatDetailSidebarProps {
   isPrivate: boolean
   channelName: string
   currentDmAvatarUrl: string | null | undefined
-  channelMembers: { name: string; url: string | null }[]
+  /** DM 相手の userId（プロフィールを開く用） */
+  dmParticipantId: string | null
+  /** プロジェクトチャンネルの紐づくプロジェクト概要（未取得なら null） */
+  project: ProjectDto | null
+  channelMembers: ChatDetailMember[]
   channelId: string | null
   showMemberInvite: boolean
   onInviteMember: () => void
   onCloseMemberInvite: () => void
+  /** 紐づくプロジェクトを詳細パネルで開く */
+  onOpenProject: () => void
+  /** メンバーのプロフィールを開く */
+  onOpenMember: (userId: string) => void
 }
 
-export const ChatDetailSidebar = ({
-  isProject, isDm, isPrivate, channelName,
-  currentDmAvatarUrl, channelMembers,
-  channelId, showMemberInvite, onInviteMember, onCloseMemberInvite,
-}: ChatDetailSidebarProps) => (
-  <aside style={{ width: 280, background: 'var(--card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
-    <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
-      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{isProject ? 'このプロジェクトについて' : isDm ? 'ダイレクトメッセージ' : 'このチャンネルについて'}</h3>
+const SECTION_LABEL: React.CSSProperties = {
+  fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)',
+  letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8,
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
+}
+
+function formatDateRange(start: string | null, end: string | null): string | null {
+  if (!start && !end) return null
+  if (start && end) return `${formatDate(start)} 〜 ${formatDate(end)}`
+  if (start) return `${formatDate(start)} 〜`
+  return `〜 ${formatDate(end!)}`
+}
+
+// 紐づくプロジェクトの概要（説明・ステータス・タスク進捗・期間）と詳細パネルへの導線
+const ProjectOverview = ({ project, onOpenProject }: { project: ProjectDto; onOpenProject: () => void }) => {
+  const dateRange = formatDateRange(project.startDate, project.endDate)
+  const progress = project.taskCount > 0 ? Math.round((project.completedTaskCount / project.taskCount) * 100) : 0
+  return (
+    <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {project.statusName && (
+        <div>
+          <StatusChip name={project.statusName} color={project.statusColor ?? 'var(--text-3)'}/>
+        </div>
+      )}
+
+      {project.description && (
+        <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.6, color: 'var(--text-2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {project.description}
+        </p>
+      )}
+
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <Icon name="check" size={12} color="var(--emerald)"/>
+            タスク
+          </span>
+          <span style={{ fontSize: 11.5, color: 'var(--text-3)', fontWeight: 600 }}>
+            {project.completedTaskCount} / {project.taskCount}
+          </span>
+        </div>
+        <div style={{ height: 5, borderRadius: 999, background: 'var(--card-2)', overflow: 'hidden' }}>
+          <div style={{ width: `${progress}%`, height: '100%', borderRadius: 999, background: 'var(--emerald)', transition: 'width .2s' }}/>
+        </div>
+      </div>
+
+      {dateRange && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}>
+          <Icon name="calendar" size={12} color="var(--text-4)"/>
+          {dateRange}
+        </div>
+      )}
+
+      <button
+        onClick={onOpenProject}
+        style={{
+          width: '100%', height: 34, borderRadius: 8,
+          border: '1px solid var(--border)', background: 'var(--card-2)',
+          color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600,
+          cursor: 'pointer', fontFamily: 'inherit',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}
+      >
+        <Icon name="arrowRight" size={13}/>
+        プロジェクトを開く
+      </button>
     </div>
+  )
+}
+
+// PC サイドバー / モバイルドロワーで共有する中身
+const ChatDetailContent = ({
+  isProject, isDm, isPrivate, channelName,
+  currentDmAvatarUrl, dmParticipantId, project, channelMembers,
+  channelId, showMemberInvite, onInviteMember, onCloseMemberInvite,
+  onOpenProject, onOpenMember,
+}: ChatDetailSidebarProps) => (
+  <>
     {isProject ? (
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>{channelName}</div>
+        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{channelName}</div>
         <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>プロジェクトチャンネル</div>
       </div>
     ) : (
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {isPrivate ? <Icon name="lock" size={14} color="var(--amber-text)"/> : <Icon name="hash" size={14} color="var(--text-3)"/>}
+          {isDm
+            ? <Avatar name={channelName} url={currentDmAvatarUrl ?? null} size={18}/>
+            : isPrivate
+              ? <Icon name="lock" size={14} color="var(--amber-text)"/>
+              : <Icon name="hash" size={14} color="var(--text-3)"/>}
           <span style={{ fontSize: 13.5, fontWeight: 700 }}>{channelName}</span>
         </div>
+        {isDm && (
+          <button
+            onClick={() => dmParticipantId && onOpenMember(dmParticipantId)}
+            disabled={!dmParticipantId}
+            style={{
+              marginTop: 10, width: '100%', height: 34, borderRadius: 8,
+              border: '1px solid var(--border)', background: 'var(--card-2)',
+              color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600,
+              cursor: dmParticipantId ? 'pointer' : 'default', fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Icon name="users" size={13}/>
+            プロフィールを見る
+          </button>
+        )}
         {isPrivate && (
           <>
             <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--amber-soft)', border: '1px solid var(--amber)', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -63,21 +172,71 @@ export const ChatDetailSidebar = ({
         )}
       </div>
     )}
+
+    {isProject && project && <ProjectOverview project={project} onOpenProject={onOpenProject}/>}
+
     <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>ピン留め</div>
+      <div style={SECTION_LABEL}>ピン留め</div>
       <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>ピン留めはまだありません</div>
     </div>
+
     <div style={{ padding: '12px 16px' }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>メンバー</div>
-      {channelMembers.slice(0, 6).map((m, i) => (
-        <div key={m.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
-          <div style={{ position: 'relative' }}>
-            <Avatar name={m.name} url={m.url} size={24}/>
-            <span style={{ position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%', background: i < 3 ? 'var(--accent)' : 'var(--text-4)', border: '2px solid var(--card)' }}/>
+      <div style={SECTION_LABEL}>メンバー</div>
+      {channelMembers.map((m, i) => {
+        const clickable = !!m.userId
+        return (
+          <div
+            key={m.userId ?? m.name}
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onClick={clickable ? () => onOpenMember(m.userId!) : undefined}
+            onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') onOpenMember(m.userId!) } : undefined}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px',
+              margin: '0 -6px', borderRadius: 7,
+              cursor: clickable ? 'pointer' : 'default',
+            }}
+            onMouseEnter={clickable ? (e) => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' } : undefined}
+            onMouseLeave={clickable ? (e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' } : undefined}
+          >
+            <div style={{ position: 'relative' }}>
+              <Avatar name={m.name} url={m.url} size={24}/>
+              <span style={{ position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%', background: i < 3 ? 'var(--accent)' : 'var(--text-4)', border: '2px solid var(--card)' }}/>
+            </div>
+            <span style={{ fontSize: 12.5, color: 'var(--text-2)', flex: 1 }}>{m.name}</span>
           </div>
-          <span style={{ fontSize: 12.5, color: 'var(--text-2)', flex: 1 }}>{m.name}</span>
-        </div>
-      ))}
+        )
+      })}
     </div>
+  </>
+)
+
+function panelTitle({ isProject, isDm }: { isProject: boolean; isDm: boolean }): string {
+  return isProject ? 'このプロジェクトについて' : isDm ? 'ダイレクトメッセージ' : 'このチャンネルについて'
+}
+
+// PC: 3カラムレイアウト右端の常設サイドバー
+export const ChatDetailSidebar = (props: ChatDetailSidebarProps) => (
+  <aside style={{ width: 280, background: 'var(--card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
+    <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
+      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{panelTitle(props)}</h3>
+    </div>
+    <ChatDetailContent {...props}/>
   </aside>
+)
+
+// モバイル: ベルと同じく右からスライドインするインフォメーションドロワー
+export const ChatInfoDrawer = ({ onClose, ...props }: ChatDetailSidebarProps & { onClose: () => void }) => (
+  <>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'var(--overlay)', zIndex: 40, animation: 'notifFadeIn .15s ease-out' }}/>
+    <aside style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(86vw, 360px)', background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: 41, display: 'flex', flexDirection: 'column', overflow: 'auto', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
+      <div style={{ padding: '14px 16px 12px', paddingTop: 'max(14px, env(safe-area-inset-top))', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, flex: 1 }}>{panelTitle(props)}</h3>
+        <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'var(--card-2)', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icon name="close" size={15}/>
+        </button>
+      </div>
+      <ChatDetailContent {...props}/>
+    </aside>
+  </>
 )
