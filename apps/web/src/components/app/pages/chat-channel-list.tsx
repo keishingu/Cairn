@@ -84,9 +84,18 @@ const ChatSidebarCollapsibleSection = ({ title, count, defaultCollapsed = true, 
 
 // ─── ChatSidebarItem ──────────────────────────────────────────────
 
-export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, dot, label, badge, mobile, memberNames, memberCount }: {
+// プロジェクトの期間を一覧用に短く整形（年は省略）
+export function formatChannelPeriod(start: string | null, end: string | null): string | undefined {
+  const f = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}` }
+  if (start && end) return `${f(start)}〜${f(end)}`
+  if (end) return `〜${f(end)}`
+  if (start) return `${f(start)}〜`
+  return undefined
+}
+
+export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, dot, label, dateMeta, badge, mobile, memberNames, memberCount }: {
   active?: boolean; onClick?: () => void; prefix?: string
-  avatar?: string; avatarUrl?: string; dot?: string; label: string; badge?: number; mobile?: boolean
+  avatar?: string; avatarUrl?: string; dot?: string; label: string; dateMeta?: string; badge?: number; mobile?: boolean
   memberNames?: string[]; memberCount?: number
 }) => (
   <button onClick={onClick} style={{
@@ -121,7 +130,12 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
         {dot && <span style={{ position: 'absolute', bottom: -1, right: -1, width: mobile ? 10 : 6, height: mobile ? 10 : 6, borderRadius: '50%', background: dot, border: `2px solid var(--${mobile ? 'bg' : 'card-2'})` }}/>}
       </div>
     )}
-    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+    <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6 }}>
+      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      {dateMeta && (
+        <span style={{ flexShrink: 0, fontSize: mobile ? 11 : 10, color: 'var(--text-4)', fontWeight: 500, whiteSpace: 'nowrap' }}>{dateMeta}</span>
+      )}
+    </span>
     {badge != null && <UnreadBadge count={badge} size={mobile ? 'md' : 'sm'} />}
     {memberNames && memberNames.length > 0 && mobile && (
       <AvatarStack names={memberNames} size={22} max={3}/>
@@ -201,9 +215,12 @@ export const ChannelList = ({
   return (
   <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
     <ChatSidebarSection title="プロジェクト">
-      {activeProjectChannels.map(c => (
-        <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
-      ))}
+      {activeProjectChannels.map(c => {
+        const period = formatChannelPeriod(c.startDate, c.endDate)
+        return (
+          <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} {...(period ? { dateMeta: period } : {})} badge={c.unreadCount} mobile={isMobile}/>
+        )
+      })}
     </ChatSidebarSection>
     {archivedProjectChannels.length > 0 && (
       <ChatSidebarCollapsibleSection title="アーカイブ済み" count={archivedProjectChannels.length}>

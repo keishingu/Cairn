@@ -159,9 +159,8 @@ const TaskChecklist = ({ project }: { project: ProjectDto }) => {
   )
 }
 
-// 紐づくプロジェクトの概要（説明・ステータス・タスク進捗・期間）と詳細パネルへの導線
+// 紐づくプロジェクトの概要（説明・ステータス・タスク進捗）と詳細パネルへの導線。期間は見出し直下に表示
 const ProjectOverview = ({ project, onOpenProject }: { project: ProjectDto; onOpenProject: () => void }) => {
-  const dateRange = formatDateRange(project.startDate, project.endDate)
   return (
     <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', flexDirection: 'column', gap: 12 }}>
       {project.statusName && (
@@ -173,13 +172,6 @@ const ProjectOverview = ({ project, onOpenProject }: { project: ProjectDto; onOp
       {project.description && <ExpandableDescription text={project.description}/>}
 
       <TaskChecklist project={project}/>
-
-      {dateRange && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}>
-          <Icon name="calendar" size={12} color="var(--text-4)"/>
-          {dateRange}
-        </div>
-      )}
 
       <button
         onClick={onOpenProject}
@@ -209,7 +201,13 @@ const ChatDetailContent = ({
     {isProject ? (
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
         <div style={{ fontSize: 13.5, fontWeight: 700 }}>{channelName}</div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>プロジェクトチャンネル</div>
+        {project && formatDateRange(project.startDate, project.endDate) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+            <Icon name="calendar" size={12} color="var(--text-4)"/>
+            {formatDateRange(project.startDate, project.endDate)}
+          </div>
+        )}
+        <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 4 }}>プロジェクトチャンネル</div>
       </div>
     ) : (
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
@@ -325,7 +323,7 @@ export const ChatDetailSidebar = (props: ChatDetailSidebarProps) => (
 export const ChatInfoDrawer = ({ onClose, ...props }: ChatDetailSidebarProps & { onClose: () => void }) => (
   <>
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'var(--overlay)', zIndex: 60, animation: 'notifFadeIn .15s ease-out' }}/>
-    <aside style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(86vw, 360px)', background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: 61, display: 'flex', flexDirection: 'column', overflow: 'auto', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
+    <aside style={{ position: 'fixed', inset: 0, background: 'var(--card)', boxShadow: 'var(--shadow-lg)', zIndex: 61, display: 'flex', flexDirection: 'column', overflow: 'auto', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
       <div style={{ padding: '14px 16px 12px', paddingTop: 'max(14px, env(safe-area-inset-top))', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 8 }}>
         <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, flex: 1 }}>{panelTitle(props)}</h3>
         <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'var(--card-2)', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
