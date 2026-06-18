@@ -50,6 +50,48 @@ function formatDateRange(start: string | null, end: string | null): string | nul
   return `〜 ${formatDate(end!)}`
 }
 
+// 長い説明文は5行でクランプし、下端をフェードアウト → 「続きを読む」で全文展開する
+const ExpandableDescription = ({ text }: { text: string }) => {
+  const ref = React.useRef<HTMLParagraphElement>(null)
+  const [expanded, setExpanded] = React.useState(false)
+  const [clamped, setClamped] = React.useState(false)
+
+  React.useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    // クランプ時に内容が溢れているか（=「続きを読む」が必要か）を判定
+    setClamped(el.scrollHeight > el.clientHeight + 1)
+  }, [text])
+
+  const collapsedStyle: React.CSSProperties = expanded ? {} : {
+    display: '-webkit-box',
+    WebkitLineClamp: 5,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+  }
+
+  return (
+    <div>
+      <div style={{ position: 'relative' }}>
+        <p ref={ref} style={{ margin: 0, fontSize: 12.5, lineHeight: 1.6, color: 'var(--text-2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', ...collapsedStyle }}>
+          {text}
+        </p>
+        {clamped && !expanded && (
+          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 28, background: 'linear-gradient(to bottom, transparent, var(--card))', pointerEvents: 'none' }}/>
+        )}
+      </div>
+      {clamped && (
+        <button
+          onClick={() => setExpanded(e => !e)}
+          style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+        >
+          {expanded ? '閉じる' : '続きを読む'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 // 紐づくプロジェクトの概要（説明・ステータス・タスク進捗・期間）と詳細パネルへの導線
 const ProjectOverview = ({ project, onOpenProject }: { project: ProjectDto; onOpenProject: () => void }) => {
   const dateRange = formatDateRange(project.startDate, project.endDate)
@@ -62,11 +104,7 @@ const ProjectOverview = ({ project, onOpenProject }: { project: ProjectDto; onOp
         </div>
       )}
 
-      {project.description && (
-        <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.6, color: 'var(--text-2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {project.description}
-        </p>
-      )}
+      {project.description && <ExpandableDescription text={project.description}/>}
 
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
