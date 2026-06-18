@@ -366,7 +366,10 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // 紐づくプロジェクトの概要（説明・ステータス・タスク進捗・メンバー）をインフォメーション欄に出す
   const { data: projects = [] } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
-    queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/projects').then(r => {
+      if (!r.ok) throw new Error('fetch failed')
+      return r.json()
+    }),
     enabled: isProject,
   })
   const linkedProject = isProject && currentChannel
@@ -377,7 +380,10 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // 全員＋userId を持つ専用エンドポイントから取得する）
   const { data: projectMembers = [] } = useQuery<ProjectMemberDto[]>({
     queryKey: ['project-members', currentChannel?.projectId],
-    queryFn: () => fetchWithAuth(`/api/projects/${currentChannel!.projectId}/members`).then(r => r.json()),
+    queryFn: () => fetchWithAuth(`/api/projects/${currentChannel!.projectId}/members`).then(r => {
+      if (!r.ok) throw new Error('fetch failed')
+      return r.json()
+    }),
     enabled: isProject && !!currentChannel,
   })
 
