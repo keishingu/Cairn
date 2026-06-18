@@ -359,9 +359,10 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const currentChannelMemberCount = currentGeneral?.memberCount
 
   const { data: currentUser } = useCurrentUser()
-  const { data: channelMemberIds = [] } = useChannelMembers(isProject || isPrivate ? channelId : null)
+  // 非公開チャンネルのみ「チャンネル参加者」を表示するためメンバーを取得する
+  const { data: channelMemberIds = [] } = useChannelMembers(isPrivate ? channelId : null)
 
-  // 紐づくプロジェクトの概要（説明・ステータス・タスク進捗）をインフォメーション欄に出す
+  // 紐づくプロジェクトの概要（説明・ステータス・タスク進捗・メンバー）をインフォメーション欄に出す
   const { data: projects = [] } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
@@ -378,15 +379,24 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         ...(currentUser ? [{ userId: currentUser.id, name: currentUser.displayName, url: currentUser.avatarUrl ?? null }] : []),
       ]
     }
-    if (isProject || isPrivate) {
+    if (isProject) {
+      // プロジェクト連動: 紐づくプロジェクトのメンバーを表示（userId 未取得のため導線なし）
+      const names = linkedProject?.memberNames ?? []
+      const urls = linkedProject?.memberAvatarUrls ?? []
+      return names.map((name, i) => ({ name, url: urls[i] ?? null }))
+    }
+    if (isPrivate) {
       const idSet = new Set(channelMemberIds.map(m => m.userId))
       return members.filter(m => idSet.has(m.userId)).map(m => ({ userId: m.userId, name: m.displayName, url: m.avatarUrl ?? null }))
     }
-    // 全体チャンネルは memberNames/Urls のみ（userId 未取得）でプロフィール導線なし
+    // 公開（全体）チャンネルはヘッダーのアバター表示用に名前だけ保持（パネルでは非表示）
     const names = currentGeneral?.memberNames ?? []
     const urls = currentGeneral?.memberAvatarUrls ?? []
     return names.map((name, i) => ({ name, url: urls[i] ?? null }))
-  }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral])
+  }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral, linkedProject])
+
+  // メンバー欄の見出し。意味がチャンネル種別で変わるため明示。公開チャンネルは非表示(null)
+  const memberLabel = isProject ? 'プロジェクトメンバー' : isPrivate ? 'チャンネル参加者' : isDm ? '参加者' : null
 
   const handleOpenProject = () => {
     if (currentChannel) {
@@ -483,6 +493,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             dmParticipantId={currentDm?.participantId ?? null}
             project={linkedProject}
             channelMembers={channelMembers}
+            memberLabel={memberLabel}
             channelId={channelId}
             /* 招待シートはチャット直下で一元描画するため、ドロワー内では描画しない */
             showMemberInvite={false}
@@ -558,6 +569,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             dmParticipantId={currentDm?.participantId ?? null}
             project={linkedProject}
             channelMembers={channelMembers}
+            memberLabel={memberLabel}
             channelId={channelId}
             showMemberInvite={showMemberInvite}
             onInviteMember={() => setShowMemberInvite(true)}

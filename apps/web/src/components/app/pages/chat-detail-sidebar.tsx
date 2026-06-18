@@ -3,7 +3,9 @@
 import React from 'react'
 import { Icon, Avatar, StatusChip } from '../primitives'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
+import { useProjectTasks } from '@/hooks/use-project-tasks'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { TaskDto } from '@/app/api/tasks/route'
 
 export interface ChatDetailMember {
   /** ワークスペースメンバーの userId（プロフィールを開けるときのみ。全体チャンネルでは未取得） */
@@ -23,6 +25,8 @@ export interface ChatDetailSidebarProps {
   /** プロジェクトチャンネルの紐づくプロジェクト概要（未取得なら null） */
   project: ProjectDto | null
   channelMembers: ChatDetailMember[]
+  /** メンバー欄の見出し（チャンネル種別で意味が変わるため）。null のときは欄ごと非表示 */
+  memberLabel: string | null
   channelId: string | null
   showMemberInvite: boolean
   onInviteMember: () => void
@@ -92,10 +96,72 @@ const ExpandableDescription = ({ text }: { text: string }) => {
   )
 }
 
+// チェックボックス付きのタスク箇条書き。チェックは PATCH で連動し、進捗にも反映される
+const TaskChecklist = ({ project }: { project: ProjectDto }) => {
+  const { data: tasks = [], isLoading, toggleMutation } = useProjectTasks(project.id)
+
+  const toggle = (id: string, status: TaskDto['status']) =>
+    toggleMutation.mutate({ id, newStatus: status === 'done' ? 'todo' : 'done' })
+
+  // 読み込み済みなら実データ、未読込なら ProjectDto の集計値を使う
+  const total = isLoading ? project.taskCount : tasks.length
+  const completed = isLoading ? project.completedTaskCount : tasks.filter(t => t.status === 'done').length
+  const progress = total > 0 ? Math.round((completed / total) * 100) : 0
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <Icon name="check" size={12} color="var(--emerald)"/>
+          タスク
+        </span>
+        <span style={{ fontSize: 11.5, color: 'var(--text-3)', fontWeight: 600 }}>
+          {completed} / {total}
+        </span>
+      </div>
+      <div style={{ height: 5, borderRadius: 999, background: 'var(--card-2)', overflow: 'hidden' }}>
+        <div style={{ width: `${progress}%`, height: '100%', borderRadius: 999, background: 'var(--emerald)', transition: 'width .2s' }}/>
+      </div>
+
+      {isLoading ? (
+        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '8px 0 2px' }}>読み込み中…</div>
+      ) : tasks.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '8px 0 2px' }}>タスクはまだありません</div>
+      ) : (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {tasks.map(t => {
+            const done = t.status === 'done'
+            return (
+              <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0' }}>
+                <button
+                  onClick={() => toggle(t.id, t.status)}
+                  aria-pressed={done}
+                  aria-label={done ? 'タスクを未完了に戻す' : 'タスクを完了にする'}
+                  style={{
+                    flexShrink: 0, marginTop: 1, width: 16, height: 16, borderRadius: '50%',
+                    border: done ? 'none' : '1.5px solid var(--border-2)',
+                    background: done ? 'var(--emerald)' : 'transparent',
+                    color: '#fff', cursor: 'pointer', padding: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  {done && <Icon name="check" size={10} color="#fff" strokeWidth={3}/>}
+                </button>
+                <span style={{ fontSize: 12.5, lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1 }}>
+                  {t.title}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // 紐づくプロジェクトの概要（説明・ステータス・タスク進捗・期間）と詳細パネルへの導線
 const ProjectOverview = ({ project, onOpenProject }: { project: ProjectDto; onOpenProject: () => void }) => {
   const dateRange = formatDateRange(project.startDate, project.endDate)
-  const progress = project.taskCount > 0 ? Math.round((project.completedTaskCount / project.taskCount) * 100) : 0
   return (
     <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', flexDirection: 'column', gap: 12 }}>
       {project.statusName && (
@@ -106,20 +172,7 @@ const ProjectOverview = ({ project, onOpenProject }: { project: ProjectDto; onOp
 
       {project.description && <ExpandableDescription text={project.description}/>}
 
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <span style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <Icon name="check" size={12} color="var(--emerald)"/>
-            タスク
-          </span>
-          <span style={{ fontSize: 11.5, color: 'var(--text-3)', fontWeight: 600 }}>
-            {project.completedTaskCount} / {project.taskCount}
-          </span>
-        </div>
-        <div style={{ height: 5, borderRadius: 999, background: 'var(--card-2)', overflow: 'hidden' }}>
-          <div style={{ width: `${progress}%`, height: '100%', borderRadius: 999, background: 'var(--emerald)', transition: 'width .2s' }}/>
-        </div>
-      </div>
+      <TaskChecklist project={project}/>
 
       {dateRange && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}>
@@ -148,7 +201,7 @@ const ProjectOverview = ({ project, onOpenProject }: { project: ProjectDto; onOp
 // PC サイドバー / モバイルドロワーで共有する中身
 const ChatDetailContent = ({
   isProject, isDm, isPrivate, channelName,
-  currentDmAvatarUrl, dmParticipantId, project, channelMembers,
+  currentDmAvatarUrl, dmParticipantId, project, channelMembers, memberLabel,
   channelId, showMemberInvite, onInviteMember, onCloseMemberInvite,
   onOpenProject, onOpenMember,
 }: ChatDetailSidebarProps) => (
@@ -218,9 +271,12 @@ const ChatDetailContent = ({
       <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>ピン留めはまだありません</div>
     </div>
 
+    {memberLabel && (
     <div style={{ padding: '12px 16px' }}>
-      <div style={SECTION_LABEL}>メンバー</div>
-      {channelMembers.map((m, i) => {
+      <div style={SECTION_LABEL}>{memberLabel}</div>
+      {channelMembers.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>メンバーはいません</div>
+      ) : channelMembers.map((m, i) => {
         const clickable = !!m.userId
         return (
           <div
@@ -246,6 +302,7 @@ const ChatDetailContent = ({
         )
       })}
     </div>
+    )}
   </>
 )
 
