@@ -242,7 +242,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     return segments[1] === 'chats' && segments[2] ? segments[2] : null
   }, [pathname])
 
-  const { openPanel, openMember } = useAppShell()
+  const { openMember } = useAppShell()
 
   const [channelId, setChannelId] = React.useState<string | null>(urlChannelId)
   const [showCreateChannel, setShowCreateChannel] = React.useState(false)
@@ -389,9 +389,10 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral])
 
   const handleOpenProject = () => {
-    if (linkedProject) {
+    if (currentChannel) {
       setShowInfo(false)
-      openPanel(linkedProject)
+      // チャット上にパネルを重ねず、プロジェクトページを開いた状態へ遷移する
+      router.push(`/projects?open=project-${currentChannel.projectId}`)
     }
   }
   const handleOpenMember = (userId: string) => {
