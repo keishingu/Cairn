@@ -137,7 +137,7 @@ function MobileShellInner() {
     <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), projectsView, setProjectsView }}>
       <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
         <NavigationProgress />
-        {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)}/>}
+        {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)} isMobile/>}
         {/* パネルは position:fixed でフルスクリーン表示。ブラウザ履歴でスタック管理する */}
         {panelState?.type === 'project' && panelProject && (
           <ProjectPanel
