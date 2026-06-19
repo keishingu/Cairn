@@ -51,9 +51,11 @@ function notificationHref(n: NotificationDto): string | null {
 
 interface PageNotificationsProps {
   onClose: () => void
+  /** モバイルでは固定400pxだと画面幅を超えるため、インフォメーションドロワーと幅を揃える */
+  isMobile?: boolean
 }
 
-export const PageNotifications = ({ onClose }: PageNotificationsProps) => {
+export const PageNotifications = ({ onClose, isMobile = false }: PageNotificationsProps) => {
   const [filter, setFilter] = React.useState('all')
   const router = useRouter()
   const { data: notifications = [], isLoading } = useNotifications(filter)
@@ -79,7 +81,7 @@ export const PageNotifications = ({ onClose }: PageNotificationsProps) => {
   return (
     <>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--overlay)', zIndex: 30, animation: 'notifFadeIn .15s ease-out' }}/>
-      <aside style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 400, background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: 31, display: 'flex', flexDirection: 'column', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
+      <aside style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: isMobile ? 'min(86vw, 360px)' : 400, background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: 31, display: 'flex', flexDirection: 'column', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
         <div style={{ padding: '16px 18px 12px', borderBottom: '1px solid var(--divider)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
