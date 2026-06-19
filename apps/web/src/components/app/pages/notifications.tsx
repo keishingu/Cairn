@@ -80,8 +80,8 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
 
   return (
     <>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--overlay)', zIndex: 30, animation: 'notifFadeIn .15s ease-out' }}/>
-      <aside style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: isMobile ? 0 : 'auto', width: isMobile ? 'auto' : 400, background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: 31, display: 'flex', flexDirection: 'column', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--overlay)', zIndex: isMobile ? 60 : 30, animation: 'notifFadeIn .15s ease-out' }}/>
+      <aside style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: isMobile ? 0 : 'auto', width: isMobile ? 'auto' : 400, background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: isMobile ? 61 : 31, display: 'flex', flexDirection: 'column', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
         <div style={{ padding: isMobile ? 'max(16px, env(safe-area-inset-top)) 18px 12px' : '16px 18px 12px', borderBottom: '1px solid var(--divider)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
