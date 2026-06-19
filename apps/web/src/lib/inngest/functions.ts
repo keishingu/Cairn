@@ -291,6 +291,69 @@ export const deleteStorageObjects = inngest.createFunction(
   },
 )
 
+// 既存の画像ファイルにサムネを後付け生成する。1回の実行で BACKFILL_BATCH 件だけ処理し、
+// 残りがあれば自身を再送して継続する（長時間実行・タイムアウトを避けるため）。
+const BACKFILL_BATCH = 50
+
+export const backfillThumbnails = inngest.createFunction(
+  { id: 'backfill-thumbnails' },
+  { event: 'attachments/backfill-thumbnails' },
+  async ({ event, step }) => {
+    const { workspaceId } = (event.data ?? {}) as { workspaceId?: string }
+
+    const targets = await step.run('fetch-targets', async () => {
+      const { db, files } = await import('@cairn/db')
+      const { and, eq, isNotNull, sql } = await import('drizzle-orm')
+
+      return db
+        .select({ id: files.id, storagePath: files.storagePath })
+        .from(files)
+        .where(and(
+          eq(files.fileType, 'image'),
+          isNotNull(files.storagePath),
+          // metadata にサムネパスが未設定のものだけを対象にする（再実行で重複処理しない）
+          sql`${files.metadata} ->> 'thumbnailPath' IS NULL`,
+          ...(workspaceId ? [eq(files.workspaceId, workspaceId)] : []),
+        ))
+        .limit(BACKFILL_BATCH)
+    })
+
+    if (targets.length === 0) return { processed: 0, done: true }
+
+    const result = await step.run('generate-thumbnails', async () => {
+      const { createThumbnailFromStorage } = await import('@/lib/attachments/thumbnail')
+      const { db, files } = await import('@cairn/db')
+      const { eq, sql } = await import('drizzle-orm')
+      const supabase = createServiceRoleClient()
+
+      let generated = 0
+      let failed = 0
+      for (const t of targets) {
+        if (!t.storagePath) continue
+        const thumbnailPath = await createThumbnailFromStorage(supabase, t.storagePath)
+        if (!thumbnailPath) { failed++; continue }
+        // 既存 metadata を保持したまま thumbnailPath だけマージする
+        await db
+          .update(files)
+          .set({ metadata: sql`${files.metadata} || ${JSON.stringify({ thumbnailPath })}::jsonb` })
+          .where(eq(files.id, t.id))
+        generated++
+      }
+      return { generated, failed }
+    })
+
+    // バッチが満杯なら未処理が残っている可能性があるので継続する
+    if (targets.length === BACKFILL_BATCH) {
+      await step.sendEvent('continue-backfill', {
+        name: 'attachments/backfill-thumbnails',
+        data: workspaceId ? { workspaceId } : {},
+      })
+    }
+
+    return { processed: targets.length, generated: result.generated, failed: result.failed, done: targets.length < BACKFILL_BATCH }
+  },
+)
+
 export const indexFileChunks = inngest.createFunction(
   { id: 'index-file-chunks' },
   { event: 'file/uploaded' },

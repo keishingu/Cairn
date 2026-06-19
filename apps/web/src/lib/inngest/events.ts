@@ -14,6 +14,15 @@ export type MessageCreatedEvent = {
   }
 }
 
+// 既存の画像ファイルにサムネを後付け生成するバックフィル（手動トリガー）。
+// 1回の実行で一定件数だけ処理し、残りがあれば自身を再送して継続する。
+export type BackfillThumbnailsEvent = {
+  name: 'attachments/backfill-thumbnails'
+  data: {
+    workspaceId?: string
+  }
+}
+
 export type TaskAssignedEvent = {
   name: 'task/assigned'
   data: {

@@ -4,9 +4,11 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { generateThumbnail, thumbnailStoragePath } from '@/lib/attachments/thumbnail'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
-const THUMBNAIL_MAX_DIMENSION = 480
+// 画像はオリジナルもこの最長辺へ縮小してから保存する（チャット直アップロードは生画像が上がってくるため）
+const MAX_ORIGINAL_DIMENSION = 2048
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
   'application/pdf',
@@ -60,11 +62,26 @@ export async function POST(req: Request) {
   const storagePath = `${ctx.workspaceId}/${channelId}/${crypto.randomUUID()}.${ext}`
 
   const supabase = createServiceRoleClient()
-  const buffer = await file.arrayBuffer()
+  const isImage = file.type.startsWith('image/')
+
+  // 画像はオリジナルを最長辺 2048px へ縮小してから保存する。
+  // 縮小に失敗した場合は元のまま保存する（保存自体は止めない）。
+  let body: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer())
+  if (isImage) {
+    try {
+      const sharp = (await import('sharp')).default
+      body = await sharp(body)
+        .rotate()
+        .resize({ width: MAX_ORIGINAL_DIMENSION, height: MAX_ORIGINAL_DIMENSION, fit: 'inside', withoutEnlargement: true })
+        .toBuffer()
+    } catch (e) {
+      console.warn('[/api/attachments/upload] Original resize failed (storing as-is):', e)
+    }
+  }
 
   const { error: uploadError } = await supabase.storage
     .from('chat-attachments')
-    .upload(storagePath, buffer, { contentType: file.type, upsert: false })
+    .upload(storagePath, body, { contentType: file.type, upsert: false })
 
   if (uploadError) {
     console.error('[/api/attachments/upload] Storage upload failed:', uploadError)
@@ -72,18 +89,12 @@ export async function POST(req: Request) {
   }
 
   // 一覧アイコン・チャットのサムネ表示用に縮小版を別途生成して保存する。
-  // 表示の度にオリジナル（最大10MB）を読み込むと帯域・描画コストが無駄なため。
-  // 生成に失敗してもオリジナルは配信できるので致命的ではない（その場合は配信側がフォールバック）。
+  // 生成に失敗してもオリジナルは配信できるので致命的にしない（配信側がフォールバックする）。
   let thumbnailPath: string | null = null
-  if (file.type.startsWith('image/')) {
+  if (isImage) {
     try {
-      const sharp = (await import('sharp')).default
-      const thumb = await sharp(Buffer.from(buffer))
-        .rotate()
-        .resize({ width: THUMBNAIL_MAX_DIMENSION, height: THUMBNAIL_MAX_DIMENSION, fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 72 })
-        .toBuffer()
-      const candidatePath = `${ctx.workspaceId}/${channelId}/thumb/${crypto.randomUUID()}.jpg`
+      const thumb = await generateThumbnail(body)
+      const candidatePath = thumbnailStoragePath(storagePath)
       const { error: thumbError } = await supabase.storage
         .from('chat-attachments')
         .upload(candidatePath, thumb, { contentType: 'image/jpeg', upsert: false })
@@ -118,7 +129,7 @@ export async function POST(req: Request) {
         storagePath,
         fileName: file.name,
         mimeType: file.type,
-        fileSize: file.size,
+        fileSize: body.length,
         fileType: resolveFileType(file.type),
         metadata: thumbnailPath ? { thumbnailPath } : {},
       })
