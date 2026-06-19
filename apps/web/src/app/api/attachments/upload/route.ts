@@ -6,6 +6,8 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
+// 画像はオリジナルもこの最長辺へ縮小してから保存する（チャット直アップロードは生画像が上がってくるため）
+const MAX_ORIGINAL_DIMENSION = 2048
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
   'application/pdf',
@@ -59,11 +61,26 @@ export async function POST(req: Request) {
   const storagePath = `${ctx.workspaceId}/${channelId}/${crypto.randomUUID()}.${ext}`
 
   const supabase = createServiceRoleClient()
-  const buffer = await file.arrayBuffer()
+
+  // 画像はオリジナルを最長辺 2048px へ縮小してから保存する。
+  // チャットからの直アップロードは未リサイズの生画像（最大10MB）が上がってくるため。
+  // 縮小に失敗した場合は元のまま保存する（保存自体は止めない）。
+  let body: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer())
+  if (file.type.startsWith('image/')) {
+    try {
+      const sharp = (await import('sharp')).default
+      body = await sharp(body)
+        .rotate()
+        .resize({ width: MAX_ORIGINAL_DIMENSION, height: MAX_ORIGINAL_DIMENSION, fit: 'inside', withoutEnlargement: true })
+        .toBuffer()
+    } catch (e) {
+      console.warn('[/api/attachments/upload] Original resize failed (storing as-is):', e)
+    }
+  }
 
   const { error: uploadError } = await supabase.storage
     .from('chat-attachments')
-    .upload(storagePath, buffer, { contentType: file.type, upsert: false })
+    .upload(storagePath, body, { contentType: file.type, upsert: false })
 
   if (uploadError) {
     console.error('[/api/attachments/upload] Storage upload failed:', uploadError)
@@ -91,7 +108,7 @@ export async function POST(req: Request) {
         storagePath,
         fileName: file.name,
         mimeType: file.type,
-        fileSize: file.size,
+        fileSize: body.length,
         fileType: resolveFileType(file.type),
       })
       .returning()
