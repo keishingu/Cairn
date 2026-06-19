@@ -209,7 +209,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
             {attachments.map(a => isImageMime(a.mimeType) ? (
               <img
                 key={a.fileId}
-                src={`/api/attachments/${a.fileId}`}
+                src={`/api/attachments/${a.fileId}?w=560`}
                 alt={a.fileName}
                 onClick={() => onImageClick(a.id)}
                 style={{

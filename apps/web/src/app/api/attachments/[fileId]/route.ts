@@ -7,11 +7,16 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 
 type RouteContext = { params: Promise<{ fileId: string }> }
 
-export async function GET(_req: Request, { params }: RouteContext) {
+export async function GET(req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
   const { fileId } = await params
+
+  // 一覧アイコンやチャットのサムネ用に縮小版を要求できる（?w=幅）。
+  // オリジナルを全箇所でフル配信すると帯域・描画コストが無駄なため。
+  const wParam = new URL(req.url).searchParams.get('w')
+  const width = wParam ? Math.min(Math.max(parseInt(wParam, 10) || 0, 16), 2048) : null
 
   try {
     const { db, files } = await import('@cairn/db')
@@ -47,9 +52,19 @@ export async function GET(_req: Request, { params }: RouteContext) {
     }
 
     const supabase = createServiceRoleClient()
-    const { data, error: storageError } = await supabase.storage
+    const isImage = file.mimeType?.startsWith('image/') ?? false
+    const useTransform = isImage && width !== null
+
+    let { data, error: storageError } = await supabase.storage
       .from('chat-attachments')
-      .download(file.storagePath)
+      .download(file.storagePath, useTransform ? { transform: { width, resize: 'contain', quality: 75 } } : undefined)
+
+    // 変換に失敗した場合（未対応フォーマット等）はオリジナルにフォールバックする
+    if (useTransform && (storageError || !data)) {
+      ;({ data, error: storageError } = await supabase.storage
+        .from('chat-attachments')
+        .download(file.storagePath))
+    }
 
     if (storageError || !data) {
       console.error('[/api/attachments/[fileId]] Storage download failed:', storageError)

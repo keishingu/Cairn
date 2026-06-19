@@ -35,9 +35,11 @@ export function FileTypeIcon({
   height?: number
 }) {
   if (mimeType?.startsWith('image/') && fileId) {
+    // Retina 表示に耐える程度（表示辺の約3倍）の縮小版を要求する
+    const reqWidth = Math.round(Math.max(width, height) * 3)
     return (
       <img
-        src={`/api/attachments/${fileId}`}
+        src={`/api/attachments/${fileId}?w=${reqWidth}`}
         alt={fileName}
         style={{ width, height, borderRadius: 4, objectFit: 'cover', flexShrink: 0, display: 'block' }}
       />
