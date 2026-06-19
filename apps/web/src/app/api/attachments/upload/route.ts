@@ -6,6 +6,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
+const THUMBNAIL_MAX_DIMENSION = 480
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
   'application/pdf',
@@ -70,6 +71,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'アップロードに失敗しました' }, { status: 500 })
   }
 
+  // 一覧アイコン・チャットのサムネ表示用に縮小版を別途生成して保存する。
+  // 表示の度にオリジナル（最大10MB）を読み込むと帯域・描画コストが無駄なため。
+  // 生成に失敗してもオリジナルは配信できるので致命的ではない（その場合は配信側がフォールバック）。
+  let thumbnailPath: string | null = null
+  if (file.type.startsWith('image/')) {
+    try {
+      const sharp = (await import('sharp')).default
+      const thumb = await sharp(Buffer.from(buffer))
+        .rotate()
+        .resize({ width: THUMBNAIL_MAX_DIMENSION, height: THUMBNAIL_MAX_DIMENSION, fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 72 })
+        .toBuffer()
+      const candidatePath = `${ctx.workspaceId}/${channelId}/thumb/${crypto.randomUUID()}.jpg`
+      const { error: thumbError } = await supabase.storage
+        .from('chat-attachments')
+        .upload(candidatePath, thumb, { contentType: 'image/jpeg', upsert: false })
+      if (thumbError) {
+        console.warn('[/api/attachments/upload] Thumbnail upload failed (serving original):', thumbError)
+      } else {
+        thumbnailPath = candidatePath
+      }
+    } catch (e) {
+      console.warn('[/api/attachments/upload] Thumbnail generation failed (serving original):', e)
+    }
+  }
+
   try {
     const { db, files, channels } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
@@ -93,6 +120,7 @@ export async function POST(req: Request) {
         mimeType: file.type,
         fileSize: file.size,
         fileType: resolveFileType(file.type),
+        metadata: thumbnailPath ? { thumbnailPath } : {},
       })
       .returning()
 
@@ -126,8 +154,8 @@ export async function POST(req: Request) {
       { status: 201 },
     )
   } catch (err) {
-    // DBインサート失敗時はストレージをロールバック
-    await supabase.storage.from('chat-attachments').remove([storagePath])
+    // DBインサート失敗時はストレージをロールバック（サムネも併せて削除）
+    await supabase.storage.from('chat-attachments').remove(thumbnailPath ? [storagePath, thumbnailPath] : [storagePath])
     console.error('[/api/attachments/upload] DB insert failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

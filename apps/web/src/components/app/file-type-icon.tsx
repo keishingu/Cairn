@@ -37,7 +37,7 @@ export function FileTypeIcon({
   if (mimeType?.startsWith('image/') && fileId) {
     return (
       <img
-        src={`/api/attachments/${fileId}`}
+        src={`/api/attachments/${fileId}?thumb=1`}
         alt={fileName}
         style={{ width, height, borderRadius: 4, objectFit: 'cover', flexShrink: 0, display: 'block' }}
       />
