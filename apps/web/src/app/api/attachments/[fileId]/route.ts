@@ -88,10 +88,10 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   try {
     const { db, files } = await import('@cairn/db')
-    const { eq, and, ne, sql } = await import('drizzle-orm')
+    const { eq, sql } = await import('drizzle-orm')
 
     const [file] = await db
-      .select({ id: files.id, workspaceId: files.workspaceId, projectId: files.projectId, metadata: files.metadata })
+      .select({ id: files.id, workspaceId: files.workspaceId, metadata: files.metadata })
       .from(files)
       .where(eq(files.id, fileId))
       .limit(1)
@@ -99,26 +99,12 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     if (!file) return new NextResponse(null, { status: 404 })
     if (file.workspaceId !== ctx.workspaceId) return new NextResponse(null, { status: 403 })
 
+    // 最新版ラベルは複数ファイルに同時付与できる（排他にしない）
     const meta = (file.metadata ?? {}) as Record<string, unknown>
-
-    if (isLatest) {
-      // 最新版はプロジェクト内で 1 件のみ。他ファイルのフラグを外してから付け替える
-      if (file.projectId) {
-        await db
-          .update(files)
-          .set({ metadata: sql`${files.metadata} - 'isLatest'` })
-          .where(and(eq(files.projectId, file.projectId), ne(files.id, fileId)))
-      }
-      await db
-        .update(files)
-        .set({ metadata: { ...meta, isLatest: true } })
-        .where(eq(files.id, fileId))
-    } else {
-      await db
-        .update(files)
-        .set({ metadata: sql`${files.metadata} - 'isLatest'` })
-        .where(eq(files.id, fileId))
-    }
+    await db
+      .update(files)
+      .set({ metadata: isLatest ? { ...meta, isLatest: true } : sql`${files.metadata} - 'isLatest'` })
+      .where(eq(files.id, fileId))
 
     return NextResponse.json({ success: true })
   } catch (err) {
