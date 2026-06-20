@@ -6,11 +6,13 @@
 import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { UNKNOWN_MENTION_NAME } from '@/lib/chat/mentions'
 
-const STRUCTURED_MENTION_RE = /<@[^|>\s]+\|[^>\n]+>/g
+// 構造化メンション。canonical な `<@userId>` と旧形式 `<@userId|displayName>` の両方を受理する
+const STRUCTURED_MENTION_RE = /<@([^|>\s]+)(?:\|([^>\n]+))?>/g
 const URL_RE = /https?:\/\/[^\s<>"']+/g
 
-function renderInlineText(text: string): React.ReactNode {
+function renderInlineText(text: string, mentionNames?: Map<string, string>): React.ReactNode {
   const nodes: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
@@ -19,8 +21,10 @@ function renderInlineText(text: string): React.ReactNode {
     if (match.index > last) nodes.push(text.slice(last, match.index))
     const token = match[0]!
     if (token.startsWith('<@')) {
-      const pipeIdx = token.indexOf('|')
-      const displayName = token.slice(pipeIdx + 1, -1)
+      // 現在の表示名を優先し、無ければ旧データの埋め込み名、それも無ければフォールバック
+      const mentionedId = match[1]!
+      const embeddedName = match[2]
+      const displayName = mentionNames?.get(mentionedId) ?? embeddedName ?? UNKNOWN_MENTION_NAME
       nodes.push(
         <span key={match.index} style={{ display: 'inline', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>
           @{displayName}
@@ -41,12 +45,12 @@ function renderInlineText(text: string): React.ReactNode {
   return nodes.length === 0 ? text : nodes.length === 1 && typeof nodes[0] === 'string' ? nodes[0] : nodes
 }
 
-function processChildren(children: React.ReactNode): React.ReactNode {
-  if (typeof children === 'string') return renderInlineText(children)
+function processChildren(children: React.ReactNode, mentionNames?: Map<string, string>): React.ReactNode {
+  if (typeof children === 'string') return renderInlineText(children, mentionNames)
   if (Array.isArray(children)) {
     return children.map((child, i) => {
       if (typeof child === 'string') {
-        const processed = renderInlineText(child)
+        const processed = renderInlineText(child, mentionNames)
         if (processed === child) return child
         return <React.Fragment key={i}>{processed}</React.Fragment>
       }
@@ -60,10 +64,11 @@ interface MarkdownContentProps {
   content: string
   fontSize?: number
   lineHeight?: number
+  mentionNames?: Map<string, string> | undefined
   onCheckboxToggle?: (index: number, checked: boolean) => void
 }
 
-export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, onCheckboxToggle }: MarkdownContentProps) {
+export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, mentionNames, onCheckboxToggle }: MarkdownContentProps) {
   const checkboxCounter = React.useRef(0)
   checkboxCounter.current = 0
 
@@ -72,7 +77,7 @@ export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, on
       remarkPlugins={[remarkGfm]}
       components={{
         p: ({ children }) => (
-          <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children)}</p>
+          <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children, mentionNames)}</p>
         ),
         h1: ({ children }) => (
           <h1 style={{ fontSize: fontSize * 1.4, fontWeight: 700, margin: '8px 0 4px', lineHeight: 1.3 }}>{children}</h1>
@@ -105,7 +110,7 @@ export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, on
               style={{ marginBottom: 2, lineHeight, listStyleType: isTask ? 'none' : undefined }}
               {...(isTask ? { className: String(props.className) } : {})}
             >
-              {processChildren(children)}
+              {processChildren(children, mentionNames)}
             </li>
           )
         },

@@ -7,20 +7,16 @@ import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
 import { hasReadMessage } from '@/lib/push/suppress'
+import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
 const PUSH_GRACE_PERIOD = '10s'
 
-// <@userId|displayName> 形式の構造化メンションから userId を抽出する
-function extractMentionedUserIds(content: string): string[] {
-  const matches = content.matchAll(/<@([^|>\s]+)\|[^>\n]+>/g)
-  return [...new Set([...matches].map(m => m[1]!))]
-}
-
-// <@userId|displayName> を @displayName に変換する
-function stripMentions(content: string): string {
-  return content.replace(/<@[^|>\s]+\|([^>\n]+)>/g, '@$1')
+// メンバー一覧から userId → 表示名のリゾルバを作る（通知本文のメンション解決用）
+function nameResolver(members: { userId: string; displayName: string }[]): (id: string) => string | undefined {
+  const map = new Map(members.map(m => [m.userId, m.displayName]))
+  return id => map.get(id)
 }
 
 // 猶予期間中に対象メッセージを既読にした受信者を Push 対象から除外する
@@ -88,6 +84,8 @@ export const onMessageCreated = inngest.createFunction(
       return ch?.type === 'dm'
     })
 
+    const dmBody = stripMentionsToText(content, nameResolver(members))
+
     if (isDm) {
       // DM はアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
       await step.run('create-dm-notifications', async () => {
@@ -99,7 +97,7 @@ export const onMessageCreated = inngest.createFunction(
             workspaceId,
             type: 'dm' as const,
             title: senderName,
-            body: stripMentions(content).slice(0, 200),
+            body: dmBody.slice(0, 200),
             data: { messageId, channelId, senderName },
           })),
         )
@@ -115,7 +113,7 @@ export const onMessageCreated = inngest.createFunction(
           await Promise.allSettled(
             unreadMembers.map(m => sendPushToUser(m.userId, {
               title: senderName,
-              body: stripMentions(content).slice(0, 100),
+              body: dmBody.slice(0, 100),
               url: `/chats/${channelId}`,
             })),
           )
@@ -125,7 +123,7 @@ export const onMessageCreated = inngest.createFunction(
     }
 
     // @メンション通知（チャンネル未参加でもワークスペースメンバーなら通知）
-    const mentionedIds = extractMentionedUserIds(content)
+    const mentionedIds = extractMentionIds(content)
 
     if (members.length === 0 && mentionedIds.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
     const mentionedMembers = mentionedIds.length > 0
@@ -144,6 +142,9 @@ export const onMessageCreated = inngest.createFunction(
         })
       : []
 
+    // 本文プレビューのメンションは送信時点の最新名で解決する（メンバー名 + メンション対象名）
+    const mentionBody = stripMentionsToText(content, nameResolver([...members, ...mentionedMembers]))
+
     let mentionNotifications = 0
     if (mentionedMembers.length > 0) {
       await step.run('create-mention-notifications', async () => {
@@ -156,7 +157,7 @@ export const onMessageCreated = inngest.createFunction(
             workspaceId,
             type: 'mention' as const,
             title: `${senderName} があなたをメンションしました`,
-            body: stripMentions(content).slice(0, 200),
+            body: mentionBody.slice(0, 200),
             data: { messageId, channelId, senderName },
           })),
         )
@@ -223,7 +224,7 @@ export const onMessageCreated = inngest.createFunction(
           unreadMembers.map(m =>
             sendPushToUser(m.userId, {
               title: `${senderName} があなたをメンションしました`,
-              body: stripMentions(content).slice(0, 100),
+              body: mentionBody.slice(0, 100),
               url: `/chats/${channelId}`,
             }),
           ),

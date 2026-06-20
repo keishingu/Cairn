@@ -10,6 +10,7 @@ import {
   type NotificationDto,
 } from '@/lib/notifications/client'
 import { usePushNotifications } from '@/lib/push/client'
+import { stripMentionsToText } from '@/lib/chat/mentions'
 
 const TYPE_CONFIG: Record<NotificationDto['type'], { icon: string; c: string; bg: string }> = {
   mention:  { icon: 'chat',     c: 'var(--blue)',    bg: 'var(--blue-soft)' },
@@ -22,8 +23,9 @@ const TYPE_CONFIG: Record<NotificationDto['type'], { icon: string; c: string; bg
   reaction: { icon: 'heart',    c: 'var(--rose)',    bg: 'var(--rose-soft)' },
 }
 
+// 通知本文は保存時に表示名解決済みだが、構造化トークンが残っていても素のまま見せない
 function parseMentionText(text: string): string {
-  return text.replace(/<@[^|>]+\|([^>]+)>/g, '@$1')
+  return stripMentionsToText(text)
 }
 
 const FILTERS = [

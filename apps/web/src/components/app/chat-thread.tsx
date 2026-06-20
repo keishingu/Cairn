@@ -76,7 +76,7 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, compact, isMobile }: {
+const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, mentionNames, compact, isMobile }: {
   messageId: string
   senderId: string
   currentUserId: string | undefined
@@ -92,6 +92,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   onDelete: (messageId: string) => void
   onCheckboxToggle: (messageId: string, index: number, checked: boolean) => void
   onImageClick: (attachmentId: string) => void
+  mentionNames?: Map<string, string>
   compact?: boolean
   isMobile?: boolean
 }) {
@@ -198,6 +199,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
                   content={content}
                   fontSize={compact ? 13 : 13.5}
                   lineHeight={1.6}
+                  mentionNames={mentionNames}
                   onCheckboxToggle={(index, checked) => onCheckboxToggle(messageId, index, checked)}
                 />
               )}
@@ -770,6 +772,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     mentionMapRef.current.set(displayName, userId)
   }, [])
 
+  // 保存形式は canonical な `<@userId>`。表示名は read 時に解決するため本文に焼き込まない
   const transformContent = (text: string): string => {
     const entries = [...mentionMapRef.current.entries()]
     if (entries.length === 0) return text
@@ -780,7 +783,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       result = result.replace(
         new RegExp(`@${escaped}(?=[\\s、。！？]|$)`, 'g'),
-        `<@${userId}|${displayName}>`,
+        `<@${userId}>`,
       )
     }
     return result
@@ -852,6 +855,14 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     }
     return wsMembers.filter(m => m.userId !== currentUser?.id)
   }, [chMemberIds, wsMembers, currentUser?.id])
+
+  // userId → 現在の表示名。メンションを描画時に最新名へ解決するため
+  // （保存本文は名前なしの `<@userId>` であり、楽観更新メッセージもこのマップで解決する）
+  const mentionNames = React.useMemo(() => {
+    const map = new Map<string, string>()
+    for (const m of wsMembers) map.set(m.userId, m.displayName)
+    return map
+  }, [wsMembers])
 
   React.useEffect(() => {
     if (!sendMutation.isError) return
@@ -1053,6 +1064,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               onDelete={(messageId) => deleteMutation.mutate(messageId)}
               onCheckboxToggle={handleCheckboxToggle}
               onImageClick={openLightbox}
+              mentionNames={mentionNames}
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}
             />
