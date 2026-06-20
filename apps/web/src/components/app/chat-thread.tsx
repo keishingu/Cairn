@@ -366,8 +366,17 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const imageInputRef = React.useRef<HTMLInputElement>(null)
   const docInputRef = React.useRef<HTMLInputElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
-  const compactInputRef = React.useRef<HTMLInputElement>(null)
+  const compactInputRef = React.useRef<HTMLTextAreaElement>(null)
   const overlayRef = React.useRef<HTMLDivElement>(null)
+
+  // テキストエリアの高さを内容に合わせて自動調整する（改行・長文で行が増えても見切れないように）
+  React.useEffect(() => {
+    const el = textareaRef.current ?? compactInputRef.current
+    if (!el) return
+    const max = compact ? 120 : 160
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`
+  }, [draft, compact])
 
   // draft がクリアされたらメンション状態もリセット
   React.useEffect(() => {
@@ -459,7 +468,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     let match: RegExpExecArray | null
     while ((match = re.exec(draft)) !== null) {
       if (match.index > last) nodes.push(<span key={`t${last}`} style={{ color: 'var(--text)' }}>{draft.slice(last, match.index)}</span>)
-      nodes.push(<span key={`m${match.index}`} style={{ background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>@{match[1]}</span>)
+      // ハイライトは文字送り幅を変えない装飾のみにする。padding / fontWeight / fontSize を変えると
+      // 透明な実テキスト（キャレット基準）とオーバーレイの表示位置がずれ、メンション後にカーソルがずれて見える
+      nodes.push(<span key={`m${match.index}`} style={{ background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4 }}>@{match[1]}</span>)
       last = match.index + match[0]!.length
     }
     if (nodes.length === 0) return null
@@ -556,20 +567,20 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         )}
         <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
           {AttachmentPreviews}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, padding: '7px 10px' }}>
             <div style={{ flex: 1, position: 'relative' }}>
               {MentionPicker}
               {typeof placeholder !== 'string' && !draft && (
-                <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 13 }}>
+                <div style={{ position: 'absolute', top: 2, left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 13 }}>
                   {placeholder}
                 </div>
               )}
               {draftOverlay && (
-                <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: 0, right: 0, fontSize: 13, fontFamily: 'inherit', lineHeight: 1, whiteSpace: 'nowrap', pointerEvents: 'none', overflow: 'hidden' }}>
+                <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 13, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 120 }}>
                   {draftOverlay}
                 </div>
               )}
-              <input
+              <textarea
                 ref={compactInputRef}
                 value={draft}
                 onChange={e => { setDraft(e.target.value); detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
@@ -582,8 +593,10 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                   send()
                 })}
                 onPaste={handlePaste}
+                onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
                 placeholder={typeof placeholder === 'string' ? placeholder : ''}
-                style={{ width: '100%', border: 'none', background: 'transparent', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
+                rows={1}
+                style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 20, maxHeight: 120, boxSizing: 'border-box' }}
               />
             </div>
             <button onClick={() => fileInputRef.current?.click()} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
@@ -667,7 +680,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
               placeholder={typeof placeholder === 'string' ? placeholder : ''}
               rows={1}
-              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160 }}
+              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160, boxSizing: 'border-box' }}
             />
           </div>
           <button onClick={send} disabled={!canSend} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
