@@ -14,6 +14,7 @@ import { Icon } from './primitives'
 import { FileTypeIcon } from './file-type-icon'
 import { CreateTextFileDialog } from './create-text-file-dialog'
 import { MarkdownContent } from './markdown-content'
+import { ImageLightbox, type LightboxImage } from './image-lightbox'
 import {
   formatChatMessageTime,
   useChannelMessages,
@@ -75,7 +76,7 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, compact, isMobile }: {
+const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, compact, isMobile }: {
   messageId: string
   senderId: string
   currentUserId: string | undefined
@@ -90,6 +91,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
   onCheckboxToggle: (messageId: string, index: number, checked: boolean) => void
+  onImageClick: (attachmentId: string) => void
   compact?: boolean
   isMobile?: boolean
 }) {
@@ -209,6 +211,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
                 key={a.fileId}
                 src={`/api/attachments/${a.fileId}`}
                 alt={a.fileName}
+                onClick={() => onImageClick(a.id)}
                 style={{
                   maxWidth: attachments.length === 1 ? 280 : 160,
                   maxHeight: 280,
@@ -692,6 +695,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [pendingAttachments, setPendingAttachments] = React.useState<PendingAttachment[]>([])
   const [isUploading, setIsUploading] = React.useState(false)
   const [showTextFileDialog, setShowTextFileDialog] = React.useState(false)
+  const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -807,6 +811,26 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       // サイレントに失敗
     }
   }, [channelId, queryClient])
+
+  // スレッド内の全画像添付をフラットに集約し、ライトボックスで前後に送れるようにする
+  const lightboxImages = React.useMemo<(LightboxImage & { attachmentId: string })[]>(() => {
+    const imgs: (LightboxImage & { attachmentId: string })[] = []
+    for (const m of messages) {
+      for (const a of m.attachments) {
+        if (isImageMime(a.mimeType)) {
+          imgs.push({ attachmentId: a.id, key: a.id, src: `/api/attachments/${a.fileId}`, alt: a.fileName, caption: a.fileName })
+        }
+      }
+    }
+    return imgs
+  }, [messages])
+
+  const openLightbox = React.useCallback((attachmentId: string) => {
+    setLightboxIndex(prev => {
+      const idx = lightboxImages.findIndex(img => img.attachmentId === attachmentId)
+      return idx >= 0 ? idx : prev
+    })
+  }, [lightboxImages])
 
   const mentionMembers = React.useMemo(() => {
     if (chMemberIds.length > 0) {
@@ -1015,6 +1039,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               onEdit={(messageId, content) => editMutation.mutate({ messageId, content })}
               onDelete={(messageId) => deleteMutation.mutate(messageId)}
               onCheckboxToggle={handleCheckboxToggle}
+              onImageClick={openLightbox}
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}
             />
@@ -1040,6 +1065,14 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         onCreateTextFile={() => setShowTextFileDialog(true)}
         {...(compact ? { compact: true } : {})}
       />
+      {lightboxIndex !== null && lightboxImages.length > 0 && (
+        <ImageLightbox
+          images={lightboxImages}
+          index={Math.min(lightboxIndex, lightboxImages.length - 1)}
+          onIndexChange={setLightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
     </div>
   )
 }

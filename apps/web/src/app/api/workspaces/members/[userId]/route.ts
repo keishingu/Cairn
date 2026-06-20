@@ -53,6 +53,18 @@ export async function PATCH(
 
     const currentRole = target.role
 
+    // ゲストと通常ロール間の遷移は禁止する。
+    // ゲストのアクセス範囲は project_members で表現されるが、通常ロールはWS全体を参照するため、
+    // 相互変換すると project_members が実態と乖離した無効データ（ゾンビ）として残り、整合性が壊れる。
+    // ゲストを通常メンバーにしたい場合は招待し直す運用とする。
+    const isGuestTransition = (currentRole === 'guest') !== (newRole === 'guest')
+    if (isGuestTransition) {
+      return NextResponse.json(
+        { error: 'ゲストと通常ロール間のロール変更はできません。招待し直してください' },
+        { status: 422 },
+      )
+    }
+
     // admin は owner に関わる変更を行えない
     if (callerRole !== 'owner') {
       if (newRole === 'owner') {

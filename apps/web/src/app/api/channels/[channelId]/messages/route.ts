@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { type AttachmentDto, postMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess } from '@/lib/permissions'
 import { inngest } from '@/lib/inngest/client'
 import type { MessageCreatedEvent } from '@/lib/inngest/events'
 import { parseCheckboxes } from '@/lib/chat/checkboxes'
@@ -32,6 +33,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
   const { channelId } = await params
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
+
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
@@ -144,6 +148,9 @@ export async function POST(req: Request, { params }: RouteContext) {
   const { channelId } = await params
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
+
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  if (forbidden) return forbidden
 
   let body: unknown
   try {

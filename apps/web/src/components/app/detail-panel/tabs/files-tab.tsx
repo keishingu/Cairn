@@ -4,6 +4,7 @@ import React from 'react'
 import { ConfirmDialog } from '../../confirm-dialog'
 import { RowActionMenu } from '../../row-action-menu'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
+import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
 import { useProjectFiles } from '@/hooks/use-project-files'
 
@@ -38,9 +39,25 @@ function formatDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+function isImageFile(file: ProjectFileDto): boolean {
+  return file.fileType !== 'link' && (file.mimeType?.startsWith('image/') ?? false)
+}
+
 export const FilesTab = ({ projectId }: { projectId: string }) => {
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
+  const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const { data: files = [], isLoading, isError, deleteMutation } = useProjectFiles(projectId)
+
+  const imageFiles = React.useMemo(() => files.filter(isImageFile), [files])
+  const lightboxImages = React.useMemo<LightboxImage[]>(() => imageFiles.map(f => ({
+    key: f.id,
+    src: `/api/attachments/${f.id}`,
+    caption: f.fileName,
+  })), [imageFiles])
+  const openLightbox = React.useCallback((fileId: string) => {
+    const idx = imageFiles.findIndex(f => f.id === fileId)
+    if (idx >= 0) setLightboxIndex(idx)
+  }, [imageFiles])
 
   if (isLoading) {
     return (
@@ -75,6 +92,7 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
 
         const isLink = f.fileType === 'link'
         const linkHref = isLink ? f.externalUrl : `/api/attachments/${f.id}`
+        const isImage = isImageFile(f)
 
         return (
           <div key={f.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderBottom: '1px solid var(--divider)', borderRadius: 6 }}>
@@ -82,6 +100,7 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
               href={linkHref}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={isImage ? (e => { e.preventDefault(); openLightbox(f.id) }) : undefined}
               style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, textDecoration: 'none', cursor: 'pointer' }}
             >
               <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -117,6 +136,15 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
         onConfirm={async () => { if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.id) }}
         onClose={() => setDeleteTarget(null)}
       />
+
+      {lightboxIndex !== null && lightboxImages.length > 0 && (
+        <ImageLightbox
+          images={lightboxImages}
+          index={Math.min(lightboxIndex, lightboxImages.length - 1)}
+          onIndexChange={setLightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
     </div>
   )
 }

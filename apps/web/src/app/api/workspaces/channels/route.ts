@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { getWorkspaceMemberRole, requireWorkspaceAdmin } from '@/lib/permissions'
 
 export interface WorkspaceChannelDto {
   id: string
@@ -25,11 +25,28 @@ export async function GET() {
     const { channels, channelMembers, profiles } = await import('@cairn/db')
     const { and, eq, inArray } = await import('drizzle-orm')
 
-    const channelRows = await db
+    const allChannelRows = await db
       .select({ id: channels.id, name: channels.name, isPrivate: channels.isPrivate })
       .from(channels)
       .where(and(eq(channels.workspaceId, ctx.workspaceId), eq(channels.type, 'workspace')))
       .orderBy(channels.createdAt)
+
+    // ワークスペースチャンネルはWS全体向け。ゲストには自分が参加しているチャンネルのみに絞り、
+    // 参加していないチャンネルの存在やメンバー構成が漏れないようにする。
+    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    let channelRows = allChannelRows
+    if (callerRole === 'guest') {
+      if (allChannelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
+      const joined = await db
+        .select({ channelId: channelMembers.channelId })
+        .from(channelMembers)
+        .where(and(
+          eq(channelMembers.userId, ctx.userId),
+          inArray(channelMembers.channelId, allChannelRows.map(c => c.id)),
+        ))
+      const joinedIds = new Set(joined.map(r => r.channelId))
+      channelRows = allChannelRows.filter(c => joinedIds.has(c.id))
+    }
 
     if (channelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
 
@@ -122,7 +139,7 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels } = await import('@cairn/db')
+    const { channels, channelMembers } = await import('@cairn/db')
 
     const rows = await db
       .insert(channels)
@@ -136,7 +153,14 @@ export async function POST(req: Request) {
 
     const inserted = rows[0]
     if (!inserted) throw new Error('insert returned no rows')
-    const result: WorkspaceChannelDto = { ...inserted, memberCount: 0, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
+
+    // プライベートチャンネルはメンバーのみアクセス可。作成者が締め出されないよう channel_members に追加する。
+    if (isPrivate) {
+      await db.insert(channelMembers).values({ channelId: inserted.id, userId: ctx.userId })
+    }
+
+    const memberCount = isPrivate ? 1 : 0
+    const result: WorkspaceChannelDto = { ...inserted, memberCount, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('[/api/workspaces/channels POST] DB error:', err)

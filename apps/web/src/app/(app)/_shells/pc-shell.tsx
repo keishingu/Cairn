@@ -15,6 +15,8 @@ import { NavigationProgress } from '@/components/navigation-progress'
 import { useDetailPanel } from '@/hooks/use-detail-panel'
 import { useAppShortcuts } from '@/hooks/use-app-shortcuts'
 import { ShortcutHints } from '@/components/app/shortcut-hints'
+import { CommandPalette } from '@/components/app/command-palette'
+import { ShortcutHelp } from '@/components/app/shortcut-help'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 const PC_STORAGE_KEY = STORAGE_KEYS.projects_view_pc
@@ -38,6 +40,8 @@ export function PCShell({ children }: { children: React.ReactNode }) {
   const { panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, closePanel } = useDetailPanel()
 
   const [notifOpen, setNotifOpen] = React.useState(false)
+  const [paletteOpen, setPaletteOpen] = React.useState(false)
+  const [helpOpen, setHelpOpen] = React.useState(false)
 
   const handleMemberClick = React.useCallback((userId: string) => {
     openMember(userId)
@@ -100,7 +104,14 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     return false
   }, [notifOpen, panelMember, panelProject, closePanel])
 
-  useAppShortcuts({ navigate, onEscape: closeTopOverlay })
+  useAppShortcuts({
+    navigate,
+    page,
+    onEscape: closeTopOverlay,
+    onCommandPalette: () => setPaletteOpen(true),
+    onHelp: () => setHelpOpen(true),
+    onNotifications: () => setNotifOpen(true),
+  })
 
   return (
     <AppShellContext.Provider value={{
@@ -139,6 +150,8 @@ export function PCShell({ children }: { children: React.ReactNode }) {
           </main>
         </div>
         <ShortcutHints page={page} />
+        {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} navigate={navigate} onNotifications={() => setNotifOpen(true)} />}
+        {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
       </div>
     </AppShellContext.Provider>
   )

@@ -61,6 +61,14 @@ function createWindow() {
 
   win.loadURL(APP_URL)
 
+  // Desktop 特権: ブラウザがタブ切替に使う Ctrl+Tab / Ctrl+Shift+Tab を横取りし、
+  // チャンネル・会話の順送りに割り当てる（Web 版ではブラウザに奪われ実現できない）
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || !input.control || input.key !== 'Tab') return
+    event.preventDefault()
+    win.webContents.send('cairn:seq', input.shift ? 'prev' : 'next')
+  })
+
   if (isDev) {
     win.webContents.openDevTools()
   }
