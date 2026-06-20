@@ -69,6 +69,64 @@ export async function GET(_req: Request, { params }: RouteContext) {
   }
 }
 
+export async function PATCH(req: Request, { params }: RouteContext) {
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
+
+  const { fileId } = await params
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'リクエストボディが不正です' }, { status: 400 })
+  }
+  const isLatest = (body as { isLatest?: unknown })?.isLatest
+  if (typeof isLatest !== 'boolean') {
+    return NextResponse.json({ error: 'isLatest は boolean で指定してください' }, { status: 400 })
+  }
+
+  try {
+    const { db, files } = await import('@cairn/db')
+    const { eq, and, ne, sql } = await import('drizzle-orm')
+
+    const [file] = await db
+      .select({ id: files.id, workspaceId: files.workspaceId, projectId: files.projectId, metadata: files.metadata })
+      .from(files)
+      .where(eq(files.id, fileId))
+      .limit(1)
+
+    if (!file) return new NextResponse(null, { status: 404 })
+    if (file.workspaceId !== ctx.workspaceId) return new NextResponse(null, { status: 403 })
+
+    const meta = (file.metadata ?? {}) as Record<string, unknown>
+
+    if (isLatest) {
+      // 最新版はプロジェクト内で 1 件のみ。他ファイルのフラグを外してから付け替える
+      if (file.projectId) {
+        await db
+          .update(files)
+          .set({ metadata: sql`${files.metadata} - 'isLatest'` })
+          .where(and(eq(files.projectId, file.projectId), ne(files.id, fileId)))
+      }
+      await db
+        .update(files)
+        .set({ metadata: { ...meta, isLatest: true } })
+        .where(eq(files.id, fileId))
+    } else {
+      await db
+        .update(files)
+        .set({ metadata: sql`${files.metadata} - 'isLatest'` })
+        .where(eq(files.id, fileId))
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error('[PATCH /api/attachments/[fileId]]', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 export async function DELETE(_req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
