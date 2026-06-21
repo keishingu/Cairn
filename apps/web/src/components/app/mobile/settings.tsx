@@ -11,17 +11,16 @@ import { Icon, Avatar } from '../primitives'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
+import { useCurrentUser } from '@/hooks/use-current-user'
 import { createClient } from '@/lib/supabase/client'
+import type { CurrentUserDto } from '@/app/api/me/route'
 
-const PERSONAL_SECTIONS = [
-  {
-    title: 'アカウント',
-    items: [
-      { icon: 'users',    label: 'プロフィール編集', value: '山田 太郎' },
-      { icon: 'bell',     label: '通知設定',         value: 'オン' },
-    ],
-  },
-]
+const ROLE_LABEL: Record<CurrentUserDto['wsRole'], string> = {
+  owner:  'オーナー',
+  admin:  '管理者',
+  member: 'メンバー',
+  guest:  'ゲスト',
+}
 
 const WORKSPACE_SECTIONS = [
   {
@@ -107,7 +106,7 @@ const ProjectLabelSetting = () => {
   )
 }
 
-const SectionList = ({ sections }: { sections: typeof PERSONAL_SECTIONS }) => (
+const SectionList = ({ sections }: { sections: typeof WORKSPACE_SECTIONS }) => (
   <>
     {sections.map(section => (
       <div key={section.title} style={{ margin: '16px 16px 0' }}>
@@ -137,9 +136,20 @@ const SectionList = ({ sections }: { sections: typeof PERSONAL_SECTIONS }) => (
 export function MobileSettings() {
   const { theme, setTheme } = useTheme()
   const { accentId, setAccentId } = useAccentColor()
+  const { data: me } = useCurrentUser()
   const [mounted, setMounted] = React.useState(false)
   const router = useRouter()
   React.useEffect(() => setMounted(true), [])
+
+  const personalSections = [
+    {
+      title: 'アカウント',
+      items: [
+        { icon: 'users', label: 'プロフィール編集', value: me?.displayName ?? '' },
+        { icon: 'bell',  label: '通知設定',         value: 'オン' },
+      ],
+    },
+  ]
 
   async function handleLogout() {
     const supabase = createClient()
@@ -154,19 +164,21 @@ export function MobileSettings() {
       <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         {/* Profile card */}
         <div style={{ margin: '16px 16px 8px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
-          <Avatar name="山田 太郎" size={56}/>
+          <Avatar name={me?.displayName ?? ''} url={me?.avatarUrl ?? null} size={56}/>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>山田 太郎</div>
-            <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>yamada@example.com</div>
-            <div style={{ marginTop: 6 }}>
-              <span style={{ fontSize: 11, background: 'var(--accent-soft)', color: 'var(--accent-text)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>オーナー</span>
-            </div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>{me?.displayName ?? ''}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>{me?.email ?? ''}</div>
+            {me?.wsRole && (
+              <div style={{ marginTop: 6 }}>
+                <span style={{ fontSize: 11, background: 'var(--accent-soft)', color: 'var(--accent-text)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>{ROLE_LABEL[me.wsRole]}</span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* 個人設定 */}
         <div style={{ margin: '16px 16px 0', fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 4 }}>個人</div>
-        <SectionList sections={PERSONAL_SECTIONS}/>
+        <SectionList sections={personalSections}/>
 
         {/* 外観 */}
         <div style={{ margin: '16px 16px 0' }}>
