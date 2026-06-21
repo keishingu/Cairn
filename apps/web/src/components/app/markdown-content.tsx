@@ -6,11 +6,18 @@
 import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
 import { UNKNOWN_MENTION_NAME } from '@/lib/chat/mentions'
 
 // 構造化メンション。canonical な `<@userId>` と旧形式 `<@userId|displayName>` の両方を受理する
 const STRUCTURED_MENTION_RE = /<@([^|>\s]+)(?:\|([^>\n]+))?>/g
 const URL_RE = /https?:\/\/[^\s<>"']+/g
+
+// 長いURL（クエリパラメータ付きなど）は短縮URLにせず見た目だけ「…」で省略する。リンク先(href)は元のまま
+const URL_DISPLAY_MAX = 50
+function truncateUrlForDisplay(url: string): string {
+  return url.length > URL_DISPLAY_MAX ? `${url.slice(0, URL_DISPLAY_MAX)}…` : url
+}
 
 function renderInlineText(text: string, mentionNames?: Map<string, string>): React.ReactNode {
   const nodes: React.ReactNode[] = []
@@ -34,8 +41,8 @@ function renderInlineText(text: string, mentionNames?: Map<string, string>): Rea
       const url = token.replace(/[.,;:!?)>\]]+$/, '')
       nodes.push(
         <a key={match.index} href={url} target="_blank" rel="noopener noreferrer"
-          style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}>
-          {url}
+          style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>
+          {truncateUrlForDisplay(url)}
         </a>,
       )
     }
@@ -74,7 +81,7 @@ export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, me
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkBreaks]}
       components={{
         p: ({ children }) => (
           <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children, mentionNames)}</p>
@@ -132,12 +139,22 @@ export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, me
             />
           )
         },
-        a: ({ href, children }) => (
-          <a href={href} target="_blank" rel="noopener noreferrer"
-            style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}>
-            {children}
-          </a>
-        ),
+        a: ({ href, children }) => {
+          // 自動リンク化された生URL（リンクテキスト=URL自体）だけ表示を省略する。
+          // `[表示名](url)` のようにテキストを明示したリンクはそのまま表示する
+          const linkText = typeof children === 'string'
+            ? children
+            : Array.isArray(children) && children.length === 1 && typeof children[0] === 'string'
+              ? children[0]
+              : null
+          const display = linkText !== null && linkText === href ? truncateUrlForDisplay(linkText) : children
+          return (
+            <a href={href} target="_blank" rel="noopener noreferrer"
+              style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>
+              {display}
+            </a>
+          )
+        },
         code: ({ children, className }) => {
           const isBlock = className?.startsWith('language-')
           if (isBlock) return <code className={className} style={{ fontSize: fontSize * 0.9, fontFamily: 'monospace' }}>{children}</code>
