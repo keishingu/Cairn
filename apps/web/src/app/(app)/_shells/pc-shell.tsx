@@ -13,6 +13,10 @@ import { PageNotifications } from '@/components/app/pages/notifications'
 import { AppShellContext } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { useDetailPanel } from '@/hooks/use-detail-panel'
+import { useAppShortcuts } from '@/hooks/use-app-shortcuts'
+import { ShortcutHints } from '@/components/app/shortcut-hints'
+import { CommandPalette } from '@/components/app/command-palette'
+import { ShortcutHelp } from '@/components/app/shortcut-help'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 const PC_STORAGE_KEY = STORAGE_KEYS.projects_view_pc
@@ -36,6 +40,8 @@ export function PCShell({ children }: { children: React.ReactNode }) {
   const { panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, closePanel } = useDetailPanel()
 
   const [notifOpen, setNotifOpen] = React.useState(false)
+  const [paletteOpen, setPaletteOpen] = React.useState(false)
+  const [helpOpen, setHelpOpen] = React.useState(false)
 
   const handleMemberClick = React.useCallback((userId: string) => {
     openMember(userId)
@@ -88,6 +94,25 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     else router.push(`/${p}`)
   }, [router, setProjectsView])
 
+  // Esc=閉じる: 最前面のオーバーレイ（通知 → 詳細パネル）を1つ閉じる。
+  // Modal（ConfirmDialog や各種作成モーダル）が前面にある時は、その Modal 自身が
+  // Esc を処理するので shell は介入しない（パネルごと閉じてしまうのを防ぐ）
+  const closeTopOverlay = React.useCallback(() => {
+    if (typeof document !== 'undefined' && document.querySelector('[data-cairn-modal]')) return false
+    if (notifOpen) { setNotifOpen(false); return true }
+    if (panelMember || panelProject) { closePanel(); return true }
+    return false
+  }, [notifOpen, panelMember, panelProject, closePanel])
+
+  useAppShortcuts({
+    navigate,
+    page,
+    onEscape: closeTopOverlay,
+    onCommandPalette: () => setPaletteOpen(true),
+    onHelp: () => setHelpOpen(true),
+    onNotifications: () => setNotifOpen(true),
+  })
+
   return (
     <AppShellContext.Provider value={{
       openPanel,
@@ -124,6 +149,9 @@ export function PCShell({ children }: { children: React.ReactNode }) {
             </div>
           </main>
         </div>
+        <ShortcutHints page={page} />
+        {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} navigate={navigate} onNotifications={() => setNotifOpen(true)} />}
+        {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
       </div>
     </AppShellContext.Provider>
   )

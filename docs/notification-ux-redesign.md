@@ -217,10 +217,18 @@ private channel の join は **`realtime.messages` への RLS（Realtime Authori
 
 > 本番反映時の注意: `DATABASE_URL` のロールが対象テーブルのオーナー（= RLS バイパス）であることを要確認。ローカル/標準 Supabase は `postgres` ロールのため問題ない。
 
-### Phase 3: プレゼンス連動の Push 抑制
+### Phase 3: 閲覧中の Push 抑制 — 実装済み
 
-- まず低コスト版: **`last_read_at` が直近 N 秒（例: 30 秒）以内なら Push をスキップ**（Phase 1-6 の自動既読化と組み合わせると「閲覧中は通知しない」がほぼ実現する）
-- 本格版: Supabase Realtime Presence で「表示中チャンネル」をトラックし、Inngest 側で送信前にチェック
+Slack の「アクティブなら通知しない」に相当する体験を、プレゼンス基盤なしで実現する。
+当初案の「`last_read_at` が直近 N 秒以内ならスキップ」は、静かなチャンネルを開いたまま放置しているケース（last_read_at が古いまま閲覧中）で誤送信するため、**猶予付き既読再確認方式**に改良した:
+
+- アプリ内通知・未読バッジ・`unread_mention_count` は従来どおり**即時**
+- **Push 送信だけを 10 秒の猶予後に実行**（Inngest `step.sleep`）し、猶予後に受信者の `channel_read_states` を再確認。**対象メッセージを既読済み（`last_read_at >= created_at` または `last_read_message_id` 一致 — クロックスキュー対策）の受信者には送らない**
+- Phase 1 の「閲覧中チャンネルの自動既読化」+ Phase 2 の Realtime 配信により、閲覧中（タブ表示中）のユーザーは数秒以内に既読が立つ → Push されない。バックグラウンドタブは自動既読されないため Push は届く
+- 猶予中に削除されたメッセージの Push も送らない
+- 対象: DM Push・メンション Push（実装: `onMessageCreated` の `filterUnreadRecipients` + `lib/push/suppress.ts`）。タスク割り当て Push はチャンネル閲覧と無関係のため対象外
+- トレードオフ: DM・メンションの Push が最大 10 秒遅延する。「読んでいるのに鳴る」体験の解消を優先する
+- 本格版（Realtime Presence で表示中チャンネルをトラックし送信前チェック）は、猶予方式で不足が出た場合の将来オプション
 
 ### Phase 4: 通知設定（ユーザーコントロール）
 

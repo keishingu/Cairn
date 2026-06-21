@@ -25,7 +25,10 @@ import { CreateChannelModal } from './create-channel-modal'
 import { BellButton } from '../sidebar'
 import { useDebounce } from '@/hooks/use-debounce'
 import { ChannelList } from './chat-channel-list'
-import { ChatDetailSidebar } from './chat-detail-sidebar'
+import { ChatDetailSidebar, ChatInfoDrawer, type ChatDetailMember } from './chat-detail-sidebar'
+import { useAppShell } from '../app-shell-context'
+import type { ProjectDto } from '@/app/api/projects/route'
+import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 
 // ─── Message search ───────────────────────────────────────────────
 
@@ -240,9 +243,12 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     return segments[1] === 'chats' && segments[2] ? segments[2] : null
   }, [pathname])
 
+  const { openMember } = useAppShell()
+
   const [channelId, setChannelId] = React.useState<string | null>(urlChannelId)
   const [showCreateChannel, setShowCreateChannel] = React.useState(false)
   const [showMemberInvite, setShowMemberInvite] = React.useState(false)
+  const [showInfo, setShowInfo] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
   const [targetMessageId, setTargetMessageId] = React.useState<string | null>(null)
@@ -270,7 +276,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // PC: チャンネル未選択時に最初のプロジェクトチャンネルへ自動遷移
   React.useEffect(() => {
     if (!channelId && projectChannels.length > 0 && !isMobile) {
-      const firstId = projectChannels[0]!.channelId
+      // アーカイブ済みは折りたたみ表示なので、初期選択は非アーカイブを優先する
+      const firstId = (projectChannels.find(c => !c.archived) ?? projectChannels[0]!).channelId
       setChannelId(firstId)
       router.replace('/chats/' + firstId)
     }
@@ -289,6 +296,45 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setSearchOpen(false)
     setTargetMessageId(messageId)
   }
+
+  // ⌥N: 新規チャンネル / ⌘⇧F: 横断検索
+  React.useEffect(() => {
+    const onCreate = () => setShowCreateChannel(true)
+    const onCross = () => { window.__cairnOpenCrossSearch = false; setGlobalSearchOpen(true) }
+    window.addEventListener('cairn:create', onCreate)
+    window.addEventListener('cairn:cross-search', onCross)
+    // ⌘⇧F で他画面から chats へ遷移してきた直後はフラグで開く
+    if (window.__cairnOpenCrossSearch) {
+      window.__cairnOpenCrossSearch = false
+      setGlobalSearchOpen(true)
+    }
+    return () => {
+      window.removeEventListener('cairn:create', onCreate)
+      window.removeEventListener('cairn:cross-search', onCross)
+    }
+  }, [])
+
+  // ⌥↑↓（順送り）: チャンネル一覧（プロジェクト → 全体 → DM の表示順）を前/次へ
+  React.useEffect(() => {
+    const orderedIds = [
+      ...projectChannels.map(c => c.channelId),
+      ...workspaceChannels.map(c => c.id),
+      ...dms.map(d => d.id),
+    ]
+    if (orderedIds.length === 0) return
+    const onSeq = (e: Event) => {
+      const dir = (e as CustomEvent<'prev' | 'next'>).detail
+      const idx = channelId ? orderedIds.indexOf(channelId) : -1
+      const nextIdx = idx === -1
+        ? (dir === 'next' ? 0 : orderedIds.length - 1)
+        : Math.min(Math.max(idx + (dir === 'next' ? 1 : -1), 0), orderedIds.length - 1)
+      const nextId = orderedIds[nextIdx]
+      if (nextId && nextId !== channelId) selectChannel(nextId)
+    }
+    window.addEventListener('cairn:seq', onSeq)
+    return () => window.removeEventListener('cairn:seq', onSeq)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId, projectChannels, workspaceChannels, dms])
 
   const jumpToChannelMessage = (chanId: string, messageId: string) => {
     _pendingJump = { channelId: chanId, messageId }
@@ -314,23 +360,68 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const currentChannelMemberCount = currentGeneral?.memberCount
 
   const { data: currentUser } = useCurrentUser()
-  const { data: channelMemberIds = [] } = useChannelMembers(isProject || isPrivate ? channelId : null)
+  // 非公開チャンネルのみ「チャンネル参加者」を表示するためメンバーを取得する
+  const { data: channelMemberIds = [] } = useChannelMembers(isPrivate ? channelId : null)
 
-  const channelMembers = React.useMemo<{ name: string; url: string | null }[]>(() => {
+  // 紐づくプロジェクトの概要（説明・ステータス・タスク進捗・メンバー）をインフォメーション欄に出す
+  const { data: projects = [] } = useQuery<ProjectDto[]>({
+    queryKey: ['projects'],
+    queryFn: () => fetchWithAuth('/api/projects').then(r => {
+      if (!r.ok) throw new Error('fetch failed')
+      return r.json()
+    }),
+    enabled: isProject,
+  })
+  const linkedProject = isProject && currentChannel
+    ? (projects.find(p => p.id === currentChannel.projectId) ?? null)
+    : null
+
+  // プロジェクト連動メンバー（ProjectDto.memberNames は最大4名のプレビューのため、
+  // 全員＋userId を持つ専用エンドポイントから取得する）
+  const { data: projectMembers = [] } = useQuery<ProjectMemberDto[]>({
+    queryKey: ['project-members', currentChannel?.projectId],
+    queryFn: () => fetchWithAuth(`/api/projects/${currentChannel!.projectId}/members`).then(r => {
+      if (!r.ok) throw new Error('fetch failed')
+      return r.json()
+    }),
+    enabled: isProject && !!currentChannel,
+  })
+
+  const channelMembers = React.useMemo<ChatDetailMember[]>(() => {
     if (isDm) {
       return [
-        { name: currentDm.participantName, url: currentDm.participantAvatarUrl ?? null },
-        ...(currentUser ? [{ name: currentUser.displayName, url: currentUser.avatarUrl ?? null }] : []),
+        { userId: currentDm.participantId, name: currentDm.participantName, url: currentDm.participantAvatarUrl ?? null },
+        ...(currentUser ? [{ userId: currentUser.id, name: currentUser.displayName, url: currentUser.avatarUrl ?? null }] : []),
       ]
     }
-    if (isProject || isPrivate) {
-      const idSet = new Set(channelMemberIds.map(m => m.userId))
-      return members.filter(m => idSet.has(m.userId)).map(m => ({ name: m.displayName, url: m.avatarUrl ?? null }))
+    if (isProject) {
+      // プロジェクト連動: 紐づくプロジェクトの全メンバーを表示
+      return projectMembers.map(m => ({ userId: m.userId, name: m.displayName, url: m.avatarUrl ?? null }))
     }
+    if (isPrivate) {
+      const idSet = new Set(channelMemberIds.map(m => m.userId))
+      return members.filter(m => idSet.has(m.userId)).map(m => ({ userId: m.userId, name: m.displayName, url: m.avatarUrl ?? null }))
+    }
+    // 公開（全体）チャンネルはヘッダーのアバター表示用に名前だけ保持（パネルでは非表示）
     const names = currentGeneral?.memberNames ?? []
     const urls = currentGeneral?.memberAvatarUrls ?? []
     return names.map((name, i) => ({ name, url: urls[i] ?? null }))
-  }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral])
+  }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral, projectMembers])
+
+  // メンバー欄の見出し。意味がチャンネル種別で変わるため明示。公開チャンネルは非表示(null)
+  const memberLabel = isProject ? 'プロジェクトメンバー' : isPrivate ? 'チャンネル参加者' : isDm ? '参加者' : null
+
+  const handleOpenProject = () => {
+    if (currentChannel) {
+      setShowInfo(false)
+      // チャット上にパネルを重ねず、プロジェクトページを開いた状態へ遷移する
+      router.push(`/projects?open=project-${currentChannel.projectId}`)
+    }
+  }
+  const handleOpenMember = (userId: string) => {
+    setShowInfo(false)
+    openMember(userId)
+  }
 
   const memberNames = channelMembers.map(m => m.name)
   const memberAvatarUrls = channelMembers.map(m => m.url)
@@ -391,7 +482,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                   <Icon name="userPlus" size={16}/>
                 </button>
               )}
-              <button className="btn"><Icon name="more" size={17}/></button>
+              <button className="btn" onClick={() => setShowInfo(true)} aria-label="チャンネル情報">
+                <Icon name="info" size={18}/>
+              </button>
             </div>
           }
         />
@@ -401,6 +494,27 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         }
         {showMemberInvite && channelId && (
           <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
+        )}
+        {showInfo && (
+          <ChatInfoDrawer
+            onClose={() => setShowInfo(false)}
+            isProject={isProject}
+            isDm={isDm}
+            isPrivate={isPrivate}
+            channelName={channelName}
+            currentDmAvatarUrl={currentDm?.participantAvatarUrl}
+            dmParticipantId={currentDm?.participantId ?? null}
+            project={linkedProject}
+            channelMembers={channelMembers}
+            memberLabel={memberLabel}
+            channelId={channelId}
+            /* 招待シートはチャット直下で一元描画するため、ドロワー内では描画しない */
+            showMemberInvite={false}
+            onInviteMember={() => setShowMemberInvite(true)}
+            onCloseMemberInvite={() => setShowMemberInvite(false)}
+            onOpenProject={handleOpenProject}
+            onOpenMember={handleOpenMember}
+          />
         )}
       </div>
     )
@@ -465,11 +579,16 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             isPrivate={isPrivate}
             channelName={channelName}
             currentDmAvatarUrl={currentDm?.participantAvatarUrl}
+            dmParticipantId={currentDm?.participantId ?? null}
+            project={linkedProject}
             channelMembers={channelMembers}
+            memberLabel={memberLabel}
             channelId={channelId}
             showMemberInvite={showMemberInvite}
             onInviteMember={() => setShowMemberInvite(true)}
             onCloseMemberInvite={() => setShowMemberInvite(false)}
+            onOpenProject={handleOpenProject}
+            onOpenMember={handleOpenMember}
           />
         </div>
       </div>

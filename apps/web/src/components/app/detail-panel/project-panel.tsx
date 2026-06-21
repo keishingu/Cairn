@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -13,6 +14,7 @@ import { MembersTab } from './tabs/members-tab'
 import { GalleryTab } from './tabs/gallery-tab'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { usePinnedProjects, usePinProject, useUnpinProject } from '@/lib/use-pinned-projects'
+import { useProjectChannels } from '@/lib/chat/client'
 
 
 
@@ -148,10 +150,15 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
   const [editingCover, setEditingCover] = React.useState(false)
   const moreRef = React.useRef<HTMLDivElement>(null)
 
+  const router = useRouter()
   const { data: pinnedProjects = [] } = usePinnedProjects()
   const pinProject = usePinProject()
   const unpinProject = useUnpinProject()
   const isPinned = pinnedProjects.some(p => p.projectId === project.id)
+
+  // このプロジェクトのチャットチャンネルへ遷移するための channelId
+  const { data: projectChannels = [] } = useProjectChannels()
+  const projectChannelId = projectChannels.find(c => c.projectId === project.id)?.channelId
 
   React.useEffect(() => {
     if (!moreOpen) return
@@ -305,13 +312,18 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
         />
       )}
 
-      {/* PC only: status + avatars + "詳細を開く" */}
+      {/* PC only: status + avatars + "チャットを開く" */}
       {!isMobile && (
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
           <AvatarStack names={project.memberNames} size={22} max={5}/>
-          <button className="btn btn-ghost" style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}>
-            <Icon name="arrowRight" size={11}/> 詳細を開く
+          <button
+            className="btn btn-ghost"
+            style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}
+            disabled={!projectChannelId}
+            onClick={() => projectChannelId && router.push(`/chats/${projectChannelId}`)}
+          >
+            <Icon name="chat" size={11}/> チャットを開く
           </button>
         </div>
       )}

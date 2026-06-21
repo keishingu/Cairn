@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireProjectManager } from '@/lib/permissions'
+import { requireWorkspaceMember } from '@/lib/permissions'
 
 export interface ProjectMemberDto {
   userId: string
@@ -106,7 +106,7 @@ export async function POST(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    const forbidden = await requireProjectManager(projectId, ctx.userId, ctx.workspaceId)
+    const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
     if (forbidden) return forbidden
 
     const [wsMember] = await db

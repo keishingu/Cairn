@@ -15,7 +15,7 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceInvites, workspaceMembers } = await import('@cairn/db')
+    const { workspaceInvites, workspaceMembers, projectMembers } = await import('@cairn/db')
     const { eq, and, or, isNull, gt, sql } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client').catch(() => ({ inngest: null }))
 
@@ -67,7 +67,12 @@ export async function POST(
           ),
         )
       )
-      .returning({ id: workspaceInvites.id, workspaceId: workspaceInvites.workspaceId, role: workspaceInvites.role })
+      .returning({
+        id: workspaceInvites.id,
+        workspaceId: workspaceInvites.workspaceId,
+        role: workspaceInvites.role,
+        projectId: workspaceInvites.projectId,
+      })
 
     if (!claimed) {
       return NextResponse.json({ error: 'Invite link has reached its usage limit' }, { status: 410 })
@@ -78,6 +83,19 @@ export async function POST(
       userId: userId,
       role: claimed.role,
     })
+
+    // ゲスト招待にプロジェクトが紐付いている場合、プロジェクトメンバーにも自動追加
+    if (claimed.projectId) {
+      await db
+        .insert(projectMembers)
+        .values({
+          projectId: claimed.projectId,
+          userId,
+          role: 'member',
+          attendance: 'attending',
+        })
+        .onConflictDoNothing()
+    }
 
     if (inngest) {
       await inngest.send({
