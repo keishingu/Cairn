@@ -29,10 +29,13 @@ import { ChatDetailSidebar, ChatInfoDrawer, type ChatDetailMember } from './chat
 import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
+import { stripMentionsToText } from '@/lib/chat/mentions'
 
 // ─── Message search ───────────────────────────────────────────────
 
-function highlightMatch(text: string, query: string) {
+function highlightMatch(rawText: string, query: string) {
+  // 検索スニペットでも構造化メンションを素のトークンで見せず @表示名 に整形する
+  const text = stripMentionsToText(rawText)
   if (!query) return <>{text}</>
   const idx = text.toLowerCase().indexOf(query.toLowerCase())
   if (idx === -1) return <>{text}</>
