@@ -6,6 +6,7 @@
 import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
 import { UNKNOWN_MENTION_NAME } from '@/lib/chat/mentions'
 
 // 構造化メンション。canonical な `<@userId>` と旧形式 `<@userId|displayName>` の両方を受理する
@@ -74,7 +75,7 @@ export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, me
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkBreaks]}
       components={{
         p: ({ children }) => (
           <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children, mentionNames)}</p>
