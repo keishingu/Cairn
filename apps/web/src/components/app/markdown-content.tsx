@@ -41,7 +41,7 @@ function renderInlineText(text: string, mentionNames?: Map<string, string>): Rea
       const url = token.replace(/[.,;:!?)>\]]+$/, '')
       nodes.push(
         <a key={match.index} href={url} target="_blank" rel="noopener noreferrer"
-          style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
+          style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>
           {truncateUrlForDisplay(url)}
         </a>,
       )
@@ -150,7 +150,7 @@ export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, me
           const display = linkText !== null && linkText === href ? truncateUrlForDisplay(linkText) : children
           return (
             <a href={href} target="_blank" rel="noopener noreferrer"
-              style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
+              style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>
               {display}
             </a>
           )
