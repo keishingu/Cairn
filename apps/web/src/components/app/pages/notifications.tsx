@@ -101,7 +101,7 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
             {push.permission !== 'unsupported' && push.permission !== 'denied' && (
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <Icon name="bell" size={14} color={push.permission === 'granted' ? 'var(--accent)' : 'var(--text-3)'} />
-                <span style={{ fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Push通知</span>
+                {!isMobile && <span style={{ fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Push通知</span>}
                 <Switch
                   size="sm"
                   checked={push.permission === 'granted'}
