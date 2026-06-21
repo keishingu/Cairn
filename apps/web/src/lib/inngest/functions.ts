@@ -299,11 +299,11 @@ export const backfillThumbnails = inngest.createFunction(
   { id: 'backfill-thumbnails' },
   { event: 'attachments/backfill-thumbnails' },
   async ({ event, step }) => {
-    const { workspaceId } = (event.data ?? {}) as { workspaceId?: string }
+    const { workspaceId, afterId } = (event.data ?? {}) as { workspaceId?: string; afterId?: string }
 
     const targets = await step.run('fetch-targets', async () => {
       const { db, files, galleryItems } = await import('@cairn/db')
-      const { and, eq, isNotNull, notExists, sql } = await import('drizzle-orm')
+      const { and, asc, eq, gt, isNotNull, notExists, sql } = await import('drizzle-orm')
 
       return db
         .select({ id: files.id, storagePath: files.storagePath })
@@ -317,7 +317,11 @@ export const backfillThumbnails = inngest.createFunction(
           // (chat-attachments 固定) では取得できず永久に失敗し続けるため除外する
           notExists(db.select({ one: sql`1` }).from(galleryItems).where(eq(galleryItems.fileId, files.id))),
           ...(workspaceId ? [eq(files.workspaceId, workspaceId)] : []),
+          // id キーセットで前進する。失敗行は thumbnailPath が NULL のまま残るが、
+          // ここで id > afterId に進めることで同じバッチを永久再取得して詰まるのを防ぐ
+          ...(afterId ? [gt(files.id, afterId)] : []),
         ))
+        .orderBy(asc(files.id))
         .limit(BACKFILL_BATCH)
     })
 
@@ -345,11 +349,12 @@ export const backfillThumbnails = inngest.createFunction(
       return { generated, failed }
     })
 
-    // バッチが満杯なら未処理が残っている可能性があるので継続する
+    // バッチが満杯なら未処理が残っている可能性があるので、最後の id を起点に継続する
+    const lastId = targets[targets.length - 1]!.id
     if (targets.length === BACKFILL_BATCH) {
       await step.sendEvent('continue-backfill', {
         name: 'attachments/backfill-thumbnails',
-        data: workspaceId ? { workspaceId } : {},
+        data: { ...(workspaceId ? { workspaceId } : {}), afterId: lastId },
       })
     }
 

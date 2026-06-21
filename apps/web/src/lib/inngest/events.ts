@@ -20,6 +20,8 @@ export type BackfillThumbnailsEvent = {
   name: 'attachments/backfill-thumbnails'
   data: {
     workspaceId?: string
+    // id キーセットページネーションの起点（この id より大きい行から処理する）
+    afterId?: string
   }
 }
 
