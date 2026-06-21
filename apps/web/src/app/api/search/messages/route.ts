@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole } from '@/lib/permissions'
+import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 
 export interface MessageSearchResultDto extends MessageDto {
@@ -21,7 +22,7 @@ export async function GET(req: Request) {
   try {
     const { db } = await import('@cairn/db')
     const { channels, channelMembers, messages, profiles, workspaceMembers, projects, projectMembers } = await import('@cairn/db')
-    const { eq, isNull, and, ilike, or, exists, ne } = await import('drizzle-orm')
+    const { eq, isNull, and, ilike, or, exists, ne, inArray } = await import('drizzle-orm')
     const { desc, sql } = await import('drizzle-orm')
 
     const memberSubquery = db
@@ -70,9 +71,20 @@ export async function GET(req: Request) {
       .orderBy(desc(messages.createdAt))
       .limit(50)
 
+    // メンションを現在の表示名へ解決（保存値は名前なしの canonical 形式のため）
+    const mentionIds = [...new Set(rows.flatMap(r => extractMentionIds(r.content)))]
+    const nameMap = new Map<string, string>()
+    if (mentionIds.length > 0) {
+      const profileRows = await db
+        .select({ id: profiles.id, displayName: profiles.displayName })
+        .from(profiles)
+        .where(inArray(profiles.id, mentionIds))
+      for (const p of profileRows) nameMap.set(p.id, p.displayName)
+    }
+
     const result: MessageSearchResultDto[] = rows.map(r => ({
       id: r.id,
-      content: r.content,
+      content: hydrateMentions(r.content, id => nameMap.get(id)),
       senderId: r.senderId,
       senderName: r.senderName,
       senderAvatarUrl: r.senderAvatarUrl ?? null,

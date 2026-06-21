@@ -1,0 +1,73 @@
+# 本番デプロイ・運用リファレンス
+
+> ステータス: **現行リファレンス** ／ 最終更新: 2026-06-21
+>
+> 本番環境（Vercel + Supabase）の構成・残タスク・将来の一般公開に向けた設定をまとめる。
+> 実装・設定が変わったら本ファイルを更新すること。
+
+## 環境構成
+
+| 環境 | Supabase | Vercel | ドメイン |
+|---|---|---|---|
+| 本番 | `cairn-production`（Pro / Tokyo / ref: `bmhcgjqisqnyvbrrvqug`） | Production | `https://oss-cairn.com` |
+| 検証 | `cairn-preview`（Free / Tokyo） | Preview | （Vercel preview ドメイン） |
+
+### 接続・キーの方針
+
+- **アプリ実行時 `DATABASE_URL`（Vercel）**: Transaction pooler の **Shared Pooler / IPv4**（ホスト `aws-X-ap-northeast-1.pooler.supabase.com:6543`、ユーザー `postgres.<ref>`）。
+  - Direct connection（`db.<ref>.supabase.co`）は **IPv6 専用で Vercel(IPv4) から繋がらない**ため使わない。
+- **マイグレーション `supabase db push`**: ローカルから **Session/Direct（5432）** で実行（`--db-url` を明示し、CLI の link は preview のまま）。
+- **`SUPABASE_SERVICE_ROLE_KEY`**: **Legacy service_role JWT（`eyJ...`）** を使う。
+  - 新形式 `sb_secret_...` は **Storage が JWT を要求するため `Invalid Compact JWS` で失敗**する。
+- **`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`**: 新形式 `sb_publishable_...`（Auth は新形式で動作）。
+
+## 完了済み（本番）
+
+- DB マイグレーション 0000〜0034（欠番だった 0030 も `--include-all` で適用済み）
+- pgvector 拡張・Storage バケット・Realtime（Broadcast from Database）トリガー/RLS（すべて migration 由来）
+- `DATABASE_URL` を Shared Pooler/IPv4 に修正し疎通確認
+- `SUPABASE_SERVICE_ROLE_KEY` を Legacy JWT にしてファイルアップロード成功
+- Inngest（メッセージ通知）動作
+- Google ログイン（Supabase Auth Provider）動作
+- 独自ドメイン `oss-cairn.com` を Vercel に接続（apex A レコード + www CNAME、Squarespace 既定値は削除済み）
+
+## 短期 ToDo
+
+- [ ] **PR #142（pdf-parse の ENOENT 修正）を本番にマージ＆デプロイ** → PDF インデックスの動作確認
+- [ ] Auth → URL Configuration の Site URL / Redirect URLs が本番ドメインになっているか最終確認
+- [ ] Google カレンダー連携（`GOOGLE_CALENDAR_*`）を使うなら本番設定
+  - Google Calendar API 有効化 / OAuth クライアントに `https://oss-cairn.com/api/calendar/google/callback` を登録 / Vercel に 3 変数設定
+- [ ] `CALENDAR_TOKEN_ENCRYPTION_KEY` を本番用に新規生成して Vercel(Production) に設定（鍵はバックアップ）
+- [ ] Inngest の Production 環境キーを Preview と分離し、本番 serve エンドポイント（`https://oss-cairn.com/api/inngest`）を Sync
+
+## 限定公開 → 一般公開（不特定多数）に必要な設定
+
+現在は **限定公開（自分たち中心 / テストユーザー）で運用可能**。広く一般に開放する際は以下が必要になる。
+
+### 1. Google OAuth 同意画面の公開・検証
+- 同意画面を **「テスト」→「本番環境に公開」** にする（テストモードは利用者がテストユーザー登録した人に限られ、最大 100 人）。
+- **ログイン用スコープ（`openid`/`email`/`profile`）は非機密** → ブランド検証（ロゴ・ドメイン確認）程度で済む。
+- **カレンダー用スコープ（`calendar.readonly`）は機密スコープ** → **Google の審査（verification）が必要**。
+  - 要件: 本番ドメイン上の**プライバシーポリシー・利用規約ページ**、アプリ説明、スコープ使用理由、デモ動画など。
+  - 未審査のままだと「未確認アプリ」警告 + 100 ユーザー上限。
+
+### 2. Supabase Custom Domain（任意・信頼性向上）
+- Google ログイン/同意画面に出る `bmhcgjqisqnyvbrrvqug.supabase.co` を自前ドメイン（例 `auth.oss-cairn.com`）に置き換える。
+- **Custom Domains アドオン（~$10/月）**。機能には影響しないため限定公開中は不要。
+- 切替時の追従: DNS に Supabase 指定 CNAME 追加 / Google の承認済みリダイレクト URI を新ホストに変更 / Vercel の `NEXT_PUBLIC_SUPABASE_URL`・`SUPABASE_URL` を新ホストに変更して再デプロイ。
+
+### 3. 本番用 SMTP（メール送信）
+- Supabase のデフォルト SMTP は**本番不可レベルのレート制限**（数通/時）。
+- サインアップ確認・パスワードリセット等を不特定多数に送るなら、**カスタム SMTP（SendGrid / Resend / SES 等）** を Auth に設定。
+- メールテンプレート内 URL が本番ドメインで動くか確認。
+
+### 4. プライバシーポリシー・利用規約ページ
+- `oss-cairn.com` 上に公開ページを用意（Google 審査・同意画面・ユーザー信頼の前提）。
+
+### 5. 不正対策・スケール
+- Supabase Auth の **Attack Protection / CAPTCHA（hCaptcha・Turnstile）**、レート制限の見直し。
+- **Compute スケール**: 初期は Micro。負荷が上がったら拡張（コネクション数・RAM/CPU）。
+- **バックアップ**: 重要度が上がったら PITR（Point-in-Time Recovery）アドオンを検討。
+
+### 6. （任意）OAuth クライアントの環境分離
+- 本番 / プレビューで Google OAuth クライアントを分離し、鍵のローテーション・影響範囲を分離。

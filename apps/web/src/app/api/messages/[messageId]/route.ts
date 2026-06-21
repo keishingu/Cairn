@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { editMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { parseCheckboxes } from '@/lib/chat/checkboxes'
+import { canonicalizeMentions } from '@/lib/chat/mentions'
 
 type RouteContext = { params: Promise<{ messageId: string }> }
 
@@ -24,6 +25,9 @@ export async function PATCH(req: Request, { params }: RouteContext) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
+
+  // 編集本文も canonical 形式に正規化（read 時に埋め込んだ表示名が再保存されても剥がす）
+  const content = canonicalizeMentions(parsed.data.content)
 
   try {
     const { db } = await import('@cairn/db')
@@ -49,14 +53,14 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
     const [updated] = await db
       .update(messages)
-      .set({ content: parsed.data.content, updatedAt: new Date() })
+      .set({ content, updatedAt: new Date() })
       .where(eq(messages.id, messageId))
       .returning({ id: messages.id, content: messages.content })
 
     // チェックボックスの変化に応じてタスクを同期
     const { tasks, channels: channelsTable } = await import('@cairn/db')
     const oldBoxes = parseCheckboxes(target.content)
-    const newBoxes = parseCheckboxes(parsed.data.content)
+    const newBoxes = parseCheckboxes(content)
 
     // 削除されたチェックボックスのタスクを消す
     const newIndices = new Set(newBoxes.map(b => b.index))
