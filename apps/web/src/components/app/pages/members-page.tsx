@@ -134,7 +134,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
       completedTaskCount: 0,
       isOwner:            p.role === 'leader',
       isMember:           true,
-      archived:           false,
+      archived:           p.archived,
       coverPhotoIdx:      p.coverPhotoIdx,
       coverPhotoUrl:      null,
       location:           null,

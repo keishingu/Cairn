@@ -3,7 +3,7 @@
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
-import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab } from '../primitives'
+import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, ArchivedBadge, archivedTitleStyle, ARCHIVED_OPACITY } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '../mobile/header'
@@ -361,17 +361,16 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px',
                   gap: 16, padding: '12px 16px', borderBottom: i < sortedProjects.length - 1 ? '1px solid var(--divider)' : 'none',
                   alignItems: 'center', cursor: 'pointer',
+                  opacity: p.archived ? ARCHIVED_OPACITY : 1,
                 }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                 >
                   <span style={{ width: 10, height: 10, borderRadius: 3, background: accent }}/>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)', ...archivedTitleStyle(p.archived) }}>{p.title}</span>
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                     <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
-                    {isSearching && p.archived && (
-                      <span className="chip" style={{ background: 'var(--text-4)', color: 'var(--bg)', fontSize: 10 }}>アーカイブ</span>
-                    )}
+                    {isSearching && p.archived && <ArchivedBadge/>}
                   </div>
                   <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{formatDates(p.startDate, p.endDate)}</span>
                   <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={22}/>
@@ -401,6 +400,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                     background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14,
                     overflow: 'hidden', cursor: 'pointer',
                     display: 'flex', alignItems: 'stretch',
+                    opacity: p.archived ? ARCHIVED_OPACITY : 1,
                   }}>
                     {/* Cover photo thumbnail */}
                     <div style={{ width: 88, flexShrink: 0, position: 'relative' }}>
@@ -411,7 +411,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                     </div>
                     {/* Content */}
                     <div style={{ flex: 1, minWidth: 0, padding: '12px 14px' }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...archivedTitleStyle(p.archived) }}>
                         {p.title}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>
@@ -419,9 +419,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
-                        {isSearching && p.archived && (
-                          <span className="chip" style={{ background: 'var(--text-4)', color: 'var(--bg)', fontSize: 10 }}>アーカイブ</span>
-                        )}
+                        {isSearching && p.archived && <ArchivedBadge/>}
                         <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={20}/>
                         <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 2 }}>{p.memberCount}人</span>
                       </div>
@@ -435,6 +433,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12,
                   overflow: 'hidden', cursor: 'pointer', boxShadow: 'var(--shadow-sm)',
                   transition: 'transform .15s, box-shadow .15s',
+                  opacity: p.archived ? ARCHIVED_OPACITY : 1,
                 }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)' }}
@@ -446,13 +445,11 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                     }
                     <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                       <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
-                      {isSearching && p.archived && (
-                        <span className="chip" style={{ background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 10, backdropFilter: 'blur(4px)' }}>アーカイブ</span>
-                      )}
+                      {isSearching && p.archived && <ArchivedBadge onDark/>}
                     </div>
                   </div>
                   <div style={{ padding: '12px 14px 14px' }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>{p.title}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 2, ...archivedTitleStyle(p.archived) }}>{p.title}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>{formatDates(p.startDate, p.endDate)} · {p.memberCount}人</div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={22}/>
