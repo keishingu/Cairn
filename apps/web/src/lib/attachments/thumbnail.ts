@@ -38,7 +38,15 @@ export async function createThumbnailFromStorage(
   const { data, error } = await supabase.storage.from(ATTACHMENTS_BUCKET).download(storagePath)
   if (error || !data) return null
 
-  const thumb = await generateThumbnail(await data.arrayBuffer())
+  // 破損・未対応フォーマットで sharp が throw しても、呼び出し側の
+  // 「1件失敗してもバッチは継続」を成立させるため null 契約を守る
+  let thumb: Buffer
+  try {
+    thumb = await generateThumbnail(await data.arrayBuffer())
+  } catch (e) {
+    console.warn('[createThumbnailFromStorage] Thumbnail generation failed:', storagePath, e)
+    return null
+  }
   const thumbPath = thumbnailStoragePath(storagePath)
   const { error: uploadError } = await supabase.storage
     .from(ATTACHMENTS_BUCKET)

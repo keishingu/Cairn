@@ -70,10 +70,12 @@ export async function POST(req: Request) {
   if (isImage) {
     try {
       const sharp = (await import('sharp')).default
-      body = await sharp(body)
-        .rotate()
-        .resize({ width: MAX_ORIGINAL_DIMENSION, height: MAX_ORIGINAL_DIMENSION, fit: 'inside', withoutEnlargement: true })
-        .toBuffer()
+      const resizeOpts = { width: MAX_ORIGINAL_DIMENSION, height: MAX_ORIGINAL_DIMENSION, fit: 'inside' as const, withoutEnlargement: true }
+      // アニメ GIF/WebP は全フレームを保持したままリサイズする（既定だと先頭フレームに潰れるため）
+      const isAnimated = ((await sharp(body).metadata()).pages ?? 1) > 1
+      body = isAnimated
+        ? await sharp(body, { animated: true }).resize(resizeOpts).toBuffer()
+        : await sharp(body).rotate().resize(resizeOpts).toBuffer()
     } catch (e) {
       console.warn('[/api/attachments/upload] Original resize failed (storing as-is):', e)
     }
