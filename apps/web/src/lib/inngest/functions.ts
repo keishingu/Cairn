@@ -302,8 +302,8 @@ export const backfillThumbnails = inngest.createFunction(
     const { workspaceId } = (event.data ?? {}) as { workspaceId?: string }
 
     const targets = await step.run('fetch-targets', async () => {
-      const { db, files } = await import('@cairn/db')
-      const { and, eq, isNotNull, sql } = await import('drizzle-orm')
+      const { db, files, galleryItems } = await import('@cairn/db')
+      const { and, eq, isNotNull, notExists, sql } = await import('drizzle-orm')
 
       return db
         .select({ id: files.id, storagePath: files.storagePath })
@@ -313,6 +313,9 @@ export const backfillThumbnails = inngest.createFunction(
           isNotNull(files.storagePath),
           // metadata にサムネパスが未設定のものだけを対象にする（再実行で重複処理しない）
           sql`${files.metadata} ->> 'thumbnailPath' IS NULL`,
+          // ギャラリー画像は別バケット(gallery)に保存されており createThumbnailFromStorage
+          // (chat-attachments 固定) では取得できず永久に失敗し続けるため除外する
+          notExists(db.select({ one: sql`1` }).from(galleryItems).where(eq(galleryItems.fileId, files.id))),
           ...(workspaceId ? [eq(files.workspaceId, workspaceId)] : []),
         ))
         .limit(BACKFILL_BATCH)

@@ -36,7 +36,7 @@ export async function DELETE(
     // - files.projectId = projectId（直接紐付き）
     // - プロジェクトチャンネル経由でアップロードされたファイル（projectId が未設定の旧データ含む）
     const filePaths = await db
-      .selectDistinct({ storagePath: files.storagePath })
+      .selectDistinct({ storagePath: files.storagePath, metadata: files.metadata })
       .from(files)
       .leftJoin(messageAttachments, eq(messageAttachments.fileId, files.id))
       .leftJoin(messages, eq(messages.id, messageAttachments.messageId))
@@ -49,11 +49,17 @@ export async function DELETE(
       )
 
     if (filePaths.length > 0) {
+      // オリジナルに加えて、生成済みのサムネ(metadata.thumbnailPath)も削除対象に含める
+      const paths = filePaths.flatMap(f => {
+        const meta = (f.metadata ?? {}) as Record<string, unknown>
+        const thumbnailPath = typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
+        return thumbnailPath ? [f.storagePath, thumbnailPath] : [f.storagePath]
+      })
       await inngest.send({
         name: 'storage/objects.delete',
         data: {
           bucket: 'chat-attachments',
-          paths: filePaths.map(f => f.storagePath),
+          paths,
         },
       })
     }
