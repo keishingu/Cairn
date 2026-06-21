@@ -229,6 +229,45 @@ export const UnreadBadge = ({ count, max = 99, size = 'md', style }: UnreadBadge
   )
 }
 
+// ─── Switch ───────────────────────────────────────────────────────
+interface SwitchProps {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  disabled?: boolean
+  size?: 'sm' | 'md'
+  title?: string
+}
+
+export const Switch = ({ checked, onChange, disabled = false, size = 'md', title }: SwitchProps) => {
+  const sm = size === 'sm'
+  const w = sm ? 30 : 36
+  const h = sm ? 17 : 20
+  const knob = sm ? 13 : 16
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      title={title}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      style={{
+        width: w, height: h, borderRadius: 999, border: 'none', padding: 2,
+        background: checked ? 'var(--accent)' : 'var(--border)',
+        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
+        display: 'inline-flex', alignItems: 'center',
+        justifyContent: checked ? 'flex-end' : 'flex-start',
+        flexShrink: 0, transition: 'background .15s ease',
+      }}
+    >
+      <span style={{
+        width: knob, height: knob, borderRadius: '50%', background: 'var(--on-accent)',
+        boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(0,0,0,.3))', transition: 'transform .15s ease',
+      }}/>
+    </button>
+  )
+}
+
 // ─── Mountain photo ───────────────────────────────────────────────
 interface MountainPhotoProps {
   idx?: number

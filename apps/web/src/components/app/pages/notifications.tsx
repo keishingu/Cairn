@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { Icon, UnreadBadge } from '../primitives'
+import { Icon, UnreadBadge, Switch } from '../primitives'
 import {
   useNotifications,
   useMarkNotificationsRead,
@@ -99,15 +99,13 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
               <Icon name="check" size={12} /> すべて既読
             </button>
             {push.permission !== 'unsupported' && push.permission !== 'denied' && (
-              <button
-                className="btn btn-ghost"
-                style={{ width: 28, height: 28, padding: 0, justifyContent: 'center', color: push.permission === 'granted' ? 'var(--accent)' : 'var(--text-3)' }}
-                onClick={push.permission === 'granted' ? push.unsubscribe : push.subscribe}
+              <Switch
+                size="sm"
+                checked={push.permission === 'granted'}
                 disabled={push.loading}
+                onChange={(next) => (next ? push.subscribe() : push.unsubscribe())}
                 title={push.permission === 'granted' ? 'プッシュ通知を無効化' : 'プッシュ通知を有効化'}
-              >
-                <Icon name="bell" size={14}/>
-              </button>
+              />
             )}
             <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="close" size={15}/>
