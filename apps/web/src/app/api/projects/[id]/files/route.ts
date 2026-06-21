@@ -14,6 +14,7 @@ export interface ProjectFileDto {
   createdAt: string
   externalUrl?: string
   indexingStatus?: string
+  isLatest: boolean
 }
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -101,6 +102,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
           fileType: r.fileType,
           uploaderName: r.uploaderName,
           createdAt: r.createdAt.toISOString(),
+          isLatest: meta['isLatest'] === true,
           ...(typeof externalUrl === 'string' ? { externalUrl } : {}),
           ...(indexingStatus !== undefined ? { indexingStatus } : {}),
         }
