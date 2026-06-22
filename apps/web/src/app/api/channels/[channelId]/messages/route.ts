@@ -4,9 +4,11 @@
 import { NextResponse } from 'next/server'
 import { type AttachmentDto, postMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess } from '@/lib/permissions'
 import { inngest } from '@/lib/inngest/client'
 import type { MessageCreatedEvent } from '@/lib/inngest/events'
 import { parseCheckboxes } from '@/lib/chat/checkboxes'
+import { canonicalizeMentions, extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
 
 export interface ReactionDto {
   emoji: string
@@ -32,6 +34,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
   const { channelId } = await params
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
+
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
@@ -121,9 +126,21 @@ export async function GET(_req: Request, { params }: RouteContext) {
       })
     }
 
+    // メンションは canonical な `<@userId>` で保存されているため、現在の表示名を read 時に解決して埋め込む。
+    // これにより名前変更が全メッセージへ即座に反映される（Mobile の単純な置換クライアントも最新名で表示できる）
+    const mentionIds = [...new Set(rows.flatMap(r => extractMentionIds(r.content)))]
+    const nameMap = new Map<string, string>()
+    if (mentionIds.length > 0) {
+      const profileRows = await db
+        .select({ id: profiles.id, displayName: profiles.displayName })
+        .from(profiles)
+        .where(inArray(profiles.id, mentionIds))
+      for (const p of profileRows) nameMap.set(p.id, p.displayName)
+    }
+
     const result: MessageDto[] = rows.map(r => ({
       id: r.id,
-      content: r.content,
+      content: hydrateMentions(r.content, id => nameMap.get(id)),
       senderId: r.senderId,
       senderName: r.senderName,
       senderAvatarUrl: r.senderAvatarUrl ?? null,
@@ -145,6 +162,9 @@ export async function POST(req: Request, { params }: RouteContext) {
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
 
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  if (forbidden) return forbidden
+
   let body: unknown
   try {
     body = await req.json()
@@ -163,6 +183,8 @@ export async function POST(req: Request, { params }: RouteContext) {
     const { eq } = await import('drizzle-orm')
 
     const attachmentFileIds = parsed.data.attachmentFileIds ?? []
+    // メンションは名前なしの canonical 形式で保存する（埋め込み名が来ても除去）
+    const content = canonicalizeMentions(parsed.data.content)
 
     const inserted = await db.transaction(async (tx) => {
       const [msg] = await tx
@@ -170,7 +192,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         .values({
           channelId,
           senderId: ctx.userId,
-          content: parsed.data.content,
+          content,
           messageType: parsed.data.messageType ?? 'text',
           parentMessageId: parsed.data.parentMessageId ?? null,
         })

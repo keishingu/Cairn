@@ -19,8 +19,8 @@ function makeWrapper() {
 }
 
 const STUB_FILES: ProjectFileDto[] = [
-  { id: 'f1', fileName: 'doc.pdf', mimeType: 'application/pdf', fileSize: 1024, fileType: 'file', uploaderName: 'ユーザー', createdAt: '2026-01-01T00:00:00Z' },
-  { id: 'f2', fileName: 'sheet.xlsx', mimeType: 'application/vnd.openxmlformats', fileSize: 2048, fileType: 'file', uploaderName: 'ユーザー', createdAt: '2026-01-02T00:00:00Z' },
+  { id: 'f1', fileName: 'doc.pdf', mimeType: 'application/pdf', fileSize: 1024, fileType: 'file', uploaderName: 'ユーザー', createdAt: '2026-01-01T00:00:00Z', isLatest: false },
+  { id: 'f2', fileName: 'sheet.xlsx', mimeType: 'application/vnd.openxmlformats', fileSize: 2048, fileType: 'file', uploaderName: 'ユーザー', createdAt: '2026-01-02T00:00:00Z', isLatest: false },
 ]
 
 describe('useProjectFiles', () => {
@@ -55,6 +55,23 @@ describe('useProjectFiles', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       '/api/attachments/f1',
       expect.objectContaining({ method: 'DELETE' }),
+    )
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['project-files', 'p1'] })
+  })
+
+  it('setLatestMutation がファイルに最新版フラグを PATCH して project-files クエリを invalidate する', async () => {
+    const { wrapper, queryClient } = makeWrapper()
+    queryClient.setQueryData(['project-files', 'p1'], STUB_FILES)
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ success: true }), { status: 200 }))
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useProjectFiles('p1'), { wrapper })
+    act(() => { result.current.setLatestMutation.mutate({ fileId: 'f1', isLatest: true }) })
+    await waitFor(() => expect(result.current.setLatestMutation.isSuccess).toBe(true))
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/attachments/f1',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ isLatest: true }) }),
     )
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['project-files', 'p1'] })
   })

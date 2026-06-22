@@ -69,6 +69,50 @@ export async function GET(_req: Request, { params }: RouteContext) {
   }
 }
 
+export async function PATCH(req: Request, { params }: RouteContext) {
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
+
+  const { fileId } = await params
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'リクエストボディが不正です' }, { status: 400 })
+  }
+  const isLatest = (body as { isLatest?: unknown })?.isLatest
+  if (typeof isLatest !== 'boolean') {
+    return NextResponse.json({ error: 'isLatest は boolean で指定してください' }, { status: 400 })
+  }
+
+  try {
+    const { db, files } = await import('@cairn/db')
+    const { eq, sql } = await import('drizzle-orm')
+
+    const [file] = await db
+      .select({ id: files.id, workspaceId: files.workspaceId, metadata: files.metadata })
+      .from(files)
+      .where(eq(files.id, fileId))
+      .limit(1)
+
+    if (!file) return new NextResponse(null, { status: 404 })
+    if (file.workspaceId !== ctx.workspaceId) return new NextResponse(null, { status: 403 })
+
+    // 最新版ラベルは複数ファイルに同時付与できる（排他にしない）
+    const meta = (file.metadata ?? {}) as Record<string, unknown>
+    await db
+      .update(files)
+      .set({ metadata: isLatest ? { ...meta, isLatest: true } : sql`${files.metadata} - 'isLatest'` })
+      .where(eq(files.id, fileId))
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error('[PATCH /api/attachments/[fileId]]', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 export async function DELETE(_req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error

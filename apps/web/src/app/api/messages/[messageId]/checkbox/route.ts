@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess } from '@/lib/permissions'
 import { toggleCheckboxAt } from '@/lib/chat/checkboxes'
 
 const bodySchema = z.object({
@@ -34,37 +35,22 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages, channels, channelMembers, tasks } = await import('@cairn/db')
+    const { messages, tasks } = await import('@cairn/db')
     const { eq, and, isNull } = await import('drizzle-orm')
 
-    // ワークスペースメンバーならチェックボックス操作を許可（送信者以外も可）
     const [target] = await db
-      .select({ id: messages.id, content: messages.content, channelId: messages.channelId, isPrivate: channels.isPrivate })
+      .select({ content: messages.content, channelId: messages.channelId })
       .from(messages)
-      .innerJoin(channels, eq(messages.channelId, channels.id))
-      .where(and(
-        eq(messages.id, messageId),
-        eq(channels.workspaceId, ctx.workspaceId),
-        isNull(messages.deletedAt),
-      ))
+      .where(and(eq(messages.id, messageId), isNull(messages.deletedAt)))
       .limit(1)
 
     if (!target) {
       return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
     }
 
-    // プライベートチャンネルはメンバーのみ操作可
-    if (target.isPrivate) {
-      const [membership] = await db
-        .select({ userId: channelMembers.userId })
-        .from(channelMembers)
-        .where(and(eq(channelMembers.channelId, target.channelId), eq(channelMembers.userId, ctx.userId)))
-        .limit(1)
-
-      if (!membership) {
-        return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
-      }
-    }
+    // チャンネルへのアクセス権を検証（越境アクセス防止・プライベート/DM/ゲストのプロジェクト所属）
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId)
+    if (forbidden) return forbidden
 
     const newContent = toggleCheckboxAt(target.content, index, checked)
     if (newContent === target.content) {

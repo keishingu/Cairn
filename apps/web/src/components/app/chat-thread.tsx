@@ -76,7 +76,7 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, compact, isMobile, focused }: {
+const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   senderId: string
   currentUserId: string | undefined
@@ -92,6 +92,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   onDelete: (messageId: string) => void
   onCheckboxToggle: (messageId: string, index: number, checked: boolean) => void
   onImageClick: (attachmentId: string) => void
+  mentionNames?: Map<string, string>
   compact?: boolean
   isMobile?: boolean
   focused?: boolean
@@ -213,6 +214,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
                   content={content}
                   fontSize={compact ? 13 : 13.5}
                   lineHeight={1.6}
+                  mentionNames={mentionNames}
                   onCheckboxToggle={(index, checked) => onCheckboxToggle(messageId, index, checked)}
                 />
               )}
@@ -381,8 +383,17 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const imageInputRef = React.useRef<HTMLInputElement>(null)
   const docInputRef = React.useRef<HTMLInputElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
-  const compactInputRef = React.useRef<HTMLInputElement>(null)
+  const compactInputRef = React.useRef<HTMLTextAreaElement>(null)
   const overlayRef = React.useRef<HTMLDivElement>(null)
+
+  // テキストエリアの高さを内容に合わせて自動調整する（改行・長文で行が増えても見切れないように）
+  React.useEffect(() => {
+    const el = textareaRef.current ?? compactInputRef.current
+    if (!el) return
+    const max = compact ? 120 : 160
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`
+  }, [draft, compact])
 
   // draft がクリアされたらメンション状態もリセット
   React.useEffect(() => {
@@ -474,7 +485,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     let match: RegExpExecArray | null
     while ((match = re.exec(draft)) !== null) {
       if (match.index > last) nodes.push(<span key={`t${last}`} style={{ color: 'var(--text)' }}>{draft.slice(last, match.index)}</span>)
-      nodes.push(<span key={`m${match.index}`} style={{ background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>@{match[1]}</span>)
+      // ハイライトは文字送り幅を変えない装飾のみにする。padding / fontWeight / fontSize を変えると
+      // 透明な実テキスト（キャレット基準）とオーバーレイの表示位置がずれ、メンション後にカーソルがずれて見える
+      nodes.push(<span key={`m${match.index}`} style={{ background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4 }}>@{match[1]}</span>)
       last = match.index + match[0]!.length
     }
     if (nodes.length === 0) return null
@@ -571,20 +584,20 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         )}
         <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
           {AttachmentPreviews}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, padding: '7px 10px' }}>
             <div style={{ flex: 1, position: 'relative' }}>
               {MentionPicker}
               {typeof placeholder !== 'string' && !draft && (
-                <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 13 }}>
+                <div style={{ position: 'absolute', top: 2, left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 13 }}>
                   {placeholder}
                 </div>
               )}
               {draftOverlay && (
-                <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: 0, right: 0, fontSize: 13, fontFamily: 'inherit', lineHeight: 1, whiteSpace: 'nowrap', pointerEvents: 'none', overflow: 'hidden' }}>
+                <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 13, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 120 }}>
                   {draftOverlay}
                 </div>
               )}
-              <input
+              <textarea
                 ref={compactInputRef}
                 value={draft}
                 onChange={e => { setDraft(e.target.value); detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
@@ -597,8 +610,10 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                   send()
                 })}
                 onPaste={handlePaste}
+                onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
                 placeholder={typeof placeholder === 'string' ? placeholder : ''}
-                style={{ width: '100%', border: 'none', background: 'transparent', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
+                rows={1}
+                style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 20, maxHeight: 120, boxSizing: 'border-box' }}
               />
             </div>
             <button onClick={() => fileInputRef.current?.click()} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
@@ -682,7 +697,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
               placeholder={typeof placeholder === 'string' ? placeholder : ''}
               rows={1}
-              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160 }}
+              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160, boxSizing: 'border-box' }}
             />
           </div>
           <button onClick={send} disabled={!canSend} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
@@ -773,6 +788,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     mentionMapRef.current.set(displayName, userId)
   }, [])
 
+  // 保存形式は canonical な `<@userId>`。表示名は read 時に解決するため本文に焼き込まない
   const transformContent = (text: string): string => {
     const entries = [...mentionMapRef.current.entries()]
     if (entries.length === 0) return text
@@ -783,7 +799,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       result = result.replace(
         new RegExp(`@${escaped}(?=[\\s、。！？]|$)`, 'g'),
-        `<@${userId}|${displayName}>`,
+        `<@${userId}>`,
       )
     }
     return result
@@ -855,6 +871,14 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     }
     return wsMembers.filter(m => m.userId !== currentUser?.id)
   }, [chMemberIds, wsMembers, currentUser?.id])
+
+  // userId → 現在の表示名。メンションを描画時に最新名へ解決するため
+  // （保存本文は名前なしの `<@userId>` であり、楽観更新メッセージもこのマップで解決する）
+  const mentionNames = React.useMemo(() => {
+    const map = new Map<string, string>()
+    for (const m of wsMembers) map.set(m.userId, m.displayName)
+    return map
+  }, [wsMembers])
 
   React.useEffect(() => {
     if (!sendMutation.isError) return
@@ -1109,6 +1133,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               onCheckboxToggle={handleCheckboxToggle}
               onImageClick={openLightbox}
               focused={i === focusedMsgIdx}
+              mentionNames={mentionNames}
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}
             />

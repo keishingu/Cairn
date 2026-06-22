@@ -173,6 +173,24 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(body.error).toContain('owner')
   })
 
+  it('ゲストを通常ロールへ昇格できない（422）', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'guest' }]))
+    const { PATCH } = await import('./route')
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    expect(res.status).toBe(422)
+    const body = await res.json() as { error: string }
+    expect(body.error).toContain('ゲスト')
+  })
+
+  it('通常ロールをゲストへ降格できない（422）', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
+    const { PATCH } = await import('./route')
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'guest'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    expect(res.status).toBe(422)
+  })
+
   it('存在しないメンバーは 404 を返す', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
     mockDb.select.mockReturnValueOnce(selectChain([]))

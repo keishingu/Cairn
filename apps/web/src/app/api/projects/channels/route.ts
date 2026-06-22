@@ -8,6 +8,8 @@ export interface ProjectChannelDto {
   channelName: string
   projectId: string
   projectTitle: string
+  startDate: string | null
+  endDate: string | null
   archived: boolean
   unreadCount: number
   unreadMentionCount: number
@@ -47,6 +49,8 @@ export async function GET() {
         channelName: sql<string>`coalesce(${channels.name}, 'general')`,
         projectId: projects.id,
         projectTitle: projects.title,
+        startDate: projects.startDate,
+        endDate: projects.endDate,
         archived: projects.archived,
       })
       .from(channels)
