@@ -283,15 +283,16 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     return () => window.removeEventListener('cairn:filter-tab', onTab)
   }, [filter, filters])
 
-  // ⌥Enter: 選択中（↑↓）のタスクをトグル
+  // ⌥Enter: 選択中（↑↓）のタスクをトグル。トグル中（PATCH 未完了）は無視して多重発火を防ぐ
   React.useEffect(() => {
     const onToggle = () => {
+      if (togglingId) return
       const task = navIdx >= 0 ? filtered[navIdx] : undefined
       if (task) handleToggle(task.id, task.status)
     }
     window.addEventListener('cairn:toggle-task', onToggle)
     return () => window.removeEventListener('cairn:toggle-task', onToggle)
-  }, [filtered, navIdx, handleToggle])
+  }, [filtered, navIdx, handleToggle, togglingId])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>

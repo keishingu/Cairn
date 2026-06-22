@@ -31,6 +31,7 @@ const APP_HINTS: Hint[] = [
   { keys: [','], label: '設定' },
   { keys: ['U'], label: '通知を開く' },
   { keys: ['B'], label: 'サイドバー折りたたみ' },
+  { keys: [';'], label: 'ワークスペース切替' },
 ]
 
 const CREATE_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban', 'tasks', 'chats', 'ai'])

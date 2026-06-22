@@ -184,6 +184,12 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
         sidebarRef.current?.()
         return
       }
+      // ⌘⌥; : ワークスペース切替ポップオーバーをトグル（記号は US/JIS で同位置の Semicolon）
+      if (appMod && e.code === 'Semicolon') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:workspace-menu'))
+        return
+      }
 
       // ? : ヘルプ（修飾なし・入力欄以外）
       if (e.key === '?' && !primary && !e.altKey && !editable) {
@@ -274,9 +280,10 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
         window.dispatchEvent(new CustomEvent('cairn:filter-tab', { detail: isPrev ? 'prev' : 'next' }))
         return
       }
-      // ⌥Enter: タスクの完了/未完了をトグル（Tasks のみ）
+      // ⌥Enter: タスクの完了/未完了をトグル（Tasks のみ）。
+      // 長押しのオートリピートで複数タスクを誤トグルしないよう e.repeat を弾く
       if (e.code === 'Enter') {
-        if (pageRef.current !== 'tasks') return
+        if (pageRef.current !== 'tasks' || e.repeat) return
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:toggle-task'))
         return

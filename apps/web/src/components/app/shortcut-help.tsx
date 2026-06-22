@@ -42,6 +42,7 @@ function buildSections(): Section[] {
         { keys: `${nav} ,`, label: '設定' },
         { keys: `${nav} U`, label: '通知を開く' },
         { keys: `${nav} B`, label: 'サイドバー折りたたみ' },
+        { keys: `${nav} ;`, label: 'ワークスペース切替' },
       ],
     },
     {
