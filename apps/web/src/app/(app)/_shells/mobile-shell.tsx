@@ -25,6 +25,7 @@ import { PageMembers } from '@/components/app/pages/members-page'
 import { PageFiles } from '@/components/app/pages/files'
 import { PageGallery } from '@/components/app/pages/gallery'
 import { useDetailPanel } from '@/hooks/use-detail-panel'
+import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 const MOBILE_STORAGE_KEY = STORAGE_KEYS.projects_view_mob
@@ -124,6 +125,12 @@ function MobileShellInner() {
 
   const { panelState, panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
 
+  // iOS はキーボード表示時に dvh が縮まないため、JS で実表示領域に合わせてシェルの高さを補正する
+  // （Android は viewport の interactiveWidget: resizes-content で自動的に縮むため inset は常に 0 に近い）
+  const keyboardInset = useKeyboardInset()
+  // チャット/AIは画面下部に常駐の入力欄を持つため、キーボード表示中は下部ナビを隠して入力欄をキーボード直上に出す
+  const hideNavForKeyboard = keyboardInset > 0 && (page === 'chats' || page === 'ai')
+
   const setProjectsView = React.useCallback((view: string) => {
     if (!isValidView(view)) return
     localStorage.setItem(MOBILE_STORAGE_KEY, view)
@@ -136,7 +143,7 @@ function MobileShellInner() {
 
   return (
     <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), projectsView, setProjectsView }}>
-      <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
+      <div className="app-root" style={{ width: '100vw', height: keyboardInset > 0 ? `calc(100dvh - ${keyboardInset}px)` : '100dvh', overflow: 'hidden', position: 'relative' }}>
         <NavigationProgress />
         {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)} isMobile/>}
         {/* パネルは position:fixed でフルスクリーン表示。ブラウザ履歴でスタック管理する */}
@@ -162,7 +169,9 @@ function MobileShellInner() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
             <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} settingsSection={settingsSection} />
           </div>
-          <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
+          {!hideNavForKeyboard && (
+            <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
+          )}
         </div>
       </div>
     </AppShellContext.Provider>
