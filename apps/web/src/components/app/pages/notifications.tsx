@@ -71,6 +71,13 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
 
   const handleMarkAllRead = () => markRead.mutate(undefined)
 
+  // ⌥M: すべて既読（このパネルが開いている間のみ有効）
+  React.useEffect(() => {
+    const onMarkRead = () => { if (unreadCount > 0) markRead.mutate(undefined) }
+    window.addEventListener('cairn:mark-read', onMarkRead)
+    return () => window.removeEventListener('cairn:mark-read', onMarkRead)
+  }, [unreadCount, markRead])
+
   const handleNotificationClick = (n: NotificationDto) => {
     if (n.readAt === null) markRead.mutate([n.id])
     const href = notificationHref(n)

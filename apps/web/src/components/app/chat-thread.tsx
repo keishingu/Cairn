@@ -110,14 +110,17 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   const emojiOnly = isEmojiOnly(content)
   const isOwn = currentUserId === senderId
 
-  // cairn:edit-message イベントで編集モードを起動
+  // cairn:edit-message イベントで編集モードを起動（最新の content をドラフトに使う）
   React.useEffect(() => {
     const handler = (e: Event) => {
-      if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit()
+      if ((e as CustomEvent<string>).detail === messageId && isOwn) {
+        setEditDraft(content)
+        setEditMode(true)
+      }
     }
     window.addEventListener('cairn:edit-message', handler)
     return () => window.removeEventListener('cairn:edit-message', handler)
-  }, [messageId, isOwn])
+  }, [messageId, isOwn, content])
 
   const startEdit = () => {
     setEditDraft(content)

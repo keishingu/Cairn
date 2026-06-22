@@ -255,6 +255,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
   const [targetMessageId, setTargetMessageId] = React.useState<string | null>(null)
+  const [detailOpen, setDetailOpen] = React.useState(true)
 
   // ブラウザの戻る/進むでURLが変わったとき状態を同期
   React.useEffect(() => {
@@ -329,13 +330,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // ⌥D: 詳細パネルのトグル（PC のみ）
   React.useEffect(() => {
     if (isMobile) return
-    const onDetail = () => {
-      // ChatDetailSidebar の表示/非表示は channelId の有無で制御されるため、
-      // 現在の channelId を一時的にクリアして再セットすることで再描画を促す
-      // ただし、より簡潔に openPanel のトグルで対応
-      // 現状は常時表示なので、イベントを dispatch してサイドバー側で制御
-      window.dispatchEvent(new CustomEvent('cairn:detail-toggle'))
-    }
+    const onDetail = () => setDetailOpen(o => !o)
     window.addEventListener('cairn:detail', onDetail)
     return () => window.removeEventListener('cairn:detail', onDetail)
   }, [isMobile])
@@ -599,7 +594,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             }
           </main>
 
-          <ChatDetailSidebar
+          {detailOpen && <ChatDetailSidebar
             isProject={isProject}
             isDm={isDm}
             isPrivate={isPrivate}
@@ -615,7 +610,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             onCloseMemberInvite={() => setShowMemberInvite(false)}
             onOpenProject={handleOpenProject}
             onOpenMember={handleOpenMember}
-          />
+          />}
         </div>
       </div>
     </div>

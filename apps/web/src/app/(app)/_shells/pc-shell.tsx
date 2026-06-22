@@ -111,6 +111,7 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     onCommandPalette: () => setPaletteOpen(true),
     onHelp: () => setHelpOpen(true),
     onNotifications: () => setNotifOpen(true),
+    onProfile: () => router.push('/settings/account'),
   })
 
   return (

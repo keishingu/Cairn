@@ -236,30 +236,30 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
     return () => window.removeEventListener('cairn:filter-tab', onTab)
   }, [filter, filterDefs])
 
-  // ⌥Delete: 最初のファイルを削除（選択概念がないため、リスト先頭のファイル）
-  React.useEffect(() => {
-    const onDelete = () => {
-      const first = visibleFiles[0]
-      if (first) handleDelete(first.id, first.fileName)
-    }
-    window.addEventListener('cairn:delete-selected', onDelete)
-    return () => window.removeEventListener('cairn:delete-selected', onDelete)
-  }, [visibleFiles])
-
-  // ⌥R: 最初のファイルを再インデックス
-  React.useEffect(() => {
-    const onReindex = () => {
-      const first = visibleFiles.find(f => REINDEXABLE_MIME_TYPES.has(f.mimeType ?? '') && f.fileType !== 'link')
-      if (first) handleReindex(first.id)
-    }
-    window.addEventListener('cairn:reindex-selected', onReindex)
-    return () => window.removeEventListener('cairn:reindex-selected', onReindex)
-  }, [visibleFiles])
-
   const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useArrowNav(visibleFiles.length, React.useCallback((idx: number) => {
     const file = visibleFiles[idx]
     if (file && isImageFile(file)) openLightbox(file.id)
   }, [visibleFiles, openLightbox]))
+
+  // ⌥Delete: 選択中のファイルを削除（↑↓ で選択していない時は何もしない）
+  React.useEffect(() => {
+    const onDelete = () => {
+      const file = navIdx >= 0 ? visibleFiles[navIdx] : undefined
+      if (file) handleDelete(file.id, file.fileName)
+    }
+    window.addEventListener('cairn:delete-selected', onDelete)
+    return () => window.removeEventListener('cairn:delete-selected', onDelete)
+  }, [visibleFiles, navIdx])
+
+  // ⌥R: 選択中のファイルを再インデックス（インデックス対象のみ）
+  React.useEffect(() => {
+    const onReindex = () => {
+      const file = navIdx >= 0 ? visibleFiles[navIdx] : undefined
+      if (file && REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link') handleReindex(file.id)
+    }
+    window.addEventListener('cairn:reindex-selected', onReindex)
+    return () => window.removeEventListener('cairn:reindex-selected', onReindex)
+  }, [visibleFiles, navIdx])
 
   // フィルタ変更で選択をリセット
   React.useEffect(() => { setNavIdx(-1) }, [filter, effectiveSearch, setNavIdx])

@@ -17,6 +17,9 @@ export function useArrowNav(itemCount: number, onEnter?: (index: number) => void
   const [selectedIndex, setSelectedIndex] = React.useState(-1)
   const onEnterRef = React.useRef(onEnter)
   onEnterRef.current = onEnter
+  // selectedIndex を ref で参照し、矢印移動のたびにリスナーを貼り直さない
+  const selectedRef = React.useRef(selectedIndex)
+  selectedRef.current = selectedIndex
 
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -36,9 +39,9 @@ export function useArrowNav(itemCount: number, onEnter?: (index: number) => void
         return
       }
 
-      if (e.code === 'Enter' && selectedIndex >= 0) {
+      if (e.code === 'Enter' && selectedRef.current >= 0) {
         e.preventDefault()
-        onEnterRef.current?.(selectedIndex)
+        onEnterRef.current?.(selectedRef.current)
         return
       }
 
@@ -49,7 +52,7 @@ export function useArrowNav(itemCount: number, onEnter?: (index: number) => void
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [itemCount, selectedIndex])
+  }, [itemCount])
 
   return { selectedIndex, setSelectedIndex }
 }

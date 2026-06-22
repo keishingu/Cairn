@@ -124,7 +124,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
 
   // ⌥S: 検索フォーカス
   React.useEffect(() => {
-    const onSearch = () => { if (!isMobile) searchInputRef.current?.focus(); else setMobileSearchOpen(true); setTimeout(() => searchInputRef.current?.focus(), 50) }
+    const onSearch = () => {
+      if (!isMobile) { searchInputRef.current?.focus(); return }
+      // モバイルは検索欄を開いてからフォーカス（描画後に当てる）
+      setMobileSearchOpen(true)
+      setTimeout(() => searchInputRef.current?.focus(), 50)
+    }
     window.addEventListener('cairn:search-focus', onSearch)
     return () => window.removeEventListener('cairn:search-focus', onSearch)
   }, [isMobile])

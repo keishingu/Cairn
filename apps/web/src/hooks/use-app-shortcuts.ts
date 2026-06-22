@@ -85,11 +85,13 @@ export interface UseAppShortcutsArgs {
   onCommandPalette?: () => void
   /** ? ショートカット一覧を開く */
   onHelp?: () => void
-  /** ⌘⇧U 通知を開く */
+  /** ⌘⌥U 通知を開く */
   onNotifications?: () => void
+  /** ⌘⌥0 プロフィール（設定のアカウントセクション）を開く */
+  onProfile?: () => void
 }
 
-export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, onHelp, onNotifications }: UseAppShortcutsArgs) {
+export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, onHelp, onNotifications, onProfile }: UseAppShortcutsArgs) {
   // ハンドラは毎レンダー再生成されうるので ref で最新を参照（リスナーは1回だけ登録）
   const navRef = React.useRef(navigate)
   navRef.current = navigate
@@ -103,6 +105,8 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
   helpRef.current = onHelp
   const notifRef = React.useRef(onNotifications)
   notifRef.current = onNotifications
+  const profileRef = React.useRef(onProfile)
+  profileRef.current = onProfile
 
   React.useEffect(() => {
     const mac = isMac()
@@ -153,11 +157,10 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
         navRef.current(navPage)
         return
       }
-      // ⌘⌥+0: プロフィール（設定ページのアカウントセクションへ遷移）
+      // ⌘⌥+0: プロフィール（設定のアカウントセクションへ遷移）
       if (appMod && e.code === 'Digit0') {
         e.preventDefault()
-        navRef.current('settings')
-        window.dispatchEvent(new CustomEvent('cairn:profile'))
+        profileRef.current?.()
         return
       }
       // ⌘⌥+, (Comma): 設定
@@ -243,13 +246,6 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
           e.preventDefault()
           window.dispatchEvent(new CustomEvent('cairn:today'))
         }
-        return
-      }
-      // ⌥A: Timeline ビュー（Calendar のみ）
-      if (e.code === 'KeyA') {
-        if (pageRef.current !== 'calendar') return
-        e.preventDefault()
-        applyCalView('timeline')
         return
       }
       // ⌥D: 詳細パネルをトグル（Chats のみ）

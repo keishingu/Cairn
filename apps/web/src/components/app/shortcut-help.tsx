@@ -58,7 +58,6 @@ function buildSections(): Section[] {
         { keys: `${opt} S`, label: '検索にフォーカス' },
         { keys: `${opt} @ / ${opt} [`, label: 'フィルタタブ 前 / 次' },
         { keys: `${opt} M / ${opt} W`, label: 'カレンダー 月 / 週' },
-        { keys: `${opt} A`, label: 'カレンダー タイムライン' },
         { keys: `${opt} T`, label: 'カレンダー 今日 / テーブル表示' },
         { keys: `${opt} G`, label: 'グリッド表示' },
         { keys: `${opt} D`, label: '詳細パネル切替' },

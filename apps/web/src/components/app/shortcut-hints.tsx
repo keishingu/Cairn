@@ -49,7 +49,6 @@ function contextHints(page: PageId): Hint[] {
     items.push(
       { keys: ['M'], label: '月表示' },
       { keys: ['W'], label: '週表示' },
-      { keys: ['A'], label: 'タイムライン' },
       { keys: ['T'], label: '今日へ' },
       { keys: ['←', '→'], label: '前 / 次の期間' },
       { keys: ['F'], label: 'フィルター' },
