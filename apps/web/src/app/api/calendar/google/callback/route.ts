@@ -13,20 +13,20 @@ export async function GET(req: NextRequest) {
   const oauthError = searchParams.get('error')
 
   const origin = req.nextUrl.origin
-  const settingsUrl = `${origin}/settings?tab=integrations`
+  const settingsUrl = `${origin}/settings/integrations`
 
   if (oauthError) {
-    return NextResponse.redirect(`${settingsUrl}&gcal=denied`)
+    return NextResponse.redirect(`${settingsUrl}?gcal=denied`)
   }
 
   // CSRF 検証
   const storedState = req.cookies.get('gcal_oauth_state')?.value
   if (!storedState || storedState !== state) {
-    return NextResponse.redirect(`${settingsUrl}&gcal=error`)
+    return NextResponse.redirect(`${settingsUrl}?gcal=error`)
   }
 
   if (!code) {
-    return NextResponse.redirect(`${settingsUrl}&gcal=error`)
+    return NextResponse.redirect(`${settingsUrl}?gcal=error`)
   }
 
   const { ctx, error } = await getAuthContext()
@@ -83,11 +83,11 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    const res = NextResponse.redirect(`${settingsUrl}&gcal=connected`)
+    const res = NextResponse.redirect(`${settingsUrl}?gcal=connected`)
     res.cookies.delete('gcal_oauth_state')
     return res
   } catch (err) {
     console.error('[/api/calendar/google/callback]', err)
-    return NextResponse.redirect(`${settingsUrl}&gcal=error`)
+    return NextResponse.redirect(`${settingsUrl}?gcal=error`)
   }
 }

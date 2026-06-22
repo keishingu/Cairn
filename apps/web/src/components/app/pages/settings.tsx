@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
@@ -1160,50 +1161,98 @@ const SettingsDeveloper = () => {
   )
 }
 
-const NAV_GROUPS = [
+export interface SettingsSectionMeta {
+  id: string
+  label: string
+  icon: string
+}
+
+// 設定セクションの定義。PC のサイドバーとモバイルの設定一覧で共有する単一の真実。
+export const SETTINGS_NAV_GROUPS: { label: string; items: SettingsSectionMeta[] }[] = [
   {
     label: '個人',
     items: [
-      { id: 'account',    l: 'アカウント',    i: 'user' },
-      { id: 'appearance', l: '外観',          i: 'sun' },
+      { id: 'account',    label: 'アカウント', icon: 'user' },
+      { id: 'appearance', label: '外観',       icon: 'sun' },
     ],
   },
   {
     label: 'ワークスペース',
     items: [
-      { id: 'general',       l: 'ワークスペース設定',   i: 'settings' },
-      { id: 'workflow',      l: 'ワークフロー',         i: 'flag' },
-      { id: 'ai',            l: 'AIエージェント',       i: 'sparkles' },
-      { id: 'members',       l: 'メンバー',             i: 'users' },
-      { id: 'integrations',  l: '連携',                 i: 'layers' },
-      { id: 'billing',       l: '請求',                 i: 'archive' },
+      { id: 'general',       label: 'ワークスペース設定', icon: 'settings' },
+      { id: 'workflow',      label: 'ワークフロー',       icon: 'flag' },
+      { id: 'ai',            label: 'AIエージェント',     icon: 'sparkles' },
+      { id: 'members',       label: 'メンバー',           icon: 'users' },
+      { id: 'integrations',  label: '連携',               icon: 'layers' },
+      { id: 'billing',       label: '請求',               icon: 'archive' },
     ],
   },
   {
     label: '開発者',
     items: [
-      { id: 'developer', l: '開発者情報', i: 'code' },
+      { id: 'developer', label: '開発者情報', icon: 'code' },
     ],
   },
 ]
 
+// セクションIDごとのメインカラムコンポーネント。未実装のものは準備中プレースホルダーを出す。
+const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
+  account:      SettingsAccount,
+  appearance:   SettingsAppearance,
+  general:      SettingsWorkspaceGeneral,
+  workflow:     SettingsWorkflow,
+  ai:           SettingsAI,
+  integrations: SettingsIntegrations,
+  developer:    SettingsDeveloper,
+}
+
+const DEFAULT_SECTION = 'account'
+
+const ALL_SECTION_IDS = new Set(SETTINGS_NAV_GROUPS.flatMap(g => g.items.map(i => i.id)))
+
+export function isSettingsSection(id: string | null | undefined): id is string {
+  return id != null && ALL_SECTION_IDS.has(id)
+}
+
+export function settingsSectionLabel(id: string): string {
+  for (const g of SETTINGS_NAV_GROUPS) {
+    const item = g.items.find(i => i.id === id)
+    if (item) return item.label
+  }
+  return '設定'
+}
+
+// セクションのメインカラム本体（PC・モバイル共通）。
+export function SettingsSectionContent({ section }: { section: string }) {
+  const Comp = SETTINGS_SECTION_COMPONENTS[section]
+  if (Comp) return <Comp/>
+  return (
+    <div>
+      <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
+        {settingsSectionLabel(section)}
+      </h1>
+      <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションの設定は準備中です。</p>
+    </div>
+  )
+}
+
 export const PageSettings = () => {
-  const [section, setSection] = React.useState(() => {
-    if (typeof window === 'undefined') return 'account'
-    return new URLSearchParams(window.location.search).get('tab') ?? 'account'
-  })
+  const pathname = usePathname()
+  const router = useRouter()
+  const seg = pathname.split('/')[2]
+  const section = isSettingsSection(seg) ? seg : DEFAULT_SECTION
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <TopBar title="設定"/>
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={{ width: 220, borderRight: '1px solid var(--border)', padding: '20px 14px', background: 'var(--card)' }}>
-        {NAV_GROUPS.map((group, gi) => (
-          <div key={group.label} style={{ marginBottom: gi < NAV_GROUPS.length - 1 ? 16 : 0 }}>
+        {SETTINGS_NAV_GROUPS.map((group, gi) => (
+          <div key={group.label} style={{ marginBottom: gi < SETTINGS_NAV_GROUPS.length - 1 ? 16 : 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0 10px', marginBottom: 4 }}>
               {group.label}
             </div>
             {group.items.map(s => (
-              <button key={s.id} onClick={() => setSection(s.id)} style={{
+              <button key={s.id} onClick={() => router.push(`/settings/${s.id}`)} style={{
                 display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                 padding: '8px 10px', borderRadius: 7, border: 'none',
                 background: section === s.id ? 'var(--card-hover)' : 'transparent',
@@ -1211,28 +1260,14 @@ export const PageSettings = () => {
                 fontWeight: section === s.id ? 600 : 500,
                 fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left',
               }}>
-                <Icon name={s.i} size={14}/> {s.l}
+                <Icon name={s.icon} size={14}/> {s.label}
               </button>
             ))}
           </div>
         ))}
       </aside>
       <div style={{ flex: 1, overflow: 'auto', padding: '32px 40px' }}>
-        {section === 'account'       && <SettingsAccount/>}
-        {section === 'appearance'    && <SettingsAppearance/>}
-        {section === 'general'       && <SettingsWorkspaceGeneral/>}
-        {section === 'workflow'      && <SettingsWorkflow/>}
-        {section === 'ai'            && <SettingsAI/>}
-        {section === 'integrations'  && <SettingsIntegrations/>}
-        {section === 'developer'     && <SettingsDeveloper/>}
-        {section !== 'account' && section !== 'appearance' && section !== 'general' && section !== 'workflow' && section !== 'ai' && section !== 'integrations' && section !== 'developer' && (
-          <div>
-            <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-              {{ members: 'メンバー', billing: '請求' }[section] ?? section}
-            </h1>
-            <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションの設定は準備中です。</p>
-          </div>
-        )}
+        <SettingsSectionContent section={section}/>
       </div>
       </div>
     </div>
