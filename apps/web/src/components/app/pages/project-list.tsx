@@ -379,7 +379,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
               const selected = i === navIdx
               return (
-                <div key={p.id} onClick={() => openPanel?.(p)} style={{
+                <div key={p.id} data-list-index={i} onClick={() => openPanel?.(p)} style={{
                   display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px',
                   gap: 16, padding: '12px 16px', borderBottom: i < sortedProjects.length - 1 ? '1px solid var(--divider)' : 'none',
                   alignItems: 'center', cursor: 'pointer',
@@ -454,7 +454,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               }
 
               return (
-                <div key={p.id} onClick={() => openPanel?.(p)} style={{
+                <div key={p.id} data-list-index={i} onClick={() => openPanel?.(p)} style={{
                   background: 'var(--card)', borderRadius: 12,
                   overflow: 'hidden', cursor: 'pointer', boxShadow: 'var(--shadow-sm)',
                   transition: 'transform .15s, box-shadow .15s',

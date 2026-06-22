@@ -47,14 +47,16 @@ interface TaskRowProps {
   onToggle: (id: string, current: TaskDto['status']) => void
   toggling: boolean
   selected?: boolean
+  index?: number
 }
 
-const TaskRow = ({ task, onToggle, toggling, selected }: TaskRowProps) => {
+const TaskRow = ({ task, onToggle, toggling, selected, index }: TaskRowProps) => {
   const due = formatDueDate(task.dueDate)
   const isDone = task.status === 'done'
 
   return (
     <div
+      data-list-index={index}
       style={{
         display: 'flex', alignItems: 'center', gap: 12,
         padding: '10px 16px', borderBottom: '1px solid var(--divider)',
@@ -145,9 +147,10 @@ interface SectionProps {
   open: boolean
   onToggleOpen: () => void
   selectedTaskId?: string | null
+  baseIndex?: number
 }
 
-const Section = ({ label, count, tasks, onToggle, togglingId, open, onToggleOpen, selectedTaskId }: SectionProps) => {
+const Section = ({ label, count, tasks, onToggle, togglingId, open, onToggleOpen, selectedTaskId, baseIndex = 0 }: SectionProps) => {
   return (
     <div>
       <button
@@ -163,13 +166,14 @@ const Section = ({ label, count, tasks, onToggle, togglingId, open, onToggleOpen
         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', letterSpacing: '0.02em' }}>{label}</span>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', background: 'var(--card)', border: '1px solid var(--border)', padding: '1px 6px', borderRadius: 999 }}>{count}</span>
       </button>
-      {open && tasks.map(t => (
+      {open && tasks.map((t, i) => (
         <TaskRow
           key={t.id}
           task={t}
           onToggle={onToggle}
           toggling={togglingId === t.id}
           selected={t.id === selectedTaskId}
+          index={baseIndex + i}
         />
       ))}
     </div>
@@ -265,6 +269,13 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     () => grouped.flatMap((g, idx) => (isSectionOpen(g.key, idx) ? g.tasks : [])),
     [grouped, isSectionOpen],
   )
+  // 各セクションの可視タスク列における開始インデックス（scroll-into-view 用）
+  const sectionBases = React.useMemo(() => {
+    const bases: number[] = []
+    let cursor = 0
+    grouped.forEach((g, idx) => { bases[idx] = cursor; if (isSectionOpen(g.key, idx)) cursor += g.tasks.length })
+    return bases
+  }, [grouped, isSectionOpen])
 
   // 矢印選択は「見えている行」だけを対象にする（折りたたみ内の行は選べない）
   const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useListSelection({ count: visibleTasks.length })
@@ -362,6 +373,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
                 open={isSectionOpen(g.key, idx)}
                 onToggleOpen={() => setSectionOverride(prev => ({ ...prev, [g.key]: !isSectionOpen(g.key, idx) }))}
                 selectedTaskId={selectedTaskId}
+                baseIndex={sectionBases[idx] ?? 0}
               />
             ))}
           </div>

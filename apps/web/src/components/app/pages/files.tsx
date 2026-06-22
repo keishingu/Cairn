@@ -57,7 +57,7 @@ function matchesFilter(file: FileDto, filter: FilterKey): boolean {
 
 // ─── FileRow ──────────────────────────────────────────────────────
 
-const FileRow = ({ file, isMobile, onDelete, onReindex, onImageClick, selected }: { file: FileDto; isMobile: boolean; onDelete: (id: string, name: string) => void; onReindex: (id: string) => void; onImageClick: (id: string) => void; selected?: boolean }) => {
+const FileRow = ({ file, isMobile, onDelete, onReindex, onImageClick, selected, index }: { file: FileDto; isMobile: boolean; onDelete: (id: string, name: string) => void; onReindex: (id: string) => void; onImageClick: (id: string) => void; selected?: boolean; index?: number }) => {
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
   const projectLabel = file.projectTitle ?? file.channelName ?? 'チャット'
@@ -66,6 +66,7 @@ const FileRow = ({ file, isMobile, onDelete, onReindex, onImageClick, selected }
 
   return (
     <div
+      data-list-index={index}
       style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: isMobile ? '10px 12px' : '10px 16px',
@@ -315,7 +316,7 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
           </div>
         ) : (
           <>
-            {visibleFiles.map((f, i) => <FileRow key={f.id} file={f} isMobile={isMobile} onDelete={handleDelete} onReindex={handleReindex} onImageClick={openLightbox} selected={i === navIdx} />)}
+            {visibleFiles.map((f, i) => <FileRow key={f.id} file={f} isMobile={isMobile} onDelete={handleDelete} onReindex={handleReindex} onImageClick={openLightbox} selected={i === navIdx} index={i} />)}
             <div ref={sentinelRef} />
           </>
         )}
