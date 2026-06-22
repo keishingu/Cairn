@@ -30,6 +30,7 @@ import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import { stripMentionsToText } from '@/lib/chat/mentions'
+import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 
 // ─── Message search ───────────────────────────────────────────────
 
@@ -256,6 +257,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
   const [targetMessageId, setTargetMessageId] = React.useState<string | null>(null)
   const [detailOpen, setDetailOpen] = React.useState(true)
+  // キーボード表示中は下部ナビが隠れる（mobile-shell.tsx）ため、その分の余白も外す
+  const keyboardInset = useKeyboardInset()
 
   // ブラウザの戻る/進むでURLが変わったとき状態を同期
   React.useEffect(() => {
@@ -490,7 +493,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       )
     }
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: keyboardInset > 0 ? 0 : 'calc(80px + env(safe-area-inset-bottom))' }}>
         <MobileHeader
           title={channelName}
           subtitle={currentChannelMemberCount != null ? `${currentChannelMemberCount}名が参加中` : undefined}

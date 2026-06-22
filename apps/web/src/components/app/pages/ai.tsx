@@ -11,6 +11,7 @@ import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 
 // ---- ソースチップ ----
 
@@ -340,6 +341,8 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
   const queryClient = useQueryClient()
   const [activeId, setActiveId] = React.useState<string | null>(null)
   const [mobilePane, setMobilePane] = React.useState<'welcome' | 'list' | 'chat'>('welcome')
+  // キーボード表示中は下部ナビが隠れる（mobile-shell.tsx）ため、その分の余白も外す
+  const keyboardInset = useKeyboardInset()
 
   const { data: conversations = [] } = useQuery<ConversationDto[]>({
     queryKey: ['ai-conversations'],
@@ -412,7 +415,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     if (mobilePane === 'chat' && activeId && initialMessages) {
       const title = conversations.find(c => c.id === activeId)?.title ?? 'AIアシスタント'
       return (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: keyboardInset > 0 ? 0 : 'calc(65px + env(safe-area-inset-bottom))' }}>
           <MobileHeader title={title} onBack={() => setMobilePane('welcome')} right={newButton}/>
           <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages} isMobile/>
         </div>

@@ -36,6 +36,9 @@ export const viewport: Viewport = {
   ],
   // iOS Safari で input/textarea フォーカス時の自動ズームを防ぐ
   maximumScale: 1,
+  // Android Chrome / WebView: ソフトキーボード表示時にレイアウトビューポートを縮める。
+  // これによりチャット入力欄が常にキーボード直上に来る（iOS は対応外。useKeyboardInset で別途補正する）
+  interactiveWidget: 'resizes-content',
 }
 
 export default function RootLayout({
