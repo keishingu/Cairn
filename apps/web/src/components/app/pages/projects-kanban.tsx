@@ -23,6 +23,14 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const [showCreate, setShowCreate] = React.useState(false)
+
+  // ⌥N: 新規プロジェクト
+  React.useEffect(() => {
+    const onCreate = () => setShowCreate(true)
+    window.addEventListener('cairn:create', onCreate)
+    return () => window.removeEventListener('cairn:create', onCreate)
+  }, [])
+
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
     if (typeof window === 'undefined') return []

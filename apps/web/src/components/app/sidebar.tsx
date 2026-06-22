@@ -164,8 +164,9 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
   const { data: projectChannels = [] } = useProjectChannels()
   const { data: workspaceChannels = [] } = useWorkspaceChannels()
   const { data: dms = [] } = useWorkspaceDms()
+  // アーカイブ済みプロジェクトは折りたたみで隠れているため、未読バッジ総数には含めない
   const totalChatUnread = React.useMemo(
-    () => [...projectChannels, ...workspaceChannels, ...dms].reduce((sum, c) => sum + (c.unreadCount ?? 0), 0),
+    () => [...projectChannels.filter(c => !c.archived), ...workspaceChannels, ...dms].reduce((sum, c) => sum + (c.unreadCount ?? 0), 0),
     [projectChannels, workspaceChannels, dms],
   )
   const { data: workspace } = useQuery<WorkspaceDto>({

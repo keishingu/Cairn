@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess } from '@/lib/permissions'
 
 export interface ChannelMemberDto {
   userId: string
@@ -18,20 +19,13 @@ export async function GET(
 
   const { channelId } = await params
 
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  if (forbidden) return forbidden
+
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers } = await import('@cairn/db')
-    const { and, eq } = await import('drizzle-orm')
-
-    const [channel] = await db
-      .select({ id: channels.id })
-      .from(channels)
-      .where(and(eq(channels.id, channelId), eq(channels.workspaceId, ctx.workspaceId)))
-      .limit(1)
-
-    if (!channel) {
-      return NextResponse.json({ error: 'チャンネルが見つかりません' }, { status: 404 })
-    }
+    const { channelMembers } = await import('@cairn/db')
+    const { eq } = await import('drizzle-orm')
 
     const rows = await db
       .select({ userId: channelMembers.userId, channelId: channelMembers.channelId })
@@ -60,21 +54,12 @@ export async function POST(
     return NextResponse.json({ error: 'userIdが必要です' }, { status: 400 })
   }
 
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  if (forbidden) return forbidden
+
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, channelReadStates } = await import('@cairn/db')
-    const { and, eq } = await import('drizzle-orm')
-
-    // チャンネルが同じワークスペースに属するか確認
-    const [channel] = await db
-      .select({ id: channels.id })
-      .from(channels)
-      .where(and(eq(channels.id, channelId), eq(channels.workspaceId, ctx.workspaceId)))
-      .limit(1)
-
-    if (!channel) {
-      return NextResponse.json({ error: 'チャンネルが見つかりません' }, { status: 404 })
-    }
+    const { channelMembers, channelReadStates } = await import('@cairn/db')
 
     await db
       .insert(channelMembers)

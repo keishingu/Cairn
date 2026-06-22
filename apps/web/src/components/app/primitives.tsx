@@ -91,6 +91,7 @@ const PATHS: Record<string, React.ReactNode> = {
   link:        <><path d="M10 13a5 5 0 0 0 7.5.7l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.7l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></>,
   flask:       <><path d="M9 2v6L4 19a2 2 0 0 0 1.8 3h12.4a2 2 0 0 0 1.8-3L15 8V2"/><path d="M8.5 2h7"/><path d="M6.5 14h11"/></>,
   alertTriangle: <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,
+  info:        <><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="8" x2="12.01" y2="8"/></>,
 }
 
 export const Icon = ({ name, size = 18, color = 'currentColor', strokeWidth = 1.7, style }: IconProps) => (
@@ -228,6 +229,45 @@ export const UnreadBadge = ({ count, max = 99, size = 'md', style }: UnreadBadge
   )
 }
 
+// ─── Switch ───────────────────────────────────────────────────────
+interface SwitchProps {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  disabled?: boolean
+  size?: 'sm' | 'md'
+  title?: string
+}
+
+export const Switch = ({ checked, onChange, disabled = false, size = 'md', title }: SwitchProps) => {
+  const sm = size === 'sm'
+  const w = sm ? 30 : 36
+  const h = sm ? 17 : 20
+  const knob = sm ? 13 : 16
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      title={title}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      style={{
+        width: w, height: h, borderRadius: 999, border: 'none', padding: 2,
+        background: checked ? 'var(--accent)' : 'var(--border)',
+        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
+        display: 'inline-flex', alignItems: 'center',
+        justifyContent: checked ? 'flex-end' : 'flex-start',
+        flexShrink: 0, transition: 'background .15s ease',
+      }}
+    >
+      <span style={{
+        width: knob, height: knob, borderRadius: '50%', background: 'var(--on-accent)',
+        boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(0,0,0,.3))', transition: 'transform .15s ease',
+      }}/>
+    </button>
+  )
+}
+
 // ─── Mountain photo ───────────────────────────────────────────────
 interface MountainPhotoProps {
   idx?: number
@@ -293,7 +333,7 @@ export const Modal = ({ onClose, children }: { onClose: () => void; children: Re
   }, [onClose])
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+    <div data-cairn-modal style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
       {children}
     </div>

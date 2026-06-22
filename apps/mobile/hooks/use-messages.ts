@@ -19,8 +19,10 @@ export interface MessageDto {
   }[]
 }
 
+// サーバーが read 時に `<@userId|表示名>` へ解決済みのため最新名を表示できる。
+// 名前なしの canonical 形式 `<@userId>` が来た場合も素のトークンを見せないようにする。
 export function parseMentions(content: string): string {
-  return content.replace(/<@[^|]+\|([^>]+)>/g, '@$1')
+  return content.replace(/<@([^|>\s]+)(?:\|([^>\n]+))?>/g, (_full, _id, name) => name ? `@${name}` : '@メンバー')
 }
 
 export function useMessages(channelId: string | null) {

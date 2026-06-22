@@ -123,7 +123,7 @@ async function postChannelMessage(channelId: string, input: SendMessageInput): P
   return res.json()
 }
 
-async function editMessage(messageId: string, content: string): Promise<void> {
+async function editMessage(messageId: string, content: string): Promise<{ id: string; content: string }> {
   const res = await fetchWithAuth(`/api/messages/${messageId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -133,6 +133,7 @@ async function editMessage(messageId: string, content: string): Promise<void> {
     const data = await res.json().catch(() => ({})) as { error?: string }
     throw new Error(data.error ?? 'メッセージの編集に失敗しました')
   }
+  return res.json()
 }
 
 async function deleteMessage(messageId: string): Promise<void> {
@@ -329,6 +330,14 @@ export function useEditMessage(channelId: string | null) {
         (old) => (old ?? []).map((m) => m.id === messageId ? { ...m, content, isEdited: true } : m),
       )
       return { prev }
+    },
+    onSuccess: (updated) => {
+      // Realtime の invalidate は他イベントとの競合で古いデータを取り戻すことがあるため、
+      // PATCH レスポンスを正としてキャッシュへ反映する
+      queryClient.setQueryData<MessageDto[]>(
+        chatQueryKeys.messages(channelId),
+        (old) => (old ?? []).map((m) => m.id === updated.id ? { ...m, content: updated.content, isEdited: true } : m),
+      )
     },
     onError: (_err, _vars, context) => {
       if (context?.prev !== undefined) {

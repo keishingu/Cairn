@@ -4,6 +4,7 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import { TopBar } from '../sidebar'
+import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import type { WorkspaceGalleryItemDto } from '@/app/api/gallery/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
@@ -28,20 +29,12 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
     },
   })
 
-  const lightboxItem = lightboxIndex !== null ? items[lightboxIndex] ?? null : null
-  const goPrev = () => setLightboxIndex(i => i !== null && i > 0 ? i - 1 : i)
-  const goNext = () => setLightboxIndex(i => i !== null && i < items.length - 1 ? i + 1 : i)
-
-  React.useEffect(() => {
-    if (lightboxIndex === null) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') goPrev()
-      else if (e.key === 'ArrowRight') goNext()
-      else if (e.key === 'Escape') setLightboxIndex(null)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [lightboxIndex, items.length])
+  const lightboxImages = React.useMemo<LightboxImage[]>(() => items.map(it => ({
+    key: it.id,
+    src: it.publicUrl,
+    caption: it.projectTitle,
+    meta: formatDate(it.takenAt, it.createdAt),
+  })), [items])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -119,74 +112,13 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
       </div>
 
       {/* ライトボックス */}
-      {lightboxItem && lightboxIndex !== null && (
-        <div
-          onClick={() => setLightboxIndex(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 200,
-            background: 'rgba(0,0,0,0.9)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh', display: 'flex' }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={lightboxItem.publicUrl}
-              alt=""
-              style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 10, objectFit: 'contain', display: 'block' }}
-            />
-            {/* 左タップゾーン（前へ） */}
-            <div
-              onClick={e => { e.stopPropagation(); goPrev() }}
-              style={{
-                position: 'absolute', left: 0, top: 0, bottom: 0, width: '40%',
-                cursor: lightboxIndex > 0 ? 'w-resize' : 'default',
-              }}
-            />
-            {/* 右タップゾーン（次へ） */}
-            <div
-              onClick={e => { e.stopPropagation(); goNext() }}
-              style={{
-                position: 'absolute', right: 0, top: 0, bottom: 0, width: '40%',
-                cursor: lightboxIndex < items.length - 1 ? 'e-resize' : 'default',
-              }}
-            />
-          </div>
-
-          {/* メタ情報 */}
-          <div style={{
-            position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-            pointerEvents: 'none',
-          }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
-              {lightboxItem.projectTitle}
-            </div>
-            <div style={{
-              fontSize: 12, color: 'rgba(255,255,255,0.65)',
-              background: 'rgba(0,0,0,0.4)', padding: '3px 10px', borderRadius: 20,
-            }}>
-              {lightboxIndex + 1} / {items.length} · {formatDate(lightboxItem.takenAt, lightboxItem.createdAt)}
-            </div>
-          </div>
-
-          {/* 閉じるボタン */}
-          <button
-            onClick={() => setLightboxIndex(null)}
-            style={{
-              position: 'absolute', top: 16, right: 16,
-              width: 36, height: 36, borderRadius: 10,
-              border: 'none', background: 'rgba(255,255,255,0.15)',
-              color: '#fff', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <Icon name="close" size={18}/>
-          </button>
-        </div>
+      {lightboxIndex !== null && lightboxImages.length > 0 && (
+        <ImageLightbox
+          images={lightboxImages}
+          index={Math.min(lightboxIndex, lightboxImages.length - 1)}
+          onIndexChange={setLightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
       )}
     </div>
   )

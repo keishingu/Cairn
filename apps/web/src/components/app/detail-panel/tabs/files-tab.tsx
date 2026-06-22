@@ -4,6 +4,7 @@ import React from 'react'
 import { ConfirmDialog } from '../../confirm-dialog'
 import { RowActionMenu } from '../../row-action-menu'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
+import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
 import { useProjectFiles } from '@/hooks/use-project-files'
 
@@ -38,9 +39,25 @@ function formatDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+function isImageFile(file: ProjectFileDto): boolean {
+  return file.fileType !== 'link' && (file.mimeType?.startsWith('image/') ?? false)
+}
+
 export const FilesTab = ({ projectId }: { projectId: string }) => {
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
-  const { data: files = [], isLoading, isError, deleteMutation } = useProjectFiles(projectId)
+  const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
+  const { data: files = [], isLoading, isError, deleteMutation, setLatestMutation } = useProjectFiles(projectId)
+
+  const imageFiles = React.useMemo(() => files.filter(isImageFile), [files])
+  const lightboxImages = React.useMemo<LightboxImage[]>(() => imageFiles.map(f => ({
+    key: f.id,
+    src: `/api/attachments/${f.id}`,
+    caption: f.fileName,
+  })), [imageFiles])
+  const openLightbox = React.useCallback((fileId: string) => {
+    const idx = imageFiles.findIndex(f => f.id === fileId)
+    if (idx >= 0) setLightboxIndex(idx)
+  }, [imageFiles])
 
   if (isLoading) {
     return (
@@ -68,13 +85,14 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '12px 12px 16px' }}>
-      {files.map((f: ProjectFileDto, i: number) => {
+      {files.map((f: ProjectFileDto) => {
         const sizeStr = formatFileSize(f.fileSize)
         const dateStr = formatDate(f.createdAt)
         const meta = [sizeStr, dateStr].filter(Boolean).join(' · ')
 
         const isLink = f.fileType === 'link'
         const linkHref = isLink ? f.externalUrl : `/api/attachments/${f.id}`
+        const isImage = isImageFile(f)
 
         return (
           <div key={f.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderBottom: '1px solid var(--divider)', borderRadius: 6 }}>
@@ -82,6 +100,7 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
               href={linkHref}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={isImage ? (e => { e.preventDefault(); openLightbox(f.id) }) : undefined}
               style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, textDecoration: 'none', cursor: 'pointer' }}
             >
               <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -94,7 +113,7 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {f.fileName}
-                  {i === 0 && <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>最新</span>}
+                  {f.isLatest && <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>最新版</span>}
                   {isLink && <IndexingBadge status={f.indexingStatus}/>}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{isLink ? '外部リンク' : meta}</div>
@@ -103,6 +122,9 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
 
             <RowActionMenu
               actions={[
+                f.isLatest
+                  ? { icon: 'star', label: '最新版を解除', onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
+                  : { icon: 'star', label: '最新版にする', onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },
                 { icon: 'trash', label: '削除', danger: true, onSelect: () => setDeleteTarget({ id: f.id, name: f.fileName }) },
               ]}
             />
@@ -117,6 +139,15 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
         onConfirm={async () => { if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.id) }}
         onClose={() => setDeleteTarget(null)}
       />
+
+      {lightboxIndex !== null && lightboxImages.length > 0 && (
+        <ImageLightbox
+          images={lightboxImages}
+          index={Math.min(lightboxIndex, lightboxImages.length - 1)}
+          onIndexChange={setLightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
     </div>
   )
 }

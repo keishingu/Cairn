@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { db, workspaceMembers, projectMembers, projects } from '@cairn/db'
-import { eq, and } from 'drizzle-orm'
+import { db, workspaceMembers, channels, channelMembers, projects, projectMembers } from '@cairn/db'
+import { eq, and, sql } from 'drizzle-orm'
 
 async function getWorkspaceRole(workspaceId: string, userId: string) {
   const [member] = await db
@@ -81,7 +81,9 @@ export async function getGuestVisibleProjectIds(
 }
 
 // 指定プロジェクトへのアクセス可否を検証する。
-// member 以上は常に許可。guest は project_members に行がある場合のみ許可し、無ければ 403。
+// member 以上は常に許可。guest は project_members に行があり、かつそのプロジェクトが
+// 当該ワークスペースに属する場合のみ許可する（別ワークスペースのプロジェクトメンバーによる
+// 越境書き込みを防ぐため projects.workspaceId も検証する）。無ければ 403。
 export async function requireProjectAccess(
   workspaceId: string,
   userId: string,
@@ -93,7 +95,12 @@ export async function requireProjectAccess(
   const [membership] = await db
     .select({ id: projectMembers.id })
     .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(and(
+      eq(projectMembers.projectId, projectId),
+      eq(projectMembers.userId, userId),
+      eq(projects.workspaceId, workspaceId),
+    ))
     .limit(1)
 
   if (!membership) {
@@ -102,5 +109,67 @@ export async function requireProjectAccess(
       { status: 403 },
     )
   }
+  return null
+}
+
+// チャンネルへのアクセス可否を検証する。
+// - 指定ワークスペースに属さないチャンネルは 403（チャンネルID総当たりによる越境アクセスを防ぐ）
+//   旧データのプロジェクトチャンネルは channels.workspace_id が null のことがあるため、
+//   project の workspace_id にフォールバックして判定する（migration 0033 と同じ coalesce）。
+// - プライベートチャンネルと DM は channel_members に参加しているユーザーのみ許可。
+//   DM は is_private=false でも参加者を channel_members で管理するため、type も判定に含める。
+// - プロジェクトチャンネルはゲストの場合、参加プロジェクト（project_members）のみ許可。
+//   非プライベートでもゲストが参加外プロジェクトのチャットを閲覧/投稿できないようにする。
+// アクセス可なら null、不可なら 403 の NextResponse を返す。
+export async function requireChannelAccess(
+  workspaceId: string,
+  userId: string,
+  channelId: string,
+): Promise<NextResponse | null> {
+  const [channel] = await db
+    .select({
+      isPrivate: channels.isPrivate,
+      type: channels.type,
+      projectId: channels.projectId,
+      effectiveWorkspaceId: sql<string | null>`coalesce(${channels.workspaceId}, ${projects.workspaceId})`,
+    })
+    .from(channels)
+    .leftJoin(projects, eq(channels.projectId, projects.id))
+    .where(eq(channels.id, channelId))
+    .limit(1)
+
+  if (!channel || channel.effectiveWorkspaceId !== workspaceId) {
+    return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+  }
+
+  const membersOnly = channel.isPrivate || channel.type === 'dm'
+  if (membersOnly) {
+    const [membership] = await db
+      .select({ userId: channelMembers.userId })
+      .from(channelMembers)
+      .where(and(eq(channelMembers.channelId, channelId), eq(channelMembers.userId, userId)))
+      .limit(1)
+
+    if (!membership) {
+      return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+    }
+  }
+
+  // プロジェクトチャンネルはゲストの場合、参加プロジェクトに限定する
+  if (channel.type === 'project' && channel.projectId) {
+    const role = await getWorkspaceRole(workspaceId, userId)
+    if (role === 'guest') {
+      const [pm] = await db
+        .select({ id: projectMembers.id })
+        .from(projectMembers)
+        .where(and(eq(projectMembers.projectId, channel.projectId), eq(projectMembers.userId, userId)))
+        .limit(1)
+
+      if (!pm) {
+        return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+      }
+    }
+  }
+
   return null
 }

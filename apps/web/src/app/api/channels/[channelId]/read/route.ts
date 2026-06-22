@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess } from '@/lib/permissions'
 
 type RouteContext = { params: Promise<{ channelId: string }> }
 
@@ -10,6 +11,9 @@ export async function POST(_req: Request, { params }: RouteContext) {
   const { channelId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
+
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')

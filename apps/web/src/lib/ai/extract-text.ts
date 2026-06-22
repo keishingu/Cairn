@@ -15,8 +15,10 @@ export function isIndexable(mimeType: string): boolean {
 
 export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
   if (mimeType === 'application/pdf') {
-    const pdfParse = await import('pdf-parse')
-    const parse = (pdfParse.default ?? pdfParse) as (buf: Buffer) => Promise<{ text: string }>
+    // エントリ (pdf-parse) ではなく本体実装を直接読み込む。
+    // index.js には module.parent が無い環境でテスト用PDFを読むデバッグコードがあり、
+    // サーバーレスのバンドルだと ENOENT (./test/data/05-versions-space.pdf) で落ちるため。
+    const { default: parse } = await import('pdf-parse/lib/pdf-parse.js')
     const result = await parse(buffer)
     return result.text
   }
