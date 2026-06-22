@@ -18,10 +18,12 @@ type Section = { title: string; rows: Row[] }
 
 function buildSections(): Section[] {
   const mac = isMac()
-  const isDesktop = typeof window !== 'undefined' && !!window.cairnDesktop
-  const nav = isDesktop ? (mac ? '⌘' : 'Ctrl') : (mac ? '⌘⌥' : 'Ctrl ⇧')
+  // アプリ層はキーハンドラで処理（U/0/B はネイティブメニューに無い）ため、
+  // Desktop でも ⌘⌥/Ctrl⇧ で統一して表示する。
+  const nav = mac ? '⌘⌥' : 'Ctrl ⇧'
   const g = mac ? '⌘' : 'Ctrl'
   const opt = mac ? '⌥' : 'Alt'
+  const isDesktop = typeof window !== 'undefined' && !!window.cairnDesktop
 
   const sections: Section[] = [
     {
@@ -36,9 +38,10 @@ function buildSections(): Section[] {
         { keys: `${nav} 7`, label: 'ギャラリー' },
         { keys: `${nav} 8`, label: 'AIアシスタント' },
         { keys: `${nav} 9`, label: 'メンバー' },
-        { keys: `${nav} 0`, label: 'プロフィール' },
+        { keys: `${nav} 0`, label: 'ユーザーメニュー' },
         { keys: `${nav} ,`, label: '設定' },
         { keys: `${nav} U`, label: '通知を開く' },
+        { keys: `${nav} B`, label: 'サイドバー折りたたみ' },
       ],
     },
     {

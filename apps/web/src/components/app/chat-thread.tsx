@@ -110,18 +110,6 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   const emojiOnly = isEmojiOnly(content)
   const isOwn = currentUserId === senderId
 
-  // cairn:edit-message イベントで編集モードを起動（最新の content をドラフトに使う）
-  React.useEffect(() => {
-    const handler = (e: Event) => {
-      if ((e as CustomEvent<string>).detail === messageId && isOwn) {
-        setEditDraft(content)
-        setEditMode(true)
-      }
-    }
-    window.addEventListener('cairn:edit-message', handler)
-    return () => window.removeEventListener('cairn:edit-message', handler)
-  }, [messageId, isOwn, content])
-
   const startEdit = () => {
     setEditDraft(content)
     setEditMode(true)
@@ -132,6 +120,16 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
       }
     })
   }
+
+  // cairn:edit-message イベントで編集モードを起動（startEdit はテキストエリアにフォーカスも当てる）
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit()
+    }
+    window.addEventListener('cairn:edit-message', handler)
+    return () => window.removeEventListener('cairn:edit-message', handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageId, isOwn, content])
 
   const submitEdit = () => {
     const trimmed = editDraft.trim()

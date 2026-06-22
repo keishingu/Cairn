@@ -45,7 +45,8 @@ const CAL_VIEW_BY_CODE: Record<string, CalView> = {
 // ⌥←→（期間）と ⌥↑↓（順送り）・⌥N（作成）は、対応する画面でのみ既定動作を奪う
 const SEQ_PAGES = new Set<PageId>(['chats', 'ai'])
 const CREATE_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban', 'tasks', 'chats', 'ai'])
-const FILTER_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban', 'tasks', 'files', 'members'])
+// ⌥F はフィルタ popover を持つ画面のみ（tasks/files/members はタブ式で popover を持たない）
+const FILTER_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban'])
 const SEARCH_FOCUS_PAGES = new Set<PageId>(['projects', 'files', 'members', 'chats'])
 const VIEW_TOGGLE_PAGES = new Set<PageId>(['projects'])
 const FILTER_TAB_PAGES = new Set<PageId>(['projects', 'tasks', 'files', 'members'])
@@ -57,6 +58,8 @@ declare global {
       onNavigate?: (cb: (action: string) => void) => (() => void) | void
       /** Ctrl+Tab / Ctrl+Shift+Tab の順送り（Desktop 特権） */
       onSeq?: (cb: (dir: 'prev' | 'next') => void) => (() => void) | void
+      /** ⌘B サイドバー折りたたみ（Desktop ネイティブメニュー） */
+      onToggleSidebar?: (cb: () => void) => (() => void) | void
     }
     /** ⌘⇧F で chats へ遷移した直後、横断検索を開くための受け渡しフラグ */
     __cairnOpenCrossSearch?: boolean
@@ -87,11 +90,11 @@ export interface UseAppShortcutsArgs {
   onHelp?: () => void
   /** ⌘⌥U 通知を開く */
   onNotifications?: () => void
-  /** ⌘⌥0 プロフィール（設定のアカウントセクション）を開く */
-  onProfile?: () => void
+  /** ⌘⌥B サイドバーの折りたたみをトグル */
+  onToggleSidebar?: () => void
 }
 
-export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, onHelp, onNotifications, onProfile }: UseAppShortcutsArgs) {
+export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, onHelp, onNotifications, onToggleSidebar }: UseAppShortcutsArgs) {
   // ハンドラは毎レンダー再生成されうるので ref で最新を参照（リスナーは1回だけ登録）
   const navRef = React.useRef(navigate)
   navRef.current = navigate
@@ -105,8 +108,8 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
   helpRef.current = onHelp
   const notifRef = React.useRef(onNotifications)
   notifRef.current = onNotifications
-  const profileRef = React.useRef(onProfile)
-  profileRef.current = onProfile
+  const sidebarRef = React.useRef(onToggleSidebar)
+  sidebarRef.current = onToggleSidebar
 
   React.useEffect(() => {
     const mac = isMac()
@@ -157,10 +160,10 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
         navRef.current(navPage)
         return
       }
-      // ⌘⌥+0: プロフィール（設定のアカウントセクションへ遷移）
+      // ⌘⌥+0: ユーザーメニュー（ステータス / ログアウト）をトグル
       if (appMod && e.code === 'Digit0') {
         e.preventDefault()
-        profileRef.current?.()
+        window.dispatchEvent(new CustomEvent('cairn:user-menu'))
         return
       }
       // ⌘⌥+, (Comma): 設定
@@ -173,6 +176,12 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
       if (appMod && e.code === 'KeyU') {
         e.preventDefault()
         notifRef.current?.()
+        return
+      }
+      // ⌘⌥B: サイドバー折りたたみトグル（Desktop は ⌘B をネイティブメニューで処理）
+      if (appMod && e.code === 'KeyB') {
+        e.preventDefault()
+        sidebarRef.current?.()
         return
       }
 
@@ -284,14 +293,9 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
         if (pageRef.current !== 'files') return
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:reindex-selected'))
-        return
       }
-      // ⌥M: すべて既読（通知パネルが開いている時のみ有効）
-      // カレンダーの ⌥M は CAL_VIEW_BY_CODE で先に処理されるため到達しない
-      if (e.code === 'KeyM') {
-        e.preventDefault()
-        window.dispatchEvent(new CustomEvent('cairn:mark-read'))
-      }
+      // 注: ⌥M は CAL_VIEW_BY_CODE（月表示）で先に消費されるため、
+      // 通知の全既読には割り当てない（重複・到達不能を避ける）
     }
 
     window.addEventListener('keydown', onKeyDown)
@@ -300,11 +304,13 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
     const offSeq = window.cairnDesktop?.onSeq?.((dir) => {
       window.dispatchEvent(new CustomEvent('cairn:seq', { detail: dir }))
     })
+    const offToggleSidebar = window.cairnDesktop?.onToggleSidebar?.(() => sidebarRef.current?.())
 
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       offNavigate?.()
       offSeq?.()
+      offToggleSidebar?.()
     }
   }, [])
 }

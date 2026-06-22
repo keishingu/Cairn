@@ -27,9 +27,10 @@ const APP_HINTS: Hint[] = [
   { keys: ['7'], label: 'ギャラリー' },
   { keys: ['8'], label: 'AIアシスタント' },
   { keys: ['9'], label: 'メンバー' },
-  { keys: ['0'], label: 'プロフィール' },
+  { keys: ['0'], label: 'ユーザーメニュー' },
   { keys: [','], label: '設定' },
   { keys: ['U'], label: '通知を開く' },
+  { keys: ['B'], label: 'サイドバー折りたたみ' },
 ]
 
 const CREATE_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban', 'tasks', 'chats', 'ai'])
@@ -108,7 +109,6 @@ export function ShortcutHints({ page }: { page: PageId }) {
 
   React.useEffect(() => {
     const mac = isMac()
-    const isDesktop = typeof window !== 'undefined' && !!window.cairnDesktop
     let timer: ReturnType<typeof setTimeout> | null = null
     let shown: Layer | null = null
 
@@ -117,13 +117,16 @@ export function ShortcutHints({ page }: { page: PageId }) {
       if (shown !== null) { shown = null; setLayer(null) }
     }
 
+    // 注: アプリ層は Desktop でも ⌘⌥/Ctrl⇧ のキーハンドラで処理される（U/0/B は
+    // ネイティブメニューに無い）。素の ⌘ で出すと届かないキーを宣伝するため、
+    // 全プラットフォームで ⌘⌥/Ctrl⇧ に統一する（素の ⌘1-9 はメニューバー側で見える）。
     const desiredLayer = (e: KeyboardEvent): Layer | null => {
       // context: 素の ⌥/Alt
       if (e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) return 'context'
       // app: Desktop=素の ⌘/Ctrl（ネイティブメニュー） / Web=Mac ⌘⌥・Win Ctrl⇧
       const appHeld = mac
-        ? (isDesktop ? (e.metaKey && !e.ctrlKey && !e.shiftKey) : (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey))
-        : (isDesktop ? (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) : (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey))
+        ? (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey)
+        : (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey)
       if (appHeld) return 'app'
       return null
     }
@@ -157,12 +160,11 @@ export function ShortcutHints({ page }: { page: PageId }) {
   if (!layer) return null
 
   const mac = isMac()
-  const isDesktop = typeof window !== 'undefined' && !!window.cairnDesktop
   const hints = layer === 'app' ? APP_HINTS : contextHints(page)
   if (hints.length === 0) return null
 
   const prefix = layer === 'app'
-    ? (isDesktop ? (mac ? '⌘' : 'Ctrl') : (mac ? '⌘⌥' : 'Ctrl ⇧'))
+    ? (mac ? '⌘⌥' : 'Ctrl ⇧')
     : (mac ? '⌥' : 'Alt')
   const title = layer === 'app' ? '移動' : '今の画面'
 

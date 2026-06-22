@@ -18,8 +18,9 @@ const NAV_ITEMS = [
   { label: 'ギャラリー',       accelerator: 'CmdOrCtrl+7', action: 'gallery' },
   { label: 'AIアシスタント',   accelerator: 'CmdOrCtrl+8', action: 'ai' },
   { label: 'メンバー',         accelerator: 'CmdOrCtrl+9', action: 'members' },
-  { label: 'プロフィール',     accelerator: 'CmdOrCtrl+0', action: 'settings' },
   { label: '設定',             accelerator: 'CmdOrCtrl+,', action: 'settings' },
+  // ⌘0 はズームリセット（resetZoom ロール）と衝突するため割り当てない。
+  // ユーザーメニュー(⌘⌥0)・サイドバー(⌘B) はキーハンドラ/専用メニューで処理する。
 ]
 
 function buildMenu() {
@@ -36,6 +37,11 @@ function buildMenu() {
       label: '表示',
       submenu: [
         ...navSubmenu,
+        {
+          label: 'サイドバーの折りたたみ',
+          accelerator: 'CmdOrCtrl+B',
+          click: (_item, win) => win?.webContents.send('cairn:toggle-sidebar'),
+        },
         { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },

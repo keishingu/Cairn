@@ -556,6 +556,13 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
 
+  // ⌘⌥0: ユーザーメニューをトグル
+  React.useEffect(() => {
+    const onToggle = () => setMenuOpen(o => !o)
+    window.addEventListener('cairn:user-menu', onToggle)
+    return () => window.removeEventListener('cairn:user-menu', onToggle)
+  }, [])
+
   const { data: me } = useQuery<CurrentUserDto>({
     queryKey: ['me'],
     queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),

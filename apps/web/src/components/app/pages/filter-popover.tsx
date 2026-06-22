@@ -41,6 +41,8 @@ export const FilterPopover = ({
 
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Escape') { onClose(); return }
+      if (totalItems === 0) return // 未ロード/0件のときは矢印・スペースを無視
       if (e.code === 'ArrowDown') {
         e.preventDefault()
         setFocusIndex(prev => Math.min(prev + 1, totalItems - 1))
@@ -49,15 +51,12 @@ export const FilterPopover = ({
         setFocusIndex(prev => Math.max(prev - 1, 0))
       } else if (e.code === 'Space') {
         e.preventDefault()
+        if (focusIndex < 0) return // 未選択
         if (focusIndex < allStatuses.length) {
-          const name = allStatuses[focusIndex]!.name
-          toggleStatus(name)
+          toggleStatus(allStatuses[focusIndex]!.name)
         } else {
-          const name = allMembers[focusIndex - allStatuses.length]!
-          toggleMember(name)
+          toggleMember(allMembers[focusIndex - allStatuses.length]!)
         }
-      } else if (e.code === 'Escape') {
-        onClose()
       }
     }
     window.addEventListener('keydown', onKeyDown)

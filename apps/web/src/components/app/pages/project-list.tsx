@@ -203,14 +203,6 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
     return result
   }, [tabFiltered, statusFilter, memberFilter, effectiveSearch, projects])
 
-  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useArrowNav(
-    filteredProjects.length,
-    React.useCallback((idx: number) => { openPanel?.(filteredProjects[idx]!) }, [filteredProjects, openPanel]),
-  )
-
-  // フィルタ変更で選択をリセット
-  React.useEffect(() => { setNavIdx(-1) }, [filter, statusFilter, memberFilter, effectiveSearch, setNavIdx])
-
   const sortedProjects = React.useMemo(() => {
     if (view !== 'table') return filteredProjects
     const { key, dir } = tableSort
@@ -230,6 +222,15 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       return dir === 'asc' ? cmp : -cmp
     })
   }, [filteredProjects, view, tableSort])
+
+  // 矢印選択・Enter は実際に描画している並び（sortedProjects）を対象にする
+  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useArrowNav(
+    sortedProjects.length,
+    React.useCallback((idx: number) => { openPanel?.(sortedProjects[idx]!) }, [sortedProjects, openPanel]),
+  )
+
+  // フィルタ変更で選択をリセット
+  React.useEffect(() => { setNavIdx(-1) }, [filter, statusFilter, memberFilter, effectiveSearch, setNavIdx])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
