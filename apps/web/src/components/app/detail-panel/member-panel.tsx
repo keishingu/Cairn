@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Icon, Avatar, StatusChip, ArchivedBadge, archivedTitleStyle, ARCHIVED_OPACITY } from '../primitives'
+import { Icon, Avatar, StatusChip, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
@@ -81,7 +81,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
           <Icon name="folder" size={16}/>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4, ...archivedTitleStyle(project.archived) }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
             {project.title}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -125,7 +125,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
         <div style={{
           fontSize: 12.5, fontWeight: 600, color: 'var(--text)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          marginBottom: 3, ...archivedTitleStyle(project.archived),
+          marginBottom: 3,
         }}>
           {project.title}
         </div>

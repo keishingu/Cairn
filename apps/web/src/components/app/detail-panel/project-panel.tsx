@@ -3,7 +3,7 @@
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Icon, AvatarStack, StatusChip, MountainPhoto, ArchivedBadge, archivedTitleStyle } from '../primitives'
+import { Icon, AvatarStack, StatusChip, MountainPhoto, ArchivedBadge } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { PlacePhoto } from '@/app/api/places/photos/route'
 import { ChatTab } from './tabs/chat-tab'
@@ -232,7 +232,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
           ) : (
             <>
               <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span style={archivedTitleStyle(project.archived)}>{project.title}</span>
+                {project.title}
                 {project.archived && <ArchivedBadge onDark/>}
               </span>
               <div ref={moreRef} style={{ position: 'relative' }}>
@@ -278,7 +278,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
         <div style={{ position: 'absolute', left: 16, right: 16, bottom: 12, color: '#fff' }}>
           {isMobile ? (
             <>
-              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 5, lineHeight: 1.2, textShadow: '0 1px 3px rgba(0,0,0,0.6)', ...archivedTitleStyle(project.archived) }}>
+              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 5, lineHeight: 1.2, textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
                 {project.title}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, opacity: 0.95 }}>

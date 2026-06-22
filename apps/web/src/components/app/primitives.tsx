@@ -201,20 +201,13 @@ export const StatusChip = ({ name, color, size = 11 }: StatusChipProps) => (
 
 // ─── Archived project styling ─────────────────────────────────────
 // アーカイブ済みプロジェクトはプロジェクト一覧・詳細パネル・メンバーの
-// プロジェクト履歴など複数箇所で表示される。打ち消し線・グレーアウト・
-// バッジの表現を 1 箇所に集約し、どこでも同じ見た目になるようにする。
+// プロジェクト履歴など複数箇所で表示される。グレーアウト＋バッジの表現を
+// 1 箇所に集約し、どこでも同じ見た目になるようにする。
+// （打ち消し線は「完了・取り消し」を連想させ、まだ有効なアーカイブの
+// 意味と合わないため使わない。）
 
 /** アーカイブ済み要素のコンテナをグレーアウトする減光率 */
 export const ARCHIVED_OPACITY = 0.6
-
-/**
- * アーカイブ済みプロジェクトのタイトルに付ける打ち消し線スタイル。
- * 打ち消し線の色は文字色を継承するため、明るい背景でもヒーロー画像上の
- * 白文字でもそのまま機能する。
- */
-export function archivedTitleStyle(archived: boolean): React.CSSProperties {
-  return archived ? { textDecoration: 'line-through' } : {}
-}
 
 interface ArchivedBadgeProps {
   size?: number
