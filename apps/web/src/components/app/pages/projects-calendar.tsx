@@ -1645,8 +1645,8 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   }
 
   // グローバルショートカット（⌥M/W 表示・⌥←→ 期間・⌥T 今日・⌥N 作成・⌥F フィルタ）
-  useCommand('calendar.month', () => setCalView('month'))
-  useCommand('calendar.week', () => setCalView('week'))
+  useCommand('calendar.month', () => setCalViewPersisted('month'))
+  useCommand('calendar.week', () => setCalViewPersisted('week'))
   useCommand('calendar.prevPeriod', () => goPrev())
   useCommand('calendar.nextPeriod', () => goNext())
   useCommand('calendar.today', () => goToday())

@@ -135,6 +135,7 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
       projectsView,
       setProjectsView,
       crossSearchNonce,
+      consumeCrossSearch: () => setCrossSearchNonce(0),
     }}>
       <div className="app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
         <NavigationProgress />

@@ -60,22 +60,20 @@ export function useCommandRegistry(): RegistryValue {
 /**
  * コマンドのハンドラを登録する。handler は毎レンダー最新を ref 経由で参照するため、
  * 依存配列は不要（クロージャの陳腐化なし）。enabled=false の間は登録しない。
- */
-/**
- * コマンドのハンドラを登録する。handler は毎レンダー最新を ref 経由で参照するため、
- * 依存配列は不要（クロージャの陳腐化なし）。enabled=false の間は登録しない。
- *
  * CommandProvider の外（単体テスト等でページを単独描画する場合）では何もしない。
+ *
+ * 依存は安定参照の register のみ。ctx 全体に依存すると register が version を増やす
+ * たびに ctx 識別子が変わり、登録→version増→再登録… の無限ループになる。
  */
 export function useCommand(id: string, handler: () => void, enabled = true): void {
-  const ctx = React.useContext(RegistryContext)
+  const register = React.useContext(RegistryContext)?.register
   const ref = React.useRef(handler)
   ref.current = handler
   React.useEffect(() => {
-    if (!enabled || !ctx) return
+    if (!enabled || !register) return
     const stable = () => ref.current()
-    return ctx.register(id, stable)
-  }, [id, enabled, ctx])
+    return register(id, stable)
+  }, [id, enabled, register])
 }
 
 /**
@@ -83,13 +81,13 @@ export function useCommand(id: string, handler: () => void, enabled = true): voi
  * handlers のキー集合が変わらない限り再登録しない。値（ハンドラ）は ref で常に最新。
  */
 export function useCommands(handlers: Record<string, () => void>): void {
-  const ctx = React.useContext(RegistryContext)
+  const register = React.useContext(RegistryContext)?.register
   const ref = React.useRef(handlers)
   ref.current = handlers
   const ids = Object.keys(handlers).sort().join(',')
   React.useEffect(() => {
-    if (!ctx) return
-    const offs = Object.keys(ref.current).map(id => ctx.register(id, () => ref.current[id]?.()))
+    if (!register) return
+    const offs = Object.keys(ref.current).map(id => register(id, () => ref.current[id]?.()))
     return () => offs.forEach(off => off())
-  }, [ids, ctx])
+  }, [ids, register])
 }

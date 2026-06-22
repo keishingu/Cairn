@@ -247,7 +247,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     return segments[1] === 'chats' && segments[2] ? segments[2] : null
   }, [pathname])
 
-  const { openMember, crossSearchNonce } = useAppShell()
+  const { openMember, crossSearchNonce, consumeCrossSearch } = useAppShell()
 
   const [channelId, setChannelId] = React.useState<string | null>(urlChannelId)
   const [showCreateChannel, setShowCreateChannel] = React.useState(false)
@@ -307,10 +307,14 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   useCommand('ctx.searchFocus', () => { if (!isMobile) setSearchOpen(true) })
   useCommand('chats.detail', () => { if (!isMobile) setDetailOpen(o => !o) })
 
-  // ⌘⇧F: 横断検索（シェルが chats へ遷移し crossSearchNonce を増やす）。マウント済みでも開く
+  // ⌘⇧F: 横断検索（シェルが chats へ遷移し crossSearchNonce を増やす）。マウント済みでも開く。
+  // 開いたら consume してシグナルを 0 に戻し、再マウント時の誤再オープンを防ぐ
   React.useEffect(() => {
-    if (crossSearchNonce > 0 && !isMobile) setGlobalSearchOpen(true)
-  }, [crossSearchNonce, isMobile])
+    if (crossSearchNonce > 0 && !isMobile) {
+      setGlobalSearchOpen(true)
+      consumeCrossSearch()
+    }
+  }, [crossSearchNonce, isMobile, consumeCrossSearch])
 
   // ⌥↑↓（順送り）: チャンネル一覧（プロジェクト → 全体 → DM の表示順）を前/次へ
   const seekChannel = (dir: 'prev' | 'next') => {
