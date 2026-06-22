@@ -207,7 +207,7 @@ export const StatusChip = ({ name, color, size = 11 }: StatusChipProps) => (
 // 意味と合わないため使わない。）
 
 /** アーカイブ済み要素のコンテナをグレーアウトする減光率 */
-export const ARCHIVED_OPACITY = 0.6
+export const ARCHIVED_OPACITY = 0.4
 
 interface ArchivedBadgeProps {
   size?: number
