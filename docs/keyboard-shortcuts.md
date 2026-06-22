@@ -150,22 +150,29 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 
 ---
 
-## 5. 実装アーキテクチャ（メモ）
+## 5. 実装アーキテクチャ（コマンドレジストリ）
 
-「**1 つの `dispatchShortcut(action)` に、Web のキーハンドラと Desktop のネイティブメニューの両入口を流し込む**」構成。
+ショートカットは**単一のコマンドカタログ＋実行時レジストリ**に集約している。キー処理・
+コマンドパレット・ヘルプ・ヒント表示はすべてこのカタログから派生するため、定義の二重管理・
+死にショートカット・表記ズレが構造的に起きない。
 
 ```
-[Desktop] ネイティブ Menu(⌘1..) ─webContents.send─▶ preload ─window event─┐
-                                                                          ├─▶ dispatchShortcut(action)
-[Web]     keydown(⌘⇧数字 / ⌥英字 / ⌥↑↓) ───────────────────────────────────┘        │
-                                                                  navigate() / setProjectsView() / setCalView()
+catalog（lib/commands.ts）= id / title / layer / key / when の単一定義
+        │
+        ├─ use-command-dispatcher  keydown → matchCommand(catalog) → registry.invoke(id)
+        ├─ command-palette / shortcut-help / shortcut-hints  ← catalog から表示を生成
+        │
+[各ページ] useCommand(id, handler)  → registry に実体を登録（未登録なら no-op＋dev警告）
+[Desktop]  preload(onNavigate/onSeq/onToggleSidebar) → registry.invoke(id)
 ```
 
-- **Desktop（`apps/desktop/src/main.js`）**: `globalShortcut` は使わず（非フォーカス時も奪うため）、`Menu` + `MenuItem` の `accelerator: 'CmdOrCtrl+1'` を使う。`⌘W`/`⌘M` 等 OS 既定と被るキーもメニュー登録で上書き可。リモート URL を読む構成なので `preload.js` + `contextBridge` で `window.cairnDesktop.onNavigate(cb)` を生やし、`webContents.send('cairn:navigate', action)` → preload → `window` の CustomEvent で Web に届ける。`contextIsolation` は維持。
-- **Web（`apps/web`）**: `lib/shortcuts.ts`（action 定義 + `dispatchShortcut`）と `hooks/use-app-shortcuts.ts`（keydown 登録）を新設し `PCShell` でマウント。`navigate()` / `setProjectsView()` を流用。
-- **散在ハンドラの集約**: 現状 gallery（矢印・Esc）/ chat（Esc・Enter）/ ai（Enter）に個別の keydown があるので、共通フックに巻き取って `Esc`=閉じる / `Enter`=開く・送信 / `⌘Enter`=確定 を全画面で統一する。
-- **カレンダー月/週の連携**: `calView` は現在 `projects-calendar.tsx` のローカル state。`STORAGE_KEYS.calendar_view` を追加して localStorage 永続化 + CustomEvent で通知し、ショートカットから操作可能にする（既存の localStorage パターンと整合）。
-- **権限**: guest/admin で出せないアクション（招待等）はショートカットも同様に無効化。サーバ側チェックは常に必須（UI ガードは補助）。
+- **カタログ（`apps/web/src/lib/commands.ts`）**: 全コマンドを `{ id, title, layer, key, when, hintKeys }` で定義。`layer` が修飾キー（app=⌘⌥/Ctrl⇧, global=⌘/Ctrl, context=⌥/Alt）を、`when(page)` が有効ページを決める。同じキーの多義（`⌥T`=Projects テーブル / Calendar 今日）は `when` 違いの別コマンドで表現。
+- **キー解決（`lib/command-keys.ts`）**: OS 別の修飾判定・表示文字列・入力欄ガードを集約。`matchCommand(e, page, mac)` が keydown を1コマンドに解決する。
+- **レジストリ（`lib/command-registry.tsx`）**: `CommandProvider` が `Map<id, handler>` を保持。`useCommand(id, handler)`（ハンドラは ref で常に最新）/ `useCommands(map)` で登録。`invoke(id)` は未登録なら no-op（dev 警告）→ 死にショートカットが構造的に消える。
+- **ディスパッチャ（`hooks/use-command-dispatcher.ts`）**: `PCShell` でマウント。keydown とネイティブメニュー（preload ブリッジ）の両入口を `invoke(id)` に流す。Esc だけは「閉じたら preventDefault」の特殊挙動のためコマンド化せず `onEscape` で扱う。
+- **Desktop（`apps/desktop/src/main.js` + `preload.js`）**: `Menu` + `accelerator: 'CmdOrCtrl+1'`（`globalShortcut` は非フォーカス時も奪うため不使用）。preload が `webContents.send` を受けて `onNavigate/onSeq/onToggleSidebar` を公開、Web のディスパッチャが `invoke` する。
+- **リスト選択（`hooks/use-list-selection.ts`）**: 素の `↑/↓` で行選択。可視行数（折りたたみ除外）を渡し、`data-list-index` を付けた行を `scrollIntoView` で追従する。
+- **権限**: guest/admin で出せないアクション（招待等）はハンドラ登録側でガードする。サーバ側チェックは常に必須（UI ガードは補助）。
 
 ---
 
