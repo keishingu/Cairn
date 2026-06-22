@@ -6,7 +6,8 @@ import { Icon, Avatar, Fab } from '../primitives'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { CreateTaskModal } from './create-task-modal'
-import { useArrowNav } from '@/hooks/use-arrow-nav'
+import { useListSelection } from '@/hooks/use-list-selection'
+import { useCommand } from '@/lib/command-registry'
 
 type FilterKey = 'all' | 'todo' | 'in_progress' | 'done'
 
@@ -141,16 +142,16 @@ interface SectionProps {
   tasks: TaskDto[]
   onToggle: (id: string, current: TaskDto['status']) => void
   togglingId: string | null
-  defaultOpen?: boolean
+  open: boolean
+  onToggleOpen: () => void
   selectedTaskId?: string | null
 }
 
-const Section = ({ label, count, tasks, onToggle, togglingId, defaultOpen = true, selectedTaskId }: SectionProps) => {
-  const [open, setOpen] = React.useState(defaultOpen)
+const Section = ({ label, count, tasks, onToggle, togglingId, open, onToggleOpen, selectedTaskId }: SectionProps) => {
   return (
     <div>
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={onToggleOpen}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 8,
           padding: '10px 16px', border: 'none', background: 'var(--card-2)',
@@ -182,13 +183,11 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [filter, setFilter] = React.useState<FilterKey>('all')
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
   const [showAddModal, setShowAddModal] = React.useState(false)
+  // セクション（プロジェクト別）の開閉。明示トグルが無ければ先頭3つを開く
+  const [sectionOverride, setSectionOverride] = React.useState<Record<string, boolean>>({})
 
   // ⌥N: 新規タスク
-  React.useEffect(() => {
-    const onCreate = () => setShowAddModal(true)
-    window.addEventListener('cairn:create', onCreate)
-    return () => window.removeEventListener('cairn:create', onCreate)
-  }, [])
+  useCommand('ctx.create', () => setShowAddModal(true))
 
   const { data: tasks = [], isLoading } = useQuery<TaskDto[]>({
     queryKey: ['tasks'],
@@ -233,11 +232,6 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     return tasks.filter(t => t.status === filter)
   }, [tasks, filter])
 
-  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useArrowNav(filtered.length)
-
-  // フィルタ変更で選択をリセット
-  React.useEffect(() => { setNavIdx(-1) }, [filter, setNavIdx])
-
   const counts = React.useMemo(() => ({
     all: tasks.length,
     todo: tasks.filter(t => t.status === 'todo').length,
@@ -262,6 +256,21 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     }))
   }, [filtered])
 
+  // セクションの開閉（明示トグルが無ければ先頭3つを開く）と、実際に見えているタスク列
+  const isSectionOpen = React.useCallback(
+    (key: string, idx: number) => sectionOverride[key] ?? idx < 3,
+    [sectionOverride],
+  )
+  const visibleTasks = React.useMemo(
+    () => grouped.flatMap((g, idx) => (isSectionOpen(g.key, idx) ? g.tasks : [])),
+    [grouped, isSectionOpen],
+  )
+
+  // 矢印選択は「見えている行」だけを対象にする（折りたたみ内の行は選べない）
+  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useListSelection({ count: visibleTasks.length })
+  React.useEffect(() => { setNavIdx(-1) }, [filter, setNavIdx])
+  const selectedTaskId = navIdx >= 0 ? (visibleTasks[navIdx]?.id ?? null) : null
+
   const filters: { id: FilterKey; label: string }[] = [
     { id: 'all',         label: `すべて (${counts.all})` },
     { id: 'todo',        label: `未着手 (${counts.todo})` },
@@ -269,30 +278,21 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     { id: 'done',        label: `完了 (${counts.done})` },
   ]
 
-  // ⌥[/⌥]: フィルタタブ切替
-  React.useEffect(() => {
-    const onTab = (e: Event) => {
-      const dir = (e as CustomEvent<'prev' | 'next'>).detail
-      const idx = filters.findIndex(f => f.id === filter)
-      const next = dir === 'next'
-        ? (idx + 1) % filters.length
-        : (idx - 1 + filters.length) % filters.length
-      setFilter(filters[next]!.id)
-    }
-    window.addEventListener('cairn:filter-tab', onTab)
-    return () => window.removeEventListener('cairn:filter-tab', onTab)
-  }, [filter, filters])
+  // ⌥[ / ⌥]: フィルタタブ切替
+  const cycleFilterTab = (dir: 'prev' | 'next') => {
+    const idx = filters.findIndex(f => f.id === filter)
+    const next = dir === 'next' ? (idx + 1) % filters.length : (idx - 1 + filters.length) % filters.length
+    setFilter(filters[next]!.id)
+  }
+  useCommand('ctx.filterTabPrev', () => cycleFilterTab('prev'))
+  useCommand('ctx.filterTabNext', () => cycleFilterTab('next'))
 
   // ⌥Enter: 選択中（↑↓）のタスクをトグル。トグル中（PATCH 未完了）は無視して多重発火を防ぐ
-  React.useEffect(() => {
-    const onToggle = () => {
-      if (togglingId) return
-      const task = navIdx >= 0 ? filtered[navIdx] : undefined
-      if (task) handleToggle(task.id, task.status)
-    }
-    window.addEventListener('cairn:toggle-task', onToggle)
-    return () => window.removeEventListener('cairn:toggle-task', onToggle)
-  }, [filtered, navIdx, handleToggle, togglingId])
+  useCommand('tasks.toggle', () => {
+    if (togglingId) return
+    const task = navIdx >= 0 ? visibleTasks[navIdx] : undefined
+    if (task) handleToggle(task.id, task.status)
+  })
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
@@ -359,8 +359,9 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
                 tasks={g.tasks}
                 onToggle={handleToggle}
                 togglingId={togglingId}
-                defaultOpen={idx < 3}
-                selectedTaskId={navIdx >= 0 && navIdx < filtered.length ? (filtered[navIdx]?.id ?? null) : null}
+                open={isSectionOpen(g.key, idx)}
+                onToggleOpen={() => setSectionOverride(prev => ({ ...prev, [g.key]: !isSectionOpen(g.key, idx) }))}
+                selectedTaskId={selectedTaskId}
               />
             ))}
           </div>

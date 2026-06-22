@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useCommand } from '@/lib/command-registry'
 
 const PHOTO_IDS = [
   '1464822759023-fed622ff2c3b', '1483728642387-6c3bdd6c93e5', '1454391304352-2bf4678b1a7a',
@@ -295,12 +296,8 @@ export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
   placeholder?: string
 }) => {
   const inputRef = React.useRef<HTMLInputElement>(null)
-  // ⌥S: 検索フォーカス（cairn:search-focus を購読）
-  React.useEffect(() => {
-    const onFocus = () => inputRef.current?.focus()
-    window.addEventListener('cairn:search-focus', onFocus)
-    return () => window.removeEventListener('cairn:search-focus', onFocus)
-  }, [])
+  // ⌥S: 検索フォーカス
+  useCommand('ctx.searchFocus', () => inputRef.current?.focus())
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: `1px solid ${value ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8, padding: '0 10px', height: 32, width: 260, transition: 'border-color .12s' }}>
       <Icon name="search" size={14} color={value ? 'var(--accent)' : 'var(--text-3)'}/>

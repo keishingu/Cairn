@@ -30,6 +30,7 @@ import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import { stripMentionsToText } from '@/lib/chat/mentions'
+import { useCommand } from '@/lib/command-registry'
 
 // ─── Message search ───────────────────────────────────────────────
 
@@ -246,7 +247,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     return segments[1] === 'chats' && segments[2] ? segments[2] : null
   }, [pathname])
 
-  const { openMember } = useAppShell()
+  const { openMember, crossSearchNonce } = useAppShell()
 
   const [channelId, setChannelId] = React.useState<string | null>(urlChannelId)
   const [showCreateChannel, setShowCreateChannel] = React.useState(false)
@@ -301,61 +302,33 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setTargetMessageId(messageId)
   }
 
-  // ⌥N: 新規チャンネル / ⌘⇧F: 横断検索
-  React.useEffect(() => {
-    const onCreate = () => setShowCreateChannel(true)
-    const onCross = () => { window.__cairnOpenCrossSearch = false; setGlobalSearchOpen(true) }
-    window.addEventListener('cairn:create', onCreate)
-    window.addEventListener('cairn:cross-search', onCross)
-    // ⌘⇧F で他画面から chats へ遷移してきた直後はフラグで開く
-    if (window.__cairnOpenCrossSearch) {
-      window.__cairnOpenCrossSearch = false
-      setGlobalSearchOpen(true)
-    }
-    return () => {
-      window.removeEventListener('cairn:create', onCreate)
-      window.removeEventListener('cairn:cross-search', onCross)
-    }
-  }, [])
+  // ⌥N 新規チャンネル / ⌥S 検索 / ⌥D 詳細パネル（PC のみ）
+  useCommand('ctx.create', () => setShowCreateChannel(true))
+  useCommand('ctx.searchFocus', () => { if (!isMobile) setSearchOpen(true) })
+  useCommand('chats.detail', () => { if (!isMobile) setDetailOpen(o => !o) })
 
-  // ⌥S: 検索フォーカス（チャンネル検索 or 横断検索を開く）
+  // ⌘⇧F: 横断検索（シェルが chats へ遷移し crossSearchNonce を増やす）。マウント済みでも開く
   React.useEffect(() => {
-    const onSearch = () => {
-      if (!isMobile) setSearchOpen(true)
-    }
-    window.addEventListener('cairn:search-focus', onSearch)
-    return () => window.removeEventListener('cairn:search-focus', onSearch)
-  }, [isMobile])
-
-  // ⌥D: 詳細パネルのトグル（PC のみ）
-  React.useEffect(() => {
-    if (isMobile) return
-    const onDetail = () => setDetailOpen(o => !o)
-    window.addEventListener('cairn:detail', onDetail)
-    return () => window.removeEventListener('cairn:detail', onDetail)
-  }, [isMobile])
+    if (crossSearchNonce > 0 && !isMobile) setGlobalSearchOpen(true)
+  }, [crossSearchNonce, isMobile])
 
   // ⌥↑↓（順送り）: チャンネル一覧（プロジェクト → 全体 → DM の表示順）を前/次へ
-  React.useEffect(() => {
+  const seekChannel = (dir: 'prev' | 'next') => {
     const orderedIds = [
       ...projectChannels.map(c => c.channelId),
       ...workspaceChannels.map(c => c.id),
       ...dms.map(d => d.id),
     ]
     if (orderedIds.length === 0) return
-    const onSeq = (e: Event) => {
-      const dir = (e as CustomEvent<'prev' | 'next'>).detail
-      const idx = channelId ? orderedIds.indexOf(channelId) : -1
-      const nextIdx = idx === -1
-        ? (dir === 'next' ? 0 : orderedIds.length - 1)
-        : Math.min(Math.max(idx + (dir === 'next' ? 1 : -1), 0), orderedIds.length - 1)
-      const nextId = orderedIds[nextIdx]
-      if (nextId && nextId !== channelId) selectChannel(nextId)
-    }
-    window.addEventListener('cairn:seq', onSeq)
-    return () => window.removeEventListener('cairn:seq', onSeq)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelId, projectChannels, workspaceChannels, dms])
+    const idx = channelId ? orderedIds.indexOf(channelId) : -1
+    const nextIdx = idx === -1
+      ? (dir === 'next' ? 0 : orderedIds.length - 1)
+      : Math.min(Math.max(idx + (dir === 'next' ? 1 : -1), 0), orderedIds.length - 1)
+    const nextId = orderedIds[nextIdx]
+    if (nextId && nextId !== channelId) selectChannel(nextId)
+  }
+  useCommand('seq.prev', () => seekChannel('prev'))
+  useCommand('seq.next', () => seekChannel('next'))
 
   const jumpToChannelMessage = (chanId: string, messageId: string) => {
     _pendingJump = { channelId: chanId, messageId }

@@ -15,7 +15,8 @@ import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
-import { useArrowNav } from '@/hooks/use-arrow-nav'
+import { useListSelection } from '@/hooks/use-list-selection'
+import { useCommand } from '@/lib/command-registry'
 
 // ─── Main component ───────────────────────────────────────────────
 interface ProjectListViewProps {
@@ -108,38 +109,11 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false)
   const searchInputRef = React.useRef<HTMLInputElement>(null)
 
-  // ⌥N: 新規プロジェクト（ボタンと同じく管理者以上のみ）
-  React.useEffect(() => {
-    const onCreate = () => { if (canCreateProject) setShowCreate(true) }
-    window.addEventListener('cairn:create', onCreate)
-    return () => window.removeEventListener('cairn:create', onCreate)
-  }, [canCreateProject])
-
-  // ⌥F: フィルタトグル
-  React.useEffect(() => {
-    const onFilter = () => setFilterOpen(o => !o)
-    window.addEventListener('cairn:filter', onFilter)
-    return () => window.removeEventListener('cairn:filter', onFilter)
-  }, [])
-
-  // ⌥S: 検索フォーカス
-  React.useEffect(() => {
-    const onSearch = () => {
-      if (!isMobile) { searchInputRef.current?.focus(); return }
-      // モバイルは検索欄を開いてからフォーカス（描画後に当てる）
-      setMobileSearchOpen(true)
-      setTimeout(() => searchInputRef.current?.focus(), 50)
-    }
-    window.addEventListener('cairn:search-focus', onSearch)
-    return () => window.removeEventListener('cairn:search-focus', onSearch)
-  }, [isMobile])
-
-  // ⌥G/⌥T: ビュー切替
-  React.useEffect(() => {
-    const onView = (e: Event) => setViewPersisted((e as CustomEvent<'grid' | 'table'>).detail)
-    window.addEventListener('cairn:view', onView)
-    return () => window.removeEventListener('cairn:view', onView)
-  }, [setViewPersisted])
+  // ⌥N 新規 / ⌥F フィルタ / ⌥G ⌥T ビュー切替（検索フォーカスは TopBarSearch が担当）
+  useCommand('ctx.create', () => { if (canCreateProject) setShowCreate(true) })
+  useCommand('ctx.filter', () => setFilterOpen(o => !o))
+  useCommand('projects.viewGrid', () => setViewPersisted('grid'))
+  useCommand('projects.viewTable', () => setViewPersisted('table'))
 
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
@@ -162,19 +136,16 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
     { id: 'archived', label: 'アーカイブ', n: counts.archived },
   ]
 
-  // ⌥[/⌥]: フィルタタブ切替
-  React.useEffect(() => {
-    const onTab = (e: Event) => {
-      const dir = (e as CustomEvent<'prev' | 'next'>).detail
-      const idx = filterTabs.findIndex(f => f.id === filter)
-      const next = dir === 'next'
-        ? (idx + 1) % filterTabs.length
-        : (idx - 1 + filterTabs.length) % filterTabs.length
-      setFilter(filterTabs[next]!.id)
-    }
-    window.addEventListener('cairn:filter-tab', onTab)
-    return () => window.removeEventListener('cairn:filter-tab', onTab)
-  }, [filter, filterTabs, setFilter])
+  // ⌥[ / ⌥]: フィルタタブ切替
+  const cycleFilterTab = (dir: 'prev' | 'next') => {
+    const idx = filterTabs.findIndex(f => f.id === filter)
+    const next = dir === 'next'
+      ? (idx + 1) % filterTabs.length
+      : (idx - 1 + filterTabs.length) % filterTabs.length
+    setFilter(filterTabs[next]!.id)
+  }
+  useCommand('ctx.filterTabPrev', () => cycleFilterTab('prev'))
+  useCommand('ctx.filterTabNext', () => cycleFilterTab('next'))
 
   const tabFiltered = React.useMemo(() => {
     switch (filter) {
@@ -224,10 +195,10 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   }, [filteredProjects, view, tableSort])
 
   // 矢印選択・Enter は実際に描画している並び（sortedProjects）を対象にする
-  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useArrowNav(
-    sortedProjects.length,
-    React.useCallback((idx: number) => { openPanel?.(sortedProjects[idx]!) }, [sortedProjects, openPanel]),
-  )
+  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useListSelection({
+    count: sortedProjects.length,
+    onEnter: React.useCallback((idx: number) => { openPanel?.(sortedProjects[idx]!) }, [sortedProjects, openPanel]),
+  })
 
   // フィルタ変更で選択をリセット
   React.useEffect(() => { setNavIdx(-1) }, [filter, statusFilter, memberFilter, effectiveSearch, setNavIdx])
