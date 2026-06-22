@@ -12,7 +12,8 @@ import type { PageId } from '@/components/app/sidebar'
  *
  *  - アプリ層（数字ナビ・Web）: Mac=⌘⌥+数字 / Win・Linux=Ctrl⇧+数字
  *    （⌘+数字 はタブ切替に取られる。Mac は ⌘⇧3/4 がスクショ予約のため ⌘⌥ を使う）
- *  - グローバル操作: ⌘K パレット / ⌘⇧F 横断検索 / ⌘⇧U 通知 / ? ヘルプ（英字は ⌘⇧ で Mac/Win 共通）
+ *  - グローバル操作: ⌘K パレット / ⌘⇧F 横断検索 / ? ヘルプ（英字は ⌘⇧ で Mac/Win 共通）
+ *  - アプリ層（数字ナビ・通知・設定）: Mac=⌘⌥+数字/U/, / Win・Linux=Ctrl⇧+数字/U/,
  *  - コンテキスト層（⌥/Alt）: ⌥M/W カレンダー表示、⌥←→ 期間送り（時間=水平）、
  *    ⌥↑↓ 順送り（リスト=垂直）、⌥N 新規作成
  *  - Desktop（Electron）: ネイティブメニュー ⌘+数字、および Ctrl+Tab/Ctrl+Shift+Tab を
@@ -26,6 +27,11 @@ const NAV_BY_DIGIT: Record<string, PageId> = {
   Digit2: 'calendar',
   Digit3: 'kanban',
   Digit4: 'tasks',
+  Digit5: 'chats',
+  Digit6: 'files',
+  Digit7: 'gallery',
+  Digit8: 'ai',
+  Digit9: 'members',
 }
 
 type CalView = 'month' | 'week' | 'timeline'
@@ -39,6 +45,11 @@ const CAL_VIEW_BY_CODE: Record<string, CalView> = {
 // ⌥←→（期間）と ⌥↑↓（順送り）・⌥N（作成）は、対応する画面でのみ既定動作を奪う
 const SEQ_PAGES = new Set<PageId>(['chats', 'ai'])
 const CREATE_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban', 'tasks', 'chats', 'ai'])
+// ⌥F はフィルタ popover を持つ画面のみ（tasks/files/members はタブ式で popover を持たない）
+const FILTER_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban'])
+const SEARCH_FOCUS_PAGES = new Set<PageId>(['projects', 'files', 'members', 'chats'])
+const VIEW_TOGGLE_PAGES = new Set<PageId>(['projects'])
+const FILTER_TAB_PAGES = new Set<PageId>(['projects', 'tasks', 'files', 'members'])
 
 declare global {
   interface Window {
@@ -47,6 +58,8 @@ declare global {
       onNavigate?: (cb: (action: string) => void) => (() => void) | void
       /** Ctrl+Tab / Ctrl+Shift+Tab の順送り（Desktop 特権） */
       onSeq?: (cb: (dir: 'prev' | 'next') => void) => (() => void) | void
+      /** ⌘B サイドバー折りたたみ（Desktop ネイティブメニュー） */
+      onToggleSidebar?: (cb: () => void) => (() => void) | void
     }
     /** ⌘⇧F で chats へ遷移した直後、横断検索を開くための受け渡しフラグ */
     __cairnOpenCrossSearch?: boolean
@@ -75,11 +88,13 @@ export interface UseAppShortcutsArgs {
   onCommandPalette?: () => void
   /** ? ショートカット一覧を開く */
   onHelp?: () => void
-  /** ⌘⇧U 通知を開く */
+  /** ⌘⌥U 通知を開く */
   onNotifications?: () => void
+  /** ⌘⌥B サイドバーの折りたたみをトグル */
+  onToggleSidebar?: () => void
 }
 
-export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, onHelp, onNotifications }: UseAppShortcutsArgs) {
+export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, onHelp, onNotifications, onToggleSidebar }: UseAppShortcutsArgs) {
   // ハンドラは毎レンダー再生成されうるので ref で最新を参照（リスナーは1回だけ登録）
   const navRef = React.useRef(navigate)
   navRef.current = navigate
@@ -93,6 +108,8 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
   helpRef.current = onHelp
   const notifRef = React.useRef(onNotifications)
   notifRef.current = onNotifications
+  const sidebarRef = React.useRef(onToggleSidebar)
+  sidebarRef.current = onToggleSidebar
 
   React.useEffect(() => {
     const mac = isMac()
@@ -131,12 +148,6 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
           window.dispatchEvent(new CustomEvent('cairn:cross-search'))
           return
         }
-        // ⌘⇧U: 通知
-        if (e.shiftKey && e.code === 'KeyU') {
-          e.preventDefault()
-          notifRef.current?.()
-          return
-        }
       }
 
       // アプリ層: 数字ナビ。Mac は ⌘⌥（⌘⇧3/4 がスクショ予約のため）、Win/Linux は Ctrl⇧
@@ -147,6 +158,36 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
       if (appMod && navPage) {
         e.preventDefault()
         navRef.current(navPage)
+        return
+      }
+      // ⌘⌥+0: ユーザーメニュー（ステータス / ログアウト）をトグル
+      if (appMod && e.code === 'Digit0') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:user-menu'))
+        return
+      }
+      // ⌘⌥+, (Comma): 設定
+      if (appMod && e.code === 'Comma') {
+        e.preventDefault()
+        navRef.current('settings')
+        return
+      }
+      // ⌘⌥U: 通知
+      if (appMod && e.code === 'KeyU') {
+        e.preventDefault()
+        notifRef.current?.()
+        return
+      }
+      // ⌘⌥B: サイドバー折りたたみトグル（Desktop は ⌘B をネイティブメニューで処理）
+      if (appMod && e.code === 'KeyB') {
+        e.preventDefault()
+        sidebarRef.current?.()
+        return
+      }
+      // ⌘⌥; : ワークスペース切替ポップオーバーをトグル（記号は US/JIS で同位置の Semicolon）
+      if (appMod && e.code === 'Semicolon') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:workspace-menu'))
         return
       }
 
@@ -188,7 +229,80 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
         if (e.repeat || !CREATE_PAGES.has(pageRef.current)) return
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:create'))
+        return
       }
+      // ⌥F: フィルタ popover をトグル
+      if (e.code === 'KeyF') {
+        if (!FILTER_PAGES.has(pageRef.current)) return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:filter'))
+        return
+      }
+      // ⌥S: 検索入力にフォーカス
+      if (e.code === 'KeyS') {
+        if (!SEARCH_FOCUS_PAGES.has(pageRef.current)) return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:search-focus'))
+        return
+      }
+      // ⌥G: グリッド表示（Projects のみ）
+      if (e.code === 'KeyG') {
+        if (!VIEW_TOGGLE_PAGES.has(pageRef.current)) return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:view', { detail: 'grid' }))
+        return
+      }
+      // ⌥T: テーブル表示（Projects）/ 今日へジャンプ（Calendar）
+      if (e.code === 'KeyT') {
+        if (pageRef.current === 'projects') {
+          e.preventDefault()
+          window.dispatchEvent(new CustomEvent('cairn:view', { detail: 'table' }))
+        } else if (pageRef.current === 'calendar') {
+          e.preventDefault()
+          window.dispatchEvent(new CustomEvent('cairn:today'))
+        }
+        return
+      }
+      // ⌥D: 詳細パネルをトグル（Chats のみ）
+      if (e.code === 'KeyD') {
+        if (pageRef.current !== 'chats') return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:detail'))
+        return
+      }
+      // ⌥[ / ⌥]: フィルタタブを前/次へ切替
+      // JIS: @(BracketLeft)=前, [(BracketRight)=次, ](Backslash)=次
+      // US: [(BracketLeft)=前, ](BracketRight)=次
+      if (e.code === 'BracketLeft' || e.code === 'BracketRight' || e.code === 'Backslash' || e.code === 'IntlYen') {
+        if (!FILTER_TAB_PAGES.has(pageRef.current)) return
+        e.preventDefault()
+        const isPrev = e.code === 'BracketLeft'
+        window.dispatchEvent(new CustomEvent('cairn:filter-tab', { detail: isPrev ? 'prev' : 'next' }))
+        return
+      }
+      // ⌥Enter: タスクの完了/未完了をトグル（Tasks のみ）。
+      // 長押しのオートリピートで複数タスクを誤トグルしないよう e.repeat を弾く
+      if (e.code === 'Enter') {
+        if (pageRef.current !== 'tasks' || e.repeat) return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:toggle-task'))
+        return
+      }
+      // ⌥Delete: ファイル削除（Files のみ）
+      if (e.code === 'Backspace' || e.code === 'Delete') {
+        if (pageRef.current !== 'files') return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:delete-selected'))
+        return
+      }
+      // ⌥R: ファイル再インデックス（Files のみ）
+      if (e.code === 'KeyR') {
+        if (pageRef.current !== 'files') return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:reindex-selected'))
+      }
+      // 注: ⌥M は CAL_VIEW_BY_CODE（月表示）で先に消費されるため、
+      // 通知の全既読には割り当てない（重複・到達不能を避ける）
     }
 
     window.addEventListener('keydown', onKeyDown)
@@ -197,11 +311,13 @@ export function useAppShortcuts({ navigate, page, onEscape, onCommandPalette, on
     const offSeq = window.cairnDesktop?.onSeq?.((dir) => {
       window.dispatchEvent(new CustomEvent('cairn:seq', { detail: dir }))
     })
+    const offToggleSidebar = window.cairnDesktop?.onToggleSidebar?.(() => sidebarRef.current?.())
 
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       offNavigate?.()
       offSeq?.()
+      offToggleSidebar?.()
     }
   }, [])
 }

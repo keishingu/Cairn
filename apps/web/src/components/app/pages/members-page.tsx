@@ -147,6 +147,14 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
     queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
   })
 
+  // ⌥S: 検索フォーカス
+  React.useEffect(() => {
+    const searchEl = document.querySelector<HTMLInputElement>('[data-member-search]')
+    const onSearch = () => searchEl?.focus()
+    window.addEventListener('cairn:search-focus', onSearch)
+    return () => window.removeEventListener('cairn:search-focus', onSearch)
+  }, [])
+
   // PC: initialUserId が指定されている場合、メンバーデータ読み込み後に自動選択
   React.useEffect(() => {
     if (!initialUserId || isMobile || members.length === 0) return
@@ -186,6 +194,20 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
     { id: 'guest',  label: 'ゲスト' },
   ]
 
+  // ⌥[/⌥]: ロールフィルタタブ切替
+  React.useEffect(() => {
+    const onTab = (e: Event) => {
+      const dir = (e as CustomEvent<'prev' | 'next'>).detail
+      const idx = roleFilters.findIndex(f => f.id === roleFilter)
+      const next = dir === 'next'
+        ? (idx + 1) % roleFilters.length
+        : (idx - 1 + roleFilters.length) % roleFilters.length
+      setRoleFilter(roleFilters[next]!.id)
+    }
+    window.addEventListener('cairn:filter-tab', onTab)
+    return () => window.removeEventListener('cairn:filter-tab', onTab)
+  }, [roleFilter, roleFilters])
+
   if (isMobile) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
@@ -211,6 +233,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
               <Icon name="search" size={14} />
             </div>
             <input
+              data-member-search
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="メンバーを検索…"

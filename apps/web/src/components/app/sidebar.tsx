@@ -181,6 +181,13 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
   })
   const [switcherOpen, setSwitcherOpen] = React.useState(false)
 
+  // ⌘⌥; : ワークスペース切替ポップオーバーをトグル
+  React.useEffect(() => {
+    const onToggle = () => setSwitcherOpen(o => !o)
+    window.addEventListener('cairn:workspace-menu', onToggle)
+    return () => window.removeEventListener('cairn:workspace-menu', onToggle)
+  }, [])
+
   function switchWorkspace(id: string) {
     document.cookie = `cairn_workspace_id=${id}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     setSwitcherOpen(false)
@@ -555,6 +562,13 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   const queryClient = useQueryClient()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
+
+  // ⌘⌥0: ユーザーメニューをトグル
+  React.useEffect(() => {
+    const onToggle = () => setMenuOpen(o => !o)
+    window.addEventListener('cairn:user-menu', onToggle)
+    return () => window.removeEventListener('cairn:user-menu', onToggle)
+  }, [])
 
   const { data: me } = useQuery<CurrentUserDto>({
     queryKey: ['me'],

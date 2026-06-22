@@ -31,6 +31,13 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
     return () => window.removeEventListener('cairn:create', onCreate)
   }, [])
 
+  // ⌥F: フィルタトグル
+  React.useEffect(() => {
+    const onFilter = () => setFilterOpen(o => !o)
+    window.addEventListener('cairn:filter', onFilter)
+    return () => window.removeEventListener('cairn:filter', onFilter)
+  }, [])
+
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
     if (typeof window === 'undefined') return []

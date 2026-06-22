@@ -255,6 +255,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
   const [targetMessageId, setTargetMessageId] = React.useState<string | null>(null)
+  const [detailOpen, setDetailOpen] = React.useState(true)
 
   // ブラウザの戻る/進むでURLが変わったとき状態を同期
   React.useEffect(() => {
@@ -316,6 +317,23 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       window.removeEventListener('cairn:cross-search', onCross)
     }
   }, [])
+
+  // ⌥S: 検索フォーカス（チャンネル検索 or 横断検索を開く）
+  React.useEffect(() => {
+    const onSearch = () => {
+      if (!isMobile) setSearchOpen(true)
+    }
+    window.addEventListener('cairn:search-focus', onSearch)
+    return () => window.removeEventListener('cairn:search-focus', onSearch)
+  }, [isMobile])
+
+  // ⌥D: 詳細パネルのトグル（PC のみ）
+  React.useEffect(() => {
+    if (isMobile) return
+    const onDetail = () => setDetailOpen(o => !o)
+    window.addEventListener('cairn:detail', onDetail)
+    return () => window.removeEventListener('cairn:detail', onDetail)
+  }, [isMobile])
 
   // ⌥↑↓（順送り）: チャンネル一覧（プロジェクト → 全体 → DM の表示順）を前/次へ
   React.useEffect(() => {
@@ -576,7 +594,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             }
           </main>
 
-          <ChatDetailSidebar
+          {detailOpen && <ChatDetailSidebar
             isProject={isProject}
             isDm={isDm}
             isPrivate={isPrivate}
@@ -592,7 +610,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             onCloseMemberInvite={() => setShowMemberInvite(false)}
             onOpenProject={handleOpenProject}
             onOpenMember={handleOpenMember}
-          />
+          />}
         </div>
       </div>
     </div>

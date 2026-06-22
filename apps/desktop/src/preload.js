@@ -13,4 +13,9 @@ contextBridge.exposeInMainWorld('cairnDesktop', {
     ipcRenderer.on('cairn:seq', handler)
     return () => ipcRenderer.removeListener('cairn:seq', handler)
   },
+  onToggleSidebar: (cb) => {
+    const handler = () => cb()
+    ipcRenderer.on('cairn:toggle-sidebar', handler)
+    return () => ipcRenderer.removeListener('cairn:toggle-sidebar', handler)
+  },
 })

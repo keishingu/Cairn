@@ -15,6 +15,7 @@ import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useArrowNav } from '@/hooks/use-arrow-nav'
 
 // ─── Main component ───────────────────────────────────────────────
 interface ProjectListViewProps {
@@ -114,6 +115,32 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
     return () => window.removeEventListener('cairn:create', onCreate)
   }, [canCreateProject])
 
+  // ⌥F: フィルタトグル
+  React.useEffect(() => {
+    const onFilter = () => setFilterOpen(o => !o)
+    window.addEventListener('cairn:filter', onFilter)
+    return () => window.removeEventListener('cairn:filter', onFilter)
+  }, [])
+
+  // ⌥S: 検索フォーカス
+  React.useEffect(() => {
+    const onSearch = () => {
+      if (!isMobile) { searchInputRef.current?.focus(); return }
+      // モバイルは検索欄を開いてからフォーカス（描画後に当てる）
+      setMobileSearchOpen(true)
+      setTimeout(() => searchInputRef.current?.focus(), 50)
+    }
+    window.addEventListener('cairn:search-focus', onSearch)
+    return () => window.removeEventListener('cairn:search-focus', onSearch)
+  }, [isMobile])
+
+  // ⌥G/⌥T: ビュー切替
+  React.useEffect(() => {
+    const onView = (e: Event) => setViewPersisted((e as CustomEvent<'grid' | 'table'>).detail)
+    window.addEventListener('cairn:view', onView)
+    return () => window.removeEventListener('cairn:view', onView)
+  }, [setViewPersisted])
+
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
     void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
@@ -134,6 +161,20 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
     { id: 'active',   label: '進行中',     n: counts.active },
     { id: 'archived', label: 'アーカイブ', n: counts.archived },
   ]
+
+  // ⌥[/⌥]: フィルタタブ切替
+  React.useEffect(() => {
+    const onTab = (e: Event) => {
+      const dir = (e as CustomEvent<'prev' | 'next'>).detail
+      const idx = filterTabs.findIndex(f => f.id === filter)
+      const next = dir === 'next'
+        ? (idx + 1) % filterTabs.length
+        : (idx - 1 + filterTabs.length) % filterTabs.length
+      setFilter(filterTabs[next]!.id)
+    }
+    window.addEventListener('cairn:filter-tab', onTab)
+    return () => window.removeEventListener('cairn:filter-tab', onTab)
+  }, [filter, filterTabs, setFilter])
 
   const tabFiltered = React.useMemo(() => {
     switch (filter) {
@@ -181,6 +222,15 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       return dir === 'asc' ? cmp : -cmp
     })
   }, [filteredProjects, view, tableSort])
+
+  // 矢印選択・Enter は実際に描画している並び（sortedProjects）を対象にする
+  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useArrowNav(
+    sortedProjects.length,
+    React.useCallback((idx: number) => { openPanel?.(sortedProjects[idx]!) }, [sortedProjects, openPanel]),
+  )
+
+  // フィルタ変更で選択をリセット
+  React.useEffect(() => { setNavIdx(-1) }, [filter, statusFilter, memberFilter, effectiveSearch, setNavIdx])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
@@ -356,14 +406,16 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
             {sortedProjects.map((p, i) => {
               const accent = p.statusColor ?? 'var(--text-3)'
               const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
+              const selected = i === navIdx
               return (
                 <div key={p.id} onClick={() => openPanel?.(p)} style={{
                   display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px',
                   gap: 16, padding: '12px 16px', borderBottom: i < sortedProjects.length - 1 ? '1px solid var(--divider)' : 'none',
                   alignItems: 'center', cursor: 'pointer',
+                  background: selected ? 'var(--accent-soft)' : 'transparent',
                 }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = selected ? 'var(--accent-soft)' : 'var(--card-2)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = selected ? 'var(--accent-soft)' : 'transparent'}
                 >
                   <span style={{ width: 10, height: 10, borderRadius: 3, background: accent }}/>
                   <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
@@ -432,9 +484,10 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
 
               return (
                 <div key={p.id} onClick={() => openPanel?.(p)} style={{
-                  background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12,
+                  background: 'var(--card)', borderRadius: 12,
                   overflow: 'hidden', cursor: 'pointer', boxShadow: 'var(--shadow-sm)',
                   transition: 'transform .15s, box-shadow .15s',
+                  border: i === navIdx ? '1.5px solid var(--accent)' : '1px solid var(--border)',
                 }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)' }}

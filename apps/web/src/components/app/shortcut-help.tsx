@@ -18,10 +18,12 @@ type Section = { title: string; rows: Row[] }
 
 function buildSections(): Section[] {
   const mac = isMac()
-  const isDesktop = typeof window !== 'undefined' && !!window.cairnDesktop
-  const nav = isDesktop ? (mac ? '⌘' : 'Ctrl') : (mac ? '⌘⌥' : 'Ctrl ⇧')
+  // アプリ層はキーハンドラで処理（U/0/B はネイティブメニューに無い）ため、
+  // Desktop でも ⌘⌥/Ctrl⇧ で統一して表示する。
+  const nav = mac ? '⌘⌥' : 'Ctrl ⇧'
   const g = mac ? '⌘' : 'Ctrl'
   const opt = mac ? '⌥' : 'Alt'
+  const isDesktop = typeof window !== 'undefined' && !!window.cairnDesktop
 
   const sections: Section[] = [
     {
@@ -31,6 +33,16 @@ function buildSections(): Section[] {
         { keys: `${nav} 2`, label: 'カレンダー' },
         { keys: `${nav} 3`, label: 'カンバン' },
         { keys: `${nav} 4`, label: 'マイタスク' },
+        { keys: `${nav} 5`, label: 'チャット一覧' },
+        { keys: `${nav} 6`, label: 'ファイル' },
+        { keys: `${nav} 7`, label: 'ギャラリー' },
+        { keys: `${nav} 8`, label: 'AIアシスタント' },
+        { keys: `${nav} 9`, label: 'メンバー' },
+        { keys: `${nav} 0`, label: 'ユーザーメニュー' },
+        { keys: `${nav} ,`, label: '設定' },
+        { keys: `${nav} U`, label: '通知を開く' },
+        { keys: `${nav} B`, label: 'サイドバー折りたたみ' },
+        { keys: `${nav} ;`, label: 'ワークスペース切替' },
       ],
     },
     {
@@ -38,7 +50,6 @@ function buildSections(): Section[] {
       rows: [
         { keys: `${g} K`, label: 'コマンドパレット' },
         { keys: `${g} ⇧ F`, label: '横断検索（チャット）' },
-        { keys: `${g} ⇧ U`, label: '通知を開く' },
         { keys: '?', label: 'このショートカット一覧' },
         { keys: 'Esc', label: '最前面のパネル/モーダルを閉じる' },
       ],
@@ -46,10 +57,19 @@ function buildSections(): Section[] {
     {
       title: '今の画面',
       rows: [
+        { keys: `${opt} N`, label: '新規作成' },
+        { keys: `${opt} F`, label: 'フィルター切替' },
+        { keys: `${opt} S`, label: '検索にフォーカス' },
+        { keys: `${opt} @ / ${opt} [`, label: 'フィルタタブ 前 / 次' },
         { keys: `${opt} M / ${opt} W`, label: 'カレンダー 月 / 週' },
+        { keys: `${opt} T`, label: 'カレンダー 今日 / テーブル表示' },
+        { keys: `${opt} G`, label: 'グリッド表示' },
+        { keys: `${opt} D`, label: '詳細パネル切替' },
         { keys: `${opt} ← / ${opt} →`, label: 'カレンダー 前 / 次の期間' },
         { keys: `${opt} ↑ / ${opt} ↓`, label: '前 / 次（チャンネル・会話）' },
-        { keys: `${opt} N`, label: '新規作成' },
+        { keys: `${opt} ⏎`, label: 'タスク完了トグル' },
+        { keys: `${opt} ⌫`, label: 'ファイル削除' },
+        { keys: `${opt} R`, label: 'ファイル再インデックス' },
       ],
     },
   ]

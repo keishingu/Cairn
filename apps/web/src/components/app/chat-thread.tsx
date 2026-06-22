@@ -76,7 +76,7 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, mentionNames, compact, isMobile }: {
+const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   senderId: string
   currentUserId: string | undefined
@@ -95,6 +95,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   mentionNames?: Map<string, string>
   compact?: boolean
   isMobile?: boolean
+  focused?: boolean
 }) {
   const [showPicker, setShowPicker] = React.useState(false)
   const [hovered, setHovered] = React.useState(false)
@@ -119,6 +120,16 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
       }
     })
   }
+
+  // cairn:edit-message イベントで編集モードを起動（startEdit はテキストエリアにフォーカスも当てる）
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit()
+    }
+    window.addEventListener('cairn:edit-message', handler)
+    return () => window.removeEventListener('cairn:edit-message', handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageId, isOwn, content])
 
   const submitEdit = () => {
     const trimmed = editDraft.trim()
@@ -153,7 +164,12 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   return (
     <div
       data-message-id={messageId}
-      style={{ display: 'flex', gap: compact ? 8 : 12, padding: px, alignItems: 'flex-start', position: 'relative', background: hovered ? 'var(--card-2)' : 'transparent' }}
+      style={{
+        display: 'flex', gap: compact ? 8 : 12, padding: px, alignItems: 'flex-start', position: 'relative',
+        background: focused ? 'var(--accent-soft)' : hovered ? 'var(--card-2)' : 'transparent',
+        borderLeft: focused ? '3px solid var(--accent)' : '3px solid transparent',
+        transition: 'background .1s, border-color .1s',
+      }}
       onMouseEnter={() => !isMobile && setHovered(true)}
       onMouseLeave={() => !isMobile && setHovered(false)}
     >
@@ -711,6 +727,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [isUploading, setIsUploading] = React.useState(false)
   const [showTextFileDialog, setShowTextFileDialog] = React.useState(false)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
+  const [focusedMsgIdx, setFocusedMsgIdx] = React.useState(-1)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -877,6 +894,58 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length])
+
+  // チャンネル切替時にフォーカスをリセット
+  React.useEffect(() => { setFocusedMsgIdx(-1) }, [channelId])
+
+  // 上下矢印キーでメッセージ選択（入力欄フォーカス時は無効）
+  React.useEffect(() => {
+    if (messages.length === 0) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return
+      if (e.code !== 'ArrowUp' && e.code !== 'ArrowDown') return
+      const el = e.target as HTMLElement
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return
+      e.preventDefault()
+      setFocusedMsgIdx(prev => {
+        if (e.code === 'ArrowDown') return Math.min(prev + 1, messages.length - 1)
+        return Math.max(prev - 1, 0)
+      })
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [messages.length])
+
+  // フォーカス中のメッセージへスクロール
+  React.useEffect(() => {
+    if (focusedMsgIdx < 0 || focusedMsgIdx >= messages.length) return
+    const msgId = messages[focusedMsgIdx]?.id
+    if (!msgId || !scrollRef.current) return
+    const el = scrollRef.current.querySelector<HTMLElement>(`[data-message-id="${msgId}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [focusedMsgIdx, messages])
+
+  // フォーカス中のメッセージに対するキーボードアクション
+  React.useEffect(() => {
+    if (focusedMsgIdx < 0) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return
+      const msg = messages[focusedMsgIdx]
+      if (!msg) return
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setFocusedMsgIdx(-1)
+      } else if (e.key === 'e' && msg.senderId === currentUser?.id) {
+        e.preventDefault()
+        // 編集モードに入る: 対象メッセージの data-message-id から DOM を探し、
+        // ChatMessage 内の editMode を起動するためのカスタムイベントを発火
+        window.dispatchEvent(new CustomEvent('cairn:edit-message', { detail: msg.id }))
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [focusedMsgIdx, messages, currentUser])
 
   React.useEffect(() => {
     if (!targetMessageId || isLoading || !scrollRef.current) return
@@ -1046,7 +1115,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         ) : messages.length === 0 ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>まだメッセージはありません。最初のメッセージを送ってみましょう！</div>
         ) : (
-          messages.map(m => (
+          messages.map((m, i) => (
             <ChatMessage
               key={m.id}
               messageId={m.id}
@@ -1064,6 +1133,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               onDelete={(messageId) => deleteMutation.mutate(messageId)}
               onCheckboxToggle={handleCheckboxToggle}
               onImageClick={openLightbox}
+              focused={i === focusedMsgIdx}
               mentionNames={mentionNames}
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}

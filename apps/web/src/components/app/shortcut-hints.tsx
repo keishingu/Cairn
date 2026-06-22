@@ -22,20 +22,69 @@ const APP_HINTS: Hint[] = [
   { keys: ['2'], label: 'カレンダー' },
   { keys: ['3'], label: 'カンバン' },
   { keys: ['4'], label: 'マイタスク' },
+  { keys: ['5'], label: 'チャット一覧' },
+  { keys: ['6'], label: 'ファイル' },
+  { keys: ['7'], label: 'ギャラリー' },
+  { keys: ['8'], label: 'AIアシスタント' },
+  { keys: ['9'], label: 'メンバー' },
+  { keys: ['0'], label: 'ユーザーメニュー' },
+  { keys: [','], label: '設定' },
+  { keys: ['U'], label: '通知を開く' },
+  { keys: ['B'], label: 'サイドバー折りたたみ' },
+  { keys: [';'], label: 'ワークスペース切替' },
 ]
 
 const CREATE_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban', 'tasks', 'chats', 'ai'])
 
 function contextHints(page: PageId): Hint[] {
   const items: Hint[] = []
+  if (page === 'projects') {
+    items.push(
+      { keys: ['F'], label: 'フィルター' },
+      { keys: ['S'], label: '検索' },
+      { keys: ['G'], label: 'グリッド表示' },
+      { keys: ['T'], label: 'テーブル表示' },
+      { keys: ['@', '['], label: 'フィルタタブ切替' },
+    )
+  }
   if (page === 'calendar') {
     items.push(
       { keys: ['M'], label: '月表示' },
       { keys: ['W'], label: '週表示' },
+      { keys: ['T'], label: '今日へ' },
       { keys: ['←', '→'], label: '前 / 次の期間' },
+      { keys: ['F'], label: 'フィルター' },
     )
   }
-  if (page === 'chats') items.push({ keys: ['↑', '↓'], label: '前 / 次のチャンネル' })
+  if (page === 'kanban') {
+    items.push({ keys: ['F'], label: 'フィルター' })
+  }
+  if (page === 'tasks') {
+    items.push(
+      { keys: ['@', '['], label: 'フィルタタブ切替' },
+      { keys: ['⏎'], label: 'タスク完了トグル' },
+    )
+  }
+  if (page === 'chats') {
+    items.push(
+      { keys: ['↑', '↓'], label: '前 / 次のチャンネル' },
+      { keys: ['S'], label: '検索' },
+      { keys: ['D'], label: '詳細パネル' },
+    )
+  }
+  if (page === 'files') {
+    items.push(
+      { keys: ['@', '['], label: 'フィルタタブ切替' },
+      { keys: ['⌫'], label: 'ファイル削除' },
+      { keys: ['R'], label: '再インデックス' },
+    )
+  }
+  if (page === 'members') {
+    items.push(
+      { keys: ['S'], label: '検索' },
+      { keys: ['@', '['], label: 'ロールフィルタ切替' },
+    )
+  }
   if (page === 'ai') items.push({ keys: ['↑', '↓'], label: '前 / 次の会話' })
   if (CREATE_PAGES.has(page)) items.push({ keys: ['N'], label: '新規作成' })
   return items
@@ -61,7 +110,6 @@ export function ShortcutHints({ page }: { page: PageId }) {
 
   React.useEffect(() => {
     const mac = isMac()
-    const isDesktop = typeof window !== 'undefined' && !!window.cairnDesktop
     let timer: ReturnType<typeof setTimeout> | null = null
     let shown: Layer | null = null
 
@@ -70,13 +118,16 @@ export function ShortcutHints({ page }: { page: PageId }) {
       if (shown !== null) { shown = null; setLayer(null) }
     }
 
+    // 注: アプリ層は Desktop でも ⌘⌥/Ctrl⇧ のキーハンドラで処理される（U/0/B は
+    // ネイティブメニューに無い）。素の ⌘ で出すと届かないキーを宣伝するため、
+    // 全プラットフォームで ⌘⌥/Ctrl⇧ に統一する（素の ⌘1-9 はメニューバー側で見える）。
     const desiredLayer = (e: KeyboardEvent): Layer | null => {
       // context: 素の ⌥/Alt
       if (e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) return 'context'
       // app: Desktop=素の ⌘/Ctrl（ネイティブメニュー） / Web=Mac ⌘⌥・Win Ctrl⇧
       const appHeld = mac
-        ? (isDesktop ? (e.metaKey && !e.ctrlKey && !e.shiftKey) : (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey))
-        : (isDesktop ? (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) : (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey))
+        ? (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey)
+        : (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey)
       if (appHeld) return 'app'
       return null
     }
@@ -110,12 +161,11 @@ export function ShortcutHints({ page }: { page: PageId }) {
   if (!layer) return null
 
   const mac = isMac()
-  const isDesktop = typeof window !== 'undefined' && !!window.cairnDesktop
   const hints = layer === 'app' ? APP_HINTS : contextHints(page)
   if (hints.length === 0) return null
 
   const prefix = layer === 'app'
-    ? (isDesktop ? (mac ? '⌘' : 'Ctrl') : (mac ? '⌘⌥' : 'Ctrl ⇧'))
+    ? (mac ? '⌘⌥' : 'Ctrl ⇧')
     : (mac ? '⌥' : 'Alt')
   const title = layer === 'app' ? '移動' : '今の画面'
 
