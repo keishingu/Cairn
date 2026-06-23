@@ -114,13 +114,14 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   const startEdit = () => {
     setEditDraft(content)
     setEditMode(true)
-    requestAnimationFrame(() => {
-      if (editTextareaRef.current) {
-        editTextareaRef.current.focus()
-        editTextareaRef.current.setSelectionRange(content.length, content.length)
-      }
-    })
   }
+
+  // 編集モードに入ったら確実に textarea をフォーカスする（rAF は commit 前に走り不安定なため effect で）
+  React.useEffect(() => {
+    if (!editMode) return
+    const el = editTextareaRef.current
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length) }
+  }, [editMode])
 
   // cairn:edit-message イベントで編集モードを起動（startEdit はテキストエリアにフォーカスも当てる）
   React.useEffect(() => {
