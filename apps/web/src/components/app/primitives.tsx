@@ -307,7 +307,11 @@ export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
-        onKeyDown={e => { if (e.key === 'Escape') onChange('') }}
+        onKeyDown={e => {
+          if (e.key !== 'Escape') return
+          // 1回目: 入力をクリア / 2回目（空の時）: 入力欄から離脱（ブラー）
+          if (value) onChange(''); else (e.currentTarget as HTMLElement).blur()
+        }}
       />
       {value && (
         <button onClick={() => onChange('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>

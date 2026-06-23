@@ -30,6 +30,7 @@ import {
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { chatDraftKey } from '@/lib/storage-keys'
+import { useCommand } from '@/lib/command-registry'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 
@@ -387,6 +388,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const compactInputRef = React.useRef<HTMLTextAreaElement>(null)
   const overlayRef = React.useRef<HTMLDivElement>(null)
 
+  // ⌥I: メッセージ入力欄にフォーカス
+  useCommand('chats.focusComposer', () => (textareaRef.current ?? compactInputRef.current)?.focus())
+
   // テキストエリアの高さを内容に合わせて自動調整する（改行・長文で行が増えても見切れないように）
   React.useEffect(() => {
     const el = textareaRef.current ?? compactInputRef.current
@@ -448,6 +452,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         if (m) insertMention(m.userId, m.displayName)
         return
       }
+    } else if (e.key === 'Escape') {
+      // メンション候補が無い時の Esc は入力欄から離脱（ブラー）する
+      e.preventDefault()
+      ;(e.currentTarget as HTMLElement).blur()
+      return
     }
     fallback()
   }

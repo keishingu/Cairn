@@ -102,6 +102,7 @@ export const COMMANDS: CommandDef[] = [
 
   // Chats 固有
   { id: 'chats.detail', title: '詳細パネル切替', layer: 'context', key: { code: 'KeyD' }, hintKeys: ['D'], when: is('chats') },
+  { id: 'chats.focusComposer', title: 'メッセージ入力欄にフォーカス', layer: 'context', key: { code: 'KeyI' }, hintKeys: ['I'], when: is('chats') },
 
   // Tasks 固有
   { id: 'tasks.toggle', title: 'タスク完了トグル', layer: 'context', key: { code: 'Enter' }, hintKeys: ['⏎'], when: is('tasks'), noRepeat: true },
