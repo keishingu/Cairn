@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { getWorkspaceMemberRole, requireChannelAccess } from '@/lib/permissions'
 
 const GOOGLE_DOC_RE = /https:\/\/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/
 const GOOGLE_SHEET_RE = /https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/
@@ -60,18 +61,55 @@ export async function POST(req: Request) {
   const { docId, docType, label } = parsed
 
   try {
-    const { db, files, channels } = await import('@cairn/db')
+    const { db, files, channels, projects, projectMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
     // channelId からプロジェクトIDを解決
     let projectId: string | null = bodyProjectId ?? null
-    if (!projectId && channelId) {
+    let metadataChannelId: string | null = null
+    if (channelId) {
+      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+      if (forbidden) return forbidden
+
       const [ch] = await db
         .select({ projectId: channels.projectId })
         .from(channels)
         .where(eq(channels.id, channelId))
         .limit(1)
-      projectId = ch?.projectId ?? null
+      if (projectId && ch?.projectId && ch.projectId !== projectId) {
+        return NextResponse.json({ error: 'channelId と projectId が一致しません' }, { status: 400 })
+      }
+      projectId = projectId ?? ch?.projectId ?? null
+      metadataChannelId = channelId
+    }
+
+    if (projectId) {
+      const [project] = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
+        .limit(1)
+
+      if (!project) return new NextResponse(null, { status: 404 })
+    }
+
+    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    if (!role) return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
+
+    if (role === 'guest') {
+      if (!projectId) {
+        return NextResponse.json({ error: 'ゲストはプロジェクト外のファイルを登録できません' }, { status: 403 })
+      }
+
+      const [membership] = await db
+        .select({ id: projectMembers.id })
+        .from(projectMembers)
+        .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, ctx.userId)))
+        .limit(1)
+
+      if (!membership) {
+        return NextResponse.json({ error: 'このプロジェクトにファイルを登録する権限がありません' }, { status: 403 })
+      }
     }
 
     // 同一プロジェクト内の重複チェック
@@ -103,7 +141,13 @@ export async function POST(req: Request) {
     }
 
     const initialStatus = docType === 'doc' ? 'pending' : 'skipped'
-    const metadata = { externalUrl: url, docType, docId, indexingStatus: initialStatus }
+    const metadata = {
+      externalUrl: url,
+      docType,
+      docId,
+      indexingStatus: initialStatus,
+      ...(metadataChannelId ? { channelId: metadataChannelId } : {}),
+    }
 
     const [inserted] = await db
       .insert(files)
