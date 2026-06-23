@@ -7,9 +7,10 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const CHANNEL_ID = '20000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockRequireChannelAccess } = vi.hoisted(() => ({
+const { mockGetAuthContext, mockRequireChannelAccess, mockCanAccessFile } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
+  mockCanAccessFile: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -18,6 +19,7 @@ vi.mock('@/lib/get-auth-context', () => ({
 
 vi.mock('@/lib/permissions', () => ({
   requireChannelAccess: mockRequireChannelAccess,
+  canAccessFile: mockCanAccessFile,
 }))
 
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))

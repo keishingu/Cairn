@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { type AttachmentDto, postMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireChannelAccess } from '@/lib/permissions'
+import { canAccessFile, requireChannelAccess } from '@/lib/permissions'
 import { inngest } from '@/lib/inngest/client'
 import type { MessageCreatedEvent } from '@/lib/inngest/events'
 import { parseCheckboxes } from '@/lib/chat/checkboxes'
@@ -179,12 +179,35 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages, profiles, messageAttachments } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { messages, profiles, messageAttachments, files } = await import('@cairn/db')
+    const { eq, inArray } = await import('drizzle-orm')
 
     const attachmentFileIds = parsed.data.attachmentFileIds ?? []
     // メンションは名前なしの canonical 形式で保存する（埋め込み名が来ても除去）
     const content = canonicalizeMentions(parsed.data.content)
+
+    if (attachmentFileIds.length > 0) {
+      const fileRows = await db
+        .select({
+          id: files.id,
+          workspaceId: files.workspaceId,
+          projectId: files.projectId,
+          uploadedBy: files.uploadedBy,
+        })
+        .from(files)
+        .where(inArray(files.id, attachmentFileIds))
+
+      if (fileRows.length !== new Set(attachmentFileIds).size) {
+        return NextResponse.json({ error: '添付ファイルが見つかりません' }, { status: 404 })
+      }
+
+      const accessResults = await Promise.all(
+        fileRows.map(file => canAccessFile(ctx.workspaceId, ctx.userId, file)),
+      )
+      if (accessResults.some(canAccess => !canAccess)) {
+        return NextResponse.json({ error: '添付ファイルにアクセスする権限がありません' }, { status: 403 })
+      }
+    }
 
     const inserted = await db.transaction(async (tx) => {
       const [msg] = await tx
