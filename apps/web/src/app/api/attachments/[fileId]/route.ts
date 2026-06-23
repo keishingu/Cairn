@@ -56,9 +56,12 @@ export async function GET(_req: Request, { params }: RouteContext) {
       return new NextResponse(null, { status: 502 })
     }
 
+    const mimeType = file.mimeType ?? 'application/octet-stream'
+    const isText = mimeType.startsWith('text/') || mimeType === 'application/json'
+
     return new NextResponse(data, {
       headers: {
-        'Content-Type': file.mimeType ?? 'application/octet-stream',
+        'Content-Type': isText ? `${mimeType}; charset=utf-8` : mimeType,
         'Content-Disposition': `inline; filename="${encodeURIComponent(file.fileName)}"`,
         'Cache-Control': 'private, max-age=3600',
       },

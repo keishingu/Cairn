@@ -30,6 +30,7 @@ import {
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { chatDraftKey } from '@/lib/storage-keys'
+import { useCommand } from '@/lib/command-registry'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 
@@ -76,7 +77,7 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, mentionNames, compact, isMobile }: {
+const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   senderId: string
   currentUserId: string | undefined
@@ -95,6 +96,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   mentionNames?: Map<string, string>
   compact?: boolean
   isMobile?: boolean
+  focused?: boolean
 }) {
   const [showPicker, setShowPicker] = React.useState(false)
   const [hovered, setHovered] = React.useState(false)
@@ -112,13 +114,30 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   const startEdit = () => {
     setEditDraft(content)
     setEditMode(true)
-    requestAnimationFrame(() => {
-      if (editTextareaRef.current) {
-        editTextareaRef.current.focus()
-        editTextareaRef.current.setSelectionRange(content.length, content.length)
-      }
-    })
   }
+
+  // 編集モードに入ったら確実に textarea をフォーカスする（rAF は commit 前に走り不安定なため effect で）
+  React.useEffect(() => {
+    if (!editMode) return
+    const el = editTextareaRef.current
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length) }
+  }, [editMode])
+
+  // メッセージ選択中のキーボード操作（e=編集 / r=リアクション / d=削除）を受ける
+  React.useEffect(() => {
+    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit() }
+    const onReactEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId) setShowPicker(true) }
+    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) setDeleteConfirm(true) }
+    window.addEventListener('cairn:edit-message', onEditEvt)
+    window.addEventListener('cairn:react-message', onReactEvt)
+    window.addEventListener('cairn:delete-message', onDeleteEvt)
+    return () => {
+      window.removeEventListener('cairn:edit-message', onEditEvt)
+      window.removeEventListener('cairn:react-message', onReactEvt)
+      window.removeEventListener('cairn:delete-message', onDeleteEvt)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageId, isOwn, content])
 
   const submitEdit = () => {
     const trimmed = editDraft.trim()
@@ -153,7 +172,12 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   return (
     <div
       data-message-id={messageId}
-      style={{ display: 'flex', gap: compact ? 8 : 12, padding: px, alignItems: 'flex-start', position: 'relative', background: hovered ? 'var(--card-2)' : 'transparent' }}
+      style={{
+        display: 'flex', gap: compact ? 8 : 12, padding: px, alignItems: 'flex-start', position: 'relative',
+        background: focused ? 'var(--accent-soft)' : hovered ? 'var(--card-2)' : 'transparent',
+        borderLeft: focused ? '3px solid var(--accent)' : '3px solid transparent',
+        transition: 'background .1s, border-color .1s',
+      }}
       onMouseEnter={() => !isMobile && setHovered(true)}
       onMouseLeave={() => !isMobile && setHovered(false)}
     >
@@ -371,11 +395,14 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const compactInputRef = React.useRef<HTMLTextAreaElement>(null)
   const overlayRef = React.useRef<HTMLDivElement>(null)
 
+  // ⌥I: メッセージ入力欄にフォーカス
+  useCommand('chats.focusComposer', () => (textareaRef.current ?? compactInputRef.current)?.focus())
+
   // テキストエリアの高さを内容に合わせて自動調整する（改行・長文で行が増えても見切れないように）
   React.useEffect(() => {
     const el = textareaRef.current ?? compactInputRef.current
     if (!el) return
-    const max = compact ? 120 : 160
+    const max = compact ? 240 : 320
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, max)}px`
   }, [draft, compact])
@@ -432,6 +459,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         if (m) insertMention(m.userId, m.displayName)
         return
       }
+    } else if (e.key === 'Escape') {
+      // メンション候補が無い時の Esc は入力欄から離脱（ブラー）する
+      e.preventDefault()
+      ;(e.currentTarget as HTMLElement).blur()
+      return
     }
     fallback()
   }
@@ -578,7 +610,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 </div>
               )}
               {draftOverlay && (
-                <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 13, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 120 }}>
+                <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 13, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 240 }}>
                   {draftOverlay}
                 </div>
               )}
@@ -598,7 +630,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
                 placeholder={typeof placeholder === 'string' ? placeholder : ''}
                 rows={1}
-                style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 20, maxHeight: 120, boxSizing: 'border-box' }}
+                style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 20, maxHeight: 240, boxSizing: 'border-box' }}
               />
             </div>
             <button onClick={() => fileInputRef.current?.click()} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
@@ -662,7 +694,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               </div>
             )}
             {draftOverlay && (
-              <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 14, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 160 }}>
+              <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 14, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 320 }}>
                 {draftOverlay}
               </div>
             )}
@@ -682,7 +714,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
               placeholder={typeof placeholder === 'string' ? placeholder : ''}
               rows={1}
-              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160, boxSizing: 'border-box' }}
+              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 320, boxSizing: 'border-box' }}
             />
           </div>
           <button onClick={send} disabled={!canSend} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
@@ -711,6 +743,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [isUploading, setIsUploading] = React.useState(false)
   const [showTextFileDialog, setShowTextFileDialog] = React.useState(false)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
+  const [focusedMsgIdx, setFocusedMsgIdx] = React.useState(-1)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -877,6 +910,66 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length])
+
+  // チャンネル切替時にフォーカスをリセット
+  React.useEffect(() => { setFocusedMsgIdx(-1) }, [channelId])
+
+  // 上下矢印キーでメッセージ選択（入力欄フォーカス時は無効）
+  React.useEffect(() => {
+    if (messages.length === 0) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return
+      if (e.code !== 'ArrowUp' && e.code !== 'ArrowDown') return
+      const el = e.target as HTMLElement
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return
+      e.preventDefault()
+      setFocusedMsgIdx(prev => {
+        if (e.code === 'ArrowDown') return Math.min(prev + 1, messages.length - 1)
+        return Math.max(prev - 1, 0)
+      })
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [messages.length])
+
+  // フォーカス中のメッセージへスクロール
+  React.useEffect(() => {
+    if (focusedMsgIdx < 0 || focusedMsgIdx >= messages.length) return
+    const msgId = messages[focusedMsgIdx]?.id
+    if (!msgId || !scrollRef.current) return
+    const el = scrollRef.current.querySelector<HTMLElement>(`[data-message-id="${msgId}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [focusedMsgIdx, messages])
+
+  // フォーカス中のメッセージに対するキーボードアクション
+  React.useEffect(() => {
+    if (focusedMsgIdx < 0) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return
+      const msg = messages[focusedMsgIdx]
+      if (!msg) return
+      const isOwn = msg.senderId === currentUser?.id
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setFocusedMsgIdx(-1)
+      } else if (e.key === 'e' && isOwn) {
+        // 編集モードに入る（ChatMessage 側で editMode を起動）
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:edit-message', { detail: msg.id }))
+      } else if (e.key === 'r') {
+        // リアクション（絵文字ピッカーを開く）
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:react-message', { detail: msg.id }))
+      } else if ((e.key === 'd' || e.key === 'Delete') && isOwn) {
+        // 削除（確認ダイアログを開く・自分のメッセージのみ）
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: msg.id }))
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [focusedMsgIdx, messages, currentUser])
 
   React.useEffect(() => {
     if (!targetMessageId || isLoading || !scrollRef.current) return
@@ -1046,7 +1139,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         ) : messages.length === 0 ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>まだメッセージはありません。最初のメッセージを送ってみましょう！</div>
         ) : (
-          messages.map(m => (
+          messages.map((m, i) => (
             <ChatMessage
               key={m.id}
               messageId={m.id}
@@ -1064,6 +1157,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               onDelete={(messageId) => deleteMutation.mutate(messageId)}
               onCheckboxToggle={handleCheckboxToggle}
               onImageClick={openLightbox}
+              focused={i === focusedMsgIdx}
               mentionNames={mentionNames}
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}

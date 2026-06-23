@@ -15,6 +15,8 @@ import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useListSelection } from '@/hooks/use-list-selection'
+import { useCommand } from '@/lib/command-registry'
 
 // ─── Main component ───────────────────────────────────────────────
 interface ProjectListViewProps {
@@ -107,12 +109,11 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false)
   const searchInputRef = React.useRef<HTMLInputElement>(null)
 
-  // ⌥N: 新規プロジェクト（ボタンと同じく管理者以上のみ）
-  React.useEffect(() => {
-    const onCreate = () => { if (canCreateProject) setShowCreate(true) }
-    window.addEventListener('cairn:create', onCreate)
-    return () => window.removeEventListener('cairn:create', onCreate)
-  }, [canCreateProject])
+  // ⌥N 新規 / ⌥F フィルタ / ⌥G ⌥T ビュー切替（検索フォーカスは TopBarSearch が担当）
+  useCommand('ctx.create', () => { if (canCreateProject) setShowCreate(true) })
+  useCommand('ctx.filter', () => setFilterOpen(o => !o))
+  useCommand('projects.viewGrid', () => setViewPersisted('grid'))
+  useCommand('projects.viewTable', () => setViewPersisted('table'))
 
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
@@ -134,6 +135,17 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
     { id: 'active',   label: '進行中',     n: counts.active },
     { id: 'archived', label: 'アーカイブ', n: counts.archived },
   ]
+
+  // ⌥[ / ⌥]: フィルタタブ切替
+  const cycleFilterTab = (dir: 'prev' | 'next') => {
+    const idx = filterTabs.findIndex(f => f.id === filter)
+    const next = dir === 'next'
+      ? (idx + 1) % filterTabs.length
+      : (idx - 1 + filterTabs.length) % filterTabs.length
+    setFilter(filterTabs[next]!.id)
+  }
+  useCommand('ctx.filterTabPrev', () => cycleFilterTab('prev'))
+  useCommand('ctx.filterTabNext', () => cycleFilterTab('next'))
 
   const tabFiltered = React.useMemo(() => {
     switch (filter) {
@@ -181,6 +193,15 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       return dir === 'asc' ? cmp : -cmp
     })
   }, [filteredProjects, view, tableSort])
+
+  // 矢印選択・Enter は実際に描画している並び（sortedProjects）を対象にする
+  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useListSelection({
+    count: sortedProjects.length,
+    onEnter: React.useCallback((idx: number) => { openPanel?.(sortedProjects[idx]!) }, [sortedProjects, openPanel]),
+  })
+
+  // フィルタ変更で選択をリセット
+  React.useEffect(() => { setNavIdx(-1) }, [filter, statusFilter, memberFilter, effectiveSearch, setNavIdx])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
@@ -356,15 +377,17 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
             {sortedProjects.map((p, i) => {
               const accent = p.statusColor ?? 'var(--text-3)'
               const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
+              const selected = i === navIdx
               return (
-                <div key={p.id} onClick={() => openPanel?.(p)} style={{
+                <div key={p.id} data-list-index={i} onClick={() => openPanel?.(p)} style={{
                   display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px',
                   gap: 16, padding: '12px 16px', borderBottom: i < sortedProjects.length - 1 ? '1px solid var(--divider)' : 'none',
                   alignItems: 'center', cursor: 'pointer',
                   opacity: p.archived ? ARCHIVED_OPACITY : 1,
+                  background: selected ? 'var(--accent-soft)' : 'transparent',
                 }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = selected ? 'var(--accent-soft)' : 'var(--card-2)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = selected ? 'var(--accent-soft)' : 'transparent'}
                 >
                   <span style={{ width: 10, height: 10, borderRadius: 3, background: accent }}/>
                   <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
@@ -429,11 +452,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               }
 
               return (
-                <div key={p.id} onClick={() => openPanel?.(p)} style={{
-                  background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12,
+                <div key={p.id} data-list-index={i} onClick={() => openPanel?.(p)} style={{
+                  background: 'var(--card)', borderRadius: 12,
                   overflow: 'hidden', cursor: 'pointer', boxShadow: 'var(--shadow-sm)',
                   transition: 'transform .15s, box-shadow .15s',
                   opacity: p.archived ? ARCHIVED_OPACITY : 1,
+                  border: i === navIdx ? '1.5px solid var(--accent)' : '1px solid var(--border)',
                 }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)' }}

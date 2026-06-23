@@ -10,6 +10,7 @@ import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
+import { useCommand } from '@/lib/command-registry'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
@@ -24,12 +25,9 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
   const projectLabel = useProjectLabel()
   const [showCreate, setShowCreate] = React.useState(false)
 
-  // ⌥N: 新規プロジェクト
-  React.useEffect(() => {
-    const onCreate = () => setShowCreate(true)
-    window.addEventListener('cairn:create', onCreate)
-    return () => window.removeEventListener('cairn:create', onCreate)
-  }, [])
+  // ⌥N: 新規プロジェクト / ⌥F: フィルタトグル
+  useCommand('ctx.create', () => setShowCreate(true))
+  useCommand('ctx.filter', () => setFilterOpen(o => !o))
 
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
