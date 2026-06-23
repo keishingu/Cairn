@@ -15,6 +15,7 @@ export interface MemberProjectDto {
   endDate: string | null
   memberCount: number
   coverPhotoIdx: number
+  archived: boolean
 }
 
 function coverPhotoIdxFromId(id: string): number {
@@ -76,6 +77,7 @@ export async function GET(
         role:        projectMembers.role,
         startDate:   projects.startDate,
         endDate:     projects.endDate,
+        archived:    projects.archived,
       })
       .from(projectMembers)
       .innerJoin(projects, eq(projectMembers.projectId, projects.id))
@@ -104,6 +106,7 @@ export async function GET(
         endDate:       r.endDate ?? null,
         memberCount:   countMap.get(r.projectId) ?? 0,
         coverPhotoIdx: coverPhotoIdxFromId(r.projectId),
+        archived:      r.archived,
       } satisfies MemberProjectDto)),
     )
   } catch (err) {

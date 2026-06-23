@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Icon, Avatar, StatusChip } from '../primitives'
+import { Icon, Avatar, StatusChip, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
@@ -70,6 +70,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
           width: '100%', display: 'flex', alignItems: 'center', gap: 12,
           padding: '14px 16px', border: 'none', borderBottom: '1px solid var(--divider)',
           background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+          opacity: project.archived ? ARCHIVED_OPACITY : 1,
         }}
       >
         <div style={{
@@ -85,6 +86,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
+            {project.archived && <ArchivedBadge/>}
             <span style={{ fontSize: 12, color: 'var(--text-4)' }}>
               {formatDateRange(project.startDate, project.endDate)}
             </span>
@@ -106,6 +108,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
         padding: '10px 6px', borderBottom: '1px solid var(--divider)',
         cursor: 'pointer', borderRadius: 6, margin: '0 -6px',
         transition: 'background .1s',
+        opacity: project.archived ? ARCHIVED_OPACITY : 1,
       }}
       onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-hover)')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -128,6 +131,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
+          {project.archived && <ArchivedBadge/>}
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>
             {formatDateRange(project.startDate, project.endDate)}
           </span>

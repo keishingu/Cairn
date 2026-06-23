@@ -202,6 +202,33 @@ export const StatusChip = ({ name, color, size = 11 }: StatusChipProps) => (
   </span>
 )
 
+// ─── Archived project styling ─────────────────────────────────────
+// アーカイブ済みプロジェクトはプロジェクト一覧・詳細パネル・メンバーの
+// プロジェクト履歴など複数箇所で表示される。グレーアウト＋バッジの表現を
+// 1 箇所に集約し、どこでも同じ見た目になるようにする。
+// （打ち消し線は「完了・取り消し」を連想させ、まだ有効なアーカイブの
+// 意味と合わないため使わない。）
+
+/** アーカイブ済み要素のコンテナをグレーアウトする減光率 */
+export const ARCHIVED_OPACITY = 0.4
+
+interface ArchivedBadgeProps {
+  size?: number
+  /** カバー写真など暗い背景の上に重ねる場合は true */
+  onDark?: boolean
+}
+
+export const ArchivedBadge = ({ size = 10, onDark = false }: ArchivedBadgeProps) => (
+  <span
+    className="chip"
+    style={onDark
+      ? { background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: size, backdropFilter: 'blur(4px)' }
+      : { background: 'var(--text-4)', color: 'var(--bg)', fontSize: size }}
+  >
+    アーカイブ
+  </span>
+)
+
 // ─── Unread badge ─────────────────────────────────────────────────
 // 未読件数バッジ。ヘッダーのベル・サイドバー・チャンネル一覧・通知パネルで
 // 形・色・サイズを揃えるための共通コンポーネント。0 件では何も描画しない。
