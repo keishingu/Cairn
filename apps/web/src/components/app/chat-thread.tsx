@@ -123,13 +123,19 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
     if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length) }
   }, [editMode])
 
-  // cairn:edit-message イベントで編集モードを起動（startEdit はテキストエリアにフォーカスも当てる）
+  // メッセージ選択中のキーボード操作（e=編集 / r=リアクション / d=削除）を受ける
   React.useEffect(() => {
-    const handler = (e: Event) => {
-      if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit()
+    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit() }
+    const onReactEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId) setShowPicker(true) }
+    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) setDeleteConfirm(true) }
+    window.addEventListener('cairn:edit-message', onEditEvt)
+    window.addEventListener('cairn:react-message', onReactEvt)
+    window.addEventListener('cairn:delete-message', onDeleteEvt)
+    return () => {
+      window.removeEventListener('cairn:edit-message', onEditEvt)
+      window.removeEventListener('cairn:react-message', onReactEvt)
+      window.removeEventListener('cairn:delete-message', onDeleteEvt)
     }
-    window.addEventListener('cairn:edit-message', handler)
-    return () => window.removeEventListener('cairn:edit-message', handler)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messageId, isOwn, content])
 
@@ -943,14 +949,22 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return
       const msg = messages[focusedMsgIdx]
       if (!msg) return
+      const isOwn = msg.senderId === currentUser?.id
       if (e.key === 'Escape') {
         e.preventDefault()
         setFocusedMsgIdx(-1)
-      } else if (e.key === 'e' && msg.senderId === currentUser?.id) {
+      } else if (e.key === 'e' && isOwn) {
+        // 編集モードに入る（ChatMessage 側で editMode を起動）
         e.preventDefault()
-        // 編集モードに入る: 対象メッセージの data-message-id から DOM を探し、
-        // ChatMessage 内の editMode を起動するためのカスタムイベントを発火
         window.dispatchEvent(new CustomEvent('cairn:edit-message', { detail: msg.id }))
+      } else if (e.key === 'r') {
+        // リアクション（絵文字ピッカーを開く）
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:react-message', { detail: msg.id }))
+      } else if ((e.key === 'd' || e.key === 'Delete') && isOwn) {
+        // 削除（確認ダイアログを開く・自分のメッセージのみ）
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: msg.id }))
       }
     }
     window.addEventListener('keydown', onKeyDown)
