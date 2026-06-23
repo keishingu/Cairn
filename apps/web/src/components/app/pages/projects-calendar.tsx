@@ -1593,8 +1593,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   )
 
   const visibleProjects = React.useMemo(() => {
-    // アーカイブ済みはカレンダーに出さない（一覧の「アーカイブ」タブからのみ参照する）
-    let result = projects.filter(p => !p.archived)
+    let result = projects
     if (statusFilter.length > 0) result = result.filter(p => p.statusName != null && statusFilter.includes(p.statusName))
     if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
     return result
@@ -1929,7 +1928,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
         ))}
         {!isLoading && projects.length > 0 && (
           <span style={{ marginLeft: 'auto', color: 'var(--text-4)' }}>
-            {projects.filter(p => p.startDate && !p.archived).length} 件のプロジェクトに日程設定済み
+            {projects.filter(p => p.startDate).length} 件のプロジェクトに日程設定済み
           </span>
         )}
       </div>
