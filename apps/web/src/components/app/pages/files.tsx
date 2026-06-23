@@ -9,7 +9,8 @@ import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import type { FileDto } from '@/app/api/files/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import { useArrowNav } from '@/hooks/use-arrow-nav'
+import { useListSelection } from '@/hooks/use-list-selection'
+import { useCommand } from '@/lib/command-registry'
 
 type FilterKey = 'all' | 'pdf' | 'img' | 'doc'
 
@@ -56,7 +57,7 @@ function matchesFilter(file: FileDto, filter: FilterKey): boolean {
 
 // ─── FileRow ──────────────────────────────────────────────────────
 
-const FileRow = ({ file, isMobile, onDelete, onReindex, onImageClick, selected }: { file: FileDto; isMobile: boolean; onDelete: (id: string, name: string) => void; onReindex: (id: string) => void; onImageClick: (id: string) => void; selected?: boolean }) => {
+const FileRow = ({ file, isMobile, onDelete, onReindex, onImageClick, selected, index }: { file: FileDto; isMobile: boolean; onDelete: (id: string, name: string) => void; onReindex: (id: string) => void; onImageClick: (id: string) => void; selected?: boolean; index?: number }) => {
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
   const projectLabel = file.projectTitle ?? file.channelName ?? 'チャット'
@@ -65,6 +66,7 @@ const FileRow = ({ file, isMobile, onDelete, onReindex, onImageClick, selected }
 
   return (
     <div
+      data-list-index={index}
       style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: isMobile ? '10px 12px' : '10px 16px',
@@ -222,44 +224,34 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
     { id: 'doc', label: `ドキュメント (${counts.doc})` },
   ]
 
-  // ⌥[/⌥]: フィルタタブ切替
-  React.useEffect(() => {
-    const onTab = (e: Event) => {
-      const dir = (e as CustomEvent<'prev' | 'next'>).detail
-      const idx = filterDefs.findIndex(f => f.id === filter)
-      const next = dir === 'next'
-        ? (idx + 1) % filterDefs.length
-        : (idx - 1 + filterDefs.length) % filterDefs.length
-      setFilter(filterDefs[next]!.id)
-    }
-    window.addEventListener('cairn:filter-tab', onTab)
-    return () => window.removeEventListener('cairn:filter-tab', onTab)
-  }, [filter, filterDefs])
+  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useListSelection({
+    count: visibleFiles.length,
+    onEnter: React.useCallback((idx: number) => {
+      const file = visibleFiles[idx]
+      if (file && isImageFile(file)) openLightbox(file.id)
+    }, [visibleFiles, openLightbox]),
+  })
 
-  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useArrowNav(visibleFiles.length, React.useCallback((idx: number) => {
-    const file = visibleFiles[idx]
-    if (file && isImageFile(file)) openLightbox(file.id)
-  }, [visibleFiles, openLightbox]))
+  // ⌥[ / ⌥]: フィルタタブ切替
+  const cycleFilterTab = (dir: 'prev' | 'next') => {
+    const idx = filterDefs.findIndex(f => f.id === filter)
+    const next = dir === 'next' ? (idx + 1) % filterDefs.length : (idx - 1 + filterDefs.length) % filterDefs.length
+    setFilter(filterDefs[next]!.id)
+  }
+  useCommand('ctx.filterTabPrev', () => cycleFilterTab('prev'))
+  useCommand('ctx.filterTabNext', () => cycleFilterTab('next'))
 
   // ⌥Delete: 選択中のファイルを削除（↑↓ で選択していない時は何もしない）
-  React.useEffect(() => {
-    const onDelete = () => {
-      const file = navIdx >= 0 ? visibleFiles[navIdx] : undefined
-      if (file) handleDelete(file.id, file.fileName)
-    }
-    window.addEventListener('cairn:delete-selected', onDelete)
-    return () => window.removeEventListener('cairn:delete-selected', onDelete)
-  }, [visibleFiles, navIdx])
+  useCommand('files.delete', () => {
+    const file = navIdx >= 0 ? visibleFiles[navIdx] : undefined
+    if (file) handleDelete(file.id, file.fileName)
+  })
 
   // ⌥R: 選択中のファイルを再インデックス（インデックス対象のみ）
-  React.useEffect(() => {
-    const onReindex = () => {
-      const file = navIdx >= 0 ? visibleFiles[navIdx] : undefined
-      if (file && REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link') handleReindex(file.id)
-    }
-    window.addEventListener('cairn:reindex-selected', onReindex)
-    return () => window.removeEventListener('cairn:reindex-selected', onReindex)
-  }, [visibleFiles, navIdx])
+  useCommand('files.reindex', () => {
+    const file = navIdx >= 0 ? visibleFiles[navIdx] : undefined
+    if (file && REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link') handleReindex(file.id)
+  })
 
   // フィルタ変更で選択をリセット
   React.useEffect(() => { setNavIdx(-1) }, [filter, effectiveSearch, setNavIdx])
@@ -324,7 +316,7 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
           </div>
         ) : (
           <>
-            {visibleFiles.map((f, i) => <FileRow key={f.id} file={f} isMobile={isMobile} onDelete={handleDelete} onReindex={handleReindex} onImageClick={openLightbox} selected={i === navIdx} />)}
+            {visibleFiles.map((f, i) => <FileRow key={f.id} file={f} isMobile={isMobile} onDelete={handleDelete} onReindex={handleReindex} onImageClick={openLightbox} selected={i === navIdx} index={i} />)}
             <div ref={sentinelRef} />
           </>
         )}

@@ -135,7 +135,7 @@ function MobileShellInner() {
   }, [openProjectById])
 
   return (
-    <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), projectsView, setProjectsView }}>
+    <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), projectsView, setProjectsView, crossSearchNonce: 0, consumeCrossSearch: () => {} }}>
       <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
         <NavigationProgress />
         {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)} isMobile/>}

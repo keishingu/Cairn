@@ -13,6 +13,7 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useCommand } from '@/lib/command-registry'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -147,13 +148,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
     queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
   })
 
-  // ⌥S: 検索フォーカス
-  React.useEffect(() => {
-    const searchEl = document.querySelector<HTMLInputElement>('[data-member-search]')
-    const onSearch = () => searchEl?.focus()
-    window.addEventListener('cairn:search-focus', onSearch)
-    return () => window.removeEventListener('cairn:search-focus', onSearch)
-  }, [])
+  // ⌥S（検索フォーカス）は TopBarSearch（route ラッパー）が担当
 
   // PC: initialUserId が指定されている場合、メンバーデータ読み込み後に自動選択
   React.useEffect(() => {
@@ -194,19 +189,14 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
     { id: 'guest',  label: 'ゲスト' },
   ]
 
-  // ⌥[/⌥]: ロールフィルタタブ切替
-  React.useEffect(() => {
-    const onTab = (e: Event) => {
-      const dir = (e as CustomEvent<'prev' | 'next'>).detail
-      const idx = roleFilters.findIndex(f => f.id === roleFilter)
-      const next = dir === 'next'
-        ? (idx + 1) % roleFilters.length
-        : (idx - 1 + roleFilters.length) % roleFilters.length
-      setRoleFilter(roleFilters[next]!.id)
-    }
-    window.addEventListener('cairn:filter-tab', onTab)
-    return () => window.removeEventListener('cairn:filter-tab', onTab)
-  }, [roleFilter, roleFilters])
+  // ⌥[ / ⌥]: ロールフィルタタブ切替
+  const cycleRoleFilter = (dir: 'prev' | 'next') => {
+    const idx = roleFilters.findIndex(f => f.id === roleFilter)
+    const next = dir === 'next' ? (idx + 1) % roleFilters.length : (idx - 1 + roleFilters.length) % roleFilters.length
+    setRoleFilter(roleFilters[next]!.id)
+  }
+  useCommand('ctx.filterTabPrev', () => cycleRoleFilter('prev'))
+  useCommand('ctx.filterTabNext', () => cycleRoleFilter('next'))
 
   if (isMobile) {
     return (

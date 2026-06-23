@@ -30,6 +30,7 @@ import {
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { chatDraftKey } from '@/lib/storage-keys'
+import { useCommand } from '@/lib/command-registry'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 
@@ -113,21 +114,28 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   const startEdit = () => {
     setEditDraft(content)
     setEditMode(true)
-    requestAnimationFrame(() => {
-      if (editTextareaRef.current) {
-        editTextareaRef.current.focus()
-        editTextareaRef.current.setSelectionRange(content.length, content.length)
-      }
-    })
   }
 
-  // cairn:edit-message イベントで編集モードを起動（startEdit はテキストエリアにフォーカスも当てる）
+  // 編集モードに入ったら確実に textarea をフォーカスする（rAF は commit 前に走り不安定なため effect で）
   React.useEffect(() => {
-    const handler = (e: Event) => {
-      if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit()
+    if (!editMode) return
+    const el = editTextareaRef.current
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length) }
+  }, [editMode])
+
+  // メッセージ選択中のキーボード操作（e=編集 / r=リアクション / d=削除）を受ける
+  React.useEffect(() => {
+    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit() }
+    const onReactEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId) setShowPicker(true) }
+    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) setDeleteConfirm(true) }
+    window.addEventListener('cairn:edit-message', onEditEvt)
+    window.addEventListener('cairn:react-message', onReactEvt)
+    window.addEventListener('cairn:delete-message', onDeleteEvt)
+    return () => {
+      window.removeEventListener('cairn:edit-message', onEditEvt)
+      window.removeEventListener('cairn:react-message', onReactEvt)
+      window.removeEventListener('cairn:delete-message', onDeleteEvt)
     }
-    window.addEventListener('cairn:edit-message', handler)
-    return () => window.removeEventListener('cairn:edit-message', handler)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messageId, isOwn, content])
 
@@ -387,6 +395,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const compactInputRef = React.useRef<HTMLTextAreaElement>(null)
   const overlayRef = React.useRef<HTMLDivElement>(null)
 
+  // ⌥I: メッセージ入力欄にフォーカス
+  useCommand('chats.focusComposer', () => (textareaRef.current ?? compactInputRef.current)?.focus())
+
   // テキストエリアの高さを内容に合わせて自動調整する（改行・長文で行が増えても見切れないように）
   React.useEffect(() => {
     const el = textareaRef.current ?? compactInputRef.current
@@ -448,6 +459,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         if (m) insertMention(m.userId, m.displayName)
         return
       }
+    } else if (e.key === 'Escape') {
+      // メンション候補が無い時の Esc は入力欄から離脱（ブラー）する
+      e.preventDefault()
+      ;(e.currentTarget as HTMLElement).blur()
+      return
     }
     fallback()
   }
@@ -933,14 +949,22 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return
       const msg = messages[focusedMsgIdx]
       if (!msg) return
+      const isOwn = msg.senderId === currentUser?.id
       if (e.key === 'Escape') {
         e.preventDefault()
         setFocusedMsgIdx(-1)
-      } else if (e.key === 'e' && msg.senderId === currentUser?.id) {
+      } else if (e.key === 'e' && isOwn) {
+        // 編集モードに入る（ChatMessage 側で editMode を起動）
         e.preventDefault()
-        // 編集モードに入る: 対象メッセージの data-message-id から DOM を探し、
-        // ChatMessage 内の editMode を起動するためのカスタムイベントを発火
         window.dispatchEvent(new CustomEvent('cairn:edit-message', { detail: msg.id }))
+      } else if (e.key === 'r') {
+        // リアクション（絵文字ピッカーを開く）
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:react-message', { detail: msg.id }))
+      } else if ((e.key === 'd' || e.key === 'Delete') && isOwn) {
+        // 削除（確認ダイアログを開く・自分のメッセージのみ）
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: msg.id }))
       }
     }
     window.addEventListener('keydown', onKeyDown)
