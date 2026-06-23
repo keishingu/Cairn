@@ -13,6 +13,7 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useCommand } from '@/lib/command-registry'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -147,6 +148,8 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
     queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
   })
 
+  // ⌥S（検索フォーカス）は TopBarSearch（route ラッパー）が担当
+
   // PC: initialUserId が指定されている場合、メンバーデータ読み込み後に自動選択
   React.useEffect(() => {
     if (!initialUserId || isMobile || members.length === 0) return
@@ -186,6 +189,15 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
     { id: 'guest',  label: 'ゲスト' },
   ]
 
+  // ⌥[ / ⌥]: ロールフィルタタブ切替
+  const cycleRoleFilter = (dir: 'prev' | 'next') => {
+    const idx = roleFilters.findIndex(f => f.id === roleFilter)
+    const next = dir === 'next' ? (idx + 1) % roleFilters.length : (idx - 1 + roleFilters.length) % roleFilters.length
+    setRoleFilter(roleFilters[next]!.id)
+  }
+  useCommand('ctx.filterTabPrev', () => cycleRoleFilter('prev'))
+  useCommand('ctx.filterTabNext', () => cycleRoleFilter('next'))
+
   if (isMobile) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
@@ -211,6 +223,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
               <Icon name="search" size={14} />
             </div>
             <input
+              data-member-search
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="メンバーを検索…"

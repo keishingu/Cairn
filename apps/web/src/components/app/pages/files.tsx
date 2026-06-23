@@ -9,6 +9,8 @@ import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import type { FileDto } from '@/app/api/files/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useListSelection } from '@/hooks/use-list-selection'
+import { useCommand } from '@/lib/command-registry'
 
 type FilterKey = 'all' | 'pdf' | 'img' | 'doc'
 
@@ -55,7 +57,7 @@ function matchesFilter(file: FileDto, filter: FilterKey): boolean {
 
 // ─── FileRow ──────────────────────────────────────────────────────
 
-const FileRow = ({ file, isMobile, onDelete, onReindex, onImageClick }: { file: FileDto; isMobile: boolean; onDelete: (id: string, name: string) => void; onReindex: (id: string) => void; onImageClick: (id: string) => void }) => {
+const FileRow = ({ file, isMobile, onDelete, onReindex, onImageClick, selected, index }: { file: FileDto; isMobile: boolean; onDelete: (id: string, name: string) => void; onReindex: (id: string) => void; onImageClick: (id: string) => void; selected?: boolean; index?: number }) => {
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
   const projectLabel = file.projectTitle ?? file.channelName ?? 'チャット'
@@ -64,11 +66,15 @@ const FileRow = ({ file, isMobile, onDelete, onReindex, onImageClick }: { file: 
 
   return (
     <div
+      data-list-index={index}
       style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: isMobile ? '10px 12px' : '10px 16px',
         borderBottom: '1px solid var(--divider)',
+        background: selected ? 'var(--accent-soft)' : 'transparent',
       }}
+      onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+      onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
     >
       <a
         href={file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`}
@@ -218,6 +224,38 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
     { id: 'doc', label: `ドキュメント (${counts.doc})` },
   ]
 
+  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useListSelection({
+    count: visibleFiles.length,
+    onEnter: React.useCallback((idx: number) => {
+      const file = visibleFiles[idx]
+      if (file && isImageFile(file)) openLightbox(file.id)
+    }, [visibleFiles, openLightbox]),
+  })
+
+  // ⌥[ / ⌥]: フィルタタブ切替
+  const cycleFilterTab = (dir: 'prev' | 'next') => {
+    const idx = filterDefs.findIndex(f => f.id === filter)
+    const next = dir === 'next' ? (idx + 1) % filterDefs.length : (idx - 1 + filterDefs.length) % filterDefs.length
+    setFilter(filterDefs[next]!.id)
+  }
+  useCommand('ctx.filterTabPrev', () => cycleFilterTab('prev'))
+  useCommand('ctx.filterTabNext', () => cycleFilterTab('next'))
+
+  // ⌥Delete: 選択中のファイルを削除（↑↓ で選択していない時は何もしない）
+  useCommand('files.delete', () => {
+    const file = navIdx >= 0 ? visibleFiles[navIdx] : undefined
+    if (file) handleDelete(file.id, file.fileName)
+  })
+
+  // ⌥R: 選択中のファイルを再インデックス（インデックス対象のみ）
+  useCommand('files.reindex', () => {
+    const file = navIdx >= 0 ? visibleFiles[navIdx] : undefined
+    if (file && REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link') handleReindex(file.id)
+  })
+
+  // フィルタ変更で選択をリセット
+  React.useEffect(() => { setNavIdx(-1) }, [filter, effectiveSearch, setNavIdx])
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Toolbar */}
@@ -278,7 +316,7 @@ export const PageFiles = ({ isMobile = false, externalSearch }: { isMobile?: boo
           </div>
         ) : (
           <>
-            {visibleFiles.map(f => <FileRow key={f.id} file={f} isMobile={isMobile} onDelete={handleDelete} onReindex={handleReindex} onImageClick={openLightbox} />)}
+            {visibleFiles.map((f, i) => <FileRow key={f.id} file={f} isMobile={isMobile} onDelete={handleDelete} onReindex={handleReindex} onImageClick={openLightbox} selected={i === navIdx} index={i} />)}
             <div ref={sentinelRef} />
           </>
         )}

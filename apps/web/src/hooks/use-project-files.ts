@@ -30,5 +30,19 @@ export function useProjectFiles(projectId: string) {
     },
   })
 
-  return { ...query, deleteMutation }
+  const setLatestMutation = useMutation({
+    mutationFn: ({ fileId, isLatest }: { fileId: string; isLatest: boolean }) =>
+      fetchWithAuth(`/api/attachments/${fileId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isLatest }),
+      }).then(r => {
+        if (!r.ok) throw new Error('最新版の更新に失敗しました')
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['project-files', projectId] })
+    },
+  })
+
+  return { ...query, deleteMutation, setLatestMutation }
 }

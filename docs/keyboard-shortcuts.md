@@ -1,6 +1,6 @@
 # キーボードショートカット設計
 
-> ステータス: **現行リファレンス（第1段のみ実装済み）**（2026-06-16）。第2段以降は設計案
+> ステータス: **現行リファレンス（第2段実装済み + コンテキスト拡張）**（2026-06-17）
 > ドキュメントと実装が矛盾する場合はコードと [`CLAUDE.md`](../CLAUDE.md) を正とする。
 
 Cairn の Desktop（Electron）/ Web のキーボードショートカット設計。Microsoft Teams の規律（修飾キーで操作の作用範囲を分ける）を下敷きにしている。
@@ -62,6 +62,16 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 | `2` | カレンダー |
 | `3` | カンバン |
 | `4` | マイタスク |
+| `5` | チャット一覧 |
+| `6` | ファイル |
+| `7` | ギャラリー |
+| `8` | AIアシスタント |
+| `9` | メンバー |
+| `0` | ユーザーメニュー（ステータス / ログアウト）をトグル |
+| `,` | 設定 |
+| `U` | 通知を開く |
+| `B` | サイドバー折りたたみをトグル（Desktop は ⌘B） |
+| `;` | ワークスペース切替ポップオーバーをトグル |
 
 ※番号は**サイドメニューの表示順と一致**させる（Teams の強さの本質）。
 
@@ -71,7 +81,7 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 |---|---|
 | `⌘K` | コマンドパレット（Web の本命。`⌘⇧P` は Firefox のプライベートウィンドウと衝突のため不採用） |
 | `⌘⇧F` | 横断検索（チャットへ遷移して開く） |
-| `⌘⇧U` | 通知を開く |
+| `⌘⌥U` | 通知を開く（Win/Linux は `Ctrl⇧U`。数字ナビと同じアプリ層に統一） |
 | `?` | ショートカット一覧 |
 | `Esc` | 最前面のパネル/モーダルを閉じる |
 
@@ -82,9 +92,16 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 | `⌥←` `⌥→` | 時間軸（水平）= カレンダーの前 / 次の期間 |
 | `⌥↑` `⌥↓` | リスト（垂直）= 順送り（チャンネル / 会話） |
 | `⌥M` `⌥W` | カレンダー 月 / 週（タイムラインは PC に描画ビューが無いため割当なし） |
+| `⌥T` | カレンダー: 今日へジャンプ / Projects: テーブル表示 |
+| `⌥G` | Projects: グリッド表示 |
 | `⌥N` | 新規作成（その画面の主役を作る） |
-| `⌥V` | 一覧 グリッド ⇔ 表（未実装） |
-| `⌥F` | フィルタ popover を開く（未実装） |
+| `⌥F` | フィルタ popover をトグル |
+| `⌥S` | 検索入力にフォーカス |
+| `⌥D` | Chats: 詳細パネルをトグル |
+| `⌥[` `⌥]` | フィルタタブを前 / 次へ切替 |
+| `⌥Enter` | Tasks: タスク完了トグル |
+| `⌥⌫` `⌥Delete` | Files: ファイル削除 |
+| `⌥R` | Files: ファイル再インデックス |
 
 > **軸の使い分け**: 時間の前後は水平 `⌥←→`、縦に並ぶリストの前後は垂直 `⌥↑↓`。
 
@@ -98,14 +115,16 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 
 | 画面 | 主なショートカット |
 |---|---|
-| Projects（一覧/カレンダー/カンバン） | `⌥N`新規プロジェクト、`⌥M/W`月/週、`⌥←→`期間送り（カレンダー） |
-| Tasks（マイタスク） | `⌥N`新規タスク |
-| Chats | `⌥N`新規チャンネル、`⌥↑↓`/`Ctrl+Tab`チャンネル順送り、`⌘⇧F`横断検索、`Enter`/`Shift+Enter`送信/改行 |
-| Files | `⌘⇧F`横断検索 |
+| Projects（一覧） | `⌥N`新規プロジェクト、`⌥F`フィルター、`⌥S`検索、`⌥G`グリッド/`⌥T`テーブル切替、`⌥[/]`フィルタタブ切替 |
+| Calendar | `⌥N`新規プロジェクト、`⌥M/W`月/週、`⌥T`今日へ、`⌥←→`期間送り、`⌥F`フィルター |
+| Kanban | `⌥N`新規プロジェクト、`⌥F`フィルター |
+| Tasks（マイタスク） | `⌥N`新規タスク、`⌥[/]`フィルタタブ切替、`⌥⏎`完了トグル |
+| Chats | `⌥N`新規チャンネル、`⌥↑↓`/`Ctrl+Tab`チャンネル順送り、`⌥S`検索、`⌥D`詳細パネル、`⌥I`入力欄フォーカス、`⌘⇧F`横断検索。入力欄・検索は `Esc` で離脱（ブラー）／メンション候補・編集中の `Esc` はそれぞれ閉じる。**メッセージ選択中**（`↑↓` で選択）は単キーで `e`編集 / `r`リアクション / `d`(or `Delete`)削除（編集・削除は自分のみ）/ `Esc`選択解除 |
+| Files | `⌥[/]`フィルタタブ切替、`⌥⌫`削除、`⌥R`再インデックス |
 | Gallery | `←`/`→`前後、`Esc`閉じる（既存維持） |
 | AI | `⌥N`新規会話、`⌥↑↓`/`Ctrl+Tab`会話切替、`Enter`/`Shift+Enter`送信/改行 |
-| Members | `⌥F`ロールフィルタ、`⌥N`/`i`招待（admin のみ・権限で無効化）、`Esc`パネル閉じる |
-| Settings | `⌘Enter`保存、`Esc`ダイアログ閉じる |
+| Members | `⌥S`検索、`⌥[/]`ロールフィルタ切替 |
+| Settings | `Esc`ダイアログ閉じる |
 
 > Chats / AI は「会話スレッドを並べる画面」として**完全パラレル**にする（`⌥N`作成 / `⌘⇧F`横断 / `⌥↑↓`順送り を共有）。
 
@@ -131,36 +150,39 @@ Mac は Ctrl が OS 予約だらけ（`⌃↑↓←→`＝Mission Control/Spaces
 
 ---
 
-## 5. 実装アーキテクチャ（メモ）
+## 5. 実装アーキテクチャ（コマンドレジストリ）
 
-「**1 つの `dispatchShortcut(action)` に、Web のキーハンドラと Desktop のネイティブメニューの両入口を流し込む**」構成。
+ショートカットは**単一のコマンドカタログ＋実行時レジストリ**に集約している。キー処理・
+コマンドパレット・ヘルプ・ヒント表示はすべてこのカタログから派生するため、定義の二重管理・
+死にショートカット・表記ズレが構造的に起きない。
 
 ```
-[Desktop] ネイティブ Menu(⌘1..) ─webContents.send─▶ preload ─window event─┐
-                                                                          ├─▶ dispatchShortcut(action)
-[Web]     keydown(⌘⇧数字 / ⌥英字 / ⌥↑↓) ───────────────────────────────────┘        │
-                                                                  navigate() / setProjectsView() / setCalView()
+catalog（lib/commands.ts）= id / title / layer / key / when の単一定義
+        │
+        ├─ use-command-dispatcher  keydown → matchCommand(catalog) → registry.invoke(id)
+        ├─ command-palette / shortcut-help / shortcut-hints  ← catalog から表示を生成
+        │
+[各ページ] useCommand(id, handler)  → registry に実体を登録（未登録なら no-op＋dev警告）
+[Desktop]  preload(onNavigate/onSeq/onToggleSidebar) → registry.invoke(id)
 ```
 
-- **Desktop（`apps/desktop/src/main.js`）**: `globalShortcut` は使わず（非フォーカス時も奪うため）、`Menu` + `MenuItem` の `accelerator: 'CmdOrCtrl+1'` を使う。`⌘W`/`⌘M` 等 OS 既定と被るキーもメニュー登録で上書き可。リモート URL を読む構成なので `preload.js` + `contextBridge` で `window.cairnDesktop.onNavigate(cb)` を生やし、`webContents.send('cairn:navigate', action)` → preload → `window` の CustomEvent で Web に届ける。`contextIsolation` は維持。
-- **Web（`apps/web`）**: `lib/shortcuts.ts`（action 定義 + `dispatchShortcut`）と `hooks/use-app-shortcuts.ts`（keydown 登録）を新設し `PCShell` でマウント。`navigate()` / `setProjectsView()` を流用。
-- **散在ハンドラの集約**: 現状 gallery（矢印・Esc）/ chat（Esc・Enter）/ ai（Enter）に個別の keydown があるので、共通フックに巻き取って `Esc`=閉じる / `Enter`=開く・送信 / `⌘Enter`=確定 を全画面で統一する。
-- **カレンダー月/週の連携**: `calView` は現在 `projects-calendar.tsx` のローカル state。`STORAGE_KEYS.calendar_view` を追加して localStorage 永続化 + CustomEvent で通知し、ショートカットから操作可能にする（既存の localStorage パターンと整合）。
-- **権限**: guest/admin で出せないアクション（招待等）はショートカットも同様に無効化。サーバ側チェックは常に必須（UI ガードは補助）。
+- **カタログ（`apps/web/src/lib/commands.ts`）**: 全コマンドを `{ id, title, layer, key, when, hintKeys }` で定義。`layer` が修飾キー（app=⌘⌥/Ctrl⇧, global=⌘/Ctrl, context=⌥/Alt）を、`when(page)` が有効ページを決める。同じキーの多義（`⌥T`=Projects テーブル / Calendar 今日）は `when` 違いの別コマンドで表現。
+- **キー解決（`lib/command-keys.ts`）**: OS 別の修飾判定・表示文字列・入力欄ガードを集約。`matchCommand(e, page, mac)` が keydown を1コマンドに解決する。
+- **レジストリ（`lib/command-registry.tsx`）**: `CommandProvider` が `Map<id, handler>` を保持。`useCommand(id, handler)`（ハンドラは ref で常に最新）/ `useCommands(map)` で登録。`invoke(id)` は未登録なら no-op（dev 警告）→ 死にショートカットが構造的に消える。
+- **ディスパッチャ（`hooks/use-command-dispatcher.ts`）**: `PCShell` でマウント。keydown とネイティブメニュー（preload ブリッジ）の両入口を `invoke(id)` に流す。Esc だけは「閉じたら preventDefault」の特殊挙動のためコマンド化せず `onEscape` で扱う。
+- **Desktop（`apps/desktop/src/main.js` + `preload.js`）**: `Menu` + `accelerator: 'CmdOrCtrl+1'`（`globalShortcut` は非フォーカス時も奪うため不使用）。preload が `webContents.send` を受けて `onNavigate/onSeq/onToggleSidebar` を公開、Web のディスパッチャが `invoke` する。
+- **リスト選択（`hooks/use-list-selection.ts`）**: 素の `↑/↓` で行選択。可視行数（折りたたみ除外）を渡し、`data-list-index` を付けた行を `scrollIntoView` で追従する。
+- **権限**: guest/admin で出せないアクション（招待等）はハンドラ登録側でガードする。サーバ側チェックは常に必須（UI ガードは補助）。
 
 ---
 
 ## 6. 段階導入
 
-1. **第1段（◎・実装済み）**: 数字ナビ + `⌥M/W`カレンダービュー + 順送り（`⌥←→`カレンダー期間 / `⌥↑↓`Chats・AI）+ `Esc`=閉じる + ショートカットヒント表示。
-   - Web: `apps/web/src/hooks/use-app-shortcuts.ts`（`PCShell` でマウント）。`⌥M/W` は `calendar_view` を localStorage 永続化し `cairn:cal-view` を発火、`⌥←→` は `cairn:period`、`⌥↑↓` は `cairn:seq` を発火。`PageCalendar` が `cairn:period`、`PageChat`/`PageAI` が `cairn:seq` を購読する。
-   - Desktop: `apps/desktop/src/main.js` のネイティブメニュー（`CmdOrCtrl+1..4`）→ `apps/desktop/src/preload.js` の `window.cairnDesktop.onNavigate` → Web の同フックが受ける。
-   - `Esc`: shell（`PCShell`）レベルで最前面のオーバーレイ（通知 → 詳細パネル）を1つ閉じる。`onEscape` を `use-app-shortcuts` に渡す。前面に `[data-cairn-modal]`（Modal primitive）がある間は介入しない。入力欄フォーカス時も素通り。
-   - ヒント表示（cmux/vimium 風）: `apps/web/src/components/app/shortcut-hints.tsx`。⌘（Mac）/ Ctrl（Win）または ⌥/Alt を約 350ms 押し続けると、次に押せるキーと操作を画面下中央に一覧表示。実キー押下・修飾キー解放・フォーカス喪失で消える。表示専用で実行はフックが担う。
-   - **未了（次段送り）**: `Enter`=開く/送信の全画面統一は、リスト内フォーカス（`j/k`）の概念が要るため Vim モード（第3段）と併せて実装する。
-2. **第2段（○・実装済み）**: `⌥N`作成（projects/calendar/kanban/tasks/chats/ai が `cairn:create` を購読）/ `⌘K`パレット（`command-palette.tsx`・静的アクション）/ `⌘⇧F`横断検索（chats へ遷移して開く）/ `⌘⇧U`通知 / `?`ヘルプ（`shortcut-help.tsx`）。`⌥V`グリッド⇔表・`⌥F`フィルタは未実装。
-3. **第1.5段（Desktop 特権・実装済み）**: `Ctrl+Tab`/`Ctrl+Shift+Tab` を Electron の `before-input-event` で横取りし、`preload` の `onSeq` 経由で `cairn:seq` を発火（チャンネル・会話の順送り）。
-4. **第3段（△）**: Vim モード（設定トグル + 単キー層 + チャット modal + `Enter`=開く統一）。グローバルのクイックキャプチャ・トレイ常駐等の Desktop 特権も候補。
+1. **第1段（◎・実装済み）**: 数字ナビ（1〜4）+ `⌥M/W`カレンダービュー + 順送り（`⌥←→`カレンダー期間 / `⌥↑↓`Chats・AI）+ `Esc`=閉じる + ショートカットヒント表示。
+2. **第2段（◎・実装済み）**: `⌥N`作成 / `⌘K`パレット / `⌘⇧F`横断検索 / `⌘⌥U`通知 / `?`ヘルプ。
+3. **第2.5段（◎・実装済み）**: 数字ナビ拡張（5〜9 + `,`）/ `⌘⌥0`ユーザーメニュー / `⌘⌥B`サイドバー折りたたみ（Desktop `⌘B`）/ コンテキストショートカット拡張（`⌥F`フィルタ＝popover を持つ projects/calendar/kanban のみ / `⌥S`検索 / `⌥G/T`ビュー切替 / `⌥T`今日 / `⌥D`詳細パネル / `⌥[/]`フィルタタブ / `⌥⏎`完了トグル / `⌥⌫`削除 / `⌥R`再インデックス）。`⌥⌫`/`⌥R`/`⌥⏎` は↑↓で選択中の行が対象。
+4. **第1.5段（◎・実装済み）**: `Ctrl+Tab`/`Ctrl+Shift+Tab` を Electron の `before-input-event` で横取りし、`preload` の `onSeq` 経由で `cairn:seq` を発火（チャンネル・会話の順送り）。
+5. **第3段（△）**: Vim モード（設定トグル + 単キー層 + チャット modal + `Enter`=開く統一）。グローバルのクイックキャプチャ・トレイ常駐等の Desktop 特権も候補。
 
 ---
 

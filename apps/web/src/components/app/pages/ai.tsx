@@ -11,6 +11,7 @@ import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useCommand } from '@/lib/command-registry'
 
 // ---- ソースチップ ----
 
@@ -368,30 +369,21 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
   }
 
   // ⌥N: 新規会話
-  React.useEffect(() => {
-    const onCreate = () => createConversation.mutate()
-    window.addEventListener('cairn:create', onCreate)
-    return () => window.removeEventListener('cairn:create', onCreate)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  useCommand('ctx.create', () => createConversation.mutate())
 
   // ⌥↑↓（順送り）: 会話履歴（新しい順）を前/次へ
-  React.useEffect(() => {
+  const seekConversation = (dir: 'prev' | 'next') => {
     if (conversations.length === 0) return
     const ids = conversations.map(c => c.id)
-    const onSeq = (e: Event) => {
-      const dir = (e as CustomEvent<'prev' | 'next'>).detail
-      const idx = activeId ? ids.indexOf(activeId) : -1
-      const nextIdx = idx === -1
-        ? (dir === 'next' ? 0 : ids.length - 1)
-        : Math.min(Math.max(idx + (dir === 'next' ? 1 : -1), 0), ids.length - 1)
-      const nextId = ids[nextIdx]
-      if (nextId && nextId !== activeId) selectConversation(nextId)
-    }
-    window.addEventListener('cairn:seq', onSeq)
-    return () => window.removeEventListener('cairn:seq', onSeq)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, conversations])
+    const idx = activeId ? ids.indexOf(activeId) : -1
+    const nextIdx = idx === -1
+      ? (dir === 'next' ? 0 : ids.length - 1)
+      : Math.min(Math.max(idx + (dir === 'next' ? 1 : -1), 0), ids.length - 1)
+    const nextId = ids[nextIdx]
+    if (nextId && nextId !== activeId) selectConversation(nextId)
+  }
+  useCommand('seq.prev', () => seekConversation('prev'))
+  useCommand('seq.next', () => seekConversation('next'))
 
 
 
