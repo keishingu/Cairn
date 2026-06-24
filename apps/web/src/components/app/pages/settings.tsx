@@ -1082,12 +1082,36 @@ const SERVICE_META: { key: ServiceKey; label: string; icon: string; purpose: str
 ]
 
 const SettingsDeveloper = () => {
-  const { data, isLoading, refetch, isFetching } = useQuery<DevStatusDto>({
+  const { isOwner } = useWorkspacePermissions()
+  const { data: staticData, isLoading } = useQuery<DevStatusDto>({
     queryKey: ['dev-status'],
     queryFn: () => fetchWithAuth('/api/dev/status').then(r => r.json()),
     staleTime: 0,
     gcTime: 0,
   })
+  const [diagnosticData, setDiagnosticData] = React.useState<DevStatusDto | null>(null)
+  const diagnose = useMutation({
+    mutationFn: async () => {
+      const res = await fetchWithAuth('/api/dev/status', { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(body.error ?? '診断の実行に失敗しました')
+      }
+      return res.json() as Promise<DevStatusDto>
+    },
+    onSuccess: (next) => setDiagnosticData(next),
+  })
+
+  const data = diagnosticData ?? staticData
+
+  if (!isOwner) {
+    return (
+      <div>
+        <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>開発者情報</h1>
+        <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションはワークスペースのオーナーのみ利用できます。</p>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -1095,15 +1119,23 @@ const SettingsDeveloper = () => {
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', flex: 1 }}>開発者情報</h1>
         <button
           className="btn"
-          onClick={() => refetch()}
-          disabled={isFetching}
+          onClick={() => void diagnose.mutateAsync()}
+          disabled={diagnose.isPending}
           style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}
         >
-          <Icon name="refresh" size={13} style={isFetching ? { animation: 'spin 1s linear infinite' } : {}}/>
-          再チェック
+          <Icon name="refresh" size={13} style={diagnose.isPending ? { animation: 'spin 1s linear infinite' } : {}}/>
+          手動診断
         </button>
       </div>
-      <p style={{ color: 'var(--text-3)', fontSize: 13, marginBottom: 28 }}>外部サービスの接続状況を確認できます。</p>
+      <p style={{ color: 'var(--text-3)', fontSize: 13, marginBottom: 10 }}>初期表示は設定状況のみを表示し、外部サービスへの疎通確認は手動診断時にだけ実行されます。</p>
+      {diagnose.error && (
+        <p style={{ color: 'var(--red-text)', fontSize: 12.5, margin: '0 0 18px' }}>
+          {diagnose.error instanceof Error ? diagnose.error.message : '診断の実行に失敗しました'}
+        </p>
+      )}
+      {!diagnose.data && (
+        <p style={{ color: 'var(--text-4)', fontSize: 12, margin: '0 0 28px' }}>OpenAI などの実接続確認は「手動診断」でのみ行います。</p>
+      )}
 
       <section style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>外部サービス</div>
@@ -1127,7 +1159,7 @@ const SettingsDeveloper = () => {
                   {s?.latencyMs != null && s.status === 'ok' && (
                     <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{s.latencyMs}ms</span>
                   )}
-                  {isLoading || isFetching ? (
+                  {isLoading ? (
                     <span style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '3px 10px', borderRadius: 999, background: 'var(--card-2)' }}>確認中...</span>
                   ) : cfg ? (
                     <span style={{ fontSize: 11.5, fontWeight: 600, color: cfg.color, padding: '3px 10px', borderRadius: 999, background: cfg.bg }}>{cfg.label}</span>
@@ -1161,39 +1193,42 @@ const SettingsDeveloper = () => {
   )
 }
 
+export function getSettingsNavGroups(isOwner: boolean): { label: string; items: SettingsSectionMeta[] }[] {
+  return [
+    {
+      label: '個人',
+      items: [
+        { id: 'account', label: 'アカウント', icon: 'user' },
+        { id: 'appearance', label: '外観', icon: 'sun' },
+      ],
+    },
+    {
+      label: 'ワークスペース',
+      items: [
+        { id: 'general', label: 'ワークスペース設定', icon: 'settings' },
+        { id: 'workflow', label: 'ワークフロー', icon: 'flag' },
+        { id: 'ai', label: 'AIエージェント', icon: 'sparkles' },
+        { id: 'members', label: 'メンバー', icon: 'users' },
+        { id: 'integrations', label: '連携', icon: 'layers' },
+        { id: 'billing', label: '請求', icon: 'archive' },
+      ],
+    },
+    ...(isOwner
+      ? [{
+        label: '開発者',
+        items: [
+          { id: 'developer', label: '開発者情報', icon: 'code' },
+        ],
+      }]
+      : []),
+  ]
+}
+
 export interface SettingsSectionMeta {
   id: string
   label: string
   icon: string
 }
-
-// 設定セクションの定義。PC のサイドバーとモバイルの設定一覧で共有する単一の真実。
-export const SETTINGS_NAV_GROUPS: { label: string; items: SettingsSectionMeta[] }[] = [
-  {
-    label: '個人',
-    items: [
-      { id: 'account',    label: 'アカウント', icon: 'user' },
-      { id: 'appearance', label: '外観',       icon: 'sun' },
-    ],
-  },
-  {
-    label: 'ワークスペース',
-    items: [
-      { id: 'general',       label: 'ワークスペース設定', icon: 'settings' },
-      { id: 'workflow',      label: 'ワークフロー',       icon: 'flag' },
-      { id: 'ai',            label: 'AIエージェント',     icon: 'sparkles' },
-      { id: 'members',       label: 'メンバー',           icon: 'users' },
-      { id: 'integrations',  label: '連携',               icon: 'layers' },
-      { id: 'billing',       label: '請求',               icon: 'archive' },
-    ],
-  },
-  {
-    label: '開発者',
-    items: [
-      { id: 'developer', label: '開発者情報', icon: 'code' },
-    ],
-  },
-]
 
 // セクションIDごとのメインカラムコンポーネント。未実装のものは準備中プレースホルダーを出す。
 const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
@@ -1208,14 +1243,12 @@ const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
 
 const DEFAULT_SECTION = 'account'
 
-const ALL_SECTION_IDS = new Set(SETTINGS_NAV_GROUPS.flatMap(g => g.items.map(i => i.id)))
-
-export function isSettingsSection(id: string | null | undefined): id is string {
-  return id != null && ALL_SECTION_IDS.has(id)
+export function isSettingsSection(id: string | null | undefined, isOwner = true): id is string {
+  return id != null && new Set(getSettingsNavGroups(isOwner).flatMap(g => g.items.map(i => i.id))).has(id)
 }
 
-export function settingsSectionLabel(id: string): string {
-  for (const g of SETTINGS_NAV_GROUPS) {
+export function settingsSectionLabel(id: string, isOwner = true): string {
+  for (const g of getSettingsNavGroups(isOwner)) {
     const item = g.items.find(i => i.id === id)
     if (item) return item.label
   }
@@ -1239,15 +1272,17 @@ export function SettingsSectionContent({ section }: { section: string }) {
 export const PageSettings = () => {
   const pathname = usePathname()
   const router = useRouter()
+  const { isOwner } = useWorkspacePermissions()
+  const navGroups = getSettingsNavGroups(isOwner)
   const seg = pathname.split('/')[2]
-  const section = isSettingsSection(seg) ? seg : DEFAULT_SECTION
+  const section = isSettingsSection(seg, isOwner) ? seg : DEFAULT_SECTION
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <TopBar title="設定"/>
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={{ width: 220, borderRight: '1px solid var(--border)', padding: '20px 14px', background: 'var(--card)' }}>
-        {SETTINGS_NAV_GROUPS.map((group, gi) => (
-          <div key={group.label} style={{ marginBottom: gi < SETTINGS_NAV_GROUPS.length - 1 ? 16 : 0 }}>
+        {navGroups.map((group, gi) => (
+          <div key={group.label} style={{ marginBottom: gi < navGroups.length - 1 ? 16 : 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0 10px', marginBottom: 4 }}>
               {group.label}
             </div>

@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireWorkspaceOwner } from '@/lib/permissions'
 
 export type ServiceStatus = {
   status: 'ok' | 'error' | 'unconfigured'
@@ -34,11 +35,12 @@ async function checkWithLatency(fn: () => Promise<string | undefined>): Promise<
 }
 
 async function checkSupabaseDb(): Promise<ServiceStatus> {
+  if (!process.env['DATABASE_URL']) return { status: 'unconfigured', detail: 'DATABASE_URL 未設定' }
   return checkWithLatency(async () => {
     const { db } = await import('@cairn/db')
     const { sql } = await import('drizzle-orm')
     await db.execute(sql`SELECT 1`)
-    return process.env['DATABASE_URL']!.replace(/:\/\/[^@]+@/, '://***@')
+    return '接続成功'
   })
 }
 
@@ -51,7 +53,7 @@ async function checkSupabaseStorage(): Promise<ServiceStatus> {
     const supabase = createServiceRoleClient()
     const { data, error } = await supabase.storage.listBuckets()
     if (error) throw new Error(error.message)
-    return `${data.length} バケット`
+    return data.length > 0 ? '接続成功' : 'バケット未作成'
   })
 }
 
@@ -118,9 +120,56 @@ async function checkGoogleMaps(): Promise<ServiceStatus> {
   return { status: 'ok', detail: 'API キー設定済み（Places API New）' }
 }
 
-export async function GET() {
-  const { error } = await getAuthContext()
+function getStaticStatus(): DevStatusDto {
+  return {
+    supabaseDb: process.env['DATABASE_URL']
+      ? { status: 'ok', detail: 'DATABASE_URL 設定済み' }
+      : { status: 'unconfigured', detail: 'DATABASE_URL 未設定' },
+    supabaseStorage:
+      process.env['NEXT_PUBLIC_SUPABASE_URL'] && process.env['SUPABASE_SERVICE_ROLE_KEY']
+        ? { status: 'ok', detail: 'Supabase Storage 設定済み' }
+        : { status: 'unconfigured', detail: 'SUPABASE_URL / SERVICE_ROLE_KEY 未設定' },
+    inngest: process.env['INNGEST_EVENT_KEY']
+      ? process.env['INNGEST_EVENT_KEY'] === 'local'
+        ? { status: 'ok', detail: 'ローカル開発モード（Inngest Dev Server）' }
+        : { status: 'ok', detail: 'INNGEST_EVENT_KEY 設定済み' }
+      : { status: 'unconfigured', detail: 'INNGEST_EVENT_KEY 未設定' },
+    openai: process.env['OPENAI_API_KEY']
+      ? { status: 'ok', detail: 'OPENAI_API_KEY 設定済み' }
+      : { status: 'unconfigured', detail: 'OPENAI_API_KEY 未設定' },
+    tavily: process.env['TAVILY_API_KEY']
+      ? { status: 'ok', detail: 'API キー設定済み' }
+      : { status: 'unconfigured', detail: 'TAVILY_API_KEY 未設定（省略可）' },
+    googleMaps: (() => {
+      const key = process.env['GOOGLE_MAPS_API_KEY']
+      if (!key) return { status: 'unconfigured', detail: 'GOOGLE_MAPS_API_KEY 未設定（省略可 — 場所検索・カバー写真取得が無効）' }
+      if (key.length !== 39) return { status: 'error', detail: `APIキーの文字数が不正です（${key.length}文字 / 期待値: 39文字）` }
+      if (!/^[A-Za-z0-9_-]+$/.test(key)) return { status: 'error', detail: 'APIキーに使用できない文字が含まれています（英数字・-・_のみ）' }
+      return { status: 'ok', detail: 'API キー設定済み（Places API New）' }
+    })(),
+    env: {
+      nodeEnv: process.env['NODE_ENV'] ?? 'unknown',
+      hasVapid: !!process.env['VAPID_PUBLIC_KEY'],
+    },
+  }
+}
+
+async function authorizeOwner() {
+  const { ctx, error } = await getAuthContext()
   if (error) return error
+  return requireWorkspaceOwner(ctx.workspaceId, ctx.userId)
+}
+
+export async function GET() {
+  const authError = await authorizeOwner()
+  if (authError) return authError
+
+  return NextResponse.json(getStaticStatus())
+}
+
+export async function POST() {
+  const authError = await authorizeOwner()
+  if (authError) return authError
 
   const [supabaseDb, supabaseStorage, inngest, openai, tavily, googleMaps] = await Promise.all([
     checkSupabaseDb(),
