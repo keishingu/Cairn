@@ -127,7 +127,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
               fontFamily: 'inherit', opacity: isUploading ? 0.6 : 1,
             }}
           >
-            <Icon name="upload" size={13}/>
+            <Icon name="plus" size={13}/>
             {isUploading
               ? `${uploadState.done}/${uploadState.total} 枚アップロード中...`
               : '写真を追加'}
