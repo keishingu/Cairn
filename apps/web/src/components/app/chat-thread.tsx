@@ -28,6 +28,7 @@ import {
   useWorkspaceMembers,
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { getReactionTooltip } from '@/lib/chat/reaction-tooltip'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
@@ -86,7 +87,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   createdAt: string
   isEdited: boolean
   content: string
-  reactions: Array<{ emoji: string; count: number; mine: boolean }>
+  reactions: Array<{ emoji: string; count: number; mine: boolean; users?: string[] }>
   attachments: AttachmentDto[]
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
@@ -273,7 +274,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
         )}
         <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
-            <button key={i} onClick={() => onReact(messageId, r.emoji)} style={{
+            <button key={i} onClick={() => onReact(messageId, r.emoji)} title={!isMobile ? getReactionTooltip(r) : undefined} style={{
               height: compact ? 22 : 24, padding: '0 7px', borderRadius: 12,
               background: r.mine ? 'var(--accent-soft)' : 'var(--card-2)',
               border: `1px solid ${r.mine ? 'var(--accent)' : 'var(--border)'}`,
@@ -827,7 +828,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const { data: wsMembers = [] } = useWorkspaceMembers()
   const { data: chMemberIds = [] } = useChannelMembers(channelId)
   const sendMutation = useSendChannelMessage(channelId, currentUser)
-  const reactMutation = useToggleMessageReaction(channelId)
+  const reactMutation = useToggleMessageReaction(channelId, currentUser)
   const editMutation = useEditMessage(channelId)
   const deleteMutation = useDeleteMessage(channelId)
   const markChannelRead = useMarkChannelRead()

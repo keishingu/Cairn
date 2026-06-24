@@ -14,6 +14,7 @@ export interface ReactionDto {
   emoji: string
   count: number
   mine: boolean
+  users?: string[]
 }
 
 export interface MessageDto {
@@ -77,8 +78,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
               messageId: messageReactions.messageId,
               emoji: messageReactions.emoji,
               userId: messageReactions.userId,
+              displayName: profiles.displayName,
             })
             .from(messageReactions)
+            .innerJoin(profiles, eq(messageReactions.userId, profiles.id))
             .where(inArray(messageReactions.messageId, messageIds))
         : Promise.resolve([]),
       messageIds.length > 0
@@ -101,16 +104,20 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
     const reactionMap = new Map<string, ReactionDto[]>()
     for (const r of reactionRows) {
-      const key = `${r.messageId}:${r.emoji}`
       if (!reactionMap.has(r.messageId)) reactionMap.set(r.messageId, [])
       const existing = reactionMap.get(r.messageId)!.find(x => x.emoji === r.emoji)
       if (existing) {
         existing.count++
         if (r.userId === ctx.userId) existing.mine = true
+        existing.users?.push(r.displayName)
       } else {
-        reactionMap.get(r.messageId)!.push({ emoji: r.emoji, count: 1, mine: r.userId === ctx.userId })
+        reactionMap.get(r.messageId)!.push({
+          emoji: r.emoji,
+          count: 1,
+          mine: r.userId === ctx.userId,
+          users: [r.displayName],
+        })
       }
-      void key
     }
 
     const attachmentMap = new Map<string, AttachmentDto[]>()
