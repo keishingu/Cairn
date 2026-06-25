@@ -36,10 +36,19 @@ jobs:
         run: |
           git fetch origin main develop --quiet
           # main にまだ入っていない develop のコミット一覧。
-          # 利用ユーザー向けリリースノートなので、ドキュメント/設定のみの変更は除外する
-          # （docs/・README.md・CLAUDE.md だけを触るコミットは対象外。コードと両方触るコミットは残る）。
+          # 利用ユーザー向けリリースノートなので、利用者の挙動に出ない変更は除外する。
+          # 除外: ドキュメント(docs/, *.md)・CI(.github/)・テスト(*.test.ts(x))・
+          #       ビルド/ツール設定(packages/config/, *package.json, *tsconfig*.json, lockfile, turbo/vercel/eas)。
+          # これらのパス「だけ」を触るコミットが対象外。コードと両方触るコミットは残る。
           LOG=$(git log origin/main..origin/develop --no-merges --pretty=format:'- %s (%h)' \
-            -- ':!docs/' ':!README.md' ':!CLAUDE.md')
+            -- \
+            ':!docs/' ':!*.md' \
+            ':!.github/' \
+            ':!*.test.ts' ':!*.test.tsx' \
+            ':!packages/config/' \
+            ':!*package.json' ':!*tsconfig*.json' \
+            ':!pnpm-lock.yaml' ':!pnpm-workspace.yaml' \
+            ':!turbo.json' ':!vercel.json' ':!eas.json')
           if [ -z "$LOG" ]; then
             echo "develop は main より先行していません（またはドキュメント変更のみ）。リリース対象の差分がありません。"
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
