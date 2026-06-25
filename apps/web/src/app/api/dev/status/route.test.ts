@@ -3,6 +3,18 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const ENV_KEYS_TO_RESTORE = [
+  'DATABASE_URL',
+  'NEXT_PUBLIC_SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'INNGEST_EVENT_KEY',
+  'OPENAI_API_KEY',
+  'TAVILY_API_KEY',
+  'GOOGLE_MAPS_API_KEY',
+  'VAPID_PUBLIC_KEY',
+  'NODE_ENV',
+] as const
+
 const { mockGetAuthContext, mockRequireWorkspaceOwner } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireWorkspaceOwner: vi.fn(),
@@ -17,7 +29,9 @@ vi.mock('@/lib/permissions', () => ({
 }))
 
 describe('dev/status API の認可と手動診断', () => {
-  const originalNodeEnv = process.env['NODE_ENV']
+  const originalEnv = Object.fromEntries(
+    ENV_KEYS_TO_RESTORE.map((key) => [key, process.env[key]]),
+  ) as Record<(typeof ENV_KEYS_TO_RESTORE)[number], string | undefined>
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -31,18 +45,13 @@ describe('dev/status API の認可と手動診断', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
-    Reflect.deleteProperty(process.env, 'DATABASE_URL')
-    Reflect.deleteProperty(process.env, 'NEXT_PUBLIC_SUPABASE_URL')
-    Reflect.deleteProperty(process.env, 'SUPABASE_SERVICE_ROLE_KEY')
-    Reflect.deleteProperty(process.env, 'INNGEST_EVENT_KEY')
-    Reflect.deleteProperty(process.env, 'OPENAI_API_KEY')
-    Reflect.deleteProperty(process.env, 'TAVILY_API_KEY')
-    Reflect.deleteProperty(process.env, 'GOOGLE_MAPS_API_KEY')
-    Reflect.deleteProperty(process.env, 'VAPID_PUBLIC_KEY')
-    if (originalNodeEnv === undefined) {
-      Reflect.deleteProperty(process.env, 'NODE_ENV')
-    } else {
-      process.env['NODE_ENV' as keyof NodeJS.ProcessEnv] = originalNodeEnv
+    for (const key of ENV_KEYS_TO_RESTORE) {
+      const originalValue = originalEnv[key]
+      if (originalValue === undefined) {
+        Reflect.deleteProperty(process.env, key)
+      } else {
+        process.env[key as keyof NodeJS.ProcessEnv] = originalValue
+      }
     }
   })
 
