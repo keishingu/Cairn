@@ -91,12 +91,13 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   senderId: string
   currentUserId: string | undefined
   senderName: string
   senderAvatarUrl?: string | null
+  senderEmail?: string | null
   createdAt: string
   isEdited: boolean
   content: string
@@ -205,9 +206,11 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId
       onMouseEnter={() => !isMobile && setHovered(true)}
       onMouseLeave={() => !isMobile && setHovered(false)}
     >
-      <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
+      <div title={senderEmail ?? undefined}>
+        <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
+      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
+        <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
           <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
           {isEdited && <span style={{ fontSize: 10, color: 'var(--text-4)', fontStyle: 'italic' }}>編集済み</span>}
@@ -920,6 +923,11 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     for (const m of wsMembers) map.set(m.userId, m.displayName)
     return map
   }, [wsMembers])
+  const emailByUserId = React.useMemo(() => {
+    const map = new Map<string, string | null>()
+    for (const m of wsMembers) map.set(m.userId, m.email ?? null)
+    return map
+  }, [wsMembers])
 
   React.useEffect(() => {
     if (!sendMutation.isError) return
@@ -1171,6 +1179,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               currentUserId={currentUser?.id}
               senderName={m.senderName}
               senderAvatarUrl={m.senderAvatarUrl}
+              senderEmail={emailByUserId.get(m.senderId) ?? null}
               createdAt={m.createdAt}
               isEdited={m.isEdited}
               content={m.content}

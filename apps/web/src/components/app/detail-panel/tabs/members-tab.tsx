@@ -45,27 +45,31 @@ interface MemberRowProps {
 
 const MemberRow = ({ member, onRemove, removing, canRemove, onMemberClick }: MemberRowProps) => {
   const style = ROLE_STYLE[member.role] ?? DEFAULT_ROLE_STYLE
+  const { data: workspaceMembers = [] } = useWorkspaceMembersForInvite(true)
+  const email = workspaceMembers.find(workspaceMember => workspaceMember.userId === member.userId)?.email ?? null
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10,
       padding: '8px 4px', borderBottom: '1px solid var(--divider)',
       opacity: removing ? 0.4 : 1, transition: 'opacity 0.15s',
     }}>
-      <Avatar name={member.displayName} url={member.avatarUrl} size={28}/>
-      <button
-        onClick={() => onMemberClick?.(member.userId, member.displayName)}
-        disabled={!onMemberClick}
-        style={{
-          flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text)',
-          background: 'none', border: 'none', padding: 0, textAlign: 'left',
-          cursor: onMemberClick ? 'pointer' : 'default', fontFamily: 'inherit',
-          textDecoration: 'none',
-        }}
-        onMouseEnter={e => { if (onMemberClick) e.currentTarget.style.textDecoration = 'underline' }}
-        onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none' }}
-      >
-        {member.displayName}
-      </button>
+      <div title={email ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+        <Avatar name={member.displayName} url={member.avatarUrl} size={28}/>
+        <button
+          onClick={() => onMemberClick?.(member.userId, member.displayName)}
+          disabled={!onMemberClick}
+          style={{
+            flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text)',
+            background: 'none', border: 'none', padding: 0, textAlign: 'left',
+            cursor: onMemberClick ? 'pointer' : 'default', fontFamily: 'inherit',
+            textDecoration: 'none',
+          }}
+          onMouseEnter={e => { if (onMemberClick) e.currentTarget.style.textDecoration = 'underline' }}
+          onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none' }}
+        >
+          {member.displayName}
+        </button>
+      </div>
       <span style={{
         fontSize: 10.5, fontWeight: 700,
         color: style.c, background: style.bg,
@@ -163,6 +167,7 @@ const InvitePanel = ({
                   key={m.userId}
                   type="button"
                   onClick={() => onSelectUser(selected ? '' : m.userId)}
+                  title={m.email ?? undefined}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10,
                     padding: '8px 10px', borderRadius: 9,
