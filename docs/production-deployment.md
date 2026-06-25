@@ -7,10 +7,31 @@
 
 ## 環境構成
 
-| 環境 | Supabase | Vercel | ドメイン |
-|---|---|---|---|
-| 本番 | `cairn-production`（Pro / Tokyo / ref: `bmhcgjqisqnyvbrrvqug`） | Production | `https://oss-cairn.com` |
-| 検証 | `cairn-preview`（Free / Tokyo） | Preview | （Vercel preview ドメイン） |
+| 環境 | Supabase | Vercel | ドメイン | デプロイ契機 |
+|---|---|---|---|---|
+| 本番 | `cairn-production`（Pro / Tokyo / ref: `bmhcgjqisqnyvbrrvqug`） | Production | `https://oss-cairn.com` | `main` への merge |
+| 検証 | `cairn-preview`（Free / Tokyo） | Preview | `https://develop.oss-cairn.com` | `develop` への merge |
+| PR プレビュー | `cairn-preview`（Free / Tokyo） | Preview | （Vercel 自動採番 preview ドメイン） | PR 作成・更新 |
+
+## デプロイパイプライン
+
+Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側はデプロイを行わず、CI（typecheck / lint / test）のみを担当する。
+
+- **`main` への merge → 本番デプロイ**: Vercel の **Production Branch = `main`**。Production 環境変数で `https://oss-cairn.com` にリリースされる。
+- **`develop` への merge → 検証デプロイ**: `develop` は Vercel の Preview デプロイ。**`develop.oss-cairn.com` を `develop` ブランチに割り当て**ており、**環境変数は Preview と共通**（PR プレビューと同じ `cairn-preview` を指す）。
+- **PR → プレビューデプロイ**: 各 PR は Vercel 自動採番の Preview URL にデプロイされる（環境変数は Preview）。
+
+### Vercel ダッシュボード設定（この振り分けの前提）
+
+リポジトリだけでは完結しないため、以下は Vercel ダッシュボードで設定する。
+
+1. **Settings → Git → Production Branch** を `main` にする。
+2. **Settings → Domains** で `develop.oss-cairn.com` を追加し、**Git Branch を `develop`** に割り当てる（Preview デプロイに固定ドメインを紐付ける）。DNS は `oss-cairn.com` のサブドメインとして CNAME を Vercel に向ける。
+3. `develop` は Production Branch ではないため、ビルド時に自動で **Preview 環境変数**が使われる（本番と分離するための追加設定は不要）。
+
+### GitHub 設定（ブランチ運用の前提）
+
+- **Settings → Branches → Default branch** を `develop` にする。これにより新規ブランチの起点と PR のデフォルト先が `develop` になる。本番反映は `develop` → `main` の PR で行う。
 
 ### 接続・キーの方針
 

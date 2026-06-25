@@ -369,8 +369,12 @@ export function useDeleteMessage(channelId: string | null) {
   })
 }
 
-export function useToggleMessageReaction(channelId: string | null) {
+export function useToggleMessageReaction(
+  channelId: string | null,
+  currentUser?: Pick<CurrentUserDto, 'displayName'>,
+) {
   const queryClient = useQueryClient()
+  const currentUserName = currentUser?.displayName
 
   return useMutation({
     mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
@@ -389,13 +393,34 @@ export function useToggleMessageReaction(channelId: string | null) {
             if (existing.mine) {
               const newCount = existing.count - 1
               newReactions = newCount > 0
-                ? m.reactions.map((r) => r.emoji === emoji ? { ...r, count: newCount, mine: false } : r)
+                ? m.reactions.map((r) => r.emoji === emoji
+                  ? {
+                      ...r,
+                      count: newCount,
+                      mine: false,
+                      ...(r.users ? { users: r.users.filter((name) => name !== currentUserName) } : {}),
+                    }
+                  : r)
                 : m.reactions.filter((r) => r.emoji !== emoji)
             } else {
-              newReactions = m.reactions.map((r) => r.emoji === emoji ? { ...r, count: r.count + 1, mine: true } : r)
+              newReactions = m.reactions.map((r) => r.emoji === emoji
+                ? {
+                    ...r,
+                    count: r.count + 1,
+                    mine: true,
+                    ...(currentUserName && !r.users?.includes(currentUserName)
+                      ? { users: [...(r.users ?? []), currentUserName] }
+                      : {}),
+                  }
+                : r)
             }
           } else {
-            newReactions = [...m.reactions, { emoji, count: 1, mine: true }]
+            newReactions = [...m.reactions, {
+              emoji,
+              count: 1,
+              mine: true,
+              ...(currentUserName ? { users: [currentUserName] } : {}),
+            }]
           }
           return { ...m, reactions: newReactions }
         }),

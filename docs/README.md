@@ -20,6 +20,7 @@
 | [`notification-design.md`](./notification-design.md) | 通知・未読の現行仕様 | 2026-06-10 |
 | [`notification-ux-redesign.md`](./notification-ux-redesign.md) | 通知・未読・Push の再設計案（Realtime 移行を含む） | 2026-06 |
 | [`10_ai_member_design.md`](./10_ai_member_design.md) | AIメンバー設計（構想段階の現行合意。実装着手時に更新する） | 2026-06-11 |
+| [`heartbeat-design.md`](./heartbeat-design.md) | ハートビート（自然言語で定義する定期アクション）+ アプリ内投票機能の設計（構想段階） | 2026-06-25 |
 | [`production-deployment.md`](./production-deployment.md) | 本番環境構成・残タスク・一般公開に向けた設定 | 2026-06-21 |
 | [`pricing-plan-design.md`](./pricing-plan-design.md) | 料金プラン設計（Free / Solo / Team / Expedition、ケルン消費モデル） | 2026-06-16 |
 | [`billing-implementation-design.md`](./billing-implementation-design.md) | 課金の実装設計（クレジット台帳・ストレージ家賃・風化・Stripe統合） | 2026-06-16 |
@@ -34,6 +35,7 @@
 | [`05_infrastructure.md`](./05_infrastructure.md) | インフラ要件 | 2026-05-22 |
 | [`06_integration_strategy.md`](./06_integration_strategy.md) | 外部連携方針（Slack / Teams / Outlook は未実装） | 2026-05-22 |
 | [`07_notifications_and_unread.md`](./07_notifications_and_unread.md) | 通知・未読の設計検討 → 現行仕様は `notification-design.md` | 2026-05-27 |
+| [`user-deactivation-design.md`](./user-deactivation-design.md) | ユーザー非活性化・退会設計（卒業生対応・GDPR 消去権の整理・匿名化） | 2026-06-22 |
 | [`08_expo_roadmap.md`](./08_expo_roadmap.md) | Expo ネイティブ化ロードマップ（一部実施済み） | 2026-05-27 |
 
 ## 記録
