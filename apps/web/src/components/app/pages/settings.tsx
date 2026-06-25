@@ -1071,9 +1071,15 @@ const STATUS_CONFIG: Record<ServiceStatus['status'], { label: string; color: str
   unconfigured: { label: '未設定',    color: 'var(--text-4)',       bg: 'var(--card-2)' },
 }
 
+const MANUAL_OK_STATUS = { label: '未確認', color: 'var(--text-4)', bg: 'var(--card-2)' }
+
+function getStatusBadgeConfig(status: ServiceStatus, hasLiveDiagnostic: boolean) {
+  if (status.status !== 'ok') return STATUS_CONFIG[status.status]
+  return hasLiveDiagnostic ? STATUS_CONFIG.ok : MANUAL_OK_STATUS
+}
+
 function getStatusBadgeLabel(status: ServiceStatus, hasLiveDiagnostic: boolean) {
-  if (status.status !== 'ok') return STATUS_CONFIG[status.status].label
-  return hasLiveDiagnostic ? '接続済み' : '設定済み'
+  return getStatusBadgeConfig(status, hasLiveDiagnostic).label
 }
 
 type ServiceKey = Exclude<keyof DevStatusDto, 'env'>
@@ -1148,7 +1154,7 @@ const SettingsDeveloper = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
           {SERVICE_META.map(({ key, label, icon, purpose }) => {
             const s = data?.[key]
-            const cfg = s ? STATUS_CONFIG[s.status] : null
+            const cfg = s ? getStatusBadgeConfig(s, hasLiveDiagnostic) : null
             return (
               <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--card)', borderBottom: '1px solid var(--divider)' }}>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
