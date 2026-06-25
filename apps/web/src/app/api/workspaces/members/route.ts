@@ -20,30 +20,19 @@ async function resolveEmailsByUserId(
   admin: ReturnType<typeof createServiceRoleClient>,
   userIds: string[],
 ): Promise<Map<string, string | null>> {
-  const unresolved = new Set(userIds)
   const emails = new Map<string, string | null>()
-  let page = 1
-  const perPage = 1000
-
-  while (unresolved.size > 0) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage })
+  const uniqueUserIds = [...new Set(userIds)]
+  const entries = await Promise.all(uniqueUserIds.map(async userId => {
+    const { data, error } = await admin.auth.admin.getUserById(userId)
     if (error) {
-      console.error('[/api/workspaces/members] Failed to list auth users:', error)
-      break
+      console.error('[/api/workspaces/members] Failed to resolve email:', userId, error)
+      return [userId, null] as const
     }
+    return [userId, data.user?.email ?? null] as const
+  }))
 
-    for (const user of data.users) {
-      if (!unresolved.has(user.id)) continue
-      emails.set(user.id, user.email ?? null)
-      unresolved.delete(user.id)
-    }
-
-    if (data.nextPage == null || page >= data.lastPage) break
-    page = data.nextPage
-  }
-
-  for (const userId of unresolved) {
-    emails.set(userId, null)
+  for (const [userId, email] of entries) {
+    emails.set(userId, email)
   }
 
   return emails
@@ -122,10 +111,7 @@ export async function GET() {
       )
       .orderBy(profiles.displayName)
 
-    const emails = await resolveEmailsByUserId(
-      admin,
-      [...new Set(rows.map(row => row.userId))],
-    )
+    const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
 
     const result: WorkspaceMemberDto[] = rows.map(r => ({
       userId: r.userId,

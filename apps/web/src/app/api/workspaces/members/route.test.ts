@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const USER_ID = '00000000-0000-0000-0000-000000000001'
 const WS_ID = 'ws-00000001'
 
-const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockListUsers } = vi.hoisted(() => {
+const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockGetUserById } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -16,8 +16,8 @@ const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockListUsers } 
   })
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('member')
   const mockDb = { select: vi.fn() }
-  const mockListUsers = vi.fn()
-  return { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockListUsers }
+  const mockGetUserById = vi.fn()
+  return { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockGetUserById }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -26,7 +26,7 @@ vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
     auth: {
       admin: {
-        listUsers: mockListUsers,
+        getUserById: mockGetUserById,
       },
     },
   }),
@@ -92,14 +92,8 @@ describe('GET /api/workspaces/members', () => {
         projectCount: 3,
       }]))
 
-    mockListUsers.mockResolvedValue({
-      data: {
-        users: [{ id: USER_ID, email: 'taro@example.com' }],
-        nextPage: null,
-        lastPage: 1,
-        total: 1,
-        aud: 'authenticated',
-      },
+    mockGetUserById.mockResolvedValue({
+      data: { user: { email: 'taro@example.com' } },
       error: null,
     })
 
@@ -118,7 +112,7 @@ describe('GET /api/workspaces/members', () => {
     }])
   })
 
-  it('複数ページをまたいで email を解決する', async () => {
+  it('対象 userId ごとに email を解決する', async () => {
     const secondUserId = '00000000-0000-0000-0000-000000000002'
     mockDb.select
       .mockReturnValueOnce(chain([]))
@@ -141,25 +135,13 @@ describe('GET /api/workspaces/members', () => {
         },
       ]))
 
-    mockListUsers
+    mockGetUserById
       .mockResolvedValueOnce({
-        data: {
-          users: [{ id: USER_ID, email: 'taro@example.com' }],
-          nextPage: 2,
-          lastPage: 2,
-          total: 2,
-          aud: 'authenticated',
-        },
+        data: { user: { email: 'taro@example.com' } },
         error: null,
       })
       .mockResolvedValueOnce({
-        data: {
-          users: [{ id: secondUserId, email: 'hanako@example.com' }],
-          nextPage: null,
-          lastPage: 2,
-          total: 2,
-          aud: 'authenticated',
-        },
+        data: { user: { email: 'hanako@example.com' } },
         error: null,
       })
 
@@ -187,8 +169,8 @@ describe('GET /api/workspaces/members', () => {
         projectCount: 5,
       },
     ])
-    expect(mockListUsers).toHaveBeenNthCalledWith(1, { page: 1, perPage: 1000 })
-    expect(mockListUsers).toHaveBeenNthCalledWith(2, { page: 2, perPage: 1000 })
+    expect(mockGetUserById).toHaveBeenNthCalledWith(1, USER_ID)
+    expect(mockGetUserById).toHaveBeenNthCalledWith(2, secondUserId)
   })
 
   it('Auth 側に存在しないユーザーは email を null にする', async () => {
@@ -204,15 +186,9 @@ describe('GET /api/workspaces/members', () => {
         projectCount: 0,
       }]))
 
-    mockListUsers.mockResolvedValue({
-      data: {
-        users: [],
-        nextPage: null,
-        lastPage: 1,
-        total: 0,
-        aud: 'authenticated',
-      },
-      error: null,
+    mockGetUserById.mockResolvedValue({
+      data: { user: null },
+      error: new Error('not found'),
     })
 
     const { GET } = await import('./route')
