@@ -1071,6 +1071,11 @@ const STATUS_CONFIG: Record<ServiceStatus['status'], { label: string; color: str
   unconfigured: { label: '未設定',    color: 'var(--text-4)',       bg: 'var(--card-2)' },
 }
 
+function getStatusBadgeLabel(status: ServiceStatus, hasLiveDiagnostic: boolean) {
+  if (status.status !== 'ok') return STATUS_CONFIG[status.status].label
+  return hasLiveDiagnostic ? '接続済み' : '設定済み'
+}
+
 type ServiceKey = Exclude<keyof DevStatusDto, 'env'>
 const SERVICE_META: { key: ServiceKey; label: string; icon: string; purpose: string }[] = [
   { key: 'supabaseDb',      label: 'Supabase Database',   icon: 'database',  purpose: 'プロジェクト・タスク・メッセージなど全データの永続化に必要' },
@@ -1103,6 +1108,7 @@ const SettingsDeveloper = () => {
   })
 
   const data = diagnosticData ?? staticData
+  const hasLiveDiagnostic = diagnosticData != null
 
   if (!isOwner) {
     return (
@@ -1161,8 +1167,10 @@ const SettingsDeveloper = () => {
                   )}
                   {isLoading ? (
                     <span style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '3px 10px', borderRadius: 999, background: 'var(--card-2)' }}>確認中...</span>
-                  ) : cfg ? (
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: cfg.color, padding: '3px 10px', borderRadius: 999, background: cfg.bg }}>{cfg.label}</span>
+                  ) : cfg && s ? (
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: cfg.color, padding: '3px 10px', borderRadius: 999, background: cfg.bg }}>
+                      {getStatusBadgeLabel(s, hasLiveDiagnostic)}
+                    </span>
                   ) : (
                     <span style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '3px 10px', borderRadius: 999, background: 'var(--card-2)' }}>-</span>
                   )}
