@@ -5,14 +5,38 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
+import { createServiceRoleClient } from '@/lib/supabase/service'
 
 export interface ProjectMemberDto {
   userId: string
   displayName: string
+  email: string | null
   avatarUrl: string | null
   role: 'leader' | 'subleader' | 'member' | 'reviewer' | 'observer'
   attendance: 'attending' | 'tentative' | 'declined'
   addedAt: string
+}
+
+async function resolveEmailsByUserId(
+  admin: ReturnType<typeof createServiceRoleClient>,
+  userIds: string[],
+): Promise<Map<string, string | null>> {
+  const emails = new Map<string, string | null>()
+  const uniqueUserIds = [...new Set(userIds)]
+  const entries = await Promise.all(uniqueUserIds.map(async userId => {
+    const { data, error } = await admin.auth.admin.getUserById(userId)
+    if (error) {
+      console.error('[/api/projects/[id]/members] Failed to resolve email:', userId, error)
+      return [userId, null] as const
+    }
+    return [userId, data.user?.email ?? null] as const
+  }))
+
+  for (const [userId, email] of entries) {
+    emails.set(userId, email)
+  }
+
+  return emails
 }
 
 export async function GET(
@@ -24,6 +48,7 @@ export async function GET(
   if (error) return error
 
   try {
+    const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
     const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
@@ -56,10 +81,13 @@ export async function GET(
       .where(eq(projectMembers.projectId, projectId))
       .orderBy(profiles.displayName)
 
+    const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
+
     return NextResponse.json(
       rows.map(r => ({
         userId: r.userId,
         displayName: r.displayName,
+        email: emails.get(r.userId) ?? null,
         avatarUrl: r.avatarUrl ?? null,
         role: r.role,
         attendance: r.attendance,
@@ -108,6 +136,7 @@ export async function POST(
   }
 
   try {
+    const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
     const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
     const { eq, and, inArray } = await import('drizzle-orm')
@@ -167,11 +196,13 @@ export async function POST(
       .where(inArray(profiles.id, insertedUserIds))
 
     const profileMap = new Map(profileRows.map(profile => [profile.userId, profile]))
+    const emails = await resolveEmailsByUserId(admin, insertedUserIds)
     const insertedMembers = inserted.map(member => {
       const profile = profileMap.get(member.userId)
       return {
         userId: member.userId,
         displayName: profile?.displayName ?? '',
+        email: emails.get(member.userId) ?? null,
         avatarUrl: profile?.avatarUrl ?? null,
         role: member.role,
         attendance: member.attendance,

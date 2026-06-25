@@ -25,8 +25,8 @@ function makeWrapper() {
 }
 
 const STUB_MEMBERS: ProjectMemberDto[] = [
-  { userId: 'u1', displayName: 'Alice', avatarUrl: null, role: 'leader', attendance: 'attending', addedAt: '2026-01-01' },
-  { userId: 'u2', displayName: 'Bob', avatarUrl: null, role: 'member', attendance: 'attending', addedAt: '2026-01-02' },
+  { userId: 'u1', displayName: 'Alice', email: 'alice@example.com', avatarUrl: null, role: 'leader', attendance: 'attending', addedAt: '2026-01-01' },
+  { userId: 'u2', displayName: 'Bob', email: 'bob@example.com', avatarUrl: null, role: 'member', attendance: 'attending', addedAt: '2026-01-02' },
 ]
 
 const STUB_WS_MEMBERS: WorkspaceMemberDto[] = [
@@ -69,7 +69,7 @@ describe('useAddProjectMember', () => {
   beforeEach(() => { mockFetch.mockClear() })
 
   it('メンバーを追加してキャッシュに追記する', async () => {
-    const newMember: ProjectMemberDto = { userId: 'u3', displayName: 'Carol', avatarUrl: null, role: 'member', attendance: 'attending', addedAt: '2026-01-03' }
+    const newMember: ProjectMemberDto = { userId: 'u3', displayName: 'Carol', email: 'carol@example.com', avatarUrl: null, role: 'member', attendance: 'attending', addedAt: '2026-01-03' }
     mockFetch.mockResolvedValue(new Response(JSON.stringify([newMember]), { status: 200 }))
     const { wrapper, queryClient } = makeWrapper()
     queryClient.setQueryData(['project-members', 'p1'], STUB_MEMBERS)

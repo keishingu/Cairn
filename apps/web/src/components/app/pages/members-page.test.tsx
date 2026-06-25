@@ -114,3 +114,11 @@ describe('PageMembers (モバイル) — initialUserId によるパネル復元'
     expect(screen.queryByTestId('member-panel')).toBeNull()
   })
 })
+
+describe('PageMembers — email tooltip', () => {
+  it('メンバーカードに email の title を付ける', () => {
+    renderMobile()
+
+    expect(screen.getByTitle('taro@example.com')).toBeInTheDocument()
+  })
+})
