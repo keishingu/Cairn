@@ -35,12 +35,20 @@ jobs:
         id: commits
         run: |
           git fetch origin main develop --quiet
-          # main にまだ入っていない develop のコミット一覧。
-          # 利用ユーザー向けリリースノートなので、利用者の挙動に出ない変更は除外する。
+          # リリース実行の判定は「全差分」で行う（依存更新やメンテのみでも main へ promote するため）。
+          FULL_LOG=$(git log origin/main..origin/develop --no-merges --pretty=format:'- %s (%h)')
+          if [ -z "$FULL_LOG" ]; then
+            echo "develop は main より先行していません。リリース対象の差分がありません。"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+
+          # リリースノートは利用ユーザー向けなので、利用者の挙動に出ない変更は除外する。
           # 除外: ドキュメント(docs/, *.md)・CI(.github/)・テスト(*.test.ts(x))・
           #       ビルド/ツール設定(packages/config/, *package.json, *tsconfig*.json, lockfile, turbo/vercel/eas)。
           # これらのパス「だけ」を触るコミットが対象外。コードと両方触るコミットは残る。
-          LOG=$(git log origin/main..origin/develop --no-merges --pretty=format:'- %s (%h)' \
+          USER_LOG=$(git log origin/main..origin/develop --no-merges --pretty=format:'- %s (%h)' \
             -- \
             ':!docs/' ':!*.md' \
             ':!.github/' \
@@ -49,15 +57,18 @@ jobs:
             ':!*package.json' ':!*tsconfig*.json' \
             ':!pnpm-lock.yaml' ':!pnpm-workspace.yaml' \
             ':!turbo.json' ':!vercel.json' ':!eas.json')
-          if [ -z "$LOG" ]; then
-            echo "develop は main より先行していません（またはドキュメント変更のみ）。リリース対象の差分がありません。"
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            exit 0
+
+          # 絞った結果が空＝メンテ/依存更新のみのリリース。ノートは全ログを使い、その旨を要約させる。
+          if [ -z "$USER_LOG" ]; then
+            NOTES_LOG="$FULL_LOG"
+            echo "maintenance=true" >> "$GITHUB_OUTPUT"
+          else
+            NOTES_LOG="$USER_LOG"
+            echo "maintenance=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "has_changes=true" >> "$GITHUB_OUTPUT"
           {
             echo "log<<__COMMIT_LOG__"
-            echo "$LOG"
+            echo "$NOTES_LOG"
             echo "__COMMIT_LOG__"
           } >> "$GITHUB_OUTPUT"
 
@@ -72,6 +83,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           COMMIT_LOG: ${{ steps.commits.outputs.log }}
+          MAINTENANCE: ${{ steps.commits.outputs.maintenance }}
         run: |
           set -euo pipefail
 
@@ -80,15 +92,27 @@ jobs:
             exit 1
           fi
 
-          INSTRUCTIONS=$(printf '%s\n' \
-            'あなたはリリースノートの編集者です。以下の Git コミット一覧から、日本語の Markdown リリースノートを作成してください。' \
-            '要件:' \
-            '- 冒頭に2〜3文のリリース概要を書く' \
-            '- 「## 新機能」「## 改善・変更」「## 修正」の見出しで分類する（該当が無い見出しは省略）' \
-            '- 各項目は利用者目線の自然な日本語にし、コミットの prefix(feat/fix 等) やハッシュは本文に出さない' \
-            '- 内部的なリファクタや chore はまとめて簡潔にするか省略してよい' \
-            '- 誇張せず、コミットから読み取れる事実のみを書く' \
-            'コミット一覧:')
+          if [ "${MAINTENANCE:-false}" = "true" ]; then
+            INSTRUCTIONS=$(printf '%s\n' \
+              'あなたはリリースノートの編集者です。以下の Git コミット一覧から、日本語の Markdown リリースノートを作成してください。' \
+              'このリリースには利用者向けの新機能はなく、内部改善・依存パッケージ更新・保守作業が中心です。' \
+              '要件:' \
+              '- 冒頭に1〜2文で「内部改善・依存関係の更新が中心のメンテナンスリリース」である旨を書く' \
+              '- 利用者に影響しうる依存更新（フレームワークやライブラリのバージョン等）があれば簡潔に触れる' \
+              '- 無理に新機能の見出しを作らない。コミットの prefix やハッシュは本文に出さない' \
+              '- 誇張せず、コミットから読み取れる事実のみを書く' \
+              'コミット一覧:')
+          else
+            INSTRUCTIONS=$(printf '%s\n' \
+              'あなたはリリースノートの編集者です。以下の Git コミット一覧から、日本語の Markdown リリースノートを作成してください。' \
+              '要件:' \
+              '- 冒頭に2〜3文のリリース概要を書く' \
+              '- 「## 新機能」「## 改善・変更」「## 修正」の見出しで分類する（該当が無い見出しは省略）' \
+              '- 各項目は利用者目線の自然な日本語にし、コミットの prefix(feat/fix 等) やハッシュは本文に出さない' \
+              '- 内部的なリファクタや chore はまとめて簡潔にするか省略してよい' \
+              '- 誇張せず、コミットから読み取れる事実のみを書く' \
+              'コミット一覧:')
+          fi
           PROMPT=$(printf '%s\n%s\n' "$INSTRUCTIONS" "$COMMIT_LOG")
           REQ=$(jq -n --arg content "$PROMPT" '{
             model: "gpt-4o",
