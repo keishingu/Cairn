@@ -16,6 +16,39 @@ export interface WorkspaceMemberDto {
   projectCount: number
 }
 
+async function resolveEmailsByUserId(
+  admin: ReturnType<typeof createServiceRoleClient>,
+  userIds: string[],
+): Promise<Map<string, string | null>> {
+  const unresolved = new Set(userIds)
+  const emails = new Map<string, string | null>()
+  let page = 1
+  const perPage = 1000
+
+  while (unresolved.size > 0) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage })
+    if (error) {
+      console.error('[/api/workspaces/members] Failed to list auth users:', error)
+      break
+    }
+
+    for (const user of data.users) {
+      if (!unresolved.has(user.id)) continue
+      emails.set(user.id, user.email ?? null)
+      unresolved.delete(user.id)
+    }
+
+    if (data.nextPage == null || page >= data.lastPage) break
+    page = data.nextPage
+  }
+
+  for (const userId of unresolved) {
+    emails.set(userId, null)
+  }
+
+  return emails
+}
+
 export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -89,17 +122,10 @@ export async function GET() {
       )
       .orderBy(profiles.displayName)
 
-    const emailEntries = await Promise.all(
-      rows.map(async row => {
-        const { data, error } = await admin.auth.admin.getUserById(row.userId)
-        if (error) {
-          console.error('[/api/workspaces/members] Failed to resolve email:', row.userId, error)
-          return [row.userId, null] as const
-        }
-        return [row.userId, data.user?.email ?? null] as const
-      }),
+    const emails = await resolveEmailsByUserId(
+      admin,
+      [...new Set(rows.map(row => row.userId))],
     )
-    const emails = new Map(emailEntries)
 
     const result: WorkspaceMemberDto[] = rows.map(r => ({
       userId: r.userId,

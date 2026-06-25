@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const USER_ID = '00000000-0000-0000-0000-000000000001'
 const WS_ID = 'ws-00000001'
 
-const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockGetUserById } = vi.hoisted(() => {
+const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockListUsers } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -16,8 +16,8 @@ const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockGetUserById 
   })
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('member')
   const mockDb = { select: vi.fn() }
-  const mockGetUserById = vi.fn()
-  return { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockGetUserById }
+  const mockListUsers = vi.fn()
+  return { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockListUsers }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -26,7 +26,7 @@ vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
     auth: {
       admin: {
-        getUserById: mockGetUserById,
+        listUsers: mockListUsers,
       },
     },
   }),
@@ -92,8 +92,14 @@ describe('GET /api/workspaces/members', () => {
         projectCount: 3,
       }]))
 
-    mockGetUserById.mockResolvedValue({
-      data: { user: { email: 'taro@example.com' } },
+    mockListUsers.mockResolvedValue({
+      data: {
+        users: [{ id: USER_ID, email: 'taro@example.com' }],
+        nextPage: null,
+        lastPage: 1,
+        total: 1,
+        aud: 'authenticated',
+      },
       error: null,
     })
 
@@ -109,6 +115,118 @@ describe('GET /api/workspaces/members', () => {
       role: 'member',
       joinedAt: '2026-01-01',
       projectCount: 3,
+    }])
+  })
+
+  it('複数ページをまたいで email を解決する', async () => {
+    const secondUserId = '00000000-0000-0000-0000-000000000002'
+    mockDb.select
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([
+        {
+          userId: USER_ID,
+          displayName: '山田 太郎',
+          avatarUrl: null,
+          role: 'member',
+          joinedAt: new Date('2026-01-01T00:00:00.000Z'),
+          projectCount: 3,
+        },
+        {
+          userId: secondUserId,
+          displayName: '佐藤 花子',
+          avatarUrl: null,
+          role: 'admin',
+          joinedAt: new Date('2026-01-02T00:00:00.000Z'),
+          projectCount: 5,
+        },
+      ]))
+
+    mockListUsers
+      .mockResolvedValueOnce({
+        data: {
+          users: [{ id: USER_ID, email: 'taro@example.com' }],
+          nextPage: 2,
+          lastPage: 2,
+          total: 2,
+          aud: 'authenticated',
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          users: [{ id: secondUserId, email: 'hanako@example.com' }],
+          nextPage: null,
+          lastPage: 2,
+          total: 2,
+          aud: 'authenticated',
+        },
+        error: null,
+      })
+
+    const { GET } = await import('./route')
+    const res = await GET()
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([
+      {
+        userId: USER_ID,
+        displayName: '山田 太郎',
+        email: 'taro@example.com',
+        avatarUrl: null,
+        role: 'member',
+        joinedAt: '2026-01-01',
+        projectCount: 3,
+      },
+      {
+        userId: secondUserId,
+        displayName: '佐藤 花子',
+        email: 'hanako@example.com',
+        avatarUrl: null,
+        role: 'admin',
+        joinedAt: '2026-01-02',
+        projectCount: 5,
+      },
+    ])
+    expect(mockListUsers).toHaveBeenNthCalledWith(1, { page: 1, perPage: 1000 })
+    expect(mockListUsers).toHaveBeenNthCalledWith(2, { page: 2, perPage: 1000 })
+  })
+
+  it('Auth 側に存在しないユーザーは email を null にする', async () => {
+    const missingUserId = '00000000-0000-0000-0000-000000000099'
+    mockDb.select
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([{
+        userId: missingUserId,
+        displayName: '未登録 ユーザー',
+        avatarUrl: null,
+        role: 'guest',
+        joinedAt: new Date('2026-01-03T00:00:00.000Z'),
+        projectCount: 0,
+      }]))
+
+    mockListUsers.mockResolvedValue({
+      data: {
+        users: [],
+        nextPage: null,
+        lastPage: 1,
+        total: 0,
+        aud: 'authenticated',
+      },
+      error: null,
+    })
+
+    const { GET } = await import('./route')
+    const res = await GET()
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([{
+      userId: missingUserId,
+      displayName: '未登録 ユーザー',
+      email: null,
+      avatarUrl: null,
+      role: 'guest',
+      joinedAt: '2026-01-03',
+      projectCount: 0,
     }])
   })
 })
