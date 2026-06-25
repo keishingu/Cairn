@@ -274,6 +274,20 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
               <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
                 {member.displayName}
               </div>
+              {member.email && (
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: 'var(--text-4)',
+                    marginBottom: 6,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {member.email}
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
                   {WS_ROLE_LABEL[currentRole]}
@@ -299,6 +313,20 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
               {member.displayName}
             </div>
+            {member.email && (
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: 'var(--text-4)',
+                  marginBottom: 6,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {member.email}
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               {canChangeRole ? (
                 <div ref={dropdownRef} style={{ position: 'relative' }}>
