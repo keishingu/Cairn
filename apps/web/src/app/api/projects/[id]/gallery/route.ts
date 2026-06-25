@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireProjectAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 const GALLERY_BUCKET = 'gallery'
@@ -38,6 +39,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .limit(1)
 
     if (!project) return new NextResponse(null, { status: 404 })
+
+    // ゲストは参加プロジェクトのギャラリーのみ閲覧可
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    if (forbidden) return forbidden
 
     const rows = await db
       .select({
@@ -113,6 +118,10 @@ export async function POST(req: Request, { params }: RouteContext) {
       .limit(1)
 
     if (!project) return new NextResponse(null, { status: 404 })
+
+    // ゲストは参加プロジェクトにのみアップロードできる
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    if (forbidden) return forbidden
 
     const ext = file.name.split('.').pop() ?? 'jpg'
     const storagePath = `${ctx.workspaceId}/${projectId}/${crypto.randomUUID()}.${ext}`
