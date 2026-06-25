@@ -19,6 +19,16 @@ import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 
+class GcalCalendarsError extends Error {
+  code: string | undefined
+
+  constructor(message: string, code?: string) {
+    super(message)
+    this.name = 'GcalCalendarsError'
+    this.code = code
+  }
+}
+
 const Toggle = ({ on }: { on: boolean }) => (
   <div style={{
     width: 36, height: 20, borderRadius: 999, padding: 2,
@@ -854,12 +864,15 @@ const SettingsIntegrations = () => {
     queryKey: ['gcal-calendars'],
     queryFn: async () => {
       const res = await fetchWithAuth('/api/calendar/google/calendars')
-      const body = await res.json().catch(() => null) as GcalCalendarDto[] | { error?: string } | null
+      const body = await res.json().catch(() => null) as GcalCalendarDto[] | { error?: string; code?: string } | null
       if (!res.ok) {
-        throw new Error((body && !Array.isArray(body) && body.error) || 'Google カレンダー一覧の取得に失敗しました')
+        throw new GcalCalendarsError(
+          (body && !Array.isArray(body) && body.error) || 'Google カレンダー一覧の取得に失敗しました',
+          body && !Array.isArray(body) ? body.code : undefined,
+        )
       }
       if (!Array.isArray(body)) {
-        throw new Error('Google カレンダー一覧の形式が不正です')
+        throw new GcalCalendarsError('Google カレンダー一覧の形式が不正です')
       }
       return body
     },
@@ -1036,8 +1049,19 @@ const SettingsIntegrations = () => {
                 {gcalCalendarsLoading ? (
                   <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>読み込み中…</div>
                 ) : gcalCalendarsError ? (
-                  <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>
-                    {gcalCalendarsError.message}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>
+                      {gcalCalendarsError.message}
+                    </div>
+                    {(gcalCalendarsError as GcalCalendarsError).code === 'GOOGLE_RECONNECT_REQUIRED' && (
+                      <button
+                        className="btn btn-primary"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', fontSize: 12.5, flexShrink: 0 }}
+                        onClick={() => void connectGcal()}
+                      >
+                        <Icon name="calendar" size={13}/> Google を再接続
+                      </button>
+                    )}
                   </div>
                 ) : !gcalCalendars ? (
                   <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>Google カレンダー一覧を取得できませんでした。</div>
