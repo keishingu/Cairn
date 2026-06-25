@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { exchangeCodeForTokens, listCalendars } from '@/lib/google-calendar-api'
+import type { GcalAccountMeta, SelectedCalendar } from '@/lib/google-calendar-account'
 import { encryptToken } from '@/lib/token-crypto'
 
 export async function GET(req: NextRequest) {
@@ -37,27 +38,31 @@ export async function GET(req: NextRequest) {
 
     // 接続後にすべてのカレンダーを取得し、selectedCalendars の初期値に使う
     const calendars = await listCalendars(accessToken)
-    const selectedCalendars = calendars.map(c => ({
+    const allCalendars: SelectedCalendar[] = calendars.map(c => ({
       id: c.id,
       name: c.summary,
       color: c.backgroundColor ?? '#039BE5',
     }))
 
     const expiresAt = new Date(Date.now() + expiresIn * 1000)
-    const meta = { googleAccountEmail: email, selectedCalendars }
 
     const { db, connectedAccounts } = await import('@cairn/db')
     const { and, eq } = await import('drizzle-orm')
 
     // 既存レコードがあれば更新、なければ挿入
     const [existing] = await db
-      .select({ id: connectedAccounts.id })
+      .select({ id: connectedAccounts.id, metadata: connectedAccounts.metadata })
       .from(connectedAccounts)
       .where(and(
         eq(connectedAccounts.userId, ctx.userId),
         eq(connectedAccounts.provider, 'google_calendar'),
       ))
       .limit(1)
+
+    const selectedCalendars = existing
+      ? preserveExistingSelection(existing.metadata as GcalAccountMeta | null | undefined, allCalendars)
+      : allCalendars
+    const meta = { googleAccountEmail: email, selectedCalendars }
 
     if (existing) {
       await db.update(connectedAccounts)
@@ -90,4 +95,18 @@ export async function GET(req: NextRequest) {
     console.error('[/api/calendar/google/callback]', err)
     return NextResponse.redirect(`${settingsUrl}?gcal=error`)
   }
+}
+
+function preserveExistingSelection(
+  existingMeta: GcalAccountMeta | null | undefined,
+  allCalendars: SelectedCalendar[],
+): SelectedCalendar[] {
+  if (!Array.isArray(existingMeta?.selectedCalendars)) {
+    return allCalendars
+  }
+
+  const calendarsById = new Map(allCalendars.map(calendar => [calendar.id, calendar]))
+  return existingMeta.selectedCalendars
+    .map(calendar => calendarsById.get(calendar.id))
+    .filter((calendar): calendar is SelectedCalendar => calendar !== undefined)
 }
