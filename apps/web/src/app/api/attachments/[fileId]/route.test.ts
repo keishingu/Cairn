@@ -7,9 +7,10 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const FILE_ID = '30000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockCanAccessFile, fileRow } = vi.hoisted(() => ({
+const { mockGetAuthContext, mockCanAccessFile, mockDownload, fileRow } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockCanAccessFile: vi.fn(),
+  mockDownload: vi.fn(),
   fileRow: {
     id: '30000000-0000-0000-0000-000000000001',
     workspaceId: '10000000-0000-0000-0000-000000000001',
@@ -27,7 +28,7 @@ vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext })
 vi.mock('@/lib/permissions', () => ({ canAccessFile: mockCanAccessFile }))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
-    storage: { from: () => ({ download: vi.fn(), remove: vi.fn() }) },
+    storage: { from: () => ({ download: mockDownload, remove: vi.fn() }) },
   }),
 }))
 
@@ -49,8 +50,19 @@ function routeParams() {
 
 describe('/api/attachments/[fileId] のアクセス制御', () => {
   beforeEach(() => {
+    Object.assign(fileRow, {
+      storagePath: 'ws/ch/file.pdf',
+      fileType: 'document',
+      mimeType: 'application/pdf',
+      fileName: 'file.pdf',
+    })
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      error: null,
+    })
+    mockCanAccessFile.mockResolvedValue(true)
+    mockDownload.mockResolvedValue({
+      data: 'file body',
       error: null,
     })
   })
@@ -69,6 +81,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       DEV_USER_ID,
       expect.objectContaining({ id: FILE_ID }),
     )
+    expect(mockDownload).not.toHaveBeenCalled()
   })
 
   it('閲覧権限が無いファイルは PATCH が 403 を返す', async () => {
@@ -88,5 +101,24 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     const { DELETE } = await import('./route')
     const res = await DELETE(new Request('http://localhost/', { method: 'DELETE' }), routeParams())
     expect(res.status).toBe(403)
+  })
+
+  it('Markdownファイルは保存MIMEが汎用でもUTF-8つきtext/markdownで返す', async () => {
+    Object.assign(fileRow, {
+      storagePath: 'workspace-1/channel-1/file.md',
+      fileName: '議事録.md',
+      mimeType: 'application/octet-stream',
+    })
+    mockDownload.mockResolvedValue({
+      data: '# 見出し',
+      error: null,
+    })
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/attachments/file-1'), routeParams())
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toBe('text/markdown; charset=utf-8')
+    expect(await res.text()).toBe('# 見出し')
   })
 })
