@@ -26,26 +26,37 @@ type UserResult =
   | { userId: string; error: null }
   | { userId: null; error: ReturnType<typeof NextResponse.json> }
 
+async function getAuthenticatedUser(
+  authorization: string | null,
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<User | null> {
+  if (authorization?.startsWith('Bearer ')) {
+    const token = authorization.slice(7)
+    const { data, error } = await supabase.auth.getUser(token)
+    if (error || !data.user) {
+      return null
+    }
+    return data.user
+  }
+
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data.user) {
+    return null
+  }
+  return data.user
+}
+
 /** ワークスペース所属を問わずユーザー認証だけを行う（招待受け入れ等で使用） */
 export async function getAuthUser(): Promise<UserResult> {
   const supabase = await createClient()
   const headersList = await headers()
   const authorization = headersList.get('Authorization')
 
-  if (authorization?.startsWith('Bearer ')) {
-    const token = authorization.slice(7)
-    const { data, error } = await supabase.auth.getUser(token)
-    if (error || !data.user) {
-      return { userId: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-    }
-    return { userId: data.user.id, error: null }
-  }
-
-  const { data: { session }, error: authError } = await supabase.auth.getSession()
-  if (authError || !session?.user) {
+  const user = await getAuthenticatedUser(authorization, supabase)
+  if (!user) {
     return { userId: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
-  return { userId: session.user.id, error: null }
+  return { userId: user.id, error: null }
 }
 
 export async function getAuthContext(): Promise<AuthResult> {
@@ -53,26 +64,7 @@ export async function getAuthContext(): Promise<AuthResult> {
   const headersList = await headers()
   const authorization = headersList.get('Authorization')
 
-  let user: User | null = null
-
-  if (authorization?.startsWith('Bearer ')) {
-    const token = authorization.slice(7)
-    const { data, error } = await supabase.auth.getUser(token)
-    if (error || !data.user) {
-      return { ctx: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-    }
-    user = data.user
-  } else {
-    // getSession はクッキーの JWT をローカルで検証するだけでネットワーク往復が発生しない。
-    // ミドルウェアが API ルートをスキップしているため、ここが唯一の認証チェックになる。
-    // JWT の署名と有効期限（デフォルト1時間）が安全性の担保。
-    const { data: { session }, error: authError } = await supabase.auth.getSession()
-    if (authError || !session?.user) {
-      return { ctx: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-    }
-    user = session.user
-  }
-
+  const user = await getAuthenticatedUser(authorization, supabase)
   if (!user) {
     return { ctx: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
@@ -123,4 +115,3 @@ export async function getAuthContext(): Promise<AuthResult> {
     return { ctx: null, error: NextResponse.json({ error: 'Internal server error' }, { status: 500 }) }
   }
 }
-

@@ -219,6 +219,12 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
       fetchWithAuth(`/api/workspaces/members/${member.userId}/projects`).then(r => r.json()),
   })
 
+  // アーカイブ済みは履歴の下部にまとめる（進行中の順序は維持したいので安定ソート）
+  const sortedProjects = React.useMemo(
+    () => [...projects].sort((a, b) => Number(a.archived) - Number(b.archived)),
+    [projects],
+  )
+
   const handleProjectClick = (p: MemberProjectDto) => {
     onProjectClick(p)
   }
@@ -430,7 +436,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             <span style={{ fontSize: isMobile ? 14 : 12.5 }}>参加プロジェクトはありません</span>
           </div>
         ) : (
-          projects.map(p => (
+          sortedProjects.map(p => (
             <ProjectRow
               key={p.projectId}
               project={p}

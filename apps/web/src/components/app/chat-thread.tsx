@@ -28,9 +28,11 @@ import {
   useWorkspaceMembers,
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { getReactionTooltip } from '@/lib/chat/reaction-tooltip'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
+import { toast } from '@/lib/toast'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 
@@ -62,6 +64,18 @@ function isEmojiOnly(text: string): boolean {
   return stripped.length === 0
 }
 
+export async function copyMessageContent(content: string): Promise<boolean> {
+  if (!content.length) return false
+  try {
+    await navigator.clipboard.writeText(content)
+    toast.success('メッセージをコピーしました')
+    return true
+  } catch {
+    toast.error('メッセージをコピーできませんでした')
+    return false
+  }
+}
+
 interface PendingAttachment {
   fileId: string
   fileName: string
@@ -77,7 +91,7 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   senderId: string
   currentUserId: string | undefined
@@ -86,7 +100,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   createdAt: string
   isEdited: boolean
   content: string
-  reactions: Array<{ emoji: string; count: number; mine: boolean }>
+  reactions: Array<{ emoji: string; count: number; mine: boolean; users?: string[] }>
   attachments: AttachmentDto[]
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
@@ -110,6 +124,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   const px = compact ? '8px 14px' : '6px 16px'
   const emojiOnly = isEmojiOnly(content)
   const isOwn = currentUserId === senderId
+  const canCopy = content.length > 0
 
   const startEdit = () => {
     setEditDraft(content)
@@ -154,17 +169,26 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
     }
   }
 
-  // 自分のメッセージの「…」メニュー。モバイルは常時表示、PC はホバー時に表示
-  const messageActions = isOwn && !editMode && (isMobile || hovered) && (
+  const handleCopy = React.useCallback(() => {
+    void copyMessageContent(content)
+  }, [content])
+
+  const actions = [
+    ...(canCopy ? [{ icon: 'copy', label: 'コピー', onSelect: handleCopy }] : []),
+    ...(isOwn ? [
+      { icon: 'edit', label: '編集', onSelect: startEdit },
+      { icon: 'trash', label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
+    ] : []),
+  ]
+
+  // メッセージの「…」メニュー。モバイルは常時表示、PC はホバー時に表示
+  const messageActions = !editMode && actions.length > 0 && (isMobile || hovered) && (
     <div style={isMobile
       ? { flexShrink: 0, alignSelf: 'flex-start', paddingTop: 2 }
       : { position: 'absolute', top: 4, right: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '2px 4px', boxShadow: 'var(--shadow-sm)' }
     }>
       <RowActionMenu
-        actions={[
-          { icon: 'edit', label: '編集', onSelect: startEdit },
-          { icon: 'trash', label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
-        ]}
+        actions={actions}
       />
     </div>
   )
@@ -273,7 +297,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
         )}
         <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
-            <button key={i} onClick={() => onReact(messageId, r.emoji)} style={{
+            <button key={i} onClick={() => onReact(messageId, r.emoji)} title={!isMobile ? getReactionTooltip(r) : undefined} style={{
               height: compact ? 22 : 24, padding: '0 7px', borderRadius: 12,
               background: r.mine ? 'var(--accent-soft)' : 'var(--card-2)',
               border: `1px solid ${r.mine ? 'var(--accent)' : 'var(--border)'}`,
@@ -827,7 +851,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const { data: wsMembers = [] } = useWorkspaceMembers()
   const { data: chMemberIds = [] } = useChannelMembers(channelId)
   const sendMutation = useSendChannelMessage(channelId, currentUser)
-  const reactMutation = useToggleMessageReaction(channelId)
+  const reactMutation = useToggleMessageReaction(channelId, currentUser)
   const editMutation = useEditMessage(channelId)
   const deleteMutation = useDeleteMessage(channelId)
   const markChannelRead = useMarkChannelRead()
