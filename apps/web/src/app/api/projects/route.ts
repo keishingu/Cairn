@@ -263,14 +263,6 @@ export async function POST(req: Request) {
       type: 'project',
     })
 
-    const { projectMembers } = await import('@cairn/db')
-    await db.insert(projectMembers).values({
-      projectId: inserted.id,
-      userId: ctx.userId,
-      role: 'leader',
-      attendance: 'attending',
-    })
-
     try {
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({
@@ -289,13 +281,13 @@ export async function POST(req: Request) {
       statusColor,
       startDate: inserted.startDate,
       endDate: inserted.endDate,
-      memberCount: 1,
+      memberCount: 0,
       memberNames: [],
       memberAvatarUrls: [],
       taskCount: 0,
       completedTaskCount: 0,
       isOwner: true,
-      isMember: true,
+      isMember: false,
       archived: false,
       coverPhotoIdx: coverPhotoIdxFromId(inserted.id),
       coverPhotoUrl: inserted.coverPhotoUrl ?? null,
