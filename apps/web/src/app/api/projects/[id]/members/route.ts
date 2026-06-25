@@ -83,6 +83,9 @@ export async function POST(
   }
 
   const { userId, userIds, role = 'member' } = body as { userId?: string; userIds?: string[]; role?: string }
+  if (userIds !== undefined && !Array.isArray(userIds)) {
+    return NextResponse.json({ error: 'userIds must be an array' }, { status: 422 })
+  }
   const normalizedUserIds = [...new Set((userIds ?? (userId ? [userId] : [])).filter(Boolean))]
   if (normalizedUserIds.length === 0) {
     return NextResponse.json({ error: 'userId or userIds is required' }, { status: 422 })
@@ -164,6 +167,16 @@ export async function POST(
         addedAt: member.addedAt.toISOString().slice(0, 10),
       } satisfies ProjectMemberDto
     })
+
+    try {
+      const { inngest } = await import('@/lib/inngest/client')
+      await inngest.send({
+        name: 'project/upserted',
+        data: { projectId, workspaceId: ctx.workspaceId },
+      })
+    } catch (eventError) {
+      console.warn('[POST /api/projects/[id]/members] Inngest event send failed (indexing skipped):', eventError)
+    }
 
     return NextResponse.json(
       normalizedUserIds.length === 1 ? insertedMembers[0] : insertedMembers,

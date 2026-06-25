@@ -7,7 +7,7 @@ const PROJECT_ID = '00000000-0000-0000-0000-000000000099'
 const USER_A = '00000000-0000-0000-0000-000000000011'
 const USER_B = '00000000-0000-0000-0000-000000000012'
 
-const { mockGetAuthContext, mockRequireWorkspaceMember, mockDb } = vi.hoisted(() => {
+const { mockGetAuthContext, mockRequireWorkspaceMember, mockDb, mockInngestSend } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -20,11 +20,13 @@ const { mockGetAuthContext, mockRequireWorkspaceMember, mockDb } = vi.hoisted(()
     select: vi.fn(),
     insert: vi.fn(),
   }
-  return { mockGetAuthContext, mockRequireWorkspaceMember, mockDb }
+  const mockInngestSend = vi.fn().mockResolvedValue(undefined)
+  return { mockGetAuthContext, mockRequireWorkspaceMember, mockDb, mockInngestSend }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({ requireWorkspaceMember: mockRequireWorkspaceMember }))
+vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 vi.mock('@cairn/db', () => ({
   db: mockDb,
   profiles: { id: 'pr.id', displayName: 'pr.displayName' },
@@ -60,6 +62,23 @@ function chain(result: unknown[]) {
 describe('POST /api/projects/[id]/members', () => {
   afterEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('userIds が配列でない場合は 422 を返す', async () => {
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/projects/${PROJECT_ID}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: USER_A, role: 'member' }),
+      }),
+      { params: Promise.resolve({ id: PROJECT_ID }) },
+    )
+
+    expect(res.status).toBe(422)
+    expect(await res.json()).toEqual({ error: 'userIds must be an array' })
+    expect(mockDb.select).not.toHaveBeenCalled()
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 
   it('複数ユーザーを一度に追加できる', async () => {
@@ -103,6 +122,13 @@ describe('POST /api/projects/[id]/members', () => {
       { userId: USER_A, displayName: 'Alice', avatarUrl: null, role: 'member', attendance: 'attending', addedAt: '2026-06-24' },
       { userId: USER_B, displayName: 'Bob', avatarUrl: 'https://example.com/b.png', role: 'member', attendance: 'attending', addedAt: '2026-06-24' },
     ])
+    expect(mockInngestSend).toHaveBeenCalledWith({
+      name: 'project/upserted',
+      data: {
+        projectId: PROJECT_ID,
+        workspaceId: '00000000-0000-0000-0000-000000000010',
+      },
+    })
   })
 
   it('単一 userId でも従来どおり追加できる', async () => {
