@@ -32,9 +32,15 @@ describe('dev/status API の認可と手動診断', () => {
   const originalEnv = Object.fromEntries(
     ENV_KEYS_TO_RESTORE.map((key) => [key, process.env[key]]),
   ) as Record<(typeof ENV_KEYS_TO_RESTORE)[number], string | undefined>
+  const clearDiagnosticEnv = () => {
+    for (const key of ENV_KEYS_TO_RESTORE) {
+      Reflect.deleteProperty(process.env, key)
+    }
+  }
 
   beforeEach(() => {
     vi.clearAllMocks()
+    clearDiagnosticEnv()
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: 'user-1', workspaceId: 'ws-1' },
       error: null,
