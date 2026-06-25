@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireProjectAccess } from '@/lib/permissions'
 
 export interface ProjectFileDto {
   id: string
@@ -44,6 +45,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
     if (!project) {
       return new NextResponse(null, { status: 404 })
     }
+
+    // ゲストは参加プロジェクトのファイルのみ閲覧可
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    if (forbidden) return forbidden
 
     const rows = await db
       .select({

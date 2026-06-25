@@ -57,7 +57,8 @@ export async function GET() {
       const memberRows = await db
         .select({ projectId: projectMembers.projectId })
         .from(projectMembers)
-        .where(eq(projectMembers.userId, ctx.userId))
+        .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+        .where(and(eq(projectMembers.userId, ctx.userId), eq(projects.workspaceId, ctx.workspaceId)))
       visibleProjectIds = memberRows.map(r => r.projectId)
       if (visibleProjectIds.length === 0) return NextResponse.json([])
     }
@@ -85,9 +86,13 @@ export async function GET() {
           : eq(projects.workspaceId, ctx.workspaceId),
       )
 
+    visibleProjectIds = rows.map(r => r.id)
+    if (visibleProjectIds.length === 0) return NextResponse.json([])
+
     const counts = await db
       .select({ projectId: projectMembers.projectId, n: count() })
       .from(projectMembers)
+      .where(inArray(projectMembers.projectId, visibleProjectIds))
       .groupBy(projectMembers.projectId)
     const countMap = new Map(counts.map(r => [r.projectId, Number(r.n)]))
 
@@ -100,6 +105,7 @@ export async function GET() {
       .from(projectMembers)
       .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .where(inArray(projectMembers.projectId, visibleProjectIds))
       .orderBy(projectMembers.createdAt)
     const memberNamesMap = new Map<string, string[]>()
     const memberAvatarUrlsMap = new Map<string, (string | null)[]>()
@@ -127,6 +133,7 @@ export async function GET() {
         completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
       })
       .from(tasks)
+      .where(inArray(tasks.projectId, visibleProjectIds))
       .groupBy(tasks.projectId)
     const taskMap = new Map(taskRows.map(r => [r.projectId, { total: Number(r.total), completed: Number(r.completed) }]))
 
@@ -256,14 +263,6 @@ export async function POST(req: Request) {
       type: 'project',
     })
 
-    const { projectMembers } = await import('@cairn/db')
-    await db.insert(projectMembers).values({
-      projectId: inserted.id,
-      userId: ctx.userId,
-      role: 'leader',
-      attendance: 'attending',
-    })
-
     try {
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({
@@ -282,13 +281,13 @@ export async function POST(req: Request) {
       statusColor,
       startDate: inserted.startDate,
       endDate: inserted.endDate,
-      memberCount: 1,
+      memberCount: 0,
       memberNames: [],
       memberAvatarUrls: [],
       taskCount: 0,
       completedTaskCount: 0,
       isOwner: true,
-      isMember: true,
+      isMember: false,
       archived: false,
       coverPhotoIdx: coverPhotoIdxFromId(inserted.id),
       coverPhotoUrl: inserted.coverPhotoUrl ?? null,

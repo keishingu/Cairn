@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { type AttachmentDto, postMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireChannelAccess } from '@/lib/permissions'
+import { canAccessFile, requireChannelAccess } from '@/lib/permissions'
 import { inngest } from '@/lib/inngest/client'
 import type { MessageCreatedEvent } from '@/lib/inngest/events'
 import { parseCheckboxes } from '@/lib/chat/checkboxes'
@@ -14,6 +14,7 @@ export interface ReactionDto {
   emoji: string
   count: number
   mine: boolean
+  users?: string[]
 }
 
 export interface MessageDto {
@@ -77,8 +78,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
               messageId: messageReactions.messageId,
               emoji: messageReactions.emoji,
               userId: messageReactions.userId,
+              displayName: profiles.displayName,
             })
             .from(messageReactions)
+            .innerJoin(profiles, eq(messageReactions.userId, profiles.id))
             .where(inArray(messageReactions.messageId, messageIds))
         : Promise.resolve([]),
       messageIds.length > 0
@@ -101,16 +104,20 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
     const reactionMap = new Map<string, ReactionDto[]>()
     for (const r of reactionRows) {
-      const key = `${r.messageId}:${r.emoji}`
       if (!reactionMap.has(r.messageId)) reactionMap.set(r.messageId, [])
       const existing = reactionMap.get(r.messageId)!.find(x => x.emoji === r.emoji)
       if (existing) {
         existing.count++
         if (r.userId === ctx.userId) existing.mine = true
+        existing.users?.push(r.displayName)
       } else {
-        reactionMap.get(r.messageId)!.push({ emoji: r.emoji, count: 1, mine: r.userId === ctx.userId })
+        reactionMap.get(r.messageId)!.push({
+          emoji: r.emoji,
+          count: 1,
+          mine: r.userId === ctx.userId,
+          users: [r.displayName],
+        })
       }
-      void key
     }
 
     const attachmentMap = new Map<string, AttachmentDto[]>()
@@ -179,12 +186,35 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages, profiles, messageAttachments } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { messages, profiles, messageAttachments, files } = await import('@cairn/db')
+    const { eq, inArray } = await import('drizzle-orm')
 
     const attachmentFileIds = parsed.data.attachmentFileIds ?? []
     // メンションは名前なしの canonical 形式で保存する（埋め込み名が来ても除去）
     const content = canonicalizeMentions(parsed.data.content)
+
+    if (attachmentFileIds.length > 0) {
+      const fileRows = await db
+        .select({
+          id: files.id,
+          workspaceId: files.workspaceId,
+          projectId: files.projectId,
+          uploadedBy: files.uploadedBy,
+        })
+        .from(files)
+        .where(inArray(files.id, attachmentFileIds))
+
+      if (fileRows.length !== new Set(attachmentFileIds).size) {
+        return NextResponse.json({ error: '添付ファイルが見つかりません' }, { status: 404 })
+      }
+
+      const accessResults = await Promise.all(
+        fileRows.map(file => canAccessFile(ctx.workspaceId, ctx.userId, file)),
+      )
+      if (accessResults.some(canAccess => !canAccess)) {
+        return NextResponse.json({ error: '添付ファイルにアクセスする権限がありません' }, { status: 403 })
+      }
+    }
 
     const inserted = await db.transaction(async (tx) => {
       const [msg] = await tx

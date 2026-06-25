@@ -792,6 +792,10 @@ const SettingsWorkspaceGeneral = () => {
 
 const SettingsIntegrations = () => {
   // ── iCal 出力 ──────────────────────────────────────────────────────
+  const { data: ws } = useQuery<WorkspaceDto>({
+    queryKey: ['workspace'],
+    queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
+  })
   const { data, refetch } = useQuery<{ token: string }>({
     queryKey: ['ical-token'],
     queryFn: () => fetchWithAuth('/api/calendar/token').then(r => r.json()),
@@ -803,9 +807,9 @@ const SettingsIntegrations = () => {
   const [copiedScope, setCopiedScope] = React.useState<string | null>(null)
 
   const buildUrl = (scope: 'me' | 'workspace') => {
-    if (!data?.token) return ''
+    if (!data?.token || !ws?.id) return ''
     const base = typeof window !== 'undefined' ? window.location.origin : ''
-    return `${base}/api/calendar/ical?token=${data.token}&scope=${scope}`
+    return `${base}/api/calendar/ical?token=${data.token}&scope=${scope}&workspaceId=${ws.id}`
   }
 
   const copy = (scope: 'me' | 'workspace') => {
