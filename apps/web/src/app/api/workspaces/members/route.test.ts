@@ -111,4 +111,98 @@ describe('GET /api/workspaces/members', () => {
       projectCount: 3,
     }])
   })
+
+  it('対象 userId ごとに email を解決する', async () => {
+    const secondUserId = '00000000-0000-0000-0000-000000000002'
+    mockDb.select
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([
+        {
+          userId: USER_ID,
+          displayName: '山田 太郎',
+          avatarUrl: null,
+          role: 'member',
+          joinedAt: new Date('2026-01-01T00:00:00.000Z'),
+          projectCount: 3,
+        },
+        {
+          userId: secondUserId,
+          displayName: '佐藤 花子',
+          avatarUrl: null,
+          role: 'admin',
+          joinedAt: new Date('2026-01-02T00:00:00.000Z'),
+          projectCount: 5,
+        },
+      ]))
+
+    mockGetUserById
+      .mockResolvedValueOnce({
+        data: { user: { email: 'taro@example.com' } },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { user: { email: 'hanako@example.com' } },
+        error: null,
+      })
+
+    const { GET } = await import('./route')
+    const res = await GET()
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([
+      {
+        userId: USER_ID,
+        displayName: '山田 太郎',
+        email: 'taro@example.com',
+        avatarUrl: null,
+        role: 'member',
+        joinedAt: '2026-01-01',
+        projectCount: 3,
+      },
+      {
+        userId: secondUserId,
+        displayName: '佐藤 花子',
+        email: 'hanako@example.com',
+        avatarUrl: null,
+        role: 'admin',
+        joinedAt: '2026-01-02',
+        projectCount: 5,
+      },
+    ])
+    expect(mockGetUserById).toHaveBeenNthCalledWith(1, USER_ID)
+    expect(mockGetUserById).toHaveBeenNthCalledWith(2, secondUserId)
+  })
+
+  it('Auth 側に存在しないユーザーは email を null にする', async () => {
+    const missingUserId = '00000000-0000-0000-0000-000000000099'
+    mockDb.select
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([{
+        userId: missingUserId,
+        displayName: '未登録 ユーザー',
+        avatarUrl: null,
+        role: 'guest',
+        joinedAt: new Date('2026-01-03T00:00:00.000Z'),
+        projectCount: 0,
+      }]))
+
+    mockGetUserById.mockResolvedValue({
+      data: { user: null },
+      error: new Error('not found'),
+    })
+
+    const { GET } = await import('./route')
+    const res = await GET()
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([{
+      userId: missingUserId,
+      displayName: '未登録 ユーザー',
+      email: null,
+      avatarUrl: null,
+      role: 'guest',
+      joinedAt: '2026-01-03',
+      projectCount: 0,
+    }])
+  })
 })
