@@ -7,6 +7,7 @@ import type { TaskDto } from '@/app/api/tasks/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { CreateTaskModal } from './create-task-modal'
 import { TaskEditDialog } from '../task-edit-dialog'
+import { RowActionMenu } from '../row-action-menu'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
 
@@ -46,7 +47,7 @@ function formatDueDate(dueDate: string | null): { label: string; overdue: boolea
 interface TaskRowProps {
   task: TaskDto
   onToggle: (id: string, current: TaskDto['status']) => void
-  onEdit: (task: TaskDto) => void
+  onEdit: (task: TaskDto, mode?: 'edit' | 'delete') => void
   toggling: boolean
   selected?: boolean
   index?: number
@@ -125,21 +126,13 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
       )}
 
       {!task.isLinkedToMessage && (
-        <button
-          type="button"
-          onClick={() => onEdit(task)}
-          aria-label={`${task.title} を編集`}
-          style={{
-            width: 28, height: 28, borderRadius: 8, border: 'none',
-            background: 'transparent', color: 'var(--text-4)', flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-4)' }}
-        >
-          <Icon name="edit" size={14} />
-        </button>
+        <RowActionMenu
+          actions={[
+            { icon: 'edit', label: '編集', onSelect: () => onEdit(task, 'edit') },
+            { icon: 'trash', label: '削除', danger: true, onSelect: () => onEdit(task, 'delete') },
+          ]}
+          triggerStyle={{ padding: '6px', borderRadius: 8 }}
+        />
       )}
     </div>
   )
@@ -163,7 +156,7 @@ interface SectionProps {
   count: number
   tasks: TaskDto[]
   onToggle: (id: string, current: TaskDto['status']) => void
-  onEdit: (task: TaskDto) => void
+  onEdit: (task: TaskDto, mode?: 'edit' | 'delete') => void
   togglingId: string | null
   open: boolean
   onToggleOpen: () => void
@@ -210,6 +203,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
   const [showAddModal, setShowAddModal] = React.useState(false)
   const [editingTask, setEditingTask] = React.useState<TaskDto | null>(null)
+  const [dialogMode, setDialogMode] = React.useState<'edit' | 'delete'>('edit')
   // セクション（プロジェクト別）の開閉。明示トグルが無ければ先頭3つを開く
   const [sectionOverride, setSectionOverride] = React.useState<Record<string, boolean>>({})
 
@@ -252,6 +246,11 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const handleToggle = (id: string, current: TaskDto['status']) => {
     const newStatus: TaskDto['status'] = current === 'done' ? 'todo' : 'done'
     toggleMutation.mutate({ id, newStatus })
+  }
+
+  const openEditor = (task: TaskDto, mode: 'edit' | 'delete' = 'edit') => {
+    setDialogMode(mode)
+    setEditingTask(task)
   }
 
   const filtered = React.useMemo(() => {
@@ -392,7 +391,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
                 count={g.tasks.length}
                 tasks={g.tasks}
                 onToggle={handleToggle}
-                onEdit={setEditingTask}
+                onEdit={openEditor}
                 togglingId={togglingId}
                 open={isSectionOpen(g.key, idx)}
                 onToggleOpen={() => setSectionOverride(prev => ({ ...prev, [g.key]: !isSectionOpen(g.key, idx) }))}
@@ -406,7 +405,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
 
       {isMobile && <Fab onClick={() => setShowAddModal(true)} label="タスクを追加"/>}
       {showAddModal && <CreateTaskModal onClose={() => setShowAddModal(false)} />}
-      <TaskEditDialog open={editingTask != null} task={editingTask} onClose={() => setEditingTask(null)} />
+      <TaskEditDialog open={editingTask != null} task={editingTask} initialMode={dialogMode} onClose={() => setEditingTask(null)} />
     </div>
   )
 }

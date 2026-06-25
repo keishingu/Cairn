@@ -11,9 +11,10 @@ interface TaskEditDialogProps {
   open: boolean
   task: TaskDto | null
   onClose: () => void
+  initialMode?: 'edit' | 'delete'
 }
 
-export const TaskEditDialog = ({ open, task, onClose }: TaskEditDialogProps) => {
+export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: TaskEditDialogProps) => {
   const queryClient = useQueryClient()
   const [title, setTitle] = React.useState('')
   const [priority, setPriority] = React.useState<TaskDto['priority']>('medium')
@@ -26,6 +27,11 @@ export const TaskEditDialog = ({ open, task, onClose }: TaskEditDialogProps) => 
     setPriority(task.priority)
     setDueDate(task.dueDate ?? '')
   }, [open, task])
+
+  React.useEffect(() => {
+    if (!open || !task) return
+    setConfirmDelete(initialMode === 'delete')
+  }, [initialMode, open, task])
 
   const updateMutation = useMutation({
     mutationFn: async (payload: { title: string; priority: TaskDto['priority']; dueDate: string | null }) => {
