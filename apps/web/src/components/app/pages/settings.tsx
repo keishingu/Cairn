@@ -846,9 +846,23 @@ const SettingsIntegrations = () => {
     queryFn: () => fetchWithAuth('/api/calendar/google/status').then(r => r.json()),
   })
 
-  const { data: gcalCalendars } = useQuery<GcalCalendarDto[]>({
+  const {
+    data: gcalCalendars,
+    isLoading: gcalCalendarsLoading,
+    error: gcalCalendarsError,
+  } = useQuery<GcalCalendarDto[]>({
     queryKey: ['gcal-calendars'],
-    queryFn: () => fetchWithAuth('/api/calendar/google/calendars').then(r => r.json()),
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/calendar/google/calendars')
+      const body = await res.json().catch(() => null) as GcalCalendarDto[] | { error?: string } | null
+      if (!res.ok) {
+        throw new Error((body && !Array.isArray(body) && body.error) || 'Google カレンダー一覧の取得に失敗しました')
+      }
+      if (!Array.isArray(body)) {
+        throw new Error('Google カレンダー一覧の形式が不正です')
+      }
+      return body
+    },
     enabled: gcalStatus?.connected === true,
   })
 
@@ -1019,8 +1033,14 @@ const SettingsIntegrations = () => {
               {/* カレンダー選択 */}
               <div style={{ padding: '12px 16px' }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', marginBottom: 10 }}>表示するカレンダー</div>
-                {!gcalCalendars ? (
+                {gcalCalendarsLoading ? (
                   <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>読み込み中…</div>
+                ) : gcalCalendarsError ? (
+                  <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>
+                    {gcalCalendarsError.message}
+                  </div>
+                ) : !gcalCalendars ? (
+                  <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>Google カレンダー一覧を取得できませんでした。</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {gcalCalendars.map(cal => (

@@ -91,6 +91,10 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
   return { accessToken: data.access_token, expiresIn: data.expires_in }
 }
 
+export function isGoogleInvalidGrantError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('"error": "invalid_grant"')
+}
+
 export async function listCalendars(accessToken: string): Promise<GoogleCalendarListItem[]> {
   const res = await fetch(`${GOOGLE_CALENDAR_BASE}/users/me/calendarList`, {
     headers: { Authorization: `Bearer ${accessToken}` },
