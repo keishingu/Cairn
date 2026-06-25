@@ -3,7 +3,8 @@ name: Release (develop → main)
 # develop の内容を main へリリースするための手動ワークフロー。
 # - develop → main の Release PR を作成 / 更新する（マージは手動）
 # - 同じ内容で Draft Release を作成する（タグ確定・公開は PR マージ後に手動）
-# - 本文は OPENAI_API_KEY があれば AI 要約、無ければ commit ログにフォールバック
+# - 本文は OpenAI(gpt-4o) でコミットから生成する。OPENAI_API_KEY は必須
+#   （未設定・API 失敗時は誤った内容を出さないようエラーで中断し、フォールバックしない）
 on:
   workflow_dispatch:
     inputs:
@@ -142,10 +143,14 @@ jobs:
           if gh release view "$TAG" --json isDraft --jq '.isDraft' 2>/dev/null | grep -q '^true$'; then
             gh release delete "$TAG" --yes
           fi
-          # Draft なので target(main) のタグは「公開時」に作成される。PR マージ後に公開すること。
+          # Draft なので target(main) のタグは未作成。「公開時」に main の当時の HEAD から
+          # タグが作られるため、必ず develop→main の PR マージ後に公開すること。
+          # マージ前に公開すると promote 前のコミットがタグ付けされる。
+          WARNING='> ⚠️ このリリースは **develop→main の Release PR をマージした後に** Publish してください。マージ前に公開すると promote 前のコミットがタグ付けされます。'
+          RELEASE_NOTES=$(printf '%s\n\n%s\n' "$WARNING" "$BODY")
           gh release create "$TAG" \
             --draft \
             --target main \
             --title "$TAG" \
-            --notes "$BODY"
+            --notes "$RELEASE_NOTES"
           echo "::notice::Draft Release $TAG を作成しました（公開は PR マージ後に手動で）。"
