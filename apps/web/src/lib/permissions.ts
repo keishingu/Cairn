@@ -66,6 +66,52 @@ export async function requireWorkspaceMember(
   return null
 }
 
+// ゲストがアクセス可能なプロジェクトID集合（project_members に行があるプロジェクト）を返す。
+// member 以上はワークスペース全体を参照できるため、この関数はゲストの可視範囲を絞る用途で使う。
+export async function getGuestVisibleProjectIds(
+  workspaceId: string,
+  userId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ projectId: projectMembers.projectId })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(and(eq(projectMembers.userId, userId), eq(projects.workspaceId, workspaceId)))
+  return [...new Set(rows.map(r => r.projectId))]
+}
+
+// 指定プロジェクトへのアクセス可否を検証する。
+// member 以上は常に許可。guest は project_members に行があり、かつそのプロジェクトが
+// 当該ワークスペースに属する場合のみ許可する（別ワークスペースのプロジェクトメンバーによる
+// 越境書き込みを防ぐため projects.workspaceId も検証する）。無ければ 403。
+export async function requireProjectAccess(
+  workspaceId: string,
+  userId: string,
+  projectId: string,
+): Promise<NextResponse | null> {
+  const role = await getWorkspaceRole(workspaceId, userId)
+  if (isWorkspaceMember(role)) return null
+
+  const [membership] = await db
+    .select({ id: projectMembers.id })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(and(
+      eq(projectMembers.projectId, projectId),
+      eq(projectMembers.userId, userId),
+      eq(projects.workspaceId, workspaceId),
+    ))
+    .limit(1)
+
+  if (!membership) {
+    return NextResponse.json(
+      { error: 'このプロジェクトにアクセスする権限がありません' },
+      { status: 403 },
+    )
+  }
+  return null
+}
+
 // チャンネルへのアクセス可否を検証する。
 // - 指定ワークスペースに属さないチャンネルは 403（チャンネルID総当たりによる越境アクセスを防ぐ）
 //   旧データのプロジェクトチャンネルは channels.workspace_id が null のことがあるため、
