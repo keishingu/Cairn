@@ -99,8 +99,10 @@ pnpm dev
 
 ## ブランチ運用
 
-- 実装を始める前に必ずフィーチャーブランチを切る（`main` に直接コミットしない）
+- **デフォルトブランチは `develop`**。フィーチャーブランチは `develop` を起点に切り、PR も `develop` を宛先にする
+- `main` は本番ブランチ。`develop` → `main` の PR で本番へ反映する（`main`・`develop` に直接コミットしない）
 - ブランチ名は `feat/`, `fix/`, `refactor/` などのプレフィックスを付ける
+- デプロイは Vercel の Git 連携で自動。`develop` への merge で `develop.oss-cairn.com`（環境変数は Preview と共通）、`main` への merge で `oss-cairn.com`（本番）にリリースされる。詳細は [`docs/production-deployment.md`](docs/production-deployment.md)
 
 
 ## コミットメッセージ
