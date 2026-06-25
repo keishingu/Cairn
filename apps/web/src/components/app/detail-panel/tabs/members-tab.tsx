@@ -45,15 +45,13 @@ interface MemberRowProps {
 
 const MemberRow = ({ member, onRemove, removing, canRemove, onMemberClick }: MemberRowProps) => {
   const style = ROLE_STYLE[member.role] ?? DEFAULT_ROLE_STYLE
-  const { data: workspaceMembers = [] } = useWorkspaceMembersForInvite(true)
-  const email = workspaceMembers.find(workspaceMember => workspaceMember.userId === member.userId)?.email ?? null
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10,
       padding: '8px 4px', borderBottom: '1px solid var(--divider)',
       opacity: removing ? 0.4 : 1, transition: 'opacity 0.15s',
     }}>
-      <div title={email ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+      <div title={member.email ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
         <Avatar name={member.displayName} url={member.avatarUrl} size={28}/>
         <button
           onClick={() => onMemberClick?.(member.userId, member.displayName)}
