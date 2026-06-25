@@ -18,6 +18,7 @@ export interface TaskDto {
   dueDate: string | null
   assigneeName: string | null
   assigneeAvatarUrl: string | null
+  isLinkedToMessage: boolean
 }
 
 export async function GET(req: Request) {
@@ -59,6 +60,7 @@ export async function GET(req: Request) {
         status: tasks.status,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
+        sourceMessageId: tasks.sourceMessageId,
         assigneeName: profiles.displayName,
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
       })
@@ -79,6 +81,7 @@ export async function GET(req: Request) {
       dueDate: r.dueDate,
       assigneeName: r.assigneeName ?? null,
       assigneeAvatarUrl: r.assigneeAvatarUrl ?? null,
+      isLinkedToMessage: r.sourceMessageId != null,
     }))
 
     return NextResponse.json(result)
@@ -151,6 +154,7 @@ export async function POST(req: Request) {
       dueDate: inserted.dueDate,
       assigneeName: assigneeRow?.displayName ?? null,
       assigneeAvatarUrl: assigneeRow?.avatarUrl ?? null,
+      isLinkedToMessage: false,
     }
 
     if (inserted.assigneeId && inserted.assigneeId !== ctx.userId) {

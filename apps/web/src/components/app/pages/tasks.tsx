@@ -6,6 +6,7 @@ import { Icon, Avatar, Fab } from '../primitives'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { CreateTaskModal } from './create-task-modal'
+import { TaskEditDialog } from '../task-edit-dialog'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
 
@@ -45,12 +46,13 @@ function formatDueDate(dueDate: string | null): { label: string; overdue: boolea
 interface TaskRowProps {
   task: TaskDto
   onToggle: (id: string, current: TaskDto['status']) => void
+  onEdit: (task: TaskDto) => void
   toggling: boolean
   selected?: boolean
   index?: number
 }
 
-const TaskRow = ({ task, onToggle, toggling, selected, index }: TaskRowProps) => {
+const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowProps) => {
   const due = formatDueDate(task.dueDate)
   const isDone = task.status === 'done'
 
@@ -121,6 +123,24 @@ const TaskRow = ({ task, onToggle, toggling, selected, index }: TaskRowProps) =>
           padding: '2px 7px', borderRadius: 4, flexShrink: 0,
         }}>進行中</span>
       )}
+
+      {!task.isLinkedToMessage && (
+        <button
+          type="button"
+          onClick={() => onEdit(task)}
+          aria-label={`${task.title} を編集`}
+          style={{
+            width: 28, height: 28, borderRadius: 8, border: 'none',
+            background: 'transparent', color: 'var(--text-4)', flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-4)' }}
+        >
+          <Icon name="edit" size={14} />
+        </button>
+      )}
     </div>
   )
 }
@@ -143,6 +163,7 @@ interface SectionProps {
   count: number
   tasks: TaskDto[]
   onToggle: (id: string, current: TaskDto['status']) => void
+  onEdit: (task: TaskDto) => void
   togglingId: string | null
   open: boolean
   onToggleOpen: () => void
@@ -150,7 +171,7 @@ interface SectionProps {
   baseIndex?: number
 }
 
-const Section = ({ label, count, tasks, onToggle, togglingId, open, onToggleOpen, selectedTaskId, baseIndex = 0 }: SectionProps) => {
+const Section = ({ label, count, tasks, onToggle, onEdit, togglingId, open, onToggleOpen, selectedTaskId, baseIndex = 0 }: SectionProps) => {
   return (
     <div>
       <button
@@ -171,6 +192,7 @@ const Section = ({ label, count, tasks, onToggle, togglingId, open, onToggleOpen
           key={t.id}
           task={t}
           onToggle={onToggle}
+          onEdit={onEdit}
           toggling={togglingId === t.id}
           selected={t.id === selectedTaskId}
           index={baseIndex + i}
@@ -187,6 +209,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [filter, setFilter] = React.useState<FilterKey>('all')
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
   const [showAddModal, setShowAddModal] = React.useState(false)
+  const [editingTask, setEditingTask] = React.useState<TaskDto | null>(null)
   // セクション（プロジェクト別）の開閉。明示トグルが無ければ先頭3つを開く
   const [sectionOverride, setSectionOverride] = React.useState<Record<string, boolean>>({})
 
@@ -369,6 +392,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
                 count={g.tasks.length}
                 tasks={g.tasks}
                 onToggle={handleToggle}
+                onEdit={setEditingTask}
                 togglingId={togglingId}
                 open={isSectionOpen(g.key, idx)}
                 onToggleOpen={() => setSectionOverride(prev => ({ ...prev, [g.key]: !isSectionOpen(g.key, idx) }))}
@@ -382,6 +406,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
 
       {isMobile && <Fab onClick={() => setShowAddModal(true)} label="タスクを追加"/>}
       {showAddModal && <CreateTaskModal onClose={() => setShowAddModal(false)} />}
+      <TaskEditDialog open={editingTask != null} task={editingTask} onClose={() => setEditingTask(null)} />
     </div>
   )
 }
