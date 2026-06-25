@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { updateTaskSchema } from '@cairn/shared'
 import { toggleCheckboxAt } from '@/lib/chat/checkboxes'
+import { requireProjectAccess } from '@/lib/permissions'
 
 export async function PATCH(
   req: Request,
@@ -36,6 +37,7 @@ export async function PATCH(
     const [taskRow] = await db
       .select({
         id: tasks.id,
+        projectId: tasks.projectId,
         title: tasks.title,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
@@ -51,6 +53,9 @@ export async function PATCH(
     if (!taskRow) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
+
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, taskRow.projectId)
+    if (forbidden) return forbidden
 
     const updates: {
       title?: string
@@ -146,7 +151,7 @@ export async function DELETE(
     if (error) return error
 
     const [taskRow] = await db
-      .select({ id: tasks.id, sourceMessageId: tasks.sourceMessageId })
+      .select({ id: tasks.id, projectId: tasks.projectId, sourceMessageId: tasks.sourceMessageId })
       .from(tasks)
       .innerJoin(projects, eq(tasks.projectId, projects.id))
       .where(and(eq(tasks.id, id), eq(projects.workspaceId, ctx.workspaceId)))
@@ -155,6 +160,10 @@ export async function DELETE(
     if (!taskRow) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
+
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, taskRow.projectId)
+    if (forbidden) return forbidden
+
     if (taskRow.sourceMessageId != null) {
       return NextResponse.json({ error: 'チャット由来タスクはこの画面から削除できません' }, { status: 409 })
     }
