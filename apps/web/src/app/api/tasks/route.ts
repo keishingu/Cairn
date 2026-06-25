@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { createTaskSchema } from '@cairn/shared'
+import { getGuestVisibleProjectIds, getWorkspaceMemberRole, requireProjectAccess } from '@/lib/permissions'
 import { inngest } from '@/lib/inngest/client'
 import type { TaskAssignedEvent } from '@/lib/inngest/events'
 
@@ -36,9 +37,17 @@ export async function GET(req: Request) {
       .from(projects)
       .where(eq(projects.workspaceId, ctx.workspaceId))
 
+    // ゲストは参加プロジェクトのタスクのみ閲覧可。projectId 指定があっても参加外なら除外する。
+    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    let allowedProjectIds = projectRows.map(p => p.id)
+    if (role === 'guest') {
+      const guestProjectIds = new Set(await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId))
+      allowedProjectIds = allowedProjectIds.filter(id => guestProjectIds.has(id))
+    }
+
     const projectIds = projectId
-      ? [projectId]
-      : projectRows.map(p => p.id)
+      ? allowedProjectIds.filter(id => id === projectId)
+      : allowedProjectIds
 
     if (projectIds.length === 0) return NextResponse.json([])
 
@@ -95,6 +104,10 @@ export async function POST(req: Request) {
   try {
     const { ctx, error } = await getAuthContext()
     if (error) return error
+
+    // ゲストは参加プロジェクトにのみタスクを作成できる
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, parsed.data.projectId)
+    if (forbidden) return forbidden
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')

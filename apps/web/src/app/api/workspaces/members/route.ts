@@ -16,6 +16,28 @@ export interface WorkspaceMemberDto {
   projectCount: number
 }
 
+async function resolveEmailsByUserId(
+  admin: ReturnType<typeof createServiceRoleClient>,
+  userIds: string[],
+): Promise<Map<string, string | null>> {
+  const emails = new Map<string, string | null>()
+  const uniqueUserIds = [...new Set(userIds)]
+  const entries = await Promise.all(uniqueUserIds.map(async userId => {
+    const { data, error } = await admin.auth.admin.getUserById(userId)
+    if (error) {
+      console.error('[/api/workspaces/members] Failed to resolve email:', userId, error)
+      return [userId, null] as const
+    }
+    return [userId, data.user?.email ?? null] as const
+  }))
+
+  for (const [userId, email] of entries) {
+    emails.set(userId, email)
+  }
+
+  return emails
+}
+
 export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -89,17 +111,7 @@ export async function GET() {
       )
       .orderBy(profiles.displayName)
 
-    const emailEntries = await Promise.all(
-      rows.map(async row => {
-        const { data, error } = await admin.auth.admin.getUserById(row.userId)
-        if (error) {
-          console.error('[/api/workspaces/members] Failed to resolve email:', row.userId, error)
-          return [row.userId, null] as const
-        }
-        return [row.userId, data.user?.email ?? null] as const
-      }),
-    )
-    const emails = new Map(emailEntries)
+    const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
 
     const result: WorkspaceMemberDto[] = rows.map(r => ({
       userId: r.userId,

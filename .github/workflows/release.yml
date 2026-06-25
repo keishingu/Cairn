@@ -35,17 +35,39 @@ jobs:
         id: commits
         run: |
           git fetch origin main develop --quiet
-          # main にまだ入っていない develop のコミット一覧
-          LOG=$(git log origin/main..origin/develop --no-merges --pretty=format:'- %s (%h)')
-          if [ -z "$LOG" ]; then
+          # リリース実行の判定は「全差分」で行う（依存更新やメンテのみでも main へ promote するため）。
+          FULL_LOG=$(git log origin/main..origin/develop --no-merges --pretty=format:'- %s (%h)')
+          if [ -z "$FULL_LOG" ]; then
             echo "develop は main より先行していません。リリース対象の差分がありません。"
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
+
+          # リリースノートは利用ユーザー向けなので、利用者の挙動に出ない変更は除外する。
+          # 除外: ドキュメント(docs/, *.md)・CI(.github/)・テスト(*.test.ts(x))・
+          #       ビルド/ツール設定(packages/config/, *package.json, *tsconfig*.json, lockfile, turbo/vercel/eas)。
+          # これらのパス「だけ」を触るコミットが対象外。コードと両方触るコミットは残る。
+          USER_LOG=$(git log origin/main..origin/develop --no-merges --pretty=format:'- %s (%h)' \
+            -- \
+            ':!docs/' ':!*.md' \
+            ':!.github/' \
+            ':!*.test.ts' ':!*.test.tsx' \
+            ':!packages/config/' \
+            ':!*package.json' ':!*tsconfig*.json' \
+            ':!pnpm-lock.yaml' ':!pnpm-workspace.yaml' \
+            ':!turbo.json' ':!vercel.json' ':!eas.json')
+
+          # 絞った結果が空＝利用者向けの変更が無いリリース（docs/CI/テスト/依存・設定のみ）。
+          # この場合は除外コミットをノートに列挙せず、汎用のメンテナンス文を出す（後段で AI を呼ばない）。
+          if [ -z "$USER_LOG" ]; then
+            echo "maintenance=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "maintenance=false" >> "$GITHUB_OUTPUT"
+          fi
           {
             echo "log<<__COMMIT_LOG__"
-            echo "$LOG"
+            echo "$USER_LOG"
             echo "__COMMIT_LOG__"
           } >> "$GITHUB_OUTPUT"
 
@@ -60,8 +82,23 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           COMMIT_LOG: ${{ steps.commits.outputs.log }}
+          MAINTENANCE: ${{ steps.commits.outputs.maintenance }}
         run: |
           set -euo pipefail
+
+          # 利用者向けの変更が無いリリース（docs/CI/テスト/依存・設定のみ）は、
+          # 除外コミットを列挙せず汎用のメンテナンス文を出す。AI も OpenAI キーも不要。
+          if [ "${MAINTENANCE:-false}" = "true" ]; then
+            BODY=$(printf '%s\n\n%s\n' \
+              '## メンテナンスリリース' \
+              '利用者向けの機能変更はありません。内部改善・依存関係の更新・保守作業のみが含まれます。')
+            {
+              echo "body<<__RELEASE_BODY__"
+              echo "$BODY"
+              echo "__RELEASE_BODY__"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           if [ -z "${OPENAI_API_KEY:-}" ]; then
             echo "::error::OPENAI_API_KEY が未設定です。リリースノート生成に必須のため中断します。Settings → Secrets に OPENAI_API_KEY を登録してください。"

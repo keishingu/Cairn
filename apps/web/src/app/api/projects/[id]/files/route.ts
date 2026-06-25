@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole } from '@/lib/permissions'
+import { requireProjectAccess } from '@/lib/permissions'
 
 export interface ProjectFileDto {
   id: string
@@ -26,7 +26,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
   if (error) return error
 
   try {
-    const { db, files, profiles, projects, projectMembers, galleryItems, documentChunks } = await import('@cairn/db')
+    const { db, files, profiles, projects, galleryItems, documentChunks } = await import('@cairn/db')
     const { eq, and, isNull, desc, inArray } = await import('drizzle-orm')
 
     const INDEXABLE_MIMES = new Set([
@@ -46,22 +46,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
       return new NextResponse(null, { status: 404 })
     }
 
-    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
-    if (!role) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
-    }
-
-    if (role === 'guest') {
-      const [membership] = await db
-        .select({ id: projectMembers.id })
-        .from(projectMembers)
-        .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, ctx.userId)))
-        .limit(1)
-
-      if (!membership) {
-        return new NextResponse(null, { status: 403 })
-      }
-    }
+    // ゲストは参加プロジェクトのファイルのみ閲覧可
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    if (forbidden) return forbidden
 
     const rows = await db
       .select({

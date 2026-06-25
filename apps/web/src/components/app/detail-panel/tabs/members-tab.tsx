@@ -97,9 +97,9 @@ const WS_ROLE_LABEL: Record<string, string> = {
 interface InvitePanelProps {
   inviteable: WorkspaceMemberDto[]
   isLoadingMembers: boolean
-  selectedUserId: string
+  selectedUserIds: string[]
   selectedRole: string
-  onSelectUser: (id: string) => void
+  onToggleUser: (id: string) => void
   onSelectRole: (role: string) => void
   onConfirm: () => void
   onClose: () => void
@@ -109,8 +109,8 @@ interface InvitePanelProps {
 
 const InvitePanel = ({
   inviteable, isLoadingMembers,
-  selectedUserId, selectedRole,
-  onSelectUser, onSelectRole,
+  selectedUserIds, selectedRole,
+  onToggleUser, onSelectRole,
   onConfirm, onClose,
   isLoading, error,
 }: InvitePanelProps) => (
@@ -161,12 +161,12 @@ const InvitePanel = ({
           {/* Avatar list */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 18 }}>
             {inviteable.map(m => {
-              const selected = selectedUserId === m.userId
+              const selected = selectedUserIds.includes(m.userId)
               return (
                 <button
                   key={m.userId}
                   type="button"
-                  onClick={() => onSelectUser(selected ? '' : m.userId)}
+                  onClick={() => onToggleUser(m.userId)}
                   title={m.email ?? undefined}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10,
@@ -247,18 +247,18 @@ const InvitePanel = ({
     }}>
       <button
         onClick={onConfirm}
-        disabled={!selectedUserId || isLoading}
+        disabled={selectedUserIds.length === 0 || isLoading}
         style={{
           width: '100%', padding: '10px',
           borderRadius: 9, border: 'none',
-          background: selectedUserId && !isLoading ? 'var(--accent)' : 'var(--card-2)',
-          color: selectedUserId && !isLoading ? 'var(--on-accent)' : 'var(--text-4)',
+          background: selectedUserIds.length > 0 && !isLoading ? 'var(--accent)' : 'var(--card-2)',
+          color: selectedUserIds.length > 0 && !isLoading ? 'var(--on-accent)' : 'var(--text-4)',
           fontSize: 13.5, fontWeight: 700,
-          cursor: selectedUserId && !isLoading ? 'pointer' : 'not-allowed',
+          cursor: selectedUserIds.length > 0 && !isLoading ? 'pointer' : 'not-allowed',
           fontFamily: 'inherit', transition: 'background 0.15s',
         }}
       >
-        {isLoading ? '追加中…' : '追加する'}
+        {isLoading ? '追加中…' : `${selectedUserIds.length}人を追加する`}
       </button>
     </div>
   </div>
@@ -441,7 +441,7 @@ interface MembersTabProps {
 export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
   const [showInvite, setShowInvite] = React.useState(false)
   const [showGuestInvite, setShowGuestInvite] = React.useState(false)
-  const [selectedUserId, setSelectedUserId] = React.useState('')
+  const [selectedUserIds, setSelectedUserIds] = React.useState<string[]>([])
   const [selectedRole, setSelectedRole] = React.useState('member')
   const [removeTarget, setRemoveTarget] = React.useState<ProjectMemberDto | null>(null)
 
@@ -457,13 +457,13 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
 
   const closeInvite = () => {
     setShowInvite(false)
-    setSelectedUserId('')
+    setSelectedUserIds([])
     setSelectedRole('member')
   }
 
   const handleConfirmInvite = () => {
     addMutation.mutate(
-      { userId: selectedUserId, role: selectedRole },
+      { userIds: selectedUserIds, role: selectedRole },
       { onSuccess: closeInvite },
     )
   }
@@ -530,9 +530,13 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
         <InvitePanel
           inviteable={inviteable}
           isLoadingMembers={isLoadingWs}
-          selectedUserId={selectedUserId}
+          selectedUserIds={selectedUserIds}
           selectedRole={selectedRole}
-          onSelectUser={setSelectedUserId}
+          onToggleUser={(userId) => {
+            setSelectedUserIds(current => current.includes(userId)
+              ? current.filter(id => id !== userId)
+              : [...current, userId])
+          }}
           onSelectRole={setSelectedRole}
           onConfirm={handleConfirmInvite}
           onClose={closeInvite}
