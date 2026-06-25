@@ -792,6 +792,7 @@ const SettingsWorkspaceGeneral = () => {
 
 const SettingsIntegrations = () => {
   // ── iCal 出力 ──────────────────────────────────────────────────────
+  const { isAdmin: canReadWorkspaceFeed } = useWorkspacePermissions()
   const { data: ws } = useQuery<WorkspaceDto>({
     queryKey: ['workspace'],
     queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
@@ -818,9 +819,15 @@ const SettingsIntegrations = () => {
     setTimeout(() => setCopiedScope(null), 2000)
   }
 
-  const feeds: { scope: 'me' | 'workspace'; label: string; desc: string }[] = [
+  const feeds: { scope: 'me' | 'workspace'; label: string; desc: string; disabled?: boolean; disabledReason?: string }[] = [
     { scope: 'me',        label: '自分が参加しているプロジェクト', desc: 'メンバーとして参加しているプロジェクトの期間のみ' },
-    { scope: 'workspace', label: 'ワークスペース全体',             desc: 'ワークスペース内のすべてのプロジェクト期間' },
+    {
+      scope: 'workspace',
+      label: 'ワークスペース全体',
+      desc: 'ワークスペース内のすべてのプロジェクト期間',
+      disabled: !canReadWorkspaceFeed,
+      disabledReason: 'ワークスペース全体の iCal URL はオーナー/管理者のみ利用できます。',
+    },
   ]
 
   // ── Google カレンダー読み込み ───────────────────────────────────────
@@ -910,13 +917,18 @@ const SettingsIntegrations = () => {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{f.label}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 8 }}>{f.desc}</div>
+                  {f.disabledReason && (
+                    <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 8 }}>
+                      {f.disabledReason}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 7, padding: '6px 10px', minWidth: 0 }}>
                     <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
-                      {data?.token ? buildUrl(f.scope) : '読み込み中…'}
+                      {f.disabled ? f.disabledReason : data?.token ? buildUrl(f.scope) : '読み込み中…'}
                     </span>
                     <button
                       onClick={() => copy(f.scope)}
-                      disabled={!data?.token}
+                      disabled={!data?.token || f.disabled}
                       className="btn btn-ghost"
                       style={{ height: 26, fontSize: 11.5, padding: '0 8px', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                     >
