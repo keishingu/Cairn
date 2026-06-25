@@ -183,13 +183,19 @@ heartbeats {
 heartbeat_runs {
   id            uuid pk
   heartbeatId   uuid → heartbeats (cascade)
+  scheduledFor  timestamptz   // この run が担当する「予定時刻」。冪等キー
   firedAt       timestamptz
-  status        text   // 'success' | 'failed' | 'skipped'
+  status        text   // 'running' | 'success' | 'failed' | 'skipped'
   resultMessageId uuid → messages   // 投稿したメッセージ（あれば）
   error         text
+  // unique(heartbeatId, scheduledFor) で予定時刻ごとに run を1行に固定する
 }
 ```
-- ディスパッチャは**冪等性**のため、`heartbeat_runs` に「この予定時刻の run が既にあるか」を見て二重発火を防ぐ（Inngest のリトライで同じ予定が複数回流れても1回だけ実行）。
+- **冪等性は「予約」で担保する（check-then-act にしない）**。発火時はまず `heartbeat_runs` に
+  `(heartbeatId, scheduledFor)` で **`status='running'` 行を INSERT して run を予約**する。
+  `unique(heartbeatId, scheduledFor)` があるため、二重ディスパッチや Inngest リトライで同じ予定が複数流れても
+  **挿入に成功した1つだけが先へ進み、競合した側は即 skip** する。「success 行があるか先に SELECT して判断」する方式は、
+  両者が SELECT を通過してから INSERT する競合窓が残るため採らない。
 
 ### 5.3 投票（アプリ内ポール）
 
@@ -215,15 +221,21 @@ poll_options {
 }
 
 poll_votes {
-  id        uuid pk
-  pollId    uuid → polls (cascade)
-  optionId  uuid → poll_options (cascade)
-  userId    uuid → profiles
+  id            uuid pk
+  pollId        uuid → polls (cascade)
+  optionId      uuid → poll_options (cascade)
+  userId        uuid → profiles
+  allowMultiple boolean   // polls.allowMultiple を非正規化（部分インデックスから参照するため）
   createdAt
-  // unique(pollId, optionId, userId) で二重投票防止。
-  // 単一選択(allowMultiple=false)は (pollId, userId) でも一意にする
+  // (A) 同一選択肢への二重投票防止: unique(pollId, optionId, userId) を常に張る
+  // (B) 単一選択の1人1票: 部分一意インデックス
+  //     CREATE UNIQUE INDEX ON poll_votes (poll_id, user_id) WHERE allow_multiple = false;
+  //     allowMultiple=true の行はこの索引の対象外なので複数選択を妨げない
 }
 ```
+
+**単一選択の一意性**: `allowMultiple` は `polls` 側にあり `poll_votes` の部分索引から直接は参照できないため、**作成時に `poll_votes.allowMultiple` へ非正規化**し、上記 (B) の部分一意インデックスで DB レベルに強制する（`polls.allowMultiple` 変更時は対象投票の `poll_votes` も更新）。
+投票 API（`POST /api/polls/[id]/vote`）は単一選択時、既存票の削除→挿入を**1トランザクション**で行い（置換）、競合は (B) の制約で弾く。これにより「単純な `unique(pollId, userId)` が複数選択を壊す」「制約を省くと並行二重投票を許す」のどちらも回避する。
 
 ---
 
@@ -232,7 +244,8 @@ poll_votes {
 ハートビートとは独立に**単体で使える機能**として作る（手動でも投票を立てられる）。ハートビートはその作成 API を呼ぶだけ。
 
 - **メッセージ種別**: `messages.messageType` に `'poll'` を追加（既存は `'text' | 'html' | 'system'`）。
-  投票カードは `pollId` を `messages.metadata` に持たせ、クライアントが poll を取得して描画する。
+  `messages` には `metadata` カラムが無いため新設はしない。リンクは既にデータモデルにある **`polls.messageId`（poll → message の片方向）** を正とし、
+  クライアントは表示中メッセージの `id` 群から `polls.messageId IN (...)` で投票を引いて描画する（messageType が `'poll'` のメッセージにのみ投票カードを出す）。
 - **投票 API**:
   - `POST /api/polls` — 投票作成（question / options / allowMultiple / anonymous）。作成と同時に messageType `'poll'` のメッセージを投稿
   - `POST /api/polls/[id]/vote` — 投票/取り消し（body: optionId[]）。`allowMultiple=false` は既存票を置換
@@ -275,15 +288,17 @@ poll_votes {
 Inngest 関数。各 `step.run` で冪等に分割する（既存 `functions.ts` の流儀に合わせる）。
 
 1. **load**: `heartbeatId` から定義・エージェント・チャンネルをロード。`enabled=false` なら skip。
-2. **dedupe**: この予定時刻の `heartbeat_runs` が success で存在すれば skip（二重発火防止）。
+2. **reserve**: `(heartbeatId, scheduledFor)` で `status='running'` 行を **INSERT して run を予約**する（`onConflictDoNothing`）。
+   挿入できなければ別の発火が既にこの予定時刻を担当済み → **即 skip**。この予約を `create-poll` の**前**に置くことで、
+   副作用（投稿）の重複を防ぐ。以降のステップは予約した run 行を `running → success/failed` に遷移させる。
 3. **resolve-action**: `actionSpec.options.kind` を実値へ展開。
    - `weeks_of_next_month` → 来月の各週の開始日を timezone 基準で算出（決定論。LLM 不要）。
    - 本文に `{{nextMonth}}` 等のテンプレ変数があれば置換。自由文生成が要る場合のみ gpt-4o-mini。
 4. **create-poll**: `PollPort.createPoll(...)` を実行 → `pollId` / `messageId` を得る。
    - 本文には先頭にメンション（`mentionUserIds` を canonical `<@userId>` 形式で埋め込む。`lib/chat/mentions.ts` 準拠）を付ける。
 5. **notify**: `message/created` イベントを送る → 既存の `on-message-created` がメンション通知・Push を処理。
-6. **bookkeeping**: `lastRunAt` 更新、`schedule` から次の `nextRunAt` を再計算、`heartbeat_runs` に success 記録。
-7. **失敗時**: `heartbeat_runs` に failed + error を残し、**作成者へアプリ内通知でエラーを知らせる**
+6. **bookkeeping**: `lastRunAt` 更新、`schedule` から次の `nextRunAt` を再計算、予約した run を `running → success` に更新。
+7. **失敗時**: 予約した run を `running → failed`（+ error）に更新し、**作成者へアプリ内通知でエラーを知らせる**
    （CLAUDE.md「サイレントに fallback せずエラーを見せる」に準拠。投稿先に半端なメッセージは残さない）。
 
 メンション解決の注意: NL の「@山田さん」→ userId 解決は**保存時**に行い `mentionUserIds` に固定する。
