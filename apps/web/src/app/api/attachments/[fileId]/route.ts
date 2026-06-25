@@ -8,6 +8,19 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 
 type RouteContext = { params: Promise<{ fileId: string }> }
 
+function resolveResponseContentType(fileName: string, mimeType: string | null) {
+  const normalizedMimeType = mimeType?.toLowerCase() ?? ''
+  const normalizedFileName = fileName.toLowerCase()
+
+  if (normalizedFileName.endsWith('.md') || normalizedFileName.endsWith('.markdown')) {
+    return 'text/markdown; charset=utf-8'
+  }
+
+  const responseMimeType = mimeType ?? 'application/octet-stream'
+  const isText = normalizedMimeType.startsWith('text/') || normalizedMimeType === 'application/json'
+  return isText ? `${responseMimeType}; charset=utf-8` : responseMimeType
+}
+
 export async function GET(_req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -18,11 +31,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const { db, files } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
 
-    const [file] = await db
-      .select()
-      .from(files)
-      .where(eq(files.id, fileId))
-      .limit(1)
+    const [file] = await db.select().from(files).where(eq(files.id, fileId)).limit(1)
 
     if (!file) {
       return new NextResponse(null, { status: 404 })
@@ -57,12 +66,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
       return new NextResponse(null, { status: 502 })
     }
 
-    const mimeType = file.mimeType ?? 'application/octet-stream'
-    const isText = mimeType.startsWith('text/') || mimeType === 'application/json'
-
     return new NextResponse(data, {
       headers: {
-        'Content-Type': isText ? `${mimeType}; charset=utf-8` : mimeType,
+        'Content-Type': resolveResponseContentType(file.fileName, file.mimeType),
         'Content-Disposition': `inline; filename="${encodeURIComponent(file.fileName)}"`,
         'Cache-Control': 'private, max-age=3600',
       },
@@ -114,7 +120,9 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     const meta = (file.metadata ?? {}) as Record<string, unknown>
     await db
       .update(files)
-      .set({ metadata: isLatest ? { ...meta, isLatest: true } : sql`${files.metadata} - 'isLatest'` })
+      .set({
+        metadata: isLatest ? { ...meta, isLatest: true } : sql`${files.metadata} - 'isLatest'`,
+      })
       .where(eq(files.id, fileId))
 
     return NextResponse.json({ success: true })
