@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceMember } from '@/lib/permissions'
 
@@ -92,6 +93,9 @@ export async function POST(
   const normalizedUserIds = [...new Set((userIds ?? (userId ? [userId] : [])).filter(Boolean))]
   if (normalizedUserIds.length === 0) {
     return NextResponse.json({ error: 'userId or userIds is required' }, { status: 422 })
+  }
+  if (normalizedUserIds.some(candidate => !z.string().uuid().safeParse(candidate).success)) {
+    return NextResponse.json({ error: 'userId and userIds must be UUIDs' }, { status: 422 })
   }
 
   const validRoles = ['leader', 'subleader', 'member', 'reviewer', 'observer']

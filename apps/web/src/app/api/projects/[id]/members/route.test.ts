@@ -98,6 +98,23 @@ describe('POST /api/projects/[id]/members', () => {
     expect(mockDb.insert).not.toHaveBeenCalled()
   })
 
+  it('userIds に UUID でない文字列が含まれる場合は 422 を返す', async () => {
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/projects/${PROJECT_ID}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: ['not-a-uuid'], role: 'member' }),
+      }),
+      { params: Promise.resolve({ id: PROJECT_ID }) },
+    )
+
+    expect(res.status).toBe(422)
+    expect(await res.json()).toEqual({ error: 'userId and userIds must be UUIDs' })
+    expect(mockDb.select).not.toHaveBeenCalled()
+    expect(mockDb.insert).not.toHaveBeenCalled()
+  })
+
   it('複数ユーザーを一度に追加できる', async () => {
     mockDb.select
       .mockReturnValueOnce(chain([{ id: PROJECT_ID }]))
