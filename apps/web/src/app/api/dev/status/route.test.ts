@@ -16,7 +16,9 @@ vi.mock('@/lib/permissions', () => ({
   requireWorkspaceOwner: mockRequireWorkspaceOwner,
 }))
 
-describe('/api/dev/status', () => {
+describe('dev/status API の認可と手動診断', () => {
+  const originalNodeEnv = process.env['NODE_ENV']
+
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetAuthContext.mockResolvedValue({
@@ -37,7 +39,11 @@ describe('/api/dev/status', () => {
     Reflect.deleteProperty(process.env, 'TAVILY_API_KEY')
     Reflect.deleteProperty(process.env, 'GOOGLE_MAPS_API_KEY')
     Reflect.deleteProperty(process.env, 'VAPID_PUBLIC_KEY')
-    Reflect.deleteProperty(process.env, 'NODE_ENV')
+    if (originalNodeEnv === undefined) {
+      Reflect.deleteProperty(process.env, 'NODE_ENV')
+    } else {
+      process.env['NODE_ENV' as keyof NodeJS.ProcessEnv] = originalNodeEnv
+    }
   })
 
   it('owner 以外の GET は 403 を返す', async () => {
