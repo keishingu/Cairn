@@ -58,17 +58,16 @@ jobs:
             ':!pnpm-lock.yaml' ':!pnpm-workspace.yaml' \
             ':!turbo.json' ':!vercel.json' ':!eas.json')
 
-          # 絞った結果が空＝メンテ/依存更新のみのリリース。ノートは全ログを使い、その旨を要約させる。
+          # 絞った結果が空＝利用者向けの変更が無いリリース（docs/CI/テスト/依存・設定のみ）。
+          # この場合は除外コミットをノートに列挙せず、汎用のメンテナンス文を出す（後段で AI を呼ばない）。
           if [ -z "$USER_LOG" ]; then
-            NOTES_LOG="$FULL_LOG"
             echo "maintenance=true" >> "$GITHUB_OUTPUT"
           else
-            NOTES_LOG="$USER_LOG"
             echo "maintenance=false" >> "$GITHUB_OUTPUT"
           fi
           {
             echo "log<<__COMMIT_LOG__"
-            echo "$NOTES_LOG"
+            echo "$USER_LOG"
             echo "__COMMIT_LOG__"
           } >> "$GITHUB_OUTPUT"
 
@@ -87,32 +86,34 @@ jobs:
         run: |
           set -euo pipefail
 
+          # 利用者向けの変更が無いリリース（docs/CI/テスト/依存・設定のみ）は、
+          # 除外コミットを列挙せず汎用のメンテナンス文を出す。AI も OpenAI キーも不要。
+          if [ "${MAINTENANCE:-false}" = "true" ]; then
+            BODY=$(printf '%s\n\n%s\n' \
+              '## メンテナンスリリース' \
+              '利用者向けの機能変更はありません。内部改善・依存関係の更新・保守作業のみが含まれます。')
+            {
+              echo "body<<__RELEASE_BODY__"
+              echo "$BODY"
+              echo "__RELEASE_BODY__"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [ -z "${OPENAI_API_KEY:-}" ]; then
             echo "::error::OPENAI_API_KEY が未設定です。リリースノート生成に必須のため中断します。Settings → Secrets に OPENAI_API_KEY を登録してください。"
             exit 1
           fi
 
-          if [ "${MAINTENANCE:-false}" = "true" ]; then
-            INSTRUCTIONS=$(printf '%s\n' \
-              'あなたはリリースノートの編集者です。以下の Git コミット一覧から、日本語の Markdown リリースノートを作成してください。' \
-              'このリリースには利用者向けの新機能はなく、内部改善・依存パッケージ更新・保守作業が中心です。' \
-              '要件:' \
-              '- 冒頭に1〜2文で「内部改善・依存関係の更新が中心のメンテナンスリリース」である旨を書く' \
-              '- 利用者に影響しうる依存更新（フレームワークやライブラリのバージョン等）があれば簡潔に触れる' \
-              '- 無理に新機能の見出しを作らない。コミットの prefix やハッシュは本文に出さない' \
-              '- 誇張せず、コミットから読み取れる事実のみを書く' \
-              'コミット一覧:')
-          else
-            INSTRUCTIONS=$(printf '%s\n' \
-              'あなたはリリースノートの編集者です。以下の Git コミット一覧から、日本語の Markdown リリースノートを作成してください。' \
-              '要件:' \
-              '- 冒頭に2〜3文のリリース概要を書く' \
-              '- 「## 新機能」「## 改善・変更」「## 修正」の見出しで分類する（該当が無い見出しは省略）' \
-              '- 各項目は利用者目線の自然な日本語にし、コミットの prefix(feat/fix 等) やハッシュは本文に出さない' \
-              '- 内部的なリファクタや chore はまとめて簡潔にするか省略してよい' \
-              '- 誇張せず、コミットから読み取れる事実のみを書く' \
-              'コミット一覧:')
-          fi
+          INSTRUCTIONS=$(printf '%s\n' \
+            'あなたはリリースノートの編集者です。以下の Git コミット一覧から、日本語の Markdown リリースノートを作成してください。' \
+            '要件:' \
+            '- 冒頭に2〜3文のリリース概要を書く' \
+            '- 「## 新機能」「## 改善・変更」「## 修正」の見出しで分類する（該当が無い見出しは省略）' \
+            '- 各項目は利用者目線の自然な日本語にし、コミットの prefix(feat/fix 等) やハッシュは本文に出さない' \
+            '- 内部的なリファクタや chore はまとめて簡潔にするか省略してよい' \
+            '- 誇張せず、コミットから読み取れる事実のみを書く' \
+            'コミット一覧:')
           PROMPT=$(printf '%s\n%s\n' "$INSTRUCTIONS" "$COMMIT_LOG")
           REQ=$(jq -n --arg content "$PROMPT" '{
             model: "gpt-4o",
