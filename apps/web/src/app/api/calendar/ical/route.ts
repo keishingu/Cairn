@@ -78,9 +78,13 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const token = searchParams.get('token')
   const scope = searchParams.get('scope') ?? 'me'
+  const workspaceId = searchParams.get('workspaceId')
 
   if (!token) {
     return new NextResponse('token is required', { status: 400 })
+  }
+  if (!workspaceId) {
+    return new NextResponse('workspaceId is required', { status: 400 })
   }
 
   try {
@@ -102,7 +106,10 @@ export async function GET(req: NextRequest) {
     const [membership] = await db
       .select({ workspaceId: workspaceMembers.workspaceId, role: workspaceMembers.role })
       .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, userId))
+      .where(and(
+        eq(workspaceMembers.userId, userId),
+        eq(workspaceMembers.workspaceId, workspaceId),
+      ))
 
     if (!membership) {
       return new NextResponse('No workspace found', { status: 404 })

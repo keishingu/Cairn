@@ -41,14 +41,23 @@ function chain(result: unknown[]) {
   return c
 }
 
-function buildRequest(scope: 'me' | 'workspace') {
-  return new NextRequest(`https://cairn.example/api/calendar/ical?token=${TOKEN}&scope=${scope}`)
+function buildRequest(scope: 'me' | 'workspace', workspaceId = WS_ID) {
+  return new NextRequest(`https://cairn.example/api/calendar/ical?token=${TOKEN}&scope=${scope}&workspaceId=${workspaceId}`)
 }
 
 describe('GET /api/calendar/ical', () => {
   afterEach(() => {
     vi.clearAllMocks()
     vi.resetModules()
+  })
+
+  it('workspaceId がないと 400 を返す', async () => {
+    const { GET } = await import('./route')
+    const res = await GET(new NextRequest(`https://cairn.example/api/calendar/ical?token=${TOKEN}&scope=workspace`))
+
+    expect(res.status).toBe(400)
+    expect(await res.text()).toBe('workspaceId is required')
+    expect(mockDb.select).not.toHaveBeenCalled()
   })
 
   it('member は workspace scope を取得できない', async () => {
@@ -107,5 +116,18 @@ describe('GET /api/calendar/ical', () => {
     expect(res.status).toBe(200)
     expect(body).toContain('X-WR-CALNAME:Cairn（自分）')
     expect(body).toContain('SUMMARY:自分の予定')
+  })
+
+  it('workspaceId で membership を絞り込む', async () => {
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: USER_ID }]))
+      .mockReturnValueOnce(chain([]))
+
+    const { GET } = await import('./route')
+    const res = await GET(buildRequest('workspace', 'ws-other'))
+
+    expect(res.status).toBe(404)
+    expect(await res.text()).toBe('No workspace found')
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
   })
 })
