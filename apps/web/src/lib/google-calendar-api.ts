@@ -92,7 +92,9 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
 }
 
 export function isGoogleInvalidGrantError(error: unknown): boolean {
-  return error instanceof Error && error.message.includes('"error": "invalid_grant"')
+  if (!(error instanceof Error)) return false
+
+  return /"error"\s*:\s*"invalid_grant"/.test(error.message)
 }
 
 export async function listCalendars(accessToken: string): Promise<GoogleCalendarListItem[]> {

@@ -64,4 +64,18 @@ describe('/api/calendar/google/calendars GET', () => {
     expect(body.code).toBe('GOOGLE_RECONNECT_REQUIRED')
     expect(body.error).toContain('再接続')
   })
+
+  it('compact JSON の invalid_grant でも再接続用の 409 を返す', async () => {
+    mockGetFreshToken.mockRejectedValueOnce(
+      new Error('Token refresh failed: {"error":"invalid_grant","error_description":"Token has been expired or revoked."}'),
+    )
+    const { GET } = await import('./route')
+
+    const res = await GET()
+    const body = await res.json() as { error: string; code: string }
+
+    expect(res.status).toBe(409)
+    expect(body.code).toBe('GOOGLE_RECONNECT_REQUIRED')
+    expect(body.error).toContain('再接続')
+  })
 })
