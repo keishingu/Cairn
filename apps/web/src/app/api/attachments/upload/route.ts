@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -54,6 +55,9 @@ export async function POST(req: Request) {
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json({ error: 'ファイルサイズは 10MB 以下にしてください' }, { status: 400 })
   }
+
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  if (forbidden) return forbidden
 
   const ext = file.name.split('.').pop() ?? 'bin'
   const storagePath = `${ctx.workspaceId}/${channelId}/${crypto.randomUUID()}.${ext}`

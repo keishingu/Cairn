@@ -3,7 +3,7 @@
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
-import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab } from '../primitives'
+import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '../mobile/header'
@@ -15,7 +15,8 @@ import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
-import { useArrowNav } from '@/hooks/use-arrow-nav'
+import { useListSelection } from '@/hooks/use-list-selection'
+import { useCommand } from '@/lib/command-registry'
 
 // ─── Main component ───────────────────────────────────────────────
 interface ProjectListViewProps {
@@ -108,38 +109,11 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false)
   const searchInputRef = React.useRef<HTMLInputElement>(null)
 
-  // ⌥N: 新規プロジェクト（ボタンと同じく管理者以上のみ）
-  React.useEffect(() => {
-    const onCreate = () => { if (canCreateProject) setShowCreate(true) }
-    window.addEventListener('cairn:create', onCreate)
-    return () => window.removeEventListener('cairn:create', onCreate)
-  }, [canCreateProject])
-
-  // ⌥F: フィルタトグル
-  React.useEffect(() => {
-    const onFilter = () => setFilterOpen(o => !o)
-    window.addEventListener('cairn:filter', onFilter)
-    return () => window.removeEventListener('cairn:filter', onFilter)
-  }, [])
-
-  // ⌥S: 検索フォーカス
-  React.useEffect(() => {
-    const onSearch = () => {
-      if (!isMobile) { searchInputRef.current?.focus(); return }
-      // モバイルは検索欄を開いてからフォーカス（描画後に当てる）
-      setMobileSearchOpen(true)
-      setTimeout(() => searchInputRef.current?.focus(), 50)
-    }
-    window.addEventListener('cairn:search-focus', onSearch)
-    return () => window.removeEventListener('cairn:search-focus', onSearch)
-  }, [isMobile])
-
-  // ⌥G/⌥T: ビュー切替
-  React.useEffect(() => {
-    const onView = (e: Event) => setViewPersisted((e as CustomEvent<'grid' | 'table'>).detail)
-    window.addEventListener('cairn:view', onView)
-    return () => window.removeEventListener('cairn:view', onView)
-  }, [setViewPersisted])
+  // ⌥N 新規 / ⌥F フィルタ / ⌥G ⌥T ビュー切替（検索フォーカスは TopBarSearch が担当）
+  useCommand('ctx.create', () => { if (canCreateProject) setShowCreate(true) })
+  useCommand('ctx.filter', () => setFilterOpen(o => !o))
+  useCommand('projects.viewGrid', () => setViewPersisted('grid'))
+  useCommand('projects.viewTable', () => setViewPersisted('table'))
 
   const handleCreated = (project: ProjectDto) => {
     queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), project])
@@ -162,19 +136,16 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
     { id: 'archived', label: 'アーカイブ', n: counts.archived },
   ]
 
-  // ⌥[/⌥]: フィルタタブ切替
-  React.useEffect(() => {
-    const onTab = (e: Event) => {
-      const dir = (e as CustomEvent<'prev' | 'next'>).detail
-      const idx = filterTabs.findIndex(f => f.id === filter)
-      const next = dir === 'next'
-        ? (idx + 1) % filterTabs.length
-        : (idx - 1 + filterTabs.length) % filterTabs.length
-      setFilter(filterTabs[next]!.id)
-    }
-    window.addEventListener('cairn:filter-tab', onTab)
-    return () => window.removeEventListener('cairn:filter-tab', onTab)
-  }, [filter, filterTabs, setFilter])
+  // ⌥[ / ⌥]: フィルタタブ切替
+  const cycleFilterTab = (dir: 'prev' | 'next') => {
+    const idx = filterTabs.findIndex(f => f.id === filter)
+    const next = dir === 'next'
+      ? (idx + 1) % filterTabs.length
+      : (idx - 1 + filterTabs.length) % filterTabs.length
+    setFilter(filterTabs[next]!.id)
+  }
+  useCommand('ctx.filterTabPrev', () => cycleFilterTab('prev'))
+  useCommand('ctx.filterTabNext', () => cycleFilterTab('next'))
 
   const tabFiltered = React.useMemo(() => {
     switch (filter) {
@@ -224,10 +195,10 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   }, [filteredProjects, view, tableSort])
 
   // 矢印選択・Enter は実際に描画している並び（sortedProjects）を対象にする
-  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useArrowNav(
-    sortedProjects.length,
-    React.useCallback((idx: number) => { openPanel?.(sortedProjects[idx]!) }, [sortedProjects, openPanel]),
-  )
+  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useListSelection({
+    count: sortedProjects.length,
+    onEnter: React.useCallback((idx: number) => { openPanel?.(sortedProjects[idx]!) }, [sortedProjects, openPanel]),
+  })
 
   // フィルタ変更で選択をリセット
   React.useEffect(() => { setNavIdx(-1) }, [filter, statusFilter, memberFilter, effectiveSearch, setNavIdx])
@@ -408,10 +379,11 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
               const selected = i === navIdx
               return (
-                <div key={p.id} onClick={() => openPanel?.(p)} style={{
+                <div key={p.id} data-list-index={i} onClick={() => openPanel?.(p)} style={{
                   display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px',
                   gap: 16, padding: '12px 16px', borderBottom: i < sortedProjects.length - 1 ? '1px solid var(--divider)' : 'none',
                   alignItems: 'center', cursor: 'pointer',
+                  opacity: p.archived ? ARCHIVED_OPACITY : 1,
                   background: selected ? 'var(--accent-soft)' : 'transparent',
                 }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = selected ? 'var(--accent-soft)' : 'var(--card-2)'}
@@ -421,9 +393,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                     <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
-                    {isSearching && p.archived && (
-                      <span className="chip" style={{ background: 'var(--text-4)', color: 'var(--bg)', fontSize: 10 }}>アーカイブ</span>
-                    )}
+                    {isSearching && p.archived && <ArchivedBadge/>}
                   </div>
                   <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{formatDates(p.startDate, p.endDate)}</span>
                   <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={22}/>
@@ -453,6 +423,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                     background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14,
                     overflow: 'hidden', cursor: 'pointer',
                     display: 'flex', alignItems: 'stretch',
+                    opacity: p.archived ? ARCHIVED_OPACITY : 1,
                   }}>
                     {/* Cover photo thumbnail */}
                     <div style={{ width: 88, flexShrink: 0, position: 'relative' }}>
@@ -471,9 +442,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
-                        {isSearching && p.archived && (
-                          <span className="chip" style={{ background: 'var(--text-4)', color: 'var(--bg)', fontSize: 10 }}>アーカイブ</span>
-                        )}
+                        {isSearching && p.archived && <ArchivedBadge/>}
                         <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={20}/>
                         <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 2 }}>{p.memberCount}人</span>
                       </div>
@@ -483,10 +452,11 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               }
 
               return (
-                <div key={p.id} onClick={() => openPanel?.(p)} style={{
+                <div key={p.id} data-list-index={i} onClick={() => openPanel?.(p)} style={{
                   background: 'var(--card)', borderRadius: 12,
                   overflow: 'hidden', cursor: 'pointer', boxShadow: 'var(--shadow-sm)',
                   transition: 'transform .15s, box-shadow .15s',
+                  opacity: p.archived ? ARCHIVED_OPACITY : 1,
                   border: i === navIdx ? '1.5px solid var(--accent)' : '1px solid var(--border)',
                 }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-md)' }}
@@ -499,9 +469,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                     }
                     <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                       <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
-                      {isSearching && p.archived && (
-                        <span className="chip" style={{ background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 10, backdropFilter: 'blur(4px)' }}>アーカイブ</span>
-                      )}
+                      {isSearching && p.archived && <ArchivedBadge onDark/>}
                     </div>
                   </div>
                   <div style={{ padding: '12px 14px 14px' }}>

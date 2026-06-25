@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { canAccessFile } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 type RouteContext = { params: Promise<{ fileId: string }> }
@@ -36,8 +37,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
       return new NextResponse(null, { status: 404 })
     }
 
-    // 同一ワークスペースのメンバーのみ閲覧可（Phase 2 で公開/非公開プロジェクトの判定を追加する）
-    if (file.workspaceId !== ctx.workspaceId) {
+    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file)
+    if (!canAccess) {
       return new NextResponse(null, { status: 403 })
     }
 
@@ -100,13 +101,20 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     const { eq, sql } = await import('drizzle-orm')
 
     const [file] = await db
-      .select({ id: files.id, workspaceId: files.workspaceId, metadata: files.metadata })
+      .select({
+        id: files.id,
+        workspaceId: files.workspaceId,
+        projectId: files.projectId,
+        uploadedBy: files.uploadedBy,
+        metadata: files.metadata,
+      })
       .from(files)
       .where(eq(files.id, fileId))
       .limit(1)
 
     if (!file) return new NextResponse(null, { status: 404 })
-    if (file.workspaceId !== ctx.workspaceId) return new NextResponse(null, { status: 403 })
+    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file)
+    if (!canAccess) return new NextResponse(null, { status: 403 })
 
     // 最新版ラベルは複数ファイルに同時付与できる（排他にしない）
     const meta = (file.metadata ?? {}) as Record<string, unknown>
@@ -138,16 +146,19 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       .select({
         id: files.id,
         workspaceId: files.workspaceId,
+        projectId: files.projectId,
         storagePath: files.storagePath,
         uploadedBy: files.uploadedBy,
         fileType: files.fileType,
+        metadata: files.metadata,
       })
       .from(files)
       .where(eq(files.id, fileId))
       .limit(1)
 
     if (!file) return new NextResponse(null, { status: 404 })
-    if (file.workspaceId !== ctx.workspaceId) return new NextResponse(null, { status: 403 })
+    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file)
+    if (!canAccess) return new NextResponse(null, { status: 403 })
 
     // ベクトルデータを先に削除
     await db

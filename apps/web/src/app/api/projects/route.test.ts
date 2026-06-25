@@ -9,13 +9,14 @@ const PROJ_1  = 'proj-00000001'
 const PROJ_2  = 'proj-00000002'
 
 // --- vi.hoisted ---
-const { mockGetAuthContext, mockDb } = vi.hoisted(() => {
+const { mockGetAuthContext, mockDb, selectChains } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: { userId: '00000000-0000-0000-0000-000000000001', workspaceId: 'ws-00000001' },
     error: null,
   })
   const mockDb = { select: vi.fn() }
-  return { mockGetAuthContext, mockDb }
+  const selectChains: Record<string, unknown>[] = []
+  return { mockGetAuthContext, mockDb, selectChains }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -49,6 +50,7 @@ function chain(result: unknown[]) {
   for (const m of ['from', 'leftJoin', 'innerJoin', 'where', 'limit', 'orderBy', 'groupBy']) {
     c[m] = vi.fn().mockReturnValue(c)
   }
+  selectChains.push(c)
   return c
 }
 
@@ -59,6 +61,7 @@ describe('GET /api/projects', () => {
   afterEach(() => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
+    selectChains.length = 0
     mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID }, error: null })
   })
 
@@ -87,6 +90,7 @@ describe('GET /api/projects', () => {
     const body = await res.json() as { id: string }[]
     expect(body).toHaveLength(1)
     expect(body[0]!.id).toBe(PROJ_1)
+    expect(selectChains[1]?.['innerJoin']).toHaveBeenCalledTimes(1)
   })
 
   it('ゲストで参加プロジェクトが0件の場合は空配列を返す', async () => {
@@ -122,5 +126,28 @@ describe('GET /api/projects', () => {
     expect(body).toHaveLength(2)
     // ゲストフィルタの追加selectが呼ばれていないこと（WSロール確認 + 本体の5回 = 6回）
     expect(mockDb.select).toHaveBeenCalledTimes(6)
+  })
+
+  it('可視プロジェクトのみに集計クエリを絞る', async () => {
+    const proj1 = { id: PROJ_1, title: 'プロジェクト1', description: null, startDate: null, endDate: null, archived: false, createdBy: USER_ID, coverPhotoUrl: null, location: null, placeId: null }
+    const proj2 = { id: PROJ_2, title: 'プロジェクト2', description: null, startDate: null, endDate: null, archived: false, createdBy: USER_ID, coverPhotoUrl: null, location: null, placeId: null }
+
+    mockDb.select
+      .mockReturnValueOnce(chain([{ role: 'member' }]))
+      .mockReturnValueOnce(chain([proj1, proj2]))
+      .mockReturnValueOnce(chain([{ projectId: PROJ_1, n: 3 }]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([{ projectId: PROJ_1 }]))
+      .mockReturnValueOnce(chain([{ projectId: PROJ_1, total: 5, completed: 2 }]))
+
+    const drizzle = await import('drizzle-orm')
+    const { GET } = await import('./route')
+    await GET()
+
+    expect(drizzle.inArray).toHaveBeenCalledWith('pm.projectId', [PROJ_1, PROJ_2])
+    expect(drizzle.inArray).toHaveBeenCalledWith('tk.projectId', [PROJ_1, PROJ_2])
+    expect(selectChains[2]?.['where']).toHaveBeenCalledTimes(1)
+    expect(selectChains[3]?.['where']).toHaveBeenCalledTimes(1)
+    expect(selectChains[5]?.['where']).toHaveBeenCalledTimes(1)
   })
 })

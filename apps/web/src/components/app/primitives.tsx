@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useCommand } from '@/lib/command-registry'
 
 const PHOTO_IDS = [
   '1464822759023-fed622ff2c3b', '1483728642387-6c3bdd6c93e5', '1454391304352-2bf4678b1a7a',
@@ -201,6 +202,33 @@ export const StatusChip = ({ name, color, size = 11 }: StatusChipProps) => (
   </span>
 )
 
+// ─── Archived project styling ─────────────────────────────────────
+// アーカイブ済みプロジェクトはプロジェクト一覧・詳細パネル・メンバーの
+// プロジェクト履歴など複数箇所で表示される。グレーアウト＋バッジの表現を
+// 1 箇所に集約し、どこでも同じ見た目になるようにする。
+// （打ち消し線は「完了・取り消し」を連想させ、まだ有効なアーカイブの
+// 意味と合わないため使わない。）
+
+/** アーカイブ済み要素のコンテナをグレーアウトする減光率 */
+export const ARCHIVED_OPACITY = 0.4
+
+interface ArchivedBadgeProps {
+  size?: number
+  /** カバー写真など暗い背景の上に重ねる場合は true */
+  onDark?: boolean
+}
+
+export const ArchivedBadge = ({ size = 10, onDark = false }: ArchivedBadgeProps) => (
+  <span
+    className="chip"
+    style={onDark
+      ? { background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: size, backdropFilter: 'blur(4px)' }
+      : { background: 'var(--text-4)', color: 'var(--bg)', fontSize: size }}
+  >
+    アーカイブ
+  </span>
+)
+
 // ─── Unread badge ─────────────────────────────────────────────────
 // 未読件数バッジ。ヘッダーのベル・サイドバー・チャンネル一覧・通知パネルで
 // 形・色・サイズを揃えるための共通コンポーネント。0 件では何も描画しない。
@@ -295,12 +323,8 @@ export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
   placeholder?: string
 }) => {
   const inputRef = React.useRef<HTMLInputElement>(null)
-  // ⌥S: 検索フォーカス（cairn:search-focus を購読）
-  React.useEffect(() => {
-    const onFocus = () => inputRef.current?.focus()
-    window.addEventListener('cairn:search-focus', onFocus)
-    return () => window.removeEventListener('cairn:search-focus', onFocus)
-  }, [])
+  // ⌥S: 検索フォーカス
+  useCommand('ctx.searchFocus', () => inputRef.current?.focus())
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: `1px solid ${value ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8, padding: '0 10px', height: 32, width: 260, transition: 'border-color .12s' }}>
       <Icon name="search" size={14} color={value ? 'var(--accent)' : 'var(--text-3)'}/>
@@ -310,7 +334,11 @@ export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
-        onKeyDown={e => { if (e.key === 'Escape') onChange('') }}
+        onKeyDown={e => {
+          if (e.key !== 'Escape') return
+          // 1回目: 入力をクリア / 2回目（空の時）: 入力欄から離脱（ブラー）
+          if (value) onChange(''); else (e.currentTarget as HTMLElement).blur()
+        }}
       />
       {value && (
         <button onClick={() => onChange('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>

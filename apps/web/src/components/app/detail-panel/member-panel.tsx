@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Icon, Avatar, StatusChip } from '../primitives'
+import { Icon, Avatar, StatusChip, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
@@ -70,6 +70,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
           width: '100%', display: 'flex', alignItems: 'center', gap: 12,
           padding: '14px 16px', border: 'none', borderBottom: '1px solid var(--divider)',
           background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+          opacity: project.archived ? ARCHIVED_OPACITY : 1,
         }}
       >
         <div style={{
@@ -85,6 +86,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
+            {project.archived && <ArchivedBadge/>}
             <span style={{ fontSize: 12, color: 'var(--text-4)' }}>
               {formatDateRange(project.startDate, project.endDate)}
             </span>
@@ -106,6 +108,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
         padding: '10px 6px', borderBottom: '1px solid var(--divider)',
         cursor: 'pointer', borderRadius: 6, margin: '0 -6px',
         transition: 'background .1s',
+        opacity: project.archived ? ARCHIVED_OPACITY : 1,
       }}
       onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-hover)')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -128,6 +131,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
+          {project.archived && <ArchivedBadge/>}
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>
             {formatDateRange(project.startDate, project.endDate)}
           </span>
@@ -215,6 +219,12 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
       fetchWithAuth(`/api/workspaces/members/${member.userId}/projects`).then(r => r.json()),
   })
 
+  // アーカイブ済みは履歴の下部にまとめる（進行中の順序は維持したいので安定ソート）
+  const sortedProjects = React.useMemo(
+    () => [...projects].sort((a, b) => Number(a.archived) - Number(b.archived)),
+    [projects],
+  )
+
   const handleProjectClick = (p: MemberProjectDto) => {
     onProjectClick(p)
   }
@@ -264,6 +274,20 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
               <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
                 {member.displayName}
               </div>
+              {member.email && (
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: 'var(--text-4)',
+                    marginBottom: 6,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {member.email}
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
                   {WS_ROLE_LABEL[currentRole]}
@@ -289,6 +313,20 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
               {member.displayName}
             </div>
+            {member.email && (
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: 'var(--text-4)',
+                  marginBottom: 6,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {member.email}
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               {canChangeRole ? (
                 <div ref={dropdownRef} style={{ position: 'relative' }}>
@@ -426,7 +464,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             <span style={{ fontSize: isMobile ? 14 : 12.5 }}>参加プロジェクトはありません</span>
           </div>
         ) : (
-          projects.map(p => (
+          sortedProjects.map(p => (
             <ProjectRow
               key={p.projectId}
               project={p}

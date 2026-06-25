@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { getWorkspaceMemberRole } from '@/lib/permissions'
 
 export interface FileDto {
   id: string
@@ -25,8 +26,8 @@ export async function GET() {
     const { ctx, error } = await getAuthContext()
     if (error) return error
 
-    const { db, files, profiles, projects, messageAttachments, messages, channels, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
-    const { eq, and, desc, isNull, inArray, sql } = await import('drizzle-orm')
+    const { db, files, profiles, projects, projectMembers, messageAttachments, messages, channels, channelMembers, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
+    const { eq, and, desc, isNull, isNotNull, inArray, sql, exists, or, ne } = await import('drizzle-orm')
 
     const INDEXABLE_MIMES = new Set([
       'application/pdf',
@@ -36,11 +37,80 @@ export async function GET() {
       'text/markdown',
     ])
 
+    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    if (!role) {
+      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
+    }
+
+    const fileProjectMemberSq = db
+      .select({ one: sql<number>`1` })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, files.projectId), eq(projectMembers.userId, ctx.userId)))
+
+    const channelMemberSq = db
+      .select({ one: sql<number>`1` })
+      .from(channelMembers)
+      .where(and(eq(channelMembers.channelId, channels.id), eq(channelMembers.userId, ctx.userId)))
+
+    const guestProjectChannelAccessSq = db
+      .select({ one: sql<number>`1` })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, channels.projectId), eq(projectMembers.userId, ctx.userId)))
+
+    const channelAccessCondition = role === 'guest'
+      ? or(
+          exists(channelMemberSq),
+          exists(guestProjectChannelAccessSq),
+        )
+      : or(
+          and(
+            eq(channels.isPrivate, false),
+            ne(channels.type, 'dm'),
+            // 旧データの project channel は workspace_id が null のことがあるため許容する。
+            // files.workspace_id 側で現在ワークスペースには絞れている。
+            or(eq(channels.workspaceId, ctx.workspaceId), isNull(channels.workspaceId)),
+          ),
+          exists(channelMemberSq),
+        )
+
+    const attachedChannelAccessSq = db
+      .select({ one: sql<number>`1` })
+      .from(messageAttachments)
+      .innerJoin(messages, eq(messageAttachments.messageId, messages.id))
+      .innerJoin(channels, eq(messages.channelId, channels.id))
+      .where(and(
+        eq(messageAttachments.fileId, files.id),
+        channelAccessCondition,
+      ))
+
+    const metadataChannelAccessSq = db
+      .select({ one: sql<number>`1` })
+      .from(channels)
+      .where(and(
+        sql`${channels.id}::text = ${files.metadata}->>'channelId'`,
+        channelAccessCondition,
+      ))
+
+    const visibleFileCondition = role === 'guest'
+      ? or(
+          eq(files.uploadedBy, ctx.userId),
+          exists(fileProjectMemberSq),
+          exists(attachedChannelAccessSq),
+          exists(metadataChannelAccessSq),
+        )
+      : or(
+          eq(files.uploadedBy, ctx.userId),
+          isNotNull(files.projectId),
+          exists(attachedChannelAccessSq),
+          exists(metadataChannelAccessSq),
+        )
+
     const rows = await db
       .select({
         id: files.id,
         projectId: files.projectId,
         projectTitle: projects.title,
+        workspaceId: files.workspaceId,
         channelName: sql<string | null>`(
           SELECT ch.name
           FROM message_attachments ma
@@ -66,11 +136,9 @@ export async function GET() {
       .where(and(
         eq(files.workspaceId, ctx.workspaceId),
         isNull(galleryItems.id),
+        visibleFileCondition,
       ))
       .orderBy(desc(files.createdAt))
-
-    // suppress unused import warnings — tables are referenced in the sql subquery
-    void messageAttachments; void messages; void channels
 
     const fileIds = rows.map(r => r.id)
     const chunkedIdSet = new Set<string>()

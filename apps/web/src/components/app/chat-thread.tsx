@@ -28,8 +28,11 @@ import {
   useWorkspaceMembers,
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { getReactionTooltip } from '@/lib/chat/reaction-tooltip'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { chatDraftKey } from '@/lib/storage-keys'
+import { useCommand } from '@/lib/command-registry'
+import { toast } from '@/lib/toast'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 
@@ -61,6 +64,18 @@ function isEmojiOnly(text: string): boolean {
   return stripped.length === 0
 }
 
+export async function copyMessageContent(content: string): Promise<boolean> {
+  if (!content.length) return false
+  try {
+    await navigator.clipboard.writeText(content)
+    toast.success('メッセージをコピーしました')
+    return true
+  } catch {
+    toast.error('メッセージをコピーできませんでした')
+    return false
+  }
+}
+
 interface PendingAttachment {
   fileId: string
   fileName: string
@@ -76,7 +91,7 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   senderId: string
   currentUserId: string | undefined
@@ -85,7 +100,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   createdAt: string
   isEdited: boolean
   content: string
-  reactions: Array<{ emoji: string; count: number; mine: boolean }>
+  reactions: Array<{ emoji: string; count: number; mine: boolean; users?: string[] }>
   attachments: AttachmentDto[]
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
@@ -109,25 +124,33 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
   const px = compact ? '8px 14px' : '6px 16px'
   const emojiOnly = isEmojiOnly(content)
   const isOwn = currentUserId === senderId
+  const canCopy = content.length > 0
 
   const startEdit = () => {
     setEditDraft(content)
     setEditMode(true)
-    requestAnimationFrame(() => {
-      if (editTextareaRef.current) {
-        editTextareaRef.current.focus()
-        editTextareaRef.current.setSelectionRange(content.length, content.length)
-      }
-    })
   }
 
-  // cairn:edit-message イベントで編集モードを起動（startEdit はテキストエリアにフォーカスも当てる）
+  // 編集モードに入ったら確実に textarea をフォーカスする（rAF は commit 前に走り不安定なため effect で）
   React.useEffect(() => {
-    const handler = (e: Event) => {
-      if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit()
+    if (!editMode) return
+    const el = editTextareaRef.current
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length) }
+  }, [editMode])
+
+  // メッセージ選択中のキーボード操作（e=編集 / r=リアクション / d=削除）を受ける
+  React.useEffect(() => {
+    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit() }
+    const onReactEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId) setShowPicker(true) }
+    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) setDeleteConfirm(true) }
+    window.addEventListener('cairn:edit-message', onEditEvt)
+    window.addEventListener('cairn:react-message', onReactEvt)
+    window.addEventListener('cairn:delete-message', onDeleteEvt)
+    return () => {
+      window.removeEventListener('cairn:edit-message', onEditEvt)
+      window.removeEventListener('cairn:react-message', onReactEvt)
+      window.removeEventListener('cairn:delete-message', onDeleteEvt)
     }
-    window.addEventListener('cairn:edit-message', handler)
-    return () => window.removeEventListener('cairn:edit-message', handler)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messageId, isOwn, content])
 
@@ -146,17 +169,26 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
     }
   }
 
-  // 自分のメッセージの「…」メニュー。モバイルは常時表示、PC はホバー時に表示
-  const messageActions = isOwn && !editMode && (isMobile || hovered) && (
+  const handleCopy = React.useCallback(() => {
+    void copyMessageContent(content)
+  }, [content])
+
+  const actions = [
+    ...(canCopy ? [{ icon: 'copy', label: 'コピー', onSelect: handleCopy }] : []),
+    ...(isOwn ? [
+      { icon: 'edit', label: '編集', onSelect: startEdit },
+      { icon: 'trash', label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
+    ] : []),
+  ]
+
+  // メッセージの「…」メニュー。モバイルは常時表示、PC はホバー時に表示
+  const messageActions = !editMode && actions.length > 0 && (isMobile || hovered) && (
     <div style={isMobile
       ? { flexShrink: 0, alignSelf: 'flex-start', paddingTop: 2 }
       : { position: 'absolute', top: 4, right: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '2px 4px', boxShadow: 'var(--shadow-sm)' }
     }>
       <RowActionMenu
-        actions={[
-          { icon: 'edit', label: '編集', onSelect: startEdit },
-          { icon: 'trash', label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
-        ]}
+        actions={actions}
       />
     </div>
   )
@@ -265,7 +297,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, curre
         )}
         <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
-            <button key={i} onClick={() => onReact(messageId, r.emoji)} style={{
+            <button key={i} onClick={() => onReact(messageId, r.emoji)} title={!isMobile ? getReactionTooltip(r) : undefined} style={{
               height: compact ? 22 : 24, padding: '0 7px', borderRadius: 12,
               background: r.mine ? 'var(--accent-soft)' : 'var(--card-2)',
               border: `1px solid ${r.mine ? 'var(--accent)' : 'var(--border)'}`,
@@ -387,6 +419,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const compactInputRef = React.useRef<HTMLTextAreaElement>(null)
   const overlayRef = React.useRef<HTMLDivElement>(null)
 
+  // ⌥I: メッセージ入力欄にフォーカス
+  useCommand('chats.focusComposer', () => (textareaRef.current ?? compactInputRef.current)?.focus())
+
   // テキストエリアの高さを内容に合わせて自動調整する（改行・長文で行が増えても見切れないように）
   React.useEffect(() => {
     const el = textareaRef.current ?? compactInputRef.current
@@ -448,6 +483,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         if (m) insertMention(m.userId, m.displayName)
         return
       }
+    } else if (e.key === 'Escape') {
+      // メンション候補が無い時の Esc は入力欄から離脱（ブラー）する
+      e.preventDefault()
+      ;(e.currentTarget as HTMLElement).blur()
+      return
     }
     fallback()
   }
@@ -811,7 +851,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const { data: wsMembers = [] } = useWorkspaceMembers()
   const { data: chMemberIds = [] } = useChannelMembers(channelId)
   const sendMutation = useSendChannelMessage(channelId, currentUser)
-  const reactMutation = useToggleMessageReaction(channelId)
+  const reactMutation = useToggleMessageReaction(channelId, currentUser)
   const editMutation = useEditMessage(channelId)
   const deleteMutation = useDeleteMessage(channelId)
   const markChannelRead = useMarkChannelRead()
@@ -933,14 +973,22 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return
       const msg = messages[focusedMsgIdx]
       if (!msg) return
+      const isOwn = msg.senderId === currentUser?.id
       if (e.key === 'Escape') {
         e.preventDefault()
         setFocusedMsgIdx(-1)
-      } else if (e.key === 'e' && msg.senderId === currentUser?.id) {
+      } else if (e.key === 'e' && isOwn) {
+        // 編集モードに入る（ChatMessage 側で editMode を起動）
         e.preventDefault()
-        // 編集モードに入る: 対象メッセージの data-message-id から DOM を探し、
-        // ChatMessage 内の editMode を起動するためのカスタムイベントを発火
         window.dispatchEvent(new CustomEvent('cairn:edit-message', { detail: msg.id }))
+      } else if (e.key === 'r') {
+        // リアクション（絵文字ピッカーを開く）
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:react-message', { detail: msg.id }))
+      } else if ((e.key === 'd' || e.key === 'Delete') && isOwn) {
+        // 削除（確認ダイアログを開く・自分のメッセージのみ）
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: msg.id }))
       }
     }
     window.addEventListener('keydown', onKeyDown)

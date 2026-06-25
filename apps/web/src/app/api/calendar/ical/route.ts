@@ -78,9 +78,13 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const token = searchParams.get('token')
   const scope = searchParams.get('scope') ?? 'me'
+  const workspaceId = searchParams.get('workspaceId')
 
   if (!token) {
     return new NextResponse('token is required', { status: 400 })
+  }
+  if (!workspaceId) {
+    return new NextResponse('workspaceId is required', { status: 400 })
   }
 
   try {
@@ -100,9 +104,12 @@ export async function GET(req: NextRequest) {
     const userId = profile.id
 
     const [membership] = await db
-      .select({ workspaceId: workspaceMembers.workspaceId })
+      .select({ workspaceId: workspaceMembers.workspaceId, role: workspaceMembers.role })
       .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, userId))
+      .where(and(
+        eq(workspaceMembers.userId, userId),
+        eq(workspaceMembers.workspaceId, workspaceId),
+      ))
 
     if (!membership) {
       return new NextResponse('No workspace found', { status: 404 })
@@ -111,6 +118,11 @@ export async function GET(req: NextRequest) {
     let rows: ProjectRow[]
 
     if (scope === 'workspace') {
+      const canReadWorkspaceCalendar = membership.role === 'owner' || membership.role === 'admin'
+      if (!canReadWorkspaceCalendar) {
+        return new NextResponse('Forbidden', { status: 403 })
+      }
+
       rows = await db
         .select({ id: projects.id, title: projects.title, startDate: projects.startDate, endDate: projects.endDate })
         .from(projects)

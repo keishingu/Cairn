@@ -8,6 +8,7 @@ import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
+import { useCommand } from '@/lib/command-registry'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
@@ -1643,50 +1644,18 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     }
   }
 
-  // グローバルショートカット（⌥M/W・⌥←→）からの操作を受ける。
-  // goPrev/goNext は month・calView を参照するので依存に含めて最新の closure を購読する
-  React.useEffect(() => {
-    const onCalView = (e: Event) => setCalView((e as CustomEvent<CalView>).detail)
-    const onPeriod = (e: Event) => {
-      if ((e as CustomEvent<'prev' | 'next'>).detail === 'prev') goPrev()
-      else goNext()
-    }
-    window.addEventListener('cairn:cal-view', onCalView)
-    window.addEventListener('cairn:period', onPeriod)
-    return () => {
-      window.removeEventListener('cairn:cal-view', onCalView)
-      window.removeEventListener('cairn:period', onPeriod)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calView, month])
-
-  // ⌥N: 新規プロジェクト（今日の日付で作成モーダルを開く）
-  React.useEffect(() => {
-    const onCreate = () => {
-      // クリック導線（ツールバーの新規ボタン）と同じローカル日付を使う。
-      // toISOString() は UTC なので、US 等で日付がズレる
-      const iso = formatISO(new Date())
-      openCreate(iso, iso)
-    }
-    window.addEventListener('cairn:create', onCreate)
-    return () => window.removeEventListener('cairn:create', onCreate)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // ⌥F: フィルタトグル
-  React.useEffect(() => {
-    const onFilter = () => setFilterOpen(o => !o)
-    window.addEventListener('cairn:filter', onFilter)
-    return () => window.removeEventListener('cairn:filter', onFilter)
-  }, [])
-
-  // ⌥T: 今日へジャンプ
-  React.useEffect(() => {
-    const onToday = () => goToday()
-    window.addEventListener('cairn:today', onToday)
-    return () => window.removeEventListener('cairn:today', onToday)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // グローバルショートカット（⌥M/W 表示・⌥←→ 期間・⌥T 今日・⌥N 作成・⌥F フィルタ）
+  useCommand('calendar.month', () => setCalViewPersisted('month'))
+  useCommand('calendar.week', () => setCalViewPersisted('week'))
+  useCommand('calendar.prevPeriod', () => goPrev())
+  useCommand('calendar.nextPeriod', () => goNext())
+  useCommand('calendar.today', () => goToday())
+  useCommand('ctx.filter', () => setFilterOpen(o => !o))
+  useCommand('ctx.create', () => {
+    // クリック導線（ツールバーの新規ボタン）と同じローカル日付を使う（toISOString は UTC でズレる）
+    const iso = formatISO(new Date())
+    openCreate(iso, iso)
+  })
 
   const isCurrentPeriod = calView === 'week'
     ? weekStart.toDateString() === getWeekStart(today).toDateString()

@@ -14,6 +14,7 @@ import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import type { WorkspaceListItemDto } from '@/app/api/workspaces/list/route'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
+import { useCommand } from '@/lib/command-registry'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -182,11 +183,7 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
   const [switcherOpen, setSwitcherOpen] = React.useState(false)
 
   // ⌘⌥; : ワークスペース切替ポップオーバーをトグル
-  React.useEffect(() => {
-    const onToggle = () => setSwitcherOpen(o => !o)
-    window.addEventListener('cairn:workspace-menu', onToggle)
-    return () => window.removeEventListener('cairn:workspace-menu', onToggle)
-  }, [])
+  useCommand('app.workspaceMenu', () => setSwitcherOpen(o => !o))
 
   function switchWorkspace(id: string) {
     document.cookie = `cairn_workspace_id=${id}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
@@ -564,11 +561,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   const menuRef = React.useRef<HTMLDivElement>(null)
 
   // ⌘⌥0: ユーザーメニューをトグル
-  React.useEffect(() => {
-    const onToggle = () => setMenuOpen(o => !o)
-    window.addEventListener('cairn:user-menu', onToggle)
-    return () => window.removeEventListener('cairn:user-menu', onToggle)
-  }, [])
+  useCommand('app.userMenu', () => setMenuOpen(o => !o))
 
   const { data: me } = useQuery<CurrentUserDto>({
     queryKey: ['me'],
