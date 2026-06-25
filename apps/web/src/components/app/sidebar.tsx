@@ -14,6 +14,7 @@ import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import type { WorkspaceListItemDto } from '@/app/api/workspaces/list/route'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
+import { useCommand } from '@/lib/command-registry'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -180,6 +181,9 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
     staleTime: 60_000,
   })
   const [switcherOpen, setSwitcherOpen] = React.useState(false)
+
+  // ⌘⌥; : ワークスペース切替ポップオーバーをトグル
+  useCommand('app.workspaceMenu', () => setSwitcherOpen(o => !o))
 
   function switchWorkspace(id: string) {
     document.cookie = `cairn_workspace_id=${id}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
@@ -555,6 +559,9 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   const queryClient = useQueryClient()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
+
+  // ⌘⌥0: ユーザーメニューをトグル
+  useCommand('app.userMenu', () => setMenuOpen(o => !o))
 
   const { data: me } = useQuery<CurrentUserDto>({
     queryKey: ['me'],

@@ -13,6 +13,7 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useCommand } from '@/lib/command-registry'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -78,6 +79,20 @@ const MemberCard = ({ member, projectCount, selected, onClick }: MemberCardProps
         <Avatar name={member.displayName} url={member.avatarUrl} size={44} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{member.displayName}</div>
+          {member.email && (
+            <div
+              style={{
+                fontSize: 11.5,
+                color: 'var(--text-4)',
+                marginBottom: 6,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {member.email}
+            </div>
+          )}
           <span style={{ fontSize: 10.5, fontWeight: 700, color: role.c, background: role.bg, padding: '2px 8px', borderRadius: 4 }}>
             {ROLE_LABEL[member.role]}
           </span>
@@ -134,7 +149,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
       completedTaskCount: 0,
       isOwner:            p.role === 'leader',
       isMember:           true,
-      archived:           false,
+      archived:           p.archived,
       coverPhotoIdx:      p.coverPhotoIdx,
       coverPhotoUrl:      null,
       location:           null,
@@ -146,6 +161,8 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
     queryKey: ['workspace-members'],
     queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
   })
+
+  // ⌥S（検索フォーカス）は TopBarSearch（route ラッパー）が担当
 
   // PC: initialUserId が指定されている場合、メンバーデータ読み込み後に自動選択
   React.useEffect(() => {
@@ -164,7 +181,11 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
 
   const filtered = React.useMemo(() => {
     return members.filter(m => {
-      const matchSearch = effectiveSearch === '' || m.displayName.toLowerCase().includes(effectiveSearch.toLowerCase())
+      const normalizedSearch = effectiveSearch.toLowerCase()
+      const matchSearch =
+        effectiveSearch === ''
+        || m.displayName.toLowerCase().includes(normalizedSearch)
+        || m.email?.toLowerCase().includes(normalizedSearch)
       const matchRole = roleFilter === 'all' || m.role === roleFilter
       return matchSearch && matchRole
     })
@@ -185,6 +206,15 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
     { id: 'member', label: `メンバー (${counts.get('member') ?? 0})` },
     { id: 'guest',  label: 'ゲスト' },
   ]
+
+  // ⌥[ / ⌥]: ロールフィルタタブ切替
+  const cycleRoleFilter = (dir: 'prev' | 'next') => {
+    const idx = roleFilters.findIndex(f => f.id === roleFilter)
+    const next = dir === 'next' ? (idx + 1) % roleFilters.length : (idx - 1 + roleFilters.length) % roleFilters.length
+    setRoleFilter(roleFilters[next]!.id)
+  }
+  useCommand('ctx.filterTabPrev', () => cycleRoleFilter('prev'))
+  useCommand('ctx.filterTabNext', () => cycleRoleFilter('next'))
 
   if (isMobile) {
     return (
@@ -211,6 +241,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
               <Icon name="search" size={14} />
             </div>
             <input
+              data-member-search
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="メンバーを検索…"

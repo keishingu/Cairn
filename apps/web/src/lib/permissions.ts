@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { db, workspaceMembers, channels, channelMembers, projects, projectMembers } from '@cairn/db'
+import { db, workspaceMembers, channels, channelMembers, projects, projectMembers, messages, messageAttachments } from '@cairn/db'
 import { eq, and, sql } from 'drizzle-orm'
 
 async function getWorkspaceRole(workspaceId: string, userId: string) {
@@ -172,4 +172,65 @@ export async function requireChannelAccess(
   }
 
   return null
+}
+
+export interface FileAccessRow {
+  id: string
+  workspaceId: string
+  projectId: string | null
+  uploadedBy: string
+  metadata?: unknown
+}
+
+// ファイル単体の閲覧可否を判定する。`requireChannelAccess` と同じスコープ感で、
+// ワークスペース所属だけを根拠にした越境アクセス（fileID 総当たり）を防ぐ。
+// - 別ワークスペースのファイルは不可
+// - アップロード者本人は常に可（メッセージ投稿前のアップロード直後も閲覧できる）
+// - プロジェクトファイルは member 以上なら可、guest は参加プロジェクトのみ
+// - メッセージ添付ファイルは、添付先チャンネルのいずれかにアクセスできれば可
+// - それ以外（未添付かつ非プロジェクトの他人のファイル）は不可
+export async function canAccessFile(
+  workspaceId: string,
+  userId: string,
+  file: FileAccessRow,
+): Promise<boolean> {
+  if (file.workspaceId !== workspaceId) return false
+  if (file.uploadedBy === userId) return true
+
+  const role = await getWorkspaceRole(workspaceId, userId)
+  // ワークスペース非所属（role なし）は不可
+  if (!isWorkspaceMember(role) && role !== 'guest') return false
+
+  // プロジェクトファイル: member 以上は全件可、guest は参加プロジェクトのみ
+  if (file.projectId) {
+    if (role !== 'guest') return true
+    const [pm] = await db
+      .select({ id: projectMembers.id })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, file.projectId), eq(projectMembers.userId, userId)))
+      .limit(1)
+    if (pm) return true
+    // プロジェクト未参加のゲストでも、添付経由でアクセスできる場合があるため後段で判定する
+  }
+
+  const meta = (file.metadata ?? {}) as Record<string, unknown>
+  const metadataChannelId = meta['channelId']
+  if (typeof metadataChannelId === 'string') {
+    const forbidden = await requireChannelAccess(workspaceId, userId, metadataChannelId)
+    if (!forbidden) return true
+  }
+
+  // メッセージ添付ファイル: 添付先チャンネルのいずれかにアクセスできれば可
+  const attached = await db
+    .selectDistinct({ channelId: messages.channelId })
+    .from(messageAttachments)
+    .innerJoin(messages, eq(messageAttachments.messageId, messages.id))
+    .where(eq(messageAttachments.fileId, file.id))
+
+  for (const { channelId } of attached) {
+    const forbidden = await requireChannelAccess(workspaceId, userId, channelId)
+    if (!forbidden) return true
+  }
+
+  return false
 }

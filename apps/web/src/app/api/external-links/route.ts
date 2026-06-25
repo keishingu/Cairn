@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
+import { requireChannelAccess, requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
 
 const GOOGLE_DOC_RE = /https:\/\/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/
 const GOOGLE_SHEET_RE = /https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/
@@ -61,18 +61,36 @@ export async function POST(req: Request) {
   const { docId, docType, label } = parsed
 
   try {
-    const { db, files, channels } = await import('@cairn/db')
+    const { db, files, channels, projects } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
     // channelId からプロジェクトIDを解決
     let projectId: string | null = bodyProjectId ?? null
-    if (!projectId && channelId) {
+    let metadataChannelId: string | null = null
+    if (channelId) {
+      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+      if (forbidden) return forbidden
+
       const [ch] = await db
         .select({ projectId: channels.projectId })
         .from(channels)
         .where(eq(channels.id, channelId))
         .limit(1)
-      projectId = ch?.projectId ?? null
+      if (projectId && ch?.projectId && ch.projectId !== projectId) {
+        return NextResponse.json({ error: 'channelId と projectId が一致しません' }, { status: 400 })
+      }
+      projectId = projectId ?? ch?.projectId ?? null
+      metadataChannelId = channelId
+    }
+
+    if (projectId) {
+      const [project] = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
+        .limit(1)
+
+      if (!project) return new NextResponse(null, { status: 404 })
     }
 
     // ゲストは参加プロジェクトにのみリンクを登録できる。プロジェクト未指定（WSレベル）はゲスト不可。
@@ -110,7 +128,13 @@ export async function POST(req: Request) {
     }
 
     const initialStatus = docType === 'doc' ? 'pending' : 'skipped'
-    const metadata = { externalUrl: url, docType, docId, indexingStatus: initialStatus }
+    const metadata = {
+      externalUrl: url,
+      docType,
+      docId,
+      indexingStatus: initialStatus,
+      ...(metadataChannelId ? { channelId: metadataChannelId } : {}),
+    }
 
     const [inserted] = await db
       .insert(files)
