@@ -1,0 +1,151 @@
+name: Release (develop → main)
+
+# develop の内容を main へリリースするための手動ワークフロー。
+# - develop → main の Release PR を作成 / 更新する（マージは手動）
+# - 同じ内容で Draft Release を作成する（タグ確定・公開は PR マージ後に手動）
+# - 本文は OPENAI_API_KEY があれば AI 要約、無ければ commit ログにフォールバック
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Draft Release のタグ名（空なら release-YYYY-MM-DD で自動採番）"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-develop-to-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Collect commits (main..develop)
+        id: commits
+        run: |
+          git fetch origin main develop --quiet
+          # main にまだ入っていない develop のコミット一覧
+          LOG=$(git log origin/main..origin/develop --no-merges --pretty=format:'- %s (%h)')
+          if [ -z "$LOG" ]; then
+            echo "develop は main より先行していません。リリース対象の差分がありません。"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "log<<__COMMIT_LOG__"
+            echo "$LOG"
+            echo "__COMMIT_LOG__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Stop if no changes
+        if: steps.commits.outputs.has_changes != 'true'
+        run: |
+          echo "::notice::リリース対象の差分が無いため終了します。"
+
+      - name: Generate release notes (AI summary or fallback)
+        if: steps.commits.outputs.has_changes == 'true'
+        id: notes
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          COMMIT_LOG: ${{ steps.commits.outputs.log }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::error::OPENAI_API_KEY が未設定です。リリースノート生成に必須のため中断します。Settings → Secrets に OPENAI_API_KEY を登録してください。"
+            exit 1
+          fi
+
+          INSTRUCTIONS=$(printf '%s\n' \
+            'あなたはリリースノートの編集者です。以下の Git コミット一覧から、日本語の Markdown リリースノートを作成してください。' \
+            '要件:' \
+            '- 冒頭に2〜3文のリリース概要を書く' \
+            '- 「## 新機能」「## 改善・変更」「## 修正」の見出しで分類する（該当が無い見出しは省略）' \
+            '- 各項目は利用者目線の自然な日本語にし、コミットの prefix(feat/fix 等) やハッシュは本文に出さない' \
+            '- 内部的なリファクタや chore はまとめて簡潔にするか省略してよい' \
+            '- 誇張せず、コミットから読み取れる事実のみを書く' \
+            'コミット一覧:')
+          PROMPT=$(printf '%s\n%s\n' "$INSTRUCTIONS" "$COMMIT_LOG")
+          REQ=$(jq -n --arg content "$PROMPT" '{
+            model: "gpt-4o",
+            temperature: 0.3,
+            messages: [
+              { role: "system", content: "あなたは優れたソフトウェアのリリースノートを書く編集者です。" },
+              { role: "user", content: $content }
+            ]
+          }')
+          HTTP=$(curl -sS -w '\n%{http_code}' https://api.openai.com/v1/chat/completions \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$REQ")
+          CODE=$(printf '%s' "$HTTP" | tail -n1)
+          RESP=$(printf '%s' "$HTTP" | sed '$d')
+          if [ "$CODE" != "200" ]; then
+            echo "::error::OpenAI API が HTTP $CODE を返しました。リリースノートを生成できないため中断します。"
+            printf '%s\n' "$RESP" | head -c 2000
+            exit 1
+          fi
+          SUMMARY=$(printf '%s' "$RESP" | jq -r '.choices[0].message.content // empty')
+          if [ -z "$SUMMARY" ]; then
+            echo "::error::OpenAI のレスポンスから要約を取得できませんでした。中断します。"
+            exit 1
+          fi
+          BODY=$(printf '%s\n\n<details>\n<summary>変更コミット一覧</summary>\n\n%s\n</details>\n' "$SUMMARY" "$COMMIT_LOG")
+
+          {
+            echo "body<<__RELEASE_BODY__"
+            echo "$BODY"
+            echo "__RELEASE_BODY__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create or update Release PR (develop → main)
+        if: steps.commits.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BODY: ${{ steps.notes.outputs.body }}
+        run: |
+          set -euo pipefail
+          TITLE="Release: develop → main ($(date +%Y-%m-%d))"
+          EXISTING=$(gh pr list --base main --head develop --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh pr edit "$EXISTING" --title "$TITLE" --body "$BODY"
+            echo "::notice::既存の Release PR #$EXISTING を更新しました。"
+          else
+            gh pr create --base main --head develop --title "$TITLE" --body "$BODY"
+            echo "::notice::Release PR を作成しました。"
+          fi
+
+      - name: Create Draft Release
+        if: steps.commits.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BODY: ${{ steps.notes.outputs.body }}
+          INPUT_TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-}"
+          if [ -z "$TAG" ]; then
+            TAG="release-$(date +%Y-%m-%d)"
+          fi
+          # 同名タグの Draft があれば作り直す（公開済みは触らない）
+          if gh release view "$TAG" --json isDraft --jq '.isDraft' 2>/dev/null | grep -q '^true$'; then
+            gh release delete "$TAG" --yes
+          fi
+          # Draft なので target(main) のタグは「公開時」に作成される。PR マージ後に公開すること。
+          gh release create "$TAG" \
+            --draft \
+            --target main \
+            --title "$TAG" \
+            --notes "$BODY"
+          echo "::notice::Draft Release $TAG を作成しました（公開は PR マージ後に手動で）。"
