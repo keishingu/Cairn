@@ -60,6 +60,7 @@ export const TaskEditDialog = ({ open, task, onClose }: TaskEditDialogProps) => 
     },
     onSuccess: async () => {
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['projects'] }),
         queryClient.invalidateQueries({ queryKey: ['tasks'] }),
         task ? queryClient.invalidateQueries({ queryKey: ['tasks', task.projectId] }) : Promise.resolve(),
       ])
