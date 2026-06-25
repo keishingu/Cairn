@@ -14,5 +14,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    // ネイティブの Google ログインは WebBrowser で認可コードを受け取り
+    // exchangeCodeForSession で交換するため PKCE フローを使う
+    flowType: 'pkce',
   },
 })
