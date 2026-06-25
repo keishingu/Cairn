@@ -133,16 +133,20 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BODY: ${{ steps.notes.outputs.body }}
           INPUT_TAG: ${{ github.event.inputs.release_tag }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           TAG="${INPUT_TAG:-}"
           if [ -z "$TAG" ]; then
             TAG="release-$(date +%Y-%m-%d)"
           fi
-          # 同名タグの Draft があれば作り直す（公開済みは触らない）
+          # 同名タグの Draft があれば作り直す（公開済みリリースは壊さないよう触らない）。
           if gh release view "$TAG" --json isDraft --jq '.isDraft' 2>/dev/null | grep -q '^true$'; then
             gh release delete "$TAG" --yes
           fi
+          # Draft はタグ未作成のはずだが、万一同名タグが残っていると後続の create で --target が
+          # 無視され古いコミットに紐づくため、念のためタグ ref も掃除する（存在しなければ無視＝冪等）。
+          gh api -X DELETE "repos/${REPO}/git/refs/tags/${TAG}" >/dev/null 2>&1 || true
           # Draft なので target(main) のタグは未作成。「公開時」に main の当時の HEAD から
           # タグが作られるため、必ず develop→main の PR マージ後に公開すること。
           # マージ前に公開すると promote 前のコミットがタグ付けされる。
