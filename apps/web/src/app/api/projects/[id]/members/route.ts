@@ -86,6 +86,9 @@ export async function POST(
   if (userIds !== undefined && !Array.isArray(userIds)) {
     return NextResponse.json({ error: 'userIds must be an array' }, { status: 422 })
   }
+  if (userIds?.some(candidate => typeof candidate !== 'string' || candidate.length === 0)) {
+    return NextResponse.json({ error: 'userIds must contain only non-empty strings' }, { status: 422 })
+  }
   const normalizedUserIds = [...new Set((userIds ?? (userId ? [userId] : [])).filter(Boolean))]
   if (normalizedUserIds.length === 0) {
     return NextResponse.json({ error: 'userId or userIds is required' }, { status: 422 })
