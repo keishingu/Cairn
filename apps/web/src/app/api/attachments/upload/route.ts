@@ -18,6 +18,34 @@ const ALLOWED_MIME_TYPES = new Set([
   'text/markdown',
 ])
 
+// ブラウザが file.type を返さない（空文字や application/octet-stream）ケースが
+// あるため、拡張子から正規の MIME タイプを補完する。これがないと正しい形式の
+// PDF などが「対応していないファイル形式」として弾かれてしまう。
+const EXTENSION_TO_MIME: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  txt: 'text/plain',
+  md: 'text/markdown',
+  markdown: 'text/markdown',
+}
+
+// file.type が許可リストに含まれていればそれを優先し、含まれない（空・汎用 MIME）
+// 場合は拡張子から補完する。解決できなければ null を返す。
+function resolveMimeType(fileType: string, fileName: string): string | null {
+  if (ALLOWED_MIME_TYPES.has(fileType)) return fileType
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
+  const mapped = EXTENSION_TO_MIME[ext]
+  return mapped ?? null
+}
+
 function resolveFileType(mimeType: string): 'image' | 'document' | 'other' {
   if (mimeType.startsWith('image/')) return 'image'
   if (
@@ -48,7 +76,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'file と channelId は必須です' }, { status: 400 })
   }
 
-  if (!ALLOWED_MIME_TYPES.has(file.type)) {
+  const mimeType = resolveMimeType(file.type, file.name)
+  if (!mimeType) {
     return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel・テキスト）' }, { status: 400 })
   }
 
@@ -67,7 +96,7 @@ export async function POST(req: Request) {
 
   const { error: uploadError } = await supabase.storage
     .from('chat-attachments')
-    .upload(storagePath, buffer, { contentType: file.type, upsert: false })
+    .upload(storagePath, buffer, { contentType: mimeType, upsert: false })
 
   if (uploadError) {
     console.error('[/api/attachments/upload] Storage upload failed:', uploadError)
@@ -94,16 +123,16 @@ export async function POST(req: Request) {
         uploadedBy: ctx.userId,
         storagePath,
         fileName: file.name,
-        mimeType: file.type,
+        mimeType,
         fileSize: file.size,
-        fileType: resolveFileType(file.type),
+        fileType: resolveFileType(mimeType),
       })
       .returning()
 
     if (!inserted) throw new Error('Insert returned no rows')
 
     const { isIndexable } = await import('@/lib/ai/extract-text')
-    if (isIndexable(file.type)) {
+    if (isIndexable(mimeType)) {
       try {
         const { inngest } = await import('@/lib/inngest/client')
         await inngest.send({
@@ -111,7 +140,7 @@ export async function POST(req: Request) {
           data: {
             fileId: inserted.id,
             workspaceId: ctx.workspaceId,
-            mimeType: file.type,
+            mimeType,
             storagePath,
           },
         })

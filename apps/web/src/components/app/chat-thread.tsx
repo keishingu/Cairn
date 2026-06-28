@@ -41,6 +41,8 @@ function extractGoogleDocsUrls(text: string): string[] {
   return [...new Set(matches.map(u => u.replace(/[.,;:!?)>]+$/, '')))]
 }
 
+// MIME タイプに加えて拡張子も列挙する。OS が拡張子→MIME のマッピングを持たない
+// 環境ではファイルピッカーが MIME 指定だけだと PDF 等を選択不可にしてしまうため。
 const ACCEPT_FILE_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
   'application/pdf',
@@ -48,6 +50,8 @@ const ACCEPT_FILE_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.jpg', '.jpeg', '.png', '.gif', '.webp',
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx',
 ].join(',')
 
 function isImageMime(mimeType: string | null): boolean {
