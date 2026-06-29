@@ -1,6 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { sql } from 'drizzle-orm'
 import { boolean, index, integer, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { channelTypeEnum, messageTypeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
@@ -56,7 +57,10 @@ export const messages = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
-  (t) => [index('idx_messages_channel').on(t.channelId, t.createdAt)],
+  (t) => [
+    index('idx_messages_channel').on(t.channelId, t.createdAt),
+    index('idx_messages_content_trgm').using('gin', t.content.op('gin_trgm_ops')).where(sql`${t.deletedAt} is null`),
+  ],
 )
 
 export const messageReactions = pgTable(
