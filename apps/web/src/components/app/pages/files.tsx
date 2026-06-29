@@ -48,9 +48,14 @@ function isImageFile(file: FileDto): boolean {
   return file.fileType !== 'link' && (file.mimeType?.startsWith('image/') ?? false)
 }
 
+function hasTxtExtension(file: FileDto): boolean {
+  return file.fileName.toLowerCase().endsWith('.txt')
+}
+
 function isMarkdownFile(file: FileDto): boolean {
   return (
     file.fileType !== 'link' &&
+    !hasTxtExtension(file) &&
     (file.mimeType === 'text/markdown' || file.fileName.toLowerCase().endsWith('.md'))
   )
 }
@@ -58,7 +63,7 @@ function isMarkdownFile(file: FileDto): boolean {
 function isPlainTextFile(file: FileDto): boolean {
   return (
     file.fileType !== 'link' &&
-    (file.mimeType === 'text/plain' || file.fileName.toLowerCase().endsWith('.txt'))
+    (file.mimeType === 'text/plain' || hasTxtExtension(file))
   )
 }
 

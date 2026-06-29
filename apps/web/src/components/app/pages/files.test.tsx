@@ -25,7 +25,7 @@ const FILES_FIXTURE: FileDto[] = [
   {
     id: 'file-1',
     fileName: 'notes.txt',
-    mimeType: 'text/plain',
+    mimeType: 'text/markdown',
     fileSize: 24,
     fileType: 'file',
     uploaderName: '山田 太郎',
@@ -61,7 +61,7 @@ function renderPageFiles() {
   )
 }
 
-describe('PageFiles', () => {
+describe('ファイル一覧ページ', () => {
   beforeEach(() => {
     fetchWithAuthMock.mockReset()
     fetchWithAuthMock.mockImplementation(async (input: RequestInfo | URL) => {
