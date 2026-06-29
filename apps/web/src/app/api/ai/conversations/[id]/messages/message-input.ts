@@ -20,9 +20,9 @@ export interface StoredConversationMessage {
   id?: string
   role: string
   content: string
-  createdAt?: Date | string
-  annotations?: unknown[]
-  toolInvocations?: unknown[]
+  createdAt?: Date | string | null
+  annotations?: unknown[] | null
+  toolInvocations?: unknown[] | null
 }
 
 const MESSAGE_ROLE_ORDER = {
@@ -96,8 +96,15 @@ function compareStoredConversationMessages(
   left: StoredConversationMessage & { role: 'user' | 'assistant' },
   right: StoredConversationMessage & { role: 'user' | 'assistant' },
 ) {
-  const createdAtDiff = toTimestamp(left.createdAt) - toTimestamp(right.createdAt)
-  if (createdAtDiff !== 0) return createdAtDiff
+  const leftTimestamp = toTimestamp(left.createdAt)
+  const rightTimestamp = toTimestamp(right.createdAt)
+
+  if (leftTimestamp !== null && rightTimestamp !== null) {
+    const createdAtDiff = leftTimestamp - rightTimestamp
+    if (createdAtDiff !== 0) return createdAtDiff
+  } else if (leftTimestamp !== rightTimestamp) {
+    return leftTimestamp === null ? -1 : 1
+  }
 
   const roleDiff = MESSAGE_ROLE_ORDER[left.role] - MESSAGE_ROLE_ORDER[right.role]
   if (roleDiff !== 0) return roleDiff
@@ -107,6 +114,9 @@ function compareStoredConversationMessages(
 
 function toTimestamp(createdAt: StoredConversationMessage['createdAt']) {
   if (createdAt instanceof Date) return createdAt.getTime()
-  if (typeof createdAt === 'string') return new Date(createdAt).getTime()
-  return Number.NEGATIVE_INFINITY
+  if (typeof createdAt === 'string') {
+    const timestamp = new Date(createdAt).getTime()
+    return Number.isNaN(timestamp) ? null : timestamp
+  }
+  return null
 }

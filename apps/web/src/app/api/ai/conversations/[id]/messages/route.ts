@@ -49,7 +49,14 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .where(eq(aiMessages.conversationId, conversationId))
       .orderBy(asc(aiMessages.createdAt))
 
-    const normalizedRows = normalizeStoredConversationMessages(rows)
+    const normalizedRows = normalizeStoredConversationMessages(rows).filter(
+      (
+        row,
+      ): row is typeof row & {
+        id: string
+        createdAt: Date | string
+      } => typeof row.id === 'string' && row.createdAt !== null && row.createdAt !== undefined,
+    )
 
     return NextResponse.json(
       normalizedRows.map(r => {

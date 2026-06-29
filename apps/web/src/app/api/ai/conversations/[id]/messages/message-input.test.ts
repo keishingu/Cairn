@@ -86,4 +86,14 @@ describe('normalizeStoredConversationMessages', () => {
       { id: 'b', role: 'assistant', content: '回答', createdAt },
     ])
   })
+
+  it('createdAt が無い履歴でも user を先にそろえる', () => {
+    expect(normalizeStoredConversationMessages([
+      { id: 'b', role: 'assistant', content: '回答' },
+      { id: 'a', role: 'user', content: '質問' },
+    ])).toEqual([
+      { id: 'a', role: 'user', content: '質問' },
+      { id: 'b', role: 'assistant', content: '回答' },
+    ])
+  })
 })
