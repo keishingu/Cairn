@@ -977,12 +977,13 @@ interface MobileCalendarGridProps {
   projects: ProjectDto[]
   selectedDate: Date
   onSelectDate: (d: Date) => void
+  onCreateDate: (d: Date) => void
   onProjectClick: (project: ProjectDto) => void
 }
 
 const MOBILE_MAX_CHIPS = 3
 
-const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate, onProjectClick }: MobileCalendarGridProps) => {
+const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate, onCreateDate, onProjectClick }: MobileCalendarGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const cells = buildCells(year, month)
 
@@ -1011,7 +1012,14 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
             return (
               <button
                 key={col}
-                onClick={() => onSelectDate(cell.fullDate)}
+                aria-label={formatDateLabel(cell.fullDate)}
+                onClick={() => {
+                  if (isSelected && dayProjects.length === 0) {
+                    onCreateDate(cell.fullDate)
+                    return
+                  }
+                  onSelectDate(cell.fullDate)
+                }}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
                   justifyContent: 'flex-start',
@@ -1082,11 +1090,12 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
 interface MobileDayEventsProps {
   date: Date
   projects: ProjectDto[]
+  onCreateDate: (d: Date) => void
   onProjectClick: (project: ProjectDto) => void
   isLoading: boolean
 }
 
-const MobileDayEvents = ({ date, projects, onProjectClick, isLoading }: MobileDayEventsProps) => {
+const MobileDayEvents = ({ date, projects, onCreateDate, onProjectClick, isLoading }: MobileDayEventsProps) => {
   const dayProjects = getDateProjects(projects, date)
 
   return (
@@ -1107,8 +1116,16 @@ const MobileDayEvents = ({ date, projects, onProjectClick, isLoading }: MobileDa
           ))}
         </div>
       ) : dayProjects.length === 0 ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-          予定なし
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-4)', fontSize: 13, padding: '0 24px', textAlign: 'center' }}>
+          <div>予定なし</div>
+          <button
+            className="btn btn-primary"
+            onClick={() => onCreateDate(date)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <Icon name="plus" size={13} strokeWidth={2.4} />
+            この日に新規{`予定`}
+          </button>
         </div>
       ) : (
         <div style={{ padding: '8px 0' }}>
@@ -1512,6 +1529,10 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const [createDates, setCreateDates] = React.useState<{ start: string; end: string } | null>(null)
   const showCreate = createDates !== null
   const openCreate = (start: string, end: string) => setCreateDates({ start, end })
+  const openCreateForDate = React.useCallback((date: Date) => {
+    const iso = formatISO(date)
+    openCreate(iso, iso)
+  }, [])
   const closeCreate = () => setCreateDates(null)
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
@@ -1667,6 +1688,17 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
+        {showCreate && createDates && (
+          <CreateProjectModal
+            onClose={closeCreate}
+            onCreated={(p) => {
+              queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), p])
+              closeCreate()
+            }}
+            initialStartDate={createDates.start}
+            initialEndDate={createDates.end}
+          />
+        )}
         <MobileHeader
           title="カレンダー"
           right={
@@ -1725,6 +1757,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             projects={visibleProjects}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
+            onCreateDate={openCreateForDate}
             onProjectClick={openPanel}
           />
         )}
@@ -1739,6 +1772,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             <MobileDayEvents
               date={selectedDate}
               projects={visibleProjects}
+              onCreateDate={openCreateForDate}
               onProjectClick={openPanel}
               isLoading={isLoading}
             />
