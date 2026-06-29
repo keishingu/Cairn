@@ -82,4 +82,13 @@ describe('processImageForUpload', () => {
     expect(result.file.name).toBe('avatar.jpg')
     expect(result.file.type).toBe('image/jpeg')
   })
+
+  it('透過 PNG は PNG のまま維持する', async () => {
+    const original = new File(['png'], 'avatar.png', { type: 'image/png' })
+
+    const result = await processImageForUpload(original)
+
+    expect(result.file.name).toBe('avatar.png')
+    expect(result.file.type).toBe('image/png')
+  })
 })
