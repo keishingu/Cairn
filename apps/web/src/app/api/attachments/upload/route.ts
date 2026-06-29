@@ -18,6 +18,10 @@ const ALLOWED_MIME_TYPES = new Set([
   'text/markdown',
 ])
 
+// ブラウザが実体を判定できなかったときに返す汎用 MIME タイプ。
+// これらは形式の手がかりにならないため、拡張子・マジックナンバーで補完する。
+const GENERIC_MIME_TYPES = new Set(['', 'application/octet-stream'])
+
 // ブラウザが file.type を返さない（空文字や application/octet-stream）ケースが
 // あるため、拡張子から正規の MIME タイプを補完する。これがないと正しい形式の
 // PDF などが「対応していないファイル形式」として弾かれてしまう。
@@ -143,12 +147,19 @@ export async function POST(req: Request) {
     mimeType = sniffMimeType(new Uint8Array(buffer.slice(0, 16)))
   }
   if (!mimeType) {
+    // 拡張子も具体的な MIME も無く中身からも判別できない場合は「不明」として
+    // 拡張子付与を促す。形式が分かるのに非対応なケース（例: .zip）とは区別する。
+    const identifiable = file.name.includes('.') || !GENERIC_MIME_TYPES.has(file.type)
+    const errorMessage = identifiable
+      ? '対応していないファイル形式です（画像・PDF・Word・Excel・テキスト）'
+      : 'ファイル形式が不明です。拡張子をつけて再度アップロードしてください'
     console.warn('[/api/attachments/upload] rejected: unsupported type', {
       browserType: file.type,
       fileName: file.name,
       fileSize: file.size,
+      identifiable,
     })
-    return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel・テキスト）' }, { status: 400 })
+    return NextResponse.json({ error: errorMessage }, { status: 400 })
   }
 
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)

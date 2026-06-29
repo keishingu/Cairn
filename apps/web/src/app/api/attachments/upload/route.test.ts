@@ -99,7 +99,7 @@ describe('/api/attachments/upload のアクセス制御', () => {
     expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID)
   })
 
-  it('拡張子からも先頭バイトからも MIME を解決できないファイルは 400 で弾く', async () => {
+  it('拡張子があり形式が分かる非対応ファイルは「対応していない形式」エラーで弾く', async () => {
     const formData = new FormData()
     formData.set('channelId', CHANNEL_ID)
     appendFile(formData, 'binary', 'application/octet-stream', 'archive.zip')
@@ -108,7 +108,24 @@ describe('/api/attachments/upload のアクセス制御', () => {
     const res = await POST({ formData: () => Promise.resolve(formData) } as Request)
 
     expect(res.status).toBe(400)
+    const body = await res.json() as { error: string }
+    expect(body.error).toContain('対応していないファイル形式です')
     // 形式チェックで弾かれるため、チャンネルアクセス検証には到達しない
+    expect(mockRequireChannelAccess).not.toHaveBeenCalled()
+  })
+
+  it('拡張子も型情報も無く判別できないファイルは拡張子付与を促すエラーで弾く', async () => {
+    const formData = new FormData()
+    formData.set('channelId', CHANNEL_ID)
+    // 拡張子なし・汎用 MIME・中身も既知のマジックナンバーに該当しない
+    appendFile(formData, 'not a known signature', 'application/octet-stream', 'mystery_file')
+
+    const { POST } = await import('./route')
+    const res = await POST({ formData: () => Promise.resolve(formData) } as Request)
+
+    expect(res.status).toBe(400)
+    const body = await res.json() as { error: string }
+    expect(body.error).toBe('ファイル形式が不明です。拡張子をつけて再度アップロードしてください')
     expect(mockRequireChannelAccess).not.toHaveBeenCalled()
   })
 })
