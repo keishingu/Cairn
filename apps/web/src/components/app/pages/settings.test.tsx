@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
@@ -89,7 +89,11 @@ describe('SettingsSectionContent', () => {
     const input = container.querySelector('input[type="file"]')
     expect(input).not.toBeNull()
 
-    await userEvent.upload(input as HTMLInputElement, originalFile)
+    fireEvent.change(input as HTMLInputElement, {
+      target: {
+        files: [originalFile],
+      },
+    })
 
     await waitFor(() => {
       expect(processImageForUpload).toHaveBeenCalledWith(originalFile)
@@ -105,5 +109,28 @@ describe('SettingsSectionContent', () => {
     const uploadedFile = (requestInit.body as FormData).get('file')
     expect(uploadedFile).toBe(processedFile)
     expect(screen.getByText('大きい写真は自動で縮小してアップロードします')).toBeInTheDocument()
+  })
+
+  it('GIF アバターはアップロード前に弾く', async () => {
+    const originalFile = new File(['gif'], 'avatar.gif', { type: 'image/gif' })
+
+    const { container } = renderAccountSection()
+    await screen.findByText('山田 太郎')
+
+    const input = container.querySelector('input[type="file"]')
+    expect(input).not.toBeNull()
+
+    fireEvent.change(input as HTMLInputElement, {
+      target: {
+        files: [originalFile],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('⚠ GIF アバターには未対応です。JPEG / PNG / WebP / HEIC を選んでください')).toBeInTheDocument()
+    })
+
+    expect(processImageForUpload).not.toHaveBeenCalled()
+    expect(fetchWithAuth).not.toHaveBeenCalledWith('/api/me/avatar', expect.anything())
   })
 })

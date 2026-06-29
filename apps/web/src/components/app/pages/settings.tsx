@@ -69,6 +69,10 @@ const AvatarCircle = ({ url, name, size = 64 }: { url?: string | null; name: str
   </div>
 )
 
+function isGifImage(file: File): boolean {
+  return file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif')
+}
+
 const SettingsAccount = () => {
   const queryClient = useQueryClient()
   const { data: user, isLoading } = useQuery<CurrentUserDto>({
@@ -105,6 +109,10 @@ const SettingsAccount = () => {
 
   const avatarMutation = useMutation({
     mutationFn: async (file: File) => {
+      if (isGifImage(file)) {
+        throw new Error('GIF アバターには未対応です。JPEG / PNG / WebP / HEIC を選んでください')
+      }
+
       let uploadFile = file
       try {
         uploadFile = (await processImageForUpload(file)).file
@@ -160,7 +168,7 @@ const SettingsAccount = () => {
             <input
               ref={avatarInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/gif,image/webp,image/heic,.heic,image/heif,.heif"
+              accept="image/jpeg,image/png,image/webp,image/heic,.heic,image/heif,.heif"
               style={{ display: 'none' }}
               onChange={handleAvatarChange}
             />
