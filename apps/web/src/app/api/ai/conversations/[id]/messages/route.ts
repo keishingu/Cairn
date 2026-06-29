@@ -99,7 +99,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     if (!conv) return new NextResponse(null, { status: 404 })
 
     const rows = await db
-      .select({ role: aiMessages.role, content: aiMessages.content })
+      .select({ id: aiMessages.id, role: aiMessages.role, content: aiMessages.content, createdAt: aiMessages.createdAt })
       .from(aiMessages)
       .where(eq(aiMessages.conversationId, conversationId))
       .orderBy(asc(aiMessages.createdAt))
