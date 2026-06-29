@@ -73,15 +73,29 @@ export async function POST(req: Request) {
   const channelId = formData.get('channelId')
 
   if (!(file instanceof File) || typeof channelId !== 'string') {
+    console.warn('[/api/attachments/upload] rejected: missing file/channelId', {
+      hasFile: file instanceof File,
+      channelIdType: typeof channelId,
+    })
     return NextResponse.json({ error: 'file と channelId は必須です' }, { status: 400 })
   }
 
   const mimeType = resolveMimeType(file.type, file.name)
   if (!mimeType) {
+    console.warn('[/api/attachments/upload] rejected: unsupported type', {
+      browserType: file.type,
+      fileName: file.name,
+      fileSize: file.size,
+    })
     return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel・テキスト）' }, { status: 400 })
   }
 
   if (file.size > MAX_FILE_SIZE) {
+    console.warn('[/api/attachments/upload] rejected: too large', {
+      fileName: file.name,
+      fileSize: file.size,
+      limit: MAX_FILE_SIZE,
+    })
     return NextResponse.json({ error: 'ファイルサイズは 10MB 以下にしてください' }, { status: 400 })
   }
 
