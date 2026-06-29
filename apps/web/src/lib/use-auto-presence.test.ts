@@ -1,6 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAutoPresence } from './use-auto-presence'
+
+const TAB_ACTIVITY_STORAGE_KEY = 'cairn:auto-presence:tabs'
 
 function setVisibilityState(value: DocumentVisibilityState) {
   Object.defineProperty(document, 'visibilityState', {
@@ -17,6 +19,11 @@ function setHasFocus(value: boolean) {
 }
 
 describe('useAutoPresence', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+
   it('ページを閉じる時に offline を keepalive 付きで送る', async () => {
     setVisibilityState('visible')
     setHasFocus(true)
@@ -56,6 +63,44 @@ describe('useAutoPresence', () => {
 
     await waitFor(() => {
       expect(updateStatus).toHaveBeenCalledWith('offline', undefined)
+    })
+  })
+
+  it('他のタブがアクティブなら hidden になっても offline を送らない', async () => {
+    localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify({
+      other: { active: true, updatedAt: Date.now() },
+    }))
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    const updateStatus = vi.fn().mockResolvedValue(true)
+
+    renderHook(() => useAutoPresence({ status: 'online', updateStatus }))
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+  })
+
+  it('他のタブがアクティブなら pagehide でも offline を送らない', async () => {
+    localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify({
+      other: { active: true, updatedAt: Date.now() },
+    }))
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const updateStatus = vi.fn().mockResolvedValue(true)
+
+    renderHook(() => useAutoPresence({ status: 'online', updateStatus }))
+
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).not.toHaveBeenCalled()
     })
   })
 
