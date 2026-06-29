@@ -3,6 +3,7 @@
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Modal, ModalHeader, fieldInputStyle } from '../primitives'
+import { TaskFormFields } from '../task-form-fields'
 import type { TaskDto } from '@/app/api/tasks/route'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -65,62 +66,33 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
 
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
-              タイトル <span style={{ color: 'var(--red)' }}>*</span>
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="タスク名を入力..."
-              required
-              // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus
-              style={fieldInputStyle(false)}
-            />
-          </div>
-
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
-              プロジェクト <span style={{ color: 'var(--red)' }}>*</span>
-            </label>
-            <select
-              value={projectId}
-              onChange={e => setProjectId(e.target.value)}
-              required
-              style={{ ...fieldInputStyle(false), color: projectId ? 'var(--text)' : 'var(--text-4)' }}
-            >
-              <option value="" disabled>プロジェクトを選択...</option>
-              {projects.map(p => (
-                <option key={p.id} value={p.id}>{p.title}</option>
-              ))}
-            </select>
-          </div>
-
-          <div style={{ display: 'flex', gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>優先度</label>
-              <select
-                value={priority}
-                onChange={e => setPriority(e.target.value as TaskDto['priority'])}
-                style={fieldInputStyle(false)}
-              >
-                <option value="high">高</option>
-                <option value="medium">中</option>
-                <option value="low">低</option>
-              </select>
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>期限日</label>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={e => setDueDate(e.target.value)}
-                style={fieldInputStyle(false)}
-              />
-            </div>
-          </div>
+          <TaskFormFields
+            title={title}
+            onTitleChange={setTitle}
+            priority={priority}
+            onPriorityChange={setPriority}
+            dueDate={dueDate}
+            onDueDateChange={setDueDate}
+            titlePlaceholder="タスク名を入力..."
+            afterTitle={(
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
+                  プロジェクト <span style={{ color: 'var(--red)' }}>*</span>
+                </label>
+                <select
+                  value={projectId}
+                  onChange={e => setProjectId(e.target.value)}
+                  required
+                  style={{ ...fieldInputStyle(false), color: projectId ? 'var(--text)' : 'var(--text-4)' }}
+                >
+                  <option value="" disabled>プロジェクトを選択...</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.title}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          />
 
           {mutation.isError && (
             <div style={{

@@ -2,8 +2,9 @@
 
 import React from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Modal, ModalHeader, fieldInputStyle } from './primitives'
+import { Modal, ModalHeader } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
+import { TaskFormFields } from './task-form-fields'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { TaskDto } from '@/app/api/tasks/route'
 
@@ -101,42 +102,14 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
         }}>
           <ModalHeader title="タスクを編集" subtitle={task.projectTitle} onClose={onClose}/>
           <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
-                タイトル <span style={{ color: 'var(--red)' }}>*</span>
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                required
-                autoFocus
-                style={fieldInputStyle(false)}
-              />
-            </div>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>優先度</label>
-                <select
-                  value={priority}
-                  onChange={e => setPriority(e.target.value as TaskDto['priority'])}
-                  style={fieldInputStyle(false)}
-                >
-                  <option value="high">高</option>
-                  <option value="medium">中</option>
-                  <option value="low">低</option>
-                </select>
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>期限日</label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={e => setDueDate(e.target.value)}
-                  style={fieldInputStyle(false)}
-                />
-              </div>
-            </div>
+            <TaskFormFields
+              title={title}
+              onTitleChange={setTitle}
+              priority={priority}
+              onPriorityChange={setPriority}
+              dueDate={dueDate}
+              onDueDateChange={setDueDate}
+            />
             {updateMutation.isError && (
               <div style={{
                 fontSize: 12.5, color: 'var(--red-text)', background: 'var(--red-soft)',
