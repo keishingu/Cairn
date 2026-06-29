@@ -20,6 +20,18 @@ vi.mock('@/lib/supabase/service', () => ({
   }),
 }))
 
+// jsdom の Blob/File は arrayBuffer を実装していないため、本番（undici）相当の
+// 挙動になるよう File へ arrayBuffer を生やしてからフォームデータに詰める。
+function appendFile(formData: FormData, content: string, type: string, name: string) {
+  formData.set('file', new Blob([content], { type }), name)
+  const file = formData.get('file') as File
+  const bytes = new TextEncoder().encode(content)
+  Object.defineProperty(file, 'arrayBuffer', {
+    configurable: true,
+    value: async () => bytes.buffer.slice(0, bytes.byteLength),
+  })
+}
+
 describe('/api/attachments/upload のアクセス制御', () => {
   beforeEach(() => {
     mockGetAuthContext.mockResolvedValue({
@@ -39,7 +51,7 @@ describe('/api/attachments/upload のアクセス制御', () => {
 
     const formData = new FormData()
     formData.set('channelId', CHANNEL_ID)
-    formData.set('file', new Blob(['hello'], { type: 'text/plain' }), 'hello.txt')
+    appendFile(formData, 'hello', 'text/plain', 'hello.txt')
 
     const { POST } = await import('./route')
     const res = await POST({ formData: () => Promise.resolve(formData) } as Request)
@@ -59,7 +71,7 @@ describe('/api/attachments/upload のアクセス制御', () => {
     const formData = new FormData()
     formData.set('channelId', CHANNEL_ID)
     // type を空文字にして「ブラウザが MIME を判定できなかった」状況を再現する
-    formData.set('file', new Blob(['%PDF-1.4'], { type: '' }), 'document.pdf')
+    appendFile(formData, '%PDF-1.4', '', 'document.pdf')
 
     const { POST } = await import('./route')
     const res = await POST({ formData: () => Promise.resolve(formData) } as Request)
@@ -69,10 +81,28 @@ describe('/api/attachments/upload のアクセス制御', () => {
     expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID)
   })
 
-  it('拡張子からも MIME を解決できないファイルは 400 で弾く', async () => {
+  // 拡張子も無く file.type が application/octet-stream の実 PDF を弾く不具合の回帰防止。
+  it('拡張子が無くても先頭バイトが %PDF なら形式チェックを通過する', async () => {
+    mockRequireChannelAccess.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 }),
+    )
+
     const formData = new FormData()
     formData.set('channelId', CHANNEL_ID)
-    formData.set('file', new Blob(['binary'], { type: 'application/octet-stream' }), 'archive.zip')
+    // 拡張子なし・汎用 MIME だが中身は PDF（先頭が "%PDF"）
+    appendFile(formData, '%PDF-1.7\n...', 'application/octet-stream', '三洋物産様向け提案資料_v0_1')
+
+    const { POST } = await import('./route')
+    const res = await POST({ formData: () => Promise.resolve(formData) } as Request)
+
+    expect(res.status).toBe(403)
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID)
+  })
+
+  it('拡張子からも先頭バイトからも MIME を解決できないファイルは 400 で弾く', async () => {
+    const formData = new FormData()
+    formData.set('channelId', CHANNEL_ID)
+    appendFile(formData, 'binary', 'application/octet-stream', 'archive.zip')
 
     const { POST } = await import('./route')
     const res = await POST({ formData: () => Promise.resolve(formData) } as Request)

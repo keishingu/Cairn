@@ -37,13 +37,58 @@ const EXTENSION_TO_MIME: Record<string, string> = {
   markdown: 'text/markdown',
 }
 
-// file.type が許可リストに含まれていればそれを優先し、含まれない（空・汎用 MIME）
-// 場合は拡張子から補完する。解決できなければ null を返す。
-function resolveMimeType(fileType: string, fileName: string): string | null {
+// 正規の MIME タイプから保存用の拡張子を引く。拡張子無しのファイル名でも
+// ストレージパスに正しい拡張子を付けられるようにする。
+const MIME_TO_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'application/pdf': 'pdf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'text/plain': 'txt',
+  'text/markdown': 'md',
+}
+
+// ファイル先頭のマジックナンバーから実体の MIME タイプを判定する。
+// 拡張子も無く file.type も汎用（application/octet-stream）なケースの最終手段。
+function sniffMimeType(bytes: Uint8Array): string | null {
+  // PDF: "%PDF"
+  if (bytes.length >= 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
+    return 'application/pdf'
+  }
+  // PNG: 89 50 4E 47
+  if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return 'image/png'
+  }
+  // JPEG: FF D8 FF
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return 'image/jpeg'
+  }
+  // GIF: "GIF8"
+  if (bytes.length >= 4 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+    return 'image/gif'
+  }
+  // WebP: "RIFF"...."WEBP"
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) {
+    return 'image/webp'
+  }
+  return null
+}
+
+// file.type が許可リストにあればそれを優先し、無ければ拡張子から補完する。
+// ここで解決できない場合はマジックナンバー判定（sniffMimeType）に委ねる。
+function resolveMimeTypeByName(fileType: string, fileName: string): string | null {
   if (ALLOWED_MIME_TYPES.has(fileType)) return fileType
-  const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
-  const mapped = EXTENSION_TO_MIME[ext]
-  return mapped ?? null
+  const ext = fileName.includes('.') ? (fileName.split('.').pop()?.toLowerCase() ?? '') : ''
+  return EXTENSION_TO_MIME[ext] ?? null
 }
 
 function resolveFileType(mimeType: string): 'image' | 'document' | 'other' {
@@ -80,16 +125,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'file と channelId は必須です' }, { status: 400 })
   }
 
-  const mimeType = resolveMimeType(file.type, file.name)
-  if (!mimeType) {
-    console.warn('[/api/attachments/upload] rejected: unsupported type', {
-      browserType: file.type,
-      fileName: file.name,
-      fileSize: file.size,
-    })
-    return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel・テキスト）' }, { status: 400 })
-  }
-
   if (file.size > MAX_FILE_SIZE) {
     console.warn('[/api/attachments/upload] rejected: too large', {
       fileName: file.name,
@@ -99,15 +134,33 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'ファイルサイズは 10MB 以下にしてください' }, { status: 400 })
   }
 
+  // file.type と拡張子で判定できない場合のみ、中身を読んでマジックナンバーで判定する。
+  // 読み込んだバッファは後段のアップロードでも再利用し、二重読み込みを避ける。
+  let buffer: ArrayBuffer | null = null
+  let mimeType = resolveMimeTypeByName(file.type, file.name)
+  if (!mimeType) {
+    buffer = await file.arrayBuffer()
+    mimeType = sniffMimeType(new Uint8Array(buffer.slice(0, 16)))
+  }
+  if (!mimeType) {
+    console.warn('[/api/attachments/upload] rejected: unsupported type', {
+      browserType: file.type,
+      fileName: file.name,
+      fileSize: file.size,
+    })
+    return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel・テキスト）' }, { status: 400 })
+  }
+
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
   if (forbidden) return forbidden
 
-  const ext = file.name.split('.').pop() ?? 'bin'
+  // 拡張子が無いファイル名でも正しい拡張子を付ける（無ければ MIME から補完）
+  const ext = file.name.includes('.') ? (file.name.split('.').pop() ?? 'bin') : (MIME_TO_EXT[mimeType] ?? 'bin')
   const storagePath = `${ctx.workspaceId}/${channelId}/${crypto.randomUUID()}.${ext}`
 
   const supabase = createServiceRoleClient()
-  const buffer = await file.arrayBuffer()
 
+  if (buffer === null) buffer = await file.arrayBuffer()
   const { error: uploadError } = await supabase.storage
     .from('chat-attachments')
     .upload(storagePath, buffer, { contentType: mimeType, upsert: false })
