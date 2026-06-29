@@ -30,6 +30,18 @@ describe('createProjectSchema', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it('memberUserIds に UUID 配列を指定できる', () => {
+    const result = createProjectSchema.safeParse({
+      workspaceId: '00000000-0000-0000-0000-000000000001',
+      title: 'テスト',
+      memberUserIds: [
+        '00000000-0000-0000-0000-000000000010',
+        '00000000-0000-0000-0000-000000000011',
+      ],
+    })
+    expect(result.success).toBe(true)
+  })
 })
 
 describe('createTaskSchema', () => {
