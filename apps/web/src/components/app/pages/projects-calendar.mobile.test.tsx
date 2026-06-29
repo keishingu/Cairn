@@ -17,12 +17,24 @@ vi.mock('@/components/app/mobile/header', () => ({
   ),
 }))
 
-vi.mock('./create-project-modal', () => ({
-  CreateProjectModal: ({ initialStartDate, initialEndDate }: { initialStartDate: string; initialEndDate: string }) => (
-    <div data-testid="create-project-modal">
+vi.mock('../mobile/create-project-sheet', () => ({
+  CreateProjectSheet: ({ initialStartDate, initialEndDate }: { initialStartDate: string; initialEndDate: string }) => (
+    <div data-testid="create-project-sheet">
       {initialStartDate} - {initialEndDate}
     </div>
   ),
+}))
+
+const mockUseWorkspacePermissions = vi.fn(() => ({
+  wsRole: 'owner',
+  isOwner: true,
+  isAdmin: true,
+  isMember: true,
+  isGuest: false,
+}))
+
+vi.mock('@/hooks/use-current-user', () => ({
+  useWorkspacePermissions: () => mockUseWorkspacePermissions(),
 }))
 
 vi.mock('@/lib/use-workspace-settings', () => ({
@@ -57,7 +69,16 @@ function renderPage() {
 
 describe('PageCalendar (モバイル)', () => {
   beforeEach(() => {
+    window.localStorage.clear()
     mockFetchWithAuth.mockReset()
+    mockUseWorkspacePermissions.mockReset()
+    mockUseWorkspacePermissions.mockReturnValue({
+      wsRole: 'owner',
+      isOwner: true,
+      isAdmin: true,
+      isMember: true,
+      isGuest: false,
+    })
     mockFetchWithAuth.mockImplementation(async (url: string) => {
       if (url === '/api/projects') {
         return new Response(JSON.stringify([]), { status: 200 })
@@ -72,7 +93,7 @@ describe('PageCalendar (モバイル)', () => {
     })
   })
 
-  it('月表示で選択中の空き日をタップすると作成モーダルが開く', async () => {
+  it('月表示で選択中の空き日をタップすると作成シートが開く', async () => {
     const user = userEvent.setup()
     const today = new Date()
     const todayLabel = `${today.getMonth() + 1}月${today.getDate()}日(${['日', '月', '火', '水', '木', '金', '土'][today.getDay()]})`
@@ -85,10 +106,10 @@ describe('PageCalendar (モバイル)', () => {
 
     await user.click(screen.getByRole('button', { name: todayLabel }))
 
-    expect(await screen.findByTestId('create-project-modal')).toHaveTextContent(`${todayIso} - ${todayIso}`)
+    expect(await screen.findByTestId('create-project-sheet')).toHaveTextContent(`${todayIso} - ${todayIso}`)
   })
 
-  it('週表示の空状態からもその日の作成モーダルを開ける', async () => {
+  it('週表示の空状態からもその日の作成シートを開ける', async () => {
     const user = userEvent.setup()
     const today = new Date()
     const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
@@ -97,6 +118,30 @@ describe('PageCalendar (モバイル)', () => {
     await user.click(screen.getByRole('button', { name: '週' }))
     await user.click(await screen.findByRole('button', { name: 'この日に新規予定' }))
 
-    expect(await screen.findByTestId('create-project-modal')).toHaveTextContent(`${todayIso} - ${todayIso}`)
+    expect(await screen.findByTestId('create-project-sheet')).toHaveTextContent(`${todayIso} - ${todayIso}`)
+  })
+
+  it('管理者でない場合はモバイル作成導線を出さない', async () => {
+    const user = userEvent.setup()
+    const today = new Date()
+    const todayLabel = `${today.getMonth() + 1}月${today.getDate()}日(${['日', '月', '火', '水', '木', '金', '土'][today.getDay()]})`
+    mockUseWorkspacePermissions.mockReturnValue({
+      wsRole: 'member',
+      isOwner: false,
+      isAdmin: false,
+      isMember: true,
+      isGuest: false,
+    })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(mockFetchWithAuth).toHaveBeenCalledWith('/api/projects')
+    })
+
+    await user.click(screen.getByRole('button', { name: todayLabel }))
+
+    expect(screen.queryByTestId('create-project-sheet')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'この日に新規予定' })).not.toBeInTheDocument()
   })
 })

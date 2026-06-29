@@ -3,9 +3,11 @@
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, StatusChip } from '../primitives'
+import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { PageToolbar, SegmentedControl } from './page-toolbar'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
@@ -977,7 +979,7 @@ interface MobileCalendarGridProps {
   projects: ProjectDto[]
   selectedDate: Date
   onSelectDate: (d: Date) => void
-  onCreateDate: (d: Date) => void
+  onCreateDate?: (d: Date) => void
   onProjectClick: (project: ProjectDto) => void
 }
 
@@ -1014,7 +1016,7 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
                 key={col}
                 aria-label={formatDateLabel(cell.fullDate)}
                 onClick={() => {
-                  if (isSelected && dayProjects.length === 0) {
+                  if (isSelected && dayProjects.length === 0 && onCreateDate) {
                     onCreateDate(cell.fullDate)
                     return
                   }
@@ -1090,7 +1092,7 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
 interface MobileDayEventsProps {
   date: Date
   projects: ProjectDto[]
-  onCreateDate: (d: Date) => void
+  onCreateDate?: (d: Date) => void
   onProjectClick: (project: ProjectDto) => void
   isLoading: boolean
 }
@@ -1118,14 +1120,16 @@ const MobileDayEvents = ({ date, projects, onCreateDate, onProjectClick, isLoadi
       ) : dayProjects.length === 0 ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-4)', fontSize: 13, padding: '0 24px', textAlign: 'center' }}>
           <div>予定なし</div>
-          <button
-            className="btn btn-primary"
-            onClick={() => onCreateDate(date)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          >
-            <Icon name="plus" size={13} strokeWidth={2.4} />
-            この日に新規{`予定`}
-          </button>
+          {onCreateDate && (
+            <button
+              className="btn btn-primary"
+              onClick={() => onCreateDate(date)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <Icon name="plus" size={13} strokeWidth={2.4} />
+              この日に新規{`予定`}
+            </button>
+          )}
         </div>
       ) : (
         <div style={{ padding: '8px 0' }}>
@@ -1507,6 +1511,7 @@ const CAL_VIEWS: CalView[] = ['month', 'week', 'timeline']
 export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps) => {
   const today = new Date()
   const queryClient = useQueryClient()
+  const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const projectLabel = useProjectLabel()
   const [year, setYear] = React.useState(today.getFullYear())
   const [month, setMonth] = React.useState(today.getMonth())
@@ -1673,6 +1678,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   useCommand('calendar.today', () => goToday())
   useCommand('ctx.filter', () => setFilterOpen(o => !o))
   useCommand('ctx.create', () => {
+    if (!canCreateProject) return
     // クリック導線（ツールバーの新規ボタン）と同じローカル日付を使う（toISOString は UTC でズレる）
     const iso = formatISO(new Date())
     openCreate(iso, iso)
@@ -1689,7 +1695,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     return (
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
         {showCreate && createDates && (
-          <CreateProjectModal
+          <CreateProjectSheet
             onClose={closeCreate}
             onCreated={(p) => {
               queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), p])
@@ -1757,8 +1763,8 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             projects={visibleProjects}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
-            onCreateDate={openCreateForDate}
             onProjectClick={openPanel}
+            {...(canCreateProject ? { onCreateDate: openCreateForDate } : {})}
           />
         )}
         {calView === 'week' && (
@@ -1772,9 +1778,9 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             <MobileDayEvents
               date={selectedDate}
               projects={visibleProjects}
-              onCreateDate={openCreateForDate}
               onProjectClick={openPanel}
               isLoading={isLoading}
+              {...(canCreateProject ? { onCreateDate: openCreateForDate } : {})}
             />
           </>
         )}
