@@ -48,6 +48,10 @@ function invalidateChannelLists(queryClient: QueryClient) {
   }
 }
 
+function invalidateWorkspaceMemberQueries(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({ queryKey: chatQueryKeys.workspaceMembers })
+}
+
 // realtime.broadcast_changes() が送るペイロード（{ table, record, ... }）から table を取り出す。
 // シグナル用途のため record は読まず、既存 REST API の再取得に任せる
 function tableOf(payload: unknown): string | undefined {
@@ -92,7 +96,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     listTimerRef.current = setTimeout(() => invalidateChannelLists(queryClient), LIST_DEBOUNCE_MS)
   }, [queryClient])
 
-  // ─── ユーザートピック（notifications / channel_read_states）────
+  // ─── ユーザートピック（notifications / channel_read_states / workspace_members）────
   React.useEffect(() => {
     if (!userId) return
 
@@ -111,6 +115,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           // 他デバイスでの既読を即時反映（バッジ消去 + ベルの既読同期）
           scheduleListInvalidate()
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+        } else if (table === 'workspace_members') {
+          // DM 相手のステータス・アバターは workspace_members を元に描画している。
+          // 同一ワークスペース内の更新を受けたら一覧とメンバー情報を再取得する。
+          scheduleListInvalidate()
+          invalidateWorkspaceMemberQueries(queryClient)
         }
       })
 
@@ -125,6 +134,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           void queryClient.invalidateQueries({ queryKey: ['messages'] })
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           invalidateChannelLists(queryClient)
+          invalidateWorkspaceMemberQueries(queryClient)
         } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT' || subStatus === 'CLOSED') {
           // 購読失敗の原因（認可ポリシー・トークン等）を隠さない
           console.error('[Realtime] subscription failed:', subStatus, err?.message ?? err)
