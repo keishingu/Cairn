@@ -16,6 +16,7 @@ import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { processImageForUpload } from '@/lib/process-image'
 import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 
@@ -104,8 +105,15 @@ const SettingsAccount = () => {
 
   const avatarMutation = useMutation({
     mutationFn: async (file: File) => {
+      let uploadFile = file
+      try {
+        uploadFile = (await processImageForUpload(file)).file
+      } catch {
+        throw new Error('画像の準備に失敗しました。別の写真でお試しください')
+      }
+
       const fd = new FormData()
-      fd.append('file', file)
+      fd.append('file', uploadFile)
       const res = await fetchWithAuth('/api/me/avatar', { method: 'POST', body: fd })
       if (!res.ok) {
         const d = await res.json().catch(() => ({})) as { error?: string }
@@ -147,11 +155,12 @@ const SettingsAccount = () => {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{user?.displayName}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>プロフィール写真</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 2 }}>大きい写真は自動で縮小してアップロードします</div>
             </div>
             <input
               ref={avatarInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/gif,image/webp"
+              accept="image/jpeg,image/png,image/gif,image/webp,image/heic,.heic,image/heif,.heif"
               style={{ display: 'none' }}
               onChange={handleAvatarChange}
             />
