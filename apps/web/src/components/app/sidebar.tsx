@@ -16,6 +16,7 @@ import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
 import { useCommand } from '@/lib/command-registry'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useAutoPresence } from '@/lib/use-auto-presence'
 import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
 import type { ProjectDto } from '@/app/api/projects/route'
 
@@ -571,10 +572,11 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   const displayName = me?.displayName ?? '…'
 
   const statusMutation = useMutation({
-    mutationFn: async (status: UserStatus) => {
+    mutationFn: async ({ status, keepalive }: { status: UserStatus; keepalive?: boolean }) => {
       const res = await fetchWithAuth('/api/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        ...(keepalive !== undefined ? { keepalive } : {}),
         body: JSON.stringify({ status }),
       })
       if (!res.ok) {
@@ -585,6 +587,21 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
     },
     onSuccess: (status) => {
       queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status } : prev)
+    },
+  })
+
+  useAutoPresence({
+    status: me?.status,
+    updateStatus: async (status, options) => {
+      try {
+        await statusMutation.mutateAsync({
+          status,
+          ...(options?.keepalive !== undefined ? { keepalive: options.keepalive } : {}),
+        })
+        return true
+      } catch {
+        return false
+      }
     },
   })
 
@@ -646,7 +663,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       {STATUS_OPTIONS.map(opt => (
         <button
           key={opt.value}
-          onClick={() => statusMutation.mutate(opt.value)}
+          onClick={() => statusMutation.mutate({ status: opt.value })}
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
             width: '100%', padding: '7px 10px', borderRadius: 7, border: 'none',
