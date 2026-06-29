@@ -1,7 +1,7 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PageKanban } from './projects-kanban'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -49,9 +49,20 @@ vi.mock('../primitives', () => ({
   Icon: () => <span />,
 }))
 vi.mock('../mobile/create-project-sheet', () => ({
-  CreateProjectSheet: ({ onCreated }: { onCreated: (project: ProjectDto) => void }) => (
-    <button onClick={() => onCreated(STUB_PROJECT)}>sheet-create</button>
-  ),
+  CreateProjectSheet: ({ onCreated }: { onCreated: (project: ProjectDto) => void }) => {
+    const queryClient = useQueryClient()
+
+    return (
+      <button
+        onClick={() => {
+          queryClient.setQueryData<ProjectDto[]>(['projects'], old => [STUB_PROJECT, ...(old ?? [])])
+          onCreated(STUB_PROJECT)
+        }}
+      >
+        sheet-create
+      </button>
+    )
+  },
 }))
 
 const mockFetch = vi.mocked(fetchWithAuth)
@@ -64,7 +75,7 @@ function renderPage(openPanel = vi.fn()) {
       <PageKanban openPanel={openPanel} isMobile />
     </QueryClientProvider>,
   )
-  return { openPanel }
+  return { client, openPanel }
 }
 
 describe('PageKanban mobile create entry', () => {
@@ -86,11 +97,12 @@ describe('PageKanban mobile create entry', () => {
 
   it('モバイルのカンバン画面から新規プロジェクト作成を開始できる', async () => {
     const user = userEvent.setup()
-    const { openPanel } = renderPage()
+    const { client, openPanel } = renderPage()
 
     await user.click(screen.getByRole('button', { name: '新規プロジェクト' }))
     await user.click(screen.getByRole('button', { name: 'sheet-create' }))
 
     expect(openPanel).toHaveBeenCalledWith(STUB_PROJECT)
+    expect(client.getQueryData<ProjectDto[]>(['projects'])).toEqual([STUB_PROJECT])
   })
 })

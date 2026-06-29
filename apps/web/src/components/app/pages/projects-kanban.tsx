@@ -71,6 +71,11 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
     setShowCreate(false)
   }
 
+  const handleMobileCreated = (project: ProjectDto) => {
+    setShowCreate(false)
+    openPanel(project)
+  }
+
   const projectFilter = React.useCallback(
     (p: ProjectDto) => memberFilter.length === 0 || memberFilter.some(m => p.memberNames.includes(m)),
     [memberFilter],
@@ -82,7 +87,7 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
         {showCreate && (
           <CreateProjectSheet
             onClose={() => setShowCreate(false)}
-            onCreated={(project) => { handleCreated(project); openPanel(project) }}
+            onCreated={handleMobileCreated}
           />
         )}
         <MobileHeader title="カンバン" />
