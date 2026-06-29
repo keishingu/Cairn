@@ -20,12 +20,12 @@ export async function processImageForUpload(original: File): Promise<ProcessedIm
   let blob: Blob = original
   let fileName = original.name
 
-  // HEIC → JPEG
-  if (isHeic(original)) {
+  // HEIC/HEIF → JPEG
+  if (isHeicLike(original)) {
     const heic2any = await import('heic2any')
     const converted = await heic2any.default({ blob: original, toType: 'image/jpeg', quality: JPEG_QUALITY })
     blob = Array.isArray(converted) ? converted[0]! : converted
-    fileName = fileName.replace(/\.heic$/i, '.jpg')
+    fileName = fileName.replace(/\.(heic|heif)$/i, '.jpg')
   }
 
   // リサイズ（最長辺が MAX_DIMENSION を超える場合のみ）
@@ -39,12 +39,17 @@ export async function processImageForUpload(original: File): Promise<ProcessedIm
   }
 }
 
-function isHeic(file: File): boolean {
-  return file.type === 'image/heic' || file.name.toLowerCase().endsWith('.heic')
+function isHeicLike(file: File): boolean {
+  return (
+    file.type === 'image/heic'
+    || file.type === 'image/heif'
+    || file.name.toLowerCase().endsWith('.heic')
+    || file.name.toLowerCase().endsWith('.heif')
+  )
 }
 
 async function extractExifDate(file: File): Promise<Date | null> {
-  if (file.type !== 'image/jpeg' && file.type !== 'image/webp' && !isHeic(file)) return null
+  if (file.type !== 'image/jpeg' && file.type !== 'image/webp' && !isHeicLike(file)) return null
   try {
     const exifr = await import('exifr')
     const exif = await exifr.parse(file, ['DateTimeOriginal'])
@@ -55,7 +60,7 @@ async function extractExifDate(file: File): Promise<Date | null> {
 }
 
 async function extractExifGps(file: File): Promise<{ latitude: number; longitude: number } | null> {
-  if (file.type !== 'image/jpeg' && file.type !== 'image/webp' && !isHeic(file)) return null
+  if (file.type !== 'image/jpeg' && file.type !== 'image/webp' && !isHeicLike(file)) return null
   try {
     const exifr = await import('exifr')
     const gps = await exifr.gps(file)
