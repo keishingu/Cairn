@@ -40,7 +40,7 @@ function renderFilesTab(channelId: string | null = 'channel-1') {
   }
 }
 
-describe('FilesTab', () => {
+describe('ファイルタブ', () => {
   beforeEach(() => {
     mockFetch.mockReset()
   })
@@ -67,5 +67,28 @@ describe('FilesTab', () => {
     expect(formData.get('file')).toBe(file)
 
     await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['project-files', 'project-1'] }))
+  })
+
+  it('一部失敗しても成功したアップロードぶんは一覧を再取得する', async () => {
+    mockFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ fileId: 'f1' }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'big.zip は大きすぎます' }), { status: 400 }))
+
+    const { queryClient } = renderFilesTab()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement | null
+    expect(input).not.toBeNull()
+
+    await userEvent.upload(
+      input!,
+      [
+        new File(['ok'], 'ok.txt', { type: 'text/plain' }),
+        new File(['ng'], 'big.md', { type: 'text/markdown' }),
+      ],
+    )
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['project-files', 'project-1'] }))
+    expect(screen.getByText('big.zip は大きすぎます')).toBeInTheDocument()
   })
 })

@@ -86,7 +86,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
     setUploadError(null)
 
     try {
-      const results = await Promise.all(
+      const results = await Promise.allSettled(
         Array.from(selectedFiles).map(async (file) => {
           const formData = new FormData()
           formData.append('file', file)
@@ -99,9 +99,16 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
         }),
       )
 
-      if (results.length > 0) {
+      const hasSuccess = results.some((result) => result.status === 'fulfilled')
+      const firstFailure = results.find((result) => result.status === 'rejected')
+
+      if (hasSuccess) {
         await queryClient.invalidateQueries({ queryKey: ['project-files', projectId] })
         await queryClient.invalidateQueries({ queryKey: ['files'] })
+      }
+
+      if (firstFailure?.status === 'rejected') {
+        throw firstFailure.reason
       }
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : 'アップロードに失敗しました')
