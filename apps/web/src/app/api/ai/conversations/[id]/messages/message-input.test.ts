@@ -31,7 +31,32 @@ describe('parseLatestUserInput', () => {
       messages: [
         { role: 'user', content: [{ type: 'text', text: '質問' }] },
       ],
-    })).toThrow('messages は user/assistant の文字列メッセージを 1〜50 件で指定してください')
+    })).toThrow('最後のメッセージは user/assistant の文字列メッセージで指定してください')
+  })
+
+  it('途中の assistant が 4000 文字超でも最後の user だけを受け取る', () => {
+    expect(parseLatestUserInput({
+      messages: [
+        { role: 'assistant', content: 'a'.repeat(5000) },
+        { role: 'user', content: '最新の質問' },
+      ],
+    })).toEqual({
+      lastUserContent: '最新の質問',
+      clientMessageCount: 2,
+    })
+  })
+
+  it('50 件を超える client 履歴でも最後の user だけを受け取る', () => {
+    const messages = Array.from({ length: 60 }, (_, index) => ({
+      role: index % 2 === 0 ? 'assistant' : 'user',
+      content: `message-${index}`,
+    }))
+    messages.push({ role: 'user', content: '最後の質問' })
+
+    expect(parseLatestUserInput({ messages })).toEqual({
+      lastUserContent: '最後の質問',
+      clientMessageCount: 61,
+    })
   })
 })
 

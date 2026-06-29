@@ -4,18 +4,17 @@
 import type { CoreMessage } from 'ai'
 import { z } from 'zod'
 
-const MAX_CLIENT_MESSAGES = 50
 const MAX_HISTORY_MESSAGES = 40
 const MAX_MESSAGE_CHARS = 4000
 
 const aiRequestSchema = z.object({
-  messages: z.array(
-    z.object({
-      role: z.enum(['user', 'assistant']),
-      content: z.string().max(MAX_MESSAGE_CHARS),
-    }).passthrough(),
-  ).min(1).max(MAX_CLIENT_MESSAGES),
+  messages: z.array(z.unknown()).min(1),
 })
+
+const clientMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string(),
+}).passthrough()
 
 export interface StoredConversationMessage {
   role: string
@@ -28,14 +27,21 @@ export function parseLatestUserInput(body: unknown): { lastUserContent: string; 
     throw new Error('messages は user/assistant の文字列メッセージを 1〜50 件で指定してください')
   }
 
-  const lastMessage = parsed.data.messages.at(-1)
-  if (!lastMessage || lastMessage.role !== 'user') {
+  const lastMessage = clientMessageSchema.safeParse(parsed.data.messages.at(-1))
+  if (!lastMessage.success) {
+    throw new Error('最後のメッセージは user/assistant の文字列メッセージで指定してください')
+  }
+
+  if (lastMessage.data.role !== 'user') {
     throw new Error('最後のメッセージは user である必要があります')
   }
 
-  const lastUserContent = lastMessage.content.trim()
+  const lastUserContent = lastMessage.data.content.trim()
   if (!lastUserContent) {
     throw new Error('ユーザーメッセージが空です')
+  }
+  if (lastUserContent.length > MAX_MESSAGE_CHARS) {
+    throw new Error(`ユーザーメッセージは ${MAX_MESSAGE_CHARS} 文字以内で指定してください`)
   }
 
   return {
