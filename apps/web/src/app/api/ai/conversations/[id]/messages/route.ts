@@ -52,14 +52,18 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const normalizedRows = normalizeStoredConversationMessages(rows)
 
     return NextResponse.json(
-      normalizedRows.map(r => ({
-        id: r.id,
-        role: r.role,
-        content: r.content,
-        createdAt: r.createdAt.toISOString(),
-        ...(r.annotations ? { annotations: r.annotations } : {}),
-        ...(r.toolInvocations ? { toolInvocations: r.toolInvocations } : {}),
-      })) satisfies MessageDto[],
+      normalizedRows.map(r => {
+        const createdAt = r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)
+
+        return {
+          id: r.id,
+          role: r.role,
+          content: r.content,
+          createdAt: createdAt.toISOString(),
+          ...(r.annotations ? { annotations: r.annotations } : {}),
+          ...(r.toolInvocations ? { toolInvocations: r.toolInvocations } : {}),
+        }
+      }) satisfies MessageDto[],
     )
   } catch (err) {
     console.error('[GET /api/ai/conversations/[id]/messages]', err)
