@@ -4,7 +4,8 @@
 import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
+import type { ProjectDto } from '@/app/api/projects/route'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PageCalendar } from './projects-calendar'
 
@@ -18,11 +19,53 @@ vi.mock('@/components/app/mobile/header', () => ({
 }))
 
 vi.mock('../mobile/create-project-sheet', () => ({
-  CreateProjectSheet: ({ initialStartDate, initialEndDate }: { initialStartDate: string; initialEndDate: string }) => (
-    <div data-testid="create-project-sheet">
-      {initialStartDate} - {initialEndDate}
-    </div>
-  ),
+  CreateProjectSheet: ({
+    initialStartDate,
+    initialEndDate,
+    onCreated,
+  }: {
+    initialStartDate: string
+    initialEndDate: string
+    onCreated: (project: ProjectDto) => void
+  }) => {
+    const queryClient = useQueryClient()
+    const project: ProjectDto = {
+      id: 'created-project',
+      title: '新規予定',
+      description: null,
+      statusName: null,
+      statusColor: null,
+      startDate: initialStartDate,
+      endDate: initialEndDate,
+      memberCount: 0,
+      memberNames: [],
+      memberAvatarUrls: [],
+      taskCount: 0,
+      completedTaskCount: 0,
+      isOwner: true,
+      isMember: true,
+      archived: false,
+      coverPhotoIdx: 0,
+      coverPhotoUrl: null,
+      location: null,
+      placeId: null,
+    }
+
+    return (
+      <div data-testid="create-project-sheet">
+        <div>{initialStartDate} - {initialEndDate}</div>
+        <button
+          type="button"
+          onClick={() => {
+            queryClient.setQueryData<ProjectDto[]>(['projects'], old => [project, ...(old ?? [])])
+            onCreated(project)
+          }}
+        >
+          作成完了
+        </button>
+      </div>
+    )
+  },
 }))
 
 const mockUseWorkspacePermissions = vi.fn(() => ({
@@ -60,11 +103,13 @@ function makeQueryClient() {
 }
 
 function renderPage() {
-  return render(
-    <QueryClientProvider client={makeQueryClient()}>
+  const queryClient = makeQueryClient()
+  const view = render(
+    <QueryClientProvider client={queryClient}>
       <PageCalendar isMobile openPanel={vi.fn()} />
     </QueryClientProvider>,
   )
+  return { queryClient, ...view }
 }
 
 describe('PageCalendar (モバイル)', () => {
@@ -143,5 +188,23 @@ describe('PageCalendar (モバイル)', () => {
 
     expect(screen.queryByTestId('create-project-sheet')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'この日に新規予定' })).not.toBeInTheDocument()
+  })
+
+  it('モバイル作成完了時に projects キャッシュへ二重追加しない', async () => {
+    const user = userEvent.setup()
+    const today = new Date()
+    const todayLabel = `${today.getMonth() + 1}月${today.getDate()}日(${['日', '月', '火', '水', '木', '金', '土'][today.getDay()]})`
+    const { queryClient } = renderPage()
+
+    await waitFor(() => {
+      expect(mockFetchWithAuth).toHaveBeenCalledWith('/api/projects')
+    })
+
+    await user.click(screen.getByRole('button', { name: todayLabel }))
+    await user.click(await screen.findByRole('button', { name: '作成完了' }))
+
+    expect(queryClient.getQueryData<ProjectDto[]>(['projects'])).toEqual([
+      expect.objectContaining({ id: 'created-project', title: '新規予定' }),
+    ])
   })
 })

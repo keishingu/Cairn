@@ -1697,8 +1697,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
         {showCreate && createDates && (
           <CreateProjectSheet
             onClose={closeCreate}
-            onCreated={(p) => {
-              queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [...(prev ?? []), p])
+            onCreated={() => {
               closeCreate()
             }}
             initialStartDate={createDates.start}
