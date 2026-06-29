@@ -31,6 +31,7 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import { useCommand } from '@/lib/command-registry'
+import { getUserStatusLabel } from '@/lib/user-status'
 
 // ─── Message search ───────────────────────────────────────────────
 
@@ -355,6 +356,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const isPrivate = !!(currentGeneral?.isPrivate)
   const isDm = !!currentDm
   const channelName = currentChannel?.projectTitle ?? currentGeneral?.name ?? currentDm?.participantName ?? ''
+  const dmSubtitle = currentDm ? (currentDm.participantStatusMessage ?? getUserStatusLabel(currentDm.participantStatus)) : null
   const currentChannelMemberCount = currentGeneral?.memberCount
 
   const { data: currentUser } = useCurrentUser()
@@ -470,7 +472,13 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         <MobileHeader
           title={channelName}
-          subtitle={currentChannelMemberCount != null ? `${currentChannelMemberCount}名が参加中` : undefined}
+          subtitle={
+            isDm
+              ? (dmSubtitle ?? undefined)
+              : currentChannelMemberCount != null
+                ? `${currentChannelMemberCount}名が参加中`
+                : undefined
+          }
           onBack={() => router.push('/chats')}
           right={
             <div style={{ display: 'flex', gap: 4 }}>
@@ -550,7 +558,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                 {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> プライベート</span>}
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                {isProject ? '参加メンバー' : isDm ? 'ダイレクトメッセージ' : isPrivate ? '招待制' : '全体チャンネル'}
+                {isProject ? '参加メンバー' : isDm ? dmSubtitle : isPrivate ? '招待制' : '全体チャンネル'}
               </div>
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>

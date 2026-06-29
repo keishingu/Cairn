@@ -9,7 +9,7 @@ import { useAppShell } from './app-shell-context'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { createClient } from '@/lib/supabase/client'
 import type { CurrentUserDto } from '@/app/api/me/route'
-import type { UserStatus } from '@/lib/user-status'
+import { getUserStatusColor, getUserStatusLabel, type UserStatus } from '@/lib/user-status'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import type { WorkspaceListItemDto } from '@/app/api/workspaces/list/route'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
@@ -536,21 +536,16 @@ const CollapsedNavItem = ({ icon, label, active, badge, onClick }: CollapsedNavI
 )
 
 const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
-  { value: 'online',  label: 'オンライン',   color: '#22C55E' },
-  { value: 'away',    label: '退席中',       color: '#F59E0B' },
-  { value: 'busy',    label: '取り込み中',   color: '#EF4444' },
-  { value: 'offline', label: 'オフライン',   color: '#9CA3AF' },
+  { value: 'online', label: getUserStatusLabel('online'), color: getUserStatusColor('online') },
+  { value: 'away', label: getUserStatusLabel('away'), color: getUserStatusColor('away') },
+  { value: 'busy', label: getUserStatusLabel('busy'), color: getUserStatusColor('busy') },
+  { value: 'offline', label: getUserStatusLabel('offline'), color: getUserStatusColor('offline') },
 ]
-
-const statusLabel = (status: UserStatus | undefined) =>
-  STATUS_OPTIONS.find(s => s.value === status)?.label ?? STATUS_OPTIONS[0]!.label
-const statusColor = (status: UserStatus | undefined) =>
-  STATUS_OPTIONS.find(s => s.value === status)?.color ?? STATUS_OPTIONS[0]!.color
 
 const StatusDot = ({ status, size = 10 }: { status: UserStatus | undefined; size?: number }) => (
   <span style={{
     position: 'absolute', right: -1, bottom: -1, width: size, height: size, borderRadius: '50%',
-    background: statusColor(status), border: '2px solid var(--card)', boxSizing: 'content-box',
+    background: getUserStatusColor(status), border: '2px solid var(--card)', boxSizing: 'content-box',
   }}/>
 )
 
@@ -730,7 +725,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       <div style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, position: 'relative' }} ref={menuRef}>
         <button
           onClick={() => setMenuOpen(v => !v)}
-          title={me?.statusMessage ? `${displayName}（${statusLabel(me?.status)} / ${me.statusMessage}）` : `${displayName}（${statusLabel(me?.status)}）`}
+          title={me?.statusMessage ? `${displayName}（${getUserStatusLabel(me?.status)} / ${me.statusMessage}）` : `${displayName}（${getUserStatusLabel(me?.status)}）`}
           style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, borderRadius: '50%', flexShrink: 0 }}
         >
           {avatarWithDot}
@@ -754,7 +749,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {me?.statusMessage ? me.statusMessage : statusLabel(me?.status)}
+            {me?.statusMessage ? me.statusMessage : getUserStatusLabel(me?.status)}
           </div>
         </div>
       </button>

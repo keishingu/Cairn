@@ -4,12 +4,15 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
+import type { UserStatus } from '@/lib/user-status'
 
 export interface DmChannelDto {
   id: string
   participantId: string
   participantName: string
   participantAvatarUrl: string | null
+  participantStatus: UserStatus
+  participantStatusMessage: string | null
   unreadCount: number
   unreadMentionCount: number
 }
@@ -38,6 +41,8 @@ export async function GET() {
         participantId: profiles.id,
         participantName: profiles.displayName,
         participantAvatarUrl: workspaceMembers.avatarUrl,
+        participantStatus: workspaceMembers.status,
+        participantStatusMessage: workspaceMembers.statusMessage,
       })
       .from(channels)
       .innerJoin(channelMembers, eq(channelMembers.channelId, channels.id))
@@ -77,12 +82,21 @@ export async function GET() {
       return NextResponse.json(rows.map(r => ({
         ...r,
         participantAvatarUrl: r.participantAvatarUrl ?? null,
+        participantStatus: r.participantStatus ?? 'offline',
+        participantStatusMessage: r.participantStatusMessage ?? null,
         unreadCount: unreadMap.get(r.id) ?? 0,
         unreadMentionCount: mentionMap.get(r.id) ?? 0,
       })) satisfies DmChannelDto[])
     }
 
-    return NextResponse.json(rows.map(r => ({ ...r, participantAvatarUrl: r.participantAvatarUrl ?? null, unreadCount: 0, unreadMentionCount: 0 })) satisfies DmChannelDto[])
+    return NextResponse.json(rows.map(r => ({
+      ...r,
+      participantAvatarUrl: r.participantAvatarUrl ?? null,
+      participantStatus: r.participantStatus ?? 'offline',
+      participantStatusMessage: r.participantStatusMessage ?? null,
+      unreadCount: 0,
+      unreadMentionCount: 0,
+    })) satisfies DmChannelDto[])
   } catch (err) {
     console.error('[/api/workspaces/dms GET] failed:', err)
     return NextResponse.json([] satisfies DmChannelDto[])

@@ -3,6 +3,7 @@
 import React from 'react'
 import { Icon, Avatar, AvatarStack, UnreadBadge } from '../primitives'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
+import { getUserStatusColor, getUserStatusLabel } from '@/lib/user-status'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
@@ -242,7 +243,18 @@ export const ChannelList = ({
       </div>
       <div>
         {dms.map(d => (
-          <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => onSelectChannel(d.id)} avatar={d.participantName} {...(d.participantAvatarUrl ? { avatarUrl: d.participantAvatarUrl } : {})} label={d.participantName} badge={d.unreadCount} mobile={isMobile}/>
+          <ChatSidebarItem
+            key={d.id}
+            active={channelId === d.id}
+            onClick={() => onSelectChannel(d.id)}
+            avatar={d.participantName}
+            {...(d.participantAvatarUrl ? { avatarUrl: d.participantAvatarUrl } : {})}
+            dot={getUserStatusColor(d.participantStatus)}
+            label={d.participantName}
+            dateMeta={d.participantStatusMessage ?? getUserStatusLabel(d.participantStatus)}
+            badge={d.unreadCount}
+            mobile={isMobile}
+          />
         ))}
       </div>
     </div>
