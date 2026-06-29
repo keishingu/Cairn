@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { buildModelMessages, parseLatestUserInput } from './message-input'
+import { buildModelMessages, normalizeStoredConversationMessages, parseLatestUserInput } from './message-input'
 
 describe('parseLatestUserInput', () => {
   it('最後の user メッセージだけを受け取る', () => {
@@ -70,6 +70,20 @@ describe('buildModelMessages', () => {
       { role: 'user', content: '前の質問' },
       { role: 'assistant', content: '前の回答' },
       { role: 'user', content: '今回の質問' },
+    ])
+  })
+})
+
+describe('normalizeStoredConversationMessages', () => {
+  it('同じ createdAt の user / assistant は user を先にそろえる', () => {
+    const createdAt = new Date('2026-06-29T07:58:19.000Z')
+
+    expect(normalizeStoredConversationMessages([
+      { id: 'b', role: 'assistant', content: '回答', createdAt },
+      { id: 'a', role: 'user', content: '質問', createdAt },
+    ])).toEqual([
+      { id: 'a', role: 'user', content: '質問', createdAt },
+      { id: 'b', role: 'assistant', content: '回答', createdAt },
     ])
   })
 })

@@ -7,7 +7,12 @@ import { openai, DEFAULT_MODEL } from '@/lib/ai/client'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getGuestVisibleProjectIds, getWorkspaceMemberRole } from '@/lib/permissions'
 import { webSearchTool } from '@/lib/ai/web-search'
-import { buildModelMessages, parseLatestUserInput, type StoredConversationMessage } from './message-input'
+import {
+  buildModelMessages,
+  normalizeStoredConversationMessages,
+  parseLatestUserInput,
+  type StoredConversationMessage,
+} from './message-input'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -44,8 +49,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .where(eq(aiMessages.conversationId, conversationId))
       .orderBy(asc(aiMessages.createdAt))
 
+    const normalizedRows = normalizeStoredConversationMessages(rows)
+
     return NextResponse.json(
-      rows.map(r => ({
+      normalizedRows.map(r => ({
         id: r.id,
         role: r.role,
         content: r.content,
@@ -86,7 +93,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       .where(eq(aiMessages.conversationId, conversationId))
       .orderBy(asc(aiMessages.createdAt))
 
-    historyMessages = rows
+    historyMessages = normalizeStoredConversationMessages(rows)
   }
 
   let requestBody: unknown

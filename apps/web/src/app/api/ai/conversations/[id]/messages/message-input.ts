@@ -17,9 +17,18 @@ const clientMessageSchema = z.object({
 }).passthrough()
 
 export interface StoredConversationMessage {
+  id?: string
   role: string
   content: string
+  createdAt?: Date | string
+  annotations?: unknown[]
+  toolInvocations?: unknown[]
 }
+
+const MESSAGE_ROLE_ORDER = {
+  user: 0,
+  assistant: 1,
+} as const
 
 export function parseLatestUserInput(body: unknown): { lastUserContent: string; clientMessageCount: number } {
   const parsed = aiRequestSchema.safeParse(body)
@@ -54,10 +63,7 @@ export function buildModelMessages(
   history: StoredConversationMessage[],
   lastUserContent: string,
 ): CoreMessage[] {
-  const normalizedHistory = history
-    .filter((message): message is StoredConversationMessage & { role: 'user' | 'assistant' } =>
-      (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string' && message.content.length > 0,
-    )
+  const normalizedHistory = normalizeStoredConversationMessages(history)
     .slice(-MAX_HISTORY_MESSAGES)
     .map<CoreMessage>(message => ({
       role: message.role,
@@ -68,4 +74,39 @@ export function buildModelMessages(
     ...normalizedHistory,
     { role: 'user', content: lastUserContent },
   ]
+}
+
+export function normalizeStoredConversationMessages(
+  history: StoredConversationMessage[],
+): Array<StoredConversationMessage & { role: 'user' | 'assistant' }>
+export function normalizeStoredConversationMessages<T extends StoredConversationMessage>(
+  history: T[],
+): Array<T & { role: 'user' | 'assistant' }>
+export function normalizeStoredConversationMessages<T extends StoredConversationMessage>(
+  history: T[],
+): Array<T & { role: 'user' | 'assistant' }> {
+  return history
+    .filter((message): message is T & { role: 'user' | 'assistant' } =>
+      (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string' && message.content.length > 0,
+    )
+    .sort(compareStoredConversationMessages)
+}
+
+function compareStoredConversationMessages(
+  left: StoredConversationMessage & { role: 'user' | 'assistant' },
+  right: StoredConversationMessage & { role: 'user' | 'assistant' },
+) {
+  const createdAtDiff = toTimestamp(left.createdAt) - toTimestamp(right.createdAt)
+  if (createdAtDiff !== 0) return createdAtDiff
+
+  const roleDiff = MESSAGE_ROLE_ORDER[left.role] - MESSAGE_ROLE_ORDER[right.role]
+  if (roleDiff !== 0) return roleDiff
+
+  return (left.id ?? '').localeCompare(right.id ?? '')
+}
+
+function toTimestamp(createdAt: StoredConversationMessage['createdAt']) {
+  if (createdAt instanceof Date) return createdAt.getTime()
+  if (typeof createdAt === 'string') return new Date(createdAt).getTime()
+  return Number.NEGATIVE_INFINITY
 }
