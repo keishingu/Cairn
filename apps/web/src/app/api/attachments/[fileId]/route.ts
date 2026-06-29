@@ -15,6 +15,9 @@ function resolveResponseContentType(fileName: string, mimeType: string | null) {
   if (normalizedFileName.endsWith('.md') || normalizedFileName.endsWith('.markdown')) {
     return 'text/markdown; charset=utf-8'
   }
+  if (normalizedFileName.endsWith('.txt')) {
+    return 'text/plain; charset=utf-8'
+  }
 
   const responseMimeType = mimeType ?? 'application/octet-stream'
   const isText = normalizedMimeType.startsWith('text/') || normalizedMimeType === 'application/json'

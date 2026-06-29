@@ -55,6 +55,17 @@ function isMarkdownFile(file: FileDto): boolean {
   )
 }
 
+function isPlainTextFile(file: FileDto): boolean {
+  return (
+    file.fileType !== 'link' &&
+    (file.mimeType === 'text/plain' || file.fileName.toLowerCase().endsWith('.txt'))
+  )
+}
+
+function isPreviewableTextFile(file: FileDto): boolean {
+  return isMarkdownFile(file) || isPlainTextFile(file)
+}
+
 function matchesFilter(file: FileDto, filter: FilterKey): boolean {
   if (filter === 'all') return true
   if (filter === 'pdf') return file.mimeType === 'application/pdf'
@@ -71,7 +82,7 @@ const FileRow = ({
   onDelete,
   onReindex,
   onImageClick,
-  onMarkdownClick,
+  onTextPreviewClick,
   selected,
   index,
 }: {
@@ -80,7 +91,7 @@ const FileRow = ({
   onDelete: (id: string, name: string) => void
   onReindex: (id: string) => void
   onImageClick: (id: string) => void
-  onMarkdownClick: (file: FileDto) => void
+  onTextPreviewClick: (file: FileDto) => void
   selected?: boolean
   index?: number
 }) => {
@@ -89,7 +100,7 @@ const FileRow = ({
   const projectLabel = file.projectTitle ?? file.channelName ?? 'チャット'
   const metaParts = [projectLabel, sizeStr, dateStr].filter(Boolean).join(' · ')
   const isImage = isImageFile(file)
-  const isMarkdown = isMarkdownFile(file)
+  const isPreviewableText = isPreviewableTextFile(file)
 
   return (
     <div
@@ -119,10 +130,10 @@ const FileRow = ({
                 e.preventDefault()
                 onImageClick(file.id)
               }
-            : isMarkdown
+            : isPreviewableText
               ? (e) => {
                   e.preventDefault()
-                  onMarkdownClick(file)
+                  onTextPreviewClick(file)
                 }
               : undefined
         }
@@ -242,7 +253,7 @@ export const PageFiles = ({
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
-  const [markdownPreviewFile, setMarkdownPreviewFile] = React.useState<FileDto | null>(null)
+  const [textPreviewFile, setTextPreviewFile] = React.useState<FileDto | null>(null)
   const sentinelRef = React.useRef<HTMLDivElement>(null)
 
   const { data: files = [], isLoading } = useQuery<FileDto[]>({
@@ -251,16 +262,16 @@ export const PageFiles = ({
   })
 
   const {
-    data: markdownPreviewContent,
-    isLoading: isMarkdownPreviewLoading,
-    isError: isMarkdownPreviewError,
+    data: textPreviewContent,
+    isLoading: isTextPreviewLoading,
+    isError: isTextPreviewError,
   } = useQuery<string>({
-    queryKey: ['attachment-markdown-preview', markdownPreviewFile?.id],
-    enabled: markdownPreviewFile !== null,
+    queryKey: ['attachment-text-preview', textPreviewFile?.id],
+    enabled: textPreviewFile !== null,
     queryFn: async () => {
-      if (!markdownPreviewFile) throw new Error('プレビュー対象のMarkdownファイルがありません')
-      const res = await fetchWithAuth(`/api/attachments/${markdownPreviewFile.id}`)
-      if (!res.ok) throw new Error('Markdownプレビューの取得に失敗しました')
+      if (!textPreviewFile) throw new Error('プレビュー対象のテキストファイルがありません')
+      const res = await fetchWithAuth(`/api/attachments/${textPreviewFile.id}`)
+      if (!res.ok) throw new Error('テキストプレビューの取得に失敗しました')
       return res.text()
     },
   })
@@ -370,7 +381,7 @@ export const PageFiles = ({
         const file = visibleFiles[idx]
         if (!file) return
         if (isImageFile(file)) openLightbox(file.id)
-        else if (isMarkdownFile(file)) setMarkdownPreviewFile(file)
+        else if (isPreviewableTextFile(file)) setTextPreviewFile(file)
       },
       [visibleFiles, openLightbox],
     ),
@@ -543,7 +554,7 @@ export const PageFiles = ({
                 onDelete={handleDelete}
                 onReindex={handleReindex}
                 onImageClick={openLightbox}
-                onMarkdownClick={setMarkdownPreviewFile}
+                onTextPreviewClick={setTextPreviewFile}
                 selected={i === navIdx}
                 index={i}
               />
@@ -563,12 +574,12 @@ export const PageFiles = ({
         onClose={() => setDeleteTarget(null)}
       />
 
-      {markdownPreviewFile !== null && (
+      {textPreviewFile !== null && (
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={`${markdownPreviewFile.fileName} のプレビュー`}
-          onClick={() => setMarkdownPreviewFile(null)}
+          aria-label={`${textPreviewFile.fileName} のプレビュー`}
+          onClick={() => setTextPreviewFile(null)}
           style={{
             position: 'fixed',
             inset: 0,
@@ -605,9 +616,9 @@ export const PageFiles = ({
               }}
             >
               <FileTypeIcon
-                mimeType={markdownPreviewFile.mimeType}
-                fileName={markdownPreviewFile.fileName}
-                fileId={markdownPreviewFile.id}
+                mimeType={textPreviewFile.mimeType}
+                fileName={textPreviewFile.fileName}
+                fileId={textPreviewFile.id}
               />
               <div
                 style={{
@@ -621,10 +632,10 @@ export const PageFiles = ({
                   whiteSpace: 'nowrap',
                 }}
               >
-                {markdownPreviewFile.fileName}
+                {textPreviewFile.fileName}
               </div>
               <a
-                href={`/api/attachments/${markdownPreviewFile.id}`}
+                href={`/api/attachments/${textPreviewFile.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
@@ -637,7 +648,7 @@ export const PageFiles = ({
                 別タブで開く
               </a>
               <button
-                onClick={() => setMarkdownPreviewFile(null)}
+                onClick={() => setTextPreviewFile(null)}
                 aria-label="プレビューを閉じる"
                 style={{
                   border: 'none',
@@ -660,20 +671,33 @@ export const PageFiles = ({
                 lineHeight: 1.7,
               }}
             >
-              {isMarkdownPreviewLoading ? (
+              {isTextPreviewLoading ? (
                 <div style={{ color: 'var(--text-3)', fontSize: 13 }}>
-                  Markdownを読み込んでいます...
+                  テキストを読み込んでいます...
                 </div>
-              ) : isMarkdownPreviewError ? (
+              ) : isTextPreviewError ? (
                 <div style={{ color: 'var(--danger)', fontSize: 13 }}>
-                  Markdownプレビューを読み込めませんでした。
+                  テキストプレビューを読み込めませんでした。
                 </div>
-              ) : (
+              ) : isMarkdownFile(textPreviewFile) ? (
                 <MarkdownContent
-                  content={markdownPreviewContent ?? ''}
+                  content={textPreviewContent ?? ''}
                   fontSize={14}
                   lineHeight={1.7}
                 />
+              ) : (
+                <pre
+                  style={{
+                    margin: 0,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    fontFamily: 'inherit',
+                    fontSize: 14,
+                    lineHeight: 1.7,
+                  }}
+                >
+                  {textPreviewContent ?? ''}
+                </pre>
               )}
             </div>
           </div>
