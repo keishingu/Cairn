@@ -187,6 +187,7 @@ export function useAutoPresence({
 }: UseAutoPresenceOptions) {
   const lastSentRef = React.useRef<AutoPresenceStatus | null>(null)
   const lastSyncAttemptRef = React.useRef<SyncAttempt | null>(null)
+  const pendingOfflineCheckRef = React.useRef<number | null>(null)
   const transitionTokenRef = React.useRef(0)
   const latestRequestedStatusRef = React.useRef<AutoPresenceStatus | null>(null)
   const lastInteractionOnlineSyncAtRef = React.useRef(0)
@@ -290,6 +291,12 @@ export function useAutoPresence({
 
     lastSentRef.current = null
     writePresenceIntent({ status: resolvedStatus, source: 'manual', workspaceId, origin: 'remote' })
+  })
+
+  const clearPendingOfflineCheck = React.useEffectEvent(() => {
+    if (pendingOfflineCheckRef.current == null) return
+    window.clearTimeout(pendingOfflineCheckRef.current)
+    pendingOfflineCheckRef.current = null
   })
 
   const restoreOnlineIfWindowActive = React.useEffectEvent(async () => {
@@ -483,12 +490,22 @@ export function useAutoPresence({
     const nextRecords = setCurrentTabActive(isVisible && hasFocus)
 
     if (isVisible && hasFocus) {
+      clearPendingOfflineCheck()
       void syncStatus('online')
       return
     }
 
     if (canAutoSyncOffline() && !hasAnotherActiveTab(nextRecords)) {
-      void syncStatus('offline')
+      clearPendingOfflineCheck()
+      pendingOfflineCheckRef.current = window.setTimeout(() => {
+        pendingOfflineCheckRef.current = null
+        if (isWindowActive()) return
+
+        const latestRecords = readTabActivity()
+        if (!hasAnotherActiveTab(latestRecords)) {
+          void syncStatus('offline')
+        }
+      }, 0)
     }
   })
 
@@ -505,6 +522,7 @@ export function useAutoPresence({
     }, TAB_ACTIVITY_HEARTBEAT_MS)
 
     const goOnline = () => {
+      clearPendingOfflineCheck()
       setCurrentTabActive(true)
       void syncStatus('online')
     }
@@ -513,6 +531,7 @@ export function useAutoPresence({
       void syncStatus('online', { trigger: 'interaction' })
     }
     const goOffline = () => {
+      clearPendingOfflineCheck()
       const nextRecords = clearCurrentTab()
       if (canAutoSyncOffline() && !hasAnotherActiveTab(nextRecords)) {
         void syncStatus('offline', { keepalive: true })
@@ -536,7 +555,8 @@ export function useAutoPresence({
       window.removeEventListener('pointerdown', revalidateOnlineFromInteraction)
       window.removeEventListener('keydown', revalidateOnlineFromInteraction)
       window.clearInterval(heartbeatId)
+      clearPendingOfflineCheck()
       clearCurrentTab()
     }
-  }, [status, workspaceId, clearCurrentTab, hasAnotherActiveTab, setCurrentTabActive, syncFromWindowState, syncStatus])
+  }, [status, workspaceId, clearCurrentTab, clearPendingOfflineCheck, hasAnotherActiveTab, setCurrentTabActive, syncFromWindowState, syncStatus])
 }

@@ -202,6 +202,27 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('hidden 直後に他タブが active になれば offline を送らない', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const updateStatus = vi.fn().mockResolvedValue('offline')
+
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
+
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+      setTabActivityRecords({
+        other: { active: true, updatedAt: Date.now(), workspaceId: DEFAULT_WORKSPACE_ID },
+      })
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+  })
+
   it('workspace 未解決中は他タブが実ワークスペースで active でも hidden で offline を送らない', async () => {
     setTabActivityRecords({
       other: { active: true, updatedAt: Date.now(), workspaceId: DEFAULT_WORKSPACE_ID },
