@@ -265,6 +265,7 @@ export function useAutoPresence({
     latestRequestedStatusRef.current = nextStatus
     let currentIntent = readPresenceIntent(workspaceId)
     let knownCurrentPresence: PresenceSnapshot | null | undefined
+    let didPreflightRead = false
 
     if ((status === 'away' || status === 'busy' || currentIntent?.source === 'manual') && readCurrentPresence && !options?.keepalive) {
       knownCurrentPresence = await readCurrentPresence()
@@ -300,11 +301,14 @@ export function useAutoPresence({
       if (currentIntent.status === 'offline' && nextStatus === 'online') return
       if (currentIntent.status === 'offline' && nextStatus === 'offline') return
     }
-    if (lastSentRef.current === nextStatus) return
+    if (lastSentRef.current === nextStatus && (nextStatus === 'offline' || !readCurrentPresence || options?.keepalive)) return
 
     if (readCurrentPresence && !options?.keepalive) {
+      didPreflightRead = true
+      const hadKnownCurrentPresence = knownCurrentPresence != null
       const currentPresence = knownCurrentPresence ?? await readCurrentPresence()
-      if (!knownCurrentPresence && currentPresence) {
+      knownCurrentPresence = currentPresence
+      if (!hadKnownCurrentPresence && currentPresence) {
         observePresence?.(currentPresence)
       }
       const currentStatus = currentPresence?.status ?? null
@@ -322,6 +326,8 @@ export function useAutoPresence({
         return
       }
     }
+
+    if (lastSentRef.current === nextStatus && (!didPreflightRead || knownCurrentPresence == null)) return
 
     if (nextStatus === 'offline' && !options?.keepalive) {
       const supersededByDifferentStatus =

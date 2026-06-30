@@ -61,6 +61,13 @@ describe('useAutoPresence', () => {
       readCurrentPresence,
     }))
 
+    await waitFor(() => {
+      expect(readCurrentPresence).toHaveBeenCalledTimes(1)
+    })
+
+    updateStatus.mockClear()
+    readCurrentPresence.mockClear()
+
     act(() => {
       window.dispatchEvent(new Event('pagehide'))
     })
@@ -548,6 +555,25 @@ describe('useAutoPresence', () => {
 
     renderHook(() => useAutoPresence({
       status: 'offline',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+      readCurrentPresence,
+    }))
+
+    await waitFor(() => {
+      expect(readCurrentPresence).toHaveBeenCalled()
+      expect(updateStatus).toHaveBeenCalledWith('online', undefined)
+    })
+  })
+
+  it('stale な online cache でも server が auto offline なら online を送り直す', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const updateStatus = vi.fn().mockResolvedValue('online')
+    const readCurrentPresence = vi.fn().mockResolvedValue({ status: 'offline', auto: true })
+
+    renderHook(() => useAutoPresence({
+      status: 'online',
       workspaceId: DEFAULT_WORKSPACE_ID,
       updateStatus,
       readCurrentPresence,
