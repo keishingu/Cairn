@@ -26,6 +26,13 @@ type UserResult =
   | { userId: string; error: null }
   | { userId: null; error: ReturnType<typeof NextResponse.json> }
 
+interface MembershipQueryDeps {
+  db: Awaited<typeof import('@cairn/db')>['db']
+  workspaceMembers: Awaited<typeof import('@cairn/db')>['workspaceMembers']
+  userId: string
+  workspaceId?: string | null
+}
+
 async function getAuthenticatedUser(
   authorization: string | null,
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -44,6 +51,23 @@ async function getAuthenticatedUser(
     return null
   }
   return data.user
+}
+
+async function findActiveMembership({ db, workspaceMembers, userId, workspaceId = null }: MembershipQueryDeps) {
+  const { eq, and } = await import('drizzle-orm')
+
+  const conditions = [eq(workspaceMembers.userId, userId), eq(workspaceMembers.membershipStatus, 'active')]
+  if (workspaceId) {
+    conditions.push(eq(workspaceMembers.workspaceId, workspaceId))
+  }
+
+  const [member] = await db
+    .select({ workspaceId: workspaceMembers.workspaceId })
+    .from(workspaceMembers)
+    .where(and(...conditions))
+    .limit(1)
+
+  return member ?? null
 }
 
 /** ワークスペース所属を問わずユーザー認証だけを行う（招待受け入れ等で使用） */
@@ -74,45 +98,46 @@ export async function getAuthContext(): Promise<AuthResult> {
 
   const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
   const cached = workspaceCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) {
-    return { ctx: { userId: user.id, workspaceId: cached.workspaceId }, error: null }
-  }
 
   try {
     const { db } = await import('@cairn/db')
     const { workspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const cachedWorkspaceId = cached && cached.expiresAt > Date.now() ? cached.workspaceId : null
+    const requestedWorkspaceId = preferredWorkspaceId ?? cachedWorkspaceId
 
-    // クッキーで指定されたワークスペースがあればそちらを優先、ただしメンバーシップを確認
-    if (preferredWorkspaceId) {
-      const [preferred] = await db
-        .select({ workspaceId: workspaceMembers.workspaceId })
-        .from(workspaceMembers)
-        .where(and(
-          eq(workspaceMembers.userId, user.id),
-          eq(workspaceMembers.workspaceId, preferredWorkspaceId),
-          eq(workspaceMembers.membershipStatus, 'active'),
-        ))
-        .limit(1)
+    // cookie / cache の候補ワークスペースも active membership として毎回再照合する
+    if (requestedWorkspaceId) {
+      const preferred = await findActiveMembership({
+        db,
+        workspaceMembers,
+        userId: user.id,
+        workspaceId: requestedWorkspaceId,
+      })
 
       if (preferred) {
-        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+        const expiresAt = Date.now() + 5 * 60 * 1000
+        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt })
+        workspaceCache.set(user.id, { workspaceId: preferred.workspaceId, expiresAt })
         return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
       }
-      // クッキーが無効（退出済み等）→ フォールバック
+      // cookie / cache が無効（退出済み等）→ フォールバック
     }
 
-    const [member] = await db
-      .select({ workspaceId: workspaceMembers.workspaceId })
-      .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.membershipStatus, 'active')))
-      .limit(1)
+    const member = await findActiveMembership({
+      db,
+      workspaceMembers,
+      userId: user.id,
+    })
 
     if (!member) {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
-    workspaceCache.set(user.id, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+    const expiresAt = Date.now() + 5 * 60 * 1000
+    workspaceCache.set(user.id, { workspaceId: member.workspaceId, expiresAt })
+    if (preferredWorkspaceId) {
+      workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt })
+    }
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)

@@ -118,4 +118,29 @@ describe('get-auth-context', () => {
       error: null,
     })
   })
+
+  it('cache 済み workspace でも active membership を再確認して無効化を反映する', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-1' }) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1' }]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-2' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+
+    const first = await getAuthContext()
+    const second = await getAuthContext()
+
+    expect(first).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1' },
+      error: null,
+    })
+    expect(second).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-2' },
+      error: null,
+    })
+    expect(mockDb.select).toHaveBeenCalledTimes(3)
+  })
 })
