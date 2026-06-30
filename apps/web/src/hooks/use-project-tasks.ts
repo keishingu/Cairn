@@ -34,6 +34,8 @@ export function useProjectTasks(projectId: string) {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['tasks', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      // プロジェクトのタスク進捗（taskCount/completedTaskCount）も更新する
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
   })
 

@@ -15,6 +15,7 @@ import { Icon } from './primitives'
 import { FileTypeIcon } from './file-type-icon'
 import { CreateTextFileDialog } from './create-text-file-dialog'
 import { MarkdownContent } from './markdown-content'
+import { ImageLightbox, type LightboxImage } from './image-lightbox'
 import {
   formatChatMessageTime,
   useChannelMessages,
@@ -31,6 +32,8 @@ import {
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { chatDraftKey } from '@/lib/storage-keys'
+import { useCommand } from '@/lib/command-registry'
+import { toast } from '@/lib/toast'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 
@@ -70,6 +73,18 @@ function isEmojiOnly(text: string): boolean {
   return stripped.length === 0
 }
 
+export async function copyMessageContent(content: string): Promise<boolean> {
+  if (!content.length) return false
+  try {
+    await navigator.clipboard.writeText(content)
+    toast.success('メッセージをコピーしました')
+    return true
+  } catch {
+    toast.error('メッセージをコピーできませんでした')
+    return false
+  }
+}
+
 interface PendingAttachment {
   fileId: string
   fileName: string
@@ -85,13 +100,14 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, compact, isMobile }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
   currentUserId: string | undefined
   senderName: string
   senderAvatarUrl?: string | null
+  senderEmail?: string | null
   createdAt: string
   isEdited: boolean
   content: string
@@ -107,8 +123,11 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, se
   onBookmark: (messageId: string) => void
   onJumpToMessage: (messageId: string) => void
   onCopyLink: (messageId: string) => void
+  onImageClick: (attachmentId: string) => void
+  mentionNames?: Map<string, string>
   compact?: boolean
   isMobile?: boolean
+  focused?: boolean
 }) {
   const [showPicker, setShowPicker] = React.useState(false)
   const [hovered, setHovered] = React.useState(false)
@@ -123,6 +142,57 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, se
   const px = compact ? '8px 14px' : '6px 16px'
   const emojiOnly = isEmojiOnly(content)
   const isOwn = currentUserId === senderId
+  const canCopy = content.length > 0
+
+  const startEdit = () => {
+    setEditDraft(content)
+    setEditMode(true)
+  }
+
+  // 編集モードに入ったら確実に textarea をフォーカスする（rAF は commit 前に走り不安定なため effect で）
+  React.useEffect(() => {
+    if (!editMode) return
+    const el = editTextareaRef.current
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length) }
+  }, [editMode])
+
+  // メッセージ選択中のキーボード操作（e=編集 / r=リアクション / d=削除）を受ける
+  React.useEffect(() => {
+    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit() }
+    const onReactEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId) setShowPicker(true) }
+    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) setDeleteConfirm(true) }
+    window.addEventListener('cairn:edit-message', onEditEvt)
+    window.addEventListener('cairn:react-message', onReactEvt)
+    window.addEventListener('cairn:delete-message', onDeleteEvt)
+    return () => {
+      window.removeEventListener('cairn:edit-message', onEditEvt)
+      window.removeEventListener('cairn:react-message', onReactEvt)
+      window.removeEventListener('cairn:delete-message', onDeleteEvt)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageId, isOwn, content])
+
+  const submitEdit = () => {
+    const trimmed = editDraft.trim()
+    if (trimmed && trimmed !== content) onEdit(messageId, trimmed)
+    setEditMode(false)
+  }
+
+  const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') { e.preventDefault(); setEditMode(false) }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      // スマホは Enter を改行に使い、保存はボタンのみ（誤操作防止）
+      if (isMobile) return
+      if (isImeConfirmingEnter(e, editComposing)) return
+      e.preventDefault()
+      submitEdit()
+    }
+  }
+
+  // ホバーツールバー（モバイルは常時表示、PC はホバー時）。返信・ブックマークは全メッセージ、コピーは内容がある場合、編集/削除は自分のみ
+  const handleCopy = React.useCallback(() => {
+    void copyMessageContent(content)
+  }, [content])
 
   // システムメッセージ（プロジェクトのステータス・日程・概要変更の通知）は中央寄せの控えめな1行で表示する
   if (messageType === 'system') {
@@ -135,35 +205,9 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, se
     )
   }
 
-  const startEdit = () => {
-    setEditDraft(content)
-    setEditMode(true)
-    requestAnimationFrame(() => {
-      if (editTextareaRef.current) {
-        editTextareaRef.current.focus()
-        editTextareaRef.current.setSelectionRange(content.length, content.length)
-      }
-    })
-  }
-
-  const submitEdit = () => {
-    const trimmed = editDraft.trim()
-    if (trimmed && trimmed !== content) onEdit(messageId, trimmed)
-    setEditMode(false)
-  }
-
-  const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Escape') { e.preventDefault(); setEditMode(false) }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      if (isImeConfirmingEnter(e, editComposing)) return
-      e.preventDefault()
-      submitEdit()
-    }
-  }
-
-  // ホバーツールバー（モバイルは常時表示、PC はホバー時）。返信・ブックマークは全メッセージ、編集/削除は自分のみ
   const menuActions = [
     { icon: 'link' as const, label: 'リンクをコピー', onSelect: () => onCopyLink(messageId) },
+    ...(canCopy ? [{ icon: 'copy' as const, label: 'コピー', onSelect: handleCopy }] : []),
     ...(isOwn ? [
       { icon: 'edit' as const, label: '編集', onSelect: startEdit },
       { icon: 'trash' as const, label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
@@ -188,13 +232,20 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, se
   return (
     <div
       data-message-id={messageId}
-      style={{ display: 'flex', gap: compact ? 8 : 12, padding: px, alignItems: 'flex-start', position: 'relative', background: hovered ? 'var(--card-2)' : 'transparent' }}
+      style={{
+        display: 'flex', gap: compact ? 8 : 12, padding: px, alignItems: 'flex-start', position: 'relative',
+        background: focused ? 'var(--accent-soft)' : hovered ? 'var(--card-2)' : 'transparent',
+        borderLeft: focused ? '3px solid var(--accent)' : '3px solid transparent',
+        transition: 'background .1s, border-color .1s',
+      }}
       onMouseEnter={() => !isMobile && setHovered(true)}
       onMouseLeave={() => !isMobile && setHovered(false)}
     >
-      <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
+      <div title={senderEmail ?? undefined}>
+        <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
+      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
+        <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
           <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
           {isEdited && <span style={{ fontSize: 10, color: 'var(--text-4)', fontStyle: 'italic' }}>編集済み</span>}
@@ -251,6 +302,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, se
                   content={content}
                   fontSize={compact ? 13 : 13.5}
                   lineHeight={1.6}
+                  mentionNames={mentionNames}
                   onCheckboxToggle={(index, checked) => onCheckboxToggle(messageId, index, checked)}
                 />
               )}
@@ -264,6 +316,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, se
                 key={a.fileId}
                 src={`/api/attachments/${a.fileId}`}
                 alt={a.fileName}
+                onClick={() => onImageClick(a.id)}
                 style={{
                   maxWidth: attachments.length === 1 ? 280 : 160,
                   maxHeight: 280,
@@ -352,7 +405,7 @@ const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, se
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -363,6 +416,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   isComposing: boolean
   setIsComposing: (v: boolean) => void
   compact?: boolean
+  isMobile?: boolean
   pendingAttachments: PendingAttachment[]
   onFilesSelect: (files: File[]) => void
   onRemoveAttachment: (fileId: string) => void
@@ -436,8 +490,20 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const imageInputRef = React.useRef<HTMLInputElement>(null)
   const docInputRef = React.useRef<HTMLInputElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
-  const compactInputRef = React.useRef<HTMLInputElement>(null)
+  const compactInputRef = React.useRef<HTMLTextAreaElement>(null)
   const overlayRef = React.useRef<HTMLDivElement>(null)
+
+  // ⌥I: メッセージ入力欄にフォーカス
+  useCommand('chats.focusComposer', () => (textareaRef.current ?? compactInputRef.current)?.focus())
+
+  // テキストエリアの高さを内容に合わせて自動調整する（改行・長文で行が増えても見切れないように）
+  React.useEffect(() => {
+    const el = textareaRef.current ?? compactInputRef.current
+    if (!el) return
+    const max = compact ? 240 : 320
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`
+  }, [draft, compact])
 
   // draft がクリアされたらメンション状態もリセット
   React.useEffect(() => {
@@ -491,6 +557,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         if (m) insertMention(m.userId, m.displayName)
         return
       }
+    } else if (e.key === 'Escape') {
+      // メンション候補が無い時の Esc は入力欄から離脱（ブラー）する
+      e.preventDefault()
+      ;(e.currentTarget as HTMLElement).blur()
+      return
     }
     fallback()
   }
@@ -529,7 +600,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     let match: RegExpExecArray | null
     while ((match = re.exec(draft)) !== null) {
       if (match.index > last) nodes.push(<span key={`t${last}`} style={{ color: 'var(--text)' }}>{draft.slice(last, match.index)}</span>)
-      nodes.push(<span key={`m${match.index}`} style={{ background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>@{match[1]}</span>)
+      // ハイライトは文字送り幅を変えない装飾のみにする。padding / fontWeight / fontSize を変えると
+      // 透明な実テキスト（キャレット基準）とオーバーレイの表示位置がずれ、メンション後にカーソルがずれて見える
+      nodes.push(<span key={`m${match.index}`} style={{ background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4 }}>@{match[1]}</span>)
       last = match.index + match[0]!.length
     }
     if (nodes.length === 0) return null
@@ -647,20 +720,20 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
           {ReplyPreview}
           {AttachmentPreviews}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, padding: '7px 10px' }}>
             <div style={{ flex: 1, position: 'relative' }}>
               {MentionPicker}
               {typeof placeholder !== 'string' && !draft && (
-                <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 13 }}>
+                <div style={{ position: 'absolute', top: 2, left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 13 }}>
                   {placeholder}
                 </div>
               )}
               {draftOverlay && (
-                <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: 0, right: 0, fontSize: 13, fontFamily: 'inherit', lineHeight: 1, whiteSpace: 'nowrap', pointerEvents: 'none', overflow: 'hidden' }}>
+                <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 13, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 240 }}>
                   {draftOverlay}
                 </div>
               )}
-              <input
+              <textarea
                 ref={compactInputRef}
                 value={draft}
                 onChange={e => { setDraft(e.target.value); detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
@@ -668,13 +741,17 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 onCompositionEnd={() => setIsComposing(false)}
                 onKeyDown={e => handleKeyDownWithMention(e, () => {
                   if (e.key !== 'Enter' || e.shiftKey) return
+                  // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
+                  if (isMobile) return
                   if (isImeConfirmingEnter(e, isComposing)) return
                   e.preventDefault()
                   send()
                 })}
                 onPaste={handlePaste}
+                onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
                 placeholder={typeof placeholder === 'string' ? placeholder : ''}
-                style={{ width: '100%', border: 'none', background: 'transparent', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
+                rows={1}
+                style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 20, maxHeight: 240, boxSizing: 'border-box' }}
               />
             </div>
             <button onClick={() => fileInputRef.current?.click()} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
@@ -739,7 +816,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               </div>
             )}
             {draftOverlay && (
-              <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 14, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 160 }}>
+              <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 14, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 320 }}>
                 {draftOverlay}
               </div>
             )}
@@ -751,6 +828,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               onCompositionEnd={() => setIsComposing(false)}
               onKeyDown={e => handleKeyDownWithMention(e, () => {
                 if (e.key !== 'Enter' || e.shiftKey) return
+                // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
+                if (isMobile) return
                 if (isImeConfirmingEnter(e, isComposing)) return
                 e.preventDefault()
                 send()
@@ -759,7 +838,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
               placeholder={typeof placeholder === 'string' ? placeholder : ''}
               rows={1}
-              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 160 }}
+              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 320, boxSizing: 'border-box' }}
             />
           </div>
           <button onClick={send} disabled={!canSend} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
@@ -790,6 +869,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [replyTarget, setReplyTarget] = React.useState<ReplyToDto | null>(null)
   // ジャンプ/ハイライト対象（パーマリンク・検索・引用バークリックで設定される）
   const [highlightId, setHighlightId] = React.useState<string | null>(null)
+  const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
+  const [focusedMsgIdx, setFocusedMsgIdx] = React.useState(-1)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -851,6 +932,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     mentionMapRef.current.set(displayName, userId)
   }, [])
 
+  // 保存形式は canonical な `<@userId>`。表示名は read 時に解決するため本文に焼き込まない
   const transformContent = (text: string): string => {
     const entries = [...mentionMapRef.current.entries()]
     if (entries.length === 0) return text
@@ -861,7 +943,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       result = result.replace(
         new RegExp(`@${escaped}(?=[\\s、。！？]|$)`, 'g'),
-        `<@${userId}|${displayName}>`,
+        `<@${userId}>`,
       )
     }
     return result
@@ -872,7 +954,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const { data: wsMembers = [] } = useWorkspaceMembers()
   const { data: chMemberIds = [] } = useChannelMembers(channelId)
   const sendMutation = useSendChannelMessage(channelId, currentUser)
-  const reactMutation = useToggleMessageReaction(channelId, currentUser?.displayName)
+  const reactMutation = useToggleMessageReaction(channelId, currentUser)
   const bookmarkMutation = useToggleBookmark(channelId)
   const editMutation = useEditMessage(channelId)
   const deleteMutation = useDeleteMessage(channelId)
@@ -907,6 +989,26 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     }
   }, [channelId, queryClient])
 
+  // スレッド内の全画像添付をフラットに集約し、ライトボックスで前後に送れるようにする
+  const lightboxImages = React.useMemo<(LightboxImage & { attachmentId: string })[]>(() => {
+    const imgs: (LightboxImage & { attachmentId: string })[] = []
+    for (const m of messages) {
+      for (const a of m.attachments) {
+        if (isImageMime(a.mimeType)) {
+          imgs.push({ attachmentId: a.id, key: a.id, src: `/api/attachments/${a.fileId}`, alt: a.fileName, caption: a.fileName })
+        }
+      }
+    }
+    return imgs
+  }, [messages])
+
+  const openLightbox = React.useCallback((attachmentId: string) => {
+    setLightboxIndex(prev => {
+      const idx = lightboxImages.findIndex(img => img.attachmentId === attachmentId)
+      return idx >= 0 ? idx : prev
+    })
+  }, [lightboxImages])
+
   const mentionMembers = React.useMemo(() => {
     if (chMemberIds.length > 0) {
       const idSet = new Set(chMemberIds.map(m => m.userId))
@@ -914,6 +1016,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     }
     return wsMembers.filter(m => m.userId !== currentUser?.id)
   }, [chMemberIds, wsMembers, currentUser?.id])
+
+  // userId → 現在の表示名。メンションを描画時に最新名へ解決するため
+  // （保存本文は名前なしの `<@userId>` であり、楽観更新メッセージもこのマップで解決する）
+  const mentionNames = React.useMemo(() => {
+    const map = new Map<string, string>()
+    for (const m of wsMembers) map.set(m.userId, m.displayName)
+    return map
+  }, [wsMembers])
+  const emailByUserId = React.useMemo(() => {
+    const map = new Map<string, string | null>()
+    for (const m of wsMembers) map.set(m.userId, m.email ?? null)
+    return map
+  }, [wsMembers])
 
   React.useEffect(() => {
     if (!sendMutation.isError) return
@@ -928,6 +1043,66 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length])
+
+  // チャンネル切替時にフォーカスをリセット
+  React.useEffect(() => { setFocusedMsgIdx(-1) }, [channelId])
+
+  // 上下矢印キーでメッセージ選択（入力欄フォーカス時は無効）
+  React.useEffect(() => {
+    if (messages.length === 0) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return
+      if (e.code !== 'ArrowUp' && e.code !== 'ArrowDown') return
+      const el = e.target as HTMLElement
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return
+      e.preventDefault()
+      setFocusedMsgIdx(prev => {
+        if (e.code === 'ArrowDown') return Math.min(prev + 1, messages.length - 1)
+        return Math.max(prev - 1, 0)
+      })
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [messages.length])
+
+  // フォーカス中のメッセージへスクロール
+  React.useEffect(() => {
+    if (focusedMsgIdx < 0 || focusedMsgIdx >= messages.length) return
+    const msgId = messages[focusedMsgIdx]?.id
+    if (!msgId || !scrollRef.current) return
+    const el = scrollRef.current.querySelector<HTMLElement>(`[data-message-id="${msgId}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [focusedMsgIdx, messages])
+
+  // フォーカス中のメッセージに対するキーボードアクション
+  React.useEffect(() => {
+    if (focusedMsgIdx < 0) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return
+      const msg = messages[focusedMsgIdx]
+      if (!msg) return
+      const isOwn = msg.senderId === currentUser?.id
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setFocusedMsgIdx(-1)
+      } else if (e.key === 'e' && isOwn) {
+        // 編集モードに入る（ChatMessage 側で editMode を起動）
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:edit-message', { detail: msg.id }))
+      } else if (e.key === 'r') {
+        // リアクション（絵文字ピッカーを開く）
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:react-message', { detail: msg.id }))
+      } else if ((e.key === 'd' || e.key === 'Delete') && isOwn) {
+        // 削除（確認ダイアログを開く・自分のメッセージのみ）
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: msg.id }))
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [focusedMsgIdx, messages, currentUser])
 
   // チャンネル切替時は返信対象・ハイライトをリセットする
   React.useEffect(() => {
@@ -1131,7 +1306,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         ) : messages.length === 0 ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>まだメッセージはありません。最初のメッセージを送ってみましょう！</div>
         ) : (
-          messages.map(m => (
+          messages.map((m, i) => (
             <ChatMessage
               key={m.id}
               messageId={m.id}
@@ -1140,6 +1315,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               currentUserId={currentUser?.id}
               senderName={m.senderName}
               senderAvatarUrl={m.senderAvatarUrl}
+              senderEmail={emailByUserId.get(m.senderId) ?? null}
               createdAt={m.createdAt}
               isEdited={m.isEdited}
               content={m.content}
@@ -1155,6 +1331,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               onBookmark={handleBookmark}
               onJumpToMessage={setHighlightId}
               onCopyLink={handleCopyLink}
+              onImageClick={openLightbox}
+              focused={i === focusedMsgIdx}
+              mentionNames={mentionNames}
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}
             />
@@ -1181,7 +1360,16 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         replyTarget={replyTarget}
         onCancelReply={() => setReplyTarget(null)}
         {...(compact ? { compact: true } : {})}
+        {...(isMobile ? { isMobile: true } : {})}
       />
+      {lightboxIndex !== null && lightboxImages.length > 0 && (
+        <ImageLightbox
+          images={lightboxImages}
+          index={Math.min(lightboxIndex, lightboxImages.length - 1)}
+          onIndexChange={setLightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
     </div>
   )
 }

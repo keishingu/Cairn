@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
@@ -17,6 +18,16 @@ import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
+
+class GcalCalendarsError extends Error {
+  code: string | undefined
+
+  constructor(message: string, code?: string) {
+    super(message)
+    this.name = 'GcalCalendarsError'
+    this.code = code
+  }
+}
 
 const Toggle = ({ on }: { on: boolean }) => (
   <div style={{
@@ -791,6 +802,10 @@ const SettingsWorkspaceGeneral = () => {
 
 const SettingsIntegrations = () => {
   // ── iCal 出力 ──────────────────────────────────────────────────────
+  const { data: ws } = useQuery<WorkspaceDto>({
+    queryKey: ['workspace'],
+    queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
+  })
   const { data, refetch } = useQuery<{ token: string }>({
     queryKey: ['ical-token'],
     queryFn: () => fetchWithAuth('/api/calendar/token').then(r => r.json()),
@@ -802,9 +817,9 @@ const SettingsIntegrations = () => {
   const [copiedScope, setCopiedScope] = React.useState<string | null>(null)
 
   const buildUrl = (scope: 'me' | 'workspace') => {
-    if (!data?.token) return ''
+    if (!data?.token || !ws?.id) return ''
     const base = typeof window !== 'undefined' ? window.location.origin : ''
-    return `${base}/api/calendar/ical?token=${data.token}&scope=${scope}`
+    return `${base}/api/calendar/ical?token=${data.token}&scope=${scope}&workspaceId=${ws.id}`
   }
 
   const copy = (scope: 'me' | 'workspace') => {
@@ -841,9 +856,26 @@ const SettingsIntegrations = () => {
     queryFn: () => fetchWithAuth('/api/calendar/google/status').then(r => r.json()),
   })
 
-  const { data: gcalCalendars } = useQuery<GcalCalendarDto[]>({
+  const {
+    data: gcalCalendars,
+    isLoading: gcalCalendarsLoading,
+    error: gcalCalendarsError,
+  } = useQuery<GcalCalendarDto[]>({
     queryKey: ['gcal-calendars'],
-    queryFn: () => fetchWithAuth('/api/calendar/google/calendars').then(r => r.json()),
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/calendar/google/calendars')
+      const body = await res.json().catch(() => null) as GcalCalendarDto[] | { error?: string; code?: string } | null
+      if (!res.ok) {
+        throw new GcalCalendarsError(
+          (body && !Array.isArray(body) && body.error) || 'Google カレンダー一覧の取得に失敗しました',
+          body && !Array.isArray(body) ? body.code : undefined,
+        )
+      }
+      if (!Array.isArray(body)) {
+        throw new GcalCalendarsError('Google カレンダー一覧の形式が不正です')
+      }
+      return body
+    },
     enabled: gcalStatus?.connected === true,
   })
 
@@ -1014,8 +1046,25 @@ const SettingsIntegrations = () => {
               {/* カレンダー選択 */}
               <div style={{ padding: '12px 16px' }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', marginBottom: 10 }}>表示するカレンダー</div>
-                {!gcalCalendars ? (
+                {gcalCalendarsLoading ? (
                   <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>読み込み中…</div>
+                ) : gcalCalendarsError ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>
+                      {gcalCalendarsError.message}
+                    </div>
+                    {(gcalCalendarsError as GcalCalendarsError).code === 'GOOGLE_RECONNECT_REQUIRED' && (
+                      <button
+                        className="btn btn-primary"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', fontSize: 12.5, flexShrink: 0 }}
+                        onClick={() => void connectGcal()}
+                      >
+                        <Icon name="calendar" size={13}/> Google を再接続
+                      </button>
+                    )}
+                  </div>
+                ) : !gcalCalendars ? (
+                  <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>Google カレンダー一覧を取得できませんでした。</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {gcalCalendars.map(cal => (
@@ -1070,6 +1119,17 @@ const STATUS_CONFIG: Record<ServiceStatus['status'], { label: string; color: str
   unconfigured: { label: '未設定',    color: 'var(--text-4)',       bg: 'var(--card-2)' },
 }
 
+const MANUAL_OK_STATUS = { label: '未確認', color: 'var(--text-4)', bg: 'var(--card-2)' }
+
+function getStatusBadgeConfig(status: ServiceStatus, hasLiveDiagnostic: boolean) {
+  if (status.status !== 'ok') return STATUS_CONFIG[status.status]
+  return hasLiveDiagnostic ? STATUS_CONFIG.ok : MANUAL_OK_STATUS
+}
+
+function getStatusBadgeLabel(status: ServiceStatus, hasLiveDiagnostic: boolean) {
+  return getStatusBadgeConfig(status, hasLiveDiagnostic).label
+}
+
 type ServiceKey = Exclude<keyof DevStatusDto, 'env'>
 const SERVICE_META: { key: ServiceKey; label: string; icon: string; purpose: string }[] = [
   { key: 'supabaseDb',      label: 'Supabase Database',   icon: 'database',  purpose: 'プロジェクト・タスク・メッセージなど全データの永続化に必要' },
@@ -1081,12 +1141,37 @@ const SERVICE_META: { key: ServiceKey; label: string; icon: string; purpose: str
 ]
 
 const SettingsDeveloper = () => {
-  const { data, isLoading, refetch, isFetching } = useQuery<DevStatusDto>({
+  const { isOwner } = useWorkspacePermissions()
+  const { data: staticData, isLoading } = useQuery<DevStatusDto>({
     queryKey: ['dev-status'],
     queryFn: () => fetchWithAuth('/api/dev/status').then(r => r.json()),
     staleTime: 0,
     gcTime: 0,
   })
+  const [diagnosticData, setDiagnosticData] = React.useState<DevStatusDto | null>(null)
+  const diagnose = useMutation({
+    mutationFn: async () => {
+      const res = await fetchWithAuth('/api/dev/status', { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(body.error ?? '診断の実行に失敗しました')
+      }
+      return res.json() as Promise<DevStatusDto>
+    },
+    onSuccess: (next) => setDiagnosticData(next),
+  })
+
+  const data = diagnosticData ?? staticData
+  const hasLiveDiagnostic = diagnosticData != null
+
+  if (!isOwner) {
+    return (
+      <div>
+        <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>開発者情報</h1>
+        <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションはワークスペースのオーナーのみ利用できます。</p>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -1094,22 +1179,30 @@ const SettingsDeveloper = () => {
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', flex: 1 }}>開発者情報</h1>
         <button
           className="btn"
-          onClick={() => refetch()}
-          disabled={isFetching}
+          onClick={() => void diagnose.mutateAsync()}
+          disabled={diagnose.isPending}
           style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}
         >
-          <Icon name="refresh" size={13} style={isFetching ? { animation: 'spin 1s linear infinite' } : {}}/>
-          再チェック
+          <Icon name="refresh" size={13} style={diagnose.isPending ? { animation: 'spin 1s linear infinite' } : {}}/>
+          手動診断
         </button>
       </div>
-      <p style={{ color: 'var(--text-3)', fontSize: 13, marginBottom: 28 }}>外部サービスの接続状況を確認できます。</p>
+      <p style={{ color: 'var(--text-3)', fontSize: 13, marginBottom: 10 }}>初期表示は設定状況のみを表示し、外部サービスへの疎通確認は手動診断時にだけ実行されます。</p>
+      {diagnose.error && (
+        <p style={{ color: 'var(--red-text)', fontSize: 12.5, margin: '0 0 18px' }}>
+          {diagnose.error instanceof Error ? diagnose.error.message : '診断の実行に失敗しました'}
+        </p>
+      )}
+      {!diagnose.data && (
+        <p style={{ color: 'var(--text-4)', fontSize: 12, margin: '0 0 28px' }}>OpenAI などの実接続確認は「手動診断」でのみ行います。</p>
+      )}
 
       <section style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>外部サービス</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
           {SERVICE_META.map(({ key, label, icon, purpose }) => {
             const s = data?.[key]
-            const cfg = s ? STATUS_CONFIG[s.status] : null
+            const cfg = s ? getStatusBadgeConfig(s, hasLiveDiagnostic) : null
             return (
               <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--card)', borderBottom: '1px solid var(--divider)' }}>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1126,10 +1219,12 @@ const SettingsDeveloper = () => {
                   {s?.latencyMs != null && s.status === 'ok' && (
                     <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{s.latencyMs}ms</span>
                   )}
-                  {isLoading || isFetching ? (
+                  {isLoading ? (
                     <span style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '3px 10px', borderRadius: 999, background: 'var(--card-2)' }}>確認中...</span>
-                  ) : cfg ? (
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: cfg.color, padding: '3px 10px', borderRadius: 999, background: cfg.bg }}>{cfg.label}</span>
+                  ) : cfg && s ? (
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: cfg.color, padding: '3px 10px', borderRadius: 999, background: cfg.bg }}>
+                      {getStatusBadgeLabel(s, hasLiveDiagnostic)}
+                    </span>
                   ) : (
                     <span style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '3px 10px', borderRadius: 999, background: 'var(--card-2)' }}>-</span>
                   )}
@@ -1160,50 +1255,101 @@ const SettingsDeveloper = () => {
   )
 }
 
-const NAV_GROUPS = [
-  {
-    label: '個人',
-    items: [
-      { id: 'account',    l: 'アカウント',    i: 'user' },
-      { id: 'appearance', l: '外観',          i: 'sun' },
-    ],
-  },
-  {
-    label: 'ワークスペース',
-    items: [
-      { id: 'general',       l: 'ワークスペース設定',   i: 'settings' },
-      { id: 'workflow',      l: 'ワークフロー',         i: 'flag' },
-      { id: 'ai',            l: 'AIエージェント',       i: 'sparkles' },
-      { id: 'members',       l: 'メンバー',             i: 'users' },
-      { id: 'integrations',  l: '連携',                 i: 'layers' },
-      { id: 'billing',       l: '請求',                 i: 'archive' },
-    ],
-  },
-  {
-    label: '開発者',
-    items: [
-      { id: 'developer', l: '開発者情報', i: 'code' },
-    ],
-  },
-]
+export function getSettingsNavGroups(isOwner: boolean): { label: string; items: SettingsSectionMeta[] }[] {
+  return [
+    {
+      label: '個人',
+      items: [
+        { id: 'account', label: 'アカウント', icon: 'user' },
+        { id: 'appearance', label: '外観', icon: 'sun' },
+      ],
+    },
+    {
+      label: 'ワークスペース',
+      items: [
+        { id: 'general', label: 'ワークスペース設定', icon: 'settings' },
+        { id: 'workflow', label: 'ワークフロー', icon: 'flag' },
+        { id: 'ai', label: 'AIエージェント', icon: 'sparkles' },
+        { id: 'members', label: 'メンバー', icon: 'users' },
+        { id: 'integrations', label: '連携', icon: 'layers' },
+        { id: 'billing', label: '請求', icon: 'archive' },
+      ],
+    },
+    ...(isOwner
+      ? [{
+        label: '開発者',
+        items: [
+          { id: 'developer', label: '開発者情報', icon: 'code' },
+        ],
+      }]
+      : []),
+  ]
+}
+
+export interface SettingsSectionMeta {
+  id: string
+  label: string
+  icon: string
+}
+
+// セクションIDごとのメインカラムコンポーネント。未実装のものは準備中プレースホルダーを出す。
+const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
+  account:      SettingsAccount,
+  appearance:   SettingsAppearance,
+  general:      SettingsWorkspaceGeneral,
+  workflow:     SettingsWorkflow,
+  ai:           SettingsAI,
+  integrations: SettingsIntegrations,
+  developer:    SettingsDeveloper,
+}
+
+const DEFAULT_SECTION = 'account'
+
+export function isSettingsSection(id: string | null | undefined, isOwner = true): id is string {
+  return id != null && new Set(getSettingsNavGroups(isOwner).flatMap(g => g.items.map(i => i.id))).has(id)
+}
+
+export function settingsSectionLabel(id: string, isOwner = true): string {
+  for (const g of getSettingsNavGroups(isOwner)) {
+    const item = g.items.find(i => i.id === id)
+    if (item) return item.label
+  }
+  return '設定'
+}
+
+// セクションのメインカラム本体（PC・モバイル共通）。
+export function SettingsSectionContent({ section }: { section: string }) {
+  const Comp = SETTINGS_SECTION_COMPONENTS[section]
+  if (Comp) return <Comp/>
+  return (
+    <div>
+      <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
+        {settingsSectionLabel(section)}
+      </h1>
+      <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションの設定は準備中です。</p>
+    </div>
+  )
+}
 
 export const PageSettings = () => {
-  const [section, setSection] = React.useState(() => {
-    if (typeof window === 'undefined') return 'account'
-    return new URLSearchParams(window.location.search).get('tab') ?? 'account'
-  })
+  const pathname = usePathname()
+  const router = useRouter()
+  const { isOwner } = useWorkspacePermissions()
+  const navGroups = getSettingsNavGroups(isOwner)
+  const seg = pathname.split('/')[2]
+  const section = isSettingsSection(seg, isOwner) ? seg : DEFAULT_SECTION
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <TopBar title="設定"/>
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={{ width: 220, borderRight: '1px solid var(--border)', padding: '20px 14px', background: 'var(--card)' }}>
-        {NAV_GROUPS.map((group, gi) => (
-          <div key={group.label} style={{ marginBottom: gi < NAV_GROUPS.length - 1 ? 16 : 0 }}>
+        {navGroups.map((group, gi) => (
+          <div key={group.label} style={{ marginBottom: gi < navGroups.length - 1 ? 16 : 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0 10px', marginBottom: 4 }}>
               {group.label}
             </div>
             {group.items.map(s => (
-              <button key={s.id} onClick={() => setSection(s.id)} style={{
+              <button key={s.id} onClick={() => router.push(`/settings/${s.id}`)} style={{
                 display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                 padding: '8px 10px', borderRadius: 7, border: 'none',
                 background: section === s.id ? 'var(--card-hover)' : 'transparent',
@@ -1211,28 +1357,14 @@ export const PageSettings = () => {
                 fontWeight: section === s.id ? 600 : 500,
                 fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left',
               }}>
-                <Icon name={s.i} size={14}/> {s.l}
+                <Icon name={s.icon} size={14}/> {s.label}
               </button>
             ))}
           </div>
         ))}
       </aside>
       <div style={{ flex: 1, overflow: 'auto', padding: '32px 40px' }}>
-        {section === 'account'       && <SettingsAccount/>}
-        {section === 'appearance'    && <SettingsAppearance/>}
-        {section === 'general'       && <SettingsWorkspaceGeneral/>}
-        {section === 'workflow'      && <SettingsWorkflow/>}
-        {section === 'ai'            && <SettingsAI/>}
-        {section === 'integrations'  && <SettingsIntegrations/>}
-        {section === 'developer'     && <SettingsDeveloper/>}
-        {section !== 'account' && section !== 'appearance' && section !== 'general' && section !== 'workflow' && section !== 'ai' && section !== 'integrations' && section !== 'developer' && (
-          <div>
-            <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-              {{ members: 'メンバー', billing: '請求' }[section] ?? section}
-            </h1>
-            <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションの設定は準備中です。</p>
-          </div>
-        )}
+        <SettingsSectionContent section={section}/>
       </div>
       </div>
     </div>

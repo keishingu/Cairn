@@ -167,7 +167,9 @@ export const KanbanBoard = ({ onCardClick, isMobile = false, statusFilter, proje
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
   })
 
-  const projects = projectFilter ? allProjects.filter(projectFilter) : allProjects
+  // アーカイブ済みは進行中のボードに出さない（一覧の「アーカイブ」タブからのみ参照する）
+  const activeProjects = allProjects.filter(p => !p.archived)
+  const projects = projectFilter ? activeProjects.filter(projectFilter) : activeProjects
   const visibleStatuses = statusFilter?.length ? statuses.filter(s => statusFilter.includes(s.name)) : statuses
 
   const isLoading = statusesLoading || projectsLoading

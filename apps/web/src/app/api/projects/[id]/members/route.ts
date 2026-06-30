@@ -2,16 +2,41 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceMember } from '@/lib/permissions'
+import { requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
+import { createServiceRoleClient } from '@/lib/supabase/service'
 
 export interface ProjectMemberDto {
   userId: string
   displayName: string
+  email: string | null
   avatarUrl: string | null
   role: 'leader' | 'subleader' | 'member' | 'reviewer' | 'observer'
   attendance: 'attending' | 'tentative' | 'declined'
   addedAt: string
+}
+
+async function resolveEmailsByUserId(
+  admin: ReturnType<typeof createServiceRoleClient>,
+  userIds: string[],
+): Promise<Map<string, string | null>> {
+  const emails = new Map<string, string | null>()
+  const uniqueUserIds = [...new Set(userIds)]
+  const entries = await Promise.all(uniqueUserIds.map(async userId => {
+    const { data, error } = await admin.auth.admin.getUserById(userId)
+    if (error) {
+      console.error('[/api/projects/[id]/members] Failed to resolve email:', userId, error)
+      return [userId, null] as const
+    }
+    return [userId, data.user?.email ?? null] as const
+  }))
+
+  for (const [userId, email] of entries) {
+    emails.set(userId, email)
+  }
+
+  return emails
 }
 
 export async function GET(
@@ -23,6 +48,7 @@ export async function GET(
   if (error) return error
 
   try {
+    const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
     const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
@@ -35,6 +61,10 @@ export async function GET(
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
+
+    // ゲストは参加プロジェクトのメンバーのみ閲覧可
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    if (forbidden) return forbidden
 
     const rows = await db
       .select({
@@ -51,10 +81,13 @@ export async function GET(
       .where(eq(projectMembers.projectId, projectId))
       .orderBy(profiles.displayName)
 
+    const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
+
     return NextResponse.json(
       rows.map(r => ({
         userId: r.userId,
         displayName: r.displayName,
+        email: emails.get(r.userId) ?? null,
         avatarUrl: r.avatarUrl ?? null,
         role: r.role,
         attendance: r.attendance,
@@ -82,9 +115,19 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { userId, role = 'member' } = body as { userId?: string; role?: string }
-  if (!userId) {
-    return NextResponse.json({ error: 'userId is required' }, { status: 422 })
+  const { userId, userIds, role = 'member' } = body as { userId?: string; userIds?: string[]; role?: string }
+  if (userIds !== undefined && !Array.isArray(userIds)) {
+    return NextResponse.json({ error: 'userIds must be an array' }, { status: 422 })
+  }
+  if (userIds?.some(candidate => typeof candidate !== 'string' || candidate.length === 0)) {
+    return NextResponse.json({ error: 'userIds must contain only non-empty strings' }, { status: 422 })
+  }
+  const normalizedUserIds = [...new Set((userIds ?? (userId ? [userId] : [])).filter(Boolean))]
+  if (normalizedUserIds.length === 0) {
+    return NextResponse.json({ error: 'userId or userIds is required' }, { status: 422 })
+  }
+  if (normalizedUserIds.some(candidate => !z.string().uuid().safeParse(candidate).success)) {
+    return NextResponse.json({ error: 'userId and userIds must be UUIDs' }, { status: 422 })
   }
 
   const validRoles = ['leader', 'subleader', 'member', 'reviewer', 'observer']
@@ -93,9 +136,10 @@ export async function POST(
   }
 
   try {
+    const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
     const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, inArray } = await import('drizzle-orm')
 
     const [project] = await db
       .select({ id: projects.id })
@@ -109,23 +153,25 @@ export async function POST(
     const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
     if (forbidden) return forbidden
 
-    const [wsMember] = await db
-      .select({ id: workspaceMembers.id })
+    const wsMembers = await db
+      .select({ userId: workspaceMembers.userId })
       .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, userId)))
+      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, normalizedUserIds)))
 
-    if (!wsMember) {
+    if (wsMembers.length !== normalizedUserIds.length) {
       return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })
     }
 
-    const [inserted] = await db
+    const inserted = await db
       .insert(projectMembers)
-      .values({
-        projectId,
-        userId,
-        role: (role as ProjectMemberDto['role']),
-        attendance: 'attending',
-      })
+      .values(
+        normalizedUserIds.map(targetUserId => ({
+          projectId,
+          userId: targetUserId,
+          role: (role as ProjectMemberDto['role']),
+          attendance: 'attending' as const,
+        })),
+      )
       .onConflictDoNothing()
       .returning({
         userId: projectMembers.userId,
@@ -134,23 +180,50 @@ export async function POST(
         addedAt: projectMembers.createdAt,
       })
 
-    if (!inserted) {
+    if (inserted.length === 0) {
       return NextResponse.json({ error: 'Member already exists' }, { status: 409 })
     }
 
-    const [profile] = await db
-      .select({ displayName: profiles.displayName })
+    const insertedUserIds = inserted.map(member => member.userId)
+    const profileRows = await db
+      .select({
+        userId: profiles.id,
+        displayName: profiles.displayName,
+        avatarUrl: workspaceMembers.avatarUrl,
+      })
       .from(profiles)
-      .where(eq(profiles.id, userId))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .where(inArray(profiles.id, insertedUserIds))
 
-    return NextResponse.json({
-      userId: inserted.userId,
-      displayName: profile?.displayName ?? '',
-      avatarUrl: null,
-      role: inserted.role,
-      attendance: inserted.attendance,
-      addedAt: inserted.addedAt.toISOString().slice(0, 10),
-    } satisfies ProjectMemberDto, { status: 201 })
+    const profileMap = new Map(profileRows.map(profile => [profile.userId, profile]))
+    const emails = await resolveEmailsByUserId(admin, insertedUserIds)
+    const insertedMembers = inserted.map(member => {
+      const profile = profileMap.get(member.userId)
+      return {
+        userId: member.userId,
+        displayName: profile?.displayName ?? '',
+        email: emails.get(member.userId) ?? null,
+        avatarUrl: profile?.avatarUrl ?? null,
+        role: member.role,
+        attendance: member.attendance,
+        addedAt: member.addedAt.toISOString().slice(0, 10),
+      } satisfies ProjectMemberDto
+    })
+
+    try {
+      const { inngest } = await import('@/lib/inngest/client')
+      await inngest.send({
+        name: 'project/upserted',
+        data: { projectId, workspaceId: ctx.workspaceId },
+      })
+    } catch (eventError) {
+      console.warn('[POST /api/projects/[id]/members] Inngest event send failed (indexing skipped):', eventError)
+    }
+
+    return NextResponse.json(
+      normalizedUserIds.length === 1 ? insertedMembers[0] : insertedMembers,
+      { status: 201 },
+    )
   } catch (err) {
     console.error('[POST /api/projects/[id]/members]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

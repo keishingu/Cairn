@@ -15,6 +15,7 @@ export const STORAGE_KEYS = {
   projects_filter:           'cairn:projects_filter',
   projects_status_filter:    'cairn:projects_status_filter',
   projects_member_filter:    'cairn:projects_member_filter',
+  calendar_view:             'cairn:calendar_view',
   calendar_status_filter:    'cairn:calendar_status_filter',
   calendar_member_filter:    'cairn:calendar_member_filter',
   calendar_gcal_hidden:      'cairn:calendar_gcal_hidden',
@@ -24,6 +25,7 @@ export const STORAGE_KEYS = {
   sidebar_collapsed:         'cairn:sidebar_collapsed',
   projects_list_view:        'cairn:projects_list_view',
   projects_table_sort:       'cairn:projects_table_sort',
+  chat_archived_collapsed:   'cairn:chat_archived_collapsed',
 } as const
 
 export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS]

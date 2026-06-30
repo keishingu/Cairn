@@ -142,7 +142,7 @@ async function fetchBookmarks(): Promise<BookmarkDto[]> {
   return res.json()
 }
 
-async function editMessage(messageId: string, content: string): Promise<void> {
+async function editMessage(messageId: string, content: string): Promise<{ id: string; content: string }> {
   const res = await fetchWithAuth(`/api/messages/${messageId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -152,6 +152,7 @@ async function editMessage(messageId: string, content: string): Promise<void> {
     const data = await res.json().catch(() => ({})) as { error?: string }
     throw new Error(data.error ?? 'メッセージの編集に失敗しました')
   }
+  return res.json()
 }
 
 async function deleteMessage(messageId: string): Promise<void> {
@@ -354,6 +355,14 @@ export function useEditMessage(channelId: string | null) {
       )
       return { prev }
     },
+    onSuccess: (updated) => {
+      // Realtime の invalidate は他イベントとの競合で古いデータを取り戻すことがあるため、
+      // PATCH レスポンスを正としてキャッシュへ反映する
+      queryClient.setQueryData<MessageDto[]>(
+        chatQueryKeys.messages(channelId),
+        (old) => (old ?? []).map((m) => m.id === updated.id ? { ...m, content: updated.content, isEdited: true } : m),
+      )
+    },
     onError: (_err, _vars, context) => {
       if (context?.prev !== undefined) {
         queryClient.setQueryData(chatQueryKeys.messages(channelId), context.prev)
@@ -384,9 +393,12 @@ export function useDeleteMessage(channelId: string | null) {
   })
 }
 
-export function useToggleMessageReaction(channelId: string | null, currentUserName?: string) {
+export function useToggleMessageReaction(
+  channelId: string | null,
+  currentUser?: Pick<CurrentUserDto, 'displayName'>,
+) {
   const queryClient = useQueryClient()
-  const myName = currentUserName ?? 'あなた'
+  const myName = currentUser?.displayName ?? 'あなた'
 
   return useMutation({
     mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
@@ -405,10 +417,19 @@ export function useToggleMessageReaction(channelId: string | null, currentUserNa
             if (existing.mine) {
               const newCount = existing.count - 1
               newReactions = newCount > 0
-                ? m.reactions.map((r) => r.emoji === emoji ? { ...r, count: newCount, mine: false, userNames: r.userNames.filter(n => n !== myName) } : r)
+                ? m.reactions.map((r) => r.emoji === emoji
+                  ? { ...r, count: newCount, mine: false, userNames: r.userNames.filter((name) => name !== myName) }
+                  : r)
                 : m.reactions.filter((r) => r.emoji !== emoji)
             } else {
-              newReactions = m.reactions.map((r) => r.emoji === emoji ? { ...r, count: r.count + 1, mine: true, userNames: [...r.userNames, myName] } : r)
+              newReactions = m.reactions.map((r) => r.emoji === emoji
+                ? {
+                    ...r,
+                    count: r.count + 1,
+                    mine: true,
+                    userNames: r.userNames.includes(myName) ? r.userNames : [...r.userNames, myName],
+                  }
+                : r)
             }
           } else {
             newReactions = [...m.reactions, { emoji, count: 1, mine: true, userNames: [myName] }]

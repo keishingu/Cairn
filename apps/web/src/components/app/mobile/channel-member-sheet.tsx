@@ -89,7 +89,7 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
             const added = addedIds.has(m.userId)
             const loading = pendingId === m.userId
             return (
-              <div key={m.userId} style={{
+              <div key={m.userId} title={m.email ?? undefined} style={{
                 display: 'flex', alignItems: 'center', gap: 12,
                 padding: '10px 20px',
                 borderBottom: '1px solid var(--divider)',

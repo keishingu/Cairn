@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
 import { ConfirmDialog } from '../../confirm-dialog'
 import { RowActionMenu } from '../../row-action-menu'
+import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { GalleryItemDto } from '@/app/api/projects/[id]/gallery/route'
 import { processImageForUpload } from '@/lib/process-image'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -80,20 +81,10 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
 
   const isUploading = uploadState !== null && uploadState.done < uploadState.total
 
-  const lightboxUrl = lightboxIndex !== null ? (items[lightboxIndex]?.publicUrl ?? null) : null
-  const goPrev = () => setLightboxIndex(i => i !== null && i > 0 ? i - 1 : i)
-  const goNext = () => setLightboxIndex(i => i !== null && i < items.length - 1 ? i + 1 : i)
-
-  React.useEffect(() => {
-    if (lightboxIndex === null) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') goPrev()
-      else if (e.key === 'ArrowRight') goNext()
-      else if (e.key === 'Escape') setLightboxIndex(null)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [lightboxIndex, items.length])
+  const lightboxImages = React.useMemo<LightboxImage[]>(() => items.map(it => ({
+    key: it.id,
+    src: it.publicUrl,
+  })), [items])
 
   if (isLoading) {
     return (
@@ -136,7 +127,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
               fontFamily: 'inherit', opacity: isUploading ? 0.6 : 1,
             }}
           >
-            <Icon name="upload" size={13}/>
+            <Icon name="plus" size={13}/>
             {isUploading
               ? `${uploadState.done}/${uploadState.total} 枚アップロード中...`
               : '写真を追加'}
@@ -198,67 +189,13 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
       />
 
       {/* ライトボックス */}
-      {lightboxUrl && lightboxIndex !== null && (
-        <div
-          onClick={() => setLightboxIndex(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 200,
-            background: 'rgba(0,0,0,0.85)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          {/* 画像 + 左右タップゾーン */}
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh', display: 'flex' }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={lightboxUrl}
-              alt=""
-              style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8, objectFit: 'contain', display: 'block' }}
-            />
-            {/* 左タップゾーン（前へ） */}
-            <div
-              onClick={e => { e.stopPropagation(); goPrev() }}
-              style={{
-                position: 'absolute', left: 0, top: 0, bottom: 0, width: '40%',
-                cursor: lightboxIndex > 0 ? 'w-resize' : 'default',
-              }}
-            />
-            {/* 右タップゾーン（次へ） */}
-            <div
-              onClick={e => { e.stopPropagation(); goNext() }}
-              style={{
-                position: 'absolute', right: 0, top: 0, bottom: 0, width: '40%',
-                cursor: lightboxIndex < items.length - 1 ? 'e-resize' : 'default',
-              }}
-            />
-          </div>
-
-          {/* 閉じるボタン */}
-          <button
-            onClick={() => setLightboxIndex(null)}
-            style={{
-              position: 'absolute', top: 16, right: 16,
-              width: 36, height: 36, borderRadius: 10,
-              border: 'none', background: 'rgba(255,255,255,0.15)',
-              color: '#fff', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <Icon name="close" size={18}/>
-          </button>
-
-          {/* 枚数インジケーター */}
-          <div style={{
-            position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-            fontSize: 12, color: 'rgba(255,255,255,0.7)',
-            background: 'rgba(0,0,0,0.4)', padding: '4px 10px', borderRadius: 20,
-          }}>
-            {lightboxIndex + 1} / {items.length}
-          </div>
-        </div>
+      {lightboxIndex !== null && lightboxImages.length > 0 && (
+        <ImageLightbox
+          images={lightboxImages}
+          index={Math.min(lightboxIndex, lightboxImages.length - 1)}
+          onIndexChange={setLightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
       )}
     </>
   )

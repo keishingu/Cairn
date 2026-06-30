@@ -3,14 +3,39 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { getWorkspaceMemberRole } from '@/lib/permissions'
+import { createServiceRoleClient } from '@/lib/supabase/service'
 
 export interface WorkspaceMemberDto {
   userId: string
   displayName: string
+  email: string | null
   avatarUrl: string | null
   role: 'owner' | 'admin' | 'member' | 'guest'
   joinedAt: string
   projectCount: number
+}
+
+async function resolveEmailsByUserId(
+  admin: ReturnType<typeof createServiceRoleClient>,
+  userIds: string[],
+): Promise<Map<string, string | null>> {
+  const emails = new Map<string, string | null>()
+  const uniqueUserIds = [...new Set(userIds)]
+  const entries = await Promise.all(uniqueUserIds.map(async userId => {
+    const { data, error } = await admin.auth.admin.getUserById(userId)
+    if (error) {
+      console.error('[/api/workspaces/members] Failed to resolve email:', userId, error)
+      return [userId, null] as const
+    }
+    return [userId, data.user?.email ?? null] as const
+  }))
+
+  for (const [userId, email] of entries) {
+    emails.set(userId, email)
+  }
+
+  return emails
 }
 
 export async function GET() {
@@ -18,10 +43,40 @@ export async function GET() {
   if (error) return error
 
   try {
+    const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
     const { profiles, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
-    const { eq, and, count, sql } = await import('drizzle-orm')
+    const { eq, and, count, sql, inArray } = await import('drizzle-orm')
 
+    // ゲストはワークスペース全体のメンバー一覧を見られない。
+    // 参加プロジェクトの共同メンバーのみに絞り、projectCount も共有プロジェクト数に限定して、
+    // 参加していないプロジェクトの存在が漏れないようにする。
+    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const isGuest = callerRole === 'guest'
+
+    let guestProjectIds: string[] = []
+    let visibleUserIds: string[] = []
+    if (isGuest) {
+      const ownProjects = await db
+        .select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+        .where(and(eq(projectMembers.userId, ctx.userId), eq(projects.workspaceId, ctx.workspaceId)))
+      guestProjectIds = [...new Set(ownProjects.map(r => r.projectId))]
+
+      if (guestProjectIds.length === 0) {
+        // どのプロジェクトにも属さないゲストは自分自身のみ見える
+        visibleUserIds = [ctx.userId]
+      } else {
+        const coMembers = await db
+          .select({ userId: projectMembers.userId })
+          .from(projectMembers)
+          .where(inArray(projectMembers.projectId, guestProjectIds))
+        visibleUserIds = [...new Set([ctx.userId, ...coMembers.map(r => r.userId)])]
+      }
+    }
+
+    // projectCount の集計対象。ゲストは共有プロジェクトのみに限定する。
     const projectCountSq = db
       .select({
         userId: projectMembers.userId,
@@ -29,7 +84,11 @@ export async function GET() {
       })
       .from(projectMembers)
       .innerJoin(projects, eq(projectMembers.projectId, projects.id))
-      .where(eq(projects.workspaceId, ctx.workspaceId))
+      .where(
+        isGuest && guestProjectIds.length > 0
+          ? and(eq(projects.workspaceId, ctx.workspaceId), inArray(projectMembers.projectId, guestProjectIds))
+          : eq(projects.workspaceId, ctx.workspaceId),
+      )
       .groupBy(projectMembers.userId)
       .as('pc')
 
@@ -45,12 +104,19 @@ export async function GET() {
       .from(workspaceMembers)
       .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
       .leftJoin(projectCountSq, eq(projectCountSq.userId, workspaceMembers.userId))
-      .where(eq(workspaceMembers.workspaceId, ctx.workspaceId))
+      .where(
+        isGuest
+          ? and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, visibleUserIds))
+          : eq(workspaceMembers.workspaceId, ctx.workspaceId),
+      )
       .orderBy(profiles.displayName)
+
+    const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
 
     const result: WorkspaceMemberDto[] = rows.map(r => ({
       userId: r.userId,
       displayName: r.displayName,
+      email: emails.get(r.userId) ?? null,
       avatarUrl: r.avatarUrl ?? null,
       role: r.role,
       joinedAt: r.joinedAt.toISOString().slice(0, 10),

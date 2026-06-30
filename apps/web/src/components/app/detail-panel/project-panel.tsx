@@ -1,8 +1,9 @@
 'use client'
 
 import React from 'react'
+import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
+import { Icon, AvatarStack, StatusChip, MountainPhoto, ArchivedBadge } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { PlacePhoto } from '@/app/api/places/photos/route'
 import { ChatTab } from './tabs/chat-tab'
@@ -13,6 +14,7 @@ import { MembersTab } from './tabs/members-tab'
 import { GalleryTab } from './tabs/gallery-tab'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { usePinnedProjects, usePinProject, useUnpinProject } from '@/lib/use-pinned-projects'
+import { useProjectChannels } from '@/lib/chat/client'
 
 
 
@@ -148,10 +150,15 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
   const [editingCover, setEditingCover] = React.useState(false)
   const moreRef = React.useRef<HTMLDivElement>(null)
 
+  const router = useRouter()
   const { data: pinnedProjects = [] } = usePinnedProjects()
   const pinProject = usePinProject()
   const unpinProject = useUnpinProject()
   const isPinned = pinnedProjects.some(p => p.projectId === project.id)
+
+  // このプロジェクトのチャットチャンネルへ遷移するための channelId
+  const { data: projectChannels = [] } = useProjectChannels()
+  const projectChannelId = projectChannels.find(c => c.projectId === project.id)?.channelId
 
   React.useEffect(() => {
     if (!moreOpen) return
@@ -224,7 +231,10 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
             </button>
           ) : (
             <>
-              <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{project.title}</span>
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                {project.title}
+                {project.archived && <ArchivedBadge onDark/>}
+              </span>
               <div ref={moreRef} style={{ position: 'relative' }}>
                 <button
                   onClick={() => { setMoreOpen(v => !v); setEditingCover(false) }}
@@ -273,6 +283,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, opacity: 0.95 }}>
                 <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
+                {project.archived && <ArchivedBadge onDark/>}
                 <span>{formatDateRange(project.startDate, project.endDate)}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                   <Icon name="users" size={11}/> {project.memberCount}人参加
@@ -305,13 +316,19 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
         />
       )}
 
-      {/* PC only: status + avatars + "詳細を開く" */}
+      {/* PC only: status + avatars + "チャットを開く" */}
       {!isMobile && (
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
+          {project.archived && <ArchivedBadge/>}
           <AvatarStack names={project.memberNames} size={22} max={5}/>
-          <button className="btn btn-ghost" style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}>
-            <Icon name="arrowRight" size={11}/> 詳細を開く
+          <button
+            className="btn btn-ghost"
+            style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}
+            disabled={!projectChannelId}
+            onClick={() => projectChannelId && router.push(`/chats/${projectChannelId}`)}
+          >
+            <Icon name="chat" size={11}/> チャットを開く
           </button>
         </div>
       )}
@@ -335,7 +352,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
 
       {/* Tab content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0 }}>
-        {tab === 'chat'     && <ChatTab project={project}/>}
+        {tab === 'chat'     && <ChatTab project={project} {...(isMobile ? { isMobile: true } : {})}/>}
         {tab === 'overview' && <OverviewTab project={project} onDeleted={onClose}/>}
         {tab === 'files'    && <FilesTab projectId={project.id}/>}
         {tab === 'tasks'    && <TasksTab project={project}/>}

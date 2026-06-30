@@ -11,6 +11,7 @@ import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useCommand } from '@/lib/command-registry'
 
 // ---- ソースチップ ----
 
@@ -366,6 +367,23 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     setActiveId(id)
     if (isMobile) setMobilePane('chat')
   }
+
+  // ⌥N: 新規会話
+  useCommand('ctx.create', () => createConversation.mutate())
+
+  // ⌥↑↓（順送り）: 会話履歴（新しい順）を前/次へ
+  const seekConversation = (dir: 'prev' | 'next') => {
+    if (conversations.length === 0) return
+    const ids = conversations.map(c => c.id)
+    const idx = activeId ? ids.indexOf(activeId) : -1
+    const nextIdx = idx === -1
+      ? (dir === 'next' ? 0 : ids.length - 1)
+      : Math.min(Math.max(idx + (dir === 'next' ? 1 : -1), 0), ids.length - 1)
+    const nextId = ids[nextIdx]
+    if (nextId && nextId !== activeId) selectConversation(nextId)
+  }
+  useCommand('seq.prev', () => seekConversation('prev'))
+  useCommand('seq.next', () => seekConversation('next'))
 
 
 

@@ -25,6 +25,8 @@ export const FilterPopover = ({
   onClose,
 }: FilterPopoverProps) => {
   const ref = React.useRef<HTMLDivElement>(null)
+  const totalItems = allStatuses.length + allMembers.length
+  const [focusIndex, setFocusIndex] = React.useState(0)
 
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -36,6 +38,30 @@ export const FilterPopover = ({
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [containerRef, onClose])
+
+  React.useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Escape') { onClose(); return }
+      if (totalItems === 0) return // 未ロード/0件のときは矢印・スペースを無視
+      if (e.code === 'ArrowDown') {
+        e.preventDefault()
+        setFocusIndex(prev => Math.min(prev + 1, totalItems - 1))
+      } else if (e.code === 'ArrowUp') {
+        e.preventDefault()
+        setFocusIndex(prev => Math.max(prev - 1, 0))
+      } else if (e.code === 'Space') {
+        e.preventDefault()
+        if (focusIndex < 0) return // 未選択
+        if (focusIndex < allStatuses.length) {
+          toggleStatus(allStatuses[focusIndex]!.name)
+        } else {
+          toggleMember(allMembers[focusIndex - allStatuses.length]!)
+        }
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [focusIndex, allStatuses, allMembers, totalItems, onClose])
 
   const toggleStatus = (name: string) =>
     onChange(selected.includes(name) ? selected.filter(x => x !== name) : [...selected, name])
@@ -55,14 +81,15 @@ export const FilterPopover = ({
         ステータス
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {allStatuses.map(s => {
+        {allStatuses.map((s, i) => {
           const isChecked = selected.includes(s.name)
+          const focused = i === focusIndex
           return (
             <label
               key={s.id}
-              style={checkRowStyle}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              style={{ ...checkRowStyle, background: focused ? 'var(--card-hover)' : 'transparent' }}
+              onMouseEnter={e => { if (!focused) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+              onMouseLeave={e => { if (!focused) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
               <input
                 type="checkbox"
@@ -83,14 +110,15 @@ export const FilterPopover = ({
             参加者
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {allMembers.map(name => {
+            {allMembers.map((name, i) => {
               const isChecked = selectedMembers.includes(name)
+              const focused = (i + allStatuses.length) === focusIndex
               return (
                 <label
                   key={name}
-                  style={checkRowStyle}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  style={{ ...checkRowStyle, background: focused ? 'var(--card-hover)' : 'transparent' }}
+                  onMouseEnter={e => { if (!focused) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+                  onMouseLeave={e => { if (!focused) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                 >
                   <input
                     type="checkbox"

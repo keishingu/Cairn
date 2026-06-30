@@ -24,6 +24,7 @@ export interface ProjectChannelDto {
   channelName: string
   projectId: string
   projectTitle: string
+  archived: boolean
   unreadCount: number
   unreadMentionCount: number
 }

@@ -13,6 +13,11 @@ import { PageNotifications } from '@/components/app/pages/notifications'
 import { AppShellContext } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { useDetailPanel } from '@/hooks/use-detail-panel'
+import { useCommandDispatcher } from '@/hooks/use-command-dispatcher'
+import { CommandProvider, useCommands } from '@/lib/command-registry'
+import { ShortcutHints } from '@/components/app/shortcut-hints'
+import { CommandPalette } from '@/components/app/command-palette'
+import { ShortcutHelp } from '@/components/app/shortcut-help'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 const PC_STORAGE_KEY = STORAGE_KEYS.projects_view_pc
@@ -29,13 +34,16 @@ function loadStoredView(): ProjectsView {
   return isValidView(saved) ? saved : 'list'
 }
 
-export function PCShell({ children }: { children: React.ReactNode }) {
+function PCShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
 
   const { panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, closePanel } = useDetailPanel()
 
   const [notifOpen, setNotifOpen] = React.useState(false)
+  const [paletteOpen, setPaletteOpen] = React.useState(false)
+  const [helpOpen, setHelpOpen] = React.useState(false)
+  const [crossSearchNonce, setCrossSearchNonce] = React.useState(0)
 
   const handleMemberClick = React.useCallback((userId: string) => {
     openMember(userId)
@@ -88,6 +96,37 @@ export function PCShell({ children }: { children: React.ReactNode }) {
     else router.push(`/${p}`)
   }, [router, setProjectsView])
 
+  // Esc=閉じる: 最前面のオーバーレイ（通知 → 詳細パネル）を1つ閉じる。
+  // Modal（ConfirmDialog や各種作成モーダル）が前面にある時は介入しない。
+  const closeTopOverlay = React.useCallback(() => {
+    if (typeof document !== 'undefined' && document.querySelector('[data-cairn-modal]')) return false
+    if (notifOpen) { setNotifOpen(false); return true }
+    if (panelMember || panelProject) { closePanel(); return true }
+    return false
+  }, [notifOpen, panelMember, panelProject, closePanel])
+
+  // シェルが担うコマンド（ナビ・パレット・ヘルプ・通知・サイドバー・横断検索）
+  useCommands({
+    'nav.projects': () => navigate('projects'),
+    'nav.calendar': () => navigate('calendar'),
+    'nav.kanban': () => navigate('kanban'),
+    'nav.tasks': () => navigate('tasks'),
+    'nav.chats': () => navigate('chats'),
+    'nav.files': () => navigate('files'),
+    'nav.gallery': () => navigate('gallery'),
+    'nav.ai': () => navigate('ai'),
+    'nav.members': () => navigate('members'),
+    'nav.settings': () => navigate('settings'),
+    'app.notifications': () => setNotifOpen(true),
+    'app.toggleSidebar': toggleSidebar,
+    'global.commandPalette': () => setPaletteOpen(true),
+    'global.help': () => setHelpOpen(true),
+    // 横断検索: chats へ遷移し、nonce を増やして chats 画面に検索を開かせる
+    'global.crossSearch': () => { navigate('chats'); setCrossSearchNonce(n => n + 1) },
+  })
+
+  useCommandDispatcher({ page, onEscape: closeTopOverlay })
+
   return (
     <AppShellContext.Provider value={{
       openPanel,
@@ -95,6 +134,8 @@ export function PCShell({ children }: { children: React.ReactNode }) {
       openNotif: () => setNotifOpen(true),
       projectsView,
       setProjectsView,
+      crossSearchNonce,
+      consumeCrossSearch: () => setCrossSearchNonce(0),
     }}>
       <div className="app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
         <NavigationProgress />
@@ -124,7 +165,18 @@ export function PCShell({ children }: { children: React.ReactNode }) {
             </div>
           </main>
         </div>
+        <ShortcutHints page={page} />
+        {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} page={page} />}
+        {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
       </div>
     </AppShellContext.Provider>
+  )
+}
+
+export function PCShell({ children }: { children: React.ReactNode }) {
+  return (
+    <CommandProvider>
+      <PCShellInner>{children}</PCShellInner>
+    </CommandProvider>
   )
 }

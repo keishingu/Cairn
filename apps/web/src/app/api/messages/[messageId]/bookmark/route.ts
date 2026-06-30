@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess } from '@/lib/permissions'
 
 type RouteContext = { params: Promise<{ messageId: string }> }
 
@@ -13,13 +14,14 @@ export async function POST(_req: Request, { params }: RouteContext) {
   if (authError) return authError
 
   try {
-    const { db, messageBookmarks, messages, channels, channelMembers } = await import('@cairn/db')
+    const { db, messageBookmarks, messages, channels } = await import('@cairn/db')
     const { and, eq } = await import('drizzle-orm')
 
     // 閲覧権限のないメッセージをブックマークできないよう、対象メッセージの可視性を確認する。
-    // ワークスペース外、または未参加のプライベートチャンネルは存在を秘匿して 404 を返す
+    // DM は isPrivate=false でも channel_members 参加者限定のため、requireChannelAccess で
+    // プライベート/DM/ゲストの判定をまとめて行う（個別実装すると DM の判定漏れにつながる）
     const [msg] = await db
-      .select({ channelId: channels.id, isPrivate: channels.isPrivate, workspaceId: channels.workspaceId })
+      .select({ channelId: channels.id, workspaceId: channels.workspaceId })
       .from(messages)
       .innerJoin(channels, eq(messages.channelId, channels.id))
       .where(eq(messages.id, messageId))
@@ -29,15 +31,9 @@ export async function POST(_req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 })
     }
 
-    if (msg.isPrivate) {
-      const [membership] = await db
-        .select({ userId: channelMembers.userId })
-        .from(channelMembers)
-        .where(and(eq(channelMembers.channelId, msg.channelId), eq(channelMembers.userId, ctx.userId)))
-        .limit(1)
-      if (!membership) {
-        return NextResponse.json({ error: 'Message not found' }, { status: 404 })
-      }
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, msg.channelId)
+    if (forbidden) {
+      return NextResponse.json({ error: 'Message not found' }, { status: 404 })
     }
 
     const [existing] = await db

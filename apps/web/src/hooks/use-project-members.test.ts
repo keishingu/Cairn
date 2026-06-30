@@ -25,13 +25,13 @@ function makeWrapper() {
 }
 
 const STUB_MEMBERS: ProjectMemberDto[] = [
-  { userId: 'u1', displayName: 'Alice', avatarUrl: null, role: 'leader', attendance: 'attending', addedAt: '2026-01-01' },
-  { userId: 'u2', displayName: 'Bob', avatarUrl: null, role: 'member', attendance: 'attending', addedAt: '2026-01-02' },
+  { userId: 'u1', displayName: 'Alice', email: 'alice@example.com', avatarUrl: null, role: 'leader', attendance: 'attending', addedAt: '2026-01-01' },
+  { userId: 'u2', displayName: 'Bob', email: 'bob@example.com', avatarUrl: null, role: 'member', attendance: 'attending', addedAt: '2026-01-02' },
 ]
 
 const STUB_WS_MEMBERS: WorkspaceMemberDto[] = [
-  { userId: 'u1', displayName: 'Alice', avatarUrl: null, role: 'owner', joinedAt: '2026-01-01', projectCount: 1 },
-  { userId: 'u3', displayName: 'Carol', avatarUrl: null, role: 'member', joinedAt: '2026-01-03', projectCount: 0 },
+  { userId: 'u1', displayName: 'Alice', email: 'alice@example.com', avatarUrl: null, role: 'owner', joinedAt: '2026-01-01', projectCount: 1 },
+  { userId: 'u3', displayName: 'Carol', email: 'carol@example.com', avatarUrl: null, role: 'member', joinedAt: '2026-01-03', projectCount: 0 },
 ]
 
 describe('useProjectMembers', () => {
@@ -69,13 +69,13 @@ describe('useAddProjectMember', () => {
   beforeEach(() => { mockFetch.mockClear() })
 
   it('メンバーを追加してキャッシュに追記する', async () => {
-    const newMember: ProjectMemberDto = { userId: 'u3', displayName: 'Carol', avatarUrl: null, role: 'member', attendance: 'attending', addedAt: '2026-01-03' }
-    mockFetch.mockResolvedValue(new Response(JSON.stringify(newMember), { status: 200 }))
+    const newMember: ProjectMemberDto = { userId: 'u3', displayName: 'Carol', email: 'carol@example.com', avatarUrl: null, role: 'member', attendance: 'attending', addedAt: '2026-01-03' }
+    mockFetch.mockResolvedValue(new Response(JSON.stringify([newMember]), { status: 200 }))
     const { wrapper, queryClient } = makeWrapper()
     queryClient.setQueryData(['project-members', 'p1'], STUB_MEMBERS)
 
     const { result } = renderHook(() => useAddProjectMember('p1'), { wrapper })
-    act(() => { result.current.mutate({ userId: 'u3', role: 'member' }) })
+    act(() => { result.current.mutate({ userIds: ['u3'], role: 'member' }) })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     expect(mockFetch).toHaveBeenCalledWith(
@@ -92,7 +92,7 @@ describe('useAddProjectMember', () => {
     )
     const { wrapper } = makeWrapper()
     const { result } = renderHook(() => useAddProjectMember('p1'), { wrapper })
-    act(() => { result.current.mutate({ userId: 'u3', role: 'member' }) })
+    act(() => { result.current.mutate({ userIds: ['u3'], role: 'member' }) })
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(result.current.error?.message).toBe('追加エラー')
   })

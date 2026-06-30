@@ -25,7 +25,8 @@ export async function GET(_req: Request) {
     const { messageBookmarks, messages, channels, channelMembers, profiles, workspaceMembers, projects } = await import('@cairn/db')
     const { eq, isNull, and, or, exists, desc, sql } = await import('drizzle-orm')
 
-    // プライベートチャンネルは現在もメンバーである場合のみ表示する（アクセスを失った後のブックマーク内容漏洩を防ぐ）
+    // プライベートチャンネル・DM は現在もメンバーである場合のみ表示する（アクセスを失った後のブックマーク内容漏洩を防ぐ）。
+    // DM は isPrivate=false でも channel_members 参加者限定のチャンネルのため、type も判定に含める
     const memberSubquery = db
       .select({ one: sql<number>`1` })
       .from(channelMembers)
@@ -56,7 +57,7 @@ export async function GET(_req: Request) {
         eq(channels.workspaceId, ctx.workspaceId),
         isNull(messages.deletedAt),
         or(
-          eq(channels.isPrivate, false),
+          and(eq(channels.isPrivate, false), sql`${channels.type} <> 'dm'`),
           exists(memberSubquery),
         ),
       ))

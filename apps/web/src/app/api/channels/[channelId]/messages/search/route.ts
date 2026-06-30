@@ -3,6 +3,8 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess } from '@/lib/permissions'
+import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
 import type { MessageDto } from '../route'
 
 type RouteContext = { params: Promise<{ channelId: string }> }
@@ -15,31 +17,14 @@ export async function GET(req: Request, { params }: RouteContext) {
   const q = new URL(req.url).searchParams.get('q')?.trim() ?? ''
   if (!q) return NextResponse.json([] satisfies MessageDto[])
 
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  if (forbidden) return forbidden
+
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, messages, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, ne, isNull, and, ilike } = await import('drizzle-orm')
+    const { messages, profiles, workspaceMembers } = await import('@cairn/db')
+    const { eq, ne, isNull, and, ilike, inArray } = await import('drizzle-orm')
     const { desc } = await import('drizzle-orm')
-
-    // チャンネルがこのワークスペースに属するか確認
-    const [channel] = await db
-      .select({ id: channels.id, isPrivate: channels.isPrivate })
-      .from(channels)
-      .where(and(eq(channels.id, channelId), eq(channels.workspaceId, ctx.workspaceId)))
-      .limit(1)
-
-    if (!channel) return NextResponse.json([] satisfies MessageDto[], { status: 403 })
-
-    // プライベートチャンネルはメンバーのみアクセス可
-    if (channel.isPrivate) {
-      const [membership] = await db
-        .select({ userId: channelMembers.userId })
-        .from(channelMembers)
-        .where(and(eq(channelMembers.channelId, channelId), eq(channelMembers.userId, ctx.userId)))
-        .limit(1)
-
-      if (!membership) return NextResponse.json([] satisfies MessageDto[], { status: 403 })
-    }
 
     const rows = await db
       .select({
@@ -67,9 +52,20 @@ export async function GET(req: Request, { params }: RouteContext) {
       .orderBy(desc(messages.createdAt))
       .limit(50)
 
+    // メンションを現在の表示名へ解決（保存値は名前なしの canonical 形式のため）
+    const mentionIds = [...new Set(rows.flatMap(r => extractMentionIds(r.content)))]
+    const nameMap = new Map<string, string>()
+    if (mentionIds.length > 0) {
+      const profileRows = await db
+        .select({ id: profiles.id, displayName: profiles.displayName })
+        .from(profiles)
+        .where(inArray(profiles.id, mentionIds))
+      for (const p of profileRows) nameMap.set(p.id, p.displayName)
+    }
+
     const result: MessageDto[] = rows.map(r => ({
       id: r.id,
-      content: r.content,
+      content: hydrateMentions(r.content, id => nameMap.get(id)),
       messageType: r.messageType,
       senderId: r.senderId,
       senderName: r.senderName,
