@@ -80,7 +80,13 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const b = body as { displayName?: string; bio?: string | null; status?: UserStatus; statusMessage?: string | null }
+  const b = body as {
+    displayName?: string
+    bio?: string | null
+    status?: UserStatus
+    statusMessage?: string | null
+    auto?: boolean
+  }
   const hasDisplayName = b.displayName !== undefined
   const hasBio = 'bio' in (b as object)
   const hasStatus = b.status !== undefined
@@ -111,6 +117,17 @@ export async function PATCH(req: Request) {
     }
 
     if (hasStatus || hasStatusMessage) {
+      if (hasStatus && b.auto) {
+        const [currentMember] = await db
+          .select({ status: workspaceMembers.status })
+          .from(workspaceMembers)
+          .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+
+        if (currentMember?.status === 'away' || currentMember?.status === 'busy') {
+          return NextResponse.json({ id: ctx.userId, status: currentMember.status })
+        }
+      }
+
       const set: { status?: UserStatus; statusMessage?: string | null } = {}
       if (hasStatus) set.status = b.status!
       if (hasStatusMessage) set.statusMessage = b.statusMessage?.trim() || null

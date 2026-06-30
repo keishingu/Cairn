@@ -32,7 +32,7 @@ export function AutoPresenceSync() {
         method: 'PATCH',
         headers,
         ...(keepalive !== undefined ? { keepalive } : {}),
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, auto: true }),
       } satisfies RequestInit
       const res = keepalive
         ? await fetch('/api/me', { ...requestInit, credentials: 'same-origin' })
