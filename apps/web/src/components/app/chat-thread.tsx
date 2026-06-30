@@ -23,6 +23,7 @@ import {
   useCurrentUser,
   useDeleteMessage,
   useEditMessage,
+  useEnsureMessageLoaded,
   useMarkChannelRead,
   useSendChannelMessage,
   useToggleBookmark,
@@ -961,6 +962,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const markChannelRead = useMarkChannelRead()
   const markChannelReadFn = markChannelRead.mutate
   const lastReadMessageIdRef = React.useRef<string | null>(null)
+  const ensureMessageLoaded = useEnsureMessageLoaded(channelId)
 
   // 表示中チャンネルに新着が届いたら自動で既読化する。
   // 開いて読んでいるのにバッジが増え続ける問題への対処。タブ非表示時は既読にしない
@@ -1110,10 +1112,13 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     setHighlightId(null)
   }, [channelId])
 
-  // 親（PageChat）からの targetMessageId（パーマリンク・検索）を内部のハイライト状態へ取り込む
+  // 親（PageChat）からの targetMessageId（パーマリンク・ブックマーク・検索）を内部のハイライト状態へ取り込む。
+  // 直近100件の外にある古いメッセージの場合は、前後ウィンドウを取得してキャッシュへマージする
   React.useEffect(() => {
-    if (targetMessageId) setHighlightId(targetMessageId)
-  }, [targetMessageId])
+    if (!targetMessageId) return
+    setHighlightId(targetMessageId)
+    void ensureMessageLoaded(targetMessageId)
+  }, [targetMessageId, ensureMessageLoaded])
 
   React.useEffect(() => {
     if (!highlightId || isLoading || !scrollRef.current) return

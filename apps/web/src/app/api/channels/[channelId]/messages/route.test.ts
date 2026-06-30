@@ -17,6 +17,9 @@ const {
   mockInArray,
   mockAnd,
   mockDesc,
+  mockAsc,
+  mockLte,
+  mockGt,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -27,6 +30,9 @@ const {
   mockInArray: vi.fn(() => Symbol('inArray')),
   mockAnd: vi.fn(() => Symbol('and')),
   mockDesc: vi.fn(() => Symbol('desc')),
+  mockAsc: vi.fn(() => Symbol('asc')),
+  mockLte: vi.fn(() => Symbol('lte')),
+  mockGt: vi.fn(() => Symbol('gt')),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -86,6 +92,9 @@ vi.mock('drizzle-orm', () => ({
   inArray: mockInArray,
   and: mockAnd,
   desc: mockDesc,
+  asc: mockAsc,
+  lte: mockLte,
+  gt: mockGt,
 }))
 
 function ctxRouteParams() {

@@ -44,7 +44,7 @@ export interface MessageDto {
 
 type RouteContext = { params: Promise<{ channelId: string }> }
 
-export async function GET(_req: Request, { params }: RouteContext) {
+export async function GET(req: Request, { params }: RouteContext) {
   const { channelId } = await params
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
@@ -52,37 +52,96 @@ export async function GET(_req: Request, { params }: RouteContext) {
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
   if (forbidden) return forbidden
 
+  // ブックマーク・パーマリンクから開いた古いメッセージが直近100件の外にある場合、
+  // その前後を中心としたウィンドウを取得する（無いと該当メッセージが読み込まれず、
+  // ジャンプ先がスクロール表示されないまま静かに失敗する）
+  const aroundMessageId = new URL(req.url).searchParams.get('around')
+
   try {
     const { db } = await import('@cairn/db')
     const { messages, profiles, messageReactions, messageAttachments, messageBookmarks, files } = await import('@cairn/db')
-    const { eq, isNull, inArray, and } = await import('drizzle-orm')
-    const { desc } = await import('drizzle-orm')
+    const { eq, isNull, inArray, and, lte, gt } = await import('drizzle-orm')
+    const { desc, asc } = await import('drizzle-orm')
 
     const { workspaceMembers } = await import('@cairn/db')
 
-    const rows = await db
-      .select({
-        id: messages.id,
-        content: messages.content,
-        messageType: messages.messageType,
-        parentMessageId: messages.parentMessageId,
-        senderId: messages.senderId,
-        senderName: profiles.displayName,
-        senderAvatarUrl: workspaceMembers.avatarUrl,
-        createdAt: messages.createdAt,
-        updatedAt: messages.updatedAt,
-      })
-      .from(messages)
-      .innerJoin(profiles, eq(messages.senderId, profiles.id))
-      .leftJoin(
-        workspaceMembers,
-        and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
-      )
-      .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
-      .orderBy(desc(messages.createdAt))
-      .limit(100)
+    const selectFields = {
+      id: messages.id,
+      content: messages.content,
+      messageType: messages.messageType,
+      parentMessageId: messages.parentMessageId,
+      senderId: messages.senderId,
+      senderName: profiles.displayName,
+      senderAvatarUrl: workspaceMembers.avatarUrl,
+      createdAt: messages.createdAt,
+      updatedAt: messages.updatedAt,
+    }
 
-    rows.reverse()
+    let rows: Array<{
+      id: string
+      content: string
+      messageType: MessageType
+      parentMessageId: string | null
+      senderId: string
+      senderName: string
+      senderAvatarUrl: string | null
+      createdAt: Date
+      updatedAt: Date
+    }>
+
+    if (aroundMessageId) {
+      const [anchor] = await db
+        .select({ createdAt: messages.createdAt })
+        .from(messages)
+        .where(and(eq(messages.id, aroundMessageId), eq(messages.channelId, channelId), isNull(messages.deletedAt)))
+        .limit(1)
+
+      if (!anchor) {
+        return NextResponse.json([] satisfies MessageDto[])
+      }
+
+      const [beforeAndAnchor, after] = await Promise.all([
+        db
+          .select(selectFields)
+          .from(messages)
+          .innerJoin(profiles, eq(messages.senderId, profiles.id))
+          .leftJoin(
+            workspaceMembers,
+            and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+          )
+          .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt), lte(messages.createdAt, anchor.createdAt)))
+          .orderBy(desc(messages.createdAt))
+          .limit(50),
+        db
+          .select(selectFields)
+          .from(messages)
+          .innerJoin(profiles, eq(messages.senderId, profiles.id))
+          .leftJoin(
+            workspaceMembers,
+            and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+          )
+          .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt), gt(messages.createdAt, anchor.createdAt)))
+          .orderBy(asc(messages.createdAt))
+          .limit(50),
+      ])
+
+      beforeAndAnchor.reverse()
+      rows = [...beforeAndAnchor, ...after]
+    } else {
+      rows = await db
+        .select(selectFields)
+        .from(messages)
+        .innerJoin(profiles, eq(messages.senderId, profiles.id))
+        .leftJoin(
+          workspaceMembers,
+          and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+        )
+        .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
+        .orderBy(desc(messages.createdAt))
+        .limit(100)
+
+      rows.reverse()
+    }
 
     const messageIds = rows.map(r => r.id)
     // 引用返信の参照先（表示中の100件の外にある可能性があるので別クエリで取得）

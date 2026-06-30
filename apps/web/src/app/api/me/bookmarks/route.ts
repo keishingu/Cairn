@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { getWorkspaceMemberRole } from '@/lib/permissions'
 
 export interface BookmarkDto {
   id: string
@@ -22,7 +23,7 @@ export async function GET(_req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messageBookmarks, messages, channels, channelMembers, profiles, workspaceMembers, projects } = await import('@cairn/db')
+    const { messageBookmarks, messages, channels, channelMembers, profiles, workspaceMembers, projects, projectMembers } = await import('@cairn/db')
     const { eq, isNull, and, or, exists, desc, sql } = await import('drizzle-orm')
 
     // プライベートチャンネル・DM は現在もメンバーである場合のみ表示する（アクセスを失った後のブックマーク内容漏洩を防ぐ）。
@@ -31,6 +32,20 @@ export async function GET(_req: Request) {
       .select({ one: sql<number>`1` })
       .from(channelMembers)
       .where(and(eq(channelMembers.channelId, channels.id), eq(channelMembers.userId, ctx.userId)))
+
+    // ゲストは参加プロジェクトのチャンネルのみ閲覧可能（requireChannelAccess と同じ制約）。
+    // プロジェクトから外れた後もブックマーク経由でメッセージが見えてしまうのを防ぐ
+    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const projectMemberSubquery = db
+      .select({ one: sql<number>`1` })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, channels.projectId), eq(projectMembers.userId, ctx.userId)))
+    const nonPrivateVisible = role === 'guest'
+      ? and(eq(channels.isPrivate, false), sql`${channels.type} <> 'dm'`, or(
+          sql`${channels.type} <> 'project'`,
+          exists(projectMemberSubquery),
+        ))
+      : and(eq(channels.isPrivate, false), sql`${channels.type} <> 'dm'`)
 
     const rows = await db
       .select({
@@ -57,7 +72,7 @@ export async function GET(_req: Request) {
         eq(channels.workspaceId, ctx.workspaceId),
         isNull(messages.deletedAt),
         or(
-          and(eq(channels.isPrivate, false), sql`${channels.type} <> 'dm'`),
+          nonPrivateVisible,
           exists(memberSubquery),
         ),
       ))

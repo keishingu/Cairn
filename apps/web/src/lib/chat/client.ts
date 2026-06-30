@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { generateId } from '@/lib/generate-id'
@@ -104,6 +105,13 @@ async function createDm(targetUserId: string): Promise<{ id: string }> {
 
 async function fetchChannelMessages(channelId: string): Promise<MessageDto[]> {
   const res = await fetchWithAuth(`/api/channels/${channelId}/messages`)
+  if (!res.ok) throw new Error('メッセージの取得に失敗しました')
+  return res.json()
+}
+
+// ブックマーク・パーマリンクのジャンプ先が直近100件の外にある場合に、その前後のウィンドウを取得する
+async function fetchChannelMessagesAround(channelId: string, messageId: string): Promise<MessageDto[]> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}/messages?around=${messageId}`)
   if (!res.ok) throw new Error('メッセージの取得に失敗しました')
   return res.json()
 }
@@ -264,6 +272,29 @@ export function useChannelMessages(channelId: string | null) {
     queryFn: () => fetchChannelMessages(channelId!),
     enabled: !!channelId,
   })
+}
+
+// 既存のキャッシュに無い古いメッセージ（ブックマーク・パーマリンクのジャンプ先）を
+// 前後のウィンドウごと取得してキャッシュへマージする。直近100件の外にあるメッセージへ
+// ジャンプしても表示されず静かに失敗する問題への対処
+export function useEnsureMessageLoaded(channelId: string | null) {
+  const queryClient = useQueryClient()
+  return React.useCallback(async (messageId: string) => {
+    if (!channelId) return
+    const current = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
+    if (current?.some(m => m.id === messageId)) return
+    try {
+      const windowMessages = await fetchChannelMessagesAround(channelId, messageId)
+      if (windowMessages.length === 0) return
+      queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), prev => {
+        const merged = new Map((prev ?? []).map(m => [m.id, m]))
+        for (const m of windowMessages) merged.set(m.id, m)
+        return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      })
+    } catch {
+      // サイレントに失敗（ハイライト・スクロールされないだけで致命的ではない）
+    }
+  }, [channelId, queryClient])
 }
 
 export function useSendChannelMessage(
