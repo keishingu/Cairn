@@ -352,7 +352,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
 
       {/* Tab content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0 }}>
-        {tab === 'chat'     && <ChatTab project={project}/>}
+        {tab === 'chat'     && <ChatTab project={project} {...(isMobile ? { isMobile: true } : {})}/>}
         {tab === 'overview' && <OverviewTab project={project} onDeleted={onClose}/>}
         {tab === 'files'    && <FilesTab projectId={project.id}/>}
         {tab === 'tasks'    && <TasksTab project={project}/>}
