@@ -486,10 +486,12 @@ export function useAutoPresence({
       if (isWindowActive()) {
         if (options?.keepalive && readCurrentPresence) {
           const currentPresence = await readCurrentPresence()
-          observePresence?.(currentPresence)
-          applyPresenceSnapshot(currentPresence)
-          if (currentPresence.status === 'offline' && currentPresence.auto !== true) {
-            return
+          if (currentPresence) {
+            observePresence?.(currentPresence)
+            applyPresenceSnapshot(currentPresence)
+            if (currentPresence.status === 'offline' && currentPresence.auto !== true) {
+              return
+            }
           }
         }
         await restoreOnlineIfWindowActive()
