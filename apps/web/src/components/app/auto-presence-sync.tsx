@@ -47,6 +47,7 @@ export function AutoPresenceSync() {
 
   useAutoPresence({
     status: me?.status,
+    workspaceId: workspace?.id ?? null,
     updateStatus: async (status, options) => {
       try {
         await statusMutation.mutateAsync({

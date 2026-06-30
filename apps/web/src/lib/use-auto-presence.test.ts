@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { recordManualPresenceStatus, useAutoPresence } from './use-auto-presence'
 
 const TAB_ACTIVITY_STORAGE_KEY = 'cairn:auto-presence:tabs'
+const DEFAULT_WORKSPACE_ID = 'ws-1'
 
 function setVisibilityState(value: DocumentVisibilityState) {
   Object.defineProperty(document, 'visibilityState', {
@@ -29,7 +30,7 @@ describe('useAutoPresence', () => {
     setHasFocus(true)
     const updateStatus = vi.fn().mockResolvedValue(true)
 
-    renderHook(() => useAutoPresence({ status: 'online', updateStatus }))
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
     await waitFor(() => {
       expect(updateStatus).not.toHaveBeenCalled()
@@ -49,7 +50,7 @@ describe('useAutoPresence', () => {
     setHasFocus(true)
     const updateStatus = vi.fn().mockResolvedValue(true)
 
-    renderHook(() => useAutoPresence({ status: 'online', updateStatus }))
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
     await waitFor(() => {
       expect(updateStatus).not.toHaveBeenCalled()
@@ -68,13 +69,13 @@ describe('useAutoPresence', () => {
 
   it('他のタブがアクティブなら hidden になっても offline を送らない', async () => {
     localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify({
-      other: { active: true, updatedAt: Date.now() },
+      other: { active: true, updatedAt: Date.now(), workspaceId: DEFAULT_WORKSPACE_ID },
     }))
     setVisibilityState('hidden')
     setHasFocus(false)
     const updateStatus = vi.fn().mockResolvedValue(true)
 
-    renderHook(() => useAutoPresence({ status: 'online', updateStatus }))
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
     act(() => {
       document.dispatchEvent(new Event('visibilitychange'))
@@ -87,13 +88,13 @@ describe('useAutoPresence', () => {
 
   it('他のタブがアクティブなら pagehide でも offline を送らない', async () => {
     localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify({
-      other: { active: true, updatedAt: Date.now() },
+      other: { active: true, updatedAt: Date.now(), workspaceId: DEFAULT_WORKSPACE_ID },
     }))
     setVisibilityState('visible')
     setHasFocus(true)
     const updateStatus = vi.fn().mockResolvedValue(true)
 
-    renderHook(() => useAutoPresence({ status: 'online', updateStatus }))
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
     act(() => {
       window.dispatchEvent(new Event('pagehide'))
@@ -136,7 +137,7 @@ describe('useAutoPresence', () => {
     setHasFocus(false)
     const updateStatus = vi.fn().mockResolvedValue(true)
 
-    renderHook(() => useAutoPresence({ status: 'busy', updateStatus }))
+    renderHook(() => useAutoPresence({ status: 'busy', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
     act(() => {
       document.dispatchEvent(new Event('visibilitychange'))
@@ -155,7 +156,7 @@ describe('useAutoPresence', () => {
     recordManualPresenceStatus('offline')
     const updateStatus = vi.fn().mockResolvedValue(true)
 
-    renderHook(() => useAutoPresence({ status: 'offline', updateStatus }))
+    renderHook(() => useAutoPresence({ status: 'offline', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
     act(() => {
       window.dispatchEvent(new Event('focus'))
@@ -172,7 +173,7 @@ describe('useAutoPresence', () => {
     recordManualPresenceStatus('busy')
     const updateStatus = vi.fn().mockResolvedValue(true)
 
-    renderHook(() => useAutoPresence({ status: 'online', updateStatus }))
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
     act(() => {
       document.dispatchEvent(new Event('visibilitychange'))
@@ -191,7 +192,7 @@ describe('useAutoPresence', () => {
     recordManualPresenceStatus('away')
     const updateStatus = vi.fn().mockResolvedValue(true)
 
-    renderHook(() => useAutoPresence({ status: 'online', updateStatus }))
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
     act(() => {
       window.dispatchEvent(new Event('focus'))
@@ -202,5 +203,49 @@ describe('useAutoPresence', () => {
     await waitFor(() => {
       expect(updateStatus).not.toHaveBeenCalled()
     })
+  })
+
+  it('別ワークスペースのアクティブタブでは offline 抑止しない', async () => {
+    localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify({
+      other: { active: true, updatedAt: Date.now(), workspaceId: 'ws-2' },
+    }))
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    const updateStatus = vi.fn().mockResolvedValue(true)
+
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenCalledWith('offline', undefined)
+    })
+  })
+
+  it('可視タブは heartbeat で active 記録を更新し続ける', async () => {
+    vi.useFakeTimers()
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const updateStatus = vi.fn().mockResolvedValue(true)
+
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
+
+    const initial = JSON.parse(localStorage.getItem(TAB_ACTIVITY_STORAGE_KEY) ?? '{}') as Record<string, { updatedAt: number }>
+    const [tabId] = Object.keys(initial)
+    expect(tabId).toBeDefined()
+    if (!tabId) {
+      return
+    }
+    const firstUpdatedAt = initial[tabId]?.updatedAt
+
+    act(() => {
+      vi.advanceTimersByTime(10_000)
+    })
+
+    const next = JSON.parse(localStorage.getItem(TAB_ACTIVITY_STORAGE_KEY) ?? '{}') as Record<string, { updatedAt: number }>
+    expect(next[tabId]?.updatedAt).toBeGreaterThan(firstUpdatedAt)
+    vi.useRealTimers()
   })
 })

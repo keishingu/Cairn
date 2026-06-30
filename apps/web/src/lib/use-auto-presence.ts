@@ -4,11 +4,12 @@ import React from 'react'
 import type { UserStatus } from '@/lib/user-status'
 
 type AutoPresenceStatus = Extract<UserStatus, 'online' | 'offline'>
-type TabActivityMap = Record<string, { active: boolean; updatedAt: number }>
+type TabActivityMap = Record<string, { active: boolean; updatedAt: number; workspaceId: string | null }>
 type PresenceIntent = { status: UserStatus; source: 'auto' | 'manual' }
 
 const TAB_ACTIVITY_STORAGE_KEY = 'cairn:auto-presence:tabs'
 const TAB_ACTIVITY_TTL_MS = 30_000
+const TAB_ACTIVITY_HEARTBEAT_MS = 10_000
 const PRESENCE_INTENT_STORAGE_KEY = 'cairn:auto-presence:intent'
 
 interface UpdateStatusOptions {
@@ -17,6 +18,7 @@ interface UpdateStatusOptions {
 
 interface UseAutoPresenceOptions {
   status: UserStatus | undefined
+  workspaceId?: string | null
   updateStatus: (status: AutoPresenceStatus, options?: UpdateStatusOptions) => Promise<boolean>
 }
 
@@ -49,7 +51,7 @@ export function recordManualPresenceStatus(status: UserStatus) {
   writePresenceIntent({ status, source: 'manual' })
 }
 
-export function useAutoPresence({ status, updateStatus }: UseAutoPresenceOptions) {
+export function useAutoPresence({ status, workspaceId = null, updateStatus }: UseAutoPresenceOptions) {
   const lastSentRef = React.useRef<AutoPresenceStatus | null>(null)
   const tabIdRef = React.useRef<string | null>(null)
 
@@ -95,7 +97,7 @@ export function useAutoPresence({ status, updateStatus }: UseAutoPresenceOptions
   const setCurrentTabActive = React.useEffectEvent((active: boolean) => {
     const tabId = getTabId()
     const nextRecords = readTabActivity()
-    nextRecords[tabId] = { active, updatedAt: Date.now() }
+    nextRecords[tabId] = { active, updatedAt: Date.now(), workspaceId }
     writeTabActivity(nextRecords)
     return nextRecords
   })
@@ -110,7 +112,9 @@ export function useAutoPresence({ status, updateStatus }: UseAutoPresenceOptions
 
   const hasAnotherActiveTab = React.useEffectEvent((records: TabActivityMap) => {
     const tabId = getTabId()
-    return Object.entries(records).some(([candidateId, entry]) => candidateId !== tabId && entry.active)
+    return Object.entries(records).some(([candidateId, entry]) => {
+      return candidateId !== tabId && entry.active && entry.workspaceId === workspaceId
+    })
   })
 
   const syncStatus = React.useEffectEvent(async (nextStatus: AutoPresenceStatus, options?: UpdateStatusOptions) => {
@@ -154,6 +158,13 @@ export function useAutoPresence({ status, updateStatus }: UseAutoPresenceOptions
     if (status === undefined) return
 
     syncFromWindowState()
+    const heartbeatId = window.setInterval(() => {
+      const isVisible = document.visibilityState === 'visible'
+      const hasFocus = typeof document.hasFocus === 'function' ? document.hasFocus() : true
+      if (isVisible && hasFocus) {
+        setCurrentTabActive(true)
+      }
+    }, TAB_ACTIVITY_HEARTBEAT_MS)
 
     const goOnline = () => {
       setCurrentTabActive(true)
@@ -182,6 +193,7 @@ export function useAutoPresence({ status, updateStatus }: UseAutoPresenceOptions
       window.removeEventListener('pagehide', goOffline)
       window.removeEventListener('pointerdown', goOnline)
       window.removeEventListener('keydown', goOnline)
+      window.clearInterval(heartbeatId)
       clearCurrentTab()
     }
   }, [status, clearCurrentTab, hasAnotherActiveTab, setCurrentTabActive, syncFromWindowState, syncStatus])
