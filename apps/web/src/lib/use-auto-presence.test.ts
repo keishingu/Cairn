@@ -153,7 +153,7 @@ describe('useAutoPresence', () => {
   it('手動で offline を選んでいる間は visible でも online に戻さない', async () => {
     setVisibilityState('visible')
     setHasFocus(true)
-    recordManualPresenceStatus('offline')
+    recordManualPresenceStatus('offline', DEFAULT_WORKSPACE_ID)
     const updateStatus = vi.fn().mockResolvedValue(true)
 
     renderHook(() => useAutoPresence({ status: 'offline', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
@@ -170,7 +170,7 @@ describe('useAutoPresence', () => {
   it('別タブで手動 busy を選んでいる間は stale な online 状態でも自動更新しない', async () => {
     setVisibilityState('hidden')
     setHasFocus(false)
-    recordManualPresenceStatus('busy')
+    recordManualPresenceStatus('busy', DEFAULT_WORKSPACE_ID)
     const updateStatus = vi.fn().mockResolvedValue(true)
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
@@ -189,7 +189,7 @@ describe('useAutoPresence', () => {
   it('別タブで手動 away を選んでいる間は stale な online 状態でも自動更新しない', async () => {
     setVisibilityState('visible')
     setHasFocus(true)
-    recordManualPresenceStatus('away')
+    recordManualPresenceStatus('away', DEFAULT_WORKSPACE_ID)
     const updateStatus = vi.fn().mockResolvedValue(true)
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
@@ -224,6 +224,23 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('別ワークスペースの manual intent では current workspace の offline を抑止しない', async () => {
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    recordManualPresenceStatus('busy', 'ws-2')
+    const updateStatus = vi.fn().mockResolvedValue(true)
+
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenCalledWith('offline', undefined)
+    })
+  })
+
   it('可視タブは heartbeat で active 記録を更新し続ける', async () => {
     vi.useFakeTimers()
     setVisibilityState('visible')
@@ -236,16 +253,22 @@ describe('useAutoPresence', () => {
     const [tabId] = Object.keys(initial)
     expect(tabId).toBeDefined()
     if (!tabId) {
+      vi.useRealTimers()
       return
     }
     const firstUpdatedAt = initial[tabId]?.updatedAt
+    expect(firstUpdatedAt).toBeDefined()
+    if (firstUpdatedAt === undefined) {
+      vi.useRealTimers()
+      return
+    }
 
     act(() => {
       vi.advanceTimersByTime(10_000)
     })
 
     const next = JSON.parse(localStorage.getItem(TAB_ACTIVITY_STORAGE_KEY) ?? '{}') as Record<string, { updatedAt: number }>
-    expect(next[tabId]?.updatedAt).toBeGreaterThan(firstUpdatedAt)
+    expect(next[tabId]?.updatedAt ?? 0).toBeGreaterThan(firstUpdatedAt)
     vi.useRealTimers()
   })
 })

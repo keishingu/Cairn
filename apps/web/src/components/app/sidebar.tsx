@@ -569,6 +569,11 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
     queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
     staleTime: 60_000,
   })
+  const { data: workspace } = useQuery<WorkspaceDto>({
+    queryKey: ['workspace'],
+    queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
+    staleTime: 60_000,
+  })
   const displayName = me?.displayName ?? '…'
 
   const statusMutation = useMutation({
@@ -649,7 +654,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
         <button
           key={opt.value}
           onClick={() => {
-            recordManualPresenceStatus(opt.value)
+            recordManualPresenceStatus(opt.value, workspace?.id ?? null)
             statusMutation.mutate({ status: opt.value })
           }}
           style={{

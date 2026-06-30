@@ -28,12 +28,15 @@ export function AutoPresenceSync() {
       if (workspace?.id) {
         headers.set(WORKSPACE_HEADER, workspace.id)
       }
-      const res = await fetchWithAuth('/api/me', {
+      const requestInit = {
         method: 'PATCH',
         headers,
         ...(keepalive !== undefined ? { keepalive } : {}),
         body: JSON.stringify({ status }),
-      })
+      } satisfies RequestInit
+      const res = keepalive
+        ? await fetch('/api/me', { ...requestInit, credentials: 'same-origin' })
+        : await fetchWithAuth('/api/me', requestInit)
       if (!res.ok) {
         const d = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(d.error ?? 'ステータスの更新に失敗しました')
