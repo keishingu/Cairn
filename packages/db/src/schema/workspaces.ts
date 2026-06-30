@@ -52,6 +52,7 @@ export const workspaceMembers = pgTable(
     role: workspaceRoleEnum('role').notNull().default('member'),
     avatarUrl: text('avatar_url'),
     status: userStatusEnum('status').notNull().default('online'),
+    statusAuto: boolean('status_auto').notNull().default(false),
     statusMessage: text('status_message'),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },

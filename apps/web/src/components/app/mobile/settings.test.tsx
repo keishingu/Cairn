@@ -49,6 +49,7 @@ const CURRENT_USER: CurrentUserDto = {
   bio: null,
   wsRole: 'owner',
   status: 'online',
+  statusAuto: false,
   statusMessage: null,
 }
 

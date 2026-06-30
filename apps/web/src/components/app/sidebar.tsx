@@ -591,7 +591,8 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       return status
     },
     onSuccess: (status) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status } : prev)
+      recordManualPresenceStatus(status, workspace?.id ?? null)
+      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status, statusAuto: false } : prev)
     },
   })
 
@@ -654,10 +655,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       {STATUS_OPTIONS.map(opt => (
         <button
           key={opt.value}
-          onClick={() => {
-            recordManualPresenceStatus(opt.value, workspace?.id ?? null)
-            statusMutation.mutate({ status: opt.value })
-          }}
+          onClick={() => statusMutation.mutate({ status: opt.value })}
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
             width: '100%', padding: '7px 10px', borderRadius: 7, border: 'none',

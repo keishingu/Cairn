@@ -25,6 +25,7 @@ vi.mock('@cairn/db', () => ({
     userId: 'workspaceMembers.userId',
     workspaceId: 'workspaceMembers.workspaceId',
     status: 'workspaceMembers.status',
+    statusAuto: 'workspaceMembers.statusAuto',
     statusMessage: 'workspaceMembers.statusMessage',
   },
 }))
@@ -55,7 +56,7 @@ describe('PATCH /api/me の auto presence 更新', () => {
   })
 
   it('別 device の手動 busy / away は auto offline で上書きしない', async () => {
-    mockDb.select.mockReturnValueOnce(selectChain([{ status: 'busy' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ status: 'busy', statusAuto: false }]))
 
     const { PATCH } = await import('./route')
     const res = await PATCH(new Request('http://localhost/api/me', {
@@ -66,7 +67,7 @@ describe('PATCH /api/me の auto presence 更新', () => {
 
     expect(res.status).toBe(200)
     expect(mockDb.update).not.toHaveBeenCalled()
-    await expect(res.json()).resolves.toEqual({ id: USER_ID, status: 'busy' })
+    await expect(res.json()).resolves.toEqual({ id: USER_ID, status: 'busy', statusAuto: false })
   })
 
   it('manual 更新は busy でもそのまま反映する', async () => {
@@ -84,7 +85,7 @@ describe('PATCH /api/me の auto presence 更新', () => {
     expect(res.status).toBe(200)
     expect(mockDb.select).not.toHaveBeenCalled()
     expect(mockDb.update).toHaveBeenCalledTimes(1)
-    expect(updateSet).toHaveBeenCalledWith({ status: 'offline' })
+    expect(updateSet).toHaveBeenCalledWith({ status: 'offline', statusAuto: false })
     expect(updateWhere).toHaveBeenCalledTimes(1)
   })
 })

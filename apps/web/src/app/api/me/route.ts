@@ -12,6 +12,7 @@ export interface CurrentUserDto {
   email: string | null
   bio: string | null
   status: UserStatus
+  statusAuto: boolean
   statusMessage: string | null
   wsRole: 'owner' | 'admin' | 'member' | 'guest'
 }
@@ -39,6 +40,7 @@ export async function GET() {
         avatarUrl: workspaceMembers.avatarUrl,
         bio: profiles.bio,
         status: workspaceMembers.status,
+        statusAuto: workspaceMembers.statusAuto,
         statusMessage: workspaceMembers.statusMessage,
         wsRole: workspaceMembers.role,
       })
@@ -60,6 +62,7 @@ export async function GET() {
       email,
       bio: row.bio,
       status: row.status ?? 'online',
+      statusAuto: row.statusAuto ?? false,
       statusMessage: row.statusMessage ?? null,
       wsRole: row.wsRole ?? 'member',
     } satisfies CurrentUserDto)
@@ -119,17 +122,20 @@ export async function PATCH(req: Request) {
     if (hasStatus || hasStatusMessage) {
       if (hasStatus && b.auto) {
         const [currentMember] = await db
-          .select({ status: workspaceMembers.status })
+          .select({ status: workspaceMembers.status, statusAuto: workspaceMembers.statusAuto })
           .from(workspaceMembers)
           .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
 
         if (currentMember?.status === 'away' || currentMember?.status === 'busy') {
-          return NextResponse.json({ id: ctx.userId, status: currentMember.status })
+          return NextResponse.json({ id: ctx.userId, status: currentMember.status, statusAuto: currentMember.statusAuto ?? false })
         }
       }
 
-      const set: { status?: UserStatus; statusMessage?: string | null } = {}
-      if (hasStatus) set.status = b.status!
+      const set: { status?: UserStatus; statusAuto?: boolean; statusMessage?: string | null } = {}
+      if (hasStatus) {
+        set.status = b.status!
+        set.statusAuto = Boolean(b.auto)
+      }
       if (hasStatusMessage) set.statusMessage = b.statusMessage?.trim() || null
       await db
         .update(workspaceMembers)
@@ -137,7 +143,7 @@ export async function PATCH(req: Request) {
         .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
     }
 
-    return NextResponse.json({ id: ctx.userId, ...b })
+    return NextResponse.json({ id: ctx.userId, ...b, ...(hasStatus ? { statusAuto: Boolean(b.auto) } : {}) })
   } catch (err) {
     console.error('[PATCH /api/me]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

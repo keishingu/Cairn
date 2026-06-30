@@ -13,6 +13,11 @@ import { useAutoPresence } from '@/lib/use-auto-presence'
 import { USER_STATUSES, type UserStatus } from '@/lib/user-status'
 import { WORKSPACE_HEADER } from '@/lib/workspace-cookie'
 
+interface PresenceSnapshot {
+  status: UserStatus
+  auto: boolean
+}
+
 export function AutoPresenceSync() {
   const queryClient = useQueryClient()
   const { data: me } = useCurrentUser()
@@ -22,7 +27,7 @@ export function AutoPresenceSync() {
     staleTime: 60_000,
   })
 
-  const statusMutation = useMutation<UserStatus, Error, { status: UserStatus; keepalive?: boolean }>({
+  const statusMutation = useMutation<PresenceSnapshot, Error, { status: UserStatus; keepalive?: boolean }>({
     mutationFn: async ({ status, keepalive }: { status: UserStatus; keepalive?: boolean }) => {
       const headers = new Headers({ 'Content-Type': 'application/json' })
       if (workspace?.id) {
@@ -41,14 +46,14 @@ export function AutoPresenceSync() {
         const d = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(d.error ?? 'ステータスの更新に失敗しました')
       }
-      const dto = await res.json() as { status?: unknown }
+      const dto = await res.json() as { status?: unknown; statusAuto?: unknown }
       if (typeof dto.status !== 'string' || !USER_STATUSES.includes(dto.status as UserStatus)) {
         throw new Error('ステータス更新レスポンスが不正です')
       }
-      return dto.status as UserStatus
+      return { status: dto.status as UserStatus, auto: dto.statusAuto === true }
     },
-    onSuccess: (status) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status } : prev)
+    onSuccess: ({ status, auto }) => {
+      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status, statusAuto: auto } : prev)
     },
   })
 
@@ -60,12 +65,12 @@ export function AutoPresenceSync() {
         return await statusMutation.mutateAsync({
           status,
           ...(options?.keepalive !== undefined ? { keepalive: options.keepalive } : {}),
-        })
+        }).then(snapshot => snapshot.status)
       } catch {
         return null
       }
     },
-    readCurrentStatus: async () => {
+    readCurrentPresence: async (): Promise<PresenceSnapshot> => {
       const headers = workspace?.id
         ? new Headers({ [WORKSPACE_HEADER]: workspace.id })
         : undefined
@@ -74,7 +79,7 @@ export function AutoPresenceSync() {
         throw new Error('現在のステータス取得に失敗しました')
       }
       const current = await res.json() as CurrentUserDto
-      return current.status
+      return { status: current.status, auto: current.statusAuto }
     },
   })
 

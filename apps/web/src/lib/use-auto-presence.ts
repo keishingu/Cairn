@@ -9,6 +9,7 @@ type TabActivityMap = Record<string, { active: boolean; updatedAt: number; works
 type PresenceIntent = { status: UserStatus; source: 'auto' | 'manual'; workspaceId: string | null; origin?: 'explicit' | 'remote' }
 type PresenceIntentMap = Record<string, PresenceIntent>
 type TabSessionRecord = { tabId: string; ownerId: string }
+type PresenceSnapshot = { status: UserStatus; auto: boolean }
 
 const TAB_ACTIVITY_STORAGE_KEY = 'cairn:auto-presence:tabs'
 const TAB_ACTIVITY_TTL_MS = 30_000
@@ -25,7 +26,7 @@ interface UseAutoPresenceOptions {
   status: UserStatus | undefined
   workspaceId?: string | null
   updateStatus: (status: AutoPresenceStatus, options?: UpdateStatusOptions) => Promise<UserStatus | null>
-  readCurrentStatus?: () => Promise<UserStatus | null>
+  readCurrentPresence?: () => Promise<PresenceSnapshot | null>
 }
 
 function getPresenceIntentKey(workspaceId: string | null) {
@@ -120,12 +121,17 @@ export async function syncPresenceOfflineOnLogout(workspaceId: string | null = n
     })
     if (!res.ok) return null
 
-    const dto = await res.json().catch(() => null) as { status?: unknown } | null
+    const dto = await res.json().catch(() => null) as { status?: unknown; statusAuto?: unknown } | null
     if (typeof dto?.status !== 'string' || !USER_STATUSES.includes(dto.status as UserStatus)) return null
 
     const nextStatus = dto.status as UserStatus
     if (nextStatus === 'online' || nextStatus === 'offline') {
-      writePresenceIntent({ status: nextStatus, source: 'auto', workspaceId })
+      writePresenceIntent({
+        status: nextStatus,
+        source: dto.statusAuto === true ? 'auto' : 'manual',
+        workspaceId,
+        ...(dto.statusAuto === true ? {} : { origin: 'remote' as const }),
+      })
       return nextStatus
     }
 
@@ -136,7 +142,7 @@ export async function syncPresenceOfflineOnLogout(workspaceId: string | null = n
   }
 }
 
-export function useAutoPresence({ status, workspaceId = null, updateStatus, readCurrentStatus }: UseAutoPresenceOptions) {
+export function useAutoPresence({ status, workspaceId = null, updateStatus, readCurrentPresence }: UseAutoPresenceOptions) {
   const lastSentRef = React.useRef<AutoPresenceStatus | null>(null)
   const transitionTokenRef = React.useRef(0)
   const latestRequestedStatusRef = React.useRef<AutoPresenceStatus | null>(null)
@@ -251,16 +257,21 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
     const transitionToken = ++transitionTokenRef.current
     latestRequestedStatusRef.current = nextStatus
     let currentIntent = readPresenceIntent(workspaceId)
-    let knownCurrentStatus: UserStatus | null | undefined
+    let knownCurrentPresence: PresenceSnapshot | null | undefined
 
     if (status === 'away' || status === 'busy') return
-    if (currentIntent?.source === 'manual' && currentIntent.origin === 'remote' && readCurrentStatus && !options?.keepalive) {
-      knownCurrentStatus = await readCurrentStatus()
-      if (knownCurrentStatus === 'online') {
+    if (currentIntent?.source === 'manual' && currentIntent.origin === 'remote' && readCurrentPresence && !options?.keepalive) {
+      knownCurrentPresence = await readCurrentPresence()
+      if (knownCurrentPresence?.status === 'online') {
         setPresenceIntent(workspaceId, null)
         currentIntent = null
-      } else if (knownCurrentStatus === 'away' || knownCurrentStatus === 'busy' || knownCurrentStatus === 'offline') {
-        currentIntent = { status: knownCurrentStatus, source: 'manual', workspaceId, origin: 'remote' }
+      } else if (
+        knownCurrentPresence
+        && (knownCurrentPresence.status === 'away' || knownCurrentPresence.status === 'busy' || knownCurrentPresence.status === 'offline')
+      ) {
+        currentIntent = knownCurrentPresence.auto
+          ? { status: knownCurrentPresence.status, source: 'auto', workspaceId }
+          : { status: knownCurrentPresence.status, source: 'manual', workspaceId, origin: 'remote' }
         writePresenceIntent(currentIntent)
       }
     }
@@ -271,13 +282,15 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
     }
     if (lastSentRef.current === nextStatus) return
 
-    if (readCurrentStatus && !options?.keepalive) {
-      const currentStatus = knownCurrentStatus ?? await readCurrentStatus()
+    if (readCurrentPresence && !options?.keepalive) {
+      const currentPresence = knownCurrentPresence ?? await readCurrentPresence()
+      const currentStatus = currentPresence?.status ?? null
       if (currentStatus === 'away' || currentStatus === 'busy') return
       const isLocalAutoOffline =
         currentIntent?.source === 'auto'
         && currentIntent.status === 'offline'
         && nextStatus === 'online'
+        && currentPresence?.auto === true
       if (currentStatus === 'offline' && nextStatus === 'online' && !isLocalAutoOffline) {
         lastSentRef.current = 'offline'
         return
