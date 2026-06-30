@@ -268,7 +268,9 @@ export function useAutoPresence({
   const hasAnotherActiveTab = React.useEffectEvent((records: TabActivityMap) => {
     const tabId = getTabId()
     return Object.entries(records).some(([candidateId, entry]) => {
-      return candidateId !== tabId && entry.active && entry.workspaceId === workspaceId
+      if (candidateId === tabId || !entry.active) return false
+      if (entry.workspaceId === workspaceId) return true
+      return workspaceId != null && entry.workspaceId == null
     })
   })
 

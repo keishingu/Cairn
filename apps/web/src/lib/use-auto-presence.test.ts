@@ -1093,6 +1093,37 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('workspace 解決前の別 active tab がある間は offline を送らない', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const updateStatus = vi.fn().mockResolvedValue('online')
+
+    renderHook(() => useAutoPresence({
+      status: 'online',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+    }))
+
+    const [tabId] = Object.keys(readTabActivityRecords())
+    expect(tabId).toBeDefined()
+    if (!tabId) {
+      return
+    }
+
+    setTabActivityRecords({
+      ...readTabActivityRecords(),
+      resolving: { active: true, updatedAt: Date.now(), workspaceId: null },
+    })
+
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).not.toHaveBeenCalledWith('offline', { keepalive: true })
+    })
+  })
+
   it('別タブの record が途中で増えても heartbeat で消さない', async () => {
     vi.useFakeTimers()
     setVisibilityState('visible')
