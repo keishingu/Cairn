@@ -461,6 +461,36 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('stale な busy cache は server が online なら auto offline を再開する', async () => {
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    localStorage.setItem(PRESENCE_INTENT_STORAGE_KEY, JSON.stringify({
+      'ws-1': { status: 'busy', source: 'manual', workspaceId: 'ws-1', origin: 'explicit' },
+    }))
+    const updateStatus = vi.fn().mockResolvedValue('offline')
+    const readCurrentPresence = vi.fn().mockResolvedValue({ status: 'online', auto: false })
+
+    renderHook(() => useAutoPresence({
+      status: 'busy',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+      readCurrentPresence,
+    }))
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await waitFor(() => {
+      expect(readCurrentPresence).toHaveBeenCalled()
+      expect(updateStatus).toHaveBeenCalledWith('offline', undefined)
+    })
+
+    expect(JSON.parse(localStorage.getItem(PRESENCE_INTENT_STORAGE_KEY) ?? '{}')).toEqual({
+      'ws-1': { status: 'offline', source: 'auto', workspaceId: 'ws-1' },
+    })
+  })
+
   it('別 device で手動 offline の時は stale な online cache でも auto online しない', async () => {
     setVisibilityState('visible')
     setHasFocus(true)

@@ -266,8 +266,7 @@ export function useAutoPresence({
     let currentIntent = readPresenceIntent(workspaceId)
     let knownCurrentPresence: PresenceSnapshot | null | undefined
 
-    if (status === 'away' || status === 'busy') return
-    if (currentIntent?.source === 'manual' && readCurrentPresence && !options?.keepalive) {
+    if ((status === 'away' || status === 'busy' || currentIntent?.source === 'manual') && readCurrentPresence && !options?.keepalive) {
       knownCurrentPresence = await readCurrentPresence()
       if (knownCurrentPresence) {
         observePresence?.(knownCurrentPresence)
@@ -283,6 +282,17 @@ export function useAutoPresence({
           ? { status: knownCurrentPresence.status, source: 'auto', workspaceId }
           : { status: knownCurrentPresence.status, source: 'manual', workspaceId, origin: 'remote' }
         writePresenceIntent(currentIntent)
+      }
+    }
+    if (status === 'away' || status === 'busy') {
+      if (
+        knownCurrentPresence
+        && knownCurrentPresence.status !== 'away'
+        && knownCurrentPresence.status !== 'busy'
+      ) {
+        // Another tab/device already cleared the manual state, so continue with the refreshed presence.
+      } else {
+        return
       }
     }
     if (currentIntent?.source === 'manual') {
