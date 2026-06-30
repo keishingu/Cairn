@@ -3,3 +3,4 @@
 
 // クライアント・サーバー両方から import できる定数（next/headers 等に依存しない）
 export const WORKSPACE_COOKIE = 'cairn_workspace_id'
+export const WORKSPACE_HEADER = 'x-cairn-workspace-id'

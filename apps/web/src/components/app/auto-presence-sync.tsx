@@ -3,22 +3,34 @@
 
 'use client'
 
+import { useQuery } from '@tanstack/react-query'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { CurrentUserDto } from '@/app/api/me/route'
+import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useAutoPresence } from '@/lib/use-auto-presence'
 import type { UserStatus } from '@/lib/user-status'
+import { WORKSPACE_HEADER } from '@/lib/workspace-cookie'
 
 export function AutoPresenceSync() {
   const queryClient = useQueryClient()
   const { data: me } = useCurrentUser()
+  const { data: workspace } = useQuery<WorkspaceDto>({
+    queryKey: ['workspace'],
+    queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
+    staleTime: 60_000,
+  })
 
   const statusMutation = useMutation({
     mutationFn: async ({ status, keepalive }: { status: UserStatus; keepalive?: boolean }) => {
+      const headers = new Headers({ 'Content-Type': 'application/json' })
+      if (workspace?.id) {
+        headers.set(WORKSPACE_HEADER, workspace.id)
+      }
       const res = await fetchWithAuth('/api/me', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         ...(keepalive !== undefined ? { keepalive } : {}),
         body: JSON.stringify({ status }),
       })

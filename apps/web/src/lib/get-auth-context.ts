@@ -5,9 +5,9 @@ import { NextResponse } from 'next/server'
 import { headers, cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import type { User } from '@supabase/supabase-js'
-import { WORKSPACE_COOKIE } from './workspace-cookie'
+import { WORKSPACE_COOKIE, WORKSPACE_HEADER } from './workspace-cookie'
 
-export { WORKSPACE_COOKIE } from './workspace-cookie'
+export { WORKSPACE_COOKIE, WORKSPACE_HEADER } from './workspace-cookie'
 
 // サーバーレス関数インスタンス内でワークスペース ID をキャッシュし、
 // warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
@@ -70,7 +70,7 @@ export async function getAuthContext(): Promise<AuthResult> {
   }
 
   const cookieStore = await cookies()
-  const preferredWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
+  const preferredWorkspaceId = headersList.get(WORKSPACE_HEADER) ?? cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
 
   const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
   const cached = workspaceCache.get(cacheKey)

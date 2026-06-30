@@ -90,6 +90,24 @@ describe('get-auth-context', () => {
     })
   })
 
+  it('workspace header があれば cookie より優先する', async () => {
+    mockHeaders.mockResolvedValue(new Headers({
+      Authorization: 'Bearer token-123',
+      'x-cairn-workspace-id': 'ws-header',
+    }))
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-cookie' }) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-header' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext()
+
+    expect(result).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-header' },
+      error: null,
+    })
+  })
+
   it('getAuthUser も Cookie 認証で getUser() を使う', async () => {
     mockHeaders.mockResolvedValue(new Headers())
     mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
