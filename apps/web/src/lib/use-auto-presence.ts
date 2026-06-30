@@ -315,6 +315,11 @@ export function useAutoPresence({
     const transitionToken = ++transitionTokenRef.current
     latestRequestedStatusRef.current = nextStatus
     let currentIntent = readPresenceIntent(workspaceId)
+    const shouldAllowKeepaliveOfflineDespiteStaleManualState =
+      nextStatus === 'offline'
+      && options?.keepalive === true
+      && currentIntent?.source === 'manual'
+      && currentIntent.origin === 'remote'
     let knownCurrentPresence: PresenceSnapshot | null | undefined
     let didPreflightRead = false
 
@@ -343,14 +348,21 @@ export function useAutoPresence({
         && knownCurrentPresence.status !== 'busy'
       ) {
         // Another tab/device already cleared the manual state, so continue with the refreshed presence.
-      } else {
+      } else if (!shouldAllowKeepaliveOfflineDespiteStaleManualState) {
         return
       }
     }
     if (currentIntent?.source === 'manual') {
-      if (currentIntent.status === 'away' || currentIntent.status === 'busy') return
+      if (
+        !shouldAllowKeepaliveOfflineDespiteStaleManualState
+        && (currentIntent.status === 'away' || currentIntent.status === 'busy')
+      ) return
       if (currentIntent.status === 'offline' && nextStatus === 'online') return
-      if (currentIntent.status === 'offline' && nextStatus === 'offline') return
+      if (
+        currentIntent.status === 'offline'
+        && nextStatus === 'offline'
+        && !shouldAllowKeepaliveOfflineDespiteStaleManualState
+      ) return
     }
     if (nextStatus === 'online' && options?.trigger === 'interaction') {
       const now = Date.now()
