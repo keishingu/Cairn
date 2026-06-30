@@ -9,10 +9,12 @@ type TabActivityMap = Record<string, { active: boolean; updatedAt: number; works
 type PresenceIntent = { status: UserStatus; source: 'auto' | 'manual'; workspaceId: string | null; origin?: 'explicit' | 'remote' }
 type PresenceIntentMap = Record<string, PresenceIntent>
 type TabSessionRecord = { tabId: string; ownerId: string }
+type TabActivityRecord = { active: boolean; updatedAt: number; workspaceId: string | null }
 type PresenceSnapshot = { status: UserStatus; auto: boolean }
 type SyncAttempt = { token: number; status: AutoPresenceStatus; keepalive: boolean; pending: boolean }
 
 const TAB_ACTIVITY_STORAGE_KEY = 'cairn:auto-presence:tabs'
+const TAB_ACTIVITY_RECORD_STORAGE_PREFIX = `${TAB_ACTIVITY_STORAGE_KEY}:record:`
 const TAB_ACTIVITY_TTL_MS = 30_000
 const TAB_ACTIVITY_HEARTBEAT_MS = 10_000
 const INTERACTION_ONLINE_REVALIDATE_MS = 15_000
@@ -98,6 +100,33 @@ function parseTabSessionRecord(raw: string | null): TabSessionRecord | null {
     const parsed = JSON.parse(raw) as Partial<TabSessionRecord>
     if (typeof parsed.tabId === 'string' && typeof parsed.ownerId === 'string') {
       return { tabId: parsed.tabId, ownerId: parsed.ownerId }
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function getTabActivityStorageKey(tabId: string) {
+  return `${TAB_ACTIVITY_RECORD_STORAGE_PREFIX}${tabId}`
+}
+
+function parseTabActivityRecord(raw: string | null): TabActivityRecord | null {
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<TabActivityRecord>
+    if (
+      typeof parsed.active === 'boolean'
+      && typeof parsed.updatedAt === 'number'
+      && (typeof parsed.workspaceId === 'string' || parsed.workspaceId === null || parsed.workspaceId === undefined)
+    ) {
+      return {
+        active: parsed.active,
+        updatedAt: parsed.updatedAt,
+        workspaceId: typeof parsed.workspaceId === 'string' ? parsed.workspaceId : null,
+      }
     }
   } catch {
     return null
@@ -197,23 +226,33 @@ export function useAutoPresence({
 
   const readTabActivity = React.useEffectEvent(() => {
     const now = Date.now()
-    const raw = window.localStorage.getItem(TAB_ACTIVITY_STORAGE_KEY)
-    const parsed = raw ? JSON.parse(raw) as TabActivityMap : {}
-    const nextEntries = Object.entries(parsed).filter(([, entry]) => {
-      return entry && typeof entry.updatedAt === 'number' && now - entry.updatedAt < TAB_ACTIVITY_TTL_MS
-    })
-    return Object.fromEntries(nextEntries) as TabActivityMap
-  })
+    const records: TabActivityMap = {}
+    const storageKeys = Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index))
 
-  const writeTabActivity = React.useEffectEvent((records: TabActivityMap) => {
-    window.localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify(records))
+    for (const storageKey of storageKeys) {
+      if (!storageKey?.startsWith(TAB_ACTIVITY_RECORD_STORAGE_PREFIX)) continue
+
+      const tabId = storageKey.slice(TAB_ACTIVITY_RECORD_STORAGE_PREFIX.length)
+      if (!tabId) continue
+
+      const record = parseTabActivityRecord(window.localStorage.getItem(storageKey))
+      if (!record || now - record.updatedAt >= TAB_ACTIVITY_TTL_MS) {
+        window.localStorage.removeItem(storageKey)
+        continue
+      }
+
+      records[tabId] = record
+    }
+
+    return records
   })
 
   const setCurrentTabActive = React.useEffectEvent((active: boolean) => {
     const tabId = getTabId()
     const nextRecords = readTabActivity()
-    nextRecords[tabId] = { active, updatedAt: Date.now(), workspaceId }
-    writeTabActivity(nextRecords)
+    const record = { active, updatedAt: Date.now(), workspaceId }
+    nextRecords[tabId] = record
+    window.localStorage.setItem(getTabActivityStorageKey(tabId), JSON.stringify(record))
     return nextRecords
   })
 
@@ -221,7 +260,7 @@ export function useAutoPresence({
     const tabId = getTabId()
     const nextRecords = readTabActivity()
     delete nextRecords[tabId]
-    writeTabActivity(nextRecords)
+    window.localStorage.removeItem(getTabActivityStorageKey(tabId))
     return nextRecords
   })
 

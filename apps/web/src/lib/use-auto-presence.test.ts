@@ -4,8 +4,28 @@ import { WORKSPACE_HEADER } from '@/lib/workspace-cookie'
 import { recordManualPresenceStatus, syncPresenceOfflineOnLogout, useAutoPresence } from './use-auto-presence'
 
 const TAB_ACTIVITY_STORAGE_KEY = 'cairn:auto-presence:tabs'
+const TAB_ACTIVITY_RECORD_STORAGE_PREFIX = `${TAB_ACTIVITY_STORAGE_KEY}:record:`
 const PRESENCE_INTENT_STORAGE_KEY = 'cairn:auto-presence:intent'
 const DEFAULT_WORKSPACE_ID = 'ws-1'
+
+function setTabActivityRecords(records: Record<string, { active: boolean; updatedAt: number; workspaceId: string | null }>) {
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith(TAB_ACTIVITY_RECORD_STORAGE_PREFIX)) {
+      localStorage.removeItem(key)
+    }
+  }
+
+  for (const [tabId, record] of Object.entries(records)) {
+    localStorage.setItem(`${TAB_ACTIVITY_RECORD_STORAGE_PREFIX}${tabId}`, JSON.stringify(record))
+  }
+}
+
+function readTabActivityRecords() {
+  const entries = Object.keys(localStorage)
+    .filter(key => key.startsWith(TAB_ACTIVITY_RECORD_STORAGE_PREFIX))
+    .map(key => [key.slice(TAB_ACTIVITY_RECORD_STORAGE_PREFIX.length), JSON.parse(localStorage.getItem(key) ?? 'null')] as const)
+  return Object.fromEntries(entries) as Record<string, { active: boolean; updatedAt: number; workspaceId: string | null }>
+}
 
 function setVisibilityState(value: DocumentVisibilityState) {
   Object.defineProperty(document, 'visibilityState', {
@@ -162,9 +182,9 @@ describe('useAutoPresence', () => {
   })
 
   it('他のタブがアクティブなら hidden になっても offline を送らない', async () => {
-    localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify({
+    setTabActivityRecords({
       other: { active: true, updatedAt: Date.now(), workspaceId: DEFAULT_WORKSPACE_ID },
-    }))
+    })
     setVisibilityState('hidden')
     setHasFocus(false)
     const updateStatus = vi.fn()
@@ -183,9 +203,9 @@ describe('useAutoPresence', () => {
   })
 
   it('workspace 未解決中は他タブが実ワークスペースで active でも hidden で offline を送らない', async () => {
-    localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify({
+    setTabActivityRecords({
       other: { active: true, updatedAt: Date.now(), workspaceId: DEFAULT_WORKSPACE_ID },
-    }))
+    })
     setVisibilityState('hidden')
     setHasFocus(false)
     const updateStatus = vi.fn().mockResolvedValue('offline')
@@ -202,9 +222,9 @@ describe('useAutoPresence', () => {
   })
 
   it('他のタブがアクティブなら pagehide でも offline を送らない', async () => {
-    localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify({
+    setTabActivityRecords({
       other: { active: true, updatedAt: Date.now(), workspaceId: DEFAULT_WORKSPACE_ID },
-    }))
+    })
     setVisibilityState('visible')
     setHasFocus(true)
     const updateStatus = vi.fn()
@@ -359,9 +379,9 @@ describe('useAutoPresence', () => {
   })
 
   it('別ワークスペースのアクティブタブでは offline 抑止しない', async () => {
-    localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify({
+    setTabActivityRecords({
       other: { active: true, updatedAt: Date.now(), workspaceId: 'ws-2' },
-    }))
+    })
     setVisibilityState('hidden')
     setHasFocus(false)
     const updateStatus = vi.fn().mockResolvedValue('offline')
@@ -412,7 +432,7 @@ describe('useAutoPresence', () => {
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
-    const initial = JSON.parse(localStorage.getItem(TAB_ACTIVITY_STORAGE_KEY) ?? '{}') as Record<string, { updatedAt: number }>
+    const initial = readTabActivityRecords() as Record<string, { updatedAt: number }>
     const [tabId] = Object.keys(initial)
     expect(tabId).toBeDefined()
     if (!tabId) {
@@ -430,7 +450,7 @@ describe('useAutoPresence', () => {
       vi.advanceTimersByTime(10_000)
     })
 
-    const next = JSON.parse(localStorage.getItem(TAB_ACTIVITY_STORAGE_KEY) ?? '{}') as Record<string, { updatedAt: number }>
+    const next = readTabActivityRecords() as Record<string, { updatedAt: number }>
     expect(next[tabId]?.updatedAt ?? 0).toBeGreaterThan(firstUpdatedAt)
     vi.useRealTimers()
   })
@@ -893,7 +913,7 @@ describe('useAutoPresence', () => {
       updateStatus: firstUpdateStatus,
     }))
 
-    const firstTabId = Object.keys(JSON.parse(localStorage.getItem(TAB_ACTIVITY_STORAGE_KEY) ?? '{}'))[0]
+    const firstTabId = Object.keys(readTabActivityRecords())[0]
     expect(firstTabId).toBeDefined()
     if (!firstTabId) {
       return
@@ -903,9 +923,9 @@ describe('useAutoPresence', () => {
     expect(clonedSessionStorage).toBeTruthy()
 
     firstTab.unmount()
-    localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify({
+    setTabActivityRecords({
       [firstTabId]: { active: true, updatedAt: Date.now(), workspaceId: DEFAULT_WORKSPACE_ID },
-    }))
+    })
     sessionStorage.clear()
     if (clonedSessionStorage) {
       sessionStorage.setItem(`${TAB_ACTIVITY_STORAGE_KEY}:id`, clonedSessionStorage)
@@ -917,7 +937,7 @@ describe('useAutoPresence', () => {
       updateStatus: secondUpdateStatus,
     }))
 
-    const recordKeys = Object.keys(JSON.parse(localStorage.getItem(TAB_ACTIVITY_STORAGE_KEY) ?? '{}'))
+    const recordKeys = Object.keys(readTabActivityRecords())
     expect(recordKeys).toHaveLength(2)
     expect(new Set(recordKeys).size).toBe(2)
 
@@ -928,6 +948,41 @@ describe('useAutoPresence', () => {
     await waitFor(() => {
       expect(secondUpdateStatus).not.toHaveBeenCalledWith('offline', { keepalive: true })
     })
+  })
+
+  it('別タブの record が途中で増えても heartbeat で消さない', async () => {
+    vi.useFakeTimers()
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const updateStatus = vi.fn().mockResolvedValue('online')
+
+    renderHook(() => useAutoPresence({
+      status: 'online',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+    }))
+
+    const [tabId] = Object.keys(readTabActivityRecords())
+    expect(tabId).toBeDefined()
+    if (!tabId) {
+      vi.useRealTimers()
+      return
+    }
+
+    setTabActivityRecords({
+      ...readTabActivityRecords(),
+      other: { active: true, updatedAt: Date.now(), workspaceId: DEFAULT_WORKSPACE_ID },
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(10_000)
+    })
+
+    expect(readTabActivityRecords()).toMatchObject({
+      [tabId]: expect.objectContaining({ active: true, workspaceId: DEFAULT_WORKSPACE_ID }),
+      other: expect.objectContaining({ active: true, workspaceId: DEFAULT_WORKSPACE_ID }),
+    })
+    vi.useRealTimers()
   })
 
   it('logout 前に force 付き auto offline PATCH を送る', async () => {
