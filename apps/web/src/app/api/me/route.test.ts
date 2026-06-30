@@ -70,6 +70,21 @@ describe('PATCH /api/me の auto presence 更新', () => {
     await expect(res.json()).resolves.toEqual({ id: USER_ID, status: 'busy', statusAuto: false })
   })
 
+  it('別 device の手動 offline は auto offline で auto 状態へ塗り替えない', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ status: 'offline', statusAuto: false }]))
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request('http://localhost/api/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'offline', auto: true }),
+    }))
+
+    expect(res.status).toBe(200)
+    expect(mockDb.update).not.toHaveBeenCalled()
+    await expect(res.json()).resolves.toEqual({ id: USER_ID, status: 'offline', statusAuto: false })
+  })
+
   it('manual 更新は busy でもそのまま反映する', async () => {
     const updateWhere = vi.fn().mockResolvedValue(undefined)
     const updateSet = vi.fn().mockReturnValue({ where: updateWhere })

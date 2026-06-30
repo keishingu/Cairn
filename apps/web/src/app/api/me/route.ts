@@ -126,7 +126,12 @@ export async function PATCH(req: Request) {
           .from(workspaceMembers)
           .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
 
-        if (currentMember?.status === 'away' || currentMember?.status === 'busy') {
+        const shouldPreserveManualStatus =
+          currentMember?.status === 'away'
+          || currentMember?.status === 'busy'
+          || (currentMember?.status === 'offline' && currentMember.statusAuto === false)
+
+        if (shouldPreserveManualStatus) {
           return NextResponse.json({ id: ctx.userId, status: currentMember.status, statusAuto: currentMember.statusAuto ?? false })
         }
       }
