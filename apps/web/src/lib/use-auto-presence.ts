@@ -114,10 +114,12 @@ export function useAutoPresence({ status, updateStatus }: UseAutoPresenceOptions
   })
 
   const syncStatus = React.useEffectEvent(async (nextStatus: AutoPresenceStatus, options?: UpdateStatusOptions) => {
+    const lastIntent = readPresenceIntent()
+
     if (status === 'away' || status === 'busy') return
-    if (nextStatus === 'online' && status === 'offline') {
-      const lastIntent = readPresenceIntent()
-      if (lastIntent?.status === 'offline' && lastIntent.source === 'manual') return
+    if (lastIntent?.source === 'manual') {
+      if (lastIntent.status === 'away' || lastIntent.status === 'busy') return
+      if (lastIntent.status === 'offline' && nextStatus === 'online') return
     }
     if (lastSentRef.current === nextStatus) return
 

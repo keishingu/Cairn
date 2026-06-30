@@ -165,4 +165,42 @@ describe('useAutoPresence', () => {
       expect(updateStatus).not.toHaveBeenCalled()
     })
   })
+
+  it('別タブで手動 busy を選んでいる間は stale な online 状態でも自動更新しない', async () => {
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    recordManualPresenceStatus('busy')
+    const updateStatus = vi.fn().mockResolvedValue(true)
+
+    renderHook(() => useAutoPresence({ status: 'online', updateStatus }))
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+      window.dispatchEvent(new Event('focus'))
+      window.dispatchEvent(new PageTransitionEvent('pagehide'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+  })
+
+  it('別タブで手動 away を選んでいる間は stale な online 状態でも自動更新しない', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    recordManualPresenceStatus('away')
+    const updateStatus = vi.fn().mockResolvedValue(true)
+
+    renderHook(() => useAutoPresence({ status: 'online', updateStatus }))
+
+    act(() => {
+      window.dispatchEvent(new Event('focus'))
+      window.dispatchEvent(new Event('pointerdown'))
+      window.dispatchEvent(new Event('keydown'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+  })
 })
