@@ -732,6 +732,36 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('active な online tab では連続 interaction ごとの preflight read を間引く', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const updateStatus = vi.fn().mockResolvedValue('online')
+    const readCurrentPresence = vi.fn().mockResolvedValue({ status: 'online', auto: true })
+
+    renderHook(() => useAutoPresence({
+      status: 'online',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+      readCurrentPresence,
+    }))
+
+    await waitFor(() => {
+      expect(readCurrentPresence).toHaveBeenCalledTimes(1)
+    })
+
+    readCurrentPresence.mockClear()
+
+    act(() => {
+      window.dispatchEvent(new Event('pointerdown'))
+      window.dispatchEvent(new Event('keydown'))
+    })
+
+    await waitFor(() => {
+      expect(readCurrentPresence).toHaveBeenCalledTimes(1)
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+  })
+
   it('duplicate tab でも別 tab id を採番して offline を誤送信しない', async () => {
     setVisibilityState('visible')
     setHasFocus(true)

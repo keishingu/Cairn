@@ -14,12 +14,17 @@ type PresenceSnapshot = { status: UserStatus; auto: boolean }
 const TAB_ACTIVITY_STORAGE_KEY = 'cairn:auto-presence:tabs'
 const TAB_ACTIVITY_TTL_MS = 30_000
 const TAB_ACTIVITY_HEARTBEAT_MS = 10_000
+const INTERACTION_ONLINE_REVALIDATE_MS = 15_000
 const PRESENCE_INTENT_STORAGE_KEY = 'cairn:auto-presence:intent'
 const TAB_ID_STORAGE_KEY = `${TAB_ACTIVITY_STORAGE_KEY}:id`
 const GLOBAL_WORKSPACE_KEY = '__global__'
 
 interface UpdateStatusOptions {
   keepalive?: boolean
+}
+
+interface SyncStatusOptions extends UpdateStatusOptions {
+  trigger?: 'interaction'
 }
 
 interface UseAutoPresenceOptions {
@@ -153,6 +158,7 @@ export function useAutoPresence({
   const lastSentRef = React.useRef<AutoPresenceStatus | null>(null)
   const transitionTokenRef = React.useRef(0)
   const latestRequestedStatusRef = React.useRef<AutoPresenceStatus | null>(null)
+  const lastInteractionOnlineSyncAtRef = React.useRef(0)
   const tabIdRef = React.useRef<string | null>(null)
   const tabOwnerIdRef = React.useRef<string>(
     typeof crypto.randomUUID === 'function'
@@ -260,7 +266,7 @@ export function useAutoPresence({
     applyResolvedStatus(resolvedStatus)
   })
 
-  const syncStatus = React.useEffectEvent(async (nextStatus: AutoPresenceStatus, options?: UpdateStatusOptions) => {
+  const syncStatus = React.useEffectEvent(async (nextStatus: AutoPresenceStatus, options?: SyncStatusOptions) => {
     const transitionToken = ++transitionTokenRef.current
     latestRequestedStatusRef.current = nextStatus
     let currentIntent = readPresenceIntent(workspaceId)
@@ -300,6 +306,14 @@ export function useAutoPresence({
       if (currentIntent.status === 'away' || currentIntent.status === 'busy') return
       if (currentIntent.status === 'offline' && nextStatus === 'online') return
       if (currentIntent.status === 'offline' && nextStatus === 'offline') return
+    }
+    if (nextStatus === 'online' && options?.trigger === 'interaction') {
+      const now = Date.now()
+      const alreadyOnline = status === 'online' || lastSentRef.current === 'online'
+      if (alreadyOnline && now - lastInteractionOnlineSyncAtRef.current < INTERACTION_ONLINE_REVALIDATE_MS) {
+        return
+      }
+      lastInteractionOnlineSyncAtRef.current = now
     }
     if (lastSentRef.current === nextStatus && (nextStatus === 'offline' || !readCurrentPresence || options?.keepalive)) return
 
@@ -398,6 +412,10 @@ export function useAutoPresence({
       setCurrentTabActive(true)
       void syncStatus('online')
     }
+    const revalidateOnlineFromInteraction = () => {
+      setCurrentTabActive(true)
+      void syncStatus('online', { trigger: 'interaction' })
+    }
     const goOffline = () => {
       const nextRecords = clearCurrentTab()
       if (!hasAnotherActiveTab(nextRecords)) {
@@ -410,8 +428,8 @@ export function useAutoPresence({
     window.addEventListener('blur', syncFromWindowState)
     window.addEventListener('pageshow', goOnline)
     window.addEventListener('pagehide', goOffline)
-    window.addEventListener('pointerdown', goOnline)
-    window.addEventListener('keydown', goOnline)
+    window.addEventListener('pointerdown', revalidateOnlineFromInteraction)
+    window.addEventListener('keydown', revalidateOnlineFromInteraction)
 
     return () => {
       document.removeEventListener('visibilitychange', syncFromWindowState)
@@ -419,8 +437,8 @@ export function useAutoPresence({
       window.removeEventListener('blur', syncFromWindowState)
       window.removeEventListener('pageshow', goOnline)
       window.removeEventListener('pagehide', goOffline)
-      window.removeEventListener('pointerdown', goOnline)
-      window.removeEventListener('keydown', goOnline)
+      window.removeEventListener('pointerdown', revalidateOnlineFromInteraction)
+      window.removeEventListener('keydown', revalidateOnlineFromInteraction)
       window.clearInterval(heartbeatId)
       clearCurrentTab()
     }
