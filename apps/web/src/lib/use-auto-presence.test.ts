@@ -182,6 +182,25 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('workspace 未解決中は他タブが実ワークスペースで active でも hidden で offline を送らない', async () => {
+    localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify({
+      other: { active: true, updatedAt: Date.now(), workspaceId: DEFAULT_WORKSPACE_ID },
+    }))
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    const updateStatus = vi.fn().mockResolvedValue('offline')
+
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: null, updateStatus }))
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+  })
+
   it('他のタブがアクティブなら pagehide でも offline を送らない', async () => {
     localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify({
       other: { active: true, updatedAt: Date.now(), workspaceId: DEFAULT_WORKSPACE_ID },
@@ -193,6 +212,22 @@ describe('useAutoPresence', () => {
       .mockResolvedValue('online')
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
+
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+  })
+
+  it('workspace 未解決中は pagehide でも offline を送らない', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const updateStatus = vi.fn().mockResolvedValue('offline')
+
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: null, updateStatus }))
 
     act(() => {
       window.dispatchEvent(new Event('pagehide'))

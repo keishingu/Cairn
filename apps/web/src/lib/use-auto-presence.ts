@@ -232,6 +232,10 @@ export function useAutoPresence({
     })
   })
 
+  const canAutoSyncOffline = React.useEffectEvent(() => {
+    return workspaceId != null
+  })
+
   const isWindowActive = React.useEffectEvent(() => {
     const isVisible = document.visibilityState === 'visible'
     const hasFocus = typeof document.hasFocus === 'function' ? document.hasFocus() : true
@@ -433,7 +437,7 @@ export function useAutoPresence({
       return
     }
 
-    if (!hasAnotherActiveTab(nextRecords)) {
+    if (canAutoSyncOffline() && !hasAnotherActiveTab(nextRecords)) {
       void syncStatus('offline')
     }
   })
@@ -460,7 +464,7 @@ export function useAutoPresence({
     }
     const goOffline = () => {
       const nextRecords = clearCurrentTab()
-      if (!hasAnotherActiveTab(nextRecords)) {
+      if (canAutoSyncOffline() && !hasAnotherActiveTab(nextRecords)) {
         void syncStatus('offline', { keepalive: true })
       }
     }
