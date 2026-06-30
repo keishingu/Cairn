@@ -22,7 +22,7 @@ export async function GET(req: Request) {
   try {
     const { db } = await import('@cairn/db')
     const { channels, channelMembers, messages, profiles, workspaceMembers, projects, projectMembers } = await import('@cairn/db')
-    const { eq, isNull, and, ilike, or, exists, ne, inArray } = await import('drizzle-orm')
+    const { eq, ne, isNull, and, ilike, or, exists, inArray } = await import('drizzle-orm')
     const { desc, sql } = await import('drizzle-orm')
 
     const memberSubquery = db
@@ -46,6 +46,7 @@ export async function GET(req: Request) {
       .select({
         id: messages.id,
         content: messages.content,
+        messageType: messages.messageType,
         senderId: messages.senderId,
         senderName: profiles.displayName,
         senderAvatarUrl: workspaceMembers.avatarUrl,
@@ -65,6 +66,7 @@ export async function GET(req: Request) {
       .where(and(
         eq(channels.workspaceId, ctx.workspaceId),
         isNull(messages.deletedAt),
+        ne(messages.messageType, 'system'),
         ilike(messages.content, `%${q}%`),
         accessCondition,
       ))
@@ -85,6 +87,7 @@ export async function GET(req: Request) {
     const result: MessageSearchResultDto[] = rows.map(r => ({
       id: r.id,
       content: hydrateMentions(r.content, id => nameMap.get(id)),
+      messageType: r.messageType,
       senderId: r.senderId,
       senderName: r.senderName,
       senderAvatarUrl: r.senderAvatarUrl ?? null,
@@ -92,6 +95,9 @@ export async function GET(req: Request) {
       isEdited: r.updatedAt.getTime() > r.createdAt.getTime(),
       reactions: [],
       attachments: [],
+      parentMessageId: null,
+      replyTo: null,
+      bookmarked: false,
       channelId: r.channelId,
       channelName: r.channelName,
     }))

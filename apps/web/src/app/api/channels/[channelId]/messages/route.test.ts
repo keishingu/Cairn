@@ -17,6 +17,9 @@ const {
   mockInArray,
   mockAnd,
   mockDesc,
+  mockAsc,
+  mockLte,
+  mockGt,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -27,6 +30,9 @@ const {
   mockInArray: vi.fn(() => Symbol('inArray')),
   mockAnd: vi.fn(() => Symbol('and')),
   mockDesc: vi.fn(() => Symbol('desc')),
+  mockAsc: vi.fn(() => Symbol('asc')),
+  mockLte: vi.fn(() => Symbol('lte')),
+  mockGt: vi.fn(() => Symbol('gt')),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -48,6 +54,8 @@ vi.mock('@cairn/db', () => ({
   messages: {
     id: 'messages.id',
     content: 'messages.content',
+    messageType: 'messages.messageType',
+    parentMessageId: 'messages.parentMessageId',
     senderId: 'messages.senderId',
     createdAt: 'messages.createdAt',
     updatedAt: 'messages.updatedAt',
@@ -71,6 +79,11 @@ vi.mock('@cairn/db', () => ({
     fileId: 'messageAttachments.fileId',
     displayOrder: 'messageAttachments.displayOrder',
   },
+  messageBookmarks: {
+    id: 'messageBookmarks.id',
+    messageId: 'messageBookmarks.messageId',
+    userId: 'messageBookmarks.userId',
+  },
   files: { id: 'files.id', fileName: 'files.fileName', mimeType: 'files.mimeType', fileSize: 'files.fileSize' },
 }))
 vi.mock('drizzle-orm', () => ({
@@ -79,6 +92,9 @@ vi.mock('drizzle-orm', () => ({
   inArray: mockInArray,
   and: mockAnd,
   desc: mockDesc,
+  asc: mockAsc,
+  lte: mockLte,
+  gt: mockGt,
 }))
 
 function ctxRouteParams() {
@@ -156,8 +172,8 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
         },
       ],
       [
-        { messageId: 'msg-1', emoji: '👍', userId: DEV_USER_ID, displayName: 'Kei' },
-        { messageId: 'msg-1', emoji: '👍', userId: 'user-3', displayName: 'Aki' },
+        { messageId: 'msg-1', emoji: '👍', userId: DEV_USER_ID, userName: 'Kei' },
+        { messageId: 'msg-1', emoji: '👍', userId: 'user-3', userName: 'Aki' },
       ],
       [],
       [],
@@ -175,7 +191,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
             emoji: '👍',
             count: 2,
             mine: true,
-            users: ['Kei', 'Aki'],
+            userNames: ['Kei', 'Aki'],
           },
         ],
       }),

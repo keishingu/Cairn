@@ -90,3 +90,22 @@ export const messageAttachments = pgTable(
   },
   (t) => [index('idx_message_attachments_message').on(t.messageId)],
 )
+
+// メッセージの個人ブックマーク（チーム共通のピン留めではなく、各ユーザーが「後で見返す」ための保存）
+export const messageBookmarks = pgTable(
+  'message_bookmarks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.messageId, t.userId),
+    index('idx_message_bookmarks_user').on(t.userId, t.createdAt),
+  ],
+)

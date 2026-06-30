@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { type AttachmentDto, postMessageSchema } from '@cairn/shared'
+import { type AttachmentDto, type MessageType, postMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { canAccessFile, requireChannelAccess } from '@/lib/permissions'
 import { inngest } from '@/lib/inngest/client'
@@ -14,12 +14,22 @@ export interface ReactionDto {
   emoji: string
   count: number
   mine: boolean
-  users?: string[]
+  // リアクションしたユーザーの表示名（PC ではホバーで一覧表示する）
+  userNames: string[]
+}
+
+// 引用返信の参照先メッセージのサマリ
+export interface ReplyToDto {
+  id: string
+  senderName: string
+  content: string
+  isDeleted: boolean
 }
 
 export interface MessageDto {
   id: string
   content: string
+  messageType: MessageType
   senderId: string
   senderName: string
   senderAvatarUrl: string | null
@@ -27,11 +37,14 @@ export interface MessageDto {
   isEdited: boolean
   reactions: ReactionDto[]
   attachments: AttachmentDto[]
+  parentMessageId: string | null
+  replyTo: ReplyToDto | null
+  bookmarked: boolean
 }
 
 type RouteContext = { params: Promise<{ channelId: string }> }
 
-export async function GET(_req: Request, { params }: RouteContext) {
+export async function GET(req: Request, { params }: RouteContext) {
   const { channelId } = await params
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
@@ -39,46 +52,109 @@ export async function GET(_req: Request, { params }: RouteContext) {
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
   if (forbidden) return forbidden
 
+  // ブックマーク・パーマリンクから開いた古いメッセージが直近100件の外にある場合、
+  // その前後を中心としたウィンドウを取得する（無いと該当メッセージが読み込まれず、
+  // ジャンプ先がスクロール表示されないまま静かに失敗する）
+  const aroundMessageId = new URL(req.url).searchParams.get('around')
+
   try {
     const { db } = await import('@cairn/db')
-    const { messages, profiles, messageReactions, messageAttachments, files } = await import('@cairn/db')
-    const { eq, isNull, inArray, and } = await import('drizzle-orm')
-    const { desc } = await import('drizzle-orm')
+    const { messages, profiles, messageReactions, messageAttachments, messageBookmarks, files } = await import('@cairn/db')
+    const { eq, isNull, inArray, and, lte, gt } = await import('drizzle-orm')
+    const { desc, asc } = await import('drizzle-orm')
 
     const { workspaceMembers } = await import('@cairn/db')
 
-    const rows = await db
-      .select({
-        id: messages.id,
-        content: messages.content,
-        senderId: messages.senderId,
-        senderName: profiles.displayName,
-        senderAvatarUrl: workspaceMembers.avatarUrl,
-        createdAt: messages.createdAt,
-        updatedAt: messages.updatedAt,
-      })
-      .from(messages)
-      .innerJoin(profiles, eq(messages.senderId, profiles.id))
-      .leftJoin(
-        workspaceMembers,
-        and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
-      )
-      .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
-      .orderBy(desc(messages.createdAt))
-      .limit(100)
+    const selectFields = {
+      id: messages.id,
+      content: messages.content,
+      messageType: messages.messageType,
+      parentMessageId: messages.parentMessageId,
+      senderId: messages.senderId,
+      senderName: profiles.displayName,
+      senderAvatarUrl: workspaceMembers.avatarUrl,
+      createdAt: messages.createdAt,
+      updatedAt: messages.updatedAt,
+    }
 
-    rows.reverse()
+    let rows: Array<{
+      id: string
+      content: string
+      messageType: MessageType
+      parentMessageId: string | null
+      senderId: string
+      senderName: string
+      senderAvatarUrl: string | null
+      createdAt: Date
+      updatedAt: Date
+    }>
+
+    if (aroundMessageId) {
+      const [anchor] = await db
+        .select({ createdAt: messages.createdAt })
+        .from(messages)
+        .where(and(eq(messages.id, aroundMessageId), eq(messages.channelId, channelId), isNull(messages.deletedAt)))
+        .limit(1)
+
+      if (!anchor) {
+        return NextResponse.json([] satisfies MessageDto[])
+      }
+
+      const [beforeAndAnchor, after] = await Promise.all([
+        db
+          .select(selectFields)
+          .from(messages)
+          .innerJoin(profiles, eq(messages.senderId, profiles.id))
+          .leftJoin(
+            workspaceMembers,
+            and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+          )
+          .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt), lte(messages.createdAt, anchor.createdAt)))
+          .orderBy(desc(messages.createdAt))
+          .limit(50),
+        db
+          .select(selectFields)
+          .from(messages)
+          .innerJoin(profiles, eq(messages.senderId, profiles.id))
+          .leftJoin(
+            workspaceMembers,
+            and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+          )
+          .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt), gt(messages.createdAt, anchor.createdAt)))
+          .orderBy(asc(messages.createdAt))
+          .limit(50),
+      ])
+
+      beforeAndAnchor.reverse()
+      rows = [...beforeAndAnchor, ...after]
+    } else {
+      rows = await db
+        .select(selectFields)
+        .from(messages)
+        .innerJoin(profiles, eq(messages.senderId, profiles.id))
+        .leftJoin(
+          workspaceMembers,
+          and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+        )
+        .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
+        .orderBy(desc(messages.createdAt))
+        .limit(100)
+
+      rows.reverse()
+    }
 
     const messageIds = rows.map(r => r.id)
+    // 引用返信の参照先（表示中の100件の外にある可能性があるので別クエリで取得）
+    const parentIds = [...new Set(rows.map(r => r.parentMessageId).filter((id): id is string => !!id))]
 
-    const [reactionRows, attachmentRows] = await Promise.all([
+    const [reactionRows, attachmentRows, bookmarkRows, parentRows] = await Promise.all([
       messageIds.length > 0
         ? db
             .select({
               messageId: messageReactions.messageId,
               emoji: messageReactions.emoji,
               userId: messageReactions.userId,
-              displayName: profiles.displayName,
+              userName: profiles.displayName,
             })
             .from(messageReactions)
             .innerJoin(profiles, eq(messageReactions.userId, profiles.id))
@@ -100,6 +176,25 @@ export async function GET(_req: Request, { params }: RouteContext) {
             .where(inArray(messageAttachments.messageId, messageIds))
             .orderBy(messageAttachments.displayOrder)
         : Promise.resolve([]),
+      messageIds.length > 0
+        ? db
+            .select({ messageId: messageBookmarks.messageId })
+            .from(messageBookmarks)
+            .where(and(eq(messageBookmarks.userId, ctx.userId), inArray(messageBookmarks.messageId, messageIds)))
+        : Promise.resolve([]),
+      parentIds.length > 0
+        ? db
+            .select({
+              id: messages.id,
+              content: messages.content,
+              senderName: profiles.displayName,
+              deletedAt: messages.deletedAt,
+            })
+            .from(messages)
+            .innerJoin(profiles, eq(messages.senderId, profiles.id))
+            // 引用バーに他チャンネル/他ワークスペースの内容が漏れないよう、親は同一チャンネルに限定する
+            .where(and(inArray(messages.id, parentIds), eq(messages.channelId, channelId)))
+        : Promise.resolve([]),
     ])
 
     const reactionMap = new Map<string, ReactionDto[]>()
@@ -108,15 +203,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
       const existing = reactionMap.get(r.messageId)!.find(x => x.emoji === r.emoji)
       if (existing) {
         existing.count++
+        existing.userNames.push(r.userName)
         if (r.userId === ctx.userId) existing.mine = true
-        existing.users?.push(r.displayName)
       } else {
-        reactionMap.get(r.messageId)!.push({
-          emoji: r.emoji,
-          count: 1,
-          mine: r.userId === ctx.userId,
-          users: [r.displayName],
-        })
+        reactionMap.get(r.messageId)!.push({ emoji: r.emoji, count: 1, mine: r.userId === ctx.userId, userNames: [r.userName] })
       }
     }
 
@@ -130,6 +220,18 @@ export async function GET(_req: Request, { params }: RouteContext) {
         mimeType: a.mimeType,
         fileSize: a.fileSize,
         displayOrder: a.displayOrder,
+      })
+    }
+
+    const bookmarkedIds = new Set(bookmarkRows.map(b => b.messageId))
+
+    const parentMap = new Map<string, ReplyToDto>()
+    for (const p of parentRows) {
+      parentMap.set(p.id, {
+        id: p.id,
+        senderName: p.senderName,
+        content: p.deletedAt ? '' : p.content,
+        isDeleted: !!p.deletedAt,
       })
     }
 
@@ -148,6 +250,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const result: MessageDto[] = rows.map(r => ({
       id: r.id,
       content: hydrateMentions(r.content, id => nameMap.get(id)),
+      messageType: r.messageType,
       senderId: r.senderId,
       senderName: r.senderName,
       senderAvatarUrl: r.senderAvatarUrl ?? null,
@@ -155,6 +258,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
       isEdited: r.updatedAt.getTime() > r.createdAt.getTime(),
       reactions: reactionMap.get(r.id) ?? [],
       attachments: attachmentMap.get(r.id) ?? [],
+      parentMessageId: r.parentMessageId,
+      replyTo: r.parentMessageId ? parentMap.get(r.parentMessageId) ?? null : null,
+      bookmarked: bookmarkedIds.has(r.id),
     }))
 
     return NextResponse.json(result)
@@ -187,7 +293,24 @@ export async function POST(req: Request, { params }: RouteContext) {
   try {
     const { db } = await import('@cairn/db')
     const { messages, profiles, messageAttachments, files } = await import('@cairn/db')
-    const { eq, inArray } = await import('drizzle-orm')
+    const { eq, and, isNull, inArray } = await import('drizzle-orm')
+
+    // 引用返信の親は、同一チャンネルの未削除メッセージに限定する。
+    // 他チャンネルの ID を親に偽装して内容を引用バーに漏らす攻撃を防ぐ
+    if (parsed.data.parentMessageId) {
+      const [parent] = await db
+        .select({ id: messages.id })
+        .from(messages)
+        .where(and(
+          eq(messages.id, parsed.data.parentMessageId),
+          eq(messages.channelId, channelId),
+          isNull(messages.deletedAt),
+        ))
+        .limit(1)
+      if (!parent) {
+        return NextResponse.json({ error: '返信先のメッセージが見つかりません' }, { status: 422 })
+      }
+    }
 
     const attachmentFileIds = parsed.data.attachmentFileIds ?? []
     // メンションは名前なしの canonical 形式で保存する（埋め込み名が来ても除去）
@@ -304,6 +427,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json({
       id: inserted.id,
       content: inserted.content,
+      messageType: parsed.data.messageType ?? 'text',
       senderId: inserted.senderId,
       senderName,
       senderAvatarUrl: profile?.avatarUrl ?? null,
@@ -311,6 +435,9 @@ export async function POST(req: Request, { params }: RouteContext) {
       isEdited: false,
       reactions: [],
       attachments: [],
+      parentMessageId: parsed.data.parentMessageId ?? null,
+      replyTo: null,
+      bookmarked: false,
     } satisfies MessageDto, { status: 201 })
   } catch (err) {
     console.error('[/api/channels/[channelId]/messages POST] DB query failed:', err)
