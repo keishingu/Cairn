@@ -18,6 +18,7 @@ import { useCommand } from '@/lib/command-registry'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { recordManualPresenceStatus, syncPresenceOfflineOnLogout } from '@/lib/use-auto-presence'
 import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
+import { WORKSPACE_HEADER } from '@/lib/workspace-cookie'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 export type PageId =
@@ -578,9 +579,13 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
 
   const statusMutation = useMutation({
     mutationFn: async ({ status, keepalive }: { status: UserStatus; keepalive?: boolean }) => {
+      const headers = new Headers({ 'Content-Type': 'application/json' })
+      if (workspace?.id) {
+        headers.set(WORKSPACE_HEADER, workspace.id)
+      }
       const res = await fetchWithAuth('/api/me', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         ...(keepalive !== undefined ? { keepalive } : {}),
         body: JSON.stringify({ status }),
       })

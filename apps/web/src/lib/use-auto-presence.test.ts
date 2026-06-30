@@ -522,6 +522,39 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('workspace 解決後に初期 online 同期をやり直す', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    localStorage.setItem(PRESENCE_INTENT_STORAGE_KEY, JSON.stringify({
+      'ws-1': { status: 'offline', source: 'auto', workspaceId: 'ws-1' },
+    }))
+    const updateStatus = vi.fn().mockResolvedValue('online')
+    const readCurrentPresence = vi.fn()
+      .mockResolvedValueOnce({ status: 'offline', auto: true })
+      .mockResolvedValue({ status: 'offline', auto: true })
+    const initialProps: { workspaceId: string | null } = { workspaceId: null }
+
+    const { rerender } = renderHook(
+      ({ workspaceId }: { workspaceId: string | null }) => useAutoPresence({
+        status: 'offline',
+        workspaceId,
+        updateStatus,
+        readCurrentPresence,
+      }),
+      { initialProps },
+    )
+
+    await waitFor(() => {
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+
+    rerender({ workspaceId: DEFAULT_WORKSPACE_ID })
+
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenCalledWith('online', undefined)
+    })
+  })
+
   it('local auto offline の復帰時は remote offline でも online に戻す', async () => {
     setVisibilityState('hidden')
     setHasFocus(false)

@@ -396,5 +396,5 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
       window.clearInterval(heartbeatId)
       clearCurrentTab()
     }
-  }, [status, clearCurrentTab, hasAnotherActiveTab, setCurrentTabActive, syncFromWindowState, syncStatus])
+  }, [status, workspaceId, clearCurrentTab, hasAnotherActiveTab, setCurrentTabActive, syncFromWindowState, syncStatus])
 }
