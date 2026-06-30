@@ -35,13 +35,13 @@ packages/db/src/schema/enums.ts
   + memberStatusEnum = pgEnum('workspace_member_status', ['active', 'inactive'])
 
 packages/db/src/schema/workspaces.ts  (workspace_members)
-  + status:        memberStatusEnum('status').notNull().default('active')
+  + membershipStatus: memberStatusEnum('membership_status').notNull().default('active')
   + deactivatedAt: timestamp('deactivated_at', { withTimezone: true })          // 監査・表示用
   + deactivatedBy: uuid('deactivated_by').references(() => profiles.id)          // 任意・監査用
 ```
 
 - `profiles`（＝認証ユーザー）には触れない。再活性化で同一性を保つため。
-- マイグレーション: 既存行は `status='active'` 既定で無影響。`pnpm db:generate` → `supabase migration up`。
+- マイグレーション: 既存の在席ステータス `workspace_members.status` と衝突しないよう、会員状態は `membership_status='active'` を既定にする。`pnpm db:generate` → `supabase migration up`。
 
 ### マイグレーションは timestamp 方式に切り替える
 

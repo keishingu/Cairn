@@ -3,7 +3,7 @@
 
 import type { ReactionDto } from '@/app/api/channels/[channelId]/messages/route'
 
-export function getReactionTooltip(reaction: Pick<ReactionDto, 'users'>): string | undefined {
-  const users = reaction.users?.filter(Boolean) ?? []
+export function getReactionTooltip(reaction: Pick<ReactionDto, 'userNames'>): string | undefined {
+  const users = reaction.userNames.filter(Boolean)
   return users.length > 0 ? users.join(', ') : undefined
 }
