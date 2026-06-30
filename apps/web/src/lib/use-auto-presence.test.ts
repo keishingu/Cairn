@@ -322,7 +322,7 @@ describe('useAutoPresence', () => {
     })
   })
 
-  it('別タブで手動 offline を選んでいる間は重複する auto offline を送らない', async () => {
+  it('別タブで手動 offline を選んでいても pagehide keepalive offline は server へ送る', async () => {
     setVisibilityState('hidden')
     setHasFocus(false)
     recordManualPresenceStatus('offline', DEFAULT_WORKSPACE_ID)
@@ -336,11 +336,12 @@ describe('useAutoPresence', () => {
     })
 
     await waitFor(() => {
-      expect(updateStatus).not.toHaveBeenCalled()
+      expect(updateStatus).toHaveBeenCalledTimes(1)
+      expect(updateStatus).toHaveBeenCalledWith('offline', { keepalive: true })
     })
   })
 
-  it('別タブで手動 busy を選んでいる間は stale な online 状態でも自動更新しない', async () => {
+  it('別タブで手動 busy を選んでいても pagehide keepalive offline は server へ送る', async () => {
     setVisibilityState('hidden')
     setHasFocus(false)
     recordManualPresenceStatus('busy', DEFAULT_WORKSPACE_ID)
@@ -355,7 +356,8 @@ describe('useAutoPresence', () => {
     })
 
     await waitFor(() => {
-      expect(updateStatus).not.toHaveBeenCalled()
+      expect(updateStatus).toHaveBeenCalledTimes(1)
+      expect(updateStatus).toHaveBeenCalledWith('offline', { keepalive: true })
     })
   })
 
@@ -593,6 +595,43 @@ describe('useAutoPresence', () => {
     setHasFocus(false)
     localStorage.setItem(PRESENCE_INTENT_STORAGE_KEY, JSON.stringify({
       'ws-1': { status: 'busy', source: 'manual', workspaceId: 'ws-1', origin: 'remote' },
+    }))
+    const updateStatus = vi.fn().mockResolvedValue('offline')
+    const readCurrentPresence = vi.fn()
+
+    renderHook(() => useAutoPresence({
+      status: 'busy',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+      readCurrentPresence,
+    }))
+
+    await waitFor(() => {
+      expect(readCurrentPresence).toHaveBeenCalled()
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+
+    readCurrentPresence.mockClear()
+
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent('pagehide'))
+    })
+
+    await waitFor(() => {
+      expect(readCurrentPresence).not.toHaveBeenCalled()
+      expect(updateStatus).toHaveBeenCalledWith('offline', { keepalive: true })
+    })
+
+    expect(JSON.parse(localStorage.getItem(PRESENCE_INTENT_STORAGE_KEY) ?? '{}')).toEqual({
+      'ws-1': { status: 'offline', source: 'auto', workspaceId: 'ws-1' },
+    })
+  })
+
+  it('stale な explicit manual busy intent でも pagehide keepalive offline は送る', async () => {
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    localStorage.setItem(PRESENCE_INTENT_STORAGE_KEY, JSON.stringify({
+      'ws-1': { status: 'busy', source: 'manual', workspaceId: 'ws-1', origin: 'explicit' },
     }))
     const updateStatus = vi.fn().mockResolvedValue('offline')
     const readCurrentPresence = vi.fn()
