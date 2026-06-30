@@ -260,7 +260,7 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
     let knownCurrentPresence: PresenceSnapshot | null | undefined
 
     if (status === 'away' || status === 'busy') return
-    if (currentIntent?.source === 'manual' && currentIntent.origin === 'remote' && readCurrentPresence && !options?.keepalive) {
+    if (currentIntent?.source === 'manual' && readCurrentPresence && !options?.keepalive) {
       knownCurrentPresence = await readCurrentPresence()
       if (knownCurrentPresence?.status === 'online') {
         setPresenceIntent(workspaceId, null)
