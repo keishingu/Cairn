@@ -117,7 +117,7 @@ export async function syncPresenceOfflineOnLogout(workspaceId: string | null = n
       headers,
       credentials: 'same-origin',
       keepalive: true,
-      body: JSON.stringify({ status: 'offline', auto: true }),
+      body: JSON.stringify({ status: 'offline' }),
     })
     if (!res.ok) return null
 
