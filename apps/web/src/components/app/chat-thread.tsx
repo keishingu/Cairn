@@ -1120,6 +1120,13 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     void ensureMessageLoaded(targetMessageId)
   }, [targetMessageId, ensureMessageLoaded])
 
+  // 引用バー（返信先プレビュー）クリックでのジャンプ。targetMessageId 同様、
+  // 直近100件の外にある古い親メッセージの場合は前後ウィンドウを取得してから表示する
+  const jumpToMessage = React.useCallback((messageId: string) => {
+    setHighlightId(messageId)
+    void ensureMessageLoaded(messageId)
+  }, [ensureMessageLoaded])
+
   React.useEffect(() => {
     if (!highlightId || isLoading || !scrollRef.current) return
     const el = scrollRef.current.querySelector<HTMLElement>(`[data-message-id="${highlightId}"]`)
@@ -1334,7 +1341,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               onCheckboxToggle={handleCheckboxToggle}
               onReply={handleReply}
               onBookmark={handleBookmark}
-              onJumpToMessage={setHighlightId}
+              onJumpToMessage={jumpToMessage}
               onCopyLink={handleCopyLink}
               onImageClick={openLightbox}
               focused={i === focusedMsgIdx}

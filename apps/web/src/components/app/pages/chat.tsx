@@ -404,10 +404,16 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   useCommand('seq.next', () => seekChannel('next'))
 
   const jumpToChannelMessage = (chanId: string, messageId: string) => {
-    _pendingJump = { channelId: chanId, messageId }
     setGlobalSearchOpen(false)
     setBookmarksOpen(false)
-    setChannelId(chanId)
+    // 既に開いているチャンネルへのジャンプは channelId が変化しないため、
+    // _pendingJump 消費用 effect（[channelId] 依存）が発火しない。その場合は直接 targetMessageId を設定する
+    if (chanId === channelId) {
+      setTargetMessageId(messageId)
+    } else {
+      _pendingJump = { channelId: chanId, messageId }
+      setChannelId(chanId)
+    }
     router.push('/chats/' + chanId)
     markChannelRead.mutate(chanId)
   }
