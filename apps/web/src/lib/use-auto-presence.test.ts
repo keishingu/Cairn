@@ -847,6 +847,56 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('offline 完了後に server が manual offline を保持していたら stale な online 復帰を止める', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    let resolveOffline: (value: 'offline') => void = () => {
+      throw new Error('offline update promise was not created')
+    }
+    const updateStatus = vi.fn()
+      .mockImplementationOnce(() => new Promise<'offline'>(resolve => {
+        resolveOffline = resolve
+      }))
+      .mockResolvedValueOnce('online')
+    const readCurrentPresence = vi.fn()
+      .mockResolvedValueOnce({ status: 'online', auto: false })
+      .mockResolvedValueOnce({ status: 'online', auto: false })
+      .mockResolvedValue({ status: 'offline', auto: false })
+
+    renderHook(() => useAutoPresence({
+      status: 'online',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+      readCurrentPresence,
+    }))
+
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenNthCalledWith(1, 'offline', undefined)
+    })
+
+    setVisibilityState('visible')
+    setHasFocus(true)
+    act(() => {
+      window.dispatchEvent(new Event('focus'))
+    })
+
+    resolveOffline('offline')
+
+    await waitFor(() => {
+      expect(readCurrentPresence).toHaveBeenCalled()
+      expect(updateStatus).toHaveBeenCalledTimes(1)
+      expect(JSON.parse(localStorage.getItem(PRESENCE_INTENT_STORAGE_KEY) ?? '{}')).toEqual({
+        [DEFAULT_WORKSPACE_ID]: { status: 'offline', source: 'manual', workspaceId: DEFAULT_WORKSPACE_ID, origin: 'remote' },
+      })
+    })
+  })
+
   it('keepalive offline 反映待ちの間に復帰したら stale な offline 完了を無視する', async () => {
     setVisibilityState('visible')
     setHasFocus(true)

@@ -328,6 +328,28 @@ export function useAutoPresence({
     applyResolvedStatus(resolvedStatus)
   })
 
+  const rereadPresenceBeforeStaleOfflineRestore = React.useEffectEvent(async () => {
+    if (!readCurrentPresence) return true
+
+    const currentPresence = await readCurrentPresence()
+    if (!currentPresence) return true
+
+    observePresence?.(currentPresence)
+    if (currentPresence.status === 'away' || currentPresence.status === 'busy') {
+      applyPresenceSnapshot(currentPresence)
+      return false
+    }
+    if (currentPresence.status === 'offline' && currentPresence.auto !== true) {
+      applyPresenceSnapshot(currentPresence)
+      return false
+    }
+    if (currentPresence.status === 'offline' && currentPresence.auto === true) {
+      applyPresenceSnapshot(currentPresence)
+    }
+
+    return true
+  })
+
   const syncStatus = React.useEffectEvent(async (nextStatus: AutoPresenceStatus, options?: SyncStatusOptions) => {
     const transitionToken = ++transitionTokenRef.current
     latestRequestedStatusRef.current = nextStatus
@@ -494,15 +516,9 @@ export function useAutoPresence({
       && latestRequestedStatusRef.current !== nextStatus
     if (nextStatus === 'offline' && supersededByDifferentStatus) {
       if (isWindowActive()) {
-        if (options?.keepalive && readCurrentPresence) {
-          const currentPresence = await readCurrentPresence()
-          if (currentPresence) {
-            observePresence?.(currentPresence)
-            applyPresenceSnapshot(currentPresence)
-            if (currentPresence.status === 'offline' && currentPresence.auto !== true) {
-              return
-            }
-          }
+        const shouldRestoreOnline = await rereadPresenceBeforeStaleOfflineRestore()
+        if (!shouldRestoreOnline) {
+          return
         }
         await restoreOnlineIfWindowActive()
       }
