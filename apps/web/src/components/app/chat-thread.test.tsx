@@ -110,6 +110,7 @@ describe('ChatMessage copy action', () => {
     render(
       <ChatMessage
         messageId="message-2"
+        messageType="text"
         senderId="user-2"
         currentUserId="user-1"
         senderName="Alice"
@@ -118,10 +119,16 @@ describe('ChatMessage copy action', () => {
         content={'**重要**\n- [ ] 持ち物チェック\n[詳細](https://example.com/guide)'}
         reactions={[]}
         attachments={[]}
+        replyTo={null}
+        bookmarked={false}
         onReact={vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
         onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
         onImageClick={vi.fn()}
       />,
     )
