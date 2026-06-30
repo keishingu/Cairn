@@ -417,7 +417,7 @@ export function useAutoPresence({
     const supersededByDifferentStatus =
       transitionToken !== transitionTokenRef.current
       && latestRequestedStatusRef.current !== nextStatus
-    if (nextStatus === 'offline' && !options?.keepalive && supersededByDifferentStatus) {
+    if (nextStatus === 'offline' && supersededByDifferentStatus) {
       if (isWindowActive()) {
         await restoreOnlineIfWindowActive()
       }
