@@ -53,6 +53,7 @@ describe('ChatMessage copy action', () => {
     render(
       <ChatMessage
         messageId="message-1"
+        messageType="text"
         senderId="user-2"
         currentUserId="user-1"
         senderName="Alice"
@@ -61,10 +62,16 @@ describe('ChatMessage copy action', () => {
         content={content}
         reactions={[]}
         attachments={[]}
+        replyTo={null}
+        bookmarked={false}
         onReact={vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
         onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
         onImageClick={vi.fn()}
         isMobile
       />,

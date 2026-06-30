@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { boolean, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
-import { userStatusEnum, workspaceRoleEnum } from './enums'
+import { memberStatusEnum, userStatusEnum, workspaceRoleEnum } from './enums'
 
 export interface WorkspaceCoverPhoto {
   id: string
@@ -50,6 +50,9 @@ export const workspaceMembers = pgTable(
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
     role: workspaceRoleEnum('role').notNull().default('member'),
+    membershipStatus: memberStatusEnum('membership_status').notNull().default('active'),
+    deactivatedAt: timestamp('deactivated_at', { withTimezone: true }),
+    deactivatedBy: uuid('deactivated_by').references(() => profiles.id),
     avatarUrl: text('avatar_url'),
     status: userStatusEnum('status').notNull().default('online'),
     statusMessage: text('status_message'),
