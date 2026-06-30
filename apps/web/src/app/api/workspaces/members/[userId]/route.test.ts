@@ -31,12 +31,17 @@ vi.mock('@/lib/permissions', () => ({
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
-  workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role' },
+  workspaceMembers: {
+    workspaceId: 'wm.workspaceId',
+    userId: 'wm.userId',
+    role: 'wm.role',
+    membershipStatus: 'wm.membershipStatus',
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => 'eq'),
-  and: vi.fn(() => 'and'),
+  eq: vi.fn((...args: unknown[]) => ({ type: 'eq', args })),
+  and: vi.fn((...args: unknown[]) => ({ type: 'and', args })),
   count: vi.fn(() => 'count'),
 }))
 
@@ -171,6 +176,18 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(res.status).toBe(422)
     const body = await res.json() as { error: string }
     expect(body.error).toContain('owner')
+  })
+
+  it('inactive owner を owner 数に含めず降格を拒否する', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 1 }]))
+    const { PATCH } = await import('./route')
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(422)
+    const whereArg = mockDb.select.mock.results[1]?.value.from.mock.results[0]?.value.where.mock.calls[0]?.[0]
+    expect(whereArg.args).toContainEqual({ type: 'eq', args: ['wm.membershipStatus', 'active'] })
   })
 
   it('ゲストを通常ロールへ昇格できない（422）', async () => {
