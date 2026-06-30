@@ -121,16 +121,20 @@ export async function PATCH(req: Request) {
     }
 
     if (hasStatus || hasStatusMessage) {
-      if (hasStatus && b.auto && !b.force) {
+      if (hasStatus && b.auto) {
         const [currentMember] = await db
           .select({ status: workspaceMembers.status, statusAuto: workspaceMembers.statusAuto })
           .from(workspaceMembers)
           .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
 
-        const shouldPreserveManualStatus =
-          currentMember?.status === 'away'
-          || currentMember?.status === 'busy'
-          || (currentMember?.status === 'offline' && currentMember.statusAuto === false)
+        const isManualOffline = currentMember?.status === 'offline' && currentMember.statusAuto === false
+        const shouldPreserveManualStatus = isManualOffline || (
+          !b.force
+          && (
+            currentMember?.status === 'away'
+            || currentMember?.status === 'busy'
+          )
+        )
 
         if (shouldPreserveManualStatus) {
           return NextResponse.json({ id: ctx.userId, status: currentMember.status, statusAuto: currentMember.statusAuto ?? false })

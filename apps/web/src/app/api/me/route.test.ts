@@ -105,6 +105,7 @@ describe('PATCH /api/me の auto presence 更新', () => {
   })
 
   it('force 付き auto offline は手動 away / busy を越えて offline にする', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ status: 'busy', statusAuto: false }]))
     const updateWhere = vi.fn().mockResolvedValue(undefined)
     const updateSet = vi.fn().mockReturnValue({ where: updateWhere })
     mockDb.update.mockReturnValue({ set: updateSet })
@@ -117,9 +118,24 @@ describe('PATCH /api/me の auto presence 更新', () => {
     }))
 
     expect(res.status).toBe(200)
-    expect(mockDb.select).not.toHaveBeenCalled()
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
     expect(mockDb.update).toHaveBeenCalledTimes(1)
     expect(updateSet).toHaveBeenCalledWith({ status: 'offline', statusAuto: true })
     expect(updateWhere).toHaveBeenCalledTimes(1)
+  })
+
+  it('force 付き auto offline でも手動 offline は auto 状態へ塗り替えない', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ status: 'offline', statusAuto: false }]))
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request('http://localhost/api/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'offline', auto: true, force: true }),
+    }))
+
+    expect(res.status).toBe(200)
+    expect(mockDb.update).not.toHaveBeenCalled()
+    await expect(res.json()).resolves.toEqual({ id: USER_ID, status: 'offline', statusAuto: false })
   })
 })
