@@ -16,7 +16,7 @@ import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
 import { useCommand } from '@/lib/command-registry'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import { useAutoPresence } from '@/lib/use-auto-presence'
+import { recordManualPresenceStatus } from '@/lib/use-auto-presence'
 import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
 import type { ProjectDto } from '@/app/api/projects/route'
 
@@ -590,21 +590,6 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
     },
   })
 
-  useAutoPresence({
-    status: me?.status,
-    updateStatus: async (status, options) => {
-      try {
-        await statusMutation.mutateAsync({
-          status,
-          ...(options?.keepalive !== undefined ? { keepalive: options.keepalive } : {}),
-        })
-        return true
-      } catch {
-        return false
-      }
-    },
-  })
-
   const statusMessageMutation = useMutation({
     mutationFn: async (statusMessage: string | null) => {
       const res = await fetchWithAuth('/api/me', {
@@ -663,7 +648,10 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       {STATUS_OPTIONS.map(opt => (
         <button
           key={opt.value}
-          onClick={() => statusMutation.mutate({ status: opt.value })}
+          onClick={() => {
+            recordManualPresenceStatus(opt.value)
+            statusMutation.mutate({ status: opt.value })
+          }}
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
             width: '100%', padding: '7px 10px', borderRadius: 7, border: 'none',

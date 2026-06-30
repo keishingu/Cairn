@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useAutoPresence } from './use-auto-presence'
+import { recordManualPresenceStatus, useAutoPresence } from './use-auto-presence'
 
 const TAB_ACTIVITY_STORAGE_KEY = 'cairn:auto-presence:tabs'
 
@@ -142,6 +142,23 @@ describe('useAutoPresence', () => {
       document.dispatchEvent(new Event('visibilitychange'))
       window.dispatchEvent(new Event('focus'))
       window.dispatchEvent(new PageTransitionEvent('pagehide'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+  })
+
+  it('手動で offline を選んでいる間は visible でも online に戻さない', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    recordManualPresenceStatus('offline')
+    const updateStatus = vi.fn().mockResolvedValue(true)
+
+    renderHook(() => useAutoPresence({ status: 'offline', updateStatus }))
+
+    act(() => {
+      window.dispatchEvent(new Event('focus'))
     })
 
     await waitFor(() => {

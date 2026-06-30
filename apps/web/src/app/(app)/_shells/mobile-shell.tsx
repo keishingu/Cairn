@@ -19,6 +19,7 @@ import { PageCalendar } from '@/components/app/pages/projects-calendar'
 import { PageKanban } from '@/components/app/pages/projects-kanban'
 import { Icon } from '@/components/app/primitives'
 import { AppShellContext, useAppShell } from '@/components/app/app-shell-context'
+import { AutoPresenceSync } from '@/components/app/auto-presence-sync'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { PageNotifications } from '@/components/app/pages/notifications'
 import { PageMembers } from '@/components/app/pages/members-page'
@@ -137,6 +138,7 @@ function MobileShellInner() {
   return (
     <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), projectsView, setProjectsView, crossSearchNonce: 0, consumeCrossSearch: () => {} }}>
       <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
+        <AutoPresenceSync />
         <NavigationProgress />
         {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)} isMobile/>}
         {/* パネルは position:fixed でフルスクリーン表示。ブラウザ履歴でスタック管理する */}

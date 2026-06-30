@@ -18,6 +18,7 @@ import { CommandProvider, useCommands } from '@/lib/command-registry'
 import { ShortcutHints } from '@/components/app/shortcut-hints'
 import { CommandPalette } from '@/components/app/command-palette'
 import { ShortcutHelp } from '@/components/app/shortcut-help'
+import { AutoPresenceSync } from '@/components/app/auto-presence-sync'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 const PC_STORAGE_KEY = STORAGE_KEYS.projects_view_pc
@@ -138,6 +139,7 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
       consumeCrossSearch: () => setCrossSearchNonce(0),
     }}>
       <div className="app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
+        <AutoPresenceSync />
         <NavigationProgress />
         <div className="app" style={{ width: '100%', height: '100%', display: 'flex', background: 'var(--bg)', overflow: 'hidden' }}>
           <Sidebar page={page} setPage={navigate} openPanel={openPanel} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar}/>

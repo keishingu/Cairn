@@ -5,9 +5,11 @@ import type { UserStatus } from '@/lib/user-status'
 
 type AutoPresenceStatus = Extract<UserStatus, 'online' | 'offline'>
 type TabActivityMap = Record<string, { active: boolean; updatedAt: number }>
+type PresenceIntent = { status: UserStatus; source: 'auto' | 'manual' }
 
 const TAB_ACTIVITY_STORAGE_KEY = 'cairn:auto-presence:tabs'
 const TAB_ACTIVITY_TTL_MS = 30_000
+const PRESENCE_INTENT_STORAGE_KEY = 'cairn:auto-presence:intent'
 
 interface UpdateStatusOptions {
   keepalive?: boolean
@@ -16,6 +18,35 @@ interface UpdateStatusOptions {
 interface UseAutoPresenceOptions {
   status: UserStatus | undefined
   updateStatus: (status: AutoPresenceStatus, options?: UpdateStatusOptions) => Promise<boolean>
+}
+
+function readPresenceIntent(): PresenceIntent | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(PRESENCE_INTENT_STORAGE_KEY)
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<PresenceIntent>
+    if (
+      (parsed.status === 'online' || parsed.status === 'away' || parsed.status === 'busy' || parsed.status === 'offline')
+      && (parsed.source === 'auto' || parsed.source === 'manual')
+    ) {
+      return { status: parsed.status, source: parsed.source }
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function writePresenceIntent(intent: PresenceIntent) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(PRESENCE_INTENT_STORAGE_KEY, JSON.stringify(intent))
+}
+
+export function recordManualPresenceStatus(status: UserStatus) {
+  writePresenceIntent({ status, source: 'manual' })
 }
 
 export function useAutoPresence({ status, updateStatus }: UseAutoPresenceOptions) {
@@ -84,6 +115,10 @@ export function useAutoPresence({ status, updateStatus }: UseAutoPresenceOptions
 
   const syncStatus = React.useEffectEvent(async (nextStatus: AutoPresenceStatus, options?: UpdateStatusOptions) => {
     if (status === 'away' || status === 'busy') return
+    if (nextStatus === 'online' && status === 'offline') {
+      const lastIntent = readPresenceIntent()
+      if (lastIntent?.status === 'offline' && lastIntent.source === 'manual') return
+    }
     if (lastSentRef.current === nextStatus) return
 
     lastSentRef.current = nextStatus
@@ -93,7 +128,9 @@ export function useAutoPresence({ status, updateStatus }: UseAutoPresenceOptions
         status === 'online' || status === 'offline'
           ? status
           : null
+      return
     }
+    writePresenceIntent({ status: nextStatus, source: 'auto' })
   })
 
   const syncFromWindowState = React.useEffectEvent(() => {
