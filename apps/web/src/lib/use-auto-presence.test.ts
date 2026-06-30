@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { recordManualPresenceStatus, useAutoPresence } from './use-auto-presence'
 
 const TAB_ACTIVITY_STORAGE_KEY = 'cairn:auto-presence:tabs'
+const PRESENCE_INTENT_STORAGE_KEY = 'cairn:auto-presence:intent'
 const DEFAULT_WORKSPACE_ID = 'ws-1'
 
 function setVisibilityState(value: DocumentVisibilityState) {
@@ -282,6 +283,16 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('manual intent は workspace ごとに保持する', () => {
+    recordManualPresenceStatus('busy', DEFAULT_WORKSPACE_ID)
+    recordManualPresenceStatus('away', 'ws-2')
+
+    expect(JSON.parse(localStorage.getItem(PRESENCE_INTENT_STORAGE_KEY) ?? '{}')).toEqual({
+      'ws-1': { status: 'busy', source: 'manual', workspaceId: 'ws-1' },
+      'ws-2': { status: 'away', source: 'manual', workspaceId: 'ws-2' },
+    })
+  })
+
   it('可視タブは heartbeat で active 記録を更新し続ける', async () => {
     vi.useFakeTimers()
     setVisibilityState('visible')
@@ -400,6 +411,55 @@ describe('useAutoPresence', () => {
 
     await waitFor(() => {
       expect(updateStatus).toHaveBeenCalledWith('online', undefined)
+    })
+  })
+
+  it('duplicate tab でも別 tab id を採番して offline を誤送信しない', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const firstUpdateStatus = vi.fn().mockResolvedValue(true)
+    const secondUpdateStatus = vi.fn().mockResolvedValue(true)
+
+    const firstTab = renderHook(() => useAutoPresence({
+      status: 'online',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus: firstUpdateStatus,
+    }))
+
+    const firstTabId = Object.keys(JSON.parse(localStorage.getItem(TAB_ACTIVITY_STORAGE_KEY) ?? '{}'))[0]
+    expect(firstTabId).toBeDefined()
+    if (!firstTabId) {
+      return
+    }
+
+    const clonedSessionStorage = sessionStorage.getItem(`${TAB_ACTIVITY_STORAGE_KEY}:id`)
+    expect(clonedSessionStorage).toBeTruthy()
+
+    firstTab.unmount()
+    localStorage.setItem(TAB_ACTIVITY_STORAGE_KEY, JSON.stringify({
+      [firstTabId]: { active: true, updatedAt: Date.now(), workspaceId: DEFAULT_WORKSPACE_ID },
+    }))
+    sessionStorage.clear()
+    if (clonedSessionStorage) {
+      sessionStorage.setItem(`${TAB_ACTIVITY_STORAGE_KEY}:id`, clonedSessionStorage)
+    }
+
+    renderHook(() => useAutoPresence({
+      status: 'online',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus: secondUpdateStatus,
+    }))
+
+    const recordKeys = Object.keys(JSON.parse(localStorage.getItem(TAB_ACTIVITY_STORAGE_KEY) ?? '{}'))
+    expect(recordKeys).toHaveLength(2)
+    expect(new Set(recordKeys).size).toBe(2)
+
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+
+    await waitFor(() => {
+      expect(secondUpdateStatus).not.toHaveBeenCalledWith('offline', { keepalive: true })
     })
   })
 })

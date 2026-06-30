@@ -6,11 +6,15 @@ import type { UserStatus } from '@/lib/user-status'
 type AutoPresenceStatus = Extract<UserStatus, 'online' | 'offline'>
 type TabActivityMap = Record<string, { active: boolean; updatedAt: number; workspaceId: string | null }>
 type PresenceIntent = { status: UserStatus; source: 'auto' | 'manual'; workspaceId: string | null }
+type PresenceIntentMap = Record<string, PresenceIntent>
+type TabSessionRecord = { tabId: string; ownerId: string }
 
 const TAB_ACTIVITY_STORAGE_KEY = 'cairn:auto-presence:tabs'
 const TAB_ACTIVITY_TTL_MS = 30_000
 const TAB_ACTIVITY_HEARTBEAT_MS = 10_000
 const PRESENCE_INTENT_STORAGE_KEY = 'cairn:auto-presence:intent'
+const TAB_ID_STORAGE_KEY = `${TAB_ACTIVITY_STORAGE_KEY}:id`
+const GLOBAL_WORKSPACE_KEY = '__global__'
 
 interface UpdateStatusOptions {
   keepalive?: boolean
@@ -23,33 +27,62 @@ interface UseAutoPresenceOptions {
   readCurrentStatus?: () => Promise<UserStatus | null>
 }
 
-function readPresenceIntent(): PresenceIntent | null {
-  if (typeof window === 'undefined') return null
+function getPresenceIntentKey(workspaceId: string | null) {
+  return workspaceId ?? GLOBAL_WORKSPACE_KEY
+}
+
+function readPresenceIntentMap(): PresenceIntentMap {
+  if (typeof window === 'undefined') return {}
   const raw = window.localStorage.getItem(PRESENCE_INTENT_STORAGE_KEY)
+  if (!raw) return {}
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, Partial<PresenceIntent>>
+    const entries = Object.entries(parsed).flatMap(([key, value]) => {
+      if (
+        (value.status === 'online' || value.status === 'away' || value.status === 'busy' || value.status === 'offline')
+        && (value.source === 'auto' || value.source === 'manual')
+      ) {
+        return [[key, {
+          status: value.status,
+          source: value.source,
+          workspaceId: typeof value.workspaceId === 'string' ? value.workspaceId : null,
+        } satisfies PresenceIntent] as const]
+      }
+
+      return []
+    })
+    return Object.fromEntries(entries)
+  } catch {
+    return {}
+  }
+}
+
+function readPresenceIntent(workspaceId: string | null): PresenceIntent | null {
+  const intents = readPresenceIntentMap()
+  return intents[getPresenceIntentKey(workspaceId)] ?? null
+}
+
+function writePresenceIntent(intent: PresenceIntent) {
+  if (typeof window === 'undefined') return
+  const intents = readPresenceIntentMap()
+  intents[getPresenceIntentKey(intent.workspaceId)] = intent
+  window.localStorage.setItem(PRESENCE_INTENT_STORAGE_KEY, JSON.stringify(intents))
+}
+
+function parseTabSessionRecord(raw: string | null): TabSessionRecord | null {
   if (!raw) return null
 
   try {
-    const parsed = JSON.parse(raw) as Partial<PresenceIntent>
-    if (
-      (parsed.status === 'online' || parsed.status === 'away' || parsed.status === 'busy' || parsed.status === 'offline')
-      && (parsed.source === 'auto' || parsed.source === 'manual')
-    ) {
-      return {
-        status: parsed.status,
-        source: parsed.source,
-        workspaceId: typeof parsed.workspaceId === 'string' ? parsed.workspaceId : null,
-      }
+    const parsed = JSON.parse(raw) as Partial<TabSessionRecord>
+    if (typeof parsed.tabId === 'string' && typeof parsed.ownerId === 'string') {
+      return { tabId: parsed.tabId, ownerId: parsed.ownerId }
     }
   } catch {
     return null
   }
 
   return null
-}
-
-function writePresenceIntent(intent: PresenceIntent) {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(PRESENCE_INTENT_STORAGE_KEY, JSON.stringify(intent))
 }
 
 export function recordManualPresenceStatus(status: UserStatus, workspaceId: string | null = null) {
@@ -59,6 +92,11 @@ export function recordManualPresenceStatus(status: UserStatus, workspaceId: stri
 export function useAutoPresence({ status, workspaceId = null, updateStatus, readCurrentStatus }: UseAutoPresenceOptions) {
   const lastSentRef = React.useRef<AutoPresenceStatus | null>(null)
   const tabIdRef = React.useRef<string | null>(null)
+  const tabOwnerIdRef = React.useRef<string>(
+    typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  )
 
   React.useEffect(() => {
     lastSentRef.current =
@@ -70,17 +108,19 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
   const getTabId = React.useEffectEvent(() => {
     if (tabIdRef.current) return tabIdRef.current
 
-    const storageKey = `${TAB_ACTIVITY_STORAGE_KEY}:id`
-    const existing = window.sessionStorage.getItem(storageKey)
-    if (existing) {
-      tabIdRef.current = existing
-      return existing
+    const existing = parseTabSessionRecord(window.sessionStorage.getItem(TAB_ID_STORAGE_KEY))
+    if (existing?.ownerId === tabOwnerIdRef.current) {
+      tabIdRef.current = existing.tabId
+      return existing.tabId
     }
 
     const nextId = typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`
-    window.sessionStorage.setItem(storageKey, nextId)
+    window.sessionStorage.setItem(TAB_ID_STORAGE_KEY, JSON.stringify({
+      tabId: nextId,
+      ownerId: tabOwnerIdRef.current,
+    } satisfies TabSessionRecord))
     tabIdRef.current = nextId
     return nextId
   })
@@ -123,8 +163,7 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
   })
 
   const syncStatus = React.useEffectEvent(async (nextStatus: AutoPresenceStatus, options?: UpdateStatusOptions) => {
-    const lastIntent = readPresenceIntent()
-    const currentIntent = lastIntent?.workspaceId === workspaceId ? lastIntent : null
+    const currentIntent = readPresenceIntent(workspaceId)
 
     if (status === 'away' || status === 'busy') return
     if (currentIntent?.source === 'manual') {
