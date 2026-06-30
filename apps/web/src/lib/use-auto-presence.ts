@@ -10,6 +10,7 @@ type PresenceIntent = { status: UserStatus; source: 'auto' | 'manual'; workspace
 type PresenceIntentMap = Record<string, PresenceIntent>
 type TabSessionRecord = { tabId: string; ownerId: string }
 type PresenceSnapshot = { status: UserStatus; auto: boolean }
+type SyncAttempt = { token: number; status: AutoPresenceStatus; keepalive: boolean; pending: boolean }
 
 const TAB_ACTIVITY_STORAGE_KEY = 'cairn:auto-presence:tabs'
 const TAB_ACTIVITY_TTL_MS = 30_000
@@ -156,6 +157,7 @@ export function useAutoPresence({
   observePresence,
 }: UseAutoPresenceOptions) {
   const lastSentRef = React.useRef<AutoPresenceStatus | null>(null)
+  const lastSyncAttemptRef = React.useRef<SyncAttempt | null>(null)
   const transitionTokenRef = React.useRef(0)
   const latestRequestedStatusRef = React.useRef<AutoPresenceStatus | null>(null)
   const lastInteractionOnlineSyncAtRef = React.useRef(0)
@@ -315,7 +317,18 @@ export function useAutoPresence({
       }
       lastInteractionOnlineSyncAtRef.current = now
     }
-    if (lastSentRef.current === nextStatus && (nextStatus === 'offline' || !readCurrentPresence || options?.keepalive)) return
+    if (lastSentRef.current === nextStatus) {
+      if (nextStatus === 'offline' && options?.keepalive) {
+        const lastAttempt = lastSyncAttemptRef.current
+        const alreadyCompletedKeepaliveOffline =
+          lastAttempt?.status === 'offline'
+          && lastAttempt.keepalive
+          && !lastAttempt.pending
+        if (alreadyCompletedKeepaliveOffline) return
+      } else if (nextStatus === 'offline' || !readCurrentPresence || options?.keepalive) {
+        return
+      }
+    }
 
     if (readCurrentPresence && !options?.keepalive) {
       didPreflightRead = true
@@ -341,7 +354,18 @@ export function useAutoPresence({
       }
     }
 
-    if (lastSentRef.current === nextStatus && (!didPreflightRead || knownCurrentPresence == null)) return
+    if (lastSentRef.current === nextStatus && (!didPreflightRead || knownCurrentPresence == null)) {
+      if (nextStatus === 'offline' && options?.keepalive) {
+        const lastAttempt = lastSyncAttemptRef.current
+        const alreadyCompletedKeepaliveOffline =
+          lastAttempt?.status === 'offline'
+          && lastAttempt.keepalive
+          && !lastAttempt.pending
+        if (alreadyCompletedKeepaliveOffline) return
+      } else {
+        return
+      }
+    }
 
     if (nextStatus === 'offline' && !options?.keepalive) {
       const supersededByDifferentStatus =
@@ -351,6 +375,12 @@ export function useAutoPresence({
     }
 
     lastSentRef.current = nextStatus
+    lastSyncAttemptRef.current = {
+      token: transitionToken,
+      status: nextStatus,
+      keepalive: options?.keepalive === true,
+      pending: true,
+    }
     const shouldPersistIntentBeforeAwait = nextStatus === 'offline' && options?.keepalive === true
     if (shouldPersistIntentBeforeAwait) {
       writePresenceIntent({ status: nextStatus, source: 'auto', workspaceId })
@@ -358,6 +388,9 @@ export function useAutoPresence({
 
     const resolvedStatus = await updateStatus(nextStatus, options)
     if (!resolvedStatus) {
+      if (lastSyncAttemptRef.current?.token === transitionToken) {
+        lastSyncAttemptRef.current = null
+      }
       if (shouldPersistIntentBeforeAwait) {
         setPresenceIntent(workspaceId, currentIntent)
       }
@@ -366,6 +399,15 @@ export function useAutoPresence({
           ? status
           : null
       return
+    }
+
+    if (lastSyncAttemptRef.current?.token === transitionToken) {
+      lastSyncAttemptRef.current = {
+        token: transitionToken,
+        status: nextStatus,
+        keepalive: options?.keepalive === true,
+        pending: false,
+      }
     }
 
     const supersededByDifferentStatus =

@@ -104,6 +104,41 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('通常 offline の送信中でも pagehide では keepalive offline を送り直す', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    let resolveOffline: (value: 'offline') => void = () => {
+      throw new Error('offline update promise was not created')
+    }
+    const updateStatus = vi.fn()
+      .mockImplementationOnce(() => new Promise<'offline'>(resolve => {
+        resolveOffline = resolve
+      }))
+      .mockResolvedValueOnce('offline')
+
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
+
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenNthCalledWith(1, 'offline', undefined)
+    })
+
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenNthCalledWith(2, 'offline', { keepalive: true })
+    })
+
+    resolveOffline('offline')
+  })
+
   it('非表示になったら offline を送る', async () => {
     setVisibilityState('visible')
     setHasFocus(true)
