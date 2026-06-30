@@ -23,13 +23,14 @@ export async function GET(req: Request, { params }: RouteContext) {
   try {
     const { db } = await import('@cairn/db')
     const { messages, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, isNull, and, ilike, inArray } = await import('drizzle-orm')
+    const { eq, ne, isNull, and, ilike, inArray } = await import('drizzle-orm')
     const { desc } = await import('drizzle-orm')
 
     const rows = await db
       .select({
         id: messages.id,
         content: messages.content,
+        messageType: messages.messageType,
         senderId: messages.senderId,
         senderName: profiles.displayName,
         senderAvatarUrl: workspaceMembers.avatarUrl,
@@ -45,6 +46,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       .where(and(
         eq(messages.channelId, channelId),
         isNull(messages.deletedAt),
+        ne(messages.messageType, 'system'),
         ilike(messages.content, `%${q}%`),
       ))
       .orderBy(desc(messages.createdAt))
@@ -64,6 +66,7 @@ export async function GET(req: Request, { params }: RouteContext) {
     const result: MessageDto[] = rows.map(r => ({
       id: r.id,
       content: hydrateMentions(r.content, id => nameMap.get(id)),
+      messageType: r.messageType,
       senderId: r.senderId,
       senderName: r.senderName,
       senderAvatarUrl: r.senderAvatarUrl ?? null,
@@ -71,6 +74,9 @@ export async function GET(req: Request, { params }: RouteContext) {
       isEdited: r.updatedAt.getTime() > r.createdAt.getTime(),
       reactions: [],
       attachments: [],
+      parentMessageId: null,
+      replyTo: null,
+      bookmarked: false,
     }))
 
     return NextResponse.json(result)
