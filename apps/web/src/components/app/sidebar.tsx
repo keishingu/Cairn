@@ -16,7 +16,7 @@ import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
 import { useCommand } from '@/lib/command-registry'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import { recordManualPresenceStatus } from '@/lib/use-auto-presence'
+import { recordManualPresenceStatus, syncPresenceOfflineOnLogout } from '@/lib/use-auto-presence'
 import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
 import type { ProjectDto } from '@/app/api/projects/route'
 
@@ -635,6 +635,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
 
   async function handleLogout() {
     const supabase = createClient()
+    await syncPresenceOfflineOnLogout(workspace?.id ?? null)
     await supabase.auth.signOut()
     router.push('/auth/login')
     router.refresh()

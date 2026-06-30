@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { recordManualPresenceStatus, useAutoPresence } from './use-auto-presence'
+import { WORKSPACE_HEADER } from '@/lib/workspace-cookie'
+import { recordManualPresenceStatus, syncPresenceOfflineOnLogout, useAutoPresence } from './use-auto-presence'
 
 const TAB_ACTIVITY_STORAGE_KEY = 'cairn:auto-presence:tabs'
 const PRESENCE_INTENT_STORAGE_KEY = 'cairn:auto-presence:intent'
@@ -24,6 +25,7 @@ describe('useAutoPresence', () => {
   beforeEach(() => {
     localStorage.clear()
     sessionStorage.clear()
+    vi.unstubAllGlobals()
   })
 
   it('ページを閉じる時に offline を keepalive 付きで送る', async () => {
@@ -320,8 +322,8 @@ describe('useAutoPresence', () => {
     recordManualPresenceStatus('away', 'ws-2')
 
     expect(JSON.parse(localStorage.getItem(PRESENCE_INTENT_STORAGE_KEY) ?? '{}')).toEqual({
-      'ws-1': { status: 'busy', source: 'manual', workspaceId: 'ws-1' },
-      'ws-2': { status: 'away', source: 'manual', workspaceId: 'ws-2' },
+      'ws-1': { status: 'busy', source: 'manual', workspaceId: 'ws-1', origin: 'explicit' },
+      'ws-2': { status: 'away', source: 'manual', workspaceId: 'ws-2', origin: 'explicit' },
     })
   })
 
@@ -395,7 +397,37 @@ describe('useAutoPresence', () => {
     })
 
     expect(JSON.parse(localStorage.getItem(PRESENCE_INTENT_STORAGE_KEY) ?? '{}')).toEqual({
-      'ws-1': { status: 'busy', source: 'manual', workspaceId: 'ws-1' },
+      'ws-1': { status: 'busy', source: 'manual', workspaceId: 'ws-1', origin: 'remote' },
+    })
+  })
+
+  it('stale な remote manual intent は server が online に戻っていれば解除する', async () => {
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    localStorage.setItem(PRESENCE_INTENT_STORAGE_KEY, JSON.stringify({
+      'ws-1': { status: 'busy', source: 'manual', workspaceId: 'ws-1', origin: 'remote' },
+    }))
+    const updateStatus = vi.fn().mockResolvedValue('offline')
+    const readCurrentStatus = vi.fn().mockResolvedValue('online')
+
+    renderHook(() => useAutoPresence({
+      status: 'online',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+      readCurrentStatus,
+    }))
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await waitFor(() => {
+      expect(readCurrentStatus).toHaveBeenCalled()
+      expect(updateStatus).toHaveBeenCalledWith('offline', undefined)
+    })
+
+    expect(JSON.parse(localStorage.getItem(PRESENCE_INTENT_STORAGE_KEY) ?? '{}')).toEqual({
+      'ws-1': { status: 'offline', source: 'auto', workspaceId: 'ws-1' },
     })
   })
 
@@ -515,5 +547,24 @@ describe('useAutoPresence', () => {
     await waitFor(() => {
       expect(secondUpdateStatus).not.toHaveBeenCalledWith('offline', { keepalive: true })
     })
+  })
+
+  it('logout 前に keepalive 付き offline PATCH を送る', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 'offline' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await syncPresenceOfflineOnLogout(DEFAULT_WORKSPACE_ID)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/me')
+    expect(init.method).toBe('PATCH')
+    expect(init.keepalive).toBe(true)
+    expect(init.credentials).toBe('same-origin')
+    expect(JSON.parse(String(init.body))).toEqual({ status: 'offline', auto: true })
+    expect(new Headers(init.headers).get(WORKSPACE_HEADER)).toBe(DEFAULT_WORKSPACE_ID)
   })
 })

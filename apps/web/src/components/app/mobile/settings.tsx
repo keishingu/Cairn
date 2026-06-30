@@ -9,6 +9,7 @@ import { MobileHeader } from './header'
 import { Icon, Avatar } from '../primitives'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { createClient } from '@/lib/supabase/client'
+import { syncPresenceOfflineOnLogout } from '@/lib/use-auto-presence'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import {
   getSettingsNavGroups,
@@ -32,6 +33,7 @@ export function MobileSettings() {
 
   async function handleLogout() {
     const supabase = createClient()
+    await syncPresenceOfflineOnLogout()
     await supabase.auth.signOut()
     router.push('/auth/login')
   }
