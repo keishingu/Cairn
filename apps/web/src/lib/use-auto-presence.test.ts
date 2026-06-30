@@ -167,6 +167,24 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('別タブで手動 offline を選んでいる間は重複する auto offline を送らない', async () => {
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    recordManualPresenceStatus('offline', DEFAULT_WORKSPACE_ID)
+    const updateStatus = vi.fn().mockResolvedValue(true)
+
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+      window.dispatchEvent(new PageTransitionEvent('pagehide'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+  })
+
   it('別タブで手動 busy を選んでいる間は stale な online 状態でも自動更新しない', async () => {
     setVisibilityState('hidden')
     setHasFocus(false)

@@ -129,6 +129,7 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus }: Us
     if (currentIntent?.source === 'manual') {
       if (currentIntent.status === 'away' || currentIntent.status === 'busy') return
       if (currentIntent.status === 'offline' && nextStatus === 'online') return
+      if (currentIntent.status === 'offline' && nextStatus === 'offline') return
     }
     if (lastSentRef.current === nextStatus) return
 
