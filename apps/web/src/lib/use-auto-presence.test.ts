@@ -29,7 +29,7 @@ describe('useAutoPresence', () => {
   it('ページを閉じる時に offline を keepalive 付きで送る', async () => {
     setVisibilityState('visible')
     setHasFocus(true)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn().mockResolvedValue('offline')
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
@@ -49,7 +49,7 @@ describe('useAutoPresence', () => {
   it('keepalive offline は事前の現在値取得を待たない', async () => {
     setVisibilityState('visible')
     setHasFocus(true)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn().mockResolvedValue('offline')
     const readCurrentStatus = vi.fn().mockResolvedValue('online')
 
     renderHook(() => useAutoPresence({
@@ -69,10 +69,36 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('keepalive offline は await 前に auto intent を保存する', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    let resolveUpdate: (value: 'offline') => void = () => {
+      throw new Error('updateStatus promise was not created')
+    }
+    const updateStatus = vi.fn().mockImplementation(() => new Promise<'offline'>(resolve => {
+      resolveUpdate = resolve
+    }))
+
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
+
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+
+    expect(JSON.parse(localStorage.getItem(PRESENCE_INTENT_STORAGE_KEY) ?? '{}')).toEqual({
+      'ws-1': { status: 'offline', source: 'auto', workspaceId: 'ws-1' },
+    })
+
+    resolveUpdate('offline')
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenCalledWith('offline', { keepalive: true })
+    })
+  })
+
   it('非表示になったら offline を送る', async () => {
     setVisibilityState('visible')
     setHasFocus(true)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn().mockResolvedValue('offline')
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
@@ -97,7 +123,9 @@ describe('useAutoPresence', () => {
     }))
     setVisibilityState('hidden')
     setHasFocus(false)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn()
+      .mockResolvedValueOnce('offline')
+      .mockResolvedValue('online')
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
@@ -116,7 +144,9 @@ describe('useAutoPresence', () => {
     }))
     setVisibilityState('visible')
     setHasFocus(true)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn()
+      .mockResolvedValueOnce('offline')
+      .mockResolvedValue('online')
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
@@ -132,7 +162,7 @@ describe('useAutoPresence', () => {
   it('offline 状態で表示に戻ったら online に戻す', async () => {
     setVisibilityState('hidden')
     setHasFocus(false)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn().mockResolvedValue('offline')
 
     const { rerender } = renderHook(
       ({ status }) => useAutoPresence({ status, updateStatus }),
@@ -159,7 +189,7 @@ describe('useAutoPresence', () => {
   it('手動で away / busy を選んでいる間は自動更新しない', async () => {
     setVisibilityState('hidden')
     setHasFocus(false)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn().mockResolvedValue('offline')
 
     renderHook(() => useAutoPresence({ status: 'busy', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
@@ -178,7 +208,9 @@ describe('useAutoPresence', () => {
     setVisibilityState('visible')
     setHasFocus(true)
     recordManualPresenceStatus('offline', DEFAULT_WORKSPACE_ID)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn()
+      .mockResolvedValueOnce('offline')
+      .mockResolvedValue('online')
 
     renderHook(() => useAutoPresence({ status: 'offline', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
@@ -195,7 +227,7 @@ describe('useAutoPresence', () => {
     setVisibilityState('hidden')
     setHasFocus(false)
     recordManualPresenceStatus('offline', DEFAULT_WORKSPACE_ID)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn().mockResolvedValue('offline')
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
@@ -213,7 +245,7 @@ describe('useAutoPresence', () => {
     setVisibilityState('hidden')
     setHasFocus(false)
     recordManualPresenceStatus('busy', DEFAULT_WORKSPACE_ID)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn().mockResolvedValue('offline')
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
@@ -232,7 +264,7 @@ describe('useAutoPresence', () => {
     setVisibilityState('visible')
     setHasFocus(true)
     recordManualPresenceStatus('away', DEFAULT_WORKSPACE_ID)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn().mockResolvedValue('online')
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
@@ -253,7 +285,7 @@ describe('useAutoPresence', () => {
     }))
     setVisibilityState('hidden')
     setHasFocus(false)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn().mockResolvedValue('offline')
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
@@ -270,7 +302,7 @@ describe('useAutoPresence', () => {
     setVisibilityState('hidden')
     setHasFocus(false)
     recordManualPresenceStatus('busy', 'ws-2')
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn().mockResolvedValue('offline')
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
@@ -297,7 +329,7 @@ describe('useAutoPresence', () => {
     vi.useFakeTimers()
     setVisibilityState('visible')
     setHasFocus(true)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn().mockResolvedValue('online')
 
     renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
 
@@ -327,7 +359,7 @@ describe('useAutoPresence', () => {
   it('別 device で手動 busy の時は stale な online cache でも auto offline しない', async () => {
     setVisibilityState('hidden')
     setHasFocus(false)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn().mockResolvedValue('offline')
     const readCurrentStatus = vi.fn().mockResolvedValue('busy')
 
     renderHook(() => useAutoPresence({
@@ -347,10 +379,30 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('server が busy を返した時は manual intent として保持する', async () => {
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    const updateStatus = vi.fn().mockResolvedValue('busy')
+
+    renderHook(() => useAutoPresence({ status: 'online', workspaceId: DEFAULT_WORKSPACE_ID, updateStatus }))
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenCalledWith('offline', undefined)
+    })
+
+    expect(JSON.parse(localStorage.getItem(PRESENCE_INTENT_STORAGE_KEY) ?? '{}')).toEqual({
+      'ws-1': { status: 'busy', source: 'manual', workspaceId: 'ws-1' },
+    })
+  })
+
   it('別 device で手動 offline の時は stale な online cache でも auto online しない', async () => {
     setVisibilityState('visible')
     setHasFocus(true)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn().mockResolvedValue('online')
     const readCurrentStatus = vi.fn().mockResolvedValue('offline')
 
     renderHook(() => useAutoPresence({
@@ -377,7 +429,9 @@ describe('useAutoPresence', () => {
   it('local auto offline の復帰時は remote offline でも online に戻す', async () => {
     setVisibilityState('hidden')
     setHasFocus(false)
-    const updateStatus = vi.fn().mockResolvedValue(true)
+    const updateStatus = vi.fn()
+      .mockResolvedValueOnce('offline')
+      .mockResolvedValue('online')
     const readCurrentStatus = vi.fn()
       .mockResolvedValueOnce('online')
       .mockResolvedValue('offline')
@@ -417,8 +471,8 @@ describe('useAutoPresence', () => {
   it('duplicate tab でも別 tab id を採番して offline を誤送信しない', async () => {
     setVisibilityState('visible')
     setHasFocus(true)
-    const firstUpdateStatus = vi.fn().mockResolvedValue(true)
-    const secondUpdateStatus = vi.fn().mockResolvedValue(true)
+    const firstUpdateStatus = vi.fn().mockResolvedValue('online')
+    const secondUpdateStatus = vi.fn().mockResolvedValue('online')
 
     const firstTab = renderHook(() => useAutoPresence({
       status: 'online',

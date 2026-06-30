@@ -10,7 +10,7 @@ import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useAutoPresence } from '@/lib/use-auto-presence'
-import type { UserStatus } from '@/lib/user-status'
+import { USER_STATUSES, type UserStatus } from '@/lib/user-status'
 import { WORKSPACE_HEADER } from '@/lib/workspace-cookie'
 
 export function AutoPresenceSync() {
@@ -22,7 +22,7 @@ export function AutoPresenceSync() {
     staleTime: 60_000,
   })
 
-  const statusMutation = useMutation({
+  const statusMutation = useMutation<UserStatus, Error, { status: UserStatus; keepalive?: boolean }>({
     mutationFn: async ({ status, keepalive }: { status: UserStatus; keepalive?: boolean }) => {
       const headers = new Headers({ 'Content-Type': 'application/json' })
       if (workspace?.id) {
@@ -41,7 +41,11 @@ export function AutoPresenceSync() {
         const d = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(d.error ?? 'ステータスの更新に失敗しました')
       }
-      return status
+      const dto = await res.json() as { status?: unknown }
+      if (typeof dto.status !== 'string' || !USER_STATUSES.includes(dto.status as UserStatus)) {
+        throw new Error('ステータス更新レスポンスが不正です')
+      }
+      return dto.status as UserStatus
     },
     onSuccess: (status) => {
       queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status } : prev)
@@ -53,13 +57,12 @@ export function AutoPresenceSync() {
     workspaceId: workspace?.id ?? null,
     updateStatus: async (status, options) => {
       try {
-        await statusMutation.mutateAsync({
+        return await statusMutation.mutateAsync({
           status,
           ...(options?.keepalive !== undefined ? { keepalive: options.keepalive } : {}),
         })
-        return true
       } catch {
-        return false
+        return null
       }
     },
     readCurrentStatus: async () => {

@@ -23,7 +23,7 @@ interface UpdateStatusOptions {
 interface UseAutoPresenceOptions {
   status: UserStatus | undefined
   workspaceId?: string | null
-  updateStatus: (status: AutoPresenceStatus, options?: UpdateStatusOptions) => Promise<boolean>
+  updateStatus: (status: AutoPresenceStatus, options?: UpdateStatusOptions) => Promise<UserStatus | null>
   readCurrentStatus?: () => Promise<UserStatus | null>
 }
 
@@ -64,9 +64,18 @@ function readPresenceIntent(workspaceId: string | null): PresenceIntent | null {
 }
 
 function writePresenceIntent(intent: PresenceIntent) {
+  setPresenceIntent(intent.workspaceId, intent)
+}
+
+function setPresenceIntent(workspaceId: string | null, intent: PresenceIntent | null) {
   if (typeof window === 'undefined') return
   const intents = readPresenceIntentMap()
-  intents[getPresenceIntentKey(intent.workspaceId)] = intent
+  const key = getPresenceIntentKey(workspaceId)
+  if (intent) {
+    intents[key] = intent
+  } else {
+    delete intents[key]
+  }
   window.localStorage.setItem(PRESENCE_INTENT_STORAGE_KEY, JSON.stringify(intents))
 }
 
@@ -191,15 +200,31 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
     }
 
     lastSentRef.current = nextStatus
-    const ok = await updateStatus(nextStatus, options)
-    if (!ok) {
+    const shouldPersistIntentBeforeAwait = nextStatus === 'offline' && options?.keepalive === true
+    if (shouldPersistIntentBeforeAwait) {
+      writePresenceIntent({ status: nextStatus, source: 'auto', workspaceId })
+    }
+
+    const resolvedStatus = await updateStatus(nextStatus, options)
+    if (!resolvedStatus) {
+      if (shouldPersistIntentBeforeAwait) {
+        setPresenceIntent(workspaceId, currentIntent)
+      }
       lastSentRef.current =
         status === 'online' || status === 'offline'
           ? status
           : null
       return
     }
-    writePresenceIntent({ status: nextStatus, source: 'auto', workspaceId })
+
+    if (resolvedStatus === 'online' || resolvedStatus === 'offline') {
+      lastSentRef.current = resolvedStatus
+      writePresenceIntent({ status: resolvedStatus, source: 'auto', workspaceId })
+      return
+    }
+
+    lastSentRef.current = null
+    writePresenceIntent({ status: resolvedStatus, source: 'manual', workspaceId })
   })
 
   const syncFromWindowState = React.useEffectEvent(() => {
