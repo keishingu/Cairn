@@ -282,15 +282,21 @@ export function useAutoPresence({
     return isVisible && hasFocus
   })
 
-  const applyResolvedStatus = React.useEffectEvent((resolvedStatus: UserStatus) => {
-    if (resolvedStatus === 'online' || resolvedStatus === 'offline') {
-      lastSentRef.current = resolvedStatus
-      writePresenceIntent({ status: resolvedStatus, source: 'auto', workspaceId })
+  const applyPresenceSnapshot = React.useEffectEvent((snapshot: PresenceSnapshot) => {
+    if (snapshot.status === 'online' || snapshot.status === 'offline') {
+      lastSentRef.current = snapshot.status
+      writePresenceIntent(snapshot.auto
+        ? { status: snapshot.status, source: 'auto', workspaceId }
+        : { status: snapshot.status, source: 'manual', workspaceId, origin: 'remote' })
       return
     }
 
     lastSentRef.current = null
-    writePresenceIntent({ status: resolvedStatus, source: 'manual', workspaceId, origin: 'remote' })
+    writePresenceIntent({ status: snapshot.status, source: 'manual', workspaceId, origin: 'remote' })
+  })
+
+  const applyResolvedStatus = React.useEffectEvent((resolvedStatus: UserStatus) => {
+    applyPresenceSnapshot({ status: resolvedStatus, auto: resolvedStatus === 'online' || resolvedStatus === 'offline' })
   })
 
   const clearPendingOfflineCheck = React.useEffectEvent(() => {
@@ -476,6 +482,14 @@ export function useAutoPresence({
       && latestRequestedStatusRef.current !== nextStatus
     if (nextStatus === 'offline' && supersededByDifferentStatus) {
       if (isWindowActive()) {
+        if (options?.keepalive && readCurrentPresence) {
+          const currentPresence = await readCurrentPresence()
+          observePresence?.(currentPresence)
+          applyPresenceSnapshot(currentPresence)
+          if (currentPresence.status === 'offline' && currentPresence.auto !== true) {
+            return
+          }
+        }
         await restoreOnlineIfWindowActive()
       }
       return
