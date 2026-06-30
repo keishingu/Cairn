@@ -458,6 +458,48 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('offline 反映待ちの間に復帰したら stale な offline 完了後に online を送り直す', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    let resolveOffline: (value: 'offline') => void = () => {
+      throw new Error('offline update promise was not created')
+    }
+    const updateStatus = vi.fn()
+      .mockImplementationOnce(() => new Promise<'offline'>(resolve => {
+        resolveOffline = resolve
+      }))
+      .mockResolvedValueOnce('online')
+    const readCurrentStatus = vi.fn().mockResolvedValue('online')
+
+    renderHook(() => useAutoPresence({
+      status: 'online',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+      readCurrentStatus,
+    }))
+
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenNthCalledWith(1, 'offline', undefined)
+    })
+
+    setVisibilityState('visible')
+    setHasFocus(true)
+    act(() => {
+      window.dispatchEvent(new Event('focus'))
+    })
+
+    resolveOffline('offline')
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenNthCalledWith(2, 'online')
+    })
+  })
+
   it('local auto offline の復帰時は remote offline でも online に戻す', async () => {
     setVisibilityState('hidden')
     setHasFocus(false)

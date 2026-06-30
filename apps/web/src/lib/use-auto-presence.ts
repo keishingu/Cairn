@@ -138,6 +138,8 @@ export async function syncPresenceOfflineOnLogout(workspaceId: string | null = n
 
 export function useAutoPresence({ status, workspaceId = null, updateStatus, readCurrentStatus }: UseAutoPresenceOptions) {
   const lastSentRef = React.useRef<AutoPresenceStatus | null>(null)
+  const transitionTokenRef = React.useRef(0)
+  const latestRequestedStatusRef = React.useRef<AutoPresenceStatus | null>(null)
   const tabIdRef = React.useRef<string | null>(null)
   const tabOwnerIdRef = React.useRef<string>(
     typeof crypto.randomUUID === 'function'
@@ -209,7 +211,45 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
     })
   })
 
+  const isWindowActive = React.useEffectEvent(() => {
+    const isVisible = document.visibilityState === 'visible'
+    const hasFocus = typeof document.hasFocus === 'function' ? document.hasFocus() : true
+    return isVisible && hasFocus
+  })
+
+  const applyResolvedStatus = React.useEffectEvent((resolvedStatus: UserStatus) => {
+    if (resolvedStatus === 'online' || resolvedStatus === 'offline') {
+      lastSentRef.current = resolvedStatus
+      writePresenceIntent({ status: resolvedStatus, source: 'auto', workspaceId })
+      return
+    }
+
+    lastSentRef.current = null
+    writePresenceIntent({ status: resolvedStatus, source: 'manual', workspaceId, origin: 'remote' })
+  })
+
+  const restoreOnlineIfWindowActive = React.useEffectEvent(async () => {
+    if (!isWindowActive()) return
+
+    const currentIntent = readPresenceIntent(workspaceId)
+    if (currentIntent?.source === 'manual') return
+
+    lastSentRef.current = 'online'
+    const resolvedStatus = await updateStatus('online')
+    if (!resolvedStatus) {
+      lastSentRef.current =
+        status === 'online' || status === 'offline'
+          ? status
+          : null
+      return
+    }
+
+    applyResolvedStatus(resolvedStatus)
+  })
+
   const syncStatus = React.useEffectEvent(async (nextStatus: AutoPresenceStatus, options?: UpdateStatusOptions) => {
+    const transitionToken = ++transitionTokenRef.current
+    latestRequestedStatusRef.current = nextStatus
     let currentIntent = readPresenceIntent(workspaceId)
     let knownCurrentStatus: UserStatus | null | undefined
 
@@ -248,6 +288,13 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
       }
     }
 
+    if (nextStatus === 'offline' && !options?.keepalive) {
+      const supersededByDifferentStatus =
+        transitionToken !== transitionTokenRef.current
+        && latestRequestedStatusRef.current !== nextStatus
+      if (supersededByDifferentStatus || isWindowActive()) return
+    }
+
     lastSentRef.current = nextStatus
     const shouldPersistIntentBeforeAwait = nextStatus === 'offline' && options?.keepalive === true
     if (shouldPersistIntentBeforeAwait) {
@@ -266,14 +313,17 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
       return
     }
 
-    if (resolvedStatus === 'online' || resolvedStatus === 'offline') {
-      lastSentRef.current = resolvedStatus
-      writePresenceIntent({ status: resolvedStatus, source: 'auto', workspaceId })
+    const supersededByDifferentStatus =
+      transitionToken !== transitionTokenRef.current
+      && latestRequestedStatusRef.current !== nextStatus
+    if (nextStatus === 'offline' && !options?.keepalive && supersededByDifferentStatus) {
+      if (isWindowActive()) {
+        await restoreOnlineIfWindowActive()
+      }
       return
     }
 
-    lastSentRef.current = null
-    writePresenceIntent({ status: resolvedStatus, source: 'manual', workspaceId, origin: 'remote' })
+    applyResolvedStatus(resolvedStatus)
   })
 
   const syncFromWindowState = React.useEffectEvent(() => {
