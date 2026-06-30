@@ -478,6 +478,39 @@ describe('useAutoPresence', () => {
     vi.useRealTimers()
   })
 
+  it('可視タブは heartbeat で remote auto-offline を online に戻す', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const updateStatus = vi.fn().mockResolvedValue('online')
+    const readCurrentPresence = vi.fn()
+      .mockResolvedValueOnce({ status: 'online', auto: true })
+      .mockResolvedValueOnce({ status: 'offline', auto: true })
+
+    renderHook(() => useAutoPresence({
+      status: 'online',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+      readCurrentPresence,
+    }))
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(readCurrentPresence).toHaveBeenCalledTimes(1)
+    expect(updateStatus).not.toHaveBeenCalled()
+
+    await act(async () => {
+      vi.advanceTimersByTime(10_000)
+      await Promise.resolve()
+    })
+
+    expect(readCurrentPresence).toHaveBeenCalledTimes(2)
+    expect(updateStatus).toHaveBeenCalledWith('online', { trigger: 'heartbeat' })
+    vi.useRealTimers()
+  })
+
   it('別 device で手動 busy の時は stale な online cache でも auto offline しない', async () => {
     setVisibilityState('hidden')
     setHasFocus(false)

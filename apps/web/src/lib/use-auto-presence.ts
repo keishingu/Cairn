@@ -18,6 +18,7 @@ const TAB_ACTIVITY_RECORD_STORAGE_PREFIX = `${TAB_ACTIVITY_STORAGE_KEY}:record:`
 const TAB_ACTIVITY_TTL_MS = 30_000
 const TAB_ACTIVITY_HEARTBEAT_MS = 10_000
 const INTERACTION_ONLINE_REVALIDATE_MS = 15_000
+const HEARTBEAT_ONLINE_REVALIDATE_MS = 30_000
 const PRESENCE_INTENT_STORAGE_KEY = 'cairn:auto-presence:intent'
 const TAB_ID_STORAGE_KEY = `${TAB_ACTIVITY_STORAGE_KEY}:id`
 const GLOBAL_WORKSPACE_KEY = '__global__'
@@ -27,7 +28,7 @@ interface UpdateStatusOptions {
 }
 
 interface SyncStatusOptions extends UpdateStatusOptions {
-  trigger?: 'interaction'
+  trigger?: 'heartbeat' | 'interaction'
 }
 
 interface UseAutoPresenceOptions {
@@ -191,6 +192,7 @@ export function useAutoPresence({
   const transitionTokenRef = React.useRef(0)
   const latestRequestedStatusRef = React.useRef<AutoPresenceStatus | null>(null)
   const lastInteractionOnlineSyncAtRef = React.useRef(0)
+  const lastHeartbeatOnlineSyncAtRef = React.useRef(0)
   const tabIdRef = React.useRef<string | null>(null)
   const tabOwnerIdRef = React.useRef<string>(
     typeof crypto.randomUUID === 'function'
@@ -386,6 +388,14 @@ export function useAutoPresence({
       }
       lastInteractionOnlineSyncAtRef.current = now
     }
+    if (nextStatus === 'online' && options?.trigger === 'heartbeat') {
+      const now = Date.now()
+      const alreadyOnline = status === 'online' || lastSentRef.current === 'online'
+      if (alreadyOnline && now - lastHeartbeatOnlineSyncAtRef.current < HEARTBEAT_ONLINE_REVALIDATE_MS) {
+        return
+      }
+      lastHeartbeatOnlineSyncAtRef.current = now
+    }
     if (lastSentRef.current === nextStatus) {
       if (nextStatus === 'offline' && options?.keepalive) {
         const lastAttempt = lastSyncAttemptRef.current
@@ -536,6 +546,7 @@ export function useAutoPresence({
       const hasFocus = typeof document.hasFocus === 'function' ? document.hasFocus() : true
       if (isVisible && hasFocus) {
         setCurrentTabActive(true)
+        void syncStatus('online', { trigger: 'heartbeat' })
       }
     }, TAB_ACTIVITY_HEARTBEAT_MS)
 
