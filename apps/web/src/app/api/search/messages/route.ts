@@ -105,6 +105,6 @@ export async function GET(req: Request) {
     return NextResponse.json(result)
   } catch (err) {
     console.error('[/api/search/messages GET] DB query failed:', err)
-    return NextResponse.json([] satisfies MessageSearchResultDto[])
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

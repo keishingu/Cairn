@@ -64,7 +64,7 @@ async function fetchDms(): Promise<DmChannelDto[]> {
 
 async function fetchChannelMembers(channelId: string): Promise<{ userId: string }[]> {
   const res = await fetchWithAuth(`/api/channels/${channelId}/members`)
-  if (!res.ok) return []
+  if (!res.ok) throw new Error('チャンネルメンバーの取得に失敗しました')
   return res.json()
 }
 

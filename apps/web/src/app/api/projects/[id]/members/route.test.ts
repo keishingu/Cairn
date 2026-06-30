@@ -49,7 +49,10 @@ const {
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({ requireWorkspaceMember: mockRequireWorkspaceMember }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
-vi.mock('@/lib/supabase/service', () => ({ createServiceRoleClient: mockCreateServiceRoleClient }))
+vi.mock('@/lib/supabase/service', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/lib/supabase/service')>()
+  return { ...actual, createServiceRoleClient: mockCreateServiceRoleClient }
+})
 vi.mock('@cairn/db', () => ({
   db: mockDb,
   profiles: { id: 'pr.id', displayName: 'pr.displayName' },

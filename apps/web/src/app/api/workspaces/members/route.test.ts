@@ -22,15 +22,19 @@ const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockGetUserById 
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({ getWorkspaceMemberRole: mockGetWorkspaceMemberRole }))
-vi.mock('@/lib/supabase/service', () => ({
-  createServiceRoleClient: () => ({
-    auth: {
-      admin: {
-        getUserById: mockGetUserById,
+vi.mock('@/lib/supabase/service', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/lib/supabase/service')>()
+  return {
+    ...actual,
+    createServiceRoleClient: () => ({
+      auth: {
+        admin: {
+          getUserById: mockGetUserById,
+        },
       },
-    },
-  }),
-}))
+    }),
+  }
+})
 vi.mock('@cairn/db', () => ({
   db: mockDb,
   profiles: { id: 'profiles.id', displayName: 'profiles.displayName' },
