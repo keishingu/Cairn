@@ -5,11 +5,15 @@ import { NextResponse } from 'next/server'
 import { db, workspaceMembers, channels, channelMembers, projects, projectMembers, messages, messageAttachments } from '@cairn/db'
 import { eq, and, sql } from 'drizzle-orm'
 
-async function getWorkspaceRole(workspaceId: string, userId: string) {
+export async function getWorkspaceRole(workspaceId: string, userId: string) {
   const [member] = await db
     .select({ role: workspaceMembers.role })
     .from(workspaceMembers)
-    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
+    .where(and(
+      eq(workspaceMembers.workspaceId, workspaceId),
+      eq(workspaceMembers.userId, userId),
+      eq(workspaceMembers.membershipStatus, 'active'),
+    ))
     .limit(1)
   return member?.role ?? null
 }
@@ -91,6 +95,12 @@ export async function requireProjectAccess(
 ): Promise<NextResponse | null> {
   const role = await getWorkspaceRole(workspaceId, userId)
   if (isWorkspaceMember(role)) return null
+  if (role !== 'guest') {
+    return NextResponse.json(
+      { error: 'このプロジェクトにアクセスする権限がありません' },
+      { status: 403 },
+    )
+  }
 
   const [membership] = await db
     .select({ id: projectMembers.id })
@@ -126,6 +136,11 @@ export async function requireChannelAccess(
   userId: string,
   channelId: string,
 ): Promise<NextResponse | null> {
+  const role = await getWorkspaceRole(workspaceId, userId)
+  if (!isWorkspaceMember(role) && role !== 'guest') {
+    return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+  }
+
   const [channel] = await db
     .select({
       isPrivate: channels.isPrivate,
@@ -157,7 +172,6 @@ export async function requireChannelAccess(
 
   // プロジェクトチャンネルはゲストの場合、参加プロジェクトに限定する
   if (channel.type === 'project' && channel.projectId) {
-    const role = await getWorkspaceRole(workspaceId, userId)
     if (role === 'guest') {
       const [pm] = await db
         .select({ id: projectMembers.id })
