@@ -4,13 +4,16 @@
 'use client'
 
 import React from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { MobileHeader } from './header'
 import { Icon, Avatar } from '../primitives'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { createClient } from '@/lib/supabase/client'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { syncPresenceOfflineOnLogout } from '@/lib/use-auto-presence'
 import type { CurrentUserDto } from '@/app/api/me/route'
+import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import {
   getSettingsNavGroups,
   SettingsSectionContent,
@@ -28,12 +31,17 @@ const ROLE_LABEL: Record<CurrentUserDto['wsRole'], string> = {
 // 設定一覧（メニュー）。各項目タップで /settings/[section] に遷移する。
 export function MobileSettings() {
   const { data: me } = useCurrentUser()
+  const { data: workspace } = useQuery<WorkspaceDto>({
+    queryKey: ['workspace'],
+    queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
+    staleTime: 60_000,
+  })
   const router = useRouter()
   const navGroups = getSettingsNavGroups(me?.wsRole === 'owner')
 
   async function handleLogout() {
     const supabase = createClient()
-    await syncPresenceOfflineOnLogout()
+    await syncPresenceOfflineOnLogout(workspace?.id ?? null)
     await supabase.auth.signOut()
     router.push('/auth/login')
   }
