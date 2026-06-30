@@ -134,10 +134,14 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
     }
     if (lastSentRef.current === nextStatus) return
 
-    if (readCurrentStatus) {
+    if (readCurrentStatus && !options?.keepalive) {
       const currentStatus = await readCurrentStatus()
       if (currentStatus === 'away' || currentStatus === 'busy') return
-      if (currentStatus === 'offline' && nextStatus === 'online') {
+      const isLocalAutoOffline =
+        currentIntent?.source === 'auto'
+        && currentIntent.status === 'offline'
+        && nextStatus === 'online'
+      if (currentStatus === 'offline' && nextStatus === 'online' && !isLocalAutoOffline) {
         lastSentRef.current = 'offline'
         return
       }

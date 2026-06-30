@@ -45,6 +45,29 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('keepalive offline は事前の現在値取得を待たない', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const updateStatus = vi.fn().mockResolvedValue(true)
+    const readCurrentStatus = vi.fn().mockResolvedValue('online')
+
+    renderHook(() => useAutoPresence({
+      status: 'online',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+      readCurrentStatus,
+    }))
+
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenCalledWith('offline', { keepalive: true })
+      expect(readCurrentStatus).not.toHaveBeenCalled()
+    })
+  })
+
   it('非表示になったら offline を送る', async () => {
     setVisibilityState('visible')
     setHasFocus(true)
@@ -337,6 +360,46 @@ describe('useAutoPresence', () => {
     await waitFor(() => {
       expect(readCurrentStatus).toHaveBeenCalled()
       expect(updateStatus).not.toHaveBeenCalled()
+    })
+  })
+
+  it('local auto offline の復帰時は remote offline でも online に戻す', async () => {
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    const updateStatus = vi.fn().mockResolvedValue(true)
+    const readCurrentStatus = vi.fn()
+      .mockResolvedValueOnce('online')
+      .mockResolvedValue('offline')
+    const initialProps: { status: 'online' | 'offline' } = { status: 'online' }
+
+    const { rerender } = renderHook(
+      ({ status }: { status: 'online' | 'offline' }) => useAutoPresence({
+        status,
+        workspaceId: DEFAULT_WORKSPACE_ID,
+        updateStatus,
+        readCurrentStatus,
+      }),
+      { initialProps },
+    )
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenCalledWith('offline', undefined)
+    })
+
+    rerender({ status: 'offline' })
+    setVisibilityState('visible')
+    setHasFocus(true)
+
+    act(() => {
+      window.dispatchEvent(new Event('focus'))
+    })
+
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenCalledWith('online', undefined)
     })
   })
 })
