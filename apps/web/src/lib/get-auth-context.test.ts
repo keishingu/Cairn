@@ -126,6 +126,32 @@ describe('get-auth-context', () => {
     expect(mockDb.select).toHaveBeenCalledTimes(1)
   })
 
+  it('明示 workspace header は cache hit があっても毎回所属確認する', async () => {
+    mockHeaders.mockResolvedValue(new Headers({
+      Authorization: 'Bearer token-123',
+      'x-cairn-workspace-id': 'ws-header',
+    }))
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-header' }]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+
+    await expect(getAuthContext()).resolves.toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-header' },
+      error: null,
+    })
+
+    const result = await getAuthContext()
+
+    expect(result.ctx).toBeNull()
+    expect(result.error?.status).toBe(403)
+    await expect(result.error?.json()).resolves.toEqual({ error: 'Workspace not found' })
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
+  })
+
   it('getAuthUser も Cookie 認証で getUser() を使う', async () => {
     mockHeaders.mockResolvedValue(new Headers())
     mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })

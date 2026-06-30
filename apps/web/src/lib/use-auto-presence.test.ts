@@ -646,6 +646,36 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('preflight read で目標 status を観測したら mutation せず観測値を反映する', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const updateStatus = vi.fn().mockResolvedValue('online')
+    const readCurrentPresence = vi.fn().mockResolvedValue({ status: 'online', auto: true })
+    const observePresence = vi.fn()
+
+    renderHook(() => useAutoPresence({
+      status: 'offline',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+      readCurrentPresence,
+      observePresence,
+    }))
+
+    act(() => {
+      window.dispatchEvent(new Event('focus'))
+    })
+
+    await waitFor(() => {
+      expect(readCurrentPresence).toHaveBeenCalled()
+      expect(observePresence).toHaveBeenCalledWith({ status: 'online', auto: true })
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+
+    expect(JSON.parse(localStorage.getItem(PRESENCE_INTENT_STORAGE_KEY) ?? '{}')).toEqual({
+      [DEFAULT_WORKSPACE_ID]: { status: 'online', source: 'auto', workspaceId: DEFAULT_WORKSPACE_ID },
+    })
+  })
+
   it('duplicate tab でも別 tab id を採番して offline を誤送信しない', async () => {
     setVisibilityState('visible')
     setHasFocus(true)

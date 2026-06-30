@@ -27,6 +27,7 @@ interface UseAutoPresenceOptions {
   workspaceId?: string | null
   updateStatus: (status: AutoPresenceStatus, options?: UpdateStatusOptions) => Promise<UserStatus | null>
   readCurrentPresence?: () => Promise<PresenceSnapshot | null>
+  observePresence?: (snapshot: PresenceSnapshot) => void
 }
 
 function getPresenceIntentKey(workspaceId: string | null) {
@@ -142,7 +143,13 @@ export async function syncPresenceOfflineOnLogout(workspaceId: string | null = n
   }
 }
 
-export function useAutoPresence({ status, workspaceId = null, updateStatus, readCurrentPresence }: UseAutoPresenceOptions) {
+export function useAutoPresence({
+  status,
+  workspaceId = null,
+  updateStatus,
+  readCurrentPresence,
+  observePresence,
+}: UseAutoPresenceOptions) {
   const lastSentRef = React.useRef<AutoPresenceStatus | null>(null)
   const transitionTokenRef = React.useRef(0)
   const latestRequestedStatusRef = React.useRef<AutoPresenceStatus | null>(null)
@@ -262,6 +269,9 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
     if (status === 'away' || status === 'busy') return
     if (currentIntent?.source === 'manual' && readCurrentPresence && !options?.keepalive) {
       knownCurrentPresence = await readCurrentPresence()
+      if (knownCurrentPresence) {
+        observePresence?.(knownCurrentPresence)
+      }
       if (knownCurrentPresence?.status === 'online') {
         setPresenceIntent(workspaceId, null)
         currentIntent = null
@@ -284,6 +294,9 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
 
     if (readCurrentPresence && !options?.keepalive) {
       const currentPresence = knownCurrentPresence ?? await readCurrentPresence()
+      if (!knownCurrentPresence && currentPresence) {
+        observePresence?.(currentPresence)
+      }
       const currentStatus = currentPresence?.status ?? null
       if (currentStatus === 'away' || currentStatus === 'busy') return
       const canRestoreAutoOffline =
@@ -295,7 +308,7 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
         return
       }
       if (currentStatus === nextStatus) {
-        lastSentRef.current = nextStatus
+        applyResolvedStatus(currentStatus)
         return
       }
     }

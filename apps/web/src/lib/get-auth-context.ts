@@ -74,12 +74,6 @@ export async function getAuthContext(): Promise<AuthResult> {
   const cookieWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
   const preferredWorkspaceId = explicitWorkspaceId ?? cookieWorkspaceId
 
-  const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
-  const cached = workspaceCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) {
-    return { ctx: { userId: user.id, workspaceId: cached.workspaceId }, error: null }
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { workspaceMembers } = await import('@cairn/db')
@@ -94,11 +88,16 @@ export async function getAuthContext(): Promise<AuthResult> {
         .limit(1)
 
       if (preferred) {
-        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
         return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
       }
 
       return { ctx: null, error: NextResponse.json({ error: 'Workspace not found' }, { status: 403 }) }
+    }
+
+    const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
+    const cached = workspaceCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) {
+      return { ctx: { userId: user.id, workspaceId: cached.workspaceId }, error: null }
     }
 
     // クッキーで指定されたワークスペースがあればそちらを優先、ただしメンバーシップを確認

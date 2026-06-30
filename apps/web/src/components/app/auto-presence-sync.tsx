@@ -81,6 +81,9 @@ export function AutoPresenceSync() {
       const current = await res.json() as CurrentUserDto
       return { status: current.status, auto: current.statusAuto }
     },
+    observePresence: ({ status, auto }) => {
+      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status, statusAuto: auto } : prev)
+    },
   })
 
   return null
