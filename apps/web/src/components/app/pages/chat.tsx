@@ -31,6 +31,11 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import { useCommand } from '@/lib/command-registry'
+import {
+  getLastVisitedChatChannelId,
+  resolveInitialChatChannelId,
+  setLastVisitedChatChannelId,
+} from '@/lib/chat-last-channel'
 
 // ─── Message search ───────────────────────────────────────────────
 
@@ -278,15 +283,38 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const markChannelRead = useMarkChannelRead()
   const createDmMutation = useCreateDm()
 
-  // PC: チャンネル未選択時に最初のプロジェクトチャンネルへ自動遷移
+  const fallbackChannelId = React.useMemo(
+    () => (projectChannels.find(c => !c.archived) ?? projectChannels[0] ?? null)?.channelId ?? null,
+    [projectChannels],
+  )
+
+  const availableChannelIds = React.useMemo(
+    () => [
+      ...projectChannels.map(c => c.channelId),
+      ...workspaceChannels.map(c => c.id),
+      ...dms.map(d => d.id),
+    ],
+    [projectChannels, workspaceChannels, dms],
+  )
+
   React.useEffect(() => {
-    if (!channelId && projectChannels.length > 0 && !isMobile) {
-      // アーカイブ済みは折りたたみ表示なので、初期選択は非アーカイブを優先する
-      const firstId = (projectChannels.find(c => !c.archived) ?? projectChannels[0]!).channelId
-      setChannelId(firstId)
-      router.replace('/chats/' + firstId)
+    if (channelId) setLastVisitedChatChannelId(channelId)
+  }, [channelId])
+
+  // PC: /chats を開いた時は前回のチャットを優先し、なければ先頭のプロジェクトチャンネルへ遷移
+  React.useEffect(() => {
+    if (!channelId && !isMobile) {
+      const nextChannelId = resolveInitialChatChannelId({
+        rememberedChannelId: getLastVisitedChatChannelId(),
+        availableChannelIds,
+        fallbackChannelId,
+      })
+      if (nextChannelId) {
+        setChannelId(nextChannelId)
+        router.replace('/chats/' + nextChannelId)
+      }
     }
-  }, [channelId, projectChannels, isMobile, router])
+  }, [availableChannelIds, channelId, fallbackChannelId, isMobile, router])
 
   const selectChannel = (id: string) => {
     setChannelId(id)
