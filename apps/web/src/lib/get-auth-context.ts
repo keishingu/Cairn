@@ -69,8 +69,10 @@ export async function getAuthContext(): Promise<AuthResult> {
     return { ctx: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
 
+  const explicitWorkspaceId = headersList.get(WORKSPACE_HEADER)
   const cookieStore = await cookies()
-  const preferredWorkspaceId = headersList.get(WORKSPACE_HEADER) ?? cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
+  const cookieWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
+  const preferredWorkspaceId = explicitWorkspaceId ?? cookieWorkspaceId
 
   const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
   const cached = workspaceCache.get(cacheKey)
@@ -83,12 +85,28 @@ export async function getAuthContext(): Promise<AuthResult> {
     const { workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    // クッキーで指定されたワークスペースがあればそちらを優先、ただしメンバーシップを確認
-    if (preferredWorkspaceId) {
+    // 明示 header は fallback させず、その workspace に属さない時点で拒否する
+    if (explicitWorkspaceId) {
       const [preferred] = await db
         .select({ workspaceId: workspaceMembers.workspaceId })
         .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, preferredWorkspaceId)))
+        .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, explicitWorkspaceId)))
+        .limit(1)
+
+      if (preferred) {
+        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+        return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
+      }
+
+      return { ctx: null, error: NextResponse.json({ error: 'Workspace not found' }, { status: 403 }) }
+    }
+
+    // クッキーで指定されたワークスペースがあればそちらを優先、ただしメンバーシップを確認
+    if (cookieWorkspaceId) {
+      const [preferred] = await db
+        .select({ workspaceId: workspaceMembers.workspaceId })
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, cookieWorkspaceId)))
         .limit(1)
 
       if (preferred) {

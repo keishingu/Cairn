@@ -480,6 +480,25 @@ describe('useAutoPresence', () => {
     })
   })
 
+  it('local intent が消えていても server が auto offline なら online 復帰する', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const updateStatus = vi.fn().mockResolvedValue('online')
+    const readCurrentPresence = vi.fn().mockResolvedValue({ status: 'offline', auto: true })
+
+    renderHook(() => useAutoPresence({
+      status: 'offline',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+      readCurrentPresence,
+    }))
+
+    await waitFor(() => {
+      expect(readCurrentPresence).toHaveBeenCalled()
+      expect(updateStatus).toHaveBeenCalledWith('online', undefined)
+    })
+  })
+
   it('offline 反映待ちの間に復帰したら stale な offline 完了後に online を送り直す', async () => {
     setVisibilityState('visible')
     setHasFocus(true)

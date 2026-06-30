@@ -286,12 +286,11 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus, read
       const currentPresence = knownCurrentPresence ?? await readCurrentPresence()
       const currentStatus = currentPresence?.status ?? null
       if (currentStatus === 'away' || currentStatus === 'busy') return
-      const isLocalAutoOffline =
-        currentIntent?.source === 'auto'
-        && currentIntent.status === 'offline'
+      const canRestoreAutoOffline =
+        currentStatus === 'offline'
         && nextStatus === 'online'
         && currentPresence?.auto === true
-      if (currentStatus === 'offline' && nextStatus === 'online' && !isLocalAutoOffline) {
+      if (currentStatus === 'offline' && nextStatus === 'online' && !canRestoreAutoOffline) {
         lastSentRef.current = 'offline'
         return
       }

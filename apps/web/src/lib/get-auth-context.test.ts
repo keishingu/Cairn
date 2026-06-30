@@ -108,6 +108,24 @@ describe('get-auth-context', () => {
     })
   })
 
+  it('無効な workspace header は cookie に fallback せず 403 を返す', async () => {
+    mockHeaders.mockResolvedValue(new Headers({
+      Authorization: 'Bearer token-123',
+      'x-cairn-workspace-id': 'ws-header',
+    }))
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-cookie' }) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext()
+
+    expect(result.ctx).toBeNull()
+    expect(result.error?.status).toBe(403)
+    await expect(result.error?.json()).resolves.toEqual({ error: 'Workspace not found' })
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
+  })
+
   it('getAuthUser も Cookie 認証で getUser() を使う', async () => {
     mockHeaders.mockResolvedValue(new Headers())
     mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
