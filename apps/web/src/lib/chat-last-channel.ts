@@ -4,15 +4,20 @@ interface ResolveInitialChatChannelIdArgs {
   availableChannelIds: string[]
   fallbackChannelId: string | null
   rememberedChannelId: string | null
+  allowFallback?: boolean
 }
 
 export function resolveInitialChatChannelId({
   availableChannelIds,
   fallbackChannelId,
   rememberedChannelId,
+  allowFallback = true,
 }: ResolveInitialChatChannelIdArgs) {
   if (rememberedChannelId && availableChannelIds.includes(rememberedChannelId)) {
     return rememberedChannelId
+  }
+  if (!allowFallback) {
+    return null
   }
   return fallbackChannelId
 }

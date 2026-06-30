@@ -276,10 +276,10 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     }
   }, [channelId])
 
-  const { data: projectChannels = [] } = useProjectChannels()
-  const { data: workspaceChannels = [] } = useWorkspaceChannels()
+  const { data: projectChannels = [], isFetched: isProjectChannelsFetched } = useProjectChannels()
+  const { data: workspaceChannels = [], isFetched: isWorkspaceChannelsFetched } = useWorkspaceChannels()
   const { data: members = [] } = useWorkspaceMembers()
-  const { data: dms = [] } = useWorkspaceDms()
+  const { data: dms = [], isFetched: isDmsFetched } = useWorkspaceDms()
   const markChannelRead = useMarkChannelRead()
   const createDmMutation = useCreateDm()
 
@@ -296,6 +296,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     ],
     [projectChannels, workspaceChannels, dms],
   )
+  const hasResolvedInitialChannelLists = isProjectChannelsFetched && isWorkspaceChannelsFetched && isDmsFetched
 
   React.useEffect(() => {
     if (channelId) setLastVisitedChatChannelId(channelId)
@@ -308,13 +309,14 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         rememberedChannelId: getLastVisitedChatChannelId(),
         availableChannelIds,
         fallbackChannelId,
+        allowFallback: hasResolvedInitialChannelLists,
       })
       if (nextChannelId) {
         setChannelId(nextChannelId)
         router.replace('/chats/' + nextChannelId)
       }
     }
-  }, [availableChannelIds, channelId, fallbackChannelId, isMobile, router])
+  }, [availableChannelIds, channelId, fallbackChannelId, hasResolvedInitialChannelLists, isMobile, router])
 
   const selectChannel = (id: string) => {
     setChannelId(id)

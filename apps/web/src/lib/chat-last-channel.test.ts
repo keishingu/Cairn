@@ -33,4 +33,13 @@ describe('chat-last-channel', () => {
     expect(localStorage.getItem(STORAGE_KEYS.chat_last_channel_id)).toBe('channel-42')
     expect(getLastVisitedChatChannelId()).toBe('channel-42')
   })
+
+  it('一覧の解決前は保存済みチャンネルが見つからなくてもフォールバックしない', () => {
+    expect(resolveInitialChatChannelId({
+      rememberedChannelId: 'dm-1',
+      availableChannelIds: ['project-1'],
+      fallbackChannelId: 'project-1',
+      allowFallback: false,
+    })).toBeNull()
+  })
 })
