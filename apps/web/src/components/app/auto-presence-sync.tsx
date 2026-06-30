@@ -62,6 +62,17 @@ export function AutoPresenceSync() {
         return false
       }
     },
+    readCurrentStatus: async () => {
+      const headers = workspace?.id
+        ? new Headers({ [WORKSPACE_HEADER]: workspace.id })
+        : undefined
+      const res = await fetchWithAuth('/api/me', headers ? { headers } : undefined)
+      if (!res.ok) {
+        throw new Error('現在のステータス取得に失敗しました')
+      }
+      const current = await res.json() as CurrentUserDto
+      return current.status
+    },
   })
 
   return null

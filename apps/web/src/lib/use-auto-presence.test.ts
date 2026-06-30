@@ -289,4 +289,54 @@ describe('useAutoPresence', () => {
     expect(next[tabId]?.updatedAt ?? 0).toBeGreaterThan(firstUpdatedAt)
     vi.useRealTimers()
   })
+
+  it('別 device で手動 busy の時は stale な online cache でも auto offline しない', async () => {
+    setVisibilityState('hidden')
+    setHasFocus(false)
+    const updateStatus = vi.fn().mockResolvedValue(true)
+    const readCurrentStatus = vi.fn().mockResolvedValue('busy')
+
+    renderHook(() => useAutoPresence({
+      status: 'online',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+      readCurrentStatus,
+    }))
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await waitFor(() => {
+      expect(readCurrentStatus).toHaveBeenCalled()
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+  })
+
+  it('別 device で手動 offline の時は stale な online cache でも auto online しない', async () => {
+    setVisibilityState('visible')
+    setHasFocus(true)
+    const updateStatus = vi.fn().mockResolvedValue(true)
+    const readCurrentStatus = vi.fn().mockResolvedValue('offline')
+
+    renderHook(() => useAutoPresence({
+      status: 'offline',
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      updateStatus,
+      readCurrentStatus,
+    }))
+
+    await waitFor(() => {
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+
+    act(() => {
+      window.dispatchEvent(new Event('focus'))
+    })
+
+    await waitFor(() => {
+      expect(readCurrentStatus).toHaveBeenCalled()
+      expect(updateStatus).not.toHaveBeenCalled()
+    })
+  })
 })

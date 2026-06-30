@@ -20,6 +20,7 @@ interface UseAutoPresenceOptions {
   status: UserStatus | undefined
   workspaceId?: string | null
   updateStatus: (status: AutoPresenceStatus, options?: UpdateStatusOptions) => Promise<boolean>
+  readCurrentStatus?: () => Promise<UserStatus | null>
 }
 
 function readPresenceIntent(): PresenceIntent | null {
@@ -55,7 +56,7 @@ export function recordManualPresenceStatus(status: UserStatus, workspaceId: stri
   writePresenceIntent({ status, source: 'manual', workspaceId })
 }
 
-export function useAutoPresence({ status, workspaceId = null, updateStatus }: UseAutoPresenceOptions) {
+export function useAutoPresence({ status, workspaceId = null, updateStatus, readCurrentStatus }: UseAutoPresenceOptions) {
   const lastSentRef = React.useRef<AutoPresenceStatus | null>(null)
   const tabIdRef = React.useRef<string | null>(null)
 
@@ -132,6 +133,19 @@ export function useAutoPresence({ status, workspaceId = null, updateStatus }: Us
       if (currentIntent.status === 'offline' && nextStatus === 'offline') return
     }
     if (lastSentRef.current === nextStatus) return
+
+    if (readCurrentStatus) {
+      const currentStatus = await readCurrentStatus()
+      if (currentStatus === 'away' || currentStatus === 'busy') return
+      if (currentStatus === 'offline' && nextStatus === 'online') {
+        lastSentRef.current = 'offline'
+        return
+      }
+      if (currentStatus === nextStatus) {
+        lastSentRef.current = nextStatus
+        return
+      }
+    }
 
     lastSentRef.current = nextStatus
     const ok = await updateStatus(nextStatus, options)
