@@ -89,6 +89,7 @@ export async function PATCH(req: Request) {
     status?: UserStatus
     statusMessage?: string | null
     auto?: boolean
+    force?: boolean
   }
   const hasDisplayName = b.displayName !== undefined
   const hasBio = 'bio' in (b as object)
@@ -120,7 +121,7 @@ export async function PATCH(req: Request) {
     }
 
     if (hasStatus || hasStatusMessage) {
-      if (hasStatus && b.auto) {
+      if (hasStatus && b.auto && !b.force) {
         const [currentMember] = await db
           .select({ status: workspaceMembers.status, statusAuto: workspaceMembers.statusAuto })
           .from(workspaceMembers)

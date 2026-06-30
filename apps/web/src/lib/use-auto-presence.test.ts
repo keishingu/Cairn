@@ -695,8 +695,8 @@ describe('useAutoPresence', () => {
     })
   })
 
-  it('logout 前に manual offline PATCH を送る', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 'offline', statusAuto: false }), {
+  it('logout 前に force 付き auto offline PATCH を送る', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 'offline', statusAuto: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     }))
@@ -710,10 +710,10 @@ describe('useAutoPresence', () => {
     expect(init.method).toBe('PATCH')
     expect(init.keepalive).toBe(true)
     expect(init.credentials).toBe('same-origin')
-    expect(JSON.parse(String(init.body))).toEqual({ status: 'offline' })
+    expect(JSON.parse(String(init.body))).toEqual({ status: 'offline', auto: true, force: true })
     expect(new Headers(init.headers).get(WORKSPACE_HEADER)).toBe(DEFAULT_WORKSPACE_ID)
     expect(JSON.parse(localStorage.getItem(PRESENCE_INTENT_STORAGE_KEY) ?? '{}')).toEqual({
-      [DEFAULT_WORKSPACE_ID]: { status: 'offline', source: 'manual', workspaceId: DEFAULT_WORKSPACE_ID, origin: 'remote' },
+      [DEFAULT_WORKSPACE_ID]: { status: 'offline', source: 'auto', workspaceId: DEFAULT_WORKSPACE_ID },
     })
   })
 })

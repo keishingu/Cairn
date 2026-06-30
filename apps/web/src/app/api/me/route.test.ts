@@ -103,4 +103,23 @@ describe('PATCH /api/me の auto presence 更新', () => {
     expect(updateSet).toHaveBeenCalledWith({ status: 'offline', statusAuto: false })
     expect(updateWhere).toHaveBeenCalledTimes(1)
   })
+
+  it('force 付き auto offline は手動 away / busy を越えて offline にする', async () => {
+    const updateWhere = vi.fn().mockResolvedValue(undefined)
+    const updateSet = vi.fn().mockReturnValue({ where: updateWhere })
+    mockDb.update.mockReturnValue({ set: updateSet })
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request('http://localhost/api/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'offline', auto: true, force: true }),
+    }))
+
+    expect(res.status).toBe(200)
+    expect(mockDb.select).not.toHaveBeenCalled()
+    expect(mockDb.update).toHaveBeenCalledTimes(1)
+    expect(updateSet).toHaveBeenCalledWith({ status: 'offline', statusAuto: true })
+    expect(updateWhere).toHaveBeenCalledTimes(1)
+  })
 })
