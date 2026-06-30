@@ -96,7 +96,8 @@ export async function getAuthContext(): Promise<AuthResult> {
   const cookieStore = await cookies()
   const preferredWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
 
-  const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
+  const scopedCacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : null
+  const cacheKey = scopedCacheKey ?? user.id
   const cached = workspaceCache.get(cacheKey)
 
   try {
@@ -117,7 +118,6 @@ export async function getAuthContext(): Promise<AuthResult> {
       if (preferred) {
         const expiresAt = Date.now() + 5 * 60 * 1000
         workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt })
-        workspaceCache.set(user.id, { workspaceId: preferred.workspaceId, expiresAt })
         return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
       }
       // cookie / cache が無効（退出済み等）→ フォールバック
@@ -134,8 +134,9 @@ export async function getAuthContext(): Promise<AuthResult> {
     }
 
     const expiresAt = Date.now() + 5 * 60 * 1000
-    workspaceCache.set(user.id, { workspaceId: member.workspaceId, expiresAt })
-    if (preferredWorkspaceId) {
+    if (!preferredWorkspaceId) {
+      workspaceCache.set(user.id, { workspaceId: member.workspaceId, expiresAt })
+    } else {
       workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt })
     }
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }

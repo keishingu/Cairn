@@ -143,4 +143,32 @@ describe('get-auth-context', () => {
     })
     expect(mockDb.select).toHaveBeenCalledTimes(3)
   })
+
+  it('cookie 付き request の cache は bearer-only request に流用しない', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-cookie' }]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-bearer' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-cookie' }) })
+    const cookieScoped = await getAuthContext()
+
+    mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer token-123' }))
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    const bearerOnly = await getAuthContext()
+
+    expect(cookieScoped).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-cookie' },
+      error: null,
+    })
+    expect(bearerOnly).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-bearer' },
+      error: null,
+    })
+    expect(mockSupabase.auth.getUser).toHaveBeenNthCalledWith(1)
+    expect(mockSupabase.auth.getUser).toHaveBeenNthCalledWith(2, 'token-123')
+  })
 })
