@@ -4,6 +4,7 @@ import React from 'react'
 import { Icon, Avatar, StatusChip } from '../primitives'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 import { FileTypeIcon, GoogleDocsIcon } from '../file-type-icon'
+import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import { useProjectTasks } from '@/hooks/use-project-tasks'
 import { useChannelFiles } from '@/hooks/use-channel-files'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -210,14 +211,31 @@ const TaskChecklist = ({ project }: { project: ProjectDto }) => {
   )
 }
 
-// チャンネル内でアップロード・共有されたファイルの一覧。3件を超える分は「すべて表示」で展開する
+function isImageChannelFile(f: ChannelFileDto): boolean {
+  return f.fileType !== 'link' && (f.mimeType?.startsWith('image/') ?? false)
+}
+
+// チャンネル内でアップロード・共有されたファイルの一覧。3件を超える分は「すべて表示」で展開する。
+// クリック時の挙動はチャット本文の添付と揃える: 画像はライトボックス、それ以外は /api/attachments を新規タブで開く
 const ChannelFilesSection = ({ channelId }: { channelId: string | null }) => {
   const { data: files = [], isLoading, isError } = useChannelFiles(channelId)
   const [expanded, setExpanded] = React.useState(false)
+  const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
 
   const VISIBLE_COUNT = 3
   const visibleFiles = expanded ? files : files.slice(0, VISIBLE_COUNT)
   const hasMore = files.length > VISIBLE_COUNT
+
+  const imageFiles = React.useMemo(() => files.filter(isImageChannelFile), [files])
+  const lightboxImages = React.useMemo<LightboxImage[]>(() => imageFiles.map(f => ({
+    key: f.id,
+    src: `/api/attachments/${f.id}`,
+    caption: f.fileName,
+  })), [imageFiles])
+  const openLightbox = React.useCallback((fileId: string) => {
+    const idx = imageFiles.findIndex(f => f.id === fileId)
+    if (idx >= 0) setLightboxIndex(idx)
+  }, [imageFiles])
 
   return (
     <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
@@ -232,6 +250,7 @@ const ChannelFilesSection = ({ channelId }: { channelId: string | null }) => {
         <div>
           {visibleFiles.map((f: ChannelFileDto) => {
             const isLink = f.fileType === 'link'
+            const isImage = isImageChannelFile(f)
             const linkHref = isLink ? f.externalUrl : `/api/attachments/${f.id}`
             const sizeStr = formatFileSize(f.fileSize)
             const meta = isLink ? '外部リンク' : [sizeStr, formatFileTimestamp(f.createdAt)].filter(Boolean).join(' · ')
@@ -242,7 +261,8 @@ const ChannelFilesSection = ({ channelId }: { channelId: string | null }) => {
                 href={linkHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', margin: '0 -6px', borderRadius: 7, textDecoration: 'none' }}
+                onClick={isImage ? (e => { e.preventDefault(); openLightbox(f.id) }) : undefined}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', margin: '0 -6px', borderRadius: 7, textDecoration: 'none', cursor: 'pointer' }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
               >
@@ -268,6 +288,15 @@ const ChannelFilesSection = ({ channelId }: { channelId: string | null }) => {
             </button>
           )}
         </div>
+      )}
+
+      {lightboxIndex !== null && lightboxImages.length > 0 && (
+        <ImageLightbox
+          images={lightboxImages}
+          index={Math.min(lightboxIndex, lightboxImages.length - 1)}
+          onIndexChange={setLightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
       )}
     </div>
   )
