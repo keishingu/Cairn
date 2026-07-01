@@ -22,7 +22,7 @@ const ACCEPT_FILE_TYPES = [
   'text/csv',
   'text/plain',
   'text/markdown',
-  '.csv', '.ppt', '.pptx',
+  '.csv', '.pptx',
   '.jpg', '.jpeg', '.png', '.gif', '.webp',
   '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.md', '.markdown',
 ].join(',')

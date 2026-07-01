@@ -45,14 +45,13 @@ describe('ファイルタブ', () => {
     mockFetch.mockReset()
   })
 
-  it('detail panel の file picker が CSV と PowerPoint を許可する', () => {
+  it('detail panel の file picker が CSV と pptx を許可する', () => {
     renderFilesTab()
 
     const input = document.querySelector('input[type="file"]') as HTMLInputElement | null
     expect(input).not.toBeNull()
     expect(input?.accept).toContain('text/csv')
     expect(input?.accept).toContain('.csv')
-    expect(input?.accept).toContain('.ppt')
     expect(input?.accept).toContain('.pptx')
     expect(input?.accept).toContain('application/vnd.openxmlformats-officedocument.presentationml.presentation')
   })
