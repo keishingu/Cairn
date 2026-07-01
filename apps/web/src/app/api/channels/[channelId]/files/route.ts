@@ -32,7 +32,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const { eq, and, isNull, desc, inArray, exists, or, sql } = await import('drizzle-orm')
     const { isIndexable } = await import('@/lib/ai/extract-text')
 
-    // メッセージ添付ファイルに加え、チャットに貼った Google Docs リンク（metadata.channelId に紐付く）も対象にする
+    // メッセージ添付ファイルに加え、チャットに貼った Google Docs リンク
+    // （metadata.channelIds に紐付く。旧形式 metadata.channelId の単一文字列も後方互換で見る）も対象にする。
+    // ソフトデリート済みメッセージの添付は除外する
     const attachedToChannelSq = db
       .select({ one: sql<number>`1` })
       .from(messageAttachments)
@@ -40,6 +42,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .where(and(
         eq(messageAttachments.fileId, files.id),
         eq(messages.channelId, channelId),
+        isNull(messages.deletedAt),
       ))
 
     const rows = await db
@@ -60,6 +63,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         or(
           exists(attachedToChannelSq),
           sql`${files.metadata}->>'channelId' = ${channelId}`,
+          sql`${files.metadata}->'channelIds' @> jsonb_build_array(${channelId}::text)`,
         ),
         isNull(galleryItems.id),
       ))
