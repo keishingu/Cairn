@@ -14,7 +14,7 @@ export const createProjectSchema = z.object({
   location: z.string().max(500).optional(),
   placeId: z.string().max(500).optional(),
   placePhotoName: z.string().max(500).optional(),
-  memberUserIds: z.array(z.string().uuid()).max(50).optional(),
+  memberUserIds: z.array(z.string().uuid()).optional(),
 })
 
 export const updateProjectStatusSchema = z.object({
