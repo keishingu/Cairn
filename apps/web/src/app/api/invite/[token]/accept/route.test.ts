@@ -15,6 +15,7 @@ const { mockGetAuthUser, mockDb } = vi.hoisted(() => {
     select: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
+    delete: vi.fn(),
   }
   return { mockGetAuthUser, mockDb }
 })
@@ -43,10 +44,15 @@ vi.mock('@cairn/db', () => ({
     membershipStatus: 'wm.membershipStatus',
   },
   projectMembers: {
+    id: 'pm.id',
     projectId: 'pm.projectId',
     userId: 'pm.userId',
     role: 'pm.role',
     attendance: 'pm.attendance',
+  },
+  projects: {
+    id: 'p.id',
+    workspaceId: 'p.workspaceId',
   },
 }))
 
@@ -56,6 +62,7 @@ vi.mock('drizzle-orm', () => ({
   or: vi.fn(() => 'or'),
   isNull: vi.fn(() => 'isNull'),
   gt: vi.fn(() => 'gt'),
+  inArray: vi.fn(() => 'inArray'),
   sql: vi.fn(() => 'sql'),
 }))
 
@@ -73,6 +80,15 @@ function selectChain(result: unknown[]) {
       where: vi.fn().mockReturnValue({
         limit: vi.fn().mockResolvedValue(result),
       }),
+    }),
+  }
+}
+
+/** limit を使わず where で終わる select チェーン */
+function selectWhereChain(result: unknown[]) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(result),
     }),
   }
 }
@@ -179,6 +195,65 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(mockDb.insert).not.toHaveBeenCalled()
     expect(mockDb.update).toHaveBeenCalledTimes(2)
     expect(reactivateSet).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'member' })
+  })
+
+  it('inactive メンバーが guest として再招待されたら旧 project membership を掃除して招待対象だけ付け直す', async () => {
+    const invite = {
+      id: 'inv-01c',
+      workspaceId: WORKSPACE_ID,
+      role: 'guest',
+      projectId: 'project-invited',
+      expiresAt: null,
+      maxUses: null,
+      useCount: 0,
+    }
+    const reactivateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue([]),
+    })
+    const deleteWhere = vi.fn().mockResolvedValue([])
+    const projectMemberInsert = vi.fn().mockReturnValue({
+      onConflictDoNothing: vi.fn().mockResolvedValue([]),
+    })
+
+    mockDb.select
+      .mockReturnValueOnce(selectChain([invite]))
+      .mockReturnValueOnce(selectChain([{ id: 'existing-inactive-membership-id', membershipStatus: 'inactive' }]))
+      .mockReturnValueOnce(selectWhereChain([{ id: 'project-old-1' }, { id: 'project-invited' }]))
+
+    mockDb.update
+      .mockReturnValueOnce(
+        updateChain([{ id: 'inv-01c', workspaceId: WORKSPACE_ID, role: 'guest', projectId: 'project-invited' }])
+      )
+      .mockReturnValueOnce({
+        set: reactivateSet,
+      })
+
+    mockDb.delete.mockReturnValueOnce({
+      where: deleteWhere,
+    })
+
+    mockDb.insert.mockReturnValueOnce({
+      values: projectMemberInsert,
+    })
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/invite/${VALID_TOKEN}/accept`, { method: 'POST' }),
+      { params: Promise.resolve({ token: VALID_TOKEN }) },
+    )
+
+    expect(res.status).toBe(200)
+    expect(mockDb.update).toHaveBeenCalledTimes(2)
+    expect(reactivateSet).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'guest' })
+    expect(mockDb.delete).toHaveBeenCalledTimes(1)
+    expect(deleteWhere).toHaveBeenCalledTimes(1)
+    expect(mockDb.insert).toHaveBeenCalledTimes(1)
+    expect(projectMemberInsert).toHaveBeenCalledWith({
+      projectId: 'project-invited',
+      userId: DEV_USER_ID,
+      role: 'member',
+      attendance: 'attending',
+    })
   })
 
   it('max_uses に達していると 410 を返す', async () => {

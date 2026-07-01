@@ -15,8 +15,8 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceInvites, workspaceMembers, projectMembers } = await import('@cairn/db')
-    const { eq, and, or, isNull, gt, sql } = await import('drizzle-orm')
+    const { workspaceInvites, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
+    const { eq, and, or, isNull, gt, sql, inArray } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client').catch(() => ({ inngest: null }))
 
     const now = new Date()
@@ -85,6 +85,23 @@ export async function POST(
         .update(workspaceMembers)
         .set({ membershipStatus: 'active', role: claimed.role })
         .where(eq(workspaceMembers.id, existingMembership.id))
+
+      if (claimed.role === 'guest') {
+        const workspaceProjectIds = (await db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(eq(projects.workspaceId, claimed.workspaceId))
+        ).map(project => project.id)
+
+        if (workspaceProjectIds.length > 0) {
+          await db
+            .delete(projectMembers)
+            .where(and(
+              eq(projectMembers.userId, userId),
+              inArray(projectMembers.projectId, workspaceProjectIds),
+            ))
+        }
+      }
     } else {
       await db.insert(workspaceMembers).values({
         workspaceId: claimed.workspaceId,
