@@ -1105,6 +1105,24 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     setVisibleCount(c => Math.min(c + LOAD_MORE_STEP, messages.length))
   }, [messages.length])
 
+  // 初期ウィンドウが短くコンテナを埋めない場合、上スクロールが発生せず古いメッセージを
+  // 読み込めなくなる（バナーは出るのにスクロールできない）。オーバーフローするか全件表示に
+  // なるまで自動でウィンドウを広げ、埋まった時点で最新（下端）へ寄せる
+  const autoFillingRef = React.useRef(false)
+  React.useLayoutEffect(() => {
+    if (isLoading) return
+    const el = scrollRef.current
+    if (!el) return
+    if (messages.length <= visibleCount) { autoFillingRef.current = false; return }
+    if (el.scrollHeight > el.clientHeight) {
+      // オーバーフロー到達。自動拡張中だったなら最新を見せるため下端へ寄せて終了する
+      if (autoFillingRef.current) { autoFillingRef.current = false; el.scrollTop = el.scrollHeight }
+      return
+    }
+    autoFillingRef.current = true
+    setVisibleCount(c => Math.min(c + LOAD_MORE_STEP, messages.length))
+  }, [isLoading, visibleCount, messages.length])
+
   // ジャンプ/フォーカス対象が描画ウィンドウの外なら、含まれるまでウィンドウを広げる
   const focusedMsgId = focusedMsgIdx >= 0 ? messages[focusedMsgIdx]?.id : undefined
   React.useEffect(() => {
