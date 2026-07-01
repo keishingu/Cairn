@@ -20,6 +20,7 @@
 | [`notification-design.md`](./notification-design.md) | 通知・未読の現行仕様 | 2026-06-10 |
 | [`notification-ux-redesign.md`](./notification-ux-redesign.md) | 通知・未読・Push の再設計案（Realtime 移行を含む） | 2026-06 |
 | [`10_ai_member_design.md`](./10_ai_member_design.md) | AIメンバー設計（構想段階の現行合意。実装着手時に更新する） | 2026-06-11 |
+| [`11_per_channel_ai_consult_design.md`](./11_per_channel_ai_consult_design.md) | チャンネル単位・本人限定のAI相談パネル設計（Lab機能。構想段階） | 2026-07-01 |
 | [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) | 定期ジョブ（cron・自然言語で定義）+ アプリ内投票機能の設計（構想段階） | 2026-06-25 |
 | [`production-deployment.md`](./production-deployment.md) | 本番環境構成・残タスク・一般公開に向けた設定 | 2026-06-21 |
 | [`pricing-plan-design.md`](./pricing-plan-design.md) | 料金プラン設計（Free / Solo / Team / Expedition、ケルン消費モデル） | 2026-06-16 |
