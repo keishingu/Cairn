@@ -1016,7 +1016,7 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
                 key={col}
                 aria-label={formatDateLabel(cell.fullDate)}
                 onClick={() => {
-                  if (isSelected && dayProjects.length === 0 && onCreateDate) {
+                  if (isSelected && onCreateDate) {
                     onCreateDate(cell.fullDate)
                     return
                   }
