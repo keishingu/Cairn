@@ -151,8 +151,13 @@ sentry_issue_links
 
 ```yaml
 forbidden_zones:                              # AI 自動 PR 禁止。issue は立てるが ready-for-ai は付けない
-  # 権限
-  - "**/permissions.ts"                       # apps/web/src/lib/permissions.ts
+  # 権限（ヘルパー本体 + 認可判断を「適用する」ルートも含める）
+  - "**/permissions.ts"                       # apps/web/src/lib/permissions.ts（ヘルパー本体）
+  - "apps/web/src/app/api/workspaces/members/**"   # メンバー管理・ロール変更（owner/admin 判定）
+  - "apps/web/src/app/api/workspaces/invites/**"   # 招待発行・取消
+  - "apps/web/src/app/api/projects/*/members/**"   # プロジェクトメンバー追加・削除
+  - "apps/web/src/app/api/projects/*/guest-invite/**"  # ゲスト招待リンク
+  - "apps/web/src/app/api/channels/*/members/**"   # チャンネルメンバー
   # 認証（"auth" ディレクトリを持たないファイルも捕捉する）
   - "**/get-auth-context.ts"                  # apps/web/src/lib/get-auth-context.ts
   - "**/fetch-with-auth.ts"
@@ -169,7 +174,19 @@ forbidden_zones:                              # AI 自動 PR 禁止。issue は�
   - "packages/db/src/schema/**"               # Drizzle が正。schema 変更は人間設計必須
 ```
 
-> 実装時は「概念（何を守るか）」と「グロブ（どのパスか）」を分けて管理し、ディレクトリ構成が変わってもゲートが素通りしないよう、パスを追加したかを CI で検証する。理想は Sentry 由来と自己改善ループが**単一の `soul.policy.yaml` を共有参照**すること（§10-e）。
+> **パスグロブだけに頼らない（重要）**: 認可を適用するルートは `apps/web/src/app/api/` 配下に十数ファイル散在し、今後も増える。パス列挙は取りこぼす。そこで **`forbidden_content` として「権限ヘルパーを import しているか」を併用する**:
+>
+> ```yaml
+> forbidden_content:            # 差分に含まれるファイルの中身で判定（グロブの補完）
+>   - "requireWorkspaceOwner"   # これらを import/参照するファイルは権限適用点とみなす
+>   - "requireWorkspaceAdmin"
+>   - "requireWorkspaceMember"
+>   - "@/lib/permissions"
+> ```
+>
+> Triage / CI ゲートは **「変更対象ファイルが上記いずれかを含む → `needs-human`」**とする。これで新設ルートでもグロブ更新を待たずに認可コードを保護できる。`grep -rlE "requireWorkspace(Owner|Admin|Member)"` で現状 16 ルートが該当（保守が要る glob 列挙より堅い）。
+>
+> 実装時は「概念（何を守るか）」と「グロブ / コンテンツ（どう検出するか）」を分けて管理し、ディレクトリ構成が変わってもゲートが素通りしないよう CI で検証する。理想は Sentry 由来と自己改善ループが**単一の `soul.policy.yaml` を共有参照**すること（§10-e）。
 
 - stacktrace が禁止ゾーンのファイルを指す → issue は作るが **`needs-human` ラベルのみ**（自動 PR しない）。
 - `environment != production`（develop 以外）の crash は原則自動修正しない。
