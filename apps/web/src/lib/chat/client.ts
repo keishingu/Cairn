@@ -101,9 +101,23 @@ async function createDm(targetUserId: string): Promise<{ id: string }> {
   return res.json()
 }
 
+// メッセージ取得エラー。status を保持し、UI 側で 403（アクセス権なし）を
+// 「メッセージの取得失敗」と区別して専用の案内を出すために使う。
+export class ChannelMessagesError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ChannelMessagesError'
+    this.status = status
+  }
+}
+
 async function fetchChannelMessages(channelId: string): Promise<MessageDto[]> {
   const res = await fetchWithAuth(`/api/channels/${channelId}/messages`)
-  if (!res.ok) throw new Error('メッセージの取得に失敗しました')
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new ChannelMessagesError(data.error ?? 'メッセージの取得に失敗しました', res.status)
+  }
   return res.json()
 }
 

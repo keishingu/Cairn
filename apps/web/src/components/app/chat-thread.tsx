@@ -26,7 +26,10 @@ import {
   useSendChannelMessage,
   useToggleMessageReaction,
   useWorkspaceMembers,
+  useProjectChannels,
+  ChannelMessagesError,
 } from '@/lib/chat/client'
+import { useProjectMembers } from '@/hooks/use-project-members'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { getReactionTooltip } from '@/lib/chat/reaction-tooltip'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -847,9 +850,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   }
 
   const { data: currentUser } = useCurrentUser()
-  const { data: messages = [], isLoading, isError } = useChannelMessages(channelId)
+  const { data: messages = [], isLoading, isError, error: messagesError } = useChannelMessages(channelId)
+  // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。
+  // 生のエラーではなく「参加していない」ことを明示する案内を出す。
+  const isAccessDenied = messagesError instanceof ChannelMessagesError && messagesError.status === 403
   const { data: wsMembers = [] } = useWorkspaceMembers()
   const { data: chMemberIds = [] } = useChannelMembers(channelId)
+  const { data: projectChannels = [] } = useProjectChannels()
+  // このチャンネルがプロジェクトチャンネルなら projectId を引く（メンション候補の絞り込み用）
+  const projectId = React.useMemo(
+    () => projectChannels.find(c => c.channelId === channelId)?.projectId ?? null,
+    [projectChannels, channelId],
+  )
+  const { data: projectMembers = [] } = useProjectMembers(projectId)
   const sendMutation = useSendChannelMessage(channelId, currentUser)
   const reactMutation = useToggleMessageReaction(channelId, currentUser)
   const editMutation = useEditMessage(channelId)
@@ -906,12 +919,24 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   }, [lightboxImages])
 
   const mentionMembers = React.useMemo(() => {
+    // プライベートチャンネル・DM はチャンネルメンバーのみを候補にする
     if (chMemberIds.length > 0) {
       const idSet = new Set(chMemberIds.map(m => m.userId))
       return wsMembers.filter(m => idSet.has(m.userId) && m.userId !== currentUser?.id)
     }
+    // プロジェクトチャンネルは、そのプロジェクトにアクセスできる人だけを候補にする。
+    // member 以上は全プロジェクトチャンネルにアクセスできるため候補に残し、
+    // guest は参加プロジェクト（project_members）に居る場合のみ候補にする。
+    // これによりアクセスできない人へメンション通知が飛ぶのを未然に防ぐ（サーバー側でも防御）。
+    if (projectId) {
+      const projectMemberIds = new Set(projectMembers.map(m => m.userId))
+      return wsMembers.filter(m =>
+        m.userId !== currentUser?.id &&
+        (m.role !== 'guest' || projectMemberIds.has(m.userId)),
+      )
+    }
     return wsMembers.filter(m => m.userId !== currentUser?.id)
-  }, [chMemberIds, wsMembers, currentUser?.id])
+  }, [chMemberIds, wsMembers, currentUser?.id, projectId, projectMembers])
 
   // userId → 現在の表示名。メンションを描画時に最新名へ解決するため
   // （保存本文は名前なしの `<@userId>` であり、楽観更新メッセージもこのマップで解決する）
@@ -1158,6 +1183,14 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
+        ) : isAccessDenied ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 24px', textAlign: 'center' }}>
+            <Icon name="lock" size={24} />
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>このチャンネルは表示できません</div>
+            <div style={{ fontSize: 13, color: 'var(--text-3)', maxWidth: 320, lineHeight: 1.6 }}>
+              このプロジェクトに参加していないため、チャットを開けません。閲覧するにはワークスペースの管理者にプロジェクトへの招待を依頼してください。
+            </div>
+          </div>
         ) : isError ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--red-text)', fontSize: 13 }}>メッセージの取得に失敗しました</div>
         ) : messages.length === 0 ? (
@@ -1189,6 +1222,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
           ))
         )}
       </div>
+      {!isAccessDenied && (
       <ChatInputBar
         placeholder={placeholder}
         draft={draft}
@@ -1208,6 +1242,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         onCreateTextFile={() => setShowTextFileDialog(true)}
         {...(compact ? { compact: true } : {})}
       />
+      )}
       {lightboxIndex !== null && lightboxImages.length > 0 && (
         <ImageLightbox
           images={lightboxImages}
