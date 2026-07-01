@@ -34,7 +34,7 @@
    │  inngest.send('sentry/issue.alerted')  ← 即 200、重い処理は Inngest へ
    ▼
 [Triage Agent]（Inngest function）
-   │  Recall : sentry_issue_links 台帳で dedup（既存 issue があれば追記）
+   │  Recall : dedup_key（正規化fingerprint）で横断 dedup（既存グループに追記）
    │  Reason : enrich（stacktrace / breadcrumb / release / suspect commit / 該当コード）
    │           + LLM 分類（level L0-L2 / severity / auto_fixable / 根本原因仮説）
    │  Gate   : SOUL / 禁止ゾーン判定 → ready-for-ai か needs-human か
@@ -88,9 +88,12 @@
 ### 2-3. Webhook 受信
 
 - `apps/web/src/app/api/webhooks/sentry/route.ts` を新設。
-- **署名検証必須**（`sentry-hook-signature` を `SENTRY_CLIENT_SECRET` で HMAC 検証）。失敗は 401。
-- 受信後は軽量な正規化だけして `inngest.send('sentry/issue.alerted', {...})` し即 200。重い処理は Inngest 側（既存 Webhook 群と同じ流儀。`apps/web/src/app/api/inngest/route.ts` に function を登録）。
-- ペイロードは Zod で検証（`packages/shared` のスキーマ規約に合わせる）。
+- **署名検証は「生ボディ」に対して行う（順序が重要）**。Sentry は送信したバイト列そのものに `sentry-hook-signature` を付けるため、`request.json()` / Zod 正規化の**後**に HMAC を計算すると署名対象とバイト列がずれ、正当な本番アラートを 401 で弾く。手順を固定する:
+  1. `const raw = await request.text()` で生ボディを一度だけ読む。
+  2. `SENTRY_CLIENT_SECRET` で `HMAC-SHA256(raw)` を計算し、`sentry-hook-signature` と **timing-safe 比較**（`crypto.timingSafeEqual`）。不一致は 401。
+  3. 検証を通ってから `JSON.parse(raw)` → Zod 検証（`packages/shared` のスキーマ規約）。
+  - Next.js Route Handler では body を消費すると再読込できないため、必ず `text()` で一度だけ読み、パースは検証後に自前で行う。
+- 検証後は軽量な正規化だけして `inngest.send('sentry/issue.alerted', {...})` し即 200。重い処理は Inngest 側（既存 Webhook 群と同じ流儀。`apps/web/src/app/api/inngest/route.ts` に function を登録）。
 
 ---
 
@@ -100,23 +103,37 @@
 
 `packages/db/src/schema/` に追加（Drizzle が正 → `pnpm db:generate` → migration）:
 
+**重複排除は 2 層で持つ**。`sentry_issue_id` を PK にするだけでは不十分（後述）。
+
 ```
-sentry_issue_links
-  sentry_issue_id      text   PK   -- Sentry の issue.id（fingerprint 束）
-  sentry_project       text        -- web / mobile / desktop
-  github_issue_number  int    null
+-- 論理的な 1 エラー = 1 GitHub issue（横断キー）
+sentry_error_groups
+  id                   uuid   PK
+  dedup_key            text   UNIQUE  -- 正規化 fingerprint（下記）。横断の要
+  github_issue_number  int    null    -- 1 グループ = 1 GitHub issue
   github_pr_number     int    null
-  state                enum        -- received / triaged / issue_opened / ready_for_ai
-                                   --  / in_pr / merged / resolved / wontfix / gate_rejected
-  fingerprint          text
-  surface              text        -- web / mobile-native / desktop-native / *-webview
-  first_seen_at        timestamptz
-  last_alerted_at      timestamptz
-  attempt_count        int         -- Fix Agent 試行回数（暴走防止の上限）
-  created_at / updated_at
+  state                enum          -- received / triaged / issue_opened / ready_for_ai
+                                     --  / in_pr / merged / resolved / wontfix / gate_rejected
+  attempt_count        int           -- Fix Agent 試行回数（暴走防止の上限）
+  first_seen_at / last_alerted_at / created_at / updated_at
+
+-- Sentry 側の issue（project/surface ごとに別 id で来る）を上のグループに紐付ける
+sentry_issue_links
+  sentry_issue_id      text   PK     -- Sentry の issue.id（project ごとに一意）
+  group_id             uuid   FK → sentry_error_groups.id
+  sentry_project       text          -- web / mobile / desktop
+  surface              text          -- web / mobile-native / desktop-native / *-webview
+  fingerprint          text          -- 生 fingerprint
+  first_seen_at / last_alerted_at
 ```
 
-- Triage は必ずこの台帳を引く。**既存 issue があればコメント追記（再発回数 / 影響数を更新）**、無ければ新規作成。
+**なぜ 2 層か（横断 dedup キーが要る）**: 3 project 構成では、同一の WebView / ブラウザ由来の失敗が **web・mobile-webview・desktop-webview から別々の Sentry issue.id で届く**。`sentry_issue_id` だけを PK にすると同一エラーを別物と見なし、1 つの根本原因に対して複数の GitHub issue / PR を量産してしまう。そこで:
+
+- **`dedup_key`（正規化 fingerprint）でグループに寄せる**。正規化は「例外型 + 正規化した先頭スタックフレーム群（`surface` / project 固有プレフィックス・行番号・ビルドハッシュを除去）」から算出。WebView 由来（`*-webview`）は web の in-app フレームに正規化して同一キーに寄せる。
+- Triage は **まず `dedup_key` で `sentry_error_groups` を引き**、無ければグループ作成 → GitHub issue 作成。`sentry_issue_links` は各 Sentry issue をグループに追加するだけ（追記・再発カウント）。
+- GitHub issue 作成は `dedup_key` の UNIQUE 制約で守る（競合時は既存グループに追記）。
+
+- Triage は必ずこの台帳を引く。**既存グループがあればコメント追記（再発回数 / 影響数 / 新 surface を更新）**、無ければ新規作成。
 - `attempt_count` に上限（例: 2）。超えたら `needs-human` にして自動修正を止める。
 - Sentry の `regression`（resolved が再発）は既存 GitHub issue を reopen し `needs-human`。
 - **注**: CLAUDE.md の方針どおり `packages/db` にはテストを書かない（DB 接続が必要なため）。
@@ -127,7 +144,7 @@ sentry_issue_links
 
 `sentry/issue.alerted` を購読する新 Inngest function。既存 function（`onMessageCreated` 等）と同様に `step` 分割する。
 
-1. **dedup**: `sentry_issue_links` を照会。既存なら「追記モード」、新規なら「作成モード」。WebView 由来の重複は surface tag で web 側に寄せる。
+1. **dedup**: 正規化 fingerprint から `dedup_key` を算出し `sentry_error_groups` を照会。既存グループなら「追記モード」、無ければ「作成モード」。WebView 由来（`*-webview`）は web の in-app フレームに正規化して同一グループへ寄せる（§3）。
 2. **fetch-context**: Sentry API で issue 詳細を取得（最新イベント / stacktrace / breadcrumbs / tags / release / suspect commits / 発生数 / 影響ユーザー数）。
 3. **locate-code**: stacktrace の **in-app フレーム**からリポジトリのファイル / 行を特定し、周辺コードを収集（GitHub の該当ファイル取得。pgvector ではなくコード位置特定が要る）。mobile / desktop フレームは各アプリのソースにマップする。
 4. **scrub-pii**: issue 本文に載せる前に PII をマスキング（§5）。
@@ -232,7 +249,7 @@ CLAUDE.md のプライバシー志向と整合させる。stacktrace / breadcrum
 
 1. **`apps/web` に `@sentry/nextjs` 導入** + release / source map。Alert Rule を「新規 error @ production」1 本だけに絞る。（mobile / desktop の SDK 導入はこの後追加）
 2. `POST /api/webhooks/sentry`（署名検証）→ `inngest.send`。
-3. `sentry_issue_links` テーブル + Triage Inngest function（dedup → enrich → scrub → 分類 → issue 作成）。**まずは issue 化まで**。
+3. `sentry_error_groups` + `sentry_issue_links` テーブル + Triage Inngest function（dedup_key で横断 dedup → enrich → scrub → 分類 → issue 作成）。**まずは issue 化まで**。
 4. `.github/ISSUE_TEMPLATE` と label（`source:sentry` / `level:*` / `ready-for-ai` / `needs-human`）を整備。禁止ゾーンは `needs-human` 止まり。
 5. **Fix Agent（Claude Code GitHub Action）を手動起動**で試す（`ready-for-ai` issue に人がトリガー）→ 品質を見て自動化。
 6. merge 後の resolve / close を自動化して初めてループが閉じる。
@@ -246,7 +263,7 @@ CLAUDE.md のプライバシー志向と整合させる。stacktrace / breadcrum
 
 | リスク | 対策 |
 |---|---|
-| issue / PR の量産 | `sentry_issue_links` 台帳で冪等化 + `attempt_count` 上限 + Alert Rule で入口フィルタ |
+| issue / PR の量産 | `dedup_key`（正規化 fingerprint）で横断冪等化 + `attempt_count` 上限 + Alert Rule で入口フィルタ |
 | 権限 / 課金 / 認証を AI が改変 | `forbidden_zones` → `needs-human` 止まり、CI で差分検知 |
 | PII 漏洩 | `beforeSend` スクラブ + issue 貼付前マスキング（二段） |
 | 直っていないのに close | 次リリースの regression 監視で reopen |
@@ -257,7 +274,7 @@ CLAUDE.md のプライバシー志向と整合させる。stacktrace / breadcrum
 
 ## 10. 次に具体化する候補
 
-- (a) `sentry_issue_links` の Drizzle スキーマ確定（state enum / surface / index 設計）
+- (a) `sentry_error_groups` / `sentry_issue_links` の Drizzle スキーマ確定（dedup_key の正規化ロジック / state enum / surface / index 設計）
 - (b) Sentry Webhook ペイロードの Zod スキーマ（`packages/shared`）
 - (c) Triage Agent の分類プロンプト（level / auto_fixable / 根本原因）と eval セット
 - (d) `.github/ISSUE_TEMPLATE` と Fix Agent 用 issue 本文テンプレ（Claude Code Action が読む前提の項目設計）
