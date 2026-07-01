@@ -76,11 +76,15 @@ export async function GET() {
         channelAccessCondition,
       ))
 
+    // metadata.channelIds（新形式の配列）と旧形式の単一 metadata.channelId の両方を対象にする
     const metadataChannelAccessSq = db
       .select({ one: sql<number>`1` })
       .from(channels)
       .where(and(
-        sql`${channels.id}::text = ${files.metadata}->>'channelId'`,
+        sql`(
+          ${channels.id}::text = ${files.metadata}->>'channelId'
+          or ${files.metadata}->'channelIds' @> jsonb_build_array(${channels.id}::text)
+        )`,
         channelAccessCondition,
       ))
 

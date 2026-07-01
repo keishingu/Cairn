@@ -352,6 +352,9 @@ export function useSendChannelMessage(
         chatQueryKeys.messages(channelId),
         (old) => (old ?? []).map((m) => m.id === context?.optimisticId ? finalMessage : m),
       )
+      if ((input.optimisticAttachments?.length ?? 0) > 0) {
+        void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
+      }
     },
   })
 }

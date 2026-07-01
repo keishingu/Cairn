@@ -1260,19 +1260,24 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     })
   }
 
-  const registerGoogleDocsLinks = (text: string) => {
+  // Google Docs URL を検出してファイルタブ・チャンネルファイル一覧に自動登録する。
+  // 完了を待たずにメッセージを送信すると、メッセージ挿入の Realtime broadcast が
+  // リンクの files レコード挿入より先に飛び、他クライアントの channel-files invalidate が
+  // 早すぎて新着リンクを取りこぼすことがあるため、呼び出し側で完了を待つ
+  const registerGoogleDocsLinks = async (text: string): Promise<void> => {
     if (!channelId) return
     const urls = extractGoogleDocsUrls(text)
     if (urls.length === 0) return
-    for (const url of urls) {
-      void fetchWithAuth('/api/external-links', {
+    await Promise.allSettled(urls.map(url =>
+      fetchWithAuth('/api/external-links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, channelId }),
       }).then(() => {
         void queryClient.invalidateQueries({ queryKey: ['project-files'] })
-      }).catch(() => {})
-    }
+        void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
+      }),
+    ))
   }
 
   const send = () => {
@@ -1280,9 +1285,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     if ((!rawText && pendingAttachments.length === 0) || !channelId) return
     const text = transformContent(rawText)
     mentionMapRef.current.clear()
-
-    // Google Docs URL を検出してファイルタブに自動登録
-    if (text) registerGoogleDocsLinks(text)
 
     pendingDraftRef.current = text
     setSendError(null)
@@ -1304,12 +1306,22 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     const replyTo = replyTarget
     setReplyTarget(null)
 
-    sendMutation.mutate({
-      content: text,
-      attachmentFileIds: optimisticAttachments.map(a => a.fileId),
-      optimisticAttachments,
-      ...(replyTo ? { parentMessageId: replyTo.id, optimisticReplyTo: replyTo } : {}),
-    })
+    const postMessage = () => {
+      sendMutation.mutate({
+        content: text,
+        attachmentFileIds: optimisticAttachments.map(a => a.fileId),
+        optimisticAttachments,
+        ...(replyTo ? { parentMessageId: replyTo.id, optimisticReplyTo: replyTo } : {}),
+      })
+    }
+
+    // 入力欄のクリア等は即座に反映しつつ、Google Docs リンクを含む場合のみ
+    // 登録完了を待ってからメッセージを送信する
+    if (text) {
+      void registerGoogleDocsLinks(text).finally(postMessage)
+    } else {
+      postMessage()
+    }
   }
 
   const placeholder: React.ReactNode = channelName ? (
