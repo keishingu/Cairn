@@ -95,9 +95,9 @@ export function formatChannelPeriod(start: string | null, end: string | null): s
   return undefined
 }
 
-export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, dot, label, dateMeta, badge, mobile, memberNames, memberCount }: {
+export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, dot, label, dateMeta, dateMetaBehavior = 'fixed', badge, mobile, memberNames, memberCount }: {
   active?: boolean; onClick?: () => void; prefix?: string
-  avatar?: string; avatarUrl?: string; dot?: string; label: string; dateMeta?: string; badge?: number; mobile?: boolean
+  avatar?: string; avatarUrl?: string; dot?: string; label: string; dateMeta?: string; dateMetaBehavior?: 'fixed' | 'truncate'; badge?: number; mobile?: boolean
   memberNames?: string[]; memberCount?: number
 }) => (
   <button onClick={onClick} style={{
@@ -135,7 +135,14 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
     <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6 }}>
       <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
       {dateMeta && (
-        <span style={{ flexShrink: 0, fontSize: mobile ? 11 : 10, color: 'var(--text-4)', fontWeight: 500, whiteSpace: 'nowrap' }}>{dateMeta}</span>
+        <span
+          title={dateMetaBehavior === 'truncate' ? dateMeta : undefined}
+          style={dateMetaBehavior === 'truncate'
+            ? { minWidth: 0, maxWidth: mobile ? '45%' : '42%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: mobile ? 11 : 10, color: 'var(--text-4)', fontWeight: 500, flexShrink: 1 }
+            : { flexShrink: 0, fontSize: mobile ? 11 : 10, color: 'var(--text-4)', fontWeight: 500, whiteSpace: 'nowrap' }}
+        >
+          {dateMeta}
+        </span>
       )}
     </span>
     {badge != null && <UnreadBadge count={badge} size={mobile ? 'md' : 'sm'} />}
@@ -252,6 +259,7 @@ export const ChannelList = ({
             dot={getUserStatusColor(d.participantStatus)}
             label={d.participantName}
             dateMeta={d.participantStatusMessage ?? getUserStatusLabel(d.participantStatus)}
+            dateMetaBehavior="truncate"
             badge={d.unreadCount}
             mobile={isMobile}
           />

@@ -53,4 +53,27 @@ describe('ChannelList DM status', () => {
     expect(screen.getByText('会議中です')).toBeInTheDocument()
     expect(screen.queryByText('退席中')).toBeNull()
   })
+
+  it('長い statusMessage は DM 行内で省略表示できるスタイルになる', () => {
+    const longStatus = 'とても長いステータスメッセージで、DM の未読バッジや矢印を押し出さないことを確認したいです'
+
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={() => {}}
+        projectChannels={[]}
+        workspaceChannels={[]}
+        dms={[{ ...DM, participantStatusMessage: longStatus }]}
+        members={[]}
+        onAddChannel={() => {}}
+        onStartDm={() => {}}
+      />,
+    )
+
+    expect(screen.getByText(longStatus)).toHaveStyle({
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      flexShrink: '1',
+    })
+  })
 })
