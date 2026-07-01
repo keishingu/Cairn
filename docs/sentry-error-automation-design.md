@@ -146,15 +146,30 @@ sentry_issue_links
 
 ### 5-1. 禁止ゾーン（自己改善ループと共有）
 
-`soul.policy.yaml` の `forbidden_zones` を流用。Sentry 由来でも触ってはいけない領域は同じ:
+`soul.policy.yaml` の `forbidden_zones` を流用。Sentry 由来でも触ってはいけない領域は同じ。
+**グロブはこのリポの実パスに合わせて具体化する**（`**/auth/**` や root `billing/**` のような概念的パターンは、`apps/web/src/lib/get-auth-context.ts` や `apps/mobile/app/(auth)/...`、`packages/db/src/schema/billing.ts` 等の実在パスに一致せず素通りしてしまう。CI ゲート実装前にリポ固有パターンへ広げること）:
 
 ```yaml
-forbidden_zones:            # AI 自動 PR 禁止。issue は立てるが ready-for-ai は付けない
-  - "**/permissions.ts"     # 権限（apps/web/src/lib/permissions.ts）
-  - billing/**              # 課金
-  - supabase/migrations/**  # DB スキーマ
-  - "**/auth/**"            # 認証
+forbidden_zones:                              # AI 自動 PR 禁止。issue は立てるが ready-for-ai は付けない
+  # 権限
+  - "**/permissions.ts"                       # apps/web/src/lib/permissions.ts
+  # 認証（"auth" ディレクトリを持たないファイルも捕捉する）
+  - "**/get-auth-context.ts"                  # apps/web/src/lib/get-auth-context.ts
+  - "**/fetch-with-auth.ts"
+  - "apps/web/src/app/api/auth/**"
+  - "apps/web/src/app/api/invite/**"          # 招待受諾・トークン検証
+  - "apps/mobile/app/(auth)/**"               # ( ) 付きセグメントは **/auth/** では拾えない
+  - "apps/mobile/lib/oauth.ts"
+  # 課金（現状は設計のみ。実装時の想定パスを先回りで登録）
+  - "apps/web/src/app/api/billing/**"
+  - "packages/db/src/schema/billing.ts"
+  - "**/*billing*"                            # 保険。billing を含む新規ファイルを広く捕捉
+  # DB スキーマ / マイグレーション
+  - "supabase/migrations/**"
+  - "packages/db/src/schema/**"               # Drizzle が正。schema 変更は人間設計必須
 ```
+
+> 実装時は「概念（何を守るか）」と「グロブ（どのパスか）」を分けて管理し、ディレクトリ構成が変わってもゲートが素通りしないよう、パスを追加したかを CI で検証する。理想は Sentry 由来と自己改善ループが**単一の `soul.policy.yaml` を共有参照**すること（§10-e）。
 
 - stacktrace が禁止ゾーンのファイルを指す → issue は作るが **`needs-human` ラベルのみ**（自動 PR しない）。
 - `environment != production`（develop 以外）の crash は原則自動修正しない。
