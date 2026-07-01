@@ -52,7 +52,7 @@ function chain(result: unknown[]) {
   return c
 }
 
-describe('GET /api/workspaces/dms', () => {
+describe('GET /api/workspaces/dms の応答', () => {
   beforeEach(() => {
     process.env['DATABASE_URL'] = 'postgresql://test'
   })

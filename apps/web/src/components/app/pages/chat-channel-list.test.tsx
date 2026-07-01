@@ -17,7 +17,7 @@ const DM: DmChannelDto = {
   unreadMentionCount: 0,
 }
 
-describe('ChannelList DM status', () => {
+describe('ChannelList の DM ステータス表示', () => {
   it('DM の一覧に participant status を表示する', () => {
     render(
       <ChannelList
