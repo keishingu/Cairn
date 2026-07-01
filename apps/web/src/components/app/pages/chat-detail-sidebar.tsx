@@ -3,9 +3,12 @@
 import React from 'react'
 import { Icon, Avatar, StatusChip } from '../primitives'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
+import { FileTypeIcon, GoogleDocsIcon } from '../file-type-icon'
 import { useProjectTasks } from '@/hooks/use-project-tasks'
+import { useChannelFiles } from '@/hooks/use-channel-files'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
+import type { ChannelFileDto } from '@/app/api/channels/[channelId]/files/route'
 
 export interface ChatDetailMember {
   /** ワークスペースメンバーの userId（プロフィールを開けるときのみ。全体チャンネルでは未取得） */
@@ -55,6 +58,18 @@ function formatDateRange(start: string | null, end: string | null): string | nul
   return `〜 ${formatDate(end!)}`
 }
 
+function formatFileSize(bytes: number | null): string {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+}
+
+function formatFileTimestamp(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 // 長い説明文は5行でクランプし、下端をフェードアウト → 「続きを読む」で全文展開する
 const ExpandableDescription = ({ text }: { text: string }) => {
   const ref = React.useRef<HTMLParagraphElement>(null)
@@ -100,14 +115,34 @@ const ExpandableDescription = ({ text }: { text: string }) => {
 // チェックボックス付きのタスク箇条書き。チェックは PATCH で連動し、進捗にも反映される
 const TaskChecklist = ({ project }: { project: ProjectDto }) => {
   const { data: tasks = [], isLoading, toggleMutation } = useProjectTasks(project.id)
+  const listRef = React.useRef<HTMLDivElement>(null)
+  const [expanded, setExpanded] = React.useState(false)
+  const [clamped, setClamped] = React.useState(false)
 
   const toggle = (id: string, status: TaskDto['status']) =>
     toggleMutation.mutate({ id, newStatus: status === 'done' ? 'todo' : 'done' })
+
+  // 未完了タスクを上に、完了済みタスクを下にまとめる（各グループ内の順序は維持）
+  const sortedTasks = React.useMemo(
+    () => [...tasks].sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done')),
+    [tasks],
+  )
 
   // 読み込み済みなら実データ、未読込なら ProjectDto の集計値を使う
   const total = isLoading ? project.taskCount : tasks.length
   const completed = isLoading ? project.completedTaskCount : tasks.filter(t => t.status === 'done').length
   const progress = total > 0 ? Math.round((completed / total) * 100) : 0
+
+  React.useLayoutEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    setClamped(el.scrollHeight > el.clientHeight + 1)
+  }, [sortedTasks])
+
+  const collapsedStyle: React.CSSProperties = expanded ? {} : {
+    maxHeight: 220,
+    overflow: 'hidden',
+  }
 
   return (
     <div>
@@ -129,31 +164,109 @@ const TaskChecklist = ({ project }: { project: ProjectDto }) => {
       ) : tasks.length === 0 ? (
         <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '8px 0 2px' }}>タスクはまだありません</div>
       ) : (
-        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {tasks.map(t => {
-            const done = t.status === 'done'
+        <div>
+          <div style={{ position: 'relative' }}>
+            <div ref={listRef} style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2, ...collapsedStyle }}>
+              {sortedTasks.map(t => {
+                const done = t.status === 'done'
+                return (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0' }}>
+                    <button
+                      onClick={() => toggle(t.id, t.status)}
+                      aria-pressed={done}
+                      aria-label={done ? 'タスクを未完了に戻す' : 'タスクを完了にする'}
+                      style={{
+                        flexShrink: 0, marginTop: 1, width: 16, height: 16, borderRadius: '50%',
+                        border: done ? 'none' : '1.5px solid var(--border-2)',
+                        background: done ? 'var(--emerald)' : 'transparent',
+                        color: '#fff', cursor: 'pointer', padding: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      {done && <Icon name="check" size={10} color="#fff" strokeWidth={3}/>}
+                    </button>
+                    <span style={{ fontSize: 12.5, lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1 }}>
+                      {t.title}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            {clamped && !expanded && (
+              <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 28, background: 'linear-gradient(to bottom, transparent, var(--card))', pointerEvents: 'none' }}/>
+            )}
+          </div>
+          {clamped && (
+            <button
+              onClick={() => setExpanded(e => !e)}
+              style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+            >
+              {expanded ? '閉じる' : '続きを読む'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// チャンネル内でアップロード・共有されたファイルの一覧。3件を超える分は「続きを読む」で展開する
+const ChannelFilesSection = ({ channelId }: { channelId: string | null }) => {
+  const { data: files = [], isLoading, isError } = useChannelFiles(channelId)
+  const [expanded, setExpanded] = React.useState(false)
+
+  const VISIBLE_COUNT = 3
+  const visibleFiles = expanded ? files : files.slice(0, VISIBLE_COUNT)
+  const hasMore = files.length > VISIBLE_COUNT
+
+  return (
+    <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
+      <div style={SECTION_LABEL}>アップロードファイル</div>
+      {isLoading ? (
+        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>読み込み中…</div>
+      ) : isError ? (
+        <div style={{ fontSize: 11.5, color: 'var(--red-text)', padding: '4px 0' }}>ファイルの取得に失敗しました</div>
+      ) : files.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>ファイルはまだありません</div>
+      ) : (
+        <div>
+          {visibleFiles.map((f: ChannelFileDto) => {
+            const isLink = f.fileType === 'link'
+            const linkHref = isLink ? f.externalUrl : `/api/attachments/${f.id}`
+            const sizeStr = formatFileSize(f.fileSize)
+            const meta = isLink ? '外部リンク' : [sizeStr, formatFileTimestamp(f.createdAt)].filter(Boolean).join(' · ')
+
             return (
-              <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0' }}>
-                <button
-                  onClick={() => toggle(t.id, t.status)}
-                  aria-pressed={done}
-                  aria-label={done ? 'タスクを未完了に戻す' : 'タスクを完了にする'}
-                  style={{
-                    flexShrink: 0, marginTop: 1, width: 16, height: 16, borderRadius: '50%',
-                    border: done ? 'none' : '1.5px solid var(--border-2)',
-                    background: done ? 'var(--emerald)' : 'transparent',
-                    color: '#fff', cursor: 'pointer', padding: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                >
-                  {done && <Icon name="check" size={10} color="#fff" strokeWidth={3}/>}
-                </button>
-                <span style={{ fontSize: 12.5, lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1 }}>
-                  {t.title}
-                </span>
-              </div>
+              <a
+                key={f.id}
+                href={linkHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', margin: '0 -6px', borderRadius: 7, textDecoration: 'none' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              >
+                {isLink && f.externalUrl
+                  ? <GoogleDocsIcon url={f.externalUrl} width={26} height={30}/>
+                  : <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName} fileId={f.id} width={26} height={30}/>
+                }
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {f.fileName}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: 'var(--text-4)' }}>{meta}</div>
+                </div>
+              </a>
             )
           })}
+          {hasMore && (
+            <button
+              onClick={() => setExpanded(e => !e)}
+              style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+            >
+              {expanded ? '閉じる' : '続きを読む'}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -264,6 +377,8 @@ const ChatDetailContent = ({
     )}
 
     {isProject && project && <ProjectOverview project={project} onOpenProject={onOpenProject}/>}
+
+    <ChannelFilesSection channelId={channelId}/>
 
     <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
       <div style={SECTION_LABEL}>ピン留め</div>

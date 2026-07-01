@@ -1248,6 +1248,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         body: JSON.stringify({ url, channelId }),
       }).then(() => {
         void queryClient.invalidateQueries({ queryKey: ['project-files'] })
+        void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
       }).catch(() => {})
     }
   }
