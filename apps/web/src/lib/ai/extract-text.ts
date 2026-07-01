@@ -22,7 +22,20 @@ const XML_ENTITIES: Record<string, string> = {
 }
 
 function decodeXmlEntities(text: string): string {
-  return text.replace(/&amp;|&lt;|&gt;|&quot;|&apos;/g, m => XML_ENTITIES[m] ?? m)
+  return text.replace(/&amp;|&lt;|&gt;|&quot;|&apos;|&#x([0-9a-fA-F]+);|&#(\d+);/g, (m, hex, dec) => {
+    if (hex !== undefined) return codePointToString(parseInt(hex, 16), m)
+    if (dec !== undefined) return codePointToString(parseInt(dec, 10), m)
+    return XML_ENTITIES[m] ?? m
+  })
+}
+
+// 不正な参照(範囲外のコードポイント等)で例外にせず、元の文字列をそのまま残す
+function codePointToString(codePoint: number, fallback: string): string {
+  try {
+    return String.fromCodePoint(codePoint)
+  } catch {
+    return fallback
+  }
 }
 
 async function extractPptxText(buffer: Buffer): Promise<string> {

@@ -64,6 +64,14 @@ describe('extractText', () => {
     expect(text).toBe('A & B <test>')
   })
 
+  it('pptx内の数値文字参照(10進・16進)もデコードする', async () => {
+    const buffer = await buildFakePptx([[['don&#8217;t &#x2019;test&#x2019; a&#160;b']]])
+
+    const text = await extractText(buffer, PPTX_MIME)
+
+    expect(text).toBe('don’t ’test’ a b')
+  })
+
   it('xml:space="preserve"属性付きの<a:t>も取りこぼさない', async () => {
     const zip = new JSZip()
     zip.file(
