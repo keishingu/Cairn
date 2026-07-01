@@ -225,19 +225,13 @@ export async function GET(req: Request, { params }: RouteContext) {
 
     const bookmarkedIds = new Set(bookmarkRows.map(b => b.messageId))
 
-    const parentMap = new Map<string, ReplyToDto>()
-    for (const p of parentRows) {
-      parentMap.set(p.id, {
-        id: p.id,
-        senderName: p.senderName,
-        content: p.deletedAt ? '' : p.content,
-        isDeleted: !!p.deletedAt,
-      })
-    }
-
     // メンションは canonical な `<@userId>` で保存されているため、現在の表示名を read 時に解決して埋め込む。
-    // これにより名前変更が全メッセージへ即座に反映される（Mobile の単純な置換クライアントも最新名で表示できる）
-    const mentionIds = [...new Set(rows.flatMap(r => extractMentionIds(r.content)))]
+    // これにより名前変更が全メッセージへ即座に反映される（Mobile の単純な置換クライアントも最新名で表示できる）。
+    // 引用返信バーもメンションを `@表示名` で描画するため、親メッセージの userId も解決対象に含める。
+    const mentionIds = [...new Set([
+      ...rows.flatMap(r => extractMentionIds(r.content)),
+      ...parentRows.flatMap(p => (p.deletedAt ? [] : extractMentionIds(p.content))),
+    ])]
     const nameMap = new Map<string, string>()
     if (mentionIds.length > 0) {
       const profileRows = await db
@@ -245,6 +239,16 @@ export async function GET(req: Request, { params }: RouteContext) {
         .from(profiles)
         .where(inArray(profiles.id, mentionIds))
       for (const p of profileRows) nameMap.set(p.id, p.displayName)
+    }
+
+    const parentMap = new Map<string, ReplyToDto>()
+    for (const p of parentRows) {
+      parentMap.set(p.id, {
+        id: p.id,
+        senderName: p.senderName,
+        content: p.deletedAt ? '' : hydrateMentions(p.content, id => nameMap.get(id)),
+        isDeleted: !!p.deletedAt,
+      })
     }
 
     const result: MessageDto[] = rows.map(r => ({
@@ -266,7 +270,7 @@ export async function GET(req: Request, { params }: RouteContext) {
     return NextResponse.json(result)
   } catch (err) {
     console.error('[/api/channels/[channelId]/messages GET] DB query failed:', err)
-    return NextResponse.json([] satisfies MessageDto[])
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -339,6 +343,17 @@ export async function POST(req: Request, { params }: RouteContext) {
       }
     }
 
+    // プロジェクトチャンネルの場合、- [ ] チェックボックスをタスクに自動変換するため先にプロジェクトを解決しておく
+    const checkboxes = parseCheckboxes(content)
+    const { channels, tasks } = await import('@cairn/db')
+    const [channel] = checkboxes.length > 0
+      ? await db
+          .select({ projectId: channels.projectId })
+          .from(channels)
+          .where(eq(channels.id, channelId))
+          .limit(1)
+      : [undefined]
+
     const inserted = await db.transaction(async (tx) => {
       const [msg] = await tx
         .insert(messages)
@@ -363,6 +378,23 @@ export async function POST(req: Request, { params }: RouteContext) {
         )
       }
 
+      // メッセージ本文のチェックボックスとタスクの作成を同一トランザクションにし、
+      // タスク作成が失敗した場合にメッセージだけが残る不整合を防ぐ
+      if (channel?.projectId) {
+        const projectId = channel.projectId
+        await tx.insert(tasks).values(
+          checkboxes.map(cb => ({
+            projectId,
+            title: cb.text,
+            status: (cb.checked ? 'done' : 'todo') as 'done' | 'todo',
+            priority: 'medium' as const,
+            createdBy: ctx.userId,
+            sourceMessageId: msg.id,
+            sourceCheckboxIndex: cb.index,
+          })),
+        )
+      }
+
       return msg
     })
 
@@ -382,32 +414,6 @@ export async function POST(req: Request, { params }: RouteContext) {
       .where(eq(profiles.id, inserted.senderId))
 
     const senderName = profile?.displayName ?? '不明'
-
-    // プロジェクトチャンネルの場合、- [ ] チェックボックスをタスクに自動変換
-    const checkboxes = parseCheckboxes(inserted.content)
-    if (checkboxes.length > 0) {
-      const { channels, tasks } = await import('@cairn/db')
-      const { eq: eq2 } = await import('drizzle-orm')
-      const [channel] = await db
-        .select({ projectId: channels.projectId })
-        .from(channels)
-        .where(eq2(channels.id, channelId))
-        .limit(1)
-      if (channel?.projectId) {
-        const projectId = channel.projectId
-        await db.insert(tasks).values(
-          checkboxes.map(cb => ({
-            projectId,
-            title: cb.text,
-            status: (cb.checked ? 'done' : 'todo') as 'done' | 'todo',
-            priority: 'medium' as const,
-            createdBy: ctx.userId,
-            sourceMessageId: inserted.id,
-            sourceCheckboxIndex: cb.index,
-          })),
-        )
-      }
-    }
 
     inngest.send({
       name: 'message/created',

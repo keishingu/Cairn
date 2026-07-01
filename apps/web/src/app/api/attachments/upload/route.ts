@@ -14,9 +14,25 @@ const ALLOWED_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'text/plain',
   'text/markdown',
+  'text/csv',
 ])
+
+// Windows等では.csvファイルがExcelの登録ハンドラ経由でapplication/vnd.ms-excelとして
+// 報告されることがある。またブラウザがMIMEを指定しない場合、空文字ではなく
+// request.formData()のパース後にapplication/octet-streamになることがある。
+// そのままだと検索インデックス対象外・XLS表示になってしまうため、
+// 拡張子から明らかにCSVと分かる場合はtext/csvに正規化する
+const CSV_AMBIGUOUS_MIME_TYPES = new Set(['application/vnd.ms-excel', 'application/octet-stream', ''])
+
+function normalizeMimeType(fileName: string, mimeType: string): string {
+  if (/\.csv$/i.test(fileName) && CSV_AMBIGUOUS_MIME_TYPES.has(mimeType)) {
+    return 'text/csv'
+  }
+  return mimeType
+}
 
 function resolveFileType(mimeType: string): 'image' | 'document' | 'other' {
   if (mimeType.startsWith('image/')) return 'image'
@@ -25,7 +41,9 @@ function resolveFileType(mimeType: string): 'image' | 'document' | 'other' {
     mimeType === 'application/msword' ||
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
     mimeType === 'application/vnd.ms-excel' ||
-    mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+    mimeType === 'text/csv'
   ) return 'document'
   return 'other'
 }
@@ -48,8 +66,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'file と channelId は必須です' }, { status: 400 })
   }
 
-  if (!ALLOWED_MIME_TYPES.has(file.type)) {
-    return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel・テキスト）' }, { status: 400 })
+  const mimeType = normalizeMimeType(file.name, file.type)
+
+  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+    return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel・PowerPoint・CSV・テキスト）' }, { status: 400 })
   }
 
   if (file.size > MAX_FILE_SIZE) {
@@ -67,7 +87,7 @@ export async function POST(req: Request) {
 
   const { error: uploadError } = await supabase.storage
     .from('chat-attachments')
-    .upload(storagePath, buffer, { contentType: file.type, upsert: false })
+    .upload(storagePath, buffer, { contentType: mimeType, upsert: false })
 
   if (uploadError) {
     console.error('[/api/attachments/upload] Storage upload failed:', uploadError)
@@ -94,16 +114,16 @@ export async function POST(req: Request) {
         uploadedBy: ctx.userId,
         storagePath,
         fileName: file.name,
-        mimeType: file.type,
+        mimeType,
         fileSize: file.size,
-        fileType: resolveFileType(file.type),
+        fileType: resolveFileType(mimeType),
       })
       .returning()
 
     if (!inserted) throw new Error('Insert returned no rows')
 
     const { isIndexable } = await import('@/lib/ai/extract-text')
-    if (isIndexable(file.type)) {
+    if (isIndexable(mimeType)) {
       try {
         const { inngest } = await import('@/lib/inngest/client')
         await inngest.send({
@@ -111,7 +131,7 @@ export async function POST(req: Request) {
           data: {
             fileId: inserted.id,
             workspaceId: ctx.workspaceId,
-            mimeType: file.type,
+            mimeType,
             storagePath,
           },
         })

@@ -123,7 +123,7 @@ function MobileShellInner() {
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
   const [notifOpen, setNotifOpen] = React.useState(false)
 
-  const { panelState, panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
+  const { panelState, panelProject, panelMember, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
 
   const setProjectsView = React.useCallback((view: string) => {
     if (!isValidView(view)) return
@@ -142,14 +142,16 @@ function MobileShellInner() {
         <NavigationProgress />
         {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)} isMobile/>}
         {/* パネルは position:fixed でフルスクリーン表示。ブラウザ履歴でスタック管理する */}
+        {/* タブ状態は ProjectPanel の内部 state に閉じる（URL の ?tab を使わない）。
+            router.replace 経由のタブ切替はシェル全体＝裏の一覧まで再レンダーさせるため。
+            key でプロジェクトごとに初期タブ(chat)へリセットする */}
         {panelState?.type === 'project' && panelProject && (
           <ProjectPanel
+            key={panelProject.id}
             project={panelProject}
             onClose={backPanel}
             onMemberClick={openMember}
             isMobile
-            tab={panelTab}
-            onTabChange={setPanelTab}
           />
         )}
         {panelState?.type === 'member' && panelMember && (

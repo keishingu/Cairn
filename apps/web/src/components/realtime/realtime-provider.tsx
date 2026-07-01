@@ -183,6 +183,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           const table = tableOf((message as { payload?: unknown }).payload)
           if (table === 'messages') {
             void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
+            // 添付ファイル・Google Docs リンクの有無はペイロードから判別できないため、
+            // 新着メッセージのたびに無効化して他クライアントのアップロードも反映する
+            void queryClient.invalidateQueries({ queryKey: ['channel-files', id] })
             scheduleListInvalidate()
           } else if (table === 'message_reactions') {
             void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })

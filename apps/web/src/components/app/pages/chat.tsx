@@ -33,6 +33,11 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import { useCommand } from '@/lib/command-registry'
+import {
+  getLastVisitedChatChannelId,
+  resolveInitialChatChannelId,
+  setLastVisitedChatChannelId,
+} from '@/lib/chat-last-channel'
 
 // ─── Message search ───────────────────────────────────────────────
 
@@ -339,22 +344,47 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     }
   }, [channelId])
 
-  const { data: projectChannels = [] } = useProjectChannels()
-  const { data: workspaceChannels = [] } = useWorkspaceChannels()
+  const { data: projectChannels = [], isFetched: isProjectChannelsFetched } = useProjectChannels()
+  const { data: workspaceChannels = [], isFetched: isWorkspaceChannelsFetched } = useWorkspaceChannels()
   const { data: members = [] } = useWorkspaceMembers()
-  const { data: dms = [] } = useWorkspaceDms()
+  const { data: dms = [], isFetched: isDmsFetched } = useWorkspaceDms()
   const markChannelRead = useMarkChannelRead()
   const createDmMutation = useCreateDm()
 
-  // PC: チャンネル未選択時に最初のプロジェクトチャンネルへ自動遷移
+  const fallbackChannelId = React.useMemo(
+    () => (projectChannels.find(c => !c.archived) ?? projectChannels[0] ?? null)?.channelId ?? null,
+    [projectChannels],
+  )
+
+  const availableChannelIds = React.useMemo(
+    () => [
+      ...projectChannels.map(c => c.channelId),
+      ...workspaceChannels.map(c => c.id),
+      ...dms.map(d => d.id),
+    ],
+    [projectChannels, workspaceChannels, dms],
+  )
+  const hasResolvedInitialChannelLists = isProjectChannelsFetched && isWorkspaceChannelsFetched && isDmsFetched
+
   React.useEffect(() => {
-    if (!channelId && projectChannels.length > 0 && !isMobile) {
-      // アーカイブ済みは折りたたみ表示なので、初期選択は非アーカイブを優先する
-      const firstId = (projectChannels.find(c => !c.archived) ?? projectChannels[0]!).channelId
-      setChannelId(firstId)
-      router.replace('/chats/' + firstId)
+    if (channelId) setLastVisitedChatChannelId(channelId)
+  }, [channelId])
+
+  // PC: /chats を開いた時は前回のチャットを優先し、なければ先頭のプロジェクトチャンネルへ遷移
+  React.useEffect(() => {
+    if (!channelId && !isMobile) {
+      const nextChannelId = resolveInitialChatChannelId({
+        rememberedChannelId: getLastVisitedChatChannelId(),
+        availableChannelIds,
+        fallbackChannelId,
+        allowFallback: hasResolvedInitialChannelLists,
+      })
+      if (nextChannelId) {
+        setChannelId(nextChannelId)
+        router.replace('/chats/' + nextChannelId)
+      }
     }
-  }, [channelId, projectChannels, isMobile, router])
+  }, [availableChannelIds, channelId, fallbackChannelId, hasResolvedInitialChannelLists, isMobile, router])
 
   const selectChannel = (id: string) => {
     setChannelId(id)
@@ -630,7 +660,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         {channelListNode}
       </aside>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {!globalSearchOpen && !bookmarksOpen && (
           <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             <div>
@@ -655,7 +685,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         )}
 
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-          <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
+          <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
             {bookmarksOpen
               ? <BookmarksPanel onClose={() => setBookmarksOpen(false)} onJump={jumpToChannelMessage}/>
               : globalSearchOpen
