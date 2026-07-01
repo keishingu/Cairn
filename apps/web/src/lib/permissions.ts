@@ -227,9 +227,16 @@ export async function canAccessFile(
     // プロジェクト未参加のゲストでも、添付経由でアクセスできる場合があるため後段で判定する
   }
 
+  // metadata.channelIds（新形式の配列）と旧形式の単一 metadata.channelId の両方を見る
   const meta = (file.metadata ?? {}) as Record<string, unknown>
-  const metadataChannelId = meta['channelId']
-  if (typeof metadataChannelId === 'string') {
+  const metadataChannelIds = new Set<string>()
+  const legacyChannelId = meta['channelId']
+  if (typeof legacyChannelId === 'string') metadataChannelIds.add(legacyChannelId)
+  const channelIdsArr = meta['channelIds']
+  if (Array.isArray(channelIdsArr)) {
+    for (const id of channelIdsArr) if (typeof id === 'string') metadataChannelIds.add(id)
+  }
+  for (const metadataChannelId of metadataChannelIds) {
     const forbidden = await requireChannelAccess(workspaceId, userId, metadataChannelId)
     if (!forbidden) return true
   }

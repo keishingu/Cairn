@@ -29,7 +29,10 @@ import {
   useToggleBookmark,
   useToggleMessageReaction,
   useWorkspaceMembers,
+  useProjectChannels,
+  ChannelMessagesError,
 } from '@/lib/chat/client'
+import { useProjectMembers } from '@/hooks/use-project-members'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -204,6 +207,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     void copyMessageContent(content)
   }, [content])
 
+  // MarkdownContent の React.memo を効かせるため、チェックボックストグルを安定参照で渡す
+  const handleCheckboxToggle = React.useCallback(
+    (index: number, checked: boolean) => onCheckboxToggle(messageId, index, checked),
+    [onCheckboxToggle, messageId],
+  )
+
   // システムメッセージ（プロジェクトのステータス・日程・概要変更の通知）は中央寄せの控えめな1行で表示する
   if (messageType === 'system') {
     return (
@@ -313,7 +322,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   fontSize={compact ? 13 : 13.5}
                   lineHeight={1.6}
                   mentionNames={mentionNames}
-                  onCheckboxToggle={(index, checked) => onCheckboxToggle(messageId, index, checked)}
+                  onCheckboxToggle={handleCheckboxToggle}
                 />
               )}
             </div>
@@ -961,9 +970,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   }
 
   const { data: currentUser } = useCurrentUser()
-  const { data: messages = [], isLoading, isError } = useChannelMessages(channelId)
+  const { data: messages = [], isLoading, isError, error: messagesError } = useChannelMessages(channelId)
+  // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。
+  // 生のエラーではなく「参加していない」ことを明示する案内を出す。
+  const isAccessDenied = messagesError instanceof ChannelMessagesError && messagesError.status === 403
   const { data: wsMembers = [] } = useWorkspaceMembers()
   const { data: chMemberIds = [] } = useChannelMembers(channelId)
+  const { data: projectChannels = [] } = useProjectChannels()
+  // このチャンネルがプロジェクトチャンネルなら projectId を引く（メンション候補の絞り込み用）
+  const projectId = React.useMemo(
+    () => projectChannels.find(c => c.channelId === channelId)?.projectId ?? null,
+    [projectChannels, channelId],
+  )
+  const { data: projectMembers = [] } = useProjectMembers(projectId)
   const sendMutation = useSendChannelMessage(channelId, currentUser)
   const reactMutation = useToggleMessageReaction(channelId, currentUser)
   const bookmarkMutation = useToggleBookmark(channelId)
@@ -1022,12 +1041,24 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   }, [lightboxImages])
 
   const mentionMembers = React.useMemo(() => {
+    // プライベートチャンネル・DM はチャンネルメンバーのみを候補にする
     if (chMemberIds.length > 0) {
       const idSet = new Set(chMemberIds.map(m => m.userId))
       return wsMembers.filter(m => idSet.has(m.userId) && m.userId !== currentUser?.id)
     }
+    // プロジェクトチャンネルは、そのプロジェクトにアクセスできる人だけを候補にする。
+    // member 以上は全プロジェクトチャンネルにアクセスできるため候補に残し、
+    // guest は参加プロジェクト（project_members）に居る場合のみ候補にする。
+    // これによりアクセスできない人へメンション通知が飛ぶのを未然に防ぐ（サーバー側でも防御）。
+    if (projectId) {
+      const projectMemberIds = new Set(projectMembers.map(m => m.userId))
+      return wsMembers.filter(m =>
+        m.userId !== currentUser?.id &&
+        (m.role !== 'guest' || projectMemberIds.has(m.userId)),
+      )
+    }
     return wsMembers.filter(m => m.userId !== currentUser?.id)
-  }, [chMemberIds, wsMembers, currentUser?.id])
+  }, [chMemberIds, wsMembers, currentUser?.id, projectId, projectMembers])
 
   // userId → 現在の表示名。メンションを描画時に最新名へ解決するため
   // （保存本文は名前なしの `<@userId>` であり、楽観更新メッセージもこのマップで解決する）
@@ -1160,6 +1191,23 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     bookmarkMutation.mutate(messageId)
   }, [bookmarkMutation])
 
+  // リアクション・編集・削除のハンドラも安定参照にする。インラインの矢印関数だと毎レンダーで
+  // 関数の同一性が変わり React.memo(ChatMessage) が無効化され、全メッセージが再パースされる
+  const reactMutate = reactMutation.mutate
+  const handleReact = React.useCallback((messageId: string, emoji: string) => {
+    reactMutate({ messageId, emoji })
+  }, [reactMutate])
+
+  const editMutate = editMutation.mutate
+  const handleEdit = React.useCallback((messageId: string, content: string) => {
+    editMutate({ messageId, content })
+  }, [editMutate])
+
+  const deleteMutate = deleteMutation.mutate
+  const handleDelete = React.useCallback((messageId: string) => {
+    deleteMutate(messageId)
+  }, [deleteMutate])
+
   const handleCopyLink = React.useCallback((messageId: string) => {
     if (!channelId) return
     const url = `${window.location.origin}/chats/${channelId}?m=${messageId}`
@@ -1237,19 +1285,24 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     })
   }
 
-  const registerGoogleDocsLinks = (text: string) => {
+  // Google Docs URL を検出してファイルタブ・チャンネルファイル一覧に自動登録する。
+  // 完了を待たずにメッセージを送信すると、メッセージ挿入の Realtime broadcast が
+  // リンクの files レコード挿入より先に飛び、他クライアントの channel-files invalidate が
+  // 早すぎて新着リンクを取りこぼすことがあるため、呼び出し側で完了を待つ
+  const registerGoogleDocsLinks = async (text: string): Promise<void> => {
     if (!channelId) return
     const urls = extractGoogleDocsUrls(text)
     if (urls.length === 0) return
-    for (const url of urls) {
-      void fetchWithAuth('/api/external-links', {
+    await Promise.allSettled(urls.map(url =>
+      fetchWithAuth('/api/external-links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, channelId }),
       }).then(() => {
         void queryClient.invalidateQueries({ queryKey: ['project-files'] })
-      }).catch(() => {})
-    }
+        void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
+      }),
+    ))
   }
 
   const send = () => {
@@ -1257,9 +1310,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     if ((!rawText && pendingAttachments.length === 0) || !channelId) return
     const text = transformContent(rawText)
     mentionMapRef.current.clear()
-
-    // Google Docs URL を検出してファイルタブに自動登録
-    if (text) registerGoogleDocsLinks(text)
 
     pendingDraftRef.current = text
     setSendError(null)
@@ -1281,12 +1331,22 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     const replyTo = replyTarget
     setReplyTarget(null)
 
-    sendMutation.mutate({
-      content: text,
-      attachmentFileIds: optimisticAttachments.map(a => a.fileId),
-      optimisticAttachments,
-      ...(replyTo ? { parentMessageId: replyTo.id, optimisticReplyTo: replyTo } : {}),
-    })
+    const postMessage = () => {
+      sendMutation.mutate({
+        content: text,
+        attachmentFileIds: optimisticAttachments.map(a => a.fileId),
+        optimisticAttachments,
+        ...(replyTo ? { parentMessageId: replyTo.id, optimisticReplyTo: replyTo } : {}),
+      })
+    }
+
+    // 入力欄のクリア等は即座に反映しつつ、Google Docs リンクを含む場合のみ
+    // 登録完了を待ってからメッセージを送信する
+    if (text) {
+      void registerGoogleDocsLinks(text).finally(postMessage)
+    } else {
+      postMessage()
+    }
   }
 
   const placeholder: React.ReactNode = channelName ? (
@@ -1323,6 +1383,14 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
+        ) : isAccessDenied ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 24px', textAlign: 'center' }}>
+            <Icon name="lock" size={24} />
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>このチャンネルは表示できません</div>
+            <div style={{ fontSize: 13, color: 'var(--text-3)', maxWidth: 320, lineHeight: 1.6 }}>
+              このプロジェクトに参加していないため、チャットを開けません。閲覧するにはワークスペースの管理者にプロジェクトへの招待を依頼してください。
+            </div>
+          </div>
         ) : isError ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--red-text)', fontSize: 13 }}>メッセージの取得に失敗しました</div>
         ) : messages.length === 0 ? (
@@ -1345,9 +1413,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               attachments={m.attachments}
               replyTo={m.replyTo}
               bookmarked={m.bookmarked}
-              onReact={(messageId, emoji) => reactMutation.mutate({ messageId, emoji })}
-              onEdit={(messageId, content) => editMutation.mutate({ messageId, content })}
-              onDelete={(messageId) => deleteMutation.mutate(messageId)}
+              onReact={handleReact}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
               onCheckboxToggle={handleCheckboxToggle}
               onReply={handleReply}
               onBookmark={handleBookmark}
@@ -1362,6 +1430,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
           ))
         )}
       </div>
+      {!isAccessDenied && (
       <ChatInputBar
         placeholder={placeholder}
         draft={draft}
@@ -1385,6 +1454,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         {...(compact ? { compact: true } : {})}
         {...(isMobile ? { isMobile: true } : {})}
       />
+      )}
       {lightboxIndex !== null && lightboxImages.length > 0 && (
         <ImageLightbox
           images={lightboxImages}
