@@ -1283,9 +1283,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     <>
       <Icon name={isPrivate ? 'lock' : 'hash'} size={isPrivate ? 12 : 13} color="var(--text-4)" strokeWidth={2}/>
       <span>{channelName} にメッセージ送信</span>
-      {!isMobile && <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-4)' }}>Markdown対応</span>}
     </>
-  ) : isMobile ? 'メッセージを入力...' : 'メッセージを入力...（Markdown対応）'
+  ) : 'メッセージを入力...'
 
   const handleTextFileCreated = (file: File) => {
     setShowTextFileDialog(false)
