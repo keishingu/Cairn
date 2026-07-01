@@ -161,4 +161,12 @@ describe('extractText', () => {
 
     expect(text).toBe('name,age\n太郎,30')
   })
+
+  it('有効なUTF-8がU+FFFD(置換文字)自体を含む場合、CP932への誤フォールバックで文字化けさせない', async () => {
+    const buffer = Buffer.from('name,note\n太郎,�', 'utf-8')
+
+    const text = await extractText(buffer, 'text/csv')
+
+    expect(text).toBe('name,note\n太郎,�')
+  })
 })
