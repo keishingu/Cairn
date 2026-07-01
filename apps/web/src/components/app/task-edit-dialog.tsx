@@ -2,8 +2,8 @@
 
 import React from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Modal, ModalHeader } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
+import { TaskDialog } from './task-dialog'
 import { TaskFormFields } from './task-form-fields'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { TaskDto } from '@/app/api/tasks/route'
@@ -97,62 +97,42 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
     })
   }
 
+  const errorMessage = updateMutation.isError
+    ? updateMutation.error instanceof Error
+      ? updateMutation.error.message
+      : 'タスクの更新に失敗しました。'
+    : undefined
+
   return (
     <>
       {showEditDialog && (
-        <Modal onClose={() => !updateMutation.isPending && onClose()}>
-          <div style={{
-            position: 'relative',
-            background: 'var(--card)', borderRadius: 14,
-            width: '100%', maxWidth: 480,
-            boxShadow: 'var(--shadow-lg)',
-            display: 'flex', flexDirection: 'column',
-            overflow: 'hidden',
-            animation: 'fadeSlideIn .15s ease',
-          }}>
-            <ModalHeader title="タスクを編集" subtitle={task.projectTitle} onClose={onClose}/>
-            <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <TaskFormFields
-                title={title}
-                onTitleChange={setTitle}
-                priority={priority}
-                onPriorityChange={setPriority}
-                dueDate={dueDate}
-                onDueDateChange={setDueDate}
-              />
-              {updateMutation.isError && (
-                <div style={{
-                  fontSize: 12.5, color: 'var(--red-text)', background: 'var(--red-soft)',
-                  padding: '8px 12px', borderRadius: 6,
-                }}>
-                  {updateMutation.error instanceof Error ? updateMutation.error.message : 'タスクの更新に失敗しました。'}
-                </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, paddingTop: 4 }}>
-                <button
-                  type="button"
-                  className="btn btn-danger"
-                  onClick={() => setConfirmDelete(true)}
-                  disabled={updateMutation.isPending || deleteMutation.isPending}
-                >
-                  削除
-                </button>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button type="button" onClick={onClose} className="btn" disabled={updateMutation.isPending || deleteMutation.isPending}>
-                    キャンセル
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={!title.trim() || updateMutation.isPending || deleteMutation.isPending}
-                  >
-                    {updateMutation.isPending ? '保存中...' : '保存'}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </Modal>
+        <TaskDialog
+          title="タスクを編集"
+          subtitle={task.projectTitle}
+          onClose={onClose}
+          onSubmit={handleSubmit}
+          submitLabel="保存"
+          submittingLabel="保存中..."
+          isSubmitting={updateMutation.isPending}
+          submitDisabled={!title.trim() || deleteMutation.isPending}
+          leadingAction={{
+            label: '削除',
+            className: 'btn btn-danger',
+            onClick: () => setConfirmDelete(true),
+            disabled: updateMutation.isPending || deleteMutation.isPending,
+          }}
+          disableClose={updateMutation.isPending || deleteMutation.isPending}
+          {...(errorMessage ? { errorMessage } : {})}
+        >
+          <TaskFormFields
+            title={title}
+            onTitleChange={setTitle}
+            priority={priority}
+            onPriorityChange={setPriority}
+            dueDate={dueDate}
+            onDueDateChange={setDueDate}
+          />
+        </TaskDialog>
       )}
       <ConfirmDialog
         open={confirmDelete}
