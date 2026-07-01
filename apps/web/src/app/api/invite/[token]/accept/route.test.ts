@@ -40,6 +40,7 @@ vi.mock('@cairn/db', () => ({
     workspaceId: 'wm.workspaceId',
     userId: 'wm.userId',
     role: 'wm.role',
+    membershipStatus: 'wm.membershipStatus',
   },
   projectMembers: {
     projectId: 'pm.projectId',
@@ -131,7 +132,7 @@ describe('POST /api/invite/[token]/accept', () => {
 
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))                                // 招待取得
-      .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id' }]))     // 既存メンバー
+      .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id', membershipStatus: 'active' }]))     // 既存メンバー
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -145,6 +146,37 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(body.workspaceId).toBe(WORKSPACE_ID)
     // update は呼ばれないこと（use_count が増えない）
     expect(mockDb.update).not.toHaveBeenCalled()
+  })
+
+  it('inactive メンバーが再招待を受けたら membership を active に戻す', async () => {
+    const invite = { id: 'inv-01b', workspaceId: WORKSPACE_ID, role: 'member', expiresAt: null, maxUses: null, useCount: 0 }
+
+    mockDb.select
+      .mockReturnValueOnce(selectChain([invite]))
+      .mockReturnValueOnce(selectChain([{ id: 'existing-inactive-membership-id', membershipStatus: 'inactive' }]))
+
+    mockDb.update
+      .mockReturnValueOnce(
+        updateChain([{ id: 'inv-01b', workspaceId: WORKSPACE_ID, role: 'member' }])
+      )
+      .mockReturnValueOnce({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([]),
+        }),
+      })
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/invite/${VALID_TOKEN}/accept`, { method: 'POST' }),
+      { params: Promise.resolve({ token: VALID_TOKEN }) },
+    )
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { ok: boolean; workspaceId: string }
+    expect(body.ok).toBe(true)
+    expect(body.workspaceId).toBe(WORKSPACE_ID)
+    expect(mockDb.insert).not.toHaveBeenCalled()
+    expect(mockDb.update).toHaveBeenCalledTimes(2)
   })
 
   it('max_uses に達していると 410 を返す', async () => {

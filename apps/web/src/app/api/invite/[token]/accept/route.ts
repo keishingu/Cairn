@@ -39,7 +39,7 @@ export async function POST(
 
     // 既にメンバーか確認
     const [existingMembership] = await db
-      .select({ id: workspaceMembers.id })
+      .select({ id: workspaceMembers.id, membershipStatus: workspaceMembers.membershipStatus })
       .from(workspaceMembers)
       .where(
         and(
@@ -50,7 +50,9 @@ export async function POST(
       .limit(1)
 
     if (existingMembership) {
-      return NextResponse.json({ ok: true, workspaceId: invite.workspaceId })
+      if (existingMembership.membershipStatus === 'active') {
+        return NextResponse.json({ ok: true, workspaceId: invite.workspaceId })
+      }
     }
 
     // max_uses チェックとインクリメントをアトミックに実行し、
@@ -78,11 +80,18 @@ export async function POST(
       return NextResponse.json({ error: 'Invite link has reached its usage limit' }, { status: 410 })
     }
 
-    await db.insert(workspaceMembers).values({
-      workspaceId: claimed.workspaceId,
-      userId: userId,
-      role: claimed.role,
-    })
+    if (existingMembership) {
+      await db
+        .update(workspaceMembers)
+        .set({ membershipStatus: 'active' })
+        .where(eq(workspaceMembers.id, existingMembership.id))
+    } else {
+      await db.insert(workspaceMembers).values({
+        workspaceId: claimed.workspaceId,
+        userId: userId,
+        role: claimed.role,
+      })
+    }
 
     // ゲスト招待にプロジェクトが紐付いている場合、プロジェクトメンバーにも自動追加
     if (claimed.projectId) {
