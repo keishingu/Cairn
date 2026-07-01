@@ -106,6 +106,6 @@ export async function GET(_req: Request, { params }: RouteContext) {
     )
   } catch (err) {
     console.error('[/api/channels/[channelId]/files GET] DB query failed:', err)
-    return NextResponse.json([] satisfies ChannelFileDto[])
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

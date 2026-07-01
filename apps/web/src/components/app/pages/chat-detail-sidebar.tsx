@@ -201,7 +201,7 @@ const TaskChecklist = ({ project }: { project: ProjectDto }) => {
               onClick={() => setExpanded(e => !e)}
               style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
             >
-              {expanded ? '閉じる' : '続きを読む'}
+              {expanded ? 'たたむ' : 'すべて表示'}
             </button>
           )}
         </div>
@@ -210,7 +210,7 @@ const TaskChecklist = ({ project }: { project: ProjectDto }) => {
   )
 }
 
-// チャンネル内でアップロード・共有されたファイルの一覧。3件を超える分は「続きを読む」で展開する
+// チャンネル内でアップロード・共有されたファイルの一覧。3件を超える分は「すべて表示」で展開する
 const ChannelFilesSection = ({ channelId }: { channelId: string | null }) => {
   const { data: files = [], isLoading, isError } = useChannelFiles(channelId)
   const [expanded, setExpanded] = React.useState(false)
@@ -221,7 +221,7 @@ const ChannelFilesSection = ({ channelId }: { channelId: string | null }) => {
 
   return (
     <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
-      <div style={SECTION_LABEL}>アップロードファイル</div>
+      <div style={SECTION_LABEL}>ファイル</div>
       {isLoading ? (
         <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>読み込み中…</div>
       ) : isError ? (
@@ -264,7 +264,7 @@ const ChannelFilesSection = ({ channelId }: { channelId: string | null }) => {
               onClick={() => setExpanded(e => !e)}
               style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
             >
-              {expanded ? '閉じる' : '続きを読む'}
+              {expanded ? 'たたむ' : 'すべて表示'}
             </button>
           )}
         </div>
@@ -273,8 +273,8 @@ const ChannelFilesSection = ({ channelId }: { channelId: string | null }) => {
   )
 }
 
-// 紐づくプロジェクトの概要（説明・ステータス・タスク進捗）と詳細パネルへの導線。期間は見出し直下に表示
-const ProjectOverview = ({ project, onOpenProject }: { project: ProjectDto; onOpenProject: () => void }) => {
+// 紐づくプロジェクトの概要（ステータス・説明・タスク進捗）。期間・詳細パネルへの導線は見出し部分に表示
+const ProjectOverview = ({ project }: { project: ProjectDto }) => {
   return (
     <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', flexDirection: 'column', gap: 12 }}>
       {project.statusName && (
@@ -286,20 +286,6 @@ const ProjectOverview = ({ project, onOpenProject }: { project: ProjectDto; onOp
       {project.description && <ExpandableDescription text={project.description}/>}
 
       <TaskChecklist project={project}/>
-
-      <button
-        onClick={onOpenProject}
-        style={{
-          width: '100%', height: 34, borderRadius: 8,
-          border: '1px solid var(--border)', background: 'var(--card-2)',
-          color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600,
-          cursor: 'pointer', fontFamily: 'inherit',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-        }}
-      >
-        <Icon name="arrowRight" size={13}/>
-        プロジェクトを開く
-      </button>
     </div>
   )
 }
@@ -322,6 +308,19 @@ const ChatDetailContent = ({
           </div>
         )}
         <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 4 }}>プロジェクトチャンネル</div>
+        <button
+          onClick={onOpenProject}
+          style={{
+            marginTop: 10, width: '100%', height: 34, borderRadius: 8,
+            border: '1px solid var(--border)', background: 'var(--card-2)',
+            color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600,
+            cursor: 'pointer', fontFamily: 'inherit',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}
+        >
+          <Icon name="arrowRight" size={13}/>
+          プロジェクトを開く
+        </button>
       </div>
     ) : (
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
@@ -376,14 +375,9 @@ const ChatDetailContent = ({
       </div>
     )}
 
-    {isProject && project && <ProjectOverview project={project} onOpenProject={onOpenProject}/>}
+    {isProject && project && <ProjectOverview project={project}/>}
 
     <ChannelFilesSection channelId={channelId}/>
-
-    <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
-      <div style={SECTION_LABEL}>ピン留め</div>
-      <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>ピン留めはまだありません</div>
-    </div>
 
     {memberLabel && (
     <div style={{ padding: '12px 16px' }}>
