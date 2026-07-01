@@ -78,6 +78,15 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
 
   if (!open || !task) return null
 
+  const showEditDialog = initialMode !== 'delete'
+  const handleDeleteDialogClose = () => {
+    if (initialMode === 'delete') {
+      onClose()
+      return
+    }
+    setConfirmDelete(false)
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
@@ -90,64 +99,66 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
 
   return (
     <>
-      <Modal onClose={() => !updateMutation.isPending && onClose()}>
-        <div style={{
-          position: 'relative',
-          background: 'var(--card)', borderRadius: 14,
-          width: '100%', maxWidth: 480,
-          boxShadow: 'var(--shadow-lg)',
-          display: 'flex', flexDirection: 'column',
-          overflow: 'hidden',
-          animation: 'fadeSlideIn .15s ease',
-        }}>
-          <ModalHeader title="タスクを編集" subtitle={task.projectTitle} onClose={onClose}/>
-          <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <TaskFormFields
-              title={title}
-              onTitleChange={setTitle}
-              priority={priority}
-              onPriorityChange={setPriority}
-              dueDate={dueDate}
-              onDueDateChange={setDueDate}
-            />
-            {updateMutation.isError && (
-              <div style={{
-                fontSize: 12.5, color: 'var(--red-text)', background: 'var(--red-soft)',
-                padding: '8px 12px', borderRadius: 6,
-              }}>
-                {updateMutation.error instanceof Error ? updateMutation.error.message : 'タスクの更新に失敗しました。'}
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, paddingTop: 4 }}>
-              <button
-                type="button"
-                className="btn btn-danger"
-                onClick={() => setConfirmDelete(true)}
-                disabled={updateMutation.isPending || deleteMutation.isPending}
-              >
-                削除
-              </button>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={onClose} className="btn" disabled={updateMutation.isPending || deleteMutation.isPending}>
-                  キャンセル
-                </button>
+      {showEditDialog && (
+        <Modal onClose={() => !updateMutation.isPending && onClose()}>
+          <div style={{
+            position: 'relative',
+            background: 'var(--card)', borderRadius: 14,
+            width: '100%', maxWidth: 480,
+            boxShadow: 'var(--shadow-lg)',
+            display: 'flex', flexDirection: 'column',
+            overflow: 'hidden',
+            animation: 'fadeSlideIn .15s ease',
+          }}>
+            <ModalHeader title="タスクを編集" subtitle={task.projectTitle} onClose={onClose}/>
+            <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <TaskFormFields
+                title={title}
+                onTitleChange={setTitle}
+                priority={priority}
+                onPriorityChange={setPriority}
+                dueDate={dueDate}
+                onDueDateChange={setDueDate}
+              />
+              {updateMutation.isError && (
+                <div style={{
+                  fontSize: 12.5, color: 'var(--red-text)', background: 'var(--red-soft)',
+                  padding: '8px 12px', borderRadius: 6,
+                }}>
+                  {updateMutation.error instanceof Error ? updateMutation.error.message : 'タスクの更新に失敗しました。'}
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, paddingTop: 4 }}>
                 <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={!title.trim() || updateMutation.isPending || deleteMutation.isPending}
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={updateMutation.isPending || deleteMutation.isPending}
                 >
-                  {updateMutation.isPending ? '保存中...' : '保存'}
+                  削除
                 </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" onClick={onClose} className="btn" disabled={updateMutation.isPending || deleteMutation.isPending}>
+                    キャンセル
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={!title.trim() || updateMutation.isPending || deleteMutation.isPending}
+                  >
+                    {updateMutation.isPending ? '保存中...' : '保存'}
+                  </button>
+                </div>
               </div>
-            </div>
-          </form>
-        </div>
-      </Modal>
+            </form>
+          </div>
+        </Modal>
+      )}
       <ConfirmDialog
         open={confirmDelete}
         title="タスクを削除しますか？"
         message={`「${task.title}」を削除します。この操作は元に戻せません。`}
-        onClose={() => setConfirmDelete(false)}
+        onClose={handleDeleteDialogClose}
         onConfirm={async () => { await deleteMutation.mutateAsync() }}
       />
     </>
