@@ -28,12 +28,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
   try {
     const { db, files, profiles, projects, galleryItems, documentChunks } = await import('@cairn/db')
     const { eq, and, isNull, desc, inArray } = await import('drizzle-orm')
-
-    const INDEXABLE_MIMES = new Set([
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    ])
+    const { isIndexable } = await import('@/lib/ai/extract-text')
 
     // プロジェクトが同一ワークスペースに属することを確認
     const [project] = await db
@@ -95,7 +90,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         if (r.fileType === 'link') {
           const s = meta['indexingStatus']
           indexingStatus = typeof s === 'string' ? s : undefined
-        } else if (INDEXABLE_MIMES.has(r.mimeType ?? '')) {
+        } else if (isIndexable(r.mimeType ?? '')) {
           indexingStatus = chunkedIdSet.has(r.id) ? 'indexed' : 'pending'
         }
 
