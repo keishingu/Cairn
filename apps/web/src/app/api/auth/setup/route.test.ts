@@ -44,6 +44,7 @@ vi.mock('@cairn/db', () => ({
     workspaceId: 'wm.workspaceId',
     userId: 'wm.userId',
     role: 'wm.role',
+    membershipStatus: 'wm.membershipStatus',
   },
   channels: {
     workspaceId: 'ch.workspaceId',
@@ -58,7 +59,15 @@ vi.mock('@cairn/db', () => ({
   },
 }))
 
-vi.mock('drizzle-orm', () => ({ eq: vi.fn(() => 'eq-result') }))
+const { mockEq, mockAnd } = vi.hoisted(() => ({
+  mockEq: vi.fn((left, right) => ({ type: 'eq', args: [left, right] })),
+  mockAnd: vi.fn((...args) => ({ type: 'and', args })),
+}))
+
+vi.mock('drizzle-orm', () => ({
+  eq: mockEq,
+  and: mockAnd,
+}))
 
 vi.mock('@/lib/inngest/client', () => ({
   inngest: { send: vi.fn().mockResolvedValue(undefined) },
@@ -145,6 +154,29 @@ describe('POST /api/auth/setup', () => {
     )
 
     await expect(res.json()).resolves.toEqual({ ok: true, needsWorkspace: false })
+  })
+
+  it('workspaceName なし・inactive メンバーシップのみ → needsWorkspace: true', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('http://localhost/api/auth/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ ok: true, needsWorkspace: true })
+
+    const membershipQuery = mockDb.select.mock.results[1]?.value
+    const fromArg = membershipQuery.from.mock.results[0]?.value
+    const whereArg = fromArg.where.mock.calls[0]?.[0]
+    expect(whereArg.args).toContainEqual({ type: 'eq', args: ['wm.membershipStatus', 'active'] })
   })
 
   it('workspaceName あり・既存メンバーシップがあっても新規ワークスペースを作成する', async () => {
