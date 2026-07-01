@@ -44,6 +44,13 @@ function renderAccountSection() {
   )
 }
 
+function defineArrayBuffer(file: File, bytes: Uint8Array) {
+  Object.defineProperty(file, 'arrayBuffer', {
+    value: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+  })
+  return file
+}
+
 describe('SettingsSectionContent', () => {
   beforeEach(() => {
     fetchWithAuth.mockReset()
@@ -127,7 +134,77 @@ describe('SettingsSectionContent', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText('⚠ GIF アバターには未対応です。JPEG / PNG / WebP / HEIC を選んでください')).toBeInTheDocument()
+      expect(screen.getByText('⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください')).toBeInTheDocument()
+    })
+
+    expect(processImageForUpload).not.toHaveBeenCalled()
+    expect(fetchWithAuth).not.toHaveBeenCalledWith('/api/me/avatar', expect.anything())
+  })
+
+  it('animated WebP アバターはアップロード前に弾く', async () => {
+    const webpBytes = new Uint8Array([
+      0x52, 0x49, 0x46, 0x46,
+      0x1e, 0x00, 0x00, 0x00,
+      0x57, 0x45, 0x42, 0x50,
+      0x56, 0x50, 0x38, 0x58,
+      0x0a, 0x00, 0x00, 0x00,
+      0x02, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00,
+    ])
+    const animatedWebp = defineArrayBuffer(
+      new File([webpBytes], 'avatar.webp', { type: 'image/webp' }),
+      webpBytes,
+    )
+
+    const { container } = renderAccountSection()
+    await screen.findByText('山田 太郎')
+
+    const input = container.querySelector('input[type="file"]')
+    expect(input).not.toBeNull()
+
+    fireEvent.change(input as HTMLInputElement, {
+      target: {
+        files: [animatedWebp],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください')).toBeInTheDocument()
+    })
+
+    expect(processImageForUpload).not.toHaveBeenCalled()
+    expect(fetchWithAuth).not.toHaveBeenCalledWith('/api/me/avatar', expect.anything())
+  })
+
+  it('APNG アバターはアップロード前に弾く', async () => {
+    const apngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x08,
+      0x61, 0x63, 0x54, 0x4c,
+      0x00, 0x00, 0x00, 0x02,
+      0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
+    ])
+    const apng = defineArrayBuffer(
+      new File([apngBytes], 'avatar.png', { type: 'image/png' }),
+      apngBytes,
+    )
+
+    const { container } = renderAccountSection()
+    await screen.findByText('山田 太郎')
+
+    const input = container.querySelector('input[type="file"]')
+    expect(input).not.toBeNull()
+
+    fireEvent.change(input as HTMLInputElement, {
+      target: {
+        files: [apng],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください')).toBeInTheDocument()
     })
 
     expect(processImageForUpload).not.toHaveBeenCalled()
