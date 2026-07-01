@@ -53,6 +53,10 @@ const ACCEPT_FILE_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'text/csv',
+  // OS/ブラウザが.csvにtext/csvを正しく対応付けられない環境では、
+  // MIMEタイプのみのacceptだとネイティブファイル選択ダイアログで.csvが除外されてしまうため、
+  // 拡張子も明示してnormalizeMimeType側の救済ロジックまで到達できるようにする
+  '.csv',
 ].join(',')
 
 function isImageMime(mimeType: string | null): boolean {
