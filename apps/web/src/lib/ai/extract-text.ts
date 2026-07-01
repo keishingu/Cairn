@@ -1,6 +1,8 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import type JSZip from 'jszip'
+
 const INDEXABLE_MIME_TYPES = new Set([
   'application/pdf',
   'application/msword',
@@ -27,20 +29,59 @@ async function extractPptxText(buffer: Buffer): Promise<string> {
   const JSZip = (await import('jszip')).default
   const zip = await JSZip.loadAsync(buffer)
 
-  const slideEntries = Object.entries(zip.files)
-    .filter(([name]) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
-    .sort(([a], [b]) => {
-      const numA = Number(a.match(/slide(\d+)\.xml$/)?.[1] ?? 0)
-      const numB = Number(b.match(/slide(\d+)\.xml$/)?.[1] ?? 0)
-      return numA - numB
-    })
+  const slideNames = await resolveSlideOrder(zip)
 
-  const slideTexts = await Promise.all(slideEntries.map(async ([, file]) => {
+  const slideTexts = await Promise.all(slideNames.map(async name => {
+    const file = zip.files[name]
+    if (!file) return ''
     const xml = await file.async('text')
     return extractParagraphsFromSlideXml(xml)
   }))
 
   return slideTexts.join('\n')
+}
+
+function slideFileNamesByFilenameNumber(zip: JSZip): string[] {
+  return Object.keys(zip.files)
+    .filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+    .sort((a, b) => {
+      const numA = Number(a.match(/slide(\d+)\.xml$/)?.[1] ?? 0)
+      const numB = Number(b.match(/slide(\d+)\.xml$/)?.[1] ?? 0)
+      return numA - numB
+    })
+}
+
+// slideN.xml のファイル名連番はパッケージ内部の識別子に過ぎず、スライドを並び替えても
+// 変わらない。実際の表示順は ppt/presentation.xml の <p:sldIdLst> が持つ r:id の並びを
+// ppt/_rels/presentation.xml.rels で slide ファイルに解決して初めて分かる。
+// 解決できない場合(壊れたファイル等)はファイル名連番にフォールバックする。
+async function resolveSlideOrder(zip: JSZip): Promise<string[]> {
+  const presentationFile = zip.files['ppt/presentation.xml']
+  const relsFile = zip.files['ppt/_rels/presentation.xml.rels']
+  if (!presentationFile || !relsFile) return slideFileNamesByFilenameNumber(zip)
+
+  const presentationXml = await presentationFile.async('text')
+  const relsXml = await relsFile.async('text')
+
+  const orderedRIds = [...presentationXml.matchAll(/<p:sldId\b[^>]*\/?>/g)]
+    .map(([tag]) => tag.match(/\br:id="([^"]+)"/)?.[1])
+    .filter((id): id is string => !!id)
+  if (orderedRIds.length === 0) return slideFileNamesByFilenameNumber(zip)
+
+  const targetById = new Map<string, string>()
+  for (const [tag] of relsXml.matchAll(/<Relationship\b[^>]*\/?>/g)) {
+    const id = tag.match(/\bId="([^"]+)"/)?.[1]
+    const target = tag.match(/\bTarget="([^"]+)"/)?.[1]
+    if (id && target) targetById.set(id, target)
+  }
+
+  const orderedNames = orderedRIds
+    .map(rId => targetById.get(rId))
+    .filter((target): target is string => !!target)
+    .map(target => (target.startsWith('/') ? target.slice(1) : `ppt/${target}`))
+    .filter(name => /slide\d+\.xml$/.test(name))
+
+  return orderedNames.length > 0 ? orderedNames : slideFileNamesByFilenameNumber(zip)
 }
 
 // <a:p>(段落)内の<a:r>(ラン)はフォーマット変更のたびに分割されており、

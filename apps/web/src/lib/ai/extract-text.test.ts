@@ -108,6 +108,34 @@ describe('extractText', () => {
     expect(text).toBe('Q1\tRevenue')
   })
 
+  it('スライドが並び替えられている場合、ファイル名の連番ではなくpresentation.xmlの表示順で抽出する', async () => {
+    const zip = new JSZip()
+    const slideXml = (text: string) =>
+      `<?xml version="1.0"?><p:sld xmlns:a="a" xmlns:p="p"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>${text}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`
+
+    // ファイル名はslide1→slide2の順だが、表示順(sldIdLst)はrId2(slide2)→rId1(slide1)
+    zip.file('ppt/slides/slide1.xml', slideXml('スライドA'))
+    zip.file('ppt/slides/slide2.xml', slideXml('スライドB'))
+    zip.file(
+      'ppt/presentation.xml',
+      '<?xml version="1.0"?><p:presentation xmlns:p="p" xmlns:r="r"><p:sldIdLst>'
+      + '<p:sldId id="256" r:id="rId2"/><p:sldId id="257" r:id="rId1"/>'
+      + '</p:sldIdLst></p:presentation>',
+    )
+    zip.file(
+      'ppt/_rels/presentation.xml.rels',
+      '<?xml version="1.0"?><Relationships>'
+      + '<Relationship Id="rId1" Type="slide" Target="slides/slide1.xml"/>'
+      + '<Relationship Id="rId2" Type="slide" Target="slides/slide2.xml"/>'
+      + '</Relationships>',
+    )
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    const text = await extractText(buffer, PPTX_MIME)
+
+    expect(text).toBe('スライドB\nスライドA')
+  })
+
   it('CSVはそのままテキストとして返す', async () => {
     const buffer = Buffer.from('name,age\n太郎,30', 'utf-8')
 
