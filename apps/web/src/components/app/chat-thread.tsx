@@ -164,6 +164,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId
   const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') { e.preventDefault(); setEditMode(false) }
     if (e.key === 'Enter' && !e.shiftKey) {
+      // スマホは Enter を改行に使い、保存はボタンのみ（誤操作防止）
+      if (isMobile) return
       if (isImeConfirmingEnter(e, editComposing)) return
       e.preventDefault()
       submitEdit()
@@ -337,7 +339,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted, onCreateTextFile }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted, onCreateTextFile }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -348,6 +350,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   isComposing: boolean
   setIsComposing: (v: boolean) => void
   compact?: boolean
+  isMobile?: boolean
   pendingAttachments: PendingAttachment[]
   onFilesSelect: (files: File[]) => void
   onRemoveAttachment: (fileId: string) => void
@@ -649,6 +652,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 onCompositionEnd={() => setIsComposing(false)}
                 onKeyDown={e => handleKeyDownWithMention(e, () => {
                   if (e.key !== 'Enter' || e.shiftKey) return
+                  // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
+                  if (isMobile) return
                   if (isImeConfirmingEnter(e, isComposing)) return
                   e.preventDefault()
                   send()
@@ -733,6 +738,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               onCompositionEnd={() => setIsComposing(false)}
               onKeyDown={e => handleKeyDownWithMention(e, () => {
                 if (e.key !== 'Enter' || e.shiftKey) return
+                // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
+                if (isMobile) return
                 if (isImeConfirmingEnter(e, isComposing)) return
                 e.preventDefault()
                 send()
@@ -1216,6 +1223,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         onMentionInserted={onMentionInserted}
         onCreateTextFile={() => setShowTextFileDialog(true)}
         {...(compact ? { compact: true } : {})}
+        {...(isMobile ? { isMobile: true } : {})}
       />
       {lightboxIndex !== null && lightboxImages.length > 0 && (
         <ImageLightbox
