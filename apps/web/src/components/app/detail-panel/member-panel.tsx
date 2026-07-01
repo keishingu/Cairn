@@ -268,7 +268,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             </button>
             <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', flex: 1 }}>メンバー詳細</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div title={member.email ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <Avatar name={member.displayName} url={member.avatarUrl} size={52}/>
             <div>
               <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
@@ -303,11 +303,14 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
 
       {/* PC header */}
       {!isMobile && (
-        <div style={{
+        <div
+          title={member.email ?? undefined}
+          style={{
           padding: '16px 16px 14px',
           borderBottom: '1px solid var(--divider)',
           display: 'flex', alignItems: 'flex-start', gap: 12, flexShrink: 0,
-        }}>
+          }}
+        >
           <Avatar name={member.displayName} size={52}/>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>

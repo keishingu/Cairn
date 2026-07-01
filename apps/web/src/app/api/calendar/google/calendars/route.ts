@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getGcalAccount, getFreshToken, updateGcalMeta } from '@/lib/google-calendar-account'
-import { listCalendars } from '@/lib/google-calendar-api'
+import { isGoogleInvalidGrantError, listCalendars } from '@/lib/google-calendar-api'
 import type { SelectedCalendar } from '@/lib/google-calendar-account'
 
 export interface GcalCalendarDto {
@@ -39,6 +39,12 @@ export async function GET() {
     return NextResponse.json(result)
   } catch (err) {
     console.error('[/api/calendar/google/calendars GET]', err)
+    if (isGoogleInvalidGrantError(err)) {
+      return NextResponse.json(
+        { error: 'Google カレンダーの接続が期限切れです。再接続してください。', code: 'GOOGLE_RECONNECT_REQUIRED' },
+        { status: 409 },
+      )
+    }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
