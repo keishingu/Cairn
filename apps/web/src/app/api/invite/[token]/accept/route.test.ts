@@ -62,6 +62,7 @@ vi.mock('@cairn/db', () => ({
   channels: {
     id: 'c.id',
     workspaceId: 'c.workspaceId',
+    projectId: 'c.projectId',
   },
 }))
 
@@ -98,6 +99,16 @@ function selectWhereChain(result: unknown[]) {
   return {
     from: vi.fn().mockReturnValue({
       where: vi.fn().mockResolvedValue(result),
+    }),
+  }
+}
+
+function selectJoinWhereChain(result: unknown[]) {
+  return {
+    from: vi.fn().mockReturnValue({
+      leftJoin: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(result),
+      }),
     }),
   }
 }
@@ -229,7 +240,7 @@ describe('POST /api/invite/[token]/accept', () => {
       .mockReturnValueOnce(selectChain([invite]))
       .mockReturnValueOnce(selectChain([{ id: 'existing-inactive-membership-id', membershipStatus: 'inactive' }]))
       .mockReturnValueOnce(selectWhereChain([{ id: 'project-old-1' }, { id: 'project-invited' }]))
-      .mockReturnValueOnce(selectWhereChain([{ id: 'channel-old-1' }, { id: 'channel-old-2' }]))
+      .mockReturnValueOnce(selectJoinWhereChain([{ id: 'channel-old-1' }, { id: 'channel-legacy-project' }]))
 
     mockDb.update
       .mockReturnValueOnce(

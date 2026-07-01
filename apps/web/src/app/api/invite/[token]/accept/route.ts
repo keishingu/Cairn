@@ -95,7 +95,8 @@ export async function POST(
         const workspaceChannelIds = (await db
           .select({ id: channels.id })
           .from(channels)
-          .where(eq(channels.workspaceId, claimed.workspaceId))
+          .leftJoin(projects, eq(channels.projectId, projects.id))
+          .where(sql`coalesce(${channels.workspaceId}, ${projects.workspaceId}) = ${claimed.workspaceId}`)
         ).map(channel => channel.id)
 
         if (workspaceProjectIds.length > 0) {
