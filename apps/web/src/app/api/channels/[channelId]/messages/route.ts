@@ -266,7 +266,7 @@ export async function GET(req: Request, { params }: RouteContext) {
     return NextResponse.json(result)
   } catch (err) {
     console.error('[/api/channels/[channelId]/messages GET] DB query failed:', err)
-    return NextResponse.json([] satisfies MessageDto[])
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -339,6 +339,17 @@ export async function POST(req: Request, { params }: RouteContext) {
       }
     }
 
+    // プロジェクトチャンネルの場合、- [ ] チェックボックスをタスクに自動変換するため先にプロジェクトを解決しておく
+    const checkboxes = parseCheckboxes(content)
+    const { channels, tasks } = await import('@cairn/db')
+    const [channel] = checkboxes.length > 0
+      ? await db
+          .select({ projectId: channels.projectId })
+          .from(channels)
+          .where(eq(channels.id, channelId))
+          .limit(1)
+      : [undefined]
+
     const inserted = await db.transaction(async (tx) => {
       const [msg] = await tx
         .insert(messages)
@@ -363,6 +374,23 @@ export async function POST(req: Request, { params }: RouteContext) {
         )
       }
 
+      // メッセージ本文のチェックボックスとタスクの作成を同一トランザクションにし、
+      // タスク作成が失敗した場合にメッセージだけが残る不整合を防ぐ
+      if (channel?.projectId) {
+        const projectId = channel.projectId
+        await tx.insert(tasks).values(
+          checkboxes.map(cb => ({
+            projectId,
+            title: cb.text,
+            status: (cb.checked ? 'done' : 'todo') as 'done' | 'todo',
+            priority: 'medium' as const,
+            createdBy: ctx.userId,
+            sourceMessageId: msg.id,
+            sourceCheckboxIndex: cb.index,
+          })),
+        )
+      }
+
       return msg
     })
 
@@ -382,32 +410,6 @@ export async function POST(req: Request, { params }: RouteContext) {
       .where(eq(profiles.id, inserted.senderId))
 
     const senderName = profile?.displayName ?? '不明'
-
-    // プロジェクトチャンネルの場合、- [ ] チェックボックスをタスクに自動変換
-    const checkboxes = parseCheckboxes(inserted.content)
-    if (checkboxes.length > 0) {
-      const { channels, tasks } = await import('@cairn/db')
-      const { eq: eq2 } = await import('drizzle-orm')
-      const [channel] = await db
-        .select({ projectId: channels.projectId })
-        .from(channels)
-        .where(eq2(channels.id, channelId))
-        .limit(1)
-      if (channel?.projectId) {
-        const projectId = channel.projectId
-        await db.insert(tasks).values(
-          checkboxes.map(cb => ({
-            projectId,
-            title: cb.text,
-            status: (cb.checked ? 'done' : 'todo') as 'done' | 'todo',
-            priority: 'medium' as const,
-            createdBy: ctx.userId,
-            sourceMessageId: inserted.id,
-            sourceCheckboxIndex: cb.index,
-          })),
-        )
-      }
-    }
 
     inngest.send({
       name: 'message/created',

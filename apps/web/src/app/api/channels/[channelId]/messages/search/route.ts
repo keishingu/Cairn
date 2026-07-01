@@ -82,6 +82,6 @@ export async function GET(req: Request, { params }: RouteContext) {
     return NextResponse.json(result)
   } catch (err) {
     console.error('[/api/channels/[channelId]/messages/search GET] DB query failed:', err)
-    return NextResponse.json([] satisfies MessageDto[])
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

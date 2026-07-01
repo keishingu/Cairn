@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
-import { createServiceRoleClient } from '@/lib/supabase/service'
+import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
 
 export interface ProjectMemberDto {
   userId: string
@@ -15,28 +15,6 @@ export interface ProjectMemberDto {
   role: 'leader' | 'subleader' | 'member' | 'reviewer' | 'observer'
   attendance: 'attending' | 'tentative' | 'declined'
   addedAt: string
-}
-
-async function resolveEmailsByUserId(
-  admin: ReturnType<typeof createServiceRoleClient>,
-  userIds: string[],
-): Promise<Map<string, string | null>> {
-  const emails = new Map<string, string | null>()
-  const uniqueUserIds = [...new Set(userIds)]
-  const entries = await Promise.all(uniqueUserIds.map(async userId => {
-    const { data, error } = await admin.auth.admin.getUserById(userId)
-    if (error) {
-      console.error('[/api/projects/[id]/members] Failed to resolve email:', userId, error)
-      return [userId, null] as const
-    }
-    return [userId, data.user?.email ?? null] as const
-  }))
-
-  for (const [userId, email] of entries) {
-    emails.set(userId, email)
-  }
-
-  return emails
 }
 
 export async function GET(
