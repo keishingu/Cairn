@@ -5,12 +5,43 @@ const INDEXABLE_MIME_TYPES = new Set([
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'text/plain',
   'text/markdown',
+  'text/csv',
 ])
 
 export function isIndexable(mimeType: string): boolean {
   return INDEXABLE_MIME_TYPES.has(mimeType)
+}
+
+const XML_ENTITIES: Record<string, string> = {
+  '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'",
+}
+
+function decodeXmlEntities(text: string): string {
+  return text.replace(/&amp;|&lt;|&gt;|&quot;|&apos;/g, m => XML_ENTITIES[m] ?? m)
+}
+
+async function extractPptxText(buffer: Buffer): Promise<string> {
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(buffer)
+
+  const slideEntries = Object.entries(zip.files)
+    .filter(([name]) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+    .sort(([a], [b]) => {
+      const numA = Number(a.match(/slide(\d+)\.xml$/)?.[1] ?? 0)
+      const numB = Number(b.match(/slide(\d+)\.xml$/)?.[1] ?? 0)
+      return numA - numB
+    })
+
+  const slideTexts = await Promise.all(slideEntries.map(async ([, file]) => {
+    const xml = await file.async('text')
+    const runs = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map(m => decodeXmlEntities(m[1] ?? ''))
+    return runs.join(' ')
+  }))
+
+  return slideTexts.join('\n')
 }
 
 export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
@@ -32,7 +63,11 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
     return result.value
   }
 
-  if (mimeType === 'text/plain' || mimeType === 'text/markdown') {
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
+    return extractPptxText(buffer)
+  }
+
+  if (mimeType === 'text/plain' || mimeType === 'text/markdown' || mimeType === 'text/csv') {
     return buffer.toString('utf-8')
   }
 

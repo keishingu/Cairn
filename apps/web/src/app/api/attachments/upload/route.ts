@@ -14,8 +14,11 @@ const ALLOWED_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'text/plain',
   'text/markdown',
+  'text/csv',
 ])
 
 function resolveFileType(mimeType: string): 'image' | 'document' | 'other' {
@@ -25,7 +28,10 @@ function resolveFileType(mimeType: string): 'image' | 'document' | 'other' {
     mimeType === 'application/msword' ||
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
     mimeType === 'application/vnd.ms-excel' ||
-    mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    mimeType === 'application/vnd.ms-powerpoint' ||
+    mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+    mimeType === 'text/csv'
   ) return 'document'
   return 'other'
 }
@@ -49,7 +55,7 @@ export async function POST(req: Request) {
   }
 
   if (!ALLOWED_MIME_TYPES.has(file.type)) {
-    return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel・テキスト）' }, { status: 400 })
+    return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel・PowerPoint・CSV・テキスト）' }, { status: 400 })
   }
 
   if (file.size > MAX_FILE_SIZE) {
