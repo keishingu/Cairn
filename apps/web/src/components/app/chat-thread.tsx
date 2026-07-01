@@ -901,6 +901,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   visibleCountRef.current = visibleCount
   // 上方向に描画を増やしたときにスクロール位置が飛ばないよう、増加前の高さ/位置を退避する
   const prependAdjustRef = React.useRef<{ prevHeight: number; prevTop: number } | null>(null)
+  const lastScrollTopRef = React.useRef(0)
+
+  // channelId が変わったら描画ウィンドウを「レンダー中に同期的に」初期化する。effect（コミット後）
+  // に任せると、キャッシュ済みチャンネルへ切り替えた初回レンダーが直前の大きな visibleCount のまま
+  // 全件マウント＝markdown 一括パースしてしまい、モバイルのフリーズ/ちらつきが再発する。
+  // React 推奨の「レンダー中の setState」パターン: 破棄された描画では子（メッセージ）は描画されない
+  const prevChannelIdRef = React.useRef(channelId)
+  if (prevChannelIdRef.current !== channelId) {
+    prevChannelIdRef.current = channelId
+    setVisibleCount(INITIAL_VISIBLE_COUNT)
+    visibleCountRef.current = INITIAL_VISIBLE_COUNT
+    lastScrollTopRef.current = 0
+  }
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -1082,13 +1095,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     [messages, startIndex],
   )
   const hasMore = startIndex > 0
-
-  // チャンネル切替時は描画ウィンドウを初期件数に戻す
-  const lastScrollTopRef = React.useRef(0)
-  React.useEffect(() => {
-    setVisibleCount(INITIAL_VISIBLE_COUNT)
-    lastScrollTopRef.current = 0
-  }, [channelId])
 
   // 上方向に描画を増やした直後、増えた分だけ高さが伸びるのでスクロール位置を補正して見た目を固定する
   React.useLayoutEffect(() => {
