@@ -132,7 +132,23 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
 
       <div style={{ flex: 1, minWidth: 0 }}>
         <h1 style={{ margin: 0, fontSize: subtitle ? 15 : 17, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h1>
-        {subtitle && <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-4)', marginTop: 1 }}>{subtitle}</p>}
+        {subtitle && (
+          <p
+            style={{
+              margin: 0,
+              marginTop: 1,
+              fontSize: 11.5,
+              color: 'var(--text-4)',
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={subtitle}
+          >
+            {subtitle}
+          </p>
+        )}
       </div>
       {/* ベルは常に右端に固定し、その他のアイコン（検索など）はベルの左に並べる */}
       {right}
