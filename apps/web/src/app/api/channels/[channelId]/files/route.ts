@@ -60,6 +60,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
       .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
       .where(and(
+        eq(files.workspaceId, ctx.workspaceId),
         or(
           exists(attachedToChannelSq),
           sql`${files.metadata}->>'channelId' = ${channelId}`,
