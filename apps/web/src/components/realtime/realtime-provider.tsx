@@ -52,6 +52,11 @@ function invalidateWorkspaceMemberQueries(queryClient: QueryClient) {
   void queryClient.invalidateQueries({ queryKey: chatQueryKeys.workspaceMembers })
 }
 
+function invalidateCurrentUserQueries(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({ queryKey: ['me'] })
+  void queryClient.invalidateQueries({ queryKey: chatQueryKeys.currentUser })
+}
+
 // realtime.broadcast_changes() が送るペイロード（{ table, record, ... }）から table を取り出す。
 // シグナル用途のため record は読まず、既存 REST API の再取得に任せる
 function tableOf(payload: unknown): string | undefined {
@@ -118,8 +123,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         } else if (table === 'workspace_members') {
           // DM 相手のステータス・アバターは workspace_members を元に描画している。
           // 同一ワークスペース内の更新を受けたら一覧とメンバー情報を再取得する。
+          // 自分自身の更新では /api/me 系キャッシュも stale になるため合わせて更新する。
           scheduleListInvalidate()
           invalidateWorkspaceMemberQueries(queryClient)
+          invalidateCurrentUserQueries(queryClient)
         }
       })
 
@@ -135,6 +142,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           invalidateChannelLists(queryClient)
           invalidateWorkspaceMemberQueries(queryClient)
+          invalidateCurrentUserQueries(queryClient)
         } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT' || subStatus === 'CLOSED') {
           // 購読失敗の原因（認可ポリシー・トークン等）を隠さない
           console.error('[Realtime] subscription failed:', subStatus, err?.message ?? err)
