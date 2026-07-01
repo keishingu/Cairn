@@ -48,6 +48,21 @@ describe('extractText', () => {
     expect(text).toBe('A & B <test>')
   })
 
+  it('xml:space="preserve"属性付きの<a:t>も取りこぼさない', async () => {
+    const zip = new JSZip()
+    zip.file(
+      'ppt/slides/slide1.xml',
+      '<?xml version="1.0"?><p:sld xmlns:a="a" xmlns:p="p"><p:cSld><p:spTree><p:sp><p:txBody>'
+      + '<a:r><a:t xml:space="preserve">先頭に空白  </a:t></a:r>'
+      + '</p:txBody></p:sp></p:spTree></p:cSld></p:sld>',
+    )
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    const text = await extractText(buffer, PPTX_MIME)
+
+    expect(text).toBe('先頭に空白  ')
+  })
+
   it('CSVはそのままテキストとして返す', async () => {
     const buffer = Buffer.from('name,age\n太郎,30', 'utf-8')
 

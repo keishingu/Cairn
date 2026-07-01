@@ -37,7 +37,7 @@ async function extractPptxText(buffer: Buffer): Promise<string> {
 
   const slideTexts = await Promise.all(slideEntries.map(async ([, file]) => {
     const xml = await file.async('text')
-    const runs = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map(m => decodeXmlEntities(m[1] ?? ''))
+    const runs = [...xml.matchAll(/<a:t(?:\s[^>]*)?>([^<]*)<\/a:t>/g)].map(m => decodeXmlEntities(m[1] ?? ''))
     return runs.join(' ')
   }))
 
