@@ -75,7 +75,12 @@ interface MarkdownContentProps {
   onCheckboxToggle?: (index: number, checked: boolean) => void
 }
 
-export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, mentionNames, onCheckboxToggle }: MarkdownContentProps) {
+// メッセージ一覧では最大100件が同時に描画され、その各行で react-markdown（remark 一式）の
+// パースが走る。入力欄のキーストロークなど親の再レンダーごとに全件を再パースするとモバイルの
+// WebView ではメインスレッドが数百ms〜秒単位でブロックされ、スクロール・タブ切替が固まる。
+// props が変わらない限り再パースしないよう React.memo でラップする（呼び出し側は onCheckboxToggle
+// や mentionNames を安定参照で渡すこと）。
+export const MarkdownContent = React.memo(function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, mentionNames, onCheckboxToggle }: MarkdownContentProps) {
   const checkboxCounter = React.useRef(0)
   checkboxCounter.current = 0
 
@@ -187,4 +192,4 @@ export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, me
       {content}
     </ReactMarkdown>
   )
-}
+})

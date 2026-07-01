@@ -10,6 +10,8 @@ export const workspaceRoleEnum = pgEnum('workspace_role', [
   'guest',
 ])
 
+export const memberStatusEnum = pgEnum('workspace_member_status', ['active', 'inactive'])
+
 export const userStatusEnum = pgEnum('user_status', [
   'online',
   'away',
