@@ -1084,7 +1084,11 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const hasMore = startIndex > 0
 
   // チャンネル切替時は描画ウィンドウを初期件数に戻す
-  React.useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT) }, [channelId])
+  const lastScrollTopRef = React.useRef(0)
+  React.useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE_COUNT)
+    lastScrollTopRef.current = 0
+  }, [channelId])
 
   // 上方向に描画を増やした直後、増えた分だけ高さが伸びるのでスクロール位置を補正して見た目を固定する
   React.useLayoutEffect(() => {
@@ -1095,10 +1099,16 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     el.scrollTop = adjust.prevTop + (el.scrollHeight - adjust.prevHeight)
   })
 
-  // 一覧を上端付近までスクロールしたら次のウィンドウを追加描画する
+  // 一覧を上端付近まで「ユーザーが上方向に」スクロールしたら次のウィンドウを追加描画する。
+  // 初回の最下部への自動スクロール等プログラム的な scroll でも onScroll は発火するため、
+  // 上方向（scrollTop が減少）した時だけ発火させる。これをしないと、わずかにオーバーフローした
+  // 初期状態で最下部(scrollTop <= 320)が「上端付近」と誤判定され、ユーザー操作前に読み込んでしまう
   const handleListScroll = React.useCallback(() => {
     const el = scrollRef.current
     if (!el) return
+    const prevTop = lastScrollTopRef.current
+    lastScrollTopRef.current = el.scrollTop
+    if (el.scrollTop >= prevTop) return // 下方向・プログラム的な最下部スクロールは無視
     if (el.scrollTop > LOAD_MORE_THRESHOLD_PX) return
     if (messages.length <= visibleCountRef.current) return
     prependAdjustRef.current = { prevHeight: el.scrollHeight, prevTop: el.scrollTop }
