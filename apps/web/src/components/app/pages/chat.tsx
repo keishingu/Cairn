@@ -70,6 +70,21 @@ interface ChatMessageSearchProps {
   isMobile?: boolean
 }
 
+async function fetchSearchResults<T>(url: string, fallbackMessage: string): Promise<T> {
+  const res = await fetchWithAuth(url)
+  if (!res.ok) {
+    let message = fallbackMessage
+    try {
+      const body = await res.json() as { error?: string }
+      if (body.error) message = body.error
+    } catch {
+      // JSON 以外の失敗レスポンスでも既定メッセージで扱う
+    }
+    throw new Error(message)
+  }
+  return res.json() as Promise<T>
+}
+
 const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: ChatMessageSearchProps) => {
   const [query, setQuery] = React.useState('')
   const inputRef = React.useRef<HTMLInputElement>(null)
@@ -77,9 +92,12 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
 
   React.useEffect(() => { inputRef.current?.focus() }, [])
 
-  const { data: results = [], isFetching } = useQuery<MessageDto[]>({
+  const { data: results = [], isFetching, isError } = useQuery<MessageDto[]>({
     queryKey: ['message-search', channelId, debouncedQuery],
-    queryFn: () => fetchWithAuth(`/api/channels/${channelId}/messages/search?q=${encodeURIComponent(debouncedQuery)}`).then(r => r.json()),
+    queryFn: () => fetchSearchResults<MessageDto[]>(
+      `/api/channels/${channelId}/messages/search?q=${encodeURIComponent(debouncedQuery)}`,
+      'チャンネル内検索に失敗しました',
+    ),
     enabled: debouncedQuery.length >= 1,
   })
 
@@ -110,6 +128,10 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
         ) : isFetching ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
             検索中…
+          </div>
+        ) : isError ? (
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--red-text)', fontSize: 13 }}>
+            検索に失敗しました
           </div>
         ) : results.length === 0 ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
@@ -166,9 +188,12 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
 
   React.useEffect(() => { inputRef.current?.focus() }, [])
 
-  const { data: results = [], isFetching } = useQuery<MessageSearchResultDto[]>({
+  const { data: results = [], isFetching, isError } = useQuery<MessageSearchResultDto[]>({
     queryKey: ['global-message-search', debouncedQuery],
-    queryFn: () => fetchWithAuth(`/api/search/messages?q=${encodeURIComponent(debouncedQuery)}`).then(r => r.json()),
+    queryFn: () => fetchSearchResults<MessageSearchResultDto[]>(
+      `/api/search/messages?q=${encodeURIComponent(debouncedQuery)}`,
+      '全チャンネル検索に失敗しました',
+    ),
     enabled: debouncedQuery.length >= 1,
   })
 
@@ -199,6 +224,10 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
         ) : isFetching ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
             検索中…
+          </div>
+        ) : isError ? (
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--red-text)', fontSize: 13 }}>
+            検索に失敗しました
           </div>
         ) : results.length === 0 ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
