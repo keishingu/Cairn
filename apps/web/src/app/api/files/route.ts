@@ -28,14 +28,7 @@ export async function GET() {
 
     const { db, files, profiles, projects, projectMembers, messageAttachments, messages, channels, channelMembers, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
     const { eq, and, desc, isNull, isNotNull, inArray, sql, exists, or, ne } = await import('drizzle-orm')
-
-    const INDEXABLE_MIMES = new Set([
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain',
-      'text/markdown',
-    ])
+    const { isIndexable } = await import('@/lib/ai/extract-text')
 
     const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
     if (!role) {
@@ -162,7 +155,7 @@ export async function GET() {
         if (r.fileType === 'link') {
           const s = meta['indexingStatus']
           indexingStatus = typeof s === 'string' ? s : undefined
-        } else if (INDEXABLE_MIMES.has(r.mimeType ?? '')) {
+        } else if (isIndexable(r.mimeType ?? '')) {
           indexingStatus = chunkedIdSet.has(r.id) ? 'indexed' : 'pending'
         }
 
