@@ -28,14 +28,7 @@ export async function GET() {
 
     const { db, files, profiles, projects, projectMembers, messageAttachments, messages, channels, channelMembers, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
     const { eq, and, desc, isNull, isNotNull, inArray, sql, exists, or, ne } = await import('drizzle-orm')
-
-    const INDEXABLE_MIMES = new Set([
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain',
-      'text/markdown',
-    ])
+    const { isIndexable } = await import('@/lib/ai/extract-text')
 
     const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
     if (!role) {
@@ -83,11 +76,15 @@ export async function GET() {
         channelAccessCondition,
       ))
 
+    // metadata.channelIds（新形式の配列）と旧形式の単一 metadata.channelId の両方を対象にする
     const metadataChannelAccessSq = db
       .select({ one: sql<number>`1` })
       .from(channels)
       .where(and(
-        sql`${channels.id}::text = ${files.metadata}->>'channelId'`,
+        sql`(
+          ${channels.id}::text = ${files.metadata}->>'channelId'
+          or ${files.metadata}->'channelIds' @> jsonb_build_array(${channels.id}::text)
+        )`,
         channelAccessCondition,
       ))
 
@@ -162,7 +159,7 @@ export async function GET() {
         if (r.fileType === 'link') {
           const s = meta['indexingStatus']
           indexingStatus = typeof s === 'string' ? s : undefined
-        } else if (INDEXABLE_MIMES.has(r.mimeType ?? '')) {
+        } else if (isIndexable(r.mimeType ?? '')) {
           indexingStatus = chunkedIdSet.has(r.id) ? 'indexed' : 'pending'
         }
 
