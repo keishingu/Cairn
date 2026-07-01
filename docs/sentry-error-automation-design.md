@@ -133,7 +133,11 @@ sentry_issue_links
 - Triage は **まず `dedup_key` で `sentry_error_groups` を引き**、無ければグループ作成 → GitHub issue 作成。`sentry_issue_links` は各 Sentry issue をグループに追加するだけ（追記・再発カウント）。
 - GitHub issue 作成は `dedup_key` の UNIQUE 制約で守る（競合時は既存グループに追記）。
 
-- Triage は必ずこの台帳を引く。**既存グループがあればコメント追記（再発回数 / 影響数 / 新 surface を更新）**、無ければ新規作成。
+- **「グループ有無」ではなく「GitHub issue 有無」で分岐する（重要）**。`sentry_error_groups` 行を作った直後に GitHub issue 作成が失敗する / 2 通目のアラートが `github_issue_number` セット前に競合すると、「既存グループ → コメント追記」に流すとコメント先の issue が無く、**本番アラートが台帳に記録されるだけで人間にも Fix Agent にも surface されず握り潰される**。これを防ぐため:
+  - `sentry_error_groups` を **outbox として扱う**。判定は「グループがあるか」ではなく **「`github_issue_number` が非 NULL か」**で行う。
+  - `github_issue_number IS NULL` のグループにアラートが来たら **コメントせず issue 作成をリトライ**する（`state` は `issue_opened` に到達するまで `received` / `triaged` のまま）。
+  - Inngest 側は issue 作成 step を冪等リトライ（`step.run` の再実行 + `dedup_key` UNIQUE で二重作成を防止）。恒久失敗時は `state = needs-human` 相当にせず、リトライ枯渇を検知できるよう別途アラート（作成失敗が続くグループを定期スイープ）。
+  - 競合対策として、グループ作成は `dedup_key` UNIQUE の upsert（`ON CONFLICT DO NOTHING` → 再 SELECT）で行い、issue 作成は 1 グループにつき 1 回だけ走るよう `github_issue_number` の CAS（NULL のときだけ埋める）にする。
 - `attempt_count` に上限（例: 2）。超えたら `needs-human` にして自動修正を止める。
 - Sentry の `regression`（resolved が再発）は既存 GitHub issue を reopen し `needs-human`。
 - **注**: CLAUDE.md の方針どおり `packages/db` にはテストを書かない（DB 接続が必要なため）。
@@ -268,6 +272,7 @@ CLAUDE.md のプライバシー志向と整合させる。stacktrace / breadcrum
 | PII 漏洩 | `beforeSend` スクラブ + issue 貼付前マスキング（二段） |
 | 直っていないのに close | 次リリースの regression 監視で reopen |
 | WebView の二重計上 | 全 SDK に `surface` tag、Triage で web 側へ寄せる |
+| issue 作成失敗でアラート握り潰し | グループを outbox 扱いにし、`github_issue_number IS NULL` はコメントせず作成リトライ + 失敗継続グループを定期スイープ |
 | ノイズ PR でレビュー疲弊 | merge は必ず人間、L0 / L1 から段階導入、手動トリガーから開始 |
 
 ---
