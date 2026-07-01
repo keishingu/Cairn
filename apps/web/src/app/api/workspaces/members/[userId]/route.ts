@@ -42,7 +42,10 @@ export async function PATCH(
     }
 
     const [target] = await db
-      .select({ role: workspaceMembers.role })
+      .select({
+        role: workspaceMembers.role,
+        membershipStatus: workspaceMembers.membershipStatus,
+      })
       .from(workspaceMembers)
       .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
       .limit(1)
@@ -52,6 +55,7 @@ export async function PATCH(
     }
 
     const currentRole = target.role
+    const isTargetActive = target.membershipStatus === 'active'
 
     // ゲストと通常ロール間の遷移は禁止する。
     // ゲストのアクセス範囲は project_members で表現されるが、通常ロールはWS全体を参照するため、
@@ -82,7 +86,7 @@ export async function PATCH(
     }
 
     // owner を降格する場合、ワークスペースに最低1人の owner が残るか確認
-    if (currentRole === 'owner' && newRole !== 'owner') {
+    if (currentRole === 'owner' && newRole !== 'owner' && isTargetActive) {
       const ownerCountRows = await db
         .select({ ownerCount: count() })
         .from(workspaceMembers)
