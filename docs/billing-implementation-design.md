@@ -33,6 +33,7 @@
 | 画像 | 自動圧縮版のみ（長辺2048px・品質80目安、〜500KB。EXIF の撮影日時・GPS は保持） | オリジナル保存可（閲覧は全員） | gallery / attachments 系 + クライアント側圧縮 |
 | 文書等のファイル | 5MB/ファイル | 上限緩和（値は未決） | files / attachments 系 |
 | 動画 | 不可 | 可（閲覧は全員） | gallery 系（MIME 判定） |
+| チャット添付の音声・動画・ZIP | 不可（現状 MIME whitelist 自体が非対応） | `resolveUploadRights` 実装後に開放予定（本人帰属の能動権として扱う） | attachments 系（`upload/route.ts`） |
 | ストレージ保有 | 10GB まで | ケルンの石が家賃を払える限り | 家賃 cron（→ §6） |
 | AI 能動利用 | お試しぶんのみ | 石を消費 | AI メッセージ生成 API |
 | AI 受動利用（Heartbeat） | ケルンに残高があれば受信 | 受信 | AIメンバーのハートビート（→ doc 10） |
@@ -44,6 +45,8 @@
 - `apps/web/src/app/api/attachments/upload/route.ts` — チャット添付
 - `apps/web/src/app/api/projects/[id]/files/route.ts` / `api/files/route.ts` — ファイル
 - `apps/web/src/app/api/projects/[id]/gallery/route.ts` / `api/gallery/route.ts` — ギャラリー
+
+チャット添付の音声・動画・ZIP は、原価（ストレージ・egress）が画像・文書より大きく無料開放しづらいため、`resolveUploadRights` によるアップロード権判定が実装されるまでは `upload/route.ts` の MIME whitelist で一律非対応としている。課金導入後は「支援者本人のみアップロード可」の能動権対象として開放する想定（対応MIMEタイプ・サイズ上限は未決）。
 
 アバター・ワークスペースロゴ・カバー写真（`me/avatar`, `workspaces/logo`, `workspaces/cover-photos`）は**家賃対象外**（サイズ上限の個別チェックのみ。プロフィール設定が課金で詰まる体験を避けるため）。
 
@@ -199,6 +202,7 @@ Team（WS 定額）は「**全メンバーがオリジナルをアップロー�
 - 石の単価・月次付与数・家賃レート（石/GB/月）・AI 1依頼あたりの消費数（原価シミュレーション要）
 - AI 天井の見せ方（減る残高 or 毎月リセットの上限。後者推奨）
 - 画像圧縮の最終パラメータと文書 5MB 上限の妥当性（Phase 0 の計測で検証）
+- チャット添付で開放する音声・動画・ZIP の対応 MIME タイプ・サイズ上限（動画は gallery 系の上限と揃えるか個別設定か含めて未決）
 - 家賃 cron の粒度（日次か）と、月またぎ・タイムゾーンの扱い
 - 風化後オリジナルのコールド退避までの猶予期間、最終削除の是非
 - Team の確定価格、Solo との併存（Team 加入時の既存 Solo の扱い）
