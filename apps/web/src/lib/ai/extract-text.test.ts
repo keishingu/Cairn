@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest'
 import JSZip from 'jszip'
+import iconv from 'iconv-lite'
 import { extractText, isIndexable } from './extract-text'
 
 const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
@@ -138,6 +139,23 @@ describe('extractText', () => {
 
   it('CSVはそのままテキストとして返す', async () => {
     const buffer = Buffer.from('name,age\n太郎,30', 'utf-8')
+
+    const text = await extractText(buffer, 'text/csv')
+
+    expect(text).toBe('name,age\n太郎,30')
+  })
+
+  it('日本語Windows版ExcelがShift_JIS(CP932)で書き出したCSVも文字化けせず読める', async () => {
+    const buffer = iconv.encode('name,age\n太郎,30', 'Shift_JIS')
+
+    const text = await extractText(buffer, 'text/csv')
+
+    expect(text).toBe('name,age\n太郎,30')
+  })
+
+  it('BOM付きUTF-8のCSVはBOMを除いてそのまま読める', async () => {
+    const bom = Buffer.from([0xef, 0xbb, 0xbf])
+    const buffer = Buffer.concat([bom, Buffer.from('name,age\n太郎,30', 'utf-8')])
 
     const text = await extractText(buffer, 'text/csv')
 

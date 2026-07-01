@@ -124,8 +124,23 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
   }
 
   if (mimeType === 'text/plain' || mimeType === 'text/markdown' || mimeType === 'text/csv') {
-    return buffer.toString('utf-8')
+    return decodeTextBuffer(buffer)
   }
 
   throw new Error(`Unsupported MIME type for text extraction: ${mimeType}`)
+}
+
+// 日本語Windows版Excelが書き出すCSVはデフォルトでShift_JIS(CP932)であり、UTF-8前提で
+// デコードすると文字化け(U+FFFDへの置換)する。BOM付きUTF-8はそのまま扱い、
+// BOM無しでUTF-8として不正なバイト列(U+FFFDを含む)が出た場合のみCP932として再デコードする。
+async function decodeTextBuffer(buffer: Buffer): Promise<string> {
+  const hasUtf8Bom = buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf
+  if (hasUtf8Bom) return buffer.subarray(3).toString('utf-8')
+
+  const utf8 = buffer.toString('utf-8')
+  const REPLACEMENT_CHAR = String.fromCharCode(0xfffd)
+  if (!utf8.includes(REPLACEMENT_CHAR)) return utf8
+
+  const iconv = await import('iconv-lite')
+  return iconv.decode(buffer, 'Shift_JIS')
 }
