@@ -204,6 +204,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     void copyMessageContent(content)
   }, [content])
 
+  // MarkdownContent の React.memo を効かせるため、チェックボックストグルを安定参照で渡す
+  const handleCheckboxToggle = React.useCallback(
+    (index: number, checked: boolean) => onCheckboxToggle(messageId, index, checked),
+    [onCheckboxToggle, messageId],
+  )
+
   // システムメッセージ（プロジェクトのステータス・日程・概要変更の通知）は中央寄せの控えめな1行で表示する
   if (messageType === 'system') {
     return (
@@ -313,7 +319,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   fontSize={compact ? 13 : 13.5}
                   lineHeight={1.6}
                   mentionNames={mentionNames}
-                  onCheckboxToggle={(index, checked) => onCheckboxToggle(messageId, index, checked)}
+                  onCheckboxToggle={handleCheckboxToggle}
                 />
               )}
             </div>
@@ -1160,6 +1166,23 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     bookmarkMutation.mutate(messageId)
   }, [bookmarkMutation])
 
+  // リアクション・編集・削除のハンドラも安定参照にする。インラインの矢印関数だと毎レンダーで
+  // 関数の同一性が変わり React.memo(ChatMessage) が無効化され、全メッセージが再パースされる
+  const reactMutate = reactMutation.mutate
+  const handleReact = React.useCallback((messageId: string, emoji: string) => {
+    reactMutate({ messageId, emoji })
+  }, [reactMutate])
+
+  const editMutate = editMutation.mutate
+  const handleEdit = React.useCallback((messageId: string, content: string) => {
+    editMutate({ messageId, content })
+  }, [editMutate])
+
+  const deleteMutate = deleteMutation.mutate
+  const handleDelete = React.useCallback((messageId: string) => {
+    deleteMutate(messageId)
+  }, [deleteMutate])
+
   const handleCopyLink = React.useCallback((messageId: string) => {
     if (!channelId) return
     const url = `${window.location.origin}/chats/${channelId}?m=${messageId}`
@@ -1345,9 +1368,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               attachments={m.attachments}
               replyTo={m.replyTo}
               bookmarked={m.bookmarked}
-              onReact={(messageId, emoji) => reactMutation.mutate({ messageId, emoji })}
-              onEdit={(messageId, content) => editMutation.mutate({ messageId, content })}
-              onDelete={(messageId) => deleteMutation.mutate(messageId)}
+              onReact={handleReact}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
               onCheckboxToggle={handleCheckboxToggle}
               onReply={handleReply}
               onBookmark={handleBookmark}
