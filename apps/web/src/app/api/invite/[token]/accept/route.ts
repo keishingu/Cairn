@@ -15,7 +15,7 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceInvites, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
+    const { workspaceInvites, workspaceMembers, projectMembers, projects, channelMembers, channels } = await import('@cairn/db')
     const { eq, and, or, isNull, gt, sql, inArray } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client').catch(() => ({ inngest: null }))
 
@@ -92,6 +92,11 @@ export async function POST(
           .from(projects)
           .where(eq(projects.workspaceId, claimed.workspaceId))
         ).map(project => project.id)
+        const workspaceChannelIds = (await db
+          .select({ id: channels.id })
+          .from(channels)
+          .where(eq(channels.workspaceId, claimed.workspaceId))
+        ).map(channel => channel.id)
 
         if (workspaceProjectIds.length > 0) {
           await db
@@ -99,6 +104,15 @@ export async function POST(
             .where(and(
               eq(projectMembers.userId, userId),
               inArray(projectMembers.projectId, workspaceProjectIds),
+            ))
+        }
+
+        if (workspaceChannelIds.length > 0) {
+          await db
+            .delete(channelMembers)
+            .where(and(
+              eq(channelMembers.userId, userId),
+              inArray(channelMembers.channelId, workspaceChannelIds),
             ))
         }
       }

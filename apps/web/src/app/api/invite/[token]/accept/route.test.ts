@@ -50,9 +50,18 @@ vi.mock('@cairn/db', () => ({
     role: 'pm.role',
     attendance: 'pm.attendance',
   },
+  channelMembers: {
+    id: 'cm.id',
+    channelId: 'cm.channelId',
+    userId: 'cm.userId',
+  },
   projects: {
     id: 'p.id',
     workspaceId: 'p.workspaceId',
+  },
+  channels: {
+    id: 'c.id',
+    workspaceId: 'c.workspaceId',
   },
 }))
 
@@ -197,7 +206,7 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(reactivateSet).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'member' })
   })
 
-  it('inactive メンバーが guest として再招待されたら旧 project membership を掃除して招待対象だけ付け直す', async () => {
+  it('inactive メンバーが guest として再招待されたら旧 project/channel membership を掃除して招待対象だけ付け直す', async () => {
     const invite = {
       id: 'inv-01c',
       workspaceId: WORKSPACE_ID,
@@ -211,6 +220,7 @@ describe('POST /api/invite/[token]/accept', () => {
       where: vi.fn().mockResolvedValue([]),
     })
     const deleteWhere = vi.fn().mockResolvedValue([])
+    const deleteChannelWhere = vi.fn().mockResolvedValue([])
     const projectMemberInsert = vi.fn().mockReturnValue({
       onConflictDoNothing: vi.fn().mockResolvedValue([]),
     })
@@ -219,6 +229,7 @@ describe('POST /api/invite/[token]/accept', () => {
       .mockReturnValueOnce(selectChain([invite]))
       .mockReturnValueOnce(selectChain([{ id: 'existing-inactive-membership-id', membershipStatus: 'inactive' }]))
       .mockReturnValueOnce(selectWhereChain([{ id: 'project-old-1' }, { id: 'project-invited' }]))
+      .mockReturnValueOnce(selectWhereChain([{ id: 'channel-old-1' }, { id: 'channel-old-2' }]))
 
     mockDb.update
       .mockReturnValueOnce(
@@ -230,6 +241,9 @@ describe('POST /api/invite/[token]/accept', () => {
 
     mockDb.delete.mockReturnValueOnce({
       where: deleteWhere,
+    })
+    mockDb.delete.mockReturnValueOnce({
+      where: deleteChannelWhere,
     })
 
     mockDb.insert.mockReturnValueOnce({
@@ -245,8 +259,9 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(res.status).toBe(200)
     expect(mockDb.update).toHaveBeenCalledTimes(2)
     expect(reactivateSet).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'guest' })
-    expect(mockDb.delete).toHaveBeenCalledTimes(1)
+    expect(mockDb.delete).toHaveBeenCalledTimes(2)
     expect(deleteWhere).toHaveBeenCalledTimes(1)
+    expect(deleteChannelWhere).toHaveBeenCalledTimes(1)
     expect(mockDb.insert).toHaveBeenCalledTimes(1)
     expect(projectMemberInsert).toHaveBeenCalledWith({
       projectId: 'project-invited',
