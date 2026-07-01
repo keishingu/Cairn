@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess } from '@/lib/permissions'
 
 const toggleSchema = z.object({
   emoji: z.string().min(1).max(10),
@@ -32,8 +33,22 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messageReactions } = await import('@cairn/db')
-    const { and, eq, count } = await import('drizzle-orm')
+    const { messageReactions, messages } = await import('@cairn/db')
+    const { and, eq, count, isNull } = await import('drizzle-orm')
+
+    // メッセージが属するチャンネルへのアクセス権を検証（越境リアクション・private/DM/ゲスト制限の回避を防ぐ）
+    const [target] = await db
+      .select({ channelId: messages.channelId })
+      .from(messages)
+      .where(and(eq(messages.id, messageId), isNull(messages.deletedAt)))
+      .limit(1)
+
+    if (!target) {
+      return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
+    }
+
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId)
+    if (forbidden) return forbidden
 
     const [existing] = await db
       .select({ id: messageReactions.id })

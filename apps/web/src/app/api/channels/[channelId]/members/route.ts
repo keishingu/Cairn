@@ -35,7 +35,7 @@ export async function GET(
     return NextResponse.json(rows satisfies ChannelMemberDto[])
   } catch (err) {
     console.error('[/api/channels/[channelId]/members GET] DB error:', err)
-    return NextResponse.json([] satisfies ChannelMemberDto[])
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -59,7 +59,19 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers, channelReadStates } = await import('@cairn/db')
+    const { channelMembers, channelReadStates, workspaceMembers } = await import('@cairn/db')
+    const { eq, and } = await import('drizzle-orm')
+
+    // 自ワークスペースに属さない userId を追加できないようにする（不正な channel_members 行の作成防止）
+    const [member] = await db
+      .select({ userId: workspaceMembers.userId })
+      .from(workspaceMembers)
+      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, userId)))
+      .limit(1)
+
+    if (!member) {
+      return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
+    }
 
     await db
       .insert(channelMembers)
