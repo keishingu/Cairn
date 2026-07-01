@@ -51,6 +51,12 @@ const ACCEPT_FILE_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/csv',
+  // OS/ブラウザが.csvにtext/csvを正しく対応付けられない環境では、
+  // MIMEタイプのみのacceptだとネイティブファイル選択ダイアログで.csvが除外されてしまうため、
+  // 拡張子も明示してnormalizeMimeType側の救済ロジックまで到達できるようにする
+  '.csv',
 ].join(',')
 
 function isImageMime(mimeType: string | null): boolean {
@@ -198,6 +204,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     void copyMessageContent(content)
   }, [content])
 
+  // MarkdownContent の React.memo を効かせるため、チェックボックストグルを安定参照で渡す
+  const handleCheckboxToggle = React.useCallback(
+    (index: number, checked: boolean) => onCheckboxToggle(messageId, index, checked),
+    [onCheckboxToggle, messageId],
+  )
+
   // システムメッセージ（プロジェクトのステータス・日程・概要変更の通知）は中央寄せの控えめな1行で表示する
   if (messageType === 'system') {
     return (
@@ -307,7 +319,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   fontSize={compact ? 13 : 13.5}
                   lineHeight={1.6}
                   mentionNames={mentionNames}
-                  onCheckboxToggle={(index, checked) => onCheckboxToggle(messageId, index, checked)}
+                  onCheckboxToggle={handleCheckboxToggle}
                 />
               )}
             </div>
@@ -1154,6 +1166,23 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     bookmarkMutation.mutate(messageId)
   }, [bookmarkMutation])
 
+  // リアクション・編集・削除のハンドラも安定参照にする。インラインの矢印関数だと毎レンダーで
+  // 関数の同一性が変わり React.memo(ChatMessage) が無効化され、全メッセージが再パースされる
+  const reactMutate = reactMutation.mutate
+  const handleReact = React.useCallback((messageId: string, emoji: string) => {
+    reactMutate({ messageId, emoji })
+  }, [reactMutate])
+
+  const editMutate = editMutation.mutate
+  const handleEdit = React.useCallback((messageId: string, content: string) => {
+    editMutate({ messageId, content })
+  }, [editMutate])
+
+  const deleteMutate = deleteMutation.mutate
+  const handleDelete = React.useCallback((messageId: string) => {
+    deleteMutate(messageId)
+  }, [deleteMutate])
+
   const handleCopyLink = React.useCallback((messageId: string) => {
     if (!channelId) return
     const url = `${window.location.origin}/chats/${channelId}?m=${messageId}`
@@ -1231,19 +1260,24 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     })
   }
 
-  const registerGoogleDocsLinks = (text: string) => {
+  // Google Docs URL を検出してファイルタブ・チャンネルファイル一覧に自動登録する。
+  // 完了を待たずにメッセージを送信すると、メッセージ挿入の Realtime broadcast が
+  // リンクの files レコード挿入より先に飛び、他クライアントの channel-files invalidate が
+  // 早すぎて新着リンクを取りこぼすことがあるため、呼び出し側で完了を待つ
+  const registerGoogleDocsLinks = async (text: string): Promise<void> => {
     if (!channelId) return
     const urls = extractGoogleDocsUrls(text)
     if (urls.length === 0) return
-    for (const url of urls) {
-      void fetchWithAuth('/api/external-links', {
+    await Promise.allSettled(urls.map(url =>
+      fetchWithAuth('/api/external-links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, channelId }),
       }).then(() => {
         void queryClient.invalidateQueries({ queryKey: ['project-files'] })
-      }).catch(() => {})
-    }
+        void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
+      }),
+    ))
   }
 
   const send = () => {
@@ -1251,9 +1285,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     if ((!rawText && pendingAttachments.length === 0) || !channelId) return
     const text = transformContent(rawText)
     mentionMapRef.current.clear()
-
-    // Google Docs URL を検出してファイルタブに自動登録
-    if (text) registerGoogleDocsLinks(text)
 
     pendingDraftRef.current = text
     setSendError(null)
@@ -1275,12 +1306,22 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     const replyTo = replyTarget
     setReplyTarget(null)
 
-    sendMutation.mutate({
-      content: text,
-      attachmentFileIds: optimisticAttachments.map(a => a.fileId),
-      optimisticAttachments,
-      ...(replyTo ? { parentMessageId: replyTo.id, optimisticReplyTo: replyTo } : {}),
-    })
+    const postMessage = () => {
+      sendMutation.mutate({
+        content: text,
+        attachmentFileIds: optimisticAttachments.map(a => a.fileId),
+        optimisticAttachments,
+        ...(replyTo ? { parentMessageId: replyTo.id, optimisticReplyTo: replyTo } : {}),
+      })
+    }
+
+    // 入力欄のクリア等は即座に反映しつつ、Google Docs リンクを含む場合のみ
+    // 登録完了を待ってからメッセージを送信する
+    if (text) {
+      void registerGoogleDocsLinks(text).finally(postMessage)
+    } else {
+      postMessage()
+    }
   }
 
   const placeholder: React.ReactNode = channelName ? (
@@ -1339,9 +1380,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               attachments={m.attachments}
               replyTo={m.replyTo}
               bookmarked={m.bookmarked}
-              onReact={(messageId, emoji) => reactMutation.mutate({ messageId, emoji })}
-              onEdit={(messageId, content) => editMutation.mutate({ messageId, content })}
-              onDelete={(messageId) => deleteMutation.mutate(messageId)}
+              onReact={handleReact}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
               onCheckboxToggle={handleCheckboxToggle}
               onReply={handleReply}
               onBookmark={handleBookmark}

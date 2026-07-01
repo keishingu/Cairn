@@ -3,9 +3,9 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireProjectAccess } from '@/lib/permissions'
+import { requireChannelAccess } from '@/lib/permissions'
 
-export interface ProjectFileDto {
+export interface ChannelFileDto {
   id: string
   fileName: string
   mimeType: string | null
@@ -15,35 +15,35 @@ export interface ProjectFileDto {
   createdAt: string
   externalUrl?: string
   indexingStatus?: string
-  isLatest: boolean
 }
 
-type RouteContext = { params: Promise<{ id: string }> }
+type RouteContext = { params: Promise<{ channelId: string }> }
 
 export async function GET(_req: Request, { params }: RouteContext) {
-  const { id: projectId } = await params
+  const { channelId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  if (forbidden) return forbidden
+
   try {
-    const { db, files, profiles, projects, galleryItems, documentChunks } = await import('@cairn/db')
-    const { eq, and, isNull, desc, inArray } = await import('drizzle-orm')
+    const { db, files, profiles, messageAttachments, messages, galleryItems, documentChunks } = await import('@cairn/db')
+    const { eq, and, isNull, desc, inArray, exists, or, sql } = await import('drizzle-orm')
     const { isIndexable } = await import('@/lib/ai/extract-text')
 
-    // プロジェクトが同一ワークスペースに属することを確認
-    const [project] = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
-      .limit(1)
-
-    if (!project) {
-      return new NextResponse(null, { status: 404 })
-    }
-
-    // ゲストは参加プロジェクトのファイルのみ閲覧可
-    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
-    if (forbidden) return forbidden
+    // メッセージ添付ファイルに加え、チャットに貼った Google Docs リンク
+    // （metadata.channelIds に紐付く。旧形式 metadata.channelId の単一文字列も後方互換で見る）も対象にする。
+    // ソフトデリート済みメッセージの添付は除外する
+    const attachedToChannelSq = db
+      .select({ one: sql<number>`1` })
+      .from(messageAttachments)
+      .innerJoin(messages, eq(messages.id, messageAttachments.messageId))
+      .where(and(
+        eq(messageAttachments.fileId, files.id),
+        eq(messages.channelId, channelId),
+        isNull(messages.deletedAt),
+      ))
 
     const rows = await db
       .select({
@@ -60,12 +60,16 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
       .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
       .where(and(
-        eq(files.projectId, projectId),
+        eq(files.workspaceId, ctx.workspaceId),
+        or(
+          exists(attachedToChannelSq),
+          sql`${files.metadata}->>'channelId' = ${channelId}`,
+          sql`${files.metadata}->'channelIds' @> jsonb_build_array(${channelId}::text)`,
+        ),
         isNull(galleryItems.id),
       ))
       .orderBy(desc(files.createdAt))
 
-    // チャンク済みファイルの ID セットを取得
     const fileIds = rows.map(r => r.id)
     const chunkedIdSet = new Set<string>()
     if (fileIds.length > 0) {
@@ -84,8 +88,6 @@ export async function GET(_req: Request, { params }: RouteContext) {
         const meta = (r.metadata ?? {}) as Record<string, unknown>
         const externalUrl = meta['externalUrl']
 
-        // リンク: metadata の indexingStatus をそのまま使う
-        // アップロードファイル: indexable なら chunk の有無でステータスを決定
         let indexingStatus: string | undefined
         if (r.fileType === 'link') {
           const s = meta['indexingStatus']
@@ -102,14 +104,13 @@ export async function GET(_req: Request, { params }: RouteContext) {
           fileType: r.fileType,
           uploaderName: r.uploaderName,
           createdAt: r.createdAt.toISOString(),
-          isLatest: meta['isLatest'] === true,
           ...(typeof externalUrl === 'string' ? { externalUrl } : {}),
           ...(indexingStatus !== undefined ? { indexingStatus } : {}),
         }
-      }) satisfies ProjectFileDto[],
+      }) satisfies ChannelFileDto[],
     )
   } catch (err) {
-    console.error('[/api/projects/[id]/files GET] DB query failed:', err)
-    return NextResponse.json([] satisfies ProjectFileDto[])
+    console.error('[/api/channels/[channelId]/files GET] DB query failed:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
