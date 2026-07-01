@@ -20,11 +20,15 @@ const ALLOWED_MIME_TYPES = new Set([
   'text/csv',
 ])
 
-// Windows等では.csvファイルがExcelの登録ハンドラ経由でapplication/vnd.ms-excel(または空文字)として
-// 報告されることがあり、そのままだと検索インデックス対象外・XLS表示になってしまうため、
+// Windows等では.csvファイルがExcelの登録ハンドラ経由でapplication/vnd.ms-excelとして
+// 報告されることがある。またブラウザがMIMEを指定しない場合、空文字ではなく
+// request.formData()のパース後にapplication/octet-streamになることがある。
+// そのままだと検索インデックス対象外・XLS表示になってしまうため、
 // 拡張子から明らかにCSVと分かる場合はtext/csvに正規化する
+const CSV_AMBIGUOUS_MIME_TYPES = new Set(['application/vnd.ms-excel', 'application/octet-stream', ''])
+
 function normalizeMimeType(fileName: string, mimeType: string): string {
-  if (/\.csv$/i.test(fileName) && (mimeType === 'application/vnd.ms-excel' || mimeType === '')) {
+  if (/\.csv$/i.test(fileName) && CSV_AMBIGUOUS_MIME_TYPES.has(mimeType)) {
     return 'text/csv'
   }
   return mimeType

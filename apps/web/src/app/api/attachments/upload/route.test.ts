@@ -121,6 +121,19 @@ describe('/api/attachments/upload のCSV MIMEタイプ正規化', () => {
     }))
   })
 
+  it('拡張子が.csvでformData経由でapplication/octet-streamと報告された場合も、text/csvとして保存・検索インデックス化する', async () => {
+    const formData = new FormData()
+    formData.set('channelId', CHANNEL_ID)
+    formData.set('file', makeFile('data.csv', 'application/octet-stream', 'a,b\n1,2'))
+
+    const { POST } = await import('./route')
+    const res = await POST({ formData: () => Promise.resolve(formData) } as Request)
+
+    expect(res.status).toBe(201)
+    const body = await res.json() as { mimeType: string }
+    expect(body.mimeType).toBe('text/csv')
+  })
+
   it('拡張子が.xlsのapplication/vnd.ms-excelは正規化せずそのまま扱う', async () => {
     const formData = new FormData()
     formData.set('channelId', CHANNEL_ID)
