@@ -37,11 +37,21 @@ async function extractPptxText(buffer: Buffer): Promise<string> {
 
   const slideTexts = await Promise.all(slideEntries.map(async ([, file]) => {
     const xml = await file.async('text')
-    const runs = [...xml.matchAll(/<a:t(?:\s[^>]*)?>([^<]*)<\/a:t>/g)].map(m => decodeXmlEntities(m[1] ?? ''))
-    return runs.join(' ')
+    return extractParagraphsFromSlideXml(xml)
   }))
 
   return slideTexts.join('\n')
+}
+
+// <a:p>(段落)内の<a:r>(ラン)はフォーマット変更のたびに分割されており、
+// 文字列内に必要なスペースは既に含まれているため、ラン同士はスペースを挟まず連結する。
+// 段落の区切りだけを改行として扱う。
+function extractParagraphsFromSlideXml(xml: string): string {
+  const paragraphs = [...xml.matchAll(/<a:p(?:\s[^>]*)?>([\s\S]*?)<\/a:p>/g)].map(([, body]) => {
+    const runs = [...(body ?? '').matchAll(/<a:t(?:\s[^>]*)?>([^<]*)<\/a:t>/g)].map(m => decodeXmlEntities(m[1] ?? ''))
+    return runs.join('')
+  })
+  return paragraphs.join('\n')
 }
 
 export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {

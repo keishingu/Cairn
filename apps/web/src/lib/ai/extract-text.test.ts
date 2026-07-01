@@ -7,13 +7,17 @@ import { extractText, isIndexable } from './extract-text'
 
 const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 
-async function buildFakePptx(slideTexts: string[][]): Promise<Buffer> {
+// slides[slideIndex][paragraphIndex][runIndex] = ランのテキスト
+async function buildFakePptx(slides: string[][][]): Promise<Buffer> {
   const zip = new JSZip()
-  slideTexts.forEach((runs, i) => {
-    const runXml = runs.map(t => `<a:r><a:t>${t}</a:t></a:r>`).join('')
+  slides.forEach((paragraphs, i) => {
+    const bodyXml = paragraphs.map(runs => {
+      const runXml = runs.map(t => `<a:r><a:t>${t}</a:t></a:r>`).join('')
+      return `<a:p>${runXml}</a:p>`
+    }).join('')
     zip.file(
       `ppt/slides/slide${i + 1}.xml`,
-      `<?xml version="1.0"?><p:sld xmlns:a="a" xmlns:p="p"><p:cSld><p:spTree><p:sp><p:txBody>${runXml}</p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+      `<?xml version="1.0"?><p:sld xmlns:a="a" xmlns:p="p"><p:cSld><p:spTree><p:sp><p:txBody>${bodyXml}</p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
     )
   })
   const buf = await zip.generateAsync({ type: 'nodebuffer' })
@@ -32,16 +36,27 @@ describe('isIndexable', () => {
 })
 
 describe('extractText', () => {
-  it('pptxの各スライドからテキストを抽出し、スライド順に改行区切りで結合する', async () => {
-    const buffer = await buildFakePptx([['こんにちは', '世界'], ['2枚目のスライド']])
+  it('pptxの各スライド・段落からテキストを抽出し、改行区切りで結合する', async () => {
+    const buffer = await buildFakePptx([
+      [['見出し'], ['本文1行目']],
+      [['2枚目のスライド']],
+    ])
 
     const text = await extractText(buffer, PPTX_MIME)
 
-    expect(text).toBe('こんにちは 世界\n2枚目のスライド')
+    expect(text).toBe('見出し\n本文1行目\n2枚目のスライド')
+  })
+
+  it('同一段落内で書式変更により分割されたランは、スペースを挿入せず連結する', async () => {
+    const buffer = await buildFakePptx([[['pro', 'ject']]])
+
+    const text = await extractText(buffer, PPTX_MIME)
+
+    expect(text).toBe('project')
   })
 
   it('pptx内のXMLエンティティをデコードする', async () => {
-    const buffer = await buildFakePptx([['A &amp; B &lt;test&gt;']])
+    const buffer = await buildFakePptx([[['A &amp; B &lt;test&gt;']]])
 
     const text = await extractText(buffer, PPTX_MIME)
 
@@ -52,9 +67,9 @@ describe('extractText', () => {
     const zip = new JSZip()
     zip.file(
       'ppt/slides/slide1.xml',
-      '<?xml version="1.0"?><p:sld xmlns:a="a" xmlns:p="p"><p:cSld><p:spTree><p:sp><p:txBody>'
+      '<?xml version="1.0"?><p:sld xmlns:a="a" xmlns:p="p"><p:cSld><p:spTree><p:sp><p:txBody><a:p>'
       + '<a:r><a:t xml:space="preserve">先頭に空白  </a:t></a:r>'
-      + '</p:txBody></p:sp></p:spTree></p:cSld></p:sld>',
+      + '</a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>',
     )
     const buffer = await zip.generateAsync({ type: 'nodebuffer' })
 
