@@ -78,6 +78,36 @@ describe('extractText', () => {
     expect(text).toBe('先頭に空白  ')
   })
 
+  it('同一段落内の手動改行(<a:br>)は区切り文字として扱い、単語同士を連結しない', async () => {
+    const zip = new JSZip()
+    zip.file(
+      'ppt/slides/slide1.xml',
+      '<?xml version="1.0"?><p:sld xmlns:a="a" xmlns:p="p"><p:cSld><p:spTree><p:sp><p:txBody><a:p>'
+      + '<a:r><a:t>Q1</a:t></a:r><a:br><a:rPr lang="en-US"/></a:br><a:r><a:t>Revenue</a:t></a:r>'
+      + '</a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>',
+    )
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    const text = await extractText(buffer, PPTX_MIME)
+
+    expect(text).toBe('Q1\nRevenue')
+  })
+
+  it('同一段落内のタブ(<a:tab>)は区切り文字として扱う', async () => {
+    const zip = new JSZip()
+    zip.file(
+      'ppt/slides/slide1.xml',
+      '<?xml version="1.0"?><p:sld xmlns:a="a" xmlns:p="p"><p:cSld><p:spTree><p:sp><p:txBody><a:p>'
+      + '<a:r><a:t>Q1</a:t></a:r><a:tab/><a:r><a:t>Revenue</a:t></a:r>'
+      + '</a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>',
+    )
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    const text = await extractText(buffer, PPTX_MIME)
+
+    expect(text).toBe('Q1\tRevenue')
+  })
+
   it('CSVはそのままテキストとして返す', async () => {
     const buffer = Buffer.from('name,age\n太郎,30', 'utf-8')
 

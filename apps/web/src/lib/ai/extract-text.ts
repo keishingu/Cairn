@@ -45,11 +45,16 @@ async function extractPptxText(buffer: Buffer): Promise<string> {
 
 // <a:p>(段落)内の<a:r>(ラン)はフォーマット変更のたびに分割されており、
 // 文字列内に必要なスペースは既に含まれているため、ラン同士はスペースを挟まず連結する。
-// 段落の区切りだけを改行として扱う。
+// 段落内の手動改行(<a:br>)・タブ(<a:tab>)はラン間の要素として現れるため、
+// 見た目通りの区切り文字に変換してから連結する。段落自体の区切りは改行として扱う。
 function extractParagraphsFromSlideXml(xml: string): string {
   const paragraphs = [...xml.matchAll(/<a:p(?:\s[^>]*)?>([\s\S]*?)<\/a:p>/g)].map(([, body]) => {
-    const runs = [...(body ?? '').matchAll(/<a:t(?:\s[^>]*)?>([^<]*)<\/a:t>/g)].map(m => decodeXmlEntities(m[1] ?? ''))
-    return runs.join('')
+    const tokens = [...(body ?? '').matchAll(/<a:t(?:\s[^>]*)?>([^<]*)<\/a:t>|<a:br\b[^>]*\/?>|<a:tab\b[^>]*\/?>/g)]
+    return tokens.map(m => {
+      if (m[1] !== undefined) return decodeXmlEntities(m[1])
+      if (m[0].startsWith('<a:br')) return '\n'
+      return '\t'
+    }).join('')
   })
   return paragraphs.join('\n')
 }
