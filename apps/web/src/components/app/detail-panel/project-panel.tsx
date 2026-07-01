@@ -146,6 +146,31 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
   const [internalTab, setInternalTab] = React.useState('chat')
   const tab = tabProp ?? internalTab
   const setTab = onTabChange ?? setInternalTab
+
+  // 訪問済みのタブは display:none で残し、再訪問時の再マウント（Chat の markdown 再パース・
+  // スクロール初期化・各タブの再フェッチ）を避ける。初回は現在のタブだけマウントして
+  // オープン直後を軽く保つ
+  const [visitedTabs, setVisitedTabs] = React.useState<Set<string>>(() => new Set([tab]))
+  React.useEffect(() => {
+    setVisitedTabs(prev => (prev.has(tab) ? prev : new Set(prev).add(tab)))
+  }, [tab])
+  // プロジェクトが変わったら訪問済みをリセットし、別プロジェクトのタブ内容を残さない
+  React.useEffect(() => {
+    setVisitedTabs(new Set([tab]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id])
+
+  const renderTabContent = (id: string): React.ReactNode => {
+    switch (id) {
+      case 'chat':     return <ChatTab project={project} {...(isMobile ? { isMobile: true } : {})}/>
+      case 'overview': return <OverviewTab project={project} onDeleted={onClose}/>
+      case 'files':    return <FilesTab projectId={project.id} channelId={projectChannelId ?? null}/>
+      case 'tasks':    return <TasksTab project={project}/>
+      case 'members':  return <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>
+      case 'gallery':  return <GalleryTab projectId={project.id}/>
+      default:         return null
+    }
+  }
   const [moreOpen, setMoreOpen] = React.useState(false)
   const [editingCover, setEditingCover] = React.useState(false)
   const moreRef = React.useRef<HTMLDivElement>(null)
@@ -350,14 +375,16 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
         ))}
       </div>
 
-      {/* Tab content */}
+      {/* Tab content — 訪問済みタブはマウントしたまま表示だけ切り替える（keep-alive） */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0 }}>
-        {tab === 'chat'     && <ChatTab project={project}/>}
-        {tab === 'overview' && <OverviewTab project={project} onDeleted={onClose}/>}
-        {tab === 'files'    && <FilesTab projectId={project.id} channelId={projectChannelId ?? null}/>}
-        {tab === 'tasks'    && <TasksTab project={project}/>}
-        {tab === 'members'  && <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>}
-        {tab === 'gallery'  && <GalleryTab projectId={project.id}/>}
+        {tabs.map(t => visitedTabs.has(t.id) ? (
+          <div
+            key={t.id}
+            style={{ flex: 1, minHeight: 0, display: tab === t.id ? 'flex' : 'none', flexDirection: 'column' }}
+          >
+            {renderTabContent(t.id)}
+          </div>
+        ) : null)}
       </div>
     </aside>
   )
