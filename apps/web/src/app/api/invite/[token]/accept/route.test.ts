@@ -148,8 +148,11 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(mockDb.update).not.toHaveBeenCalled()
   })
 
-  it('inactive メンバーが再招待を受けたら membership を active に戻す', async () => {
+  it('inactive メンバーが再招待を受けたら membership を active に戻し、invite role を反映する', async () => {
     const invite = { id: 'inv-01b', workspaceId: WORKSPACE_ID, role: 'member', expiresAt: null, maxUses: null, useCount: 0 }
+    const reactivateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue([]),
+    })
 
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))
@@ -160,9 +163,7 @@ describe('POST /api/invite/[token]/accept', () => {
         updateChain([{ id: 'inv-01b', workspaceId: WORKSPACE_ID, role: 'member' }])
       )
       .mockReturnValueOnce({
-        set: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue([]),
-        }),
+        set: reactivateSet,
       })
 
     const { POST } = await import('./route')
@@ -177,6 +178,7 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(body.workspaceId).toBe(WORKSPACE_ID)
     expect(mockDb.insert).not.toHaveBeenCalled()
     expect(mockDb.update).toHaveBeenCalledTimes(2)
+    expect(reactivateSet).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'member' })
   })
 
   it('max_uses に達していると 410 を返す', async () => {
