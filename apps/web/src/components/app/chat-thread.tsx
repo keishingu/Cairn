@@ -1125,11 +1125,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   // 読み込めなくなる（バナーは出るのにスクロールできない）。オーバーフローするか全件表示に
   // なるまで自動でウィンドウを広げ、埋まった時点で最新（下端）へ寄せる
   const autoFillingRef = React.useRef(false)
-  React.useLayoutEffect(() => {
-    if (isLoading) return
+  const fillIfUnderflow = React.useCallback(() => {
     const el = scrollRef.current
     if (!el) return
-    if (messages.length <= visibleCount) { autoFillingRef.current = false; return }
+    if (messages.length <= visibleCountRef.current) { autoFillingRef.current = false; return }
     if (el.scrollHeight > el.clientHeight) {
       // オーバーフロー到達。自動拡張中だったなら最新を見せるため下端へ寄せて終了する
       if (autoFillingRef.current) { autoFillingRef.current = false; el.scrollTop = el.scrollHeight }
@@ -1137,7 +1136,24 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     }
     autoFillingRef.current = true
     setVisibleCount(c => Math.min(c + LOAD_MORE_STEP, messages.length))
-  }, [isLoading, visibleCount, messages.length])
+  }, [messages.length])
+
+  // 件数・ウィンドウ変化時にアンダーフローを解消する（拡張を繰り返して埋める）
+  React.useLayoutEffect(() => {
+    if (isLoading) return
+    fillIfUnderflow()
+  }, [isLoading, visibleCount, messages.length, fillIfUnderflow])
+
+  // ビューポートが後から広がった場合（画面回転・リサイズ・入力欄の縮小など）、scrollHeight が
+  // clientHeight 以下になり得るが、上の effect は件数/ロード状態にしか依存しないため再実行されない。
+  // その状態だとスクロールも発生せず履歴が到達不能になるので、コンテナのサイズ変化を監視して再チェックする
+  React.useEffect(() => {
+    const el = scrollRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => { if (!isLoading) fillIfUnderflow() })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [isLoading, fillIfUnderflow])
 
   // ジャンプ/フォーカス対象が描画ウィンドウの外なら、含まれるまでウィンドウを広げる
   const focusedMsgId = focusedMsgIdx >= 0 ? messages[focusedMsgIdx]?.id : undefined
