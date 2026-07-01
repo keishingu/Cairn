@@ -39,6 +39,12 @@ import { toast } from '@/lib/toast'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 
+// 段階描画のパラメータ。初回描画件数と、上スクロール・ジャンプ時に一度に増やす件数
+const INITIAL_VISIBLE_COUNT = 30
+const LOAD_MORE_STEP = 30
+// 一覧上端からこの距離以内までスクロールしたら次のウィンドウを追加描画する
+const LOAD_MORE_THRESHOLD_PX = 320
+
 function extractGoogleDocsUrls(text: string): string[] {
   const matches = text.match(GOOGLE_DOCS_URL_RE) ?? []
   return [...new Set(matches.map(u => u.replace(/[.,;:!?)>]+$/, '')))]
@@ -888,6 +894,13 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [highlightId, setHighlightId] = React.useState<string | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const [focusedMsgIdx, setFocusedMsgIdx] = React.useState(-1)
+  // 段階描画: 初回は末尾（新しい）から一定件数だけ描画し、上スクロールで遡って増やす。
+  // 最大100件を一括で react-markdown パースするとモバイルではメインスレッドが固まるため
+  const [visibleCount, setVisibleCount] = React.useState(INITIAL_VISIBLE_COUNT)
+  const visibleCountRef = React.useRef(INITIAL_VISIBLE_COUNT)
+  visibleCountRef.current = visibleCount
+  // 上方向に描画を増やしたときにスクロール位置が飛ばないよう、増加前の高さ/位置を退避する
+  const prependAdjustRef = React.useRef<{ prevHeight: number; prevTop: number } | null>(null)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -1062,6 +1075,47 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length])
 
+  // 実際に描画するのは末尾から visibleCount 件だけ。startIndex は全体配列内での開始位置
+  const startIndex = Math.max(0, messages.length - visibleCount)
+  const visibleMessages = React.useMemo(
+    () => (startIndex > 0 ? messages.slice(startIndex) : messages),
+    [messages, startIndex],
+  )
+  const hasMore = startIndex > 0
+
+  // チャンネル切替時は描画ウィンドウを初期件数に戻す
+  React.useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT) }, [channelId])
+
+  // 上方向に描画を増やした直後、増えた分だけ高さが伸びるのでスクロール位置を補正して見た目を固定する
+  React.useLayoutEffect(() => {
+    const adjust = prependAdjustRef.current
+    if (!adjust || !scrollRef.current) return
+    prependAdjustRef.current = null
+    const el = scrollRef.current
+    el.scrollTop = adjust.prevTop + (el.scrollHeight - adjust.prevHeight)
+  })
+
+  // 一覧を上端付近までスクロールしたら次のウィンドウを追加描画する
+  const handleListScroll = React.useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    if (el.scrollTop > LOAD_MORE_THRESHOLD_PX) return
+    if (messages.length <= visibleCountRef.current) return
+    prependAdjustRef.current = { prevHeight: el.scrollHeight, prevTop: el.scrollTop }
+    setVisibleCount(c => Math.min(c + LOAD_MORE_STEP, messages.length))
+  }, [messages.length])
+
+  // ジャンプ/フォーカス対象が描画ウィンドウの外なら、含まれるまでウィンドウを広げる
+  const focusedMsgId = focusedMsgIdx >= 0 ? messages[focusedMsgIdx]?.id : undefined
+  React.useEffect(() => {
+    const targetId = highlightId ?? focusedMsgId
+    if (!targetId) return
+    const idx = messages.findIndex(m => m.id === targetId)
+    if (idx < 0) return
+    const neededFromEnd = messages.length - idx
+    setVisibleCount(c => (neededFromEnd > c ? Math.min(neededFromEnd + LOAD_MORE_STEP, messages.length) : c))
+  }, [highlightId, focusedMsgId, messages])
+
   // チャンネル切替時にフォーカスをリセット
   React.useEffect(() => { setFocusedMsgIdx(-1) }, [channelId])
 
@@ -1090,7 +1144,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     if (!msgId || !scrollRef.current) return
     const el = scrollRef.current.querySelector<HTMLElement>(`[data-message-id="${msgId}"]`)
     el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [focusedMsgIdx, messages])
+    // visibleCount 変化で対象が描画された後に再スクロールできるよう依存に含める
+  }, [focusedMsgIdx, messages, visibleCount])
 
   // フォーカス中のメッセージに対するキーボードアクション
   React.useEffect(() => {
@@ -1151,7 +1206,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     el.classList.add('message-highlight')
     const t = setTimeout(() => { el.classList.remove('message-highlight'); setHighlightId(null) }, 2000)
     return () => { clearTimeout(t); el.classList.remove('message-highlight') }
-  }, [highlightId, isLoading, messages.length])
+    // visibleCount 変化で対象が描画された後に再スクロールできるよう依存に含める
+  }, [highlightId, isLoading, messages.length, visibleCount])
 
   const handleReply = React.useCallback((messageId: string) => {
     // 送信中（楽観的更新）のメッセージはまだサーバーに存在しないため返信対象にしない
@@ -1343,7 +1399,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)' }}>ファイルをドロップしてアップロード</span>
         </div>
       )}
-      <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
+      <div ref={scrollRef} onScroll={handleListScroll} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
         ) : isError ? (
@@ -1351,7 +1407,13 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         ) : messages.length === 0 ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>まだメッセージはありません。最初のメッセージを送ってみましょう！</div>
         ) : (
-          messages.map((m, i) => (
+          <>
+            {hasMore && (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', color: 'var(--text-4)', fontSize: 12 }}>
+                上にスクロールして以前のメッセージを表示
+              </div>
+            )}
+            {visibleMessages.map((m, i) => (
             <ChatMessage
               key={m.id}
               messageId={m.id}
@@ -1377,12 +1439,13 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               onJumpToMessage={jumpToMessage}
               onCopyLink={handleCopyLink}
               onImageClick={openLightbox}
-              focused={i === focusedMsgIdx}
+              focused={startIndex + i === focusedMsgIdx}
               mentionNames={mentionNames}
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}
             />
-          ))
+            ))}
+          </>
         )}
       </div>
       <ChatInputBar
