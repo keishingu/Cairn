@@ -31,6 +31,7 @@ import {
   useWorkspaceMembers,
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { stripMentionsToText } from '@/lib/chat/mentions'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
@@ -56,10 +57,10 @@ function isImageMime(mimeType: string | null): boolean {
   return mimeType?.startsWith('image/') ?? false
 }
 
-// 引用バーやプレビューでは Markdown を描画せず、メンション記法を素朴な @表示名 に戻した一行テキストにする
+// 引用バーやプレビューでは Markdown を描画せず、メンション記法を素朴な @表示名 に戻した一行テキストにする。
+// 通知バーと同じ stripMentionsToText を使い、canonical な `<@userId>` も旧形式 `<@userId|名前>` も可読化する
 function toPlainSnippet(content: string): string {
-  return content
-    .replace(/<@[^|>\s]+\|([^>\n]+)>/g, '@$1')
+  return stripMentionsToText(content)
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -257,13 +258,13 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             style={{
               display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, padding: '2px 8px',
               borderLeft: '2px solid var(--accent)', background: 'transparent',
-              cursor: replyTo.isDeleted ? 'default' : 'pointer', maxWidth: '100%',
-              fontFamily: 'inherit', textAlign: 'left',
+              cursor: replyTo.isDeleted ? 'default' : 'pointer', width: '100%', maxWidth: '100%',
+              minWidth: 0, overflow: 'hidden', fontFamily: 'inherit', textAlign: 'left',
             }}
           >
             <Icon name="reply" size={11} color="var(--text-4)"/>
             <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{replyTo.senderName}</span>
-            <span style={{ fontSize: 11.5, color: 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 11.5, color: 'var(--text-4)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {replyTo.isDeleted ? '削除されたメッセージ' : toPlainSnippet(replyTo.content) || '（添付ファイル）'}
             </span>
           </button>
