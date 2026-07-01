@@ -31,6 +31,7 @@ import {
   useWorkspaceMembers,
 } from '@/lib/chat/client'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { stripMentionsToText } from '@/lib/chat/mentions'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
@@ -56,10 +57,12 @@ function isImageMime(mimeType: string | null): boolean {
   return mimeType?.startsWith('image/') ?? false
 }
 
-// 引用バーやプレビューでは Markdown を描画せず、メンション記法を素朴な @表示名 に戻した一行テキストにする
-function toPlainSnippet(content: string): string {
-  return content
-    .replace(/<@[^|>\s]+\|([^>\n]+)>/g, '@$1')
+// 引用バーやプレビューでは Markdown を描画せず、メンション記法を素朴な @表示名 に戻した一行テキストにする。
+// 通知バーと同じ stripMentionsToText を使い、canonical な `<@userId>` も旧形式 `<@userId|名前>` も可読化する。
+// 送信/編集直後の楽観・POST/PATCH レスポンスはメンションが canonical のままキャッシュに載るため、
+// nameOf（ワークスペースメンバーの userId→表示名）を渡して GET 再取得前でも @不明なメンバー を避ける
+function toPlainSnippet(content: string, nameOf?: (userId: string) => string | undefined): string {
+  return stripMentionsToText(content, nameOf)
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -200,7 +203,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     return (
       <div data-message-id={messageId} style={{ display: 'flex', justifyContent: 'center', padding: '6px 16px' }}>
         <span style={{ fontSize: 11.5, color: 'var(--text-4)', background: 'var(--card-2)', border: '1px solid var(--divider)', borderRadius: 999, padding: '3px 12px', textAlign: 'center', lineHeight: 1.5 }}>
-          {toPlainSnippet(content)}
+          {toPlainSnippet(content, id => mentionNames?.get(id))}
         </span>
       </div>
     )
@@ -257,14 +260,14 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             style={{
               display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, padding: '2px 8px',
               borderLeft: '2px solid var(--accent)', background: 'transparent',
-              cursor: replyTo.isDeleted ? 'default' : 'pointer', maxWidth: '100%',
-              fontFamily: 'inherit', textAlign: 'left',
+              cursor: replyTo.isDeleted ? 'default' : 'pointer', width: '100%', maxWidth: '100%',
+              minWidth: 0, overflow: 'hidden', fontFamily: 'inherit', textAlign: 'left',
             }}
           >
             <Icon name="reply" size={11} color="var(--text-4)"/>
             <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{replyTo.senderName}</span>
-            <span style={{ fontSize: 11.5, color: 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {replyTo.isDeleted ? '削除されたメッセージ' : toPlainSnippet(replyTo.content) || '（添付ファイル）'}
+            <span style={{ fontSize: 11.5, color: 'var(--text-4)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {replyTo.isDeleted ? '削除されたメッセージ' : toPlainSnippet(replyTo.content, id => mentionNames?.get(id)) || '（添付ファイル）'}
             </span>
           </button>
         )}
@@ -406,7 +409,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -423,6 +426,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
   mentionMembers?: { userId: string; displayName: string }[]
+  mentionNames?: Map<string, string>
   onMentionInserted?: (userId: string, displayName: string) => void
   onCreateTextFile: () => void
   replyTarget: ReplyToDto | null
@@ -624,7 +628,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)' }}>{replyTarget.senderName} に返信</div>
         <div style={{ fontSize: 11.5, color: 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {toPlainSnippet(replyTarget.content) || '（添付ファイル）'}
+          {toPlainSnippet(replyTarget.content, id => mentionNames?.get(id)) || '（添付ファイル）'}
         </div>
       </div>
       <button onClick={onCancelReply} title="返信をキャンセル" style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2, flexShrink: 0 }}>
@@ -1367,6 +1371,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
         mentionMembers={mentionMembers}
+        mentionNames={mentionNames}
         onMentionInserted={onMentionInserted}
         onCreateTextFile={() => setShowTextFileDialog(true)}
         replyTarget={replyTarget}

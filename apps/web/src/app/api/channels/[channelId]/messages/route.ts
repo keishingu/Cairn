@@ -225,19 +225,13 @@ export async function GET(req: Request, { params }: RouteContext) {
 
     const bookmarkedIds = new Set(bookmarkRows.map(b => b.messageId))
 
-    const parentMap = new Map<string, ReplyToDto>()
-    for (const p of parentRows) {
-      parentMap.set(p.id, {
-        id: p.id,
-        senderName: p.senderName,
-        content: p.deletedAt ? '' : p.content,
-        isDeleted: !!p.deletedAt,
-      })
-    }
-
     // メンションは canonical な `<@userId>` で保存されているため、現在の表示名を read 時に解決して埋め込む。
-    // これにより名前変更が全メッセージへ即座に反映される（Mobile の単純な置換クライアントも最新名で表示できる）
-    const mentionIds = [...new Set(rows.flatMap(r => extractMentionIds(r.content)))]
+    // これにより名前変更が全メッセージへ即座に反映される（Mobile の単純な置換クライアントも最新名で表示できる）。
+    // 引用返信バーもメンションを `@表示名` で描画するため、親メッセージの userId も解決対象に含める。
+    const mentionIds = [...new Set([
+      ...rows.flatMap(r => extractMentionIds(r.content)),
+      ...parentRows.flatMap(p => (p.deletedAt ? [] : extractMentionIds(p.content))),
+    ])]
     const nameMap = new Map<string, string>()
     if (mentionIds.length > 0) {
       const profileRows = await db
@@ -245,6 +239,16 @@ export async function GET(req: Request, { params }: RouteContext) {
         .from(profiles)
         .where(inArray(profiles.id, mentionIds))
       for (const p of profileRows) nameMap.set(p.id, p.displayName)
+    }
+
+    const parentMap = new Map<string, ReplyToDto>()
+    for (const p of parentRows) {
+      parentMap.set(p.id, {
+        id: p.id,
+        senderName: p.senderName,
+        content: p.deletedAt ? '' : hydrateMentions(p.content, id => nameMap.get(id)),
+        isDeleted: !!p.deletedAt,
+      })
     }
 
     const result: MessageDto[] = rows.map(r => ({
