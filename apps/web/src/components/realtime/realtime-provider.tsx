@@ -7,7 +7,6 @@ import React from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
-import { WORKSPACE_COOKIE } from '@/lib/workspace-cookie'
 import {
   chatQueryKeys,
   useCurrentUser,
@@ -61,6 +60,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const { data: currentUser } = useCurrentUser()
   const userId = currentUser?.id ?? null
+  const workspaceId = currentUser?.workspaceId ?? null
 
   const [status, setStatus] = React.useState<RealtimeStatus>('connecting')
   const [degraded, setDegraded] = React.useState(false)
@@ -76,14 +76,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     for (const d of dms) ids.add(d.id)
     return [...ids].sort().join(',')
   }, [projectChannels, workspaceChannels, dms])
-  const workspaceId = React.useMemo(() => {
-    if (typeof document === 'undefined') return null
-    const entry = document.cookie
-      .split('; ')
-      .find((part) => part.startsWith(`${WORKSPACE_COOKIE}=`))
-    return entry ? decodeURIComponent(entry.slice(WORKSPACE_COOKIE.length + 1)) : null
-  }, [channelIdsKey, userId])
-
   // status が disconnected に留まった時だけ degraded を立てる
   React.useEffect(() => {
     if (status === 'connected') {
