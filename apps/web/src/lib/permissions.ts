@@ -196,6 +196,10 @@ export interface FileAccessRow {
   metadata?: unknown
 }
 
+export interface FileAccessOptions {
+  pendingChannelId?: string
+}
+
 // ファイル単体の閲覧可否を判定する。`requireChannelAccess` と同じスコープ感で、
 // ワークスペース所属だけを根拠にした越境アクセス（fileID 総当たり）を防ぐ。
 // - 別ワークスペースのファイルは不可
@@ -207,6 +211,7 @@ export async function canAccessFile(
   workspaceId: string,
   userId: string,
   file: FileAccessRow,
+  options: FileAccessOptions = {},
 ): Promise<boolean> {
   if (file.workspaceId !== workspaceId) return false
 
@@ -214,6 +219,10 @@ export async function canAccessFile(
   // ワークスペース非所属（role なし）は不可
   if (!isWorkspaceMember(role) && role !== 'guest') return false
   if (file.uploadedBy === userId && role !== 'guest') return true
+  if (file.uploadedBy === userId && role === 'guest' && options.pendingChannelId) {
+    const forbidden = await requireChannelAccess(workspaceId, userId, options.pendingChannelId)
+    if (!forbidden) return true
+  }
 
   // プロジェクトファイル: member 以上は全件可、guest は参加プロジェクトのみ
   if (file.projectId) {

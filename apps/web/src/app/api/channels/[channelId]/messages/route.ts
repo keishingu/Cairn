@@ -336,7 +336,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       }
 
       const accessResults = await Promise.all(
-        fileRows.map(file => canAccessFile(ctx.workspaceId, ctx.userId, file)),
+        fileRows.map(file => canAccessFile(ctx.workspaceId, ctx.userId, file, { pendingChannelId: channelId })),
       )
       if (accessResults.some(canAccess => !canAccess)) {
         return NextResponse.json({ error: '添付ファイルにアクセスする権限がありません' }, { status: 403 })

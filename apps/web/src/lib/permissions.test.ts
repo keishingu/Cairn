@@ -152,4 +152,5 @@ describe('permissions', () => {
       metadata: {},
     })).resolves.toBe(false)
   })
+
 })

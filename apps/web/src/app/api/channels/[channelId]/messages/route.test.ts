@@ -12,6 +12,7 @@ const {
   mockRequireChannelAccess,
   mockCanAccessFile,
   mockDbSelect,
+  mockDbTransaction,
   mockEq,
   mockIsNull,
   mockInArray,
@@ -20,11 +21,13 @@ const {
   mockAsc,
   mockLte,
   mockGt,
+  mockSafeParse,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
   mockCanAccessFile: vi.fn(),
   mockDbSelect: vi.fn(),
+  mockDbTransaction: vi.fn(),
   mockEq: vi.fn(() => Symbol('eq')),
   mockIsNull: vi.fn(() => Symbol('isNull')),
   mockInArray: vi.fn(() => Symbol('inArray')),
@@ -33,6 +36,7 @@ const {
   mockAsc: vi.fn(() => Symbol('asc')),
   mockLte: vi.fn(() => Symbol('lte')),
   mockGt: vi.fn(() => Symbol('gt')),
+  mockSafeParse: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -44,13 +48,13 @@ vi.mock('@/lib/permissions', () => ({
   canAccessFile: mockCanAccessFile,
 }))
 
-vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
+vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn(() => Promise.resolve(undefined)) } }))
 vi.mock('@/lib/chat/checkboxes', () => ({ parseCheckboxes: () => [] }))
 vi.mock('@cairn/shared', () => ({
-  postMessageSchema: { safeParse: () => ({ success: true, data: { content: 'hi', channelId: CHANNEL_ID } }) },
+  postMessageSchema: { safeParse: mockSafeParse },
 }))
 vi.mock('@cairn/db', () => ({
-  db: { select: mockDbSelect },
+  db: { select: mockDbSelect, transaction: mockDbTransaction },
   messages: {
     id: 'messages.id',
     content: 'messages.content',
@@ -78,6 +82,13 @@ vi.mock('@cairn/db', () => ({
     messageId: 'messageAttachments.messageId',
     fileId: 'messageAttachments.fileId',
     displayOrder: 'messageAttachments.displayOrder',
+  },
+  channels: {
+    id: 'channels.id',
+    projectId: 'channels.projectId',
+  },
+  tasks: {
+    id: 'tasks.id',
   },
   messageBookmarks: {
     id: 'messageBookmarks.id',
@@ -125,6 +136,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
       error: null,
     })
+    mockSafeParse.mockReturnValue({ success: true, data: { content: 'hi', channelId: CHANNEL_ID } })
   })
 
   afterEach(() => {
@@ -196,5 +208,62 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
         ],
       }),
     ])
+  })
+
+  it('POST は添付アクセス判定へ pendingChannelId を渡す', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockCanAccessFile.mockResolvedValue(true)
+    mockSafeParse.mockReturnValue({
+      success: true,
+      data: {
+        content: 'hi',
+        channelId: CHANNEL_ID,
+        attachmentFileIds: ['file-1'],
+      },
+    })
+    mockSelectResults(
+      [
+        {
+          id: 'file-1',
+          workspaceId: DEV_WORKSPACE_ID,
+          projectId: null,
+          uploadedBy: DEV_USER_ID,
+        },
+      ],
+      [
+        {
+          displayName: 'Kei',
+          avatarUrl: null,
+        },
+      ],
+    )
+    mockDbTransaction.mockImplementation(async (callback: (tx: any) => Promise<unknown>) => callback({
+      insert: () => ({
+        values: () => ({
+          returning: async () => [{
+            id: 'msg-1',
+            content: 'hi',
+            senderId: DEV_USER_ID,
+            createdAt: new Date('2026-07-02T05:40:00.000Z'),
+          }],
+        }),
+      }),
+    }))
+
+    const { POST } = await import('./route')
+    const req = new Request('http://localhost/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'hi', attachmentFileIds: ['file-1'] }),
+    })
+    const res = await POST(req, ctxRouteParams())
+
+    expect(res.status).toBe(201)
+    expect(mockCanAccessFile).toHaveBeenCalledWith(
+      DEV_WORKSPACE_ID,
+      DEV_USER_ID,
+      expect.objectContaining({ id: 'file-1' }),
+      { pendingChannelId: CHANNEL_ID },
+    )
   })
 })
