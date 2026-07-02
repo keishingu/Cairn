@@ -202,6 +202,7 @@ describe('POST /api/invite/[token]/accept', () => {
       where: vi.fn().mockResolvedValue([]),
     })
     const deleteChannelWhere = vi.fn().mockResolvedValue([])
+    const deleteNotificationWhere = vi.fn().mockResolvedValue([])
 
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))
@@ -218,6 +219,9 @@ describe('POST /api/invite/[token]/accept', () => {
     mockDb.delete.mockReturnValueOnce({
       where: deleteChannelWhere,
     })
+    mockDb.delete.mockReturnValueOnce({
+      where: deleteNotificationWhere,
+    })
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -233,8 +237,9 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(mockDb.update).toHaveBeenCalledTimes(2)
     expect(mockDb.transaction).toHaveBeenCalledTimes(1)
     expect(reactivateSet).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'member' })
-    expect(mockDb.delete).toHaveBeenCalledTimes(1)
+    expect(mockDb.delete).toHaveBeenCalledTimes(2)
     expect(deleteChannelWhere).toHaveBeenCalledTimes(1)
+    expect(deleteNotificationWhere).toHaveBeenCalledTimes(1)
   })
 
   it('inactive メンバーが guest として再招待されたら旧 project/channel membership を掃除して招待対象だけ付け直す', async () => {
@@ -250,9 +255,9 @@ describe('POST /api/invite/[token]/accept', () => {
     const reactivateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockResolvedValue([]),
     })
-    const deleteWhere = vi.fn().mockResolvedValue([])
     const deleteChannelWhere = vi.fn().mockResolvedValue([])
     const deleteNotificationWhere = vi.fn().mockResolvedValue([])
+    const deleteWhere = vi.fn().mockResolvedValue([])
     const deletePinnedWhere = vi.fn().mockResolvedValue([])
     const projectMemberInsert = vi.fn().mockReturnValue({
       onConflictDoNothing: vi.fn().mockResolvedValue([]),
@@ -273,13 +278,13 @@ describe('POST /api/invite/[token]/accept', () => {
       })
 
     mockDb.delete.mockReturnValueOnce({
-      where: deleteWhere,
-    })
-    mockDb.delete.mockReturnValueOnce({
       where: deleteChannelWhere,
     })
     mockDb.delete.mockReturnValueOnce({
       where: deleteNotificationWhere,
+    })
+    mockDb.delete.mockReturnValueOnce({
+      where: deleteWhere,
     })
     mockDb.delete.mockReturnValueOnce({
       where: deletePinnedWhere,
