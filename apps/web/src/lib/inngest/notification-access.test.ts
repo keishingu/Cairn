@@ -93,4 +93,17 @@ describe('notification-access', () => {
     expect(whereArg.args).toContainEqual({ type: 'eq', args: [workspaceMembers.membershipStatus, 'active'] })
     expect(whereArg.args).toContainEqual({ type: 'eq', args: [workspaceMembers.role, 'guest'] })
   })
+
+  it('isActiveWorkspaceMember は active membership のみ truthy を返す', async () => {
+    const chain = makeSelectResult([{ userId: 'user-2' }])
+    mockDb.select.mockReturnValueOnce(chain)
+
+    const { isActiveWorkspaceMember } = await import('./notification-access')
+    await expect(isActiveWorkspaceMember({ workspaceId: 'ws-1', userId: 'user-2' })).resolves.toBe(true)
+
+    const whereArg = chain.where.mock.calls[0]?.[0]
+    expect(whereArg.args).toContainEqual({ type: 'eq', args: [workspaceMembers.workspaceId, 'ws-1'] })
+    expect(whereArg.args).toContainEqual({ type: 'eq', args: [workspaceMembers.userId, 'user-2'] })
+    expect(whereArg.args).toContainEqual({ type: 'eq', args: [workspaceMembers.membershipStatus, 'active'] })
+  })
 })

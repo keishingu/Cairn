@@ -72,3 +72,21 @@ export async function fetchActiveGuestIds(params: {
 
   return new Set(rows.map(row => row.userId))
 }
+
+export async function isActiveWorkspaceMember(params: {
+  workspaceId: string
+  userId: string
+}): Promise<boolean> {
+  const { workspaceId, userId } = params
+
+  const [member] = await db
+    .select({ userId: workspaceMembers.userId })
+    .from(workspaceMembers)
+    .where(and(
+      eq(workspaceMembers.workspaceId, workspaceId),
+      eq(workspaceMembers.userId, userId),
+      eq(workspaceMembers.membershipStatus, 'active'),
+    ))
+
+  return Boolean(member)
+}

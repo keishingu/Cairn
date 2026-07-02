@@ -7,6 +7,7 @@ import { createTaskSchema } from '@cairn/shared'
 import { getGuestVisibleProjectIds, getWorkspaceMemberRole, requireProjectAccess } from '@/lib/permissions'
 import { inngest } from '@/lib/inngest/client'
 import type { TaskAssignedEvent } from '@/lib/inngest/events'
+import { isActiveWorkspaceMember } from '@/lib/inngest/notification-access'
 
 export interface TaskDto {
   id: string
@@ -153,7 +154,14 @@ export async function POST(req: Request) {
       assigneeAvatarUrl: assigneeRow?.avatarUrl ?? null,
     }
 
-    if (inserted.assigneeId && inserted.assigneeId !== ctx.userId) {
+    const shouldNotifyAssignee = inserted.assigneeId && inserted.assigneeId !== ctx.userId
+      ? await isActiveWorkspaceMember({
+          workspaceId: ctx.workspaceId,
+          userId: inserted.assigneeId,
+        })
+      : false
+
+    if (shouldNotifyAssignee) {
       const [assigner] = await db
         .select({ displayName: profiles.displayName })
         .from(profiles)

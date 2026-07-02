@@ -12,6 +12,7 @@ import {
   fetchActiveChannelRecipients,
   fetchActiveGuestIds,
   fetchActiveMentionedMembers,
+  isActiveWorkspaceMember,
 } from './notification-access'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
@@ -291,6 +292,13 @@ export const onTaskAssigned = inngest.createFunction(
   async ({ event, step }) => {
     const { taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
       event.data as TaskAssignedEvent['data']
+
+    const isActiveAssignee = await step.run('check-active-assignee', async () =>
+      isActiveWorkspaceMember({ workspaceId, userId: assigneeId }))
+
+    if (!isActiveAssignee) {
+      return { notified: null, skippedInactive: true }
+    }
 
     await step.run('create-task-notification', async () => {
       const { db, notifications } = await import('@cairn/db')
