@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole } from '@/lib/permissions'
+import { canAccessFile, getWorkspaceMemberRole } from '@/lib/permissions'
 
 export interface FileDto {
   id: string
@@ -120,6 +120,7 @@ export async function GET() {
         fileSize: files.fileSize,
         fileType: files.fileType,
         metadata: files.metadata,
+        uploadedBy: files.uploadedBy,
         uploaderName: profiles.displayName,
         uploaderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: files.createdAt,
@@ -136,7 +137,26 @@ export async function GET() {
       ))
       .orderBy(desc(files.createdAt))
 
-    const fileIds = rows.map(r => r.id)
+    const visibleRows = (
+      await Promise.all(
+        rows.map(async (row) => {
+          const visible = await canAccessFile(
+            ctx.workspaceId,
+            ctx.userId,
+            {
+              id: row.id,
+              workspaceId: row.workspaceId,
+              projectId: row.projectId,
+              uploadedBy: row.uploadedBy,
+              metadata: row.metadata,
+            },
+          )
+          return visible ? row : null
+        }),
+      )
+    ).filter((row): row is typeof rows[number] => row !== null)
+
+    const fileIds = visibleRows.map(r => r.id)
     const chunkedIdSet = new Set<string>()
     if (fileIds.length > 0) {
       const chunked = await db
@@ -150,7 +170,7 @@ export async function GET() {
     }
 
     return NextResponse.json(
-      rows.map(r => {
+      visibleRows.map(r => {
         const meta = (r.metadata ?? {}) as Record<string, unknown>
         const externalUrl = meta['externalUrl']
 

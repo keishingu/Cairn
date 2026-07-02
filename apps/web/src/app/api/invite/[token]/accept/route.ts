@@ -101,14 +101,14 @@ export async function POST(
               eq(channelMembers.userId, userId),
               inArray(channelMembers.channelId, workspaceChannelIds),
             ))
-
-          await tx
-            .delete(notifications)
-            .where(and(
-              eq(notifications.userId, userId),
-              eq(notifications.workspaceId, claimedInvite.workspaceId),
-            ))
         }
+
+        await tx
+          .delete(notifications)
+          .where(and(
+            eq(notifications.userId, userId),
+            eq(notifications.workspaceId, claimedInvite.workspaceId),
+          ))
 
         if (claimedInvite.role === 'guest') {
           const workspaceProjectIds = (await tx

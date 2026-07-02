@@ -242,6 +242,40 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(deleteNotificationWhere).toHaveBeenCalledTimes(1)
   })
 
+  it('inactive メンバー再招待では旧 channel が 0 件でも通知を掃除する', async () => {
+    const invite = { id: 'inv-01d', workspaceId: WORKSPACE_ID, role: 'member', expiresAt: null, maxUses: null, useCount: 0 }
+    const reactivateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue([]),
+    })
+    const deleteNotificationWhere = vi.fn().mockResolvedValue([])
+
+    mockDb.select
+      .mockReturnValueOnce(selectChain([invite]))
+      .mockReturnValueOnce(selectChain([{ id: 'existing-inactive-membership-id', membershipStatus: 'inactive' }]))
+      .mockReturnValueOnce(selectJoinWhereChain([]))
+
+    mockDb.update
+      .mockReturnValueOnce(
+        updateChain([{ id: 'inv-01d', workspaceId: WORKSPACE_ID, role: 'member' }])
+      )
+      .mockReturnValueOnce({
+        set: reactivateSet,
+      })
+    mockDb.delete.mockReturnValueOnce({
+      where: deleteNotificationWhere,
+    })
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/invite/${VALID_TOKEN}/accept`, { method: 'POST' }),
+      { params: Promise.resolve({ token: VALID_TOKEN }) },
+    )
+
+    expect(res.status).toBe(200)
+    expect(mockDb.delete).toHaveBeenCalledTimes(1)
+    expect(deleteNotificationWhere).toHaveBeenCalledTimes(1)
+  })
+
   it('inactive メンバーが guest として再招待されたら旧 project/channel membership を掃除して招待対象だけ付け直す', async () => {
     const invite = {
       id: 'inv-01c',

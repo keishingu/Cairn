@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess } from '@/lib/permissions'
 
 export interface NotificationDto {
   id: string
@@ -40,7 +41,21 @@ export async function GET(req: Request) {
       .orderBy(desc(notifications.createdAt))
       .limit(50)
 
-    const result: NotificationDto[] = rows.map(r => ({
+    const visibleRows = (
+      await Promise.all(
+        rows.map(async (row) => {
+          const data = row.data as Record<string, string> | null
+          const channelId = data?.['channelId']
+          if (typeof channelId === 'string') {
+            const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+            if (forbidden) return null
+          }
+          return row
+        }),
+      )
+    ).filter((row): row is typeof rows[number] => row !== null)
+
+    const result: NotificationDto[] = visibleRows.map(r => ({
       id: r.id,
       type: r.type,
       title: r.title,
