@@ -7,12 +7,13 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const CHANNEL_ID = '20000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockRequireChannelAccess, mockUpload, mockIsIndexable, mockInngestSend } = vi.hoisted(() => ({
+const { mockGetAuthContext, mockRequireChannelAccess, mockUpload, mockIsIndexable, mockInngestSend, mockInsertValues } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
   mockUpload: vi.fn().mockResolvedValue({ error: null }),
   mockIsIndexable: vi.fn(),
   mockInngestSend: vi.fn().mockResolvedValue(undefined),
+  mockInsertValues: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -35,7 +36,10 @@ vi.mock('@cairn/db', () => ({
     }),
     insert: () => ({
       values: (v: Record<string, unknown>) => ({
-        returning: vi.fn().mockResolvedValue([{ id: 'file-1', ...v }]),
+        returning: vi.fn().mockImplementation(async () => {
+          mockInsertValues(v)
+          return [{ id: 'file-1', ...v }]
+        }),
       }),
     }),
   },
@@ -118,6 +122,9 @@ describe('/api/attachments/upload のCSV MIMEタイプ正規化', () => {
     expect(mockIsIndexable).toHaveBeenCalledWith('text/csv')
     expect(mockInngestSend).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ mimeType: 'text/csv' }),
+    }))
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: { channelId: CHANNEL_ID },
     }))
   })
 

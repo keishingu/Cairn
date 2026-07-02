@@ -136,7 +136,6 @@ describe('permissions', () => {
   it('canAccessFile は guest の自己アップロードでも現在のアクセス範囲外なら拒否する', async () => {
     mockDb.select
       .mockReturnValueOnce(makeSelectResult([{ role: 'guest' }]))
-      .mockReturnValueOnce(makeSelectResult([]))
     mockDb.selectDistinct.mockReturnValueOnce({
       from: vi.fn().mockReturnThis(),
       innerJoin: vi.fn().mockReturnThis(),
@@ -150,7 +149,54 @@ describe('permissions', () => {
       projectId: null,
       uploadedBy: 'user-1',
       metadata: {},
-    })).resolves.toBe(false)
+    }, { pendingChannelId: 'channel-1' })).resolves.toBe(false)
+  })
+
+  it('canAccessFile は guest の仮添付ファイルを同じ channel に投稿する時だけ許可する', async () => {
+    mockDb.select
+      .mockReturnValueOnce(makeSelectResult([{ role: 'guest' }]))
+      .mockReturnValueOnce(makeSelectResult([{ role: 'guest' }]))
+      .mockReturnValueOnce(makeSelectResult([{
+        isPrivate: false,
+        type: 'public',
+        projectId: null,
+        effectiveWorkspaceId: 'ws-1',
+      }]))
+    mockDb.selectDistinct.mockReturnValue({
+      from: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    })
+
+    const { canAccessFile } = await import('./permissions')
+    await expect(canAccessFile('ws-1', 'user-1', {
+      id: 'file-1',
+      workspaceId: 'ws-1',
+      projectId: null,
+      uploadedBy: 'user-1',
+      metadata: { channelId: 'channel-1' },
+    }, { pendingChannelId: 'channel-1' })).resolves.toBe(true)
+  })
+
+  it('canAccessFile は guest の旧 channel 添付を別 channel へ再利用させない', async () => {
+    mockDb.select
+      .mockReturnValueOnce(makeSelectResult([{ role: 'guest' }]))
+      .mockReturnValueOnce(makeSelectResult([{ role: 'guest' }]))
+      .mockReturnValueOnce(makeSelectResult([]))
+    mockDb.selectDistinct.mockReturnValue({
+      from: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    })
+
+    const { canAccessFile } = await import('./permissions')
+    await expect(canAccessFile('ws-1', 'user-1', {
+      id: 'file-1',
+      workspaceId: 'ws-1',
+      projectId: null,
+      uploadedBy: 'user-1',
+      metadata: { channelId: 'channel-1' },
+    }, { pendingChannelId: 'channel-2' })).resolves.toBe(false)
   })
 
 })
