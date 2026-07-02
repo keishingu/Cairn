@@ -174,7 +174,7 @@ describe('permissions', () => {
       workspaceId: 'ws-1',
       projectId: null,
       uploadedBy: 'user-1',
-      metadata: { channelId: 'channel-1' },
+      metadata: { pendingChannelId: 'channel-1' },
     }, { pendingChannelId: 'channel-1' })).resolves.toBe(true)
   })
 
@@ -195,7 +195,7 @@ describe('permissions', () => {
       workspaceId: 'ws-1',
       projectId: null,
       uploadedBy: 'user-1',
-      metadata: { channelId: 'channel-1' },
+      metadata: { pendingChannelId: 'channel-1' },
     }, { pendingChannelId: 'channel-2' })).resolves.toBe(false)
   })
 

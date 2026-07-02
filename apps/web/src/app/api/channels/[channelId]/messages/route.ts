@@ -327,6 +327,7 @@ export async function POST(req: Request, { params }: RouteContext) {
           workspaceId: files.workspaceId,
           projectId: files.projectId,
           uploadedBy: files.uploadedBy,
+          metadata: files.metadata,
         })
         .from(files)
         .where(inArray(files.id, attachmentFileIds))

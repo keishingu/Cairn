@@ -117,7 +117,7 @@ export async function POST(req: Request) {
         mimeType,
         fileSize: file.size,
         fileType: resolveFileType(mimeType),
-        metadata: { channelId },
+        metadata: { pendingChannelId: channelId },
       })
       .returning()
 

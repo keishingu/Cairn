@@ -124,7 +124,7 @@ describe('/api/attachments/upload のCSV MIMEタイプ正規化', () => {
       data: expect.objectContaining({ mimeType: 'text/csv' }),
     }))
     expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
-      metadata: { channelId: CHANNEL_ID },
+      metadata: { pendingChannelId: CHANNEL_ID },
     }))
   })
 

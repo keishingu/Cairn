@@ -200,6 +200,12 @@ export interface FileAccessOptions {
   pendingChannelId?: string
 }
 
+function getPendingMetadataChannelId(metadata: unknown): string | null {
+  const meta = (metadata ?? {}) as Record<string, unknown>
+  const pendingChannelId = meta['pendingChannelId']
+  return typeof pendingChannelId === 'string' ? pendingChannelId : null
+}
+
 function getMetadataChannelIds(metadata: unknown): Set<string> {
   const meta = (metadata ?? {}) as Record<string, unknown>
   const metadataChannelIds = new Set<string>()
@@ -231,12 +237,12 @@ export async function canAccessFile(
   // ワークスペース非所属（role なし）は不可
   if (!isWorkspaceMember(role) && role !== 'guest') return false
   if (file.uploadedBy === userId && role !== 'guest') return true
-  const metadataChannelIds = getMetadataChannelIds(file.metadata)
+  const pendingMetadataChannelId = getPendingMetadataChannelId(file.metadata)
   if (
     file.uploadedBy === userId &&
     role === 'guest' &&
     options.pendingChannelId &&
-    metadataChannelIds.has(options.pendingChannelId)
+    pendingMetadataChannelId === options.pendingChannelId
   ) {
     const forbidden = await requireChannelAccess(workspaceId, userId, options.pendingChannelId)
     if (!forbidden) return true
@@ -255,6 +261,7 @@ export async function canAccessFile(
   }
 
   // metadata.channelIds（新形式の配列）と旧形式の単一 metadata.channelId の両方を見る
+  const metadataChannelIds = getMetadataChannelIds(file.metadata)
   for (const metadataChannelId of metadataChannelIds) {
     const forbidden = await requireChannelAccess(workspaceId, userId, metadataChannelId)
     if (!forbidden) return true

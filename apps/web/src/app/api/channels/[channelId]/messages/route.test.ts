@@ -228,6 +228,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
           workspaceId: DEV_WORKSPACE_ID,
           projectId: null,
           uploadedBy: DEV_USER_ID,
+          metadata: { pendingChannelId: CHANNEL_ID },
         },
       ],
       [
@@ -264,7 +265,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     expect(mockCanAccessFile).toHaveBeenCalledWith(
       DEV_WORKSPACE_ID,
       DEV_USER_ID,
-      expect.objectContaining({ id: 'file-1' }),
+      expect.objectContaining({ id: 'file-1', metadata: { pendingChannelId: CHANNEL_ID } }),
       { pendingChannelId: CHANNEL_ID },
     )
   })
