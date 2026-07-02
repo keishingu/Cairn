@@ -154,14 +154,18 @@ export async function POST(req: Request) {
       assigneeAvatarUrl: assigneeRow?.avatarUrl ?? null,
     }
 
-    const shouldNotifyAssignee = inserted.assigneeId && inserted.assigneeId !== ctx.userId
+    const assigneeIdForNotification = inserted.assigneeId && inserted.assigneeId !== ctx.userId
+      ? inserted.assigneeId
+      : null
+
+    const shouldNotifyAssignee = assigneeIdForNotification
       ? await isActiveWorkspaceMember({
           workspaceId: ctx.workspaceId,
-          userId: inserted.assigneeId,
+          userId: assigneeIdForNotification,
         })
       : false
 
-    if (shouldNotifyAssignee) {
+    if (shouldNotifyAssignee && assigneeIdForNotification) {
       const [assigner] = await db
         .select({ displayName: profiles.displayName })
         .from(profiles)
@@ -173,7 +177,7 @@ export async function POST(req: Request) {
           data: {
             taskId: inserted.id,
             taskTitle: inserted.title,
-            assigneeId: inserted.assigneeId,
+            assigneeId: assigneeIdForNotification,
             projectId: inserted.projectId,
             projectTitle: projectRow?.title ?? '',
             workspaceId: ctx.workspaceId,
