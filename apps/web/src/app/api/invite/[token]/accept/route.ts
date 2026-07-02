@@ -55,94 +55,102 @@ export async function POST(
       }
     }
 
-    // max_uses チェックとインクリメントをアトミックに実行し、
-    // 上限未満の場合のみ行が返る → 競合状態を防ぐ
-    const [claimed] = await db
-      .update(workspaceInvites)
-      .set({ useCount: sql`${workspaceInvites.useCount} + 1` })
-      .where(
-        and(
-          eq(workspaceInvites.id, invite.id),
-          or(
-            isNull(workspaceInvites.maxUses),
-            sql`${workspaceInvites.useCount} < ${workspaceInvites.maxUses}`,
-          ),
+    const claimed = await db.transaction(async (tx) => {
+      // max_uses チェックとインクリメントをアトミックに実行し、
+      // 後続の再有効化や掃除も同一 transaction に含めて中途半端な権限復元を防ぐ
+      const [claimedInvite] = await tx
+        .update(workspaceInvites)
+        .set({ useCount: sql`${workspaceInvites.useCount} + 1` })
+        .where(
+          and(
+            eq(workspaceInvites.id, invite.id),
+            or(
+              isNull(workspaceInvites.maxUses),
+              sql`${workspaceInvites.useCount} < ${workspaceInvites.maxUses}`,
+            ),
+          )
         )
-      )
-      .returning({
-        id: workspaceInvites.id,
-        workspaceId: workspaceInvites.workspaceId,
-        role: workspaceInvites.role,
-        projectId: workspaceInvites.projectId,
-      })
+        .returning({
+          id: workspaceInvites.id,
+          workspaceId: workspaceInvites.workspaceId,
+          role: workspaceInvites.role,
+          projectId: workspaceInvites.projectId,
+        })
+
+      if (!claimedInvite) {
+        return null
+      }
+
+      if (existingMembership) {
+        await tx
+          .update(workspaceMembers)
+          .set({ membershipStatus: 'active', role: claimedInvite.role })
+          .where(eq(workspaceMembers.id, existingMembership.id))
+
+        if (claimedInvite.role === 'guest') {
+          const workspaceProjectIds = (await tx
+            .select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.workspaceId, claimedInvite.workspaceId))
+          ).map(project => project.id)
+          const workspaceChannelIds = (await tx
+            .select({ id: channels.id })
+            .from(channels)
+            .leftJoin(projects, eq(channels.projectId, projects.id))
+            .where(sql`coalesce(${channels.workspaceId}, ${projects.workspaceId}) = ${claimedInvite.workspaceId}`)
+          ).map(channel => channel.id)
+
+          if (workspaceProjectIds.length > 0) {
+            await tx
+              .delete(projectMembers)
+              .where(and(
+                eq(projectMembers.userId, userId),
+                inArray(projectMembers.projectId, workspaceProjectIds),
+              ))
+          }
+
+          if (workspaceChannelIds.length > 0) {
+            await tx
+              .delete(channelMembers)
+              .where(and(
+                eq(channelMembers.userId, userId),
+                inArray(channelMembers.channelId, workspaceChannelIds),
+              ))
+          }
+
+          await tx
+            .delete(notifications)
+            .where(and(
+              eq(notifications.userId, userId),
+              eq(notifications.workspaceId, claimedInvite.workspaceId),
+            ))
+        }
+      } else {
+        await tx.insert(workspaceMembers).values({
+          workspaceId: claimedInvite.workspaceId,
+          userId: userId,
+          role: claimedInvite.role,
+        })
+      }
+
+      // ゲスト招待にプロジェクトが紐付いている場合、再有効化と同じ transaction で付け直す
+      if (claimedInvite.projectId) {
+        await tx
+          .insert(projectMembers)
+          .values({
+            projectId: claimedInvite.projectId,
+            userId,
+            role: 'member',
+            attendance: 'attending',
+          })
+          .onConflictDoNothing()
+      }
+
+      return claimedInvite
+    })
 
     if (!claimed) {
       return NextResponse.json({ error: 'Invite link has reached its usage limit' }, { status: 410 })
-    }
-
-    if (existingMembership) {
-      await db
-        .update(workspaceMembers)
-        .set({ membershipStatus: 'active', role: claimed.role })
-        .where(eq(workspaceMembers.id, existingMembership.id))
-
-      if (claimed.role === 'guest') {
-        const workspaceProjectIds = (await db
-          .select({ id: projects.id })
-          .from(projects)
-          .where(eq(projects.workspaceId, claimed.workspaceId))
-        ).map(project => project.id)
-        const workspaceChannelIds = (await db
-          .select({ id: channels.id })
-          .from(channels)
-          .leftJoin(projects, eq(channels.projectId, projects.id))
-          .where(sql`coalesce(${channels.workspaceId}, ${projects.workspaceId}) = ${claimed.workspaceId}`)
-        ).map(channel => channel.id)
-
-        if (workspaceProjectIds.length > 0) {
-          await db
-            .delete(projectMembers)
-            .where(and(
-              eq(projectMembers.userId, userId),
-              inArray(projectMembers.projectId, workspaceProjectIds),
-            ))
-        }
-
-        if (workspaceChannelIds.length > 0) {
-          await db
-            .delete(channelMembers)
-            .where(and(
-              eq(channelMembers.userId, userId),
-              inArray(channelMembers.channelId, workspaceChannelIds),
-            ))
-        }
-
-        await db
-          .delete(notifications)
-          .where(and(
-            eq(notifications.userId, userId),
-            eq(notifications.workspaceId, claimed.workspaceId),
-          ))
-      }
-    } else {
-      await db.insert(workspaceMembers).values({
-        workspaceId: claimed.workspaceId,
-        userId: userId,
-        role: claimed.role,
-      })
-    }
-
-    // ゲスト招待にプロジェクトが紐付いている場合、プロジェクトメンバーにも自動追加
-    if (claimed.projectId) {
-      await db
-        .insert(projectMembers)
-        .values({
-          projectId: claimed.projectId,
-          userId,
-          role: 'member',
-          attendance: 'attending',
-        })
-        .onConflictDoNothing()
     }
 
     if (inngest) {

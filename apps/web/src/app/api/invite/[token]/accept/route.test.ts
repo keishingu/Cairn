@@ -16,6 +16,7 @@ const { mockGetAuthUser, mockDb } = vi.hoisted(() => {
     insert: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    transaction: vi.fn(),
   }
   return { mockGetAuthUser, mockDb }
 })
@@ -132,6 +133,7 @@ function updateChain(result: unknown[]) {
 describe('POST /api/invite/[token]/accept', () => {
   beforeEach(() => {
     process.env['DATABASE_URL'] = 'postgresql://test'
+    mockDb.transaction.mockImplementation(async (callback: (tx: typeof mockDb) => Promise<unknown>) => callback(mockDb))
   })
 
   afterEach(() => {
@@ -219,6 +221,7 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(body.workspaceId).toBe(WORKSPACE_ID)
     expect(mockDb.insert).not.toHaveBeenCalled()
     expect(mockDb.update).toHaveBeenCalledTimes(2)
+    expect(mockDb.transaction).toHaveBeenCalledTimes(1)
     expect(reactivateSet).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'member' })
   })
 
@@ -278,6 +281,7 @@ describe('POST /api/invite/[token]/accept', () => {
 
     expect(res.status).toBe(200)
     expect(mockDb.update).toHaveBeenCalledTimes(2)
+    expect(mockDb.transaction).toHaveBeenCalledTimes(1)
     expect(reactivateSet).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'guest' })
     expect(mockDb.delete).toHaveBeenCalledTimes(3)
     expect(deleteWhere).toHaveBeenCalledTimes(1)
@@ -311,6 +315,7 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(res.status).toBe(410)
     const body = await res.json() as { error: string }
     expect(body.error).toContain('usage limit')
+    expect(mockDb.transaction).toHaveBeenCalledTimes(1)
   })
 
   it('有効なトークン・未参加ユーザー → ワークスペースに追加して workspaceId を返す', async () => {
