@@ -84,8 +84,15 @@ export async function GET() {
       .leftJoin(projectCountSq, eq(projectCountSq.userId, workspaceMembers.userId))
       .where(
         isGuest
-          ? and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, visibleUserIds))
-          : eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          ? and(
+            eq(workspaceMembers.workspaceId, ctx.workspaceId),
+            eq(workspaceMembers.membershipStatus, 'active'),
+            inArray(workspaceMembers.userId, visibleUserIds),
+          )
+          : and(
+            eq(workspaceMembers.workspaceId, ctx.workspaceId),
+            eq(workspaceMembers.membershipStatus, 'active'),
+          ),
       )
       .orderBy(profiles.displayName)
 

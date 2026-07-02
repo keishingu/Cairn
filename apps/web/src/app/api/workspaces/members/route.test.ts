@@ -43,17 +43,18 @@ vi.mock('@cairn/db', () => ({
     userId: 'wm.userId',
     avatarUrl: 'wm.avatarUrl',
     role: 'wm.role',
+    membershipStatus: 'wm.membershipStatus',
     joinedAt: 'wm.joinedAt',
   },
   projectMembers: { userId: 'pm.userId', projectId: 'pm.projectId' },
   projects: { id: 'projects.id', workspaceId: 'projects.workspaceId' },
 }))
 vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => 'eq'),
-  and: vi.fn(() => 'and'),
+  eq: vi.fn((...args) => ({ type: 'eq', args })),
+  and: vi.fn((...args) => ({ type: 'and', args })),
   count: vi.fn(() => ({ as: vi.fn(() => 'count_as') })),
   sql: vi.fn(() => 'sql'),
-  inArray: vi.fn(() => 'inArray'),
+  inArray: vi.fn((...args) => ({ type: 'inArray', args })),
 }))
 
 function chain(result: unknown[]) {
@@ -208,5 +209,22 @@ describe('GET /api/workspaces/members', () => {
       joinedAt: '2026-01-03',
       projectCount: 0,
     }])
+  })
+
+  it('active な workspace membership だけ返す条件を付ける', async () => {
+    mockDb.select
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+
+    const { GET } = await import('./route')
+    const res = await GET()
+
+    expect(res.status).toBe(200)
+
+    const rowsChain = mockDb.select.mock.results[1]?.value.from.mock.results[0]?.value
+      .innerJoin.mock.results[0]?.value.leftJoin.mock.results[0]?.value
+    const whereArg = rowsChain.where.mock.calls[0]?.[0]
+    expect(whereArg.args).toContainEqual({ type: 'eq', args: ['wm.workspaceId', WS_ID] })
+    expect(whereArg.args).toContainEqual({ type: 'eq', args: ['wm.membershipStatus', 'active'] })
   })
 })

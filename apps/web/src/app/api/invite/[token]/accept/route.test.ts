@@ -55,6 +55,11 @@ vi.mock('@cairn/db', () => ({
     channelId: 'cm.channelId',
     userId: 'cm.userId',
   },
+  notifications: {
+    id: 'n.id',
+    userId: 'n.userId',
+    workspaceId: 'n.workspaceId',
+  },
   projects: {
     id: 'p.id',
     workspaceId: 'p.workspaceId',
@@ -232,6 +237,7 @@ describe('POST /api/invite/[token]/accept', () => {
     })
     const deleteWhere = vi.fn().mockResolvedValue([])
     const deleteChannelWhere = vi.fn().mockResolvedValue([])
+    const deleteNotificationWhere = vi.fn().mockResolvedValue([])
     const projectMemberInsert = vi.fn().mockReturnValue({
       onConflictDoNothing: vi.fn().mockResolvedValue([]),
     })
@@ -256,6 +262,9 @@ describe('POST /api/invite/[token]/accept', () => {
     mockDb.delete.mockReturnValueOnce({
       where: deleteChannelWhere,
     })
+    mockDb.delete.mockReturnValueOnce({
+      where: deleteNotificationWhere,
+    })
 
     mockDb.insert.mockReturnValueOnce({
       values: projectMemberInsert,
@@ -270,9 +279,10 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(res.status).toBe(200)
     expect(mockDb.update).toHaveBeenCalledTimes(2)
     expect(reactivateSet).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'guest' })
-    expect(mockDb.delete).toHaveBeenCalledTimes(2)
+    expect(mockDb.delete).toHaveBeenCalledTimes(3)
     expect(deleteWhere).toHaveBeenCalledTimes(1)
     expect(deleteChannelWhere).toHaveBeenCalledTimes(1)
+    expect(deleteNotificationWhere).toHaveBeenCalledTimes(1)
     expect(mockDb.insert).toHaveBeenCalledTimes(1)
     expect(projectMemberInsert).toHaveBeenCalledWith({
       projectId: 'project-invited',
