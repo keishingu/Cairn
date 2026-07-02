@@ -69,6 +69,10 @@ function chain(result: unknown[]) {
 describe('GET /api/projects/[id]/files', () => {
   afterEach(() => {
     vi.clearAllMocks()
+    mockDb.select.mockReset()
+    mockDb.selectDistinct.mockReset()
+    mockRequireProjectAccess.mockReset()
+    mockCanAccessFile.mockReset()
     vi.resetModules()
   })
 
@@ -128,5 +132,54 @@ describe('GET /api/projects/[id]/files', () => {
       }),
     ])
     expect(mockCanAccessFile).toHaveBeenCalledTimes(2)
+  })
+
+  it('canAccessFile の fan-out を 50 件単位に抑える', async () => {
+    getAuthContext.mockResolvedValue({
+      ctx: { workspaceId: 'ws-1', userId: 'user-1' },
+      error: null,
+    })
+    mockRequireProjectAccess.mockResolvedValue(null)
+
+    const rows = Array.from({ length: 120 }, (_, index) => ({
+      id: `file-${index}`,
+      fileName: `file-${index}.txt`,
+      mimeType: 'text/plain',
+      fileSize: 10,
+      fileType: 'file',
+      uploaderName: 'User One',
+      createdAt: new Date(`2026-07-02T12:${String(index % 60).padStart(2, '0')}:00Z`),
+      metadata: {},
+      workspaceId: 'ws-1',
+      projectId: 'project-1',
+      uploadedBy: 'user-2',
+    }))
+
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: 'project-1' }]))
+      .mockReturnValueOnce(chain(rows))
+    mockDb.selectDistinct.mockReturnValueOnce({
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    })
+
+    let inFlight = 0
+    let maxInFlight = 0
+    mockCanAccessFile.mockImplementation(async () => {
+      inFlight += 1
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      await Promise.resolve()
+      inFlight -= 1
+      return true
+    })
+
+    const { GET } = await import('./route')
+    const res = await GET({} as Request, { params: Promise.resolve({ id: 'project-1' }) })
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(json).toHaveLength(120)
+    expect(mockCanAccessFile).toHaveBeenCalledTimes(120)
+    expect(maxInFlight).toBeLessThanOrEqual(50)
   })
 })

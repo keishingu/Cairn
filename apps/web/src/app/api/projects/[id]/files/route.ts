@@ -29,6 +29,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const { db, files, profiles, projects, galleryItems, documentChunks } = await import('@cairn/db')
     const { eq, and, isNull, desc, inArray } = await import('drizzle-orm')
     const { isIndexable } = await import('@/lib/ai/extract-text')
+    const accessCheckBatchSize = 50
 
     // プロジェクトが同一ワークスペースに属することを確認
     const [project] = await db
@@ -68,24 +69,29 @@ export async function GET(_req: Request, { params }: RouteContext) {
       ))
       .orderBy(desc(files.createdAt))
 
-    const visibleRows = (
-      await Promise.all(
-        rows.map(async (row) => {
-          const visible = await canAccessFile(
-            ctx.workspaceId,
-            ctx.userId,
-            {
-              id: row.id,
-              workspaceId: row.workspaceId,
-              projectId: row.projectId,
-              uploadedBy: row.uploadedBy,
-              metadata: row.metadata,
-            },
-          )
-          return visible ? row : null
-        }),
-      )
-    ).filter((row): row is typeof rows[number] => row !== null)
+    const visibleRows = []
+    for (let index = 0; index < rows.length; index += accessCheckBatchSize) {
+      const batch = rows.slice(index, index + accessCheckBatchSize)
+      const visibleBatch = (
+        await Promise.all(
+          batch.map(async (row) => {
+            const visible = await canAccessFile(
+              ctx.workspaceId,
+              ctx.userId,
+              {
+                id: row.id,
+                workspaceId: row.workspaceId,
+                projectId: row.projectId,
+                uploadedBy: row.uploadedBy,
+                metadata: row.metadata,
+              },
+            )
+            return visible ? row : null
+          }),
+        )
+      ).filter((row): row is typeof rows[number] => row !== null)
+      visibleRows.push(...visibleBatch)
+    }
 
     // チャンク済みファイルの ID セットを取得
     const fileIds = visibleRows.map(r => r.id)

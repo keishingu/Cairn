@@ -3,12 +3,13 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const { mockDb, mockRequireChannelAccess, mockRequireProjectAccess } = vi.hoisted(() => ({
+const { mockDb, mockRequireChannelAccess, mockRequireProjectAccess, mockGetWorkspaceMemberRole } = vi.hoisted(() => ({
   mockDb: {
     select: vi.fn(),
   },
   mockRequireChannelAccess: vi.fn(),
   mockRequireProjectAccess: vi.fn(),
+  mockGetWorkspaceMemberRole: vi.fn(),
 }))
 
 const getAuthContext = vi.fn()
@@ -20,6 +21,7 @@ vi.mock('@/lib/get-auth-context', () => ({
 vi.mock('@/lib/permissions', () => ({
   requireChannelAccess: mockRequireChannelAccess,
   requireProjectAccess: mockRequireProjectAccess,
+  getWorkspaceMemberRole: mockGetWorkspaceMemberRole,
 }))
 
 vi.mock('@cairn/db', () => ({
@@ -56,6 +58,10 @@ function selectChain(result: unknown[]) {
 describe('GET /api/notifications', () => {
   afterEach(() => {
     vi.clearAllMocks()
+    mockDb.select.mockReset()
+    mockRequireChannelAccess.mockReset()
+    mockRequireProjectAccess.mockReset()
+    mockGetWorkspaceMemberRole.mockReset()
     vi.resetModules()
   })
 
@@ -64,6 +70,7 @@ describe('GET /api/notifications', () => {
       ctx: { workspaceId: 'ws-1', userId: 'user-1' },
       error: null,
     })
+    mockGetWorkspaceMemberRole.mockResolvedValue('member')
     mockDb.select.mockReturnValueOnce(selectChain([
       {
         id: 'n-visible',
@@ -117,6 +124,7 @@ describe('GET /api/notifications', () => {
       ctx: { workspaceId: 'ws-1', userId: 'user-1' },
       error: null,
     })
+    mockGetWorkspaceMemberRole.mockResolvedValue('guest')
     mockDb.select.mockReturnValueOnce(selectChain([
       {
         id: 'task-visible',
@@ -159,6 +167,7 @@ describe('GET /api/notifications', () => {
       ctx: { workspaceId: 'ws-1', userId: 'user-1' },
       error: null,
     })
+    mockGetWorkspaceMemberRole.mockResolvedValue('member')
     const rows = Array.from({ length: 52 }, (_, index) => ({
       id: `n-${index}`,
       type: 'dm' as const,
@@ -191,6 +200,7 @@ describe('GET /api/notifications', () => {
       ctx: { workspaceId: 'ws-1', userId: 'user-1' },
       error: null,
     })
+    mockGetWorkspaceMemberRole.mockResolvedValue('member')
     const firstPage = Array.from({ length: 100 }, (_, index) => ({
       id: `first-${index}`,
       type: 'dm' as const,
@@ -236,6 +246,7 @@ describe('GET /api/notifications', () => {
       ctx: { workspaceId: 'ws-1', userId: 'user-1' },
       error: null,
     })
+    mockGetWorkspaceMemberRole.mockResolvedValue('member')
     const hiddenPage = Array.from({ length: 100 }, (_, index) => ({
       id: `hidden-${index}`,
       type: 'dm' as const,
@@ -265,5 +276,44 @@ describe('GET /api/notifications', () => {
     expect(mockDb.select).toHaveBeenCalledTimes(5)
     expect(mockRequireChannelAccess).toHaveBeenCalledTimes(500)
     expect(json).toEqual([])
+  })
+
+  it('guest は project scope を持たない legacy task 通知を閲覧できない', async () => {
+    getAuthContext.mockResolvedValue({
+      ctx: { workspaceId: 'ws-1', userId: 'user-1' },
+      error: null,
+    })
+    mockGetWorkspaceMemberRole.mockResolvedValue('guest')
+    mockDb.select.mockReturnValueOnce(selectChain([
+      {
+        id: 'task-legacy',
+        type: 'task',
+        title: 'legacy task',
+        body: 'hidden',
+        data: null,
+        readAt: null,
+        createdAt: new Date('2026-07-02T12:00:00Z'),
+      },
+      {
+        id: 'task-visible',
+        type: 'task',
+        title: 'scoped task',
+        body: 'visible',
+        data: { projectId: 'project-visible' },
+        readAt: null,
+        createdAt: new Date('2026-07-02T12:01:00Z'),
+      },
+    ]))
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockRequireProjectAccess.mockResolvedValue(null)
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/notifications'))
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([
+      expect.objectContaining({ id: 'task-visible' }),
+    ])
+    expect(mockRequireProjectAccess).toHaveBeenCalledTimes(1)
   })
 })

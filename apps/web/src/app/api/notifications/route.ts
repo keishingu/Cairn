@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireChannelAccess, requireProjectAccess } from '@/lib/permissions'
+import { getWorkspaceMemberRole, requireChannelAccess, requireProjectAccess } from '@/lib/permissions'
 
 export interface NotificationDto {
   id: string
@@ -38,6 +38,7 @@ export async function GET(req: Request) {
     const pageSize = 100
     const maxVisibleRows = 50
     const maxScannedRows = 500
+    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
 
     const conditions = [
       eq(notifications.userId, ctx.userId),
@@ -71,9 +72,13 @@ export async function GET(req: Request) {
               if (forbidden) return null
             }
             const projectId = data?.['projectId']
-            if (row.type === 'task' && typeof projectId === 'string') {
-              const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
-              if (forbidden) return null
+            if (row.type === 'task') {
+              if (typeof projectId !== 'string') {
+                if (role === 'guest') return null
+              } else {
+                const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+                if (forbidden) return null
+              }
             }
             return row
           }),
