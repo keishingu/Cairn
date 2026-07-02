@@ -70,15 +70,21 @@ export async function POST(
     const { channelMembers, channelReadStates, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    // 自ワークスペースに属さない userId を追加できないようにする（不正な channel_members 行の作成防止）
+    // inactive 行への再追加を防ぎ、stale な channel_members を増やさない
     const [member] = await db
       .select({ userId: workspaceMembers.userId })
       .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, userId)))
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.userId, userId),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ),
+      )
       .limit(1)
 
     if (!member) {
-      return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
+      return NextResponse.json({ error: '指定されたユーザーはアクティブなワークスペースメンバーではありません' }, { status: 422 })
     }
 
     await db
