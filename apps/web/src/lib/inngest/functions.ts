@@ -8,6 +8,11 @@ import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
 import { hasReadMessage } from '@/lib/push/suppress'
 import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
+import {
+  fetchActiveChannelRecipients,
+  fetchActiveGuestIds,
+  fetchActiveMentionedMembers,
+} from './notification-access'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
@@ -66,14 +71,7 @@ export const onMessageCreated = inngest.createFunction(
 
     // チャンネルメンバー（送信者を除く）を取得
     const members = await step.run('fetch-members', async () => {
-      const { db, channelMembers, profiles } = await import('@cairn/db')
-      const { eq } = await import('drizzle-orm')
-      return db
-        .select({ userId: channelMembers.userId, displayName: profiles.displayName })
-        .from(channelMembers)
-        .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
-        .where(eq(channelMembers.channelId, channelId))
-        .then(rows => rows.filter(r => r.userId !== senderId))
+      return fetchActiveChannelRecipients({ channelId, workspaceId, senderId })
     })
 
     // DM チャンネルの場合は相手に Push を送って終了
@@ -128,17 +126,11 @@ export const onMessageCreated = inngest.createFunction(
     if (members.length === 0 && mentionedIds.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
     const mentionedMembers = mentionedIds.length > 0
       ? await step.run('fetch-mentioned-members', async () => {
-          const { db, workspaceMembers, profiles } = await import('@cairn/db')
-          const { eq, inArray, and, ne } = await import('drizzle-orm')
-          return db
-            .select({ userId: workspaceMembers.userId, displayName: profiles.displayName })
-            .from(workspaceMembers)
-            .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
-            .where(and(
-              eq(workspaceMembers.workspaceId, workspaceId),
-              inArray(workspaceMembers.userId, mentionedIds),
-              ne(workspaceMembers.userId, senderId),
-            ))
+          return fetchActiveMentionedMembers({
+            workspaceId,
+            mentionedIds,
+            senderId,
+          })
         })
       : []
 
@@ -176,17 +168,7 @@ export const onMessageCreated = inngest.createFunction(
             : new Set<string>()
 
           const guestIds = ch.type === 'project' && ch.projectId
-            ? new Set(
-                (await db
-                  .select({ userId: workspaceMembers.userId })
-                  .from(workspaceMembers)
-                  .where(and(
-                    eq(workspaceMembers.workspaceId, workspaceId),
-                    inArray(workspaceMembers.userId, ids),
-                    eq(workspaceMembers.role, 'guest'),
-                  ))
-                ).map(r => r.userId),
-              )
+            ? await fetchActiveGuestIds({ workspaceId, userIds: ids })
             : new Set<string>()
 
           const projectMemberIds = guestIds.size > 0 && ch.projectId
