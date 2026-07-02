@@ -339,7 +339,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
         ) : view === 'table' && !isMobile ? (
           /* PC table view */
           <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
-            <div style={{ minWidth: 720 }}>
+            <div style={{ minWidth: 844 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px 32px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
               <span/>
               {(['title','status','date'] as SortKey[]).map((col) => {
