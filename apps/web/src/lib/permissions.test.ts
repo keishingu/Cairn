@@ -132,4 +132,24 @@ describe('permissions', () => {
     })
     expect(mockDb.select).toHaveBeenCalledTimes(1)
   })
+
+  it('canAccessFile は guest の自己アップロードでも現在のアクセス範囲外なら拒否する', async () => {
+    mockDb.select
+      .mockReturnValueOnce(makeSelectResult([{ role: 'guest' }]))
+      .mockReturnValueOnce(makeSelectResult([]))
+    mockDb.selectDistinct.mockReturnValueOnce({
+      from: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    })
+
+    const { canAccessFile } = await import('./permissions')
+    await expect(canAccessFile('ws-1', 'user-1', {
+      id: 'file-1',
+      workspaceId: 'ws-1',
+      projectId: null,
+      uploadedBy: 'user-1',
+      metadata: {},
+    })).resolves.toBe(false)
+  })
 })

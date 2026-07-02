@@ -90,7 +90,6 @@ export async function GET() {
 
     const visibleFileCondition = role === 'guest'
       ? or(
-          eq(files.uploadedBy, ctx.userId),
           exists(fileProjectMemberSq),
           exists(attachedChannelAccessSq),
           exists(metadataChannelAccessSq),

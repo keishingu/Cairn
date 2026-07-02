@@ -209,11 +209,11 @@ export async function canAccessFile(
   file: FileAccessRow,
 ): Promise<boolean> {
   if (file.workspaceId !== workspaceId) return false
-  if (file.uploadedBy === userId) return true
 
   const role = await getWorkspaceRole(workspaceId, userId)
   // ワークスペース非所属（role なし）は不可
   if (!isWorkspaceMember(role) && role !== 'guest') return false
+  if (file.uploadedBy === userId && role !== 'guest') return true
 
   // プロジェクトファイル: member 以上は全件可、guest は参加プロジェクトのみ
   if (file.projectId) {
