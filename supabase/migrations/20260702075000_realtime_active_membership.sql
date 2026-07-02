@@ -56,3 +56,25 @@ as $$
       )
   );
 $$;
+
+drop policy if exists "notifications_select" on "notifications";
+create policy "notifications_select" on "notifications"
+  for select to authenticated
+  using (
+    user_id = auth.uid()
+    and exists (
+      select 1
+      from workspace_members wm
+      where wm.user_id = auth.uid()
+        and wm.workspace_id = notifications.workspace_id
+        and wm.membership_status = 'active'
+    )
+  );
+
+drop policy if exists "channel_read_states_select" on "channel_read_states";
+create policy "channel_read_states_select" on "channel_read_states"
+  for select to authenticated
+  using (
+    user_id = auth.uid()
+    and public.can_access_channel(channel_id)
+  );

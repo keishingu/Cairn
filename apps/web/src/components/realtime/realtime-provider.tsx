@@ -7,6 +7,7 @@ import React from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
+import { WORKSPACE_COOKIE } from '@/lib/workspace-cookie'
 import {
   chatQueryKeys,
   useCurrentUser,
@@ -75,6 +76,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     for (const d of dms) ids.add(d.id)
     return [...ids].sort().join(',')
   }, [projectChannels, workspaceChannels, dms])
+  const workspaceId = React.useMemo(() => {
+    if (typeof document === 'undefined') return null
+    const entry = document.cookie
+      .split('; ')
+      .find((part) => part.startsWith(`${WORKSPACE_COOKIE}=`))
+    return entry ? decodeURIComponent(entry.slice(WORKSPACE_COOKIE.length + 1)) : null
+  }, [channelIdsKey, userId])
 
   // status が disconnected に留まった時だけ degraded を立てる
   React.useEffect(() => {
@@ -94,13 +102,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   // ─── ユーザートピック（notifications / channel_read_states）────
   React.useEffect(() => {
-    if (!userId) return
+    if (!userId || !workspaceId) return
 
     const supabase = createClient()
     let cancelled = false
 
     const userChannel = supabase
-      .channel(`user:${userId}`, { config: { private: true } })
+      .channel(`user:${userId}:workspace:${workspaceId}`, { config: { private: true } })
       .on('broadcast', { event: '*' }, (message) => {
         const table = tableOf((message as { payload?: unknown }).payload)
         if (table === 'notifications') {
@@ -154,7 +162,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       authSub.subscription.unsubscribe()
       void supabase.removeChannel(userChannel)
     }
-  }, [queryClient, userId, scheduleListInvalidate])
+  }, [queryClient, userId, workspaceId, scheduleListInvalidate])
 
   // ─── チャンネルトピック（messages / message_reactions）─────────
   // 一覧の変化に追従して join/leave を差分反映する
