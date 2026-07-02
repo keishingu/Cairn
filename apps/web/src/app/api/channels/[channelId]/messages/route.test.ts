@@ -312,4 +312,77 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
       }),
     }))
   })
+
+  it('POST は file/uploaded enqueue が失敗しても 201 を返す', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockCanAccessFile.mockResolvedValue(true)
+    mockSafeParse.mockReturnValue({
+      success: true,
+      data: {
+        content: 'hi',
+        channelId: CHANNEL_ID,
+        attachmentFileIds: ['file-1'],
+      },
+    })
+    mockSelectResults(
+      [
+        {
+          id: 'file-1',
+          workspaceId: DEV_WORKSPACE_ID,
+          projectId: null,
+          uploadedBy: DEV_USER_ID,
+          metadata: { pendingChannelId: CHANNEL_ID },
+          mimeType: 'text/plain',
+          storagePath: 'workspace/channel/file.txt',
+        },
+      ],
+      [
+        {
+          displayName: 'Kei',
+          avatarUrl: null,
+        },
+      ],
+    )
+    mockDbTransaction.mockImplementation(async (
+      callback: (tx: {
+        insert: () => { values: () => { returning?: () => Promise<Array<{ id: string, content: string, senderId: string, createdAt: Date }>> } }
+        update: () => { set: (value: unknown) => { where: () => Promise<unknown> } }
+      }) => Promise<unknown>,
+    ) => callback({
+      insert: () => ({
+        values: () => ({
+          returning: async () => [{
+            id: 'msg-1',
+            content: 'hi',
+            senderId: DEV_USER_ID,
+            createdAt: new Date('2026-07-02T05:40:00.000Z'),
+          }],
+        }),
+      }),
+      update: () => ({
+        set: () => ({
+          where: async () => undefined,
+        }),
+      }),
+    }))
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mockInngestSend
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('inngest down'))
+
+    const { POST } = await import('./route')
+    const req = new Request('http://localhost/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'hi', attachmentFileIds: ['file-1'] }),
+    })
+    const res = await POST(req, ctxRouteParams())
+
+    expect(res.status).toBe(201)
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[inngest] file/uploaded send failed (message already committed):',
+      expect.any(Error),
+    )
+    warnSpy.mockRestore()
+  })
 })

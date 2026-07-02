@@ -488,15 +488,21 @@ export async function POST(req: Request, { params }: RouteContext) {
           typeof file.storagePath === 'string' &&
           isIndexable(file.mimeType ?? ''),
         )
-        .map(file => inngest.send({
-          name: 'file/uploaded',
-          data: {
-            fileId: file.id,
-            workspaceId: ctx.workspaceId,
-            mimeType: file.mimeType,
-            storagePath: file.storagePath,
-          },
-        })),
+        .map(async (file) => {
+          try {
+            await inngest.send({
+              name: 'file/uploaded',
+              data: {
+                fileId: file.id,
+                workspaceId: ctx.workspaceId,
+                mimeType: file.mimeType,
+                storagePath: file.storagePath,
+              },
+            })
+          } catch (err) {
+            console.warn('[inngest] file/uploaded send failed (message already committed):', err)
+          }
+        }),
     )
 
     return NextResponse.json({

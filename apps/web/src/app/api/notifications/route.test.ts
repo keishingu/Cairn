@@ -182,4 +182,39 @@ describe('GET /api/notifications', () => {
     expect(json[0]).toEqual(expect.objectContaining({ id: 'second-0' }))
     expect(json.at(-1)).toEqual(expect.objectContaining({ id: 'second-49' }))
   })
+
+  it('不可視通知が続く場合でも走査件数を 500 件で打ち切る', async () => {
+    getAuthContext.mockResolvedValue({
+      ctx: { workspaceId: 'ws-1', userId: 'user-1' },
+      error: null,
+    })
+    const hiddenPage = Array.from({ length: 100 }, (_, index) => ({
+      id: `hidden-${index}`,
+      type: 'dm' as const,
+      title: `hidden-title-${index}`,
+      body: `hidden-body-${index}`,
+      data: { channelId: `hidden-${index}` },
+      readAt: null,
+      createdAt: new Date(`2026-07-02T09:${String(index % 60).padStart(2, '0')}:00Z`),
+    }))
+    mockDb.select
+      .mockReturnValueOnce(selectChain(hiddenPage))
+      .mockReturnValueOnce(selectChain(hiddenPage))
+      .mockReturnValueOnce(selectChain(hiddenPage))
+      .mockReturnValueOnce(selectChain(hiddenPage))
+      .mockReturnValueOnce(selectChain(hiddenPage))
+      .mockReturnValueOnce(selectChain(hiddenPage))
+    mockRequireChannelAccess.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 }),
+    )
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/notifications'))
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(mockDb.select).toHaveBeenCalledTimes(5)
+    expect(mockRequireChannelAccess).toHaveBeenCalledTimes(500)
+    expect(json).toEqual([])
+  })
 })

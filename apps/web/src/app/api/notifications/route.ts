@@ -37,6 +37,7 @@ export async function GET(req: Request) {
     const { eq, isNull, and, desc } = await import('drizzle-orm')
     const pageSize = 100
     const maxVisibleRows = 50
+    const maxScannedRows = 500
 
     const conditions = [
       eq(notifications.userId, ctx.userId),
@@ -49,7 +50,7 @@ export async function GET(req: Request) {
     const visibleRows: NotificationRow[] = []
     let offset = 0
 
-    while (visibleRows.length < maxVisibleRows) {
+    while (visibleRows.length < maxVisibleRows && offset < maxScannedRows) {
       const rows = await db
         .select()
         .from(notifications)
