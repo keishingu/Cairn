@@ -237,7 +237,9 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
         },
       ],
     )
-    mockDbTransaction.mockImplementation(async (callback: (tx: any) => Promise<unknown>) => callback({
+    mockDbTransaction.mockImplementation(async (
+      callback: (tx: { insert: () => { values: () => { returning: () => Promise<Array<{ id: string, content: string, senderId: string, createdAt: Date }>> } } }) => Promise<unknown>,
+    ) => callback({
       insert: () => ({
         values: () => ({
           returning: async () => [{
