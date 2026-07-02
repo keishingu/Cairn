@@ -339,8 +339,8 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
         ) : view === 'table' && !isMobile ? (
           /* PC table view */
           <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
-            <div style={{ minWidth: 844 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px 32px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            <div style={{ minWidth: 796 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
               <span/>
               {(['title','status','date'] as SortKey[]).map((col) => {
                 const labels: Record<SortKey, string> = { title: 'プロジェクト', status: 'ステータス', date: '日程', progress: '進捗' }
@@ -373,7 +373,6 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   </button>
                 )
               })()}
-              <span/>
             </div>
             {sortedProjects.map((p, i) => {
               const accent = p.statusColor ?? 'var(--text-3)'
@@ -381,7 +380,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               const selected = i === navIdx
               return (
                 <div key={p.id} data-list-index={i} onClick={() => openPanel?.(p)} style={{
-                  display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px 32px',
+                  display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px',
                   gap: 16, padding: '12px 16px', borderBottom: i < sortedProjects.length - 1 ? '1px solid var(--divider)' : 'none',
                   alignItems: 'center', cursor: 'pointer',
                   opacity: p.archived ? ARCHIVED_OPACITY : 1,
@@ -401,7 +400,6 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   <div style={{ height: 6, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${progress}%`, background: accent, borderRadius: 3 }}/>
                   </div>
-                  <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}><Icon name="more" size={14}/></button>
                 </div>
               )
             })}
