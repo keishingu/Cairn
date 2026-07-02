@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireProjectAccess } from '@/lib/permissions'
+import { canAccessFile, requireProjectAccess } from '@/lib/permissions'
 
 export interface ProjectFileDto {
   id: string
@@ -55,6 +55,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
         uploaderName: profiles.displayName,
         createdAt: files.createdAt,
         metadata: files.metadata,
+        workspaceId: files.workspaceId,
+        projectId: files.projectId,
+        uploadedBy: files.uploadedBy,
       })
       .from(files)
       .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
@@ -65,8 +68,27 @@ export async function GET(_req: Request, { params }: RouteContext) {
       ))
       .orderBy(desc(files.createdAt))
 
+    const visibleRows = (
+      await Promise.all(
+        rows.map(async (row) => {
+          const visible = await canAccessFile(
+            ctx.workspaceId,
+            ctx.userId,
+            {
+              id: row.id,
+              workspaceId: row.workspaceId,
+              projectId: row.projectId,
+              uploadedBy: row.uploadedBy,
+              metadata: row.metadata,
+            },
+          )
+          return visible ? row : null
+        }),
+      )
+    ).filter((row): row is typeof rows[number] => row !== null)
+
     // チャンク済みファイルの ID セットを取得
-    const fileIds = rows.map(r => r.id)
+    const fileIds = visibleRows.map(r => r.id)
     const chunkedIdSet = new Set<string>()
     if (fileIds.length > 0) {
       const chunked = await db
@@ -80,7 +102,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     }
 
     return NextResponse.json(
-      rows.map(r => {
+      visibleRows.map(r => {
         const meta = (r.metadata ?? {}) as Record<string, unknown>
         const externalUrl = meta['externalUrl']
 

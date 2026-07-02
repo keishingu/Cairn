@@ -236,6 +236,7 @@ function hasWorkspaceLevelExternalUrl(metadata: unknown): boolean {
 // ワークスペース所属だけを根拠にした越境アクセス（fileID 総当たり）を防ぐ。
 // - 別ワークスペースのファイルは不可
 // - アップロード者本人でも、現在アクセスできる pending channel に紐づく仮添付だけ可
+// - pending channel に残っている仮添付は、projectId が付いていても第三者へ公開しない
 // - プロジェクトファイルは member 以上なら可、guest は参加プロジェクトのみ
 // - メッセージ添付ファイルは、添付先チャンネルのいずれかにアクセスできれば可
 // - それ以外（未添付かつ非プロジェクトの他人のファイル）は不可
@@ -259,6 +260,9 @@ export async function canAccessFile(
   ) {
     const forbidden = await requireChannelAccessForRole(workspaceId, userId, options.pendingChannelId, role)
     if (!forbidden) return true
+  }
+  if (pendingMetadataChannelId) {
+    return false
   }
   if (
     file.uploadedBy === userId &&

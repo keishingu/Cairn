@@ -232,4 +232,18 @@ describe('permissions', () => {
     }, { pendingChannelId: 'channel-2' })).resolves.toBe(false)
   })
 
+  it('canAccessFile は pending project upload を他メンバーへ公開しない', async () => {
+    mockDb.select
+      .mockReturnValueOnce(makeSelectResult([{ role: 'member' }]))
+
+    const { canAccessFile } = await import('./permissions')
+    await expect(canAccessFile('ws-1', 'user-1', {
+      id: 'file-1',
+      workspaceId: 'ws-1',
+      projectId: 'project-1',
+      uploadedBy: 'user-2',
+      metadata: { pendingChannelId: 'channel-1' },
+    })).resolves.toBe(false)
+  })
+
 })
