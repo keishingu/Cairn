@@ -48,6 +48,18 @@ describe('filterMentionRecipients', () => {
     expect(result.map(r => r.userId)).toEqual(['member-a'])
   })
 
+  it('private project channel では stale な channel_members の guest も除外する', () => {
+    const channel: MentionChannelInfo = { type: 'project', projectId: 'p1', isPrivate: true }
+    const result = filterMentionRecipients({
+      channel,
+      recipients: [{ userId: 'guest-out' }],
+      channelMemberIds: new Set(['guest-out']),
+      guestIds: new Set(['guest-out']),
+      projectMemberIds: new Set(),
+    })
+    expect(result).toEqual([])
+  })
+
   it('member 以上（ゲストでない）はプロジェクト未参加でも通知対象に残す', () => {
     const channel: MentionChannelInfo = { type: 'project', projectId: 'p1', isPrivate: false }
     const result = filterMentionRecipients({

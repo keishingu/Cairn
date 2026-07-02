@@ -28,13 +28,19 @@ export function filterMentionRecipients<T extends { userId: string }>(params: {
 }): T[] {
   const { channel, recipients, channelMemberIds, guestIds, projectMemberIds } = params
 
+  const hasProjectAccess = (userId: string) => !guestIds.has(userId) || projectMemberIds.has(userId)
+
   if (channel.isPrivate) {
-    return recipients.filter(r => channelMemberIds.has(r.userId))
+    return recipients.filter((r) => {
+      if (!channelMemberIds.has(r.userId)) return false
+      if (channel.type === 'project' && channel.projectId) return hasProjectAccess(r.userId)
+      return true
+    })
   }
 
   if (channel.type === 'project' && channel.projectId) {
     // guest は参加プロジェクトに居る場合のみ通知。member 以上は常に通知可。
-    return recipients.filter(r => !guestIds.has(r.userId) || projectMemberIds.has(r.userId))
+    return recipients.filter(r => hasProjectAccess(r.userId))
   }
 
   return recipients
