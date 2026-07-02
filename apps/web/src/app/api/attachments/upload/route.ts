@@ -123,24 +123,6 @@ export async function POST(req: Request) {
 
     if (!inserted) throw new Error('Insert returned no rows')
 
-    const { isIndexable } = await import('@/lib/ai/extract-text')
-    if (isIndexable(mimeType)) {
-      try {
-        const { inngest } = await import('@/lib/inngest/client')
-        await inngest.send({
-          name: 'file/uploaded',
-          data: {
-            fileId: inserted.id,
-            workspaceId: ctx.workspaceId,
-            mimeType,
-            storagePath,
-          },
-        })
-      } catch (e) {
-        console.warn('[/api/attachments/upload] Inngest event send failed (indexing skipped):', e)
-      }
-    }
-
     return NextResponse.json(
       {
         fileId: inserted.id,

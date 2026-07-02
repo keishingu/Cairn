@@ -22,6 +22,9 @@ const {
   mockLte,
   mockGt,
   mockSafeParse,
+  mockInngestSend,
+  mockIsIndexable,
+  mockTxUpdateSet,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -37,6 +40,9 @@ const {
   mockLte: vi.fn(() => Symbol('lte')),
   mockGt: vi.fn(() => Symbol('gt')),
   mockSafeParse: vi.fn(),
+  mockInngestSend: vi.fn(() => Promise.resolve(undefined)),
+  mockIsIndexable: vi.fn(),
+  mockTxUpdateSet: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -48,8 +54,9 @@ vi.mock('@/lib/permissions', () => ({
   canAccessFile: mockCanAccessFile,
 }))
 
-vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn(() => Promise.resolve(undefined)) } }))
+vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 vi.mock('@/lib/chat/checkboxes', () => ({ parseCheckboxes: () => [] }))
+vi.mock('@/lib/ai/extract-text', () => ({ isIndexable: mockIsIndexable }))
 vi.mock('@cairn/shared', () => ({
   postMessageSchema: { safeParse: mockSafeParse },
 }))
@@ -95,7 +102,17 @@ vi.mock('@cairn/db', () => ({
     messageId: 'messageBookmarks.messageId',
     userId: 'messageBookmarks.userId',
   },
-  files: { id: 'files.id', fileName: 'files.fileName', mimeType: 'files.mimeType', fileSize: 'files.fileSize' },
+  files: {
+    id: 'files.id',
+    workspaceId: 'files.workspaceId',
+    projectId: 'files.projectId',
+    uploadedBy: 'files.uploadedBy',
+    metadata: 'files.metadata',
+    storagePath: 'files.storagePath',
+    fileName: 'files.fileName',
+    mimeType: 'files.mimeType',
+    fileSize: 'files.fileSize',
+  },
 }))
 vi.mock('drizzle-orm', () => ({
   eq: mockEq,
@@ -137,6 +154,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
       error: null,
     })
     mockSafeParse.mockReturnValue({ success: true, data: { content: 'hi', channelId: CHANNEL_ID } })
+    mockIsIndexable.mockReturnValue(true)
   })
 
   afterEach(() => {
@@ -229,6 +247,8 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
           projectId: null,
           uploadedBy: DEV_USER_ID,
           metadata: { pendingChannelId: CHANNEL_ID },
+          mimeType: 'text/plain',
+          storagePath: 'workspace/channel/file.txt',
         },
       ],
       [
@@ -239,7 +259,10 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
       ],
     )
     mockDbTransaction.mockImplementation(async (
-      callback: (tx: { insert: () => { values: () => { returning: () => Promise<Array<{ id: string, content: string, senderId: string, createdAt: Date }>> } } }) => Promise<unknown>,
+      callback: (tx: {
+        insert: () => { values: () => { returning?: () => Promise<Array<{ id: string, content: string, senderId: string, createdAt: Date }>> } }
+        update: () => { set: (value: unknown) => { where: () => Promise<unknown> } }
+      }) => Promise<unknown>,
     ) => callback({
       insert: () => ({
         values: () => ({
@@ -250,6 +273,14 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
             createdAt: new Date('2026-07-02T05:40:00.000Z'),
           }],
         }),
+      }),
+      update: () => ({
+        set: (value: unknown) => {
+          mockTxUpdateSet(value)
+          return {
+            where: async () => undefined,
+          }
+        },
       }),
     }))
 
@@ -268,5 +299,17 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
       expect.objectContaining({ id: 'file-1', metadata: { pendingChannelId: CHANNEL_ID } }),
       { pendingChannelId: CHANNEL_ID },
     )
+    expect(mockTxUpdateSet).toHaveBeenCalledWith({
+      metadata: { channelIds: [CHANNEL_ID] },
+    })
+    expect(mockInngestSend).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'file/uploaded',
+      data: expect.objectContaining({
+        fileId: 'file-1',
+        workspaceId: DEV_WORKSPACE_ID,
+        mimeType: 'text/plain',
+        storagePath: 'workspace/channel/file.txt',
+      }),
+    }))
   })
 })

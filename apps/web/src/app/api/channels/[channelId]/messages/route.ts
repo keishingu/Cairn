@@ -44,6 +44,36 @@ export interface MessageDto {
 
 type RouteContext = { params: Promise<{ channelId: string }> }
 
+function getPendingChannelIdFromMetadata(metadata: unknown): string | null {
+  const meta = (metadata ?? {}) as Record<string, unknown>
+  const pendingChannelId = meta['pendingChannelId']
+  return typeof pendingChannelId === 'string' ? pendingChannelId : null
+}
+
+function finalizeAttachmentMetadata(metadata: unknown, channelId: string): Record<string, unknown> {
+  const meta = { ...((metadata ?? {}) as Record<string, unknown>) }
+  delete meta['pendingChannelId']
+
+  const channelIds = new Set<string>()
+  const legacyChannelId = meta['channelId']
+  if (typeof legacyChannelId === 'string') channelIds.add(legacyChannelId)
+
+  const existingChannelIds = meta['channelIds']
+  if (Array.isArray(existingChannelIds)) {
+    for (const id of existingChannelIds) {
+      if (typeof id === 'string') channelIds.add(id)
+    }
+  }
+
+  channelIds.add(channelId)
+  delete meta['channelId']
+
+  return {
+    ...meta,
+    channelIds: [...channelIds],
+  }
+}
+
 export async function GET(req: Request, { params }: RouteContext) {
   const { channelId } = await params
   const { ctx, error: authError } = await getAuthContext()
@@ -319,15 +349,26 @@ export async function POST(req: Request, { params }: RouteContext) {
     const attachmentFileIds = parsed.data.attachmentFileIds ?? []
     // メンションは名前なしの canonical 形式で保存する（埋め込み名が来ても除去）
     const content = canonicalizeMentions(parsed.data.content)
+    let fileRows: Array<{
+      id: string
+      workspaceId: string
+      projectId: string | null
+      uploadedBy: string
+      metadata: unknown
+      mimeType: string | null
+      storagePath: string | null
+    }> = []
 
     if (attachmentFileIds.length > 0) {
-      const fileRows = await db
+      fileRows = await db
         .select({
           id: files.id,
           workspaceId: files.workspaceId,
           projectId: files.projectId,
           uploadedBy: files.uploadedBy,
           metadata: files.metadata,
+          mimeType: files.mimeType,
+          storagePath: files.storagePath,
         })
         .from(files)
         .where(inArray(files.id, attachmentFileIds))
@@ -376,6 +417,13 @@ export async function POST(req: Request, { params }: RouteContext) {
             fileId,
             displayOrder: i,
           })),
+        )
+
+        await Promise.all(
+          fileRows.map(file => tx
+            .update(files)
+            .set({ metadata: finalizeAttachmentMetadata(file.metadata, channelId) })
+            .where(eq(files.id, file.id))),
         )
       }
 
@@ -430,6 +478,26 @@ export async function POST(req: Request, { params }: RouteContext) {
     } satisfies MessageCreatedEvent).catch((err: unknown) => {
       console.warn('[inngest] message/created send failed (Inngest not running?):', err)
     })
+
+    const { isIndexable } = await import('@/lib/ai/extract-text')
+    await Promise.all(
+      fileRows
+        .filter(file =>
+          getPendingChannelIdFromMetadata(file.metadata) === channelId &&
+          typeof file.mimeType === 'string' &&
+          typeof file.storagePath === 'string' &&
+          isIndexable(file.mimeType ?? ''),
+        )
+        .map(file => inngest.send({
+          name: 'file/uploaded',
+          data: {
+            fileId: file.id,
+            workspaceId: ctx.workspaceId,
+            mimeType: file.mimeType,
+            storagePath: file.storagePath,
+          },
+        })),
+    )
 
     return NextResponse.json({
       id: inserted.id,

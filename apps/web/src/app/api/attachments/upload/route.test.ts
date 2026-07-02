@@ -103,7 +103,7 @@ describe('/api/attachments/upload のCSV MIMEタイプ正規化', () => {
     vi.clearAllMocks()
   })
 
-  it('拡張子が.csvでブラウザがapplication/vnd.ms-excelと報告した場合、text/csvとして保存・検索インデックス化する', async () => {
+  it('拡張子が.csvでブラウザがapplication/vnd.ms-excelと報告した場合、text/csvとして保存する', async () => {
     const formData = new FormData()
     formData.set('channelId', CHANNEL_ID)
     formData.set('file', makeFile('data.csv', 'application/vnd.ms-excel', 'a,b\n1,2'))
@@ -119,16 +119,14 @@ describe('/api/attachments/upload のCSV MIMEタイプ正規化', () => {
       expect.anything(),
       expect.objectContaining({ contentType: 'text/csv' }),
     )
-    expect(mockIsIndexable).toHaveBeenCalledWith('text/csv')
-    expect(mockInngestSend).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ mimeType: 'text/csv' }),
-    }))
+    expect(mockIsIndexable).not.toHaveBeenCalled()
+    expect(mockInngestSend).not.toHaveBeenCalled()
     expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
       metadata: { pendingChannelId: CHANNEL_ID },
     }))
   })
 
-  it('拡張子が.csvでformData経由でapplication/octet-streamと報告された場合も、text/csvとして保存・検索インデックス化する', async () => {
+  it('拡張子が.csvでformData経由でapplication/octet-streamと報告された場合も、text/csvとして保存する', async () => {
     const formData = new FormData()
     formData.set('channelId', CHANNEL_ID)
     formData.set('file', makeFile('data.csv', 'application/octet-stream', 'a,b\n1,2'))
