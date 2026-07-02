@@ -22,16 +22,6 @@ as $$
     select 1
     from channels c
     where c.id = p_channel_id
-      and exists (
-        select 1
-        from workspace_members wm
-        where wm.user_id = auth.uid()
-          and wm.workspace_id = coalesce(
-            c.workspace_id,
-            (select p.workspace_id from projects p where p.id = c.project_id)
-          )
-          and wm.membership_status = 'active'
-      )
       and (
         -- プライベートチャンネル・DM: チャンネルメンバーのみ
         (
@@ -46,6 +36,14 @@ as $$
         (
           c.is_private = false
           and c.type in ('workspace', 'project')
+          and exists (
+            select 1 from workspace_members wm
+            where wm.user_id = auth.uid()
+              and wm.workspace_id = coalesce(
+                c.workspace_id,
+                (select p.workspace_id from projects p where p.id = c.project_id)
+              )
+          )
         )
       )
   );
