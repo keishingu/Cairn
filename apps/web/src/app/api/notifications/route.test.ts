@@ -41,12 +41,13 @@ vi.mock('drizzle-orm', () => ({
 }))
 
 function selectChain(result: unknown[]) {
+  const offset = vi.fn().mockResolvedValue(result)
+  const limit = vi.fn().mockReturnValue({ offset })
+  const orderBy = vi.fn().mockReturnValue({ limit })
+  const where = vi.fn().mockReturnValue({ orderBy })
+  const from = vi.fn().mockReturnValue({ where })
   return {
-    from: vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        orderBy: vi.fn().mockResolvedValue(result),
-      }),
-    }),
+    from,
   }
 }
 
@@ -136,5 +137,49 @@ describe('GET /api/notifications', () => {
     expect(json).toHaveLength(49)
     expect(json[0]).toEqual(expect.objectContaining({ id: 'n-3' }))
     expect(json.at(-1)).toEqual(expect.objectContaining({ id: 'n-51' }))
+  })
+
+  it('可視 50 件に届くまで 100 件単位で追加取得する', async () => {
+    getAuthContext.mockResolvedValue({
+      ctx: { workspaceId: 'ws-1', userId: 'user-1' },
+      error: null,
+    })
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      id: `first-${index}`,
+      type: 'dm' as const,
+      title: `first-title-${index}`,
+      body: `first-body-${index}`,
+      data: { channelId: `hidden-${index}` },
+      readAt: null,
+      createdAt: new Date(`2026-07-02T10:${String(index % 60).padStart(2, '0')}:00Z`),
+    }))
+    const secondPage = Array.from({ length: 60 }, (_, index) => ({
+      id: `second-${index}`,
+      type: 'dm' as const,
+      title: `second-title-${index}`,
+      body: `second-body-${index}`,
+      data: { channelId: `visible-${index}` },
+      readAt: null,
+      createdAt: new Date(`2026-07-02T11:${String(index % 60).padStart(2, '0')}:00Z`),
+    }))
+    mockDb.select
+      .mockReturnValueOnce(selectChain(firstPage))
+      .mockReturnValueOnce(selectChain(secondPage))
+    mockRequireChannelAccess.mockImplementation(async (_workspaceId: string, _userId: string, channelId: string) => (
+      channelId.startsWith('hidden-')
+        ? new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 })
+        : null
+    ))
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/notifications'))
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
+    expect(mockRequireChannelAccess).toHaveBeenCalledTimes(160)
+    expect(json).toHaveLength(50)
+    expect(json[0]).toEqual(expect.objectContaining({ id: 'second-0' }))
+    expect(json.at(-1)).toEqual(expect.objectContaining({ id: 'second-49' }))
   })
 })

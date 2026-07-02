@@ -15,6 +15,16 @@ export interface NotificationDto {
   createdAt: string
 }
 
+type NotificationRow = {
+  id: string
+  type: NotificationDto['type']
+  title: string
+  body: string
+  data: Record<string, string> | null
+  readAt: Date | null
+  createdAt: Date
+}
+
 export async function GET(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -25,6 +35,8 @@ export async function GET(req: Request) {
   try {
     const { db, notifications } = await import('@cairn/db')
     const { eq, isNull, and, desc } = await import('drizzle-orm')
+    const pageSize = 100
+    const maxVisibleRows = 50
 
     const conditions = [
       eq(notifications.userId, ctx.userId),
@@ -34,28 +46,40 @@ export async function GET(req: Request) {
     if (filter === 'mention') conditions.push(eq(notifications.type, 'mention'))
     if (filter === 'ai') conditions.push(eq(notifications.type, 'ai'))
 
-    const rows = await db
-      .select()
-      .from(notifications)
-      .where(and(...conditions))
-      .orderBy(desc(notifications.createdAt))
+    const visibleRows: NotificationRow[] = []
+    let offset = 0
 
-    const visibleRows = (
-      await Promise.all(
-        rows.map(async (row) => {
-          const data = row.data as Record<string, string> | null
-          const channelId = data?.['channelId']
-          if (typeof channelId === 'string') {
-            const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
-            if (forbidden) return null
-          }
-          return row
-        }),
-      )
-    ).filter((row): row is typeof rows[number] => row !== null)
-      .slice(0, 50)
+    while (visibleRows.length < maxVisibleRows) {
+      const rows = await db
+        .select()
+        .from(notifications)
+        .where(and(...conditions))
+        .orderBy(desc(notifications.createdAt))
+        .limit(pageSize)
+        .offset(offset)
 
-    const result: NotificationDto[] = visibleRows.map(r => ({
+      if (rows.length === 0) break
+
+      const nextVisibleRows = (
+        await Promise.all(
+          rows.map(async (row) => {
+            const data = row.data as Record<string, string> | null
+            const channelId = data?.['channelId']
+            if (typeof channelId === 'string') {
+              const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+              if (forbidden) return null
+            }
+            return row
+          }),
+        )
+      ).filter((row): row is typeof rows[number] => row !== null)
+
+      visibleRows.push(...nextVisibleRows)
+      if (rows.length < pageSize) break
+      offset += rows.length
+    }
+
+    const result: NotificationDto[] = visibleRows.slice(0, maxVisibleRows).map(r => ({
       id: r.id,
       type: r.type,
       title: r.title,
