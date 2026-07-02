@@ -21,6 +21,23 @@ export interface FileDto {
   indexingStatus?: string
 }
 
+interface FileListRow {
+  id: string
+  projectId: string | null
+  projectTitle: string | null
+  workspaceId: string
+  channelName: string | null
+  fileName: string
+  mimeType: string | null
+  fileSize: number | null
+  fileType: string
+  metadata: unknown
+  uploadedBy: string
+  uploaderName: string
+  uploaderAvatarUrl: string | null
+  createdAt: Date
+}
+
 export async function GET() {
   try {
     const { ctx, error } = await getAuthContext()
@@ -30,6 +47,7 @@ export async function GET() {
     const { eq, and, desc, isNull, isNotNull, inArray, sql, exists, or, ne } = await import('drizzle-orm')
     const { isIndexable } = await import('@/lib/ai/extract-text')
     const accessCheckBatchSize = 50
+    const candidatePageSize = 200
 
     const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
     if (!role) {
@@ -102,62 +120,70 @@ export async function GET() {
           exists(metadataChannelAccessSq),
         )
 
-    const rows = await db
-      .select({
-        id: files.id,
-        projectId: files.projectId,
-        projectTitle: projects.title,
-        workspaceId: files.workspaceId,
-        channelName: sql<string | null>`(
-          SELECT ch.name
-          FROM message_attachments ma
-          INNER JOIN messages msg ON msg.id = ma.message_id
-          INNER JOIN channels ch ON ch.id = msg.channel_id
-          WHERE ma.file_id = ${files.id}
-          LIMIT 1
-        )`,
-        fileName: files.fileName,
-        mimeType: files.mimeType,
-        fileSize: files.fileSize,
-        fileType: files.fileType,
-        metadata: files.metadata,
-        uploadedBy: files.uploadedBy,
-        uploaderName: profiles.displayName,
-        uploaderAvatarUrl: workspaceMembers.avatarUrl,
-        createdAt: files.createdAt,
-      })
-      .from(files)
-      .leftJoin(projects, eq(files.projectId, projects.id))
-      .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, files.uploadedBy), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-      .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
-      .where(and(
-        eq(files.workspaceId, ctx.workspaceId),
-        isNull(galleryItems.id),
-        visibleFileCondition,
-      ))
-      .orderBy(desc(files.createdAt))
+    const visibleRows: FileListRow[] = []
+    let offset = 0
+    while (true) {
+      const rows: FileListRow[] = await db
+        .select({
+          id: files.id,
+          projectId: files.projectId,
+          projectTitle: projects.title,
+          workspaceId: files.workspaceId,
+          channelName: sql<string | null>`(
+            SELECT ch.name
+            FROM message_attachments ma
+            INNER JOIN messages msg ON msg.id = ma.message_id
+            INNER JOIN channels ch ON ch.id = msg.channel_id
+            WHERE ma.file_id = ${files.id}
+            LIMIT 1
+          )`,
+          fileName: files.fileName,
+          mimeType: files.mimeType,
+          fileSize: files.fileSize,
+          fileType: files.fileType,
+          metadata: files.metadata,
+          uploadedBy: files.uploadedBy,
+          uploaderName: profiles.displayName,
+          uploaderAvatarUrl: workspaceMembers.avatarUrl,
+          createdAt: files.createdAt,
+        })
+        .from(files)
+        .leftJoin(projects, eq(files.projectId, projects.id))
+        .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, files.uploadedBy), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+        .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
+        .where(and(
+          eq(files.workspaceId, ctx.workspaceId),
+          isNull(galleryItems.id),
+          visibleFileCondition,
+        ))
+        .orderBy(desc(files.createdAt))
+        .limit(candidatePageSize)
+        .offset(offset)
 
-    const visibleRows: typeof rows = []
-    for (let i = 0; i < rows.length; i += accessCheckBatchSize) {
-      const batch = rows.slice(i, i + accessCheckBatchSize)
-      const visibleBatch = await Promise.all(
-        batch.map(async (row) => {
-          const visible = await canAccessFile(
-            ctx.workspaceId,
-            ctx.userId,
-            {
-              id: row.id,
-              workspaceId: row.workspaceId,
-              projectId: row.projectId,
-              uploadedBy: row.uploadedBy,
-              metadata: row.metadata,
-            },
-          )
-          return visible ? row : null
-        }),
-      )
-      visibleRows.push(...visibleBatch.filter((row): row is typeof rows[number] => row !== null))
+      for (let i = 0; i < rows.length; i += accessCheckBatchSize) {
+        const batch = rows.slice(i, i + accessCheckBatchSize)
+        const visibleBatch = await Promise.all(
+          batch.map(async (row) => {
+            const visible = await canAccessFile(
+              ctx.workspaceId,
+              ctx.userId,
+              {
+                id: row.id,
+                workspaceId: row.workspaceId,
+                projectId: row.projectId,
+                uploadedBy: row.uploadedBy,
+                metadata: row.metadata,
+              },
+            )
+            return visible ? row : null
+          }),
+        )
+        visibleRows.push(...visibleBatch.filter((row): row is FileListRow => row !== null))
+      }
+
+      if (rows.length < candidatePageSize) break
+      offset += rows.length
     }
 
     const fileIds = visibleRows.map(r => r.id)

@@ -61,7 +61,9 @@ function selectChain(result: unknown[]) {
     leftJoin: vi.fn().mockReturnThis(),
     innerJoin: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
-    orderBy: vi.fn().mockResolvedValue(result),
+    orderBy: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    offset: vi.fn().mockResolvedValue(result),
   }
 }
 
@@ -175,5 +177,79 @@ describe('GET /api/files', () => {
     expect(res.status).toBe(200)
     expect(mockCanAccessFile).toHaveBeenCalledTimes(51)
     expect(maxInFlight).toBeLessThanOrEqual(50)
+  })
+
+  it('候補行は DB から 200 件ずつページング取得する', async () => {
+    getAuthContext.mockResolvedValue({
+      ctx: { workspaceId: 'ws-1', userId: 'user-1' },
+      error: null,
+    })
+    mockGetWorkspaceMemberRole.mockResolvedValue('member')
+
+    const firstPage = Array.from({ length: 200 }, (_, index) => ({
+      id: `file-${index}`,
+      projectId: null,
+      projectTitle: null,
+      workspaceId: 'ws-1',
+      channelName: null,
+      fileName: `file-${index}.txt`,
+      mimeType: 'text/plain',
+      fileSize: 10,
+      fileType: 'file',
+      metadata: {},
+      uploadedBy: 'user-1',
+      uploaderName: 'User One',
+      uploaderAvatarUrl: null,
+      createdAt: new Date('2026-07-02T12:00:00Z'),
+    }))
+    const secondPage = [{
+      id: 'file-200',
+      projectId: null,
+      projectTitle: null,
+      workspaceId: 'ws-1',
+      channelName: null,
+      fileName: 'file-200.txt',
+      mimeType: 'text/plain',
+      fileSize: 10,
+      fileType: 'file',
+      metadata: {},
+      uploadedBy: 'user-1',
+      uploaderName: 'User One',
+      uploaderAvatarUrl: null,
+      createdAt: new Date('2026-07-02T12:00:00Z'),
+    }]
+
+    const chains: Array<{ offset: ReturnType<typeof vi.fn> }> = []
+    let offsetInvocation = 0
+    mockDb.select.mockImplementation(() => {
+      const chain = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockImplementation(async () => {
+          const result = offsetInvocation === 0 ? firstPage : secondPage
+          offsetInvocation += 1
+          return result
+        }),
+      }
+      chains.push(chain)
+      return chain
+    })
+    mockDb.selectDistinct.mockReturnValueOnce({
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    })
+    mockCanAccessFile.mockResolvedValue(true)
+
+    const { GET } = await import('./route')
+    const res = await GET()
+    const offsetCallChains = chains.filter((chain) => chain.offset.mock.calls.length > 0)
+
+    expect(res.status).toBe(200)
+    expect(offsetCallChains).toHaveLength(2)
+    expect(mockCanAccessFile).toHaveBeenCalledTimes(201)
   })
 })

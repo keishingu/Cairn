@@ -227,6 +227,11 @@ function getMetadataChannelIds(metadata: unknown): Set<string> {
   return metadataChannelIds
 }
 
+function hasWorkspaceLevelExternalUrl(metadata: unknown): boolean {
+  const meta = (metadata ?? {}) as Record<string, unknown>
+  return typeof meta['externalUrl'] === 'string'
+}
+
 // ファイル単体の閲覧可否を判定する。`requireChannelAccess` と同じスコープ感で、
 // ワークスペース所属だけを根拠にした越境アクセス（fileID 総当たり）を防ぐ。
 // - 別ワークスペースのファイルは不可
@@ -246,6 +251,7 @@ export async function canAccessFile(
   // ワークスペース非所属（role なし）は不可
   if (!isWorkspaceMember(role) && role !== 'guest') return false
   const pendingMetadataChannelId = getPendingMetadataChannelId(file.metadata)
+  const metadataChannelIds = getMetadataChannelIds(file.metadata)
   if (
     file.uploadedBy === userId &&
     options.pendingChannelId &&
@@ -253,6 +259,15 @@ export async function canAccessFile(
   ) {
     const forbidden = await requireChannelAccessForRole(workspaceId, userId, options.pendingChannelId, role)
     if (!forbidden) return true
+  }
+  if (
+    file.uploadedBy === userId &&
+    !file.projectId &&
+    !pendingMetadataChannelId &&
+    metadataChannelIds.size === 0 &&
+    hasWorkspaceLevelExternalUrl(file.metadata)
+  ) {
+    return true
   }
 
   // プロジェクトファイル: member 以上は全件可、guest は参加プロジェクトのみ
@@ -268,7 +283,6 @@ export async function canAccessFile(
   }
 
   // metadata.channelIds（新形式の配列）と旧形式の単一 metadata.channelId の両方を見る
-  const metadataChannelIds = getMetadataChannelIds(file.metadata)
   for (const metadataChannelId of metadataChannelIds) {
     const forbidden = await requireChannelAccess(workspaceId, userId, metadataChannelId)
     if (!forbidden) return true

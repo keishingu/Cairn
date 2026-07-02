@@ -197,6 +197,20 @@ describe('permissions', () => {
     }, { pendingChannelId: 'channel-1' })).resolves.toBe(true)
   })
 
+  it('canAccessFile は member が作成した workspace-level link を許可する', async () => {
+    mockDb.select
+      .mockReturnValueOnce(makeSelectResult([{ role: 'member' }]))
+
+    const { canAccessFile } = await import('./permissions')
+    await expect(canAccessFile('ws-1', 'user-1', {
+      id: 'file-1',
+      workspaceId: 'ws-1',
+      projectId: null,
+      uploadedBy: 'user-1',
+      metadata: { externalUrl: 'https://docs.google.com/document/d/doc-1' },
+    })).resolves.toBe(true)
+  })
+
   it('canAccessFile は guest の旧 channel 添付を別 channel へ再利用させない', async () => {
     mockDb.select
       .mockReturnValueOnce(makeSelectResult([{ role: 'guest' }]))
