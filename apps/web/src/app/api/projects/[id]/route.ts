@@ -2,7 +2,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { requireWorkspaceAdmin, requireWorkspaceMember } from '@/lib/permissions'
+
+// Google Places API v1 の photo name は "places/.../photos/..." 形式。
+// path traversal や URL インジェクションを防ぐため英数字・アンダースコア・スラッシュのみ許可する。
+const PLACE_PHOTO_NAME_RE = /^[A-Za-z0-9_/-]+$/
+
+const patchProjectSchema = z.object({
+  title: z.string().min(1).max(100).optional(),
+  description: z.string().max(1000).nullable().optional(),
+  startDate: z.string().date().nullable().optional(),
+  endDate: z.string().date().nullable().optional(),
+  statusName: z.string().max(100).optional(),
+  archived: z.boolean().optional(),
+  coverPhotoUrl: z.string().url().nullable().optional(),
+  placePhotoName: z.string().max(500).regex(PLACE_PHOTO_NAME_RE, 'placePhotoName に使用できない文字が含まれています').optional(),
+  location: z.string().max(500).nullable().optional(),
+  placeId: z.string().max(500).nullable().optional(),
+})
 
 export async function DELETE(
   _req: Request,
@@ -75,28 +93,19 @@ export async function PATCH(
 ) {
   const { id } = await params
 
-  let body: unknown
+  let rawBody: unknown
   try {
-    body = await req.json()
+    rawBody = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  type PatchBody = {
-    title?: string
-    description?: string | null
-    startDate?: string | null
-    endDate?: string | null
-    statusName?: string
-    archived?: boolean
-    coverPhotoUrl?: string | null
-    placePhotoName?: string
-    location?: string | null
-    placeId?: string | null
+  const parsed = patchProjectSchema.safeParse(rawBody)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'リクエストが不正です' }, { status: 422 })
   }
-  const b = body as PatchBody
-  const keys = Object.keys(b as object)
-  if (keys.length === 0) {
+  const b = parsed.data
+  if (Object.keys(b).length === 0) {
     return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
   }
 

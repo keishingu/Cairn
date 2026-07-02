@@ -42,11 +42,11 @@ export async function GET(_req: Request, { params }: RouteContext) {
       return new NextResponse(null, { status: 403 })
     }
 
-    // 外部リンクは元の URL にリダイレクト
+    // 外部リンクは元の URL にリダイレクト（https のみ許可してオープンリダイレクトを防ぐ）
     if (file.fileType === 'link') {
       const meta = (file.metadata ?? {}) as Record<string, unknown>
       const externalUrl = meta['externalUrl']
-      if (typeof externalUrl === 'string') {
+      if (typeof externalUrl === 'string' && externalUrl.startsWith('https://')) {
         return NextResponse.redirect(externalUrl)
       }
       return new NextResponse(null, { status: 404 })

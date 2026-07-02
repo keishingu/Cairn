@@ -18,6 +18,9 @@ export async function GET(req: Request) {
 
   const q = new URL(req.url).searchParams.get('q')?.trim() ?? ''
   if (!q) return NextResponse.json([] satisfies MessageSearchResultDto[])
+  if (q.length > 200) {
+    return NextResponse.json({ error: '検索クエリは 200 文字以内で入力してください' }, { status: 400 })
+  }
 
   try {
     const { db } = await import('@cairn/db')
