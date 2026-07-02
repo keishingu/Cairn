@@ -1,8 +1,8 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { db, channelMembers, profiles, workspaceMembers } from '@cairn/db'
-import { and, eq, inArray, ne } from 'drizzle-orm'
+import { db, channelMembers, channels, profiles, projectMembers, workspaceMembers } from '@cairn/db'
+import { and, eq, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm'
 
 export interface NotificationRecipient {
   userId: string
@@ -28,7 +28,24 @@ export async function fetchActiveChannelRecipients(params: {
         eq(workspaceMembers.membershipStatus, 'active'),
       ),
     )
-    .where(and(eq(channelMembers.channelId, channelId), ne(channelMembers.userId, senderId)))
+    .innerJoin(channels, eq(channels.id, channelMembers.channelId))
+    .leftJoin(
+      projectMembers,
+      and(
+        eq(projectMembers.projectId, channels.projectId),
+        eq(projectMembers.userId, channelMembers.userId),
+      ),
+    )
+    .where(and(
+      eq(channelMembers.channelId, channelId),
+      ne(channelMembers.userId, senderId),
+      or(
+        ne(channels.type, 'project'),
+        isNull(channels.projectId),
+        ne(workspaceMembers.role, 'guest'),
+        isNotNull(projectMembers.id),
+      ),
+    ))
 }
 
 export async function fetchActiveMentionedMembers(params: {
