@@ -32,7 +32,20 @@ as $$
         or
         (
           c.is_private = false
-          and c.type in ('workspace', 'project')
+          and (
+            c.type = 'workspace'
+            or (
+              c.type = 'project'
+              and (
+                wm.role <> 'guest'
+                or exists (
+                  select 1 from project_members pm
+                  where pm.project_id = c.project_id
+                    and pm.user_id = auth.uid()
+                )
+              )
+            )
+          )
         )
       )
   );
