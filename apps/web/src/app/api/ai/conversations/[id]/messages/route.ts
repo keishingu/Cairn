@@ -2,11 +2,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { createDataStreamResponse, streamText, type CoreMessage } from 'ai'
 import { openai, DEFAULT_MODEL } from '@/lib/ai/client'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getGuestVisibleProjectIds, getWorkspaceMemberRole } from '@/lib/permissions'
 import { webSearchTool } from '@/lib/ai/web-search'
+
+const postBodySchema = z.object({
+  // CoreMessage の role は AI SDK 側で型安全に扱うが、外部入力として最大 100 件・各ロールを絞る
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(['user', 'assistant', 'system', 'tool']),
+        content: z.unknown(),
+      }).passthrough(),
+    )
+    .min(1, 'messages は 1 件以上必要です')
+    .max(100, 'messages は最大 100 件です'),
+})
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -79,8 +93,17 @@ export async function POST(req: Request, { params }: RouteContext) {
     if (!conv) return new NextResponse(null, { status: 404 })
   }
 
-  const body = await req.json() as { messages: CoreMessage[] }
-  const { messages } = body
+  let rawBody: unknown
+  try {
+    rawBody = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+  const parsed = postBodySchema.safeParse(rawBody)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'リクエストが不正です' }, { status: 422 })
+  }
+  const { messages } = parsed.data as { messages: CoreMessage[] }
 
   const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')
   const lastUserContent = typeof lastUserMessage?.content === 'string'
