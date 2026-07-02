@@ -30,7 +30,7 @@ export async function GET(req: Request) {
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, inArray } = await import('drizzle-orm')
+    const { eq, inArray, and } = await import('drizzle-orm')
 
     const projectRows = await db
       .select({ id: projects.id, title: projects.title })
@@ -64,7 +64,7 @@ export async function GET(req: Request) {
       })
       .from(tasks)
       .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
-      .leftJoin(workspaceMembers, eq(workspaceMembers.userId, tasks.assigneeId))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, tasks.assigneeId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(inArray(tasks.projectId, projectIds))
 
     const projectMap = new Map(projectRows.map(p => [p.id, p.title]))
@@ -159,18 +159,22 @@ export async function POST(req: Request) {
         .from(profiles)
         .where(eq(profiles.id, ctx.userId))
 
-      await inngest.send({
-        name: 'task/assigned',
-        data: {
-          taskId: inserted.id,
-          taskTitle: inserted.title,
-          assigneeId: inserted.assigneeId,
-          projectId: inserted.projectId,
-          projectTitle: projectRow?.title ?? '',
-          workspaceId: ctx.workspaceId,
-          assignerName: assigner?.displayName ?? '不明',
-        },
-      } satisfies TaskAssignedEvent)
+      try {
+        await inngest.send({
+          name: 'task/assigned',
+          data: {
+            taskId: inserted.id,
+            taskTitle: inserted.title,
+            assigneeId: inserted.assigneeId,
+            projectId: inserted.projectId,
+            projectTitle: projectRow?.title ?? '',
+            workspaceId: ctx.workspaceId,
+            assignerName: assigner?.displayName ?? '不明',
+          },
+        } satisfies TaskAssignedEvent)
+      } catch (e) {
+        console.warn('[POST /api/tasks] Inngest event send failed (notification skipped):', e)
+      }
     }
 
     return NextResponse.json(result, { status: 201 })
