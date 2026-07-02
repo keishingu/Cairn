@@ -29,6 +29,7 @@ export async function GET() {
     const { db, files, profiles, projects, projectMembers, messageAttachments, messages, channels, channelMembers, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
     const { eq, and, desc, isNull, isNotNull, inArray, sql, exists, or, ne } = await import('drizzle-orm')
     const { isIndexable } = await import('@/lib/ai/extract-text')
+    const accessCheckBatchSize = 50
 
     const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
     if (!role) {
@@ -137,9 +138,11 @@ export async function GET() {
       ))
       .orderBy(desc(files.createdAt))
 
-    const visibleRows = (
-      await Promise.all(
-        rows.map(async (row) => {
+    const visibleRows: typeof rows = []
+    for (let i = 0; i < rows.length; i += accessCheckBatchSize) {
+      const batch = rows.slice(i, i + accessCheckBatchSize)
+      const visibleBatch = await Promise.all(
+        batch.map(async (row) => {
           const visible = await canAccessFile(
             ctx.workspaceId,
             ctx.userId,
@@ -154,7 +157,8 @@ export async function GET() {
           return visible ? row : null
         }),
       )
-    ).filter((row): row is typeof rows[number] => row !== null)
+      visibleRows.push(...visibleBatch.filter((row): row is typeof rows[number] => row !== null))
+    }
 
     const fileIds = visibleRows.map(r => r.id)
     const chunkedIdSet = new Set<string>()

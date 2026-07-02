@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireChannelAccess } from '@/lib/permissions'
+import { requireChannelAccess, requireProjectAccess } from '@/lib/permissions'
 
 export interface NotificationDto {
   id: string
@@ -68,6 +68,11 @@ export async function GET(req: Request) {
             const channelId = data?.['channelId']
             if (typeof channelId === 'string') {
               const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+              if (forbidden) return null
+            }
+            const projectId = data?.['projectId']
+            if (row.type === 'task' && typeof projectId === 'string') {
+              const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
               if (forbidden) return null
             }
             return row

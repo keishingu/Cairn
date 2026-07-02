@@ -292,6 +292,7 @@ export const onTaskAssigned = inngest.createFunction(
   async ({ event, step }) => {
     const { taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
       event.data as TaskAssignedEvent['data']
+    const { taskId, projectId } = event.data as TaskAssignedEvent['data']
 
     const isActiveAssignee = await step.run('check-active-assignee', async () =>
       isActiveWorkspaceMember({ workspaceId, userId: assigneeId }))
@@ -308,7 +309,7 @@ export const onTaskAssigned = inngest.createFunction(
         type: 'task' as const,
         title: `${assignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
-        data: { assignerName, projectTitle },
+        data: { assignerName, projectTitle, projectId, taskId },
       })
     })
 

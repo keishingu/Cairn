@@ -3,11 +3,12 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const { mockDb, mockRequireChannelAccess } = vi.hoisted(() => ({
+const { mockDb, mockRequireChannelAccess, mockRequireProjectAccess } = vi.hoisted(() => ({
   mockDb: {
     select: vi.fn(),
   },
   mockRequireChannelAccess: vi.fn(),
+  mockRequireProjectAccess: vi.fn(),
 }))
 
 const getAuthContext = vi.fn()
@@ -18,6 +19,7 @@ vi.mock('@/lib/get-auth-context', () => ({
 
 vi.mock('@/lib/permissions', () => ({
   requireChannelAccess: mockRequireChannelAccess,
+  requireProjectAccess: mockRequireProjectAccess,
 }))
 
 vi.mock('@cairn/db', () => ({
@@ -96,6 +98,7 @@ describe('GET /api/notifications', () => {
         ? new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 })
         : null
     ))
+    mockRequireProjectAccess.mockResolvedValue(null)
 
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/api/notifications'))
@@ -106,6 +109,49 @@ describe('GET /api/notifications', () => {
       expect.objectContaining({ id: 'n-task' }),
     ])
     expect(mockRequireChannelAccess).toHaveBeenCalledTimes(2)
+    expect(mockRequireProjectAccess).not.toHaveBeenCalled()
+  })
+
+  it('task 通知は projectId ベースでもアクセス不可なら除外する', async () => {
+    getAuthContext.mockResolvedValue({
+      ctx: { workspaceId: 'ws-1', userId: 'user-1' },
+      error: null,
+    })
+    mockDb.select.mockReturnValueOnce(selectChain([
+      {
+        id: 'task-visible',
+        type: 'task',
+        title: 'visible',
+        body: 'ok',
+        data: { projectId: 'project-visible' },
+        readAt: null,
+        createdAt: new Date('2026-07-02T12:00:00Z'),
+      },
+      {
+        id: 'task-hidden',
+        type: 'task',
+        title: 'hidden',
+        body: 'ng',
+        data: { projectId: 'project-hidden' },
+        readAt: null,
+        createdAt: new Date('2026-07-02T12:01:00Z'),
+      },
+    ]))
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockRequireProjectAccess.mockImplementation(async (_workspaceId: string, _userId: string, projectId: string) => (
+      projectId === 'project-hidden'
+        ? new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 })
+        : null
+    ))
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/notifications'))
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([
+      expect.objectContaining({ id: 'task-visible' }),
+    ])
+    expect(mockRequireProjectAccess).toHaveBeenCalledTimes(2)
   })
 
   it('アクセス不可の通知を除外した後に 50 件へ絞る', async () => {
@@ -128,6 +174,7 @@ describe('GET /api/notifications', () => {
         ? new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 })
         : null
     ))
+    mockRequireProjectAccess.mockResolvedValue(null)
 
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/api/notifications'))
@@ -170,6 +217,7 @@ describe('GET /api/notifications', () => {
         ? new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 })
         : null
     ))
+    mockRequireProjectAccess.mockResolvedValue(null)
 
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/api/notifications'))
@@ -207,6 +255,7 @@ describe('GET /api/notifications', () => {
     mockRequireChannelAccess.mockResolvedValue(
       new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 }),
     )
+    mockRequireProjectAccess.mockResolvedValue(null)
 
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/api/notifications'))

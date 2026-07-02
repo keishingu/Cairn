@@ -130,4 +130,50 @@ describe('GET /api/files', () => {
     ])
     expect(mockCanAccessFile).toHaveBeenCalledTimes(2)
   })
+
+  it('canAccessFile は 50 件ずつ分割して実行する', async () => {
+    getAuthContext.mockResolvedValue({
+      ctx: { workspaceId: 'ws-1', userId: 'user-1' },
+      error: null,
+    })
+    mockGetWorkspaceMemberRole.mockResolvedValue('member')
+    const rows = Array.from({ length: 51 }, (_, index) => ({
+      id: `file-${index}`,
+      projectId: null,
+      projectTitle: null,
+      workspaceId: 'ws-1',
+      channelName: null,
+      fileName: `file-${index}.txt`,
+      mimeType: 'text/plain',
+      fileSize: 10,
+      fileType: 'file',
+      metadata: {},
+      uploadedBy: 'user-1',
+      uploaderName: 'User One',
+      uploaderAvatarUrl: null,
+      createdAt: new Date(`2026-07-02T12:${String(index).padStart(2, '0')}:00Z`),
+    }))
+    mockDb.select.mockImplementation(() => selectChain(rows))
+    mockDb.selectDistinct.mockReturnValueOnce({
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    })
+
+    let inFlight = 0
+    let maxInFlight = 0
+    mockCanAccessFile.mockImplementation(async () => {
+      inFlight += 1
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      await Promise.resolve()
+      inFlight -= 1
+      return true
+    })
+
+    const { GET } = await import('./route')
+    const res = await GET()
+
+    expect(res.status).toBe(200)
+    expect(mockCanAccessFile).toHaveBeenCalledTimes(51)
+    expect(maxInFlight).toBeLessThanOrEqual(50)
+  })
 })
