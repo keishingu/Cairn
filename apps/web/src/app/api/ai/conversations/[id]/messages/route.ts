@@ -8,6 +8,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { getGuestVisibleProjectIds, getWorkspaceMemberRole } from '@/lib/permissions'
 import { webSearchTool } from '@/lib/ai/web-search'
 import {
+  MAX_HISTORY_MESSAGES,
   buildModelMessages,
   normalizeStoredConversationMessages,
   parseLatestUserInput,
@@ -23,6 +24,11 @@ export interface MessageDto {
   createdAt: string
   annotations?: unknown[]
   toolInvocations?: unknown[]
+}
+
+type StoredMessageRow = StoredConversationMessage & {
+  id: string
+  createdAt: Date | string
 }
 
 export async function GET(_req: Request, { params }: RouteContext) {
@@ -49,13 +55,15 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .where(eq(aiMessages.conversationId, conversationId))
       .orderBy(asc(aiMessages.createdAt))
 
-    const normalizedRows = normalizeStoredConversationMessages(rows).filter(
-      (
-        row,
-      ): row is typeof row & {
-        id: string
-        createdAt: Date | string
-      } => typeof row.id === 'string' && row.createdAt !== null && row.createdAt !== undefined,
+    const normalizedRows = normalizeStoredConversationMessages<StoredMessageRow>(
+      rows.map(row => ({
+        id: row.id,
+        role: row.role,
+        content: row.content,
+        createdAt: row.createdAt,
+        ...(row.annotations ? { annotations: row.annotations } : {}),
+        ...(row.toolInvocations ? { toolInvocations: row.toolInvocations } : {}),
+      })),
     )
 
     return NextResponse.json(
@@ -90,7 +98,7 @@ export async function POST(req: Request, { params }: RouteContext) {
   let historyMessages: StoredConversationMessage[] = []
   {
     const { db, aiConversations, aiMessages } = await import('@cairn/db')
-    const { eq, and, asc } = await import('drizzle-orm')
+    const { eq, and, asc, desc } = await import('drizzle-orm')
     const [conv] = await db
       .select({ id: aiConversations.id })
       .from(aiConversations)
@@ -102,9 +110,10 @@ export async function POST(req: Request, { params }: RouteContext) {
       .select({ id: aiMessages.id, role: aiMessages.role, content: aiMessages.content, createdAt: aiMessages.createdAt })
       .from(aiMessages)
       .where(eq(aiMessages.conversationId, conversationId))
-      .orderBy(asc(aiMessages.createdAt))
+      .orderBy(desc(aiMessages.createdAt), desc(aiMessages.id))
+      .limit(MAX_HISTORY_MESSAGES)
 
-    historyMessages = normalizeStoredConversationMessages(rows)
+    historyMessages = normalizeStoredConversationMessages<StoredMessageRow>(rows)
   }
 
   let requestBody: unknown

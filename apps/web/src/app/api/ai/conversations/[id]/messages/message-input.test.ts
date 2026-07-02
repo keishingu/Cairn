@@ -90,6 +90,21 @@ describe('buildModelMessages', () => {
       { role: 'user', content: '今回の質問' },
     ])
   })
+
+  it('履歴が多くても直近 40 件だけをモデルに渡す', () => {
+    const history = Array.from({ length: 50 }, (_, index) => ({
+      id: `message-${index}`,
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      content: `message-${index}`,
+      createdAt: new Date(`2026-06-29T00:${String(index).padStart(2, '0')}:00.000Z`),
+    }))
+
+    const messages = buildModelMessages(history, '今回の質問')
+
+    expect(messages).toHaveLength(41)
+    expect(messages[0]).toEqual({ role: 'user', content: 'message-10' })
+    expect(messages.at(-1)).toEqual({ role: 'user', content: '今回の質問' })
+  })
 })
 
 describe('normalizeStoredConversationMessages', () => {

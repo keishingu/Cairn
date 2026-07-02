@@ -4,7 +4,7 @@
 import type { CoreMessage } from 'ai'
 import { z } from 'zod'
 
-const MAX_HISTORY_MESSAGES = 40
+export const MAX_HISTORY_MESSAGES = 40
 const MAX_MESSAGE_CHARS = 4000
 
 const aiRequestSchema = z.object({
