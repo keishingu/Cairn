@@ -152,9 +152,28 @@ describe('permissions', () => {
     }, { pendingChannelId: 'channel-1' })).resolves.toBe(false)
   })
 
+  it('canAccessFile は member の自己アップロードでも現在のアクセス範囲外なら拒否する', async () => {
+    mockDb.select
+      .mockReturnValueOnce(makeSelectResult([{ role: 'member' }]))
+      .mockReturnValueOnce(makeSelectResult([]))
+    mockDb.selectDistinct.mockReturnValueOnce({
+      from: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    })
+
+    const { canAccessFile } = await import('./permissions')
+    await expect(canAccessFile('ws-1', 'user-1', {
+      id: 'file-1',
+      workspaceId: 'ws-1',
+      projectId: null,
+      uploadedBy: 'user-1',
+      metadata: { channelIds: ['channel-1'] },
+    })).resolves.toBe(false)
+  })
+
   it('canAccessFile は guest の仮添付ファイルを同じ channel に投稿する時だけ許可する', async () => {
     mockDb.select
-      .mockReturnValueOnce(makeSelectResult([{ role: 'guest' }]))
       .mockReturnValueOnce(makeSelectResult([{ role: 'guest' }]))
       .mockReturnValueOnce(makeSelectResult([{
         isPrivate: false,

@@ -137,6 +137,15 @@ export async function requireChannelAccess(
   channelId: string,
 ): Promise<NextResponse | null> {
   const role = await getWorkspaceRole(workspaceId, userId)
+  return requireChannelAccessForRole(workspaceId, userId, channelId, role)
+}
+
+async function requireChannelAccessForRole(
+  workspaceId: string,
+  userId: string,
+  channelId: string,
+  role: string | null,
+): Promise<NextResponse | null> {
   if (!isWorkspaceMember(role) && role !== 'guest') {
     return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
   }
@@ -221,7 +230,7 @@ function getMetadataChannelIds(metadata: unknown): Set<string> {
 // ファイル単体の閲覧可否を判定する。`requireChannelAccess` と同じスコープ感で、
 // ワークスペース所属だけを根拠にした越境アクセス（fileID 総当たり）を防ぐ。
 // - 別ワークスペースのファイルは不可
-// - アップロード者本人は常に可（メッセージ投稿前のアップロード直後も閲覧できる）
+// - アップロード者本人でも、現在アクセスできる pending channel に紐づく仮添付だけ可
 // - プロジェクトファイルは member 以上なら可、guest は参加プロジェクトのみ
 // - メッセージ添付ファイルは、添付先チャンネルのいずれかにアクセスできれば可
 // - それ以外（未添付かつ非プロジェクトの他人のファイル）は不可
@@ -236,15 +245,13 @@ export async function canAccessFile(
   const role = await getWorkspaceRole(workspaceId, userId)
   // ワークスペース非所属（role なし）は不可
   if (!isWorkspaceMember(role) && role !== 'guest') return false
-  if (file.uploadedBy === userId && role !== 'guest') return true
   const pendingMetadataChannelId = getPendingMetadataChannelId(file.metadata)
   if (
     file.uploadedBy === userId &&
-    role === 'guest' &&
     options.pendingChannelId &&
     pendingMetadataChannelId === options.pendingChannelId
   ) {
-    const forbidden = await requireChannelAccess(workspaceId, userId, options.pendingChannelId)
+    const forbidden = await requireChannelAccessForRole(workspaceId, userId, options.pendingChannelId, role)
     if (!forbidden) return true
   }
 
