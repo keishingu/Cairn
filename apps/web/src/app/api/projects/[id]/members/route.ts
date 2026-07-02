@@ -55,7 +55,14 @@ export async function GET(
       })
       .from(projectMembers)
       .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .innerJoin(
+        workspaceMembers,
+        and(
+          eq(workspaceMembers.userId, profiles.id),
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ),
+      )
       .where(eq(projectMembers.projectId, projectId))
       .orderBy(profiles.displayName)
 
@@ -134,7 +141,13 @@ export async function POST(
     const wsMembers = await db
       .select({ userId: workspaceMembers.userId })
       .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, normalizedUserIds)))
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.membershipStatus, 'active'),
+          inArray(workspaceMembers.userId, normalizedUserIds),
+        ),
+      )
 
     if (wsMembers.length !== normalizedUserIds.length) {
       return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })
@@ -170,7 +183,14 @@ export async function POST(
         avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(profiles)
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .innerJoin(
+        workspaceMembers,
+        and(
+          eq(workspaceMembers.userId, profiles.id),
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ),
+      )
       .where(inArray(profiles.id, insertedUserIds))
 
     const profileMap = new Map(profileRows.map(profile => [profile.userId, profile]))

@@ -9,6 +9,7 @@ const USER_B = '00000000-0000-0000-0000-000000000012'
 
 const {
   mockGetAuthContext,
+  mockRequireProjectAccess,
   mockRequireWorkspaceMember,
   mockDb,
   mockInngestSend,
@@ -22,6 +23,7 @@ const {
     },
     error: null,
   })
+  const mockRequireProjectAccess = vi.fn().mockResolvedValue(null)
   const mockRequireWorkspaceMember = vi.fn().mockResolvedValue(null)
   const mockDb = {
     select: vi.fn(),
@@ -38,6 +40,7 @@ const {
   }))
   return {
     mockGetAuthContext,
+    mockRequireProjectAccess,
     mockRequireWorkspaceMember,
     mockDb,
     mockInngestSend,
@@ -47,7 +50,10 @@ const {
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/permissions', () => ({ requireWorkspaceMember: mockRequireWorkspaceMember }))
+vi.mock('@/lib/permissions', () => ({
+  requireProjectAccess: mockRequireProjectAccess,
+  requireWorkspaceMember: mockRequireWorkspaceMember,
+}))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 vi.mock('@/lib/supabase/service', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/supabase/service')>()
@@ -64,12 +70,18 @@ vi.mock('@cairn/db', () => ({
     projectId: 'pm.projectId',
   },
   projects: { id: 'p.id', workspaceId: 'p.workspaceId' },
-  workspaceMembers: { id: 'wm.id', userId: 'wm.userId', workspaceId: 'wm.workspaceId', avatarUrl: 'wm.avatarUrl' },
+  workspaceMembers: {
+    id: 'wm.id',
+    userId: 'wm.userId',
+    workspaceId: 'wm.workspaceId',
+    avatarUrl: 'wm.avatarUrl',
+    membershipStatus: 'wm.membershipStatus',
+  },
 }))
 vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => 'eq'),
-  and: vi.fn(() => 'and'),
-  inArray: vi.fn(() => 'inArray'),
+  eq: vi.fn((...args) => ({ type: 'eq', args })),
+  and: vi.fn((...args) => ({ type: 'and', args })),
+  inArray: vi.fn((...args) => ({ type: 'inArray', args })),
 }))
 
 function chain(result: unknown[]) {
@@ -84,6 +96,55 @@ function chain(result: unknown[]) {
   }
   return c
 }
+
+describe('GET /api/projects/[id]/members', () => {
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('active な workspace membership だけ project member 一覧に含める', async () => {
+    mockGetUserById.mockResolvedValue({
+      data: { user: { email: 'alice@example.com' } },
+      error: null,
+    })
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: PROJECT_ID }]))
+      .mockReturnValueOnce(chain([
+        {
+          userId: USER_A,
+          displayName: 'Alice',
+          avatarUrl: null,
+          role: 'member',
+          attendance: 'attending',
+          addedAt: new Date('2026-06-24T00:00:00Z'),
+        },
+      ]))
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request(`http://localhost/api/projects/${PROJECT_ID}/members`), {
+      params: Promise.resolve({ id: PROJECT_ID }),
+    })
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([
+      {
+        userId: USER_A,
+        displayName: 'Alice',
+        email: 'alice@example.com',
+        avatarUrl: null,
+        role: 'member',
+        attendance: 'attending',
+        addedAt: '2026-06-24',
+      },
+    ])
+
+    const fromChain = mockDb.select.mock.results[1]?.value.from.mock.results[0]?.value
+    const joinArg = fromChain.innerJoin.mock.calls[1]?.[1]
+    expect(joinArg.args).toContainEqual({ type: 'eq', args: ['wm.userId', 'pr.id'] })
+    expect(joinArg.args).toContainEqual({ type: 'eq', args: ['wm.workspaceId', '00000000-0000-0000-0000-000000000010'] })
+    expect(joinArg.args).toContainEqual({ type: 'eq', args: ['wm.membershipStatus', 'active'] })
+  })
+})
 
 describe('POST /api/projects/[id]/members', () => {
   afterEach(() => {
