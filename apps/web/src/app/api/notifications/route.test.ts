@@ -40,13 +40,11 @@ vi.mock('drizzle-orm', () => ({
   inArray: vi.fn((...args: unknown[]) => ({ type: 'inArray', args })),
 }))
 
-function selectLimitChain(result: unknown[]) {
+function selectChain(result: unknown[]) {
   return {
     from: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({
-        orderBy: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue(result),
-        }),
+        orderBy: vi.fn().mockResolvedValue(result),
       }),
     }),
   }
@@ -63,7 +61,7 @@ describe('GET /api/notifications', () => {
       ctx: { workspaceId: 'ws-1', userId: 'user-1' },
       error: null,
     })
-    mockDb.select.mockReturnValueOnce(selectLimitChain([
+    mockDb.select.mockReturnValueOnce(selectChain([
       {
         id: 'n-visible',
         type: 'dm',
@@ -107,5 +105,36 @@ describe('GET /api/notifications', () => {
       expect.objectContaining({ id: 'n-task' }),
     ])
     expect(mockRequireChannelAccess).toHaveBeenCalledTimes(2)
+  })
+
+  it('アクセス不可の通知を除外した後に 50 件へ絞る', async () => {
+    getAuthContext.mockResolvedValue({
+      ctx: { workspaceId: 'ws-1', userId: 'user-1' },
+      error: null,
+    })
+    const rows = Array.from({ length: 52 }, (_, index) => ({
+      id: `n-${index}`,
+      type: 'dm' as const,
+      title: `title-${index}`,
+      body: `body-${index}`,
+      data: { channelId: `channel-${index}` },
+      readAt: null,
+      createdAt: new Date(`2026-07-02T12:${String(index).padStart(2, '0')}:00Z`),
+    }))
+    mockDb.select.mockReturnValueOnce(selectChain(rows))
+    mockRequireChannelAccess.mockImplementation(async (_workspaceId: string, _userId: string, channelId: string) => (
+      ['channel-0', 'channel-1', 'channel-2'].includes(channelId)
+        ? new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 })
+        : null
+    ))
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/notifications'))
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(json).toHaveLength(49)
+    expect(json[0]).toEqual(expect.objectContaining({ id: 'n-3' }))
+    expect(json.at(-1)).toEqual(expect.objectContaining({ id: 'n-51' }))
   })
 })

@@ -39,7 +39,6 @@ export async function GET(req: Request) {
       .from(notifications)
       .where(and(...conditions))
       .orderBy(desc(notifications.createdAt))
-      .limit(50)
 
     const visibleRows = (
       await Promise.all(
@@ -54,6 +53,7 @@ export async function GET(req: Request) {
         }),
       )
     ).filter((row): row is typeof rows[number] => row !== null)
+      .slice(0, 50)
 
     const result: NotificationDto[] = visibleRows.map(r => ({
       id: r.id,
