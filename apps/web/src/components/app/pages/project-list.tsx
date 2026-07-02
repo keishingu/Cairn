@@ -338,8 +338,9 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>プロジェクトが見つかりません</div>
         ) : view === 'table' && !isMobile ? (
           /* PC table view */
-          <div className="card" style={{ padding: 0 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+          <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+            <div style={{ minWidth: 720 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px 32px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
               <span/>
               {(['title','status','date'] as SortKey[]).map((col) => {
                 const labels: Record<SortKey, string> = { title: 'プロジェクト', status: 'ステータス', date: '日程', progress: '進捗' }
@@ -380,7 +381,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               const selected = i === navIdx
               return (
                 <div key={p.id} data-list-index={i} onClick={() => openPanel?.(p)} style={{
-                  display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px',
+                  display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px 32px',
                   gap: 16, padding: '12px 16px', borderBottom: i < sortedProjects.length - 1 ? '1px solid var(--divider)' : 'none',
                   alignItems: 'center', cursor: 'pointer',
                   opacity: p.archived ? ARCHIVED_OPACITY : 1,
@@ -390,7 +391,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = selected ? 'var(--accent-soft)' : 'transparent'}
                 >
                   <span style={{ width: 10, height: 10, borderRadius: 3, background: accent }}/>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                     <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
                     {isSearching && p.archived && <ArchivedBadge/>}
@@ -404,6 +405,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 </div>
               )
             })}
+            </div>
           </div>
         ) : (
           /* Grid (PC) / List with cover photos (mobile) */
