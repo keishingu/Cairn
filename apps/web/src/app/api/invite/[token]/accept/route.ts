@@ -87,18 +87,28 @@ export async function POST(
           .set({ membershipStatus: 'active', role: claimedInvite.role })
           .where(eq(workspaceMembers.id, existingMembership.id))
 
+        const workspaceChannelIds = (await tx
+          .select({ id: channels.id })
+          .from(channels)
+          .leftJoin(projects, eq(channels.projectId, projects.id))
+          .where(sql`coalesce(${channels.workspaceId}, ${projects.workspaceId}) = ${claimedInvite.workspaceId}`)
+        ).map(channel => channel.id)
+
+        if (workspaceChannelIds.length > 0) {
+          await tx
+            .delete(channelMembers)
+            .where(and(
+              eq(channelMembers.userId, userId),
+              inArray(channelMembers.channelId, workspaceChannelIds),
+            ))
+        }
+
         if (claimedInvite.role === 'guest') {
           const workspaceProjectIds = (await tx
             .select({ id: projects.id })
             .from(projects)
             .where(eq(projects.workspaceId, claimedInvite.workspaceId))
           ).map(project => project.id)
-          const workspaceChannelIds = (await tx
-            .select({ id: channels.id })
-            .from(channels)
-            .leftJoin(projects, eq(channels.projectId, projects.id))
-            .where(sql`coalesce(${channels.workspaceId}, ${projects.workspaceId}) = ${claimedInvite.workspaceId}`)
-          ).map(channel => channel.id)
 
           if (workspaceProjectIds.length > 0) {
             await tx
@@ -106,15 +116,6 @@ export async function POST(
               .where(and(
                 eq(projectMembers.userId, userId),
                 inArray(projectMembers.projectId, workspaceProjectIds),
-              ))
-          }
-
-          if (workspaceChannelIds.length > 0) {
-            await tx
-              .delete(channelMembers)
-              .where(and(
-                eq(channelMembers.userId, userId),
-                inArray(channelMembers.channelId, workspaceChannelIds),
               ))
           }
 

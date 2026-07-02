@@ -201,10 +201,12 @@ describe('POST /api/invite/[token]/accept', () => {
     const reactivateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockResolvedValue([]),
     })
+    const deleteChannelWhere = vi.fn().mockResolvedValue([])
 
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))
       .mockReturnValueOnce(selectChain([{ id: 'existing-inactive-membership-id', membershipStatus: 'inactive' }]))
+      .mockReturnValueOnce(selectJoinWhereChain([{ id: 'channel-old-private' }, { id: 'channel-old-dm' }]))
 
     mockDb.update
       .mockReturnValueOnce(
@@ -213,6 +215,9 @@ describe('POST /api/invite/[token]/accept', () => {
       .mockReturnValueOnce({
         set: reactivateSet,
       })
+    mockDb.delete.mockReturnValueOnce({
+      where: deleteChannelWhere,
+    })
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -228,6 +233,8 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(mockDb.update).toHaveBeenCalledTimes(2)
     expect(mockDb.transaction).toHaveBeenCalledTimes(1)
     expect(reactivateSet).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'member' })
+    expect(mockDb.delete).toHaveBeenCalledTimes(1)
+    expect(deleteChannelWhere).toHaveBeenCalledTimes(1)
   })
 
   it('inactive メンバーが guest として再招待されたら旧 project/channel membership を掃除して招待対象だけ付け直す', async () => {
@@ -254,8 +261,8 @@ describe('POST /api/invite/[token]/accept', () => {
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))
       .mockReturnValueOnce(selectChain([{ id: 'existing-inactive-membership-id', membershipStatus: 'inactive' }]))
-      .mockReturnValueOnce(selectWhereChain([{ id: 'project-old-1' }, { id: 'project-invited' }]))
       .mockReturnValueOnce(selectJoinWhereChain([{ id: 'channel-old-1' }, { id: 'channel-legacy-project' }]))
+      .mockReturnValueOnce(selectWhereChain([{ id: 'project-old-1' }, { id: 'project-invited' }]))
 
     mockDb.update
       .mockReturnValueOnce(
