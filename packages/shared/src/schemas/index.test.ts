@@ -30,6 +30,30 @@ describe('createProjectSchema', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it('memberUserIds に UUID 配列を指定できる', () => {
+    const result = createProjectSchema.safeParse({
+      workspaceId: '00000000-0000-0000-0000-000000000001',
+      title: 'テスト',
+      memberUserIds: [
+        '00000000-0000-0000-0000-000000000010',
+        '00000000-0000-0000-0000-000000000011',
+      ],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('memberUserIds が 50 件を超えても受け入れる', () => {
+    const memberUserIds = Array.from({ length: 51 }, (_, index) =>
+      `00000000-0000-0000-0000-${String(index + 10).padStart(12, '0')}`,
+    )
+    const result = createProjectSchema.safeParse({
+      workspaceId: '00000000-0000-0000-0000-000000000001',
+      title: 'テスト',
+      memberUserIds,
+    })
+    expect(result.success).toBe(true)
+  })
 })
 
 describe('createTaskSchema', () => {

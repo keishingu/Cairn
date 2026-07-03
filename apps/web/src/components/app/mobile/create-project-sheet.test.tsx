@@ -43,6 +43,9 @@ describe('CreateProjectSheetの作成フロー', () => {
           { id: 'status-todo', name: '未着手', color: '#999999', sortOrder: '1' },
         ]), { status: 200 })
       }
+      if (url === '/api/workspaces/members') {
+        return new Response(JSON.stringify([]), { status: 200 })
+      }
       if (url === '/api/projects') {
         return new Response(JSON.stringify({
           id: 'project-1',
@@ -100,6 +103,9 @@ describe('CreateProjectSheetの作成フロー', () => {
           resolveStatuses = resolve
         })
       }
+      if (url === '/api/workspaces/members') {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
+      }
       if (url === '/api/projects') {
         return Promise.resolve(new Response(JSON.stringify({
           id: 'project-1',
@@ -151,6 +157,9 @@ describe('CreateProjectSheetの作成フロー', () => {
     mockFetch.mockImplementation(async (input, init) => {
       const url = String(input)
       if (url === '/api/projects/statuses') {
+        return new Response(JSON.stringify([]), { status: 200 })
+      }
+      if (url === '/api/workspaces/members') {
         return new Response(JSON.stringify([]), { status: 200 })
       }
       if (url === '/api/projects') {

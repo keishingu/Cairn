@@ -7,13 +7,26 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const CHANNEL_ID = '20000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockRequireChannelAccess, mockList, mockRemove, mockIsIndexable, mockInngestSend } = vi.hoisted(() => ({
+const {
+  mockGetAuthContext,
+  mockRequireChannelAccess,
+  mockList,
+  mockRemove,
+  mockIsIndexable,
+  mockInngestSend,
+  mockCreateThumbnailFromStorage,
+  mockInsertValues,
+} = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
   mockList: vi.fn(),
   mockRemove: vi.fn().mockResolvedValue({ error: null }),
   mockIsIndexable: vi.fn(),
   mockInngestSend: vi.fn().mockResolvedValue(undefined),
+  mockCreateThumbnailFromStorage: vi.fn(),
+  mockInsertValues: vi.fn((v: Record<string, unknown>) => ({
+    returning: vi.fn().mockResolvedValue([{ id: 'file-1', ...v }]),
+  })),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -24,6 +37,7 @@ vi.mock('@/lib/supabase/service', () => ({
   }),
 }))
 vi.mock('@/lib/ai/extract-text', () => ({ isIndexable: mockIsIndexable }))
+vi.mock('@/lib/attachments/thumbnail', () => ({ createThumbnailFromStorage: mockCreateThumbnailFromStorage }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 vi.mock('@cairn/db', () => ({
   db: {
@@ -35,9 +49,7 @@ vi.mock('@cairn/db', () => ({
       }),
     }),
     insert: () => ({
-      values: (v: Record<string, unknown>) => ({
-        returning: vi.fn().mockResolvedValue([{ id: 'file-1', ...v }]),
-      }),
+      values: mockInsertValues,
     }),
   },
   files: {},
@@ -123,6 +135,7 @@ describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {
     })
     mockRequireChannelAccess.mockResolvedValue(null)
     mockIsIndexable.mockReturnValue(true)
+    mockCreateThumbnailFromStorage.mockResolvedValue(null)
   })
 
   afterEach(() => {
@@ -167,5 +180,26 @@ describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {
     expect(res.status).toBe(201)
     const body = await res.json() as { mimeType: string }
     expect(body.mimeType).toBe('application/vnd.ms-excel')
+  })
+
+  it('画像ファイルはサムネイルを生成して metadata に保存する', async () => {
+    mockList.mockResolvedValue({ data: [{ name: 'image.png', metadata: { size: 1000 } }], error: null })
+    mockIsIndexable.mockReturnValue(false)
+    mockCreateThumbnailFromStorage.mockResolvedValue(`${DEV_WORKSPACE_ID}/${CHANNEL_ID}/thumb/image.jpg`)
+
+    const { POST } = await import('./route')
+    const res = await POST(post({
+      channelId: CHANNEL_ID,
+      storagePath: storagePathFor('image.png'),
+      fileName: 'image.png',
+      mimeType: 'image/png',
+      fileSize: 1000,
+    }))
+
+    expect(res.status).toBe(201)
+    expect(mockCreateThumbnailFromStorage).toHaveBeenCalledWith(expect.any(Object), storagePathFor('image.png'))
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: { thumbnailPath: `${DEV_WORKSPACE_ID}/${CHANNEL_ID}/thumb/image.jpg` },
+    }))
   })
 })

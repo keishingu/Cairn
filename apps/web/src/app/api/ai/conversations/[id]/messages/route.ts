@@ -7,6 +7,13 @@ import { openai, DEFAULT_MODEL } from '@/lib/ai/client'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getGuestVisibleProjectIds, getWorkspaceMemberRole } from '@/lib/permissions'
 import { webSearchTool } from '@/lib/ai/web-search'
+import {
+  MAX_HISTORY_MESSAGES,
+  buildModelMessages,
+  normalizeStoredConversationMessages,
+  parseLatestUserInput,
+  type StoredConversationMessage,
+} from './message-input'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -17,6 +24,11 @@ export interface MessageDto {
   createdAt: string
   annotations?: unknown[]
   toolInvocations?: unknown[]
+}
+
+type StoredMessageRow = StoredConversationMessage & {
+  id: string
+  createdAt: Date | string
 }
 
 export async function GET(_req: Request, { params }: RouteContext) {
@@ -43,15 +55,30 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .where(eq(aiMessages.conversationId, conversationId))
       .orderBy(asc(aiMessages.createdAt))
 
+    const normalizedRows = normalizeStoredConversationMessages<StoredMessageRow>(
+      rows.map(row => ({
+        id: row.id,
+        role: row.role,
+        content: row.content,
+        createdAt: row.createdAt,
+        ...(row.annotations ? { annotations: row.annotations } : {}),
+        ...(row.toolInvocations ? { toolInvocations: row.toolInvocations } : {}),
+      })),
+    )
+
     return NextResponse.json(
-      rows.map(r => ({
-        id: r.id,
-        role: r.role,
-        content: r.content,
-        createdAt: r.createdAt.toISOString(),
-        ...(r.annotations ? { annotations: r.annotations } : {}),
-        ...(r.toolInvocations ? { toolInvocations: r.toolInvocations } : {}),
-      })) satisfies MessageDto[],
+      normalizedRows.map(r => {
+        const createdAt = r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)
+
+        return {
+          id: r.id,
+          role: r.role,
+          content: r.content,
+          createdAt: createdAt.toISOString(),
+          ...(r.annotations ? { annotations: r.annotations } : {}),
+          ...(r.toolInvocations ? { toolInvocations: r.toolInvocations } : {}),
+        }
+      }) satisfies MessageDto[],
     )
   } catch (err) {
     console.error('[GET /api/ai/conversations/[id]/messages]', err)
@@ -68,24 +95,48 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: 'OPENAI_API_KEY が設定されていません' }, { status: 503 })
   }
 
+  let historyMessages: StoredConversationMessage[] = []
   {
-    const { db, aiConversations } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { db, aiConversations, aiMessages } = await import('@cairn/db')
+    const { eq, and, asc, desc } = await import('drizzle-orm')
     const [conv] = await db
       .select({ id: aiConversations.id })
       .from(aiConversations)
       .where(and(eq(aiConversations.id, conversationId), eq(aiConversations.workspaceId, ctx.workspaceId)))
       .limit(1)
     if (!conv) return new NextResponse(null, { status: 404 })
+
+    const rows = await db
+      .select({ id: aiMessages.id, role: aiMessages.role, content: aiMessages.content, createdAt: aiMessages.createdAt })
+      .from(aiMessages)
+      .where(eq(aiMessages.conversationId, conversationId))
+      .orderBy(desc(aiMessages.createdAt), desc(aiMessages.id))
+      .limit(MAX_HISTORY_MESSAGES)
+
+    historyMessages = normalizeStoredConversationMessages<StoredMessageRow>(rows)
   }
 
-  const body = await req.json() as { messages: CoreMessage[] }
-  const { messages } = body
+  let requestBody: unknown
+  try {
+    requestBody = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
 
-  const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')
-  const lastUserContent = typeof lastUserMessage?.content === 'string'
-    ? lastUserMessage.content
-    : ''
+  let lastUserContent: string
+  let clientMessageCount: number
+  try {
+    const parsed = parseLatestUserInput(requestBody)
+    lastUserContent = parsed.lastUserContent
+    clientMessageCount = parsed.clientMessageCount
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Invalid messages payload' },
+      { status: 422 },
+    )
+  }
+
+  const messages = buildModelMessages(historyMessages, lastUserContent)
 
   const hasWebSearch = !!process.env['TAVILY_API_KEY']
 
@@ -93,6 +144,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     hasOpenAiKey: !!process.env['OPENAI_API_KEY'],
     hasTavilyKey: hasWebSearch,
     lastUserContent: lastUserContent.slice(0, 80),
+    clientMessageCount,
     messageCount: messages.length,
   })
 
