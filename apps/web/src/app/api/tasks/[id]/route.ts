@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import type { TaskDto } from '../route'
+import { updateTaskSchema } from '@cairn/shared'
 import { toggleCheckboxAt } from '@/lib/chat/checkboxes'
+import { requireProjectAccess } from '@/lib/permissions'
 
 export async function PATCH(
   req: Request,
@@ -18,9 +19,9 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { status } = body as { status?: TaskDto['status'] }
-  if (!status || !['todo', 'in_progress', 'done'].includes(status)) {
-    return NextResponse.json({ error: 'Invalid status' }, { status: 422 })
+  const parsed = updateTaskSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
 
   try {
@@ -34,7 +35,16 @@ export async function PATCH(
 
     // タスクが自ワークスペースに属するか確認（IDOR対策）
     const [taskRow] = await db
-      .select({ id: tasks.id })
+      .select({
+        id: tasks.id,
+        projectId: tasks.projectId,
+        title: tasks.title,
+        priority: tasks.priority,
+        dueDate: tasks.dueDate,
+        status: tasks.status,
+        sourceMessageId: tasks.sourceMessageId,
+        sourceCheckboxIndex: tasks.sourceCheckboxIndex,
+      })
       .from(tasks)
       .innerJoin(projects, eq(tasks.projectId, projects.id))
       .where(and(eq(tasks.id, id), eq(projects.workspaceId, ctx.workspaceId)))
@@ -44,18 +54,46 @@ export async function PATCH(
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, taskRow.projectId)
+    if (forbidden) return forbidden
+
+    const updates: {
+      title?: string
+      priority?: 'high' | 'medium' | 'low'
+      dueDate?: string | null
+      status?: 'todo' | 'in_progress' | 'done'
+      updatedAt: Date
+    } = { updatedAt: new Date() }
+    if (parsed.data.title !== undefined) updates.title = parsed.data.title
+    if (parsed.data.priority !== undefined) updates.priority = parsed.data.priority
+    if (parsed.data.dueDate !== undefined) updates.dueDate = parsed.data.dueDate
+    if (parsed.data.status !== undefined) updates.status = parsed.data.status
+
+    const editsTaskContent = parsed.data.title !== undefined || parsed.data.priority !== undefined || parsed.data.dueDate !== undefined
+    if (editsTaskContent && taskRow.sourceMessageId != null) {
+      return NextResponse.json({ error: 'チャット由来タスクはこの画面から編集できません' }, { status: 409 })
+    }
+
     const [updated] = await db
       .update(tasks)
-      .set({ status, updatedAt: new Date() })
+      .set(updates)
       .where(eq(tasks.id, id))
-      .returning({ id: tasks.id, sourceMessageId: tasks.sourceMessageId, sourceCheckboxIndex: tasks.sourceCheckboxIndex })
+      .returning({
+        id: tasks.id,
+        title: tasks.title,
+        priority: tasks.priority,
+        dueDate: tasks.dueDate,
+        status: tasks.status,
+        sourceMessageId: tasks.sourceMessageId,
+        sourceCheckboxIndex: tasks.sourceCheckboxIndex,
+      })
 
     if (!updated) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
     // チャットメッセージのチェックボックスに逆同期
-    if (updated.sourceMessageId != null && updated.sourceCheckboxIndex != null) {
+    if (parsed.data.status !== undefined && updated.sourceMessageId != null && updated.sourceCheckboxIndex != null) {
       const { messages, channels, channelMembers } = await import('@cairn/db')
       const [msg] = await db
         .select({ content: messages.content, channelId: messages.channelId, isPrivate: channels.isPrivate })
@@ -71,7 +109,7 @@ export async function PATCH(
           .where(and(eq(channelMembers.channelId, msg.channelId), eq(channelMembers.userId, ctx.userId)))
           .limit(1)
         if (!membership) {
-          return NextResponse.json({ id, status })
+          return NextResponse.json(updated)
         }
       }
 
@@ -79,7 +117,7 @@ export async function PATCH(
         const newContent = toggleCheckboxAt(
           msg.content,
           updated.sourceCheckboxIndex,
-          status === 'done',
+          updated.status === 'done',
         )
         if (newContent !== msg.content) {
           await db
@@ -90,9 +128,58 @@ export async function PATCH(
       }
     }
 
-    return NextResponse.json({ id, status })
+    return NextResponse.json(updated)
   } catch (err) {
     console.error('[PATCH /api/tasks/[id]]', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params
+
+  try {
+    const { db } = await import('@cairn/db')
+    const { tasks, projects } = await import('@cairn/db')
+    const { eq, and } = await import('drizzle-orm')
+    const { getAuthContext } = await import('@/lib/get-auth-context')
+
+    const { ctx, error } = await getAuthContext()
+    if (error) return error
+
+    const [taskRow] = await db
+      .select({ id: tasks.id, projectId: tasks.projectId, sourceMessageId: tasks.sourceMessageId })
+      .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
+      .where(and(eq(tasks.id, id), eq(projects.workspaceId, ctx.workspaceId)))
+      .limit(1)
+
+    if (!taskRow) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+    }
+
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, taskRow.projectId)
+    if (forbidden) return forbidden
+
+    if (taskRow.sourceMessageId != null) {
+      return NextResponse.json({ error: 'チャット由来タスクはこの画面から削除できません' }, { status: 409 })
+    }
+
+    const [deleted] = await db
+      .delete(tasks)
+      .where(eq(tasks.id, id))
+      .returning({ id: tasks.id })
+
+    if (!deleted) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+    }
+
+    return NextResponse.json(deleted)
+  } catch (err) {
+    console.error('[DELETE /api/tasks/[id]]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
