@@ -5,6 +5,8 @@ import { Icon, Avatar } from '../../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { useProjectTasks, useCreateTask } from '@/hooks/use-project-tasks'
+import { TaskEditDialog } from '../../task-edit-dialog'
+import { RowActionMenu } from '../../row-action-menu'
 
 // ─── AddTaskModal ─────────────────────────────────────────────────
 
@@ -170,6 +172,8 @@ interface TasksTabProps {
 
 export const TasksTab = ({ project }: TasksTabProps) => {
   const [showAddModal, setShowAddModal] = React.useState(false)
+  const [editingTask, setEditingTask] = React.useState<TaskDto | null>(null)
+  const [dialogMode, setDialogMode] = React.useState<'edit' | 'delete'>('edit')
   const { data: tasks = [], isLoading, toggleMutation } = useProjectTasks(project.id)
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
 
@@ -180,6 +184,11 @@ export const TasksTab = ({ project }: TasksTabProps) => {
       { id: task.id, newStatus },
       { onSettled: () => setTogglingId(null) },
     )
+  }
+
+  const openEditor = (task: TaskDto, mode: 'edit' | 'delete' = 'edit') => {
+    setDialogMode(mode)
+    setEditingTask(task)
   }
 
   if (isLoading) {
@@ -237,6 +246,13 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                   )}
                   {t.dueDate && <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{t.dueDate.slice(5).replace('-', '/')}</span>}
                   {t.assigneeName && <Avatar name={t.assigneeName} url={t.assigneeAvatarUrl} size={20} />}
+                  <RowActionMenu
+                    actions={[
+                      { icon: 'edit', label: '編集', onSelect: () => openEditor(t, 'edit') },
+                      { icon: 'trash', label: '削除', danger: true, onSelect: () => openEditor(t, 'delete') },
+                    ]}
+                    triggerStyle={{ padding: '6px', borderRadius: 8 }}
+                  />
                 </div>
               ))}
             </>
@@ -267,6 +283,13 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                   <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-3)', textDecoration: 'line-through' }}>{t.title}</span>
                   {t.dueDate && <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{t.dueDate.slice(5).replace('-', '/')}</span>}
                   {t.assigneeName && <Avatar name={t.assigneeName} url={t.assigneeAvatarUrl} size={20} />}
+                  <RowActionMenu
+                    actions={[
+                      { icon: 'edit', label: '編集', onSelect: () => openEditor(t, 'edit') },
+                      { icon: 'trash', label: '削除', danger: true, onSelect: () => openEditor(t, 'delete') },
+                    ]}
+                    triggerStyle={{ padding: '6px', borderRadius: 8 }}
+                  />
                 </div>
               ))}
             </>
@@ -287,6 +310,7 @@ export const TasksTab = ({ project }: TasksTabProps) => {
       </button>
 
       {showAddModal && <AddTaskModal project={project} onClose={() => setShowAddModal(false)} />}
+      <TaskEditDialog open={editingTask != null} task={editingTask} initialMode={dialogMode} onClose={() => setEditingTask(null)} />
     </div>
   )
 }
