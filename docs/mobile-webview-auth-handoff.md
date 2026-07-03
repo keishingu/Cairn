@@ -2,12 +2,12 @@
 
 ## ステータス
 
-- 状態: 設計（未実装）
+- 状態: **実装済み・現行リファレンス**（`POST /api/auth/webview-handoff` + `apps/mobile/components/app-webview.tsx`。CLAUDE.md「決定済みの技術判断」にも記載）
 - 関連: [`docs/08_expo_roadmap.md`](08_expo_roadmap.md), [`docs/api-conventions.md`](api-conventions.md)
 
-## 背景・課題
+## 背景・課題（設計当時の旧方式）
 
-現在のモバイルアプリ（Expo）は、ネイティブでログインした Supabase セッションの
+設計当時のモバイルアプリ（Expo）は、ネイティブでログインした Supabase セッションの
 `access_token` / `refresh_token` を URL フラグメントで WebView に渡し、Web 側が
 `supabase.auth.setSession()` でセッションを確立している
 （`apps/mobile/components/app-webview.tsx` → `apps/web/src/app/auth/mobile-handoff/page.tsx`）。
