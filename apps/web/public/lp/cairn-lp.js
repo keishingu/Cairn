@@ -57,6 +57,14 @@
   var state = Object.assign({}, TWEAK_DEFAULTS);
   apply(state);
 
+  /* ── persona variant (?p=team|alpineclub, default team) ────────── */
+  var persona = 'team';
+  try {
+    var pParam = new URLSearchParams(location.search).get('p');
+    if (pParam === 'alpineclub' || pParam === 'club') persona = 'alpineclub';
+  } catch (e) {}
+  root.setAttribute('data-persona', persona);
+
   /* ── sticky nav ────────────────────────────────────────────────── */
   var nav = document.getElementById('nav');
   function onScroll() { nav.classList.toggle('is-stuck', window.scrollY > 10); }
