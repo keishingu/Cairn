@@ -85,4 +85,20 @@ describe('/api/attachments/upload-url', () => {
     const body = await res.json() as { mimeType: string }
     expect(body.mimeType).toBe('text/csv')
   })
+
+  it('拡張子が無いファイル名ではMIMEタイプから保存パスの拡張子を補完する', async () => {
+    const { POST } = await import('./route')
+    const res = await POST(post({
+      channelId: CHANNEL_ID,
+      fileName: '三洋物産様向け提案資料_v0_1',
+      mimeType: 'application/pdf',
+      fileSize: 100,
+    }))
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { storagePath: string; mimeType: string }
+    expect(body.mimeType).toBe('application/pdf')
+    expect(body.storagePath.startsWith(`${DEV_WORKSPACE_ID}/${CHANNEL_ID}/`)).toBe(true)
+    expect(body.storagePath.endsWith('.pdf')).toBe(true)
+  })
 })
