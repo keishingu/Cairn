@@ -125,15 +125,13 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
         }}>進行中</span>
       )}
 
-      {!task.isLinkedToMessage && (
-        <RowActionMenu
-          actions={[
-            { icon: 'edit', label: '編集', onSelect: () => onEdit(task, 'edit') },
-            { icon: 'trash', label: '削除', danger: true, onSelect: () => onEdit(task, 'delete') },
-          ]}
-          triggerStyle={{ padding: '6px', borderRadius: 8 }}
-        />
-      )}
+      <RowActionMenu
+        actions={[
+          { icon: 'edit', label: '編集', onSelect: () => onEdit(task, 'edit') },
+          { icon: 'trash', label: '削除', danger: true, onSelect: () => onEdit(task, 'delete') },
+        ]}
+        triggerStyle={{ padding: '6px', borderRadius: 8 }}
+      />
     </div>
   )
 }

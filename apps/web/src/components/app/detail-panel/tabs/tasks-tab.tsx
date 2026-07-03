@@ -246,15 +246,13 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                   )}
                   {t.dueDate && <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{t.dueDate.slice(5).replace('-', '/')}</span>}
                   {t.assigneeName && <Avatar name={t.assigneeName} url={t.assigneeAvatarUrl} size={20} />}
-                  {!t.isLinkedToMessage && (
-                    <RowActionMenu
-                      actions={[
-                        { icon: 'edit', label: '編集', onSelect: () => openEditor(t, 'edit') },
-                        { icon: 'trash', label: '削除', danger: true, onSelect: () => openEditor(t, 'delete') },
-                      ]}
-                      triggerStyle={{ padding: '6px', borderRadius: 8 }}
-                    />
-                  )}
+                  <RowActionMenu
+                    actions={[
+                      { icon: 'edit', label: '編集', onSelect: () => openEditor(t, 'edit') },
+                      { icon: 'trash', label: '削除', danger: true, onSelect: () => openEditor(t, 'delete') },
+                    ]}
+                    triggerStyle={{ padding: '6px', borderRadius: 8 }}
+                  />
                 </div>
               ))}
             </>
@@ -285,15 +283,13 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                   <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-3)', textDecoration: 'line-through' }}>{t.title}</span>
                   {t.dueDate && <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{t.dueDate.slice(5).replace('-', '/')}</span>}
                   {t.assigneeName && <Avatar name={t.assigneeName} url={t.assigneeAvatarUrl} size={20} />}
-                  {!t.isLinkedToMessage && (
-                    <RowActionMenu
-                      actions={[
-                        { icon: 'edit', label: '編集', onSelect: () => openEditor(t, 'edit') },
-                        { icon: 'trash', label: '削除', danger: true, onSelect: () => openEditor(t, 'delete') },
-                      ]}
-                      triggerStyle={{ padding: '6px', borderRadius: 8 }}
-                    />
-                  )}
+                  <RowActionMenu
+                    actions={[
+                      { icon: 'edit', label: '編集', onSelect: () => openEditor(t, 'edit') },
+                      { icon: 'trash', label: '削除', danger: true, onSelect: () => openEditor(t, 'delete') },
+                    ]}
+                    triggerStyle={{ padding: '6px', borderRadius: 8 }}
+                  />
                 </div>
               ))}
             </>

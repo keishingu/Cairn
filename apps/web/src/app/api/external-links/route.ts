@@ -22,6 +22,18 @@ export interface ExternalLinkDto {
   alreadyExists?: boolean
 }
 
+// metadata.channelIds（新形式の配列）と旧形式の単一 metadata.channelId の両方を読み、重複なく統合する
+function readMetadataChannelIds(meta: Record<string, unknown>): string[] {
+  const ids = new Set<string>()
+  const legacy = meta['channelId']
+  if (typeof legacy === 'string') ids.add(legacy)
+  const arr = meta['channelIds']
+  if (Array.isArray(arr)) {
+    for (const id of arr) if (typeof id === 'string') ids.add(id)
+  }
+  return [...ids]
+}
+
 function parseGoogleUrl(url: string): { docId: string; docType: ExternalLinkDocType; label: string } | null {
   const docMatch = GOOGLE_DOC_RE.exec(url)
   if (docMatch) return { docId: docMatch[1]!, docType: 'doc', label: 'Google ドキュメント' }
@@ -115,6 +127,19 @@ export async function POST(req: Request) {
         const indexingStatus = (rawStatus === 'pending' || rawStatus === 'indexed' || rawStatus === 'failed' || rawStatus === 'skipped')
           ? rawStatus
           : 'pending' as const
+
+        // 既に別チャンネル（または Files タブ経由）で登録済みのリンクを別チャンネルに再投稿した場合、
+        // そのチャンネルのファイル一覧にも表示されるよう関連チャンネルを追加する
+        if (metadataChannelId) {
+          const existingChannelIds = readMetadataChannelIds(dupMeta)
+          if (!existingChannelIds.includes(metadataChannelId)) {
+            await db
+              .update(files)
+              .set({ metadata: { ...dupMeta, channelIds: [...existingChannelIds, metadataChannelId] } })
+              .where(eq(files.id, dup.id))
+          }
+        }
+
         return NextResponse.json({
           fileId: dup.id,
           fileName: label,
@@ -133,7 +158,7 @@ export async function POST(req: Request) {
       docType,
       docId,
       indexingStatus: initialStatus,
-      ...(metadataChannelId ? { channelId: metadataChannelId } : {}),
+      ...(metadataChannelId ? { channelIds: [metadataChannelId] } : {}),
     }
 
     const [inserted] = await db

@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { generateId } from '@/lib/generate-id'
@@ -6,7 +7,8 @@ import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { DmChannelDto } from '@/app/api/workspaces/dms/route'
-import type { MessageDto, ReactionDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { MessageDto, ReactionDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { BookmarkDto } from '@/app/api/me/bookmarks/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 
 export const chatQueryKeys = {
@@ -62,7 +64,7 @@ async function fetchDms(): Promise<DmChannelDto[]> {
 
 async function fetchChannelMembers(channelId: string): Promise<{ userId: string }[]> {
   const res = await fetchWithAuth(`/api/channels/${channelId}/members`)
-  if (!res.ok) return []
+  if (!res.ok) throw new Error('チャンネルメンバーの取得に失敗しました')
   return res.json()
 }
 
@@ -101,8 +103,29 @@ async function createDm(targetUserId: string): Promise<{ id: string }> {
   return res.json()
 }
 
+// メッセージ取得エラー。status を保持し、UI 側で 403（アクセス権なし）を
+// 「メッセージの取得失敗」と区別して専用の案内を出すために使う。
+export class ChannelMessagesError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ChannelMessagesError'
+    this.status = status
+  }
+}
+
 async function fetchChannelMessages(channelId: string): Promise<MessageDto[]> {
   const res = await fetchWithAuth(`/api/channels/${channelId}/messages`)
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new ChannelMessagesError(data.error ?? 'メッセージの取得に失敗しました', res.status)
+  }
+  return res.json()
+}
+
+// ブックマーク・パーマリンクのジャンプ先が直近100件の外にある場合に、その前後のウィンドウを取得する
+async function fetchChannelMessagesAround(channelId: string, messageId: string): Promise<MessageDto[]> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}/messages?around=${messageId}`)
   if (!res.ok) throw new Error('メッセージの取得に失敗しました')
   return res.json()
 }
@@ -111,15 +134,33 @@ interface SendMessageInput {
   content: string
   attachmentFileIds?: string[]
   optimisticAttachments?: AttachmentDto[]
+  parentMessageId?: string
+  optimisticReplyTo?: ReplyToDto | null
 }
 
 async function postChannelMessage(channelId: string, input: SendMessageInput): Promise<MessageDto> {
   const res = await fetchWithAuth(`/api/channels/${channelId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: input.content, attachmentFileIds: input.attachmentFileIds }),
+    body: JSON.stringify({
+      content: input.content,
+      attachmentFileIds: input.attachmentFileIds,
+      parentMessageId: input.parentMessageId,
+    }),
   })
   if (!res.ok) throw new Error('メッセージの送信に失敗しました')
+  return res.json()
+}
+
+async function toggleMessageBookmark(messageId: string): Promise<{ bookmarked: boolean }> {
+  const res = await fetchWithAuth(`/api/messages/${messageId}/bookmark`, { method: 'POST' })
+  if (!res.ok) throw new Error('ブックマークの更新に失敗しました')
+  return res.json()
+}
+
+async function fetchBookmarks(): Promise<BookmarkDto[]> {
+  const res = await fetchWithAuth('/api/me/bookmarks')
+  if (!res.ok) throw new Error('ブックマークの取得に失敗しました')
   return res.json()
 }
 
@@ -247,6 +288,29 @@ export function useChannelMessages(channelId: string | null) {
   })
 }
 
+// 既存のキャッシュに無い古いメッセージ（ブックマーク・パーマリンクのジャンプ先）を
+// 前後のウィンドウごと取得してキャッシュへマージする。直近100件の外にあるメッセージへ
+// ジャンプしても表示されず静かに失敗する問題への対処
+export function useEnsureMessageLoaded(channelId: string | null) {
+  const queryClient = useQueryClient()
+  return React.useCallback(async (messageId: string) => {
+    if (!channelId) return
+    const current = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
+    if (current?.some(m => m.id === messageId)) return
+    try {
+      const windowMessages = await fetchChannelMessagesAround(channelId, messageId)
+      if (windowMessages.length === 0) return
+      queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), prev => {
+        const merged = new Map((prev ?? []).map(m => [m.id, m]))
+        for (const m of windowMessages) merged.set(m.id, m)
+        return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      })
+    } catch {
+      // サイレントに失敗（ハイライト・スクロールされないだけで致命的ではない）
+    }
+  }, [channelId, queryClient])
+}
+
 export function useSendChannelMessage(
   channelId: string | null,
   currentUser: CurrentUserDto | undefined,
@@ -263,6 +327,7 @@ export function useSendChannelMessage(
         const optimisticMsg: MessageDto = {
           id: `optimistic-${generateId()}`,
           content: input.content,
+          messageType: 'text',
           senderId: currentUser.id,
           senderName: currentUser.displayName,
           senderAvatarUrl: currentUser.avatarUrl,
@@ -270,6 +335,9 @@ export function useSendChannelMessage(
           isEdited: false,
           reactions: [],
           attachments: input.optimisticAttachments ?? [],
+          parentMessageId: input.parentMessageId ?? null,
+          replyTo: input.optimisticReplyTo ?? null,
+          bookmarked: false,
         }
         queryClient.setQueryData<MessageDto[]>(
           chatQueryKeys.messages(channelId),
@@ -286,17 +354,21 @@ export function useSendChannelMessage(
       }
     },
     onSuccess: (newMessage, input, context) => {
-      // POST レスポンスの attachments は空のため、楽観的データを維持して次のポーリングまで表示を保つ
+      // POST レスポンスの attachments・replyTo は空のため、楽観的データを維持して次の再取得まで表示を保つ
       const finalMessage: MessageDto = {
         ...newMessage,
         attachments: newMessage.attachments.length > 0
           ? newMessage.attachments
           : (input.optimisticAttachments ?? []),
+        replyTo: newMessage.replyTo ?? input.optimisticReplyTo ?? null,
       }
       queryClient.setQueryData<MessageDto[]>(
         chatQueryKeys.messages(channelId),
         (old) => (old ?? []).map((m) => m.id === context?.optimisticId ? finalMessage : m),
       )
+      if ((input.optimisticAttachments?.length ?? 0) > 0) {
+        void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
+      }
     },
   })
 }
@@ -374,7 +446,7 @@ export function useToggleMessageReaction(
   currentUser?: Pick<CurrentUserDto, 'displayName'>,
 ) {
   const queryClient = useQueryClient()
-  const currentUserName = currentUser?.displayName
+  const myName = currentUser?.displayName ?? 'あなた'
 
   return useMutation({
     mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
@@ -394,12 +466,7 @@ export function useToggleMessageReaction(
               const newCount = existing.count - 1
               newReactions = newCount > 0
                 ? m.reactions.map((r) => r.emoji === emoji
-                  ? {
-                      ...r,
-                      count: newCount,
-                      mine: false,
-                      ...(r.users ? { users: r.users.filter((name) => name !== currentUserName) } : {}),
-                    }
+                  ? { ...r, count: newCount, mine: false, userNames: r.userNames.filter((name) => name !== myName) }
                   : r)
                 : m.reactions.filter((r) => r.emoji !== emoji)
             } else {
@@ -408,19 +475,12 @@ export function useToggleMessageReaction(
                     ...r,
                     count: r.count + 1,
                     mine: true,
-                    ...(currentUserName && !r.users?.includes(currentUserName)
-                      ? { users: [...(r.users ?? []), currentUserName] }
-                      : {}),
+                    userNames: r.userNames.includes(myName) ? r.userNames : [...r.userNames, myName],
                   }
                 : r)
             }
           } else {
-            newReactions = [...m.reactions, {
-              emoji,
-              count: 1,
-              mine: true,
-              ...(currentUserName ? { users: [currentUserName] } : {}),
-            }]
+            newReactions = [...m.reactions, { emoji, count: 1, mine: true, userNames: [myName] }]
           }
           return { ...m, reactions: newReactions }
         }),
@@ -433,5 +493,38 @@ export function useToggleMessageReaction(
         queryClient.setQueryData(chatQueryKeys.messages(channelId), context.prev)
       }
     },
+  })
+}
+
+export function useToggleBookmark(channelId: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (messageId: string) => toggleMessageBookmark(messageId),
+    onMutate: async (messageId) => {
+      await queryClient.cancelQueries({ queryKey: chatQueryKeys.messages(channelId) })
+      const prev = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
+      queryClient.setQueryData<MessageDto[]>(
+        chatQueryKeys.messages(channelId),
+        (old) => (old ?? []).map((m) => m.id === messageId ? { ...m, bookmarked: !m.bookmarked } : m),
+      )
+      return { prev }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prev !== undefined) {
+        queryClient.setQueryData(chatQueryKeys.messages(channelId), context.prev)
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['bookmarks'] })
+    },
+  })
+}
+
+export function useBookmarks(enabled: boolean) {
+  return useQuery({
+    queryKey: ['bookmarks'] as const,
+    queryFn: fetchBookmarks,
+    enabled,
   })
 }
