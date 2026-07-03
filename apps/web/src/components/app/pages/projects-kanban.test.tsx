@@ -78,7 +78,7 @@ function renderPage(openPanel = vi.fn()) {
   return { client, openPanel }
 }
 
-describe('PageKanban mobile create entry', () => {
+describe('PageKanbanのモバイル作成導線', () => {
   beforeEach(() => {
     mockFetch.mockImplementation(async (input) => {
       const url = String(input)

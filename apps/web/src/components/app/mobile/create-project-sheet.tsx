@@ -1,9 +1,10 @@
 'use client'
 
 import React from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { PlacePhoto } from '@/app/api/places/photos/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { LocationInput } from '../location-input'
@@ -14,6 +15,7 @@ async function createProject(body: {
   startDate?: string | undefined
   endDate?: string | undefined
   coverPhotoUrl?: string | undefined
+  statusId?: string | undefined
   location?: string | undefined
   placeId?: string | undefined
   placePhotoName?: string | undefined
@@ -31,6 +33,12 @@ async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
   const res = await fetchWithAuth(`/api/places/photos?placeId=${encodeURIComponent(placeId)}`)
   if (!res.ok) return []
   return res.json() as Promise<PlacePhoto[]>
+}
+
+async function fetchStatuses(): Promise<ProjectStatusDto[]> {
+  const res = await fetchWithAuth('/api/projects/statuses')
+  if (!res.ok) throw new Error('ステータスの取得に失敗しました')
+  return res.json() as Promise<ProjectStatusDto[]>
 }
 
 const inputStyle: React.CSSProperties = {
@@ -54,6 +62,10 @@ interface CreateProjectSheetProps {
 
 export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
+  const { data: statuses = [] } = useQuery<ProjectStatusDto[]>({
+    queryKey: ['statuses'],
+    queryFn: fetchStatuses,
+  })
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
@@ -101,6 +113,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
     if (hasError) return
 
     mutation.mutate({
+      statusId: statuses[0]?.id,
       title: title.trim(),
       description: description.trim() || undefined,
       startDate: startDate || undefined,
