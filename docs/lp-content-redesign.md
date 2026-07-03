@@ -47,7 +47,7 @@
 
 PR #282 の原則「実装と乖離した約束の禁止」に基づく修正:
 
-- **Bring Your Own AI を LP から削除**（実装は OpenAI のみ）。ただし **BYO AI は引き続きロードマップ目標**であり、[`09_product_strategy_notes.md`](./09_product_strategy_notes.md) の優先課題 2（AI のプロバイダ非依存化）として維持する。実装され次第 LP に復帰させる
+- **Bring Your Own AI を LP から削除**（実装は OpenAI のみ）。ただし **BYO AI は引き続きロードマップ目標**であり、[`09_product_strategy_notes.md`](./09_product_strategy_notes.md) §3 の展開課題 2（AI のプロバイダ非依存化）として維持する。実装され次第 LP に復帰させる
 - **Self-Hosted は事実ベースに軟化して存続**（FDE 戦略・カスタマイズ訴求として重要なため削除しない）: `docker compose up` の偽ターミナルを実際に動く `git clone` + `supabase start && pnpm dev` に差し替え、Docker / On-Premise は `roadmap` 表記に変更
 - フッターの Documentation / Release Notes / Issues は実在する GitHub リンクへ接続（旧: ページ内アンカーの空リンク）
 - GitHub リンク（`href="#"` だった箇所含む）を実リポジトリ URL に接続
