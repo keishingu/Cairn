@@ -9,6 +9,7 @@ import { PageToolbar } from './page-toolbar'
 import { CreateProjectModal } from './create-project-modal'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { FilterPopover } from './filter-popover'
+import { chatQueryKeys } from '@/lib/chat/client'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
@@ -73,7 +74,11 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
 
   const handleMobileCreated = (project: ProjectDto) => {
     setShowCreate(false)
-    openPanel(project)
+    void queryClient
+      .invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
+      .finally(() => {
+        openPanel(project)
+      })
   }
 
   const projectFilter = React.useCallback(

@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -98,11 +98,15 @@ describe('PageKanbanのモバイル作成導線', () => {
   it('モバイルのカンバン画面から新規プロジェクト作成を開始できる', async () => {
     const user = userEvent.setup()
     const { client, openPanel } = renderPage()
+    const invalidateQueriesSpy = vi.spyOn(client, 'invalidateQueries')
 
     await user.click(screen.getByRole('button', { name: '新規プロジェクト' }))
     await user.click(screen.getByRole('button', { name: 'sheet-create' }))
 
-    expect(openPanel).toHaveBeenCalledWith(STUB_PROJECT)
+    await waitFor(() => {
+      expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['project-channels'] })
+      expect(openPanel).toHaveBeenCalledWith(STUB_PROJECT)
+    })
     expect(client.getQueryData<ProjectDto[]>(['projects'])).toEqual([STUB_PROJECT])
   })
 })
