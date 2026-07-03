@@ -80,6 +80,13 @@ const STUB_PROJECT = {
   placeId: null,
 } satisfies ProjectDto
 
+const SECOND_PROJECT = {
+  ...STUB_PROJECT,
+  id: 'proj-2',
+  title: 'Alpha Corp 様',
+  startDate: '2026-07-02',
+} satisfies ProjectDto
+
 function renderView() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -124,5 +131,24 @@ describe('ProjectListView', () => {
     expect(await screen.findByText('詳細パネル表示中は、一覧の読みやすさを優先してカード表示に切り替えています。')).toBeInTheDocument()
     expect(screen.queryByText('プロジェクト')).toBeNull()
     expect(screen.getAllByText('Epic Japan 様').length).toBeGreaterThan(0)
+  })
+
+  it('詳細パネル退避中のカード順はテーブルソート順に合わせる', async () => {
+    mockSearchParams = new URLSearchParams('open=project-proj-1')
+    localStorage.setItem(STORAGE_KEYS.projects_table_sort, JSON.stringify({ key: 'title', dir: 'asc' }))
+    mockFetch.mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === '/api/projects') return new Response(JSON.stringify([STUB_PROJECT, SECOND_PROJECT]), { status: 200 })
+      if (url === '/api/projects/statuses') return new Response(JSON.stringify([]), { status: 200 })
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+
+    const { container } = renderView()
+
+    await screen.findByText('詳細パネル表示中は、一覧の読みやすさを優先してカード表示に切り替えています。')
+    const cards = Array.from(container.querySelectorAll('[data-list-index]'))
+    expect(cards).toHaveLength(2)
+    expect(cards[0]?.textContent).toContain('Alpha Corp 様')
+    expect(cards[1]?.textContent).toContain('Epic Japan 様')
   })
 })

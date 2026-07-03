@@ -197,6 +197,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       return dir === 'asc' ? cmp : -cmp
     })
   }, [filteredProjects, view, tableSort])
+  const renderedProjects = showPanelSafeGrid ? sortedProjects : filteredProjects
 
   // 矢印選択・Enter は実際に描画している並び（sortedProjects）を対象にする
   const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useListSelection({
@@ -435,7 +436,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               gridTemplateColumns: isMobile ? undefined : 'repeat(auto-fill, minmax(280px, 1fr))',
               gap: isMobile ? 10 : 16,
             }}>
-            {filteredProjects.map((p, i) => {
+            {renderedProjects.map((p, i) => {
               const accent = p.statusColor ?? 'var(--text-3)'
               const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
 
