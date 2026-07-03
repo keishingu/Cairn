@@ -24,11 +24,14 @@ function resolveResponseContentType(fileName: string, mimeType: string | null) {
   return isText ? `${responseMimeType}; charset=utf-8` : responseMimeType
 }
 
-export async function GET(_req: Request, { params }: RouteContext) {
+export async function GET(req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
   const { fileId } = await params
+
+  // 一覧アイコン・チャットのサムネは ?thumb=1 で縮小版を要求する
+  const wantThumb = new URL(req.url).searchParams.get('thumb') === '1'
 
   try {
     const { db, files } = await import('@cairn/db')
@@ -60,9 +63,24 @@ export async function GET(_req: Request, { params }: RouteContext) {
     }
 
     const supabase = createServiceRoleClient()
-    const { data, error: storageError } = await supabase.storage
+
+    // サムネが要求され、かつ生成済みならそちらを返す（無ければオリジナルにフォールバック）
+    const meta = (file.metadata ?? {}) as Record<string, unknown>
+    const thumbnailPath = typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
+    const useThumb = wantThumb && thumbnailPath !== null
+
+    let { data, error: storageError } = await supabase.storage
       .from('chat-attachments')
-      .download(file.storagePath)
+      .download(useThumb ? thumbnailPath! : file.storagePath)
+
+    // サムネ取得に失敗した場合はオリジナルにフォールバックする
+    let servedThumb = useThumb
+    if (useThumb && (storageError || !data)) {
+      servedThumb = false
+      ;({ data, error: storageError } = await supabase.storage
+        .from('chat-attachments')
+        .download(file.storagePath))
+    }
 
     if (storageError || !data) {
       console.error('[/api/attachments/[fileId]] Storage download failed:', storageError)
@@ -71,7 +89,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
     return new NextResponse(data, {
       headers: {
-        'Content-Type': resolveResponseContentType(file.fileName, file.mimeType),
+        'Content-Type': servedThumb ? 'image/jpeg' : resolveResponseContentType(file.fileName, file.mimeType),
         'Content-Disposition': `inline; filename="${encodeURIComponent(file.fileName)}"`,
         'Cache-Control': 'private, max-age=3600',
       },
@@ -182,12 +200,14 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
     // DB から削除（message_attachments は CASCADE で連鎖削除）
     await db.delete(files).where(eq(files.id, fileId))
 
-    // 外部リンクはストレージオブジェクトなし
+    // 外部リンクはストレージオブジェクトなし。サムネがあれば併せて削除する
     if (file.fileType !== 'link' && file.storagePath) {
+      const meta = (file.metadata ?? {}) as Record<string, unknown>
+      const thumbnailPath = typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({
         name: 'storage/objects.delete',
-        data: { bucket: 'chat-attachments', paths: [file.storagePath] },
+        data: { bucket: 'chat-attachments', paths: thumbnailPath ? [file.storagePath, thumbnailPath] : [file.storagePath] },
       })
     }
 

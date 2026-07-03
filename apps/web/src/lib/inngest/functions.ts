@@ -350,6 +350,77 @@ export const deleteStorageObjects = inngest.createFunction(
   },
 )
 
+// 既存の画像ファイルにサムネを後付け生成する。1回の実行で BACKFILL_BATCH 件だけ処理し、
+// 残りがあれば自身を再送して継続する（長時間実行・タイムアウトを避けるため）。
+const BACKFILL_BATCH = 50
+
+export const backfillThumbnails = inngest.createFunction(
+  { id: 'backfill-thumbnails' },
+  { event: 'attachments/backfill-thumbnails' },
+  async ({ event, step }) => {
+    const { workspaceId, afterId } = (event.data ?? {}) as { workspaceId?: string; afterId?: string }
+
+    const targets = await step.run('fetch-targets', async () => {
+      const { db, files, galleryItems } = await import('@cairn/db')
+      const { and, asc, eq, gt, isNotNull, notExists, sql } = await import('drizzle-orm')
+
+      return db
+        .select({ id: files.id, storagePath: files.storagePath })
+        .from(files)
+        .where(and(
+          eq(files.fileType, 'image'),
+          isNotNull(files.storagePath),
+          // metadata にサムネパスが未設定のものだけを対象にする（再実行で重複処理しない）
+          sql`${files.metadata} ->> 'thumbnailPath' IS NULL`,
+          // ギャラリー画像は別バケット(gallery)に保存されており createThumbnailFromStorage
+          // (chat-attachments 固定) では取得できず永久に失敗し続けるため除外する
+          notExists(db.select({ one: sql`1` }).from(galleryItems).where(eq(galleryItems.fileId, files.id))),
+          ...(workspaceId ? [eq(files.workspaceId, workspaceId)] : []),
+          // id キーセットで前進する。失敗行は thumbnailPath が NULL のまま残るが、
+          // ここで id > afterId に進めることで同じバッチを永久再取得して詰まるのを防ぐ
+          ...(afterId ? [gt(files.id, afterId)] : []),
+        ))
+        .orderBy(asc(files.id))
+        .limit(BACKFILL_BATCH)
+    })
+
+    if (targets.length === 0) return { processed: 0, done: true }
+
+    const result = await step.run('generate-thumbnails', async () => {
+      const { createThumbnailFromStorage } = await import('@/lib/attachments/thumbnail')
+      const { db, files } = await import('@cairn/db')
+      const { eq, sql } = await import('drizzle-orm')
+      const supabase = createServiceRoleClient()
+
+      let generated = 0
+      let failed = 0
+      for (const t of targets) {
+        if (!t.storagePath) continue
+        const thumbnailPath = await createThumbnailFromStorage(supabase, t.storagePath)
+        if (!thumbnailPath) { failed++; continue }
+        // 既存 metadata を保持したまま thumbnailPath だけマージする
+        await db
+          .update(files)
+          .set({ metadata: sql`${files.metadata} || ${JSON.stringify({ thumbnailPath })}::jsonb` })
+          .where(eq(files.id, t.id))
+        generated++
+      }
+      return { generated, failed }
+    })
+
+    // バッチが満杯なら未処理が残っている可能性があるので、最後の id を起点に継続する
+    const lastId = targets[targets.length - 1]!.id
+    if (targets.length === BACKFILL_BATCH) {
+      await step.sendEvent('continue-backfill', {
+        name: 'attachments/backfill-thumbnails',
+        data: { ...(workspaceId ? { workspaceId } : {}), afterId: lastId },
+      })
+    }
+
+    return { processed: targets.length, generated: result.generated, failed: result.failed, done: targets.length < BACKFILL_BATCH }
+  },
+)
+
 export const indexFileChunks = inngest.createFunction(
   { id: 'index-file-chunks' },
   { event: 'file/uploaded' },

@@ -75,6 +75,15 @@ export async function POST(req: Request) {
   }
 
   const actualSize = typeof object.metadata?.['size'] === 'number' ? object.metadata['size'] as number : fileSize
+  let thumbnailPath: string | null = null
+  if (normalizedMime.startsWith('image/')) {
+    try {
+      const { createThumbnailFromStorage } = await import('@/lib/attachments/thumbnail')
+      thumbnailPath = await createThumbnailFromStorage(supabase, storagePath)
+    } catch (e) {
+      console.warn('[/api/attachments/finalize] Thumbnail generation failed (serving original):', e)
+    }
+  }
 
   try {
     const { db, files, channels } = await import('@cairn/db')
@@ -99,7 +108,10 @@ export async function POST(req: Request) {
         mimeType: normalizedMime,
         fileSize: actualSize,
         fileType: resolveFileType(normalizedMime),
-        metadata: { pendingChannelId: channelId },
+        metadata: {
+          pendingChannelId: channelId,
+          ...(thumbnailPath ? { thumbnailPath } : {}),
+        },
       })
       .returning()
 
@@ -115,8 +127,8 @@ export async function POST(req: Request) {
       { status: 201 },
     )
   } catch (err) {
-    // DBインサート失敗時はストレージをロールバック
-    await supabase.storage.from('chat-attachments').remove([storagePath])
+    // DBインサート失敗時はストレージをロールバック（サムネがあれば併せて削除）
+    await supabase.storage.from('chat-attachments').remove(thumbnailPath ? [storagePath, thumbnailPath] : [storagePath])
     console.error('[/api/attachments/finalize] DB insert failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
