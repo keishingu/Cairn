@@ -201,4 +201,24 @@ describe('CreateProjectSheetの作成フロー', () => {
       String(url) === '/api/projects' && init?.method === 'POST')
     expect(JSON.parse(String(postCall?.[1]?.body))).not.toHaveProperty('statusId')
   })
+
+  it('status 必須でない導線では status 一覧取得後も statusId を送らない', async () => {
+    const user = userEvent.setup()
+
+    renderSheet()
+    await user.type(screen.getByPlaceholderText('例: 新規顧客向け導入プロジェクト'), '通常作成')
+    await user.click(screen.getByRole('button', { name: '作成する' }))
+
+    await waitFor(() => {
+      expect(mockFetch.mock.calls.some(([url, init]) =>
+        String(url) === '/api/projects' && init?.method === 'POST')).toBe(true)
+    })
+
+    const postCall = [...mockFetch.mock.calls].reverse().find(([url, init]) =>
+      String(url) === '/api/projects' && init?.method === 'POST')
+    expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({
+      title: '通常作成',
+    })
+    expect(JSON.parse(String(postCall?.[1]?.body))).not.toHaveProperty('statusId')
+  })
 })

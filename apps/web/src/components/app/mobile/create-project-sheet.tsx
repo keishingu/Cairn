@@ -133,7 +133,7 @@ export function CreateProjectSheet({ onClose, onCreated, requireStatus = false }
     if (hasError) return
 
     mutation.mutate({
-      statusId: initialStatusId,
+      statusId: requireStatus ? initialStatusId : undefined,
       title: title.trim(),
       description: description.trim() || undefined,
       startDate: startDate || undefined,
