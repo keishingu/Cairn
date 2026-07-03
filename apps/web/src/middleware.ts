@@ -43,9 +43,10 @@ export async function middleware(request: NextRequest) {
   const isLandingRoute = pathname === '/'
   // 旧 LP と静的 HTML の直 URL。公開 LP は / に集約するためリダイレクトする
   const isLegacyLpPage = pathname === '/lp' || pathname === '/lp/' || pathname === '/lp/index.html' || pathname === '/index.html'
+  const isLegacyLpAsset = pathname.startsWith('/lp/') && !isLegacyLpPage
   const isSeoRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
-  // 未ログインでもアクセスできるパブリックルート（/lp/ 配下の静的アセットも含む）
-  const isPublicRoute = pathname.startsWith('/invite') || pathname.startsWith('/lp') || isLandingRoute || isLegacyLpPage || isSeoRoute
+  // 未ログインでもアクセスできるパブリックルート（旧 /lp/ 配下の静的アセットも含む）
+  const isPublicRoute = pathname.startsWith('/invite') || pathname.startsWith('/lp') || isLandingRoute || isLegacyLpPage || isLegacyLpAsset || isSeoRoute
   // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
   const isOnboardingRoute = pathname.startsWith('/onboarding')
 
@@ -56,6 +57,11 @@ export async function middleware(request: NextRequest) {
     const landingUrl = new URL('/', request.url)
     landingUrl.search = request.nextUrl.search
     return NextResponse.redirect(landingUrl)
+  }
+  if (isLegacyLpAsset) {
+    const assetUrl = new URL(pathname.slice('/lp'.length), request.url)
+    assetUrl.search = request.nextUrl.search
+    return NextResponse.redirect(assetUrl)
   }
   if (user && isLandingRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))

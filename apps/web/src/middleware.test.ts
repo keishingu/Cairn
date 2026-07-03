@@ -76,11 +76,20 @@ describe('middleware', () => {
     expect(res.headers.get('location')).toBe('http://localhost:3000/?utm_content=footer')
   })
 
-  it('/lp/ 配下の静的アセットはリダイレクトされない', async () => {
+  it('/lp/ 配下の旧静的アセットは直下の URL にリダイレクトされる', async () => {
     getUser.mockResolvedValue({ data: { user: null } })
     const { middleware } = await import('./middleware')
     const res = await middleware(makeRequest('/lp/cairn-lp.css'))
-    expect(res.headers.get('location')).toBeNull()
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toBe('http://localhost:3000/cairn-lp.css')
+  })
+
+  it('/lp/ 配下の旧静的アセットのクエリ文字列を維持してリダイレクトされる', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+    const { middleware } = await import('./middleware')
+    const res = await middleware(makeRequest('/lp/og-image.png?v=1'))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toBe('http://localhost:3000/og-image.png?v=1')
   })
 
   it('未認証で保護ルートにアクセスすると /auth/login にリダイレクトされる', async () => {

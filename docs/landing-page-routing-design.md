@@ -59,7 +59,7 @@
 - 未認証で `/` にアクセス → middleware は通過し、`apps/web/src/app/route.ts` が `public/index.html` を `text/html` として返す
 - 認証済みで `/` にアクセス → `/projects` へリダイレクト
 - `/lp`・`/lp/`・`/lp/index.html`（旧 LP の URL）と `/index.html` へのアクセス → `/` へリダイレクト（公開 LP の URL を `/` に一本化）
-- `/lp/cairn-lp.css` ・`/lp/cairn-lp.js` などの静的アセットは `/lp/` 配下に残置し、そのまま配信（リダイレクト対象から除外）
+- `/lp/cairn-lp.css`・`/lp/cairn-lp.js`・`/lp/og-image.png` など旧 `/lp/` 配下の静的アセット URL は、直下の `/cairn-lp.css`・`/cairn-lp.js`・`/og-image.png` へリダイレクトする
 - `/robots.txt`・`/sitemap.xml` は公開 SEO ルートとして未認証でもアクセス可能
 
 この方式では、旧 `apps/web/src/app/page.tsx` の `/projects` リダイレクトは削除し、`apps/web/src/app/route.ts` が `/` のレスポンスを担当する。ログイン済みユーザーの `/projects` 誘導は引き続き middleware に集約する。

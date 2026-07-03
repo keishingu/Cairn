@@ -2,7 +2,7 @@
 
 - **ステータス**: 実装済み
 - **作成**: 2026-07-03
-- **対象**: `apps/web/public/index.html` と `apps/web/public/lp/`（静的 LP）
+- **対象**: `apps/web/public/index.html` / `apps/web/public/cairn-lp.css` / `apps/web/public/cairn-lp.js`（静的 LP）
 
 > 実装と矛盾する場合はコードと [`CLAUDE.md`](../CLAUDE.md) を正とする。
 > ルーティング（`/` への公開化・`/lp` 集約）は [`landing-page-routing-design.md`](./landing-page-routing-design.md) を参照。
