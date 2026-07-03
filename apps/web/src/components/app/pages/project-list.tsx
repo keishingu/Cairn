@@ -18,6 +18,7 @@ import { FilterPopover } from './filter-popover'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
+import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 
 // ─── Main component ───────────────────────────────────────────────
 interface ProjectListViewProps {
@@ -47,12 +48,26 @@ async function fetchStatuses(): Promise<ProjectStatusDto[]> {
   return res.json() as Promise<ProjectStatusDto[]>
 }
 
+async function fetchMembers(): Promise<WorkspaceMemberDto[]> {
+  const res = await fetchWithAuth('/api/workspaces/members')
+  if (!res.ok) throw new Error('fetch failed')
+  return res.json() as Promise<WorkspaceMemberDto[]>
+}
+
 export const ProjectListView = ({ openPanel, isMobile, externalSearch }: ProjectListViewProps) => {
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
+  const openParam = searchParams.get('open') ?? ''
+  const detailProjectId = !isMobile && openParam.startsWith('project-') ? openParam.slice('project-'.length) : null
+  const detailMemberId = !isMobile && openParam.startsWith('member-') ? openParam.slice('member-'.length) : null
+  const { data: members = [] } = useQuery({
+    queryKey: ['workspace-members'],
+    queryFn: fetchMembers,
+    enabled: detailMemberId !== null,
+  })
   const [view, setView] = React.useState<'grid' | 'table'>(() => {
     if (typeof window === 'undefined') return 'grid'
     const saved = localStorage.getItem(STORAGE_KEYS.projects_list_view)
@@ -110,7 +125,9 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   const [search, setSearch] = React.useState('')
   const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false)
   const searchInputRef = React.useRef<HTMLInputElement>(null)
-  const detailPanelOpen = !isMobile && Boolean(searchParams.get('open'))
+  const detailPanelOpen =
+    (detailProjectId !== null && projects.some(project => project.id === detailProjectId)) ||
+    (detailMemberId !== null && members.some(member => member.userId === detailMemberId))
   const showPanelSafeGrid = detailPanelOpen && view === 'table'
 
   // ⌥N 新規 / ⌥F フィルタ / ⌥G ⌥T ビュー切替（検索フォーカスは TopBarSearch が担当）

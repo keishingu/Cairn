@@ -7,6 +7,7 @@ import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 
 let mockSearchParams = new URLSearchParams()
 
@@ -87,6 +88,16 @@ const SECOND_PROJECT = {
   startDate: '2026-07-02',
 } satisfies ProjectDto
 
+const STUB_MEMBER = {
+  userId: 'user-1',
+  displayName: '新宮',
+  avatarUrl: null,
+  email: null,
+  role: 'admin',
+  joinedAt: '2026-07-01',
+  projectCount: 1,
+} satisfies WorkspaceMemberDto
+
 function renderView() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -105,6 +116,7 @@ describe('ProjectListView', () => {
       const url = String(input)
       if (url === '/api/projects') return new Response(JSON.stringify([STUB_PROJECT]), { status: 200 })
       if (url === '/api/projects/statuses') return new Response(JSON.stringify([]), { status: 200 })
+      if (url === '/api/workspaces/members') return new Response(JSON.stringify([STUB_MEMBER]), { status: 200 })
       throw new Error(`unexpected fetch: ${url}`)
     })
     mockUseWorkspacePermissions.mockReturnValue({
@@ -139,6 +151,15 @@ describe('ProjectListView', () => {
     renderView()
 
     expect(await screen.findByText('詳細パネル表示中は、一覧の読みやすさを優先してカード表示に切り替えています。')).toBeInTheDocument()
+  })
+
+  it('無効な詳細パネルURLではカード表示へ退避しない', async () => {
+    mockSearchParams = new URLSearchParams('open=member-missing-user')
+
+    renderView()
+
+    expect(await screen.findByText('プロジェクト')).toBeInTheDocument()
+    expect(screen.queryByText('詳細パネル表示中は、一覧の読みやすさを優先してカード表示に切り替えています。')).toBeNull()
   })
 
   it('詳細パネル退避中のカード順はテーブルソート順に合わせる', async () => {
