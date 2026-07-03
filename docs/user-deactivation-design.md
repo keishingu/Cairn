@@ -178,31 +178,45 @@ export async function canAccessFile(/* ... */): Promise<boolean>
 ```
 
 - `notification-access.ts` の `fetchActiveChannelRecipients` / `fetchActiveMentionedMembers` / `fetchActiveGuestIds` を、内部で `activeWorkspaceMembers` ビュー join に統一。guest の project 到達判定も `canAccessProject` に寄せる。
-- `/api/workspaces/members` / `/api/projects/[id]/members` / `/api/workspaces/dms` / `/api/workspaces/list` / `/api/channels/[channelId]/members` の各エンドポイントが手書きしている active join を、`listActiveMemberIds` / `requireActiveMember` 呼び出しに置換。
-- 「active を絞る」表面積が **13 サイト → 1 モジュール**に縮む。新規 read path は必ずこのモジュールを通す、をレビュー規約にする。
+- `/api/projects/[id]/members` / `/api/workspaces/dms` / `/api/workspaces/list` / `/api/channels/[channelId]/members` など、**認可判定・候補リスト**（メンション補完・DM作成候補・チャンネル参加者チェック等）として membership を読む箇所は、手書きの active join を `listActiveMemberIds` / `requireActiveMember` 呼び出しに置換。
+- 「active を絞る」表面積が縮む。新規 read path はこの用途に限り必ずこのモジュールを通す、をレビュー規約にする。
+
+**適用対象外**: `/api/workspaces/members`（管理者向けメンバー一覧 API）はこの集約の対象に**含めない**。§6 はこの API が `status` を返し、現役/卒業生（非活性）を分離表示した上で管理者が再活性化できることを要求している。active-only ヘルパーへ寄せると非活性ユーザーが API 境界で消え、再活性化の導線自体が失われる（Codex 指摘、[PR #286](https://github.com/keishingu/Cairn/pull/286#discussion_r3517190959)）。Layer B は「認可判定・候補リストの読み取り」専用とし、管理者向けの inactive-aware な一覧 API は既存のまま `workspace_members` を直接参照する（§6・§9-4 で別途 `status` 対応する）。
 
 ### Layer C — 非活性化を「派生までカスケードする状態遷移」に（クラス2の根治）
 
-PR #245 の個別対応は、再招待エンドポイント内で `project_members` / `channel_members` / `pinned_projects` / `notifications` を都度掃除している。これをエンドポイントから引き剥がし、状態遷移関数に集約する。
+> **訂正（[PR #286](https://github.com/keishingu/Cairn/pull/286#discussion_r3517190961) の Codex 指摘を反映）**: 当初案は非活性化（deactivate）の時点で派生行を削除するとしていたが、これは §5 の「再活性化 → 所属・履歴はそのまま復帰」と矛盾する。管理者が単純に `inactive → active` を戻す**通常の再活性化**では、削除された `project_members` / `channel_members` / `pinned_projects` を復元する元データが無くなってしまう。PR #245 が実際に実装したのは「非活性化時」ではなく「**非活性メンバーを低権限で再招待（invite accept）した時点**」での掃除であり、これは招待のスコープを新しい権限で洗い替える操作であって、非活性化そのものの副作用ではない。設計を実挙動に合わせて訂正する。
+
+PR #245 の個別対応は、再招待エンドポイント内で `project_members` / `channel_members` / `pinned_projects` / `notifications` を都度掃除している。これをエンドポイントから引き剥がし、状態遷移関数に集約する。**掃除は「再招待経由での復帰」パスに限定し、非活性化そのものや単純な再活性化では派生行に触れない。**
 
 ```ts
 // apps/web/src/lib/access/lifecycle.ts
+
+// 非活性化: membership_status を倒すだけ。§5 の「所属・履歴はそのまま復帰」を
+// 満たすため、project_members / channel_members / pinned_projects には触れない。
 export async function deactivateMembership(tx, ws: string, user: string) {
-  // 1. workspace_members.membership_status = 'inactive'
-  // 2. その ws 配下の project_members / channel_members(private/DM) を削除
-  // 3. pinned_projects を削除
-  // 4. 未読・未配信 notifications を削除、push subscription を無効化
+  // 1. workspace_members.membership_status = 'inactive'（deactivatedAt/deactivatedBy を記録）
+  // 2. 未読・未配信 notifications の生成を止める（既存通知の削除はしない）
 }
 
-export async function reactivateMembership(tx, ws: string, user: string, role: WorkspaceRole, opts) {
-  // membership_status='active' + role を招待値で上書き（旧 owner/admin を復活させない）
-  // guest なら invite 対象 project だけ project_members に再付与
+// 単純な再活性化（管理者が status を戻すだけ、招待を介さない）:
+// 派生行は非活性化時に消していないので、そのまま所属・履歴が復帰する。
+export async function reactivateMembership(tx, ws: string, user: string) {
+  // membership_status = 'active' のみ。role・project_members・channel_members は不変。
+}
+
+// 再招待経由での復帰（招待でロール/スコープが変わるケース）:
+// 新しい招待スコープを権威とするため、この経路でのみ旧派生行を掃除してから再付与する。
+export async function reactivateViaInvite(tx, ws: string, user: string, role: WorkspaceRole, opts) {
+  // 1. その ws 配下の既存 project_members / channel_members(private/DM) / pinned_projects / notifications を削除
+  // 2. membership_status='active' + role を招待値で上書き（旧 owner/admin を復活させない）
+  // 3. guest なら invite 対象 project だけ project_members に再付与
 }
 ```
 
-- 「inactive ⇒ 派生アクセス行が存在しない」を**入口で保証**すれば、read 側は派生行を読むだけで自然に inactive を除外でき、各 read で active を再確認する負担が減る（Layer A のビュー guard は defense-in-depth として残す）。
-- 再招待は「旧アクセスの復活」ではなく「スコープを絞った新規付与」になる。これは §8-2 の再活性化ポリシー（同一性維持）とも整合し、低権限で再招待したのに旧 private channel/DM が復活する事故を構造的に防ぐ。
-- 都度掃除ロジックがエンドポイントから消え、トランザクション境界も 2 関数へ集約される。
+- 「非活性化は削除しない・再招待だけが洗い替える」という区別を関数の分割で保証する。これにより通常の再活性化は §5 の約束を機械的に満たし、再招待は §8-2 の再活性化ポリシー（同一性維持）と整合しつつ、低権限で再招待したのに旧 private channel/DM が復活する事故を防ぐ。
+- 都度掃除ロジックがエンドポイントから消え、トランザクション境界も `reactivateViaInvite` へ集約される。
+- Layer A のビュー guard（active membership のみ read 対象）は、非活性化中に派生行が残っていても漏れを防ぐ defense-in-depth として引き続き機能する。
 
 ### 適用順・PR 分割
 
@@ -213,5 +227,5 @@ export async function reactivateMembership(tx, ws: string, user: string, role: W
 ### テスト観点
 
 - **ビュー**: 非活性化直後に各 read API（notifications / files / members / ical / dms）が即座に除外することを回帰化。Layer A で 1 ヘルパーに集約されるため、テストも集約できる。
-- **ライフサイクル**: deactivate → 派生行が全消えること / reactivate(guest) → invite 対象 project だけ復活し、旧 private channel・pin・notification が復活しないこと。
+- **ライフサイクル**: deactivate → 派生行が消えない（§5 の単純復帰を保証）こと / 単純 reactivate → 元の project_members・channel_members・pin がそのまま参照できること / reactivateViaInvite(guest) → invite 対象 project だけ復活し、旧 private channel・pin・notification が復活しないこと。
 - **defense-in-depth**: 派生行を手で残した状態でも Layer A のビュー guard で read が漏れないこと。
