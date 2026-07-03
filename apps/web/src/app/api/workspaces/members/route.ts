@@ -23,7 +23,7 @@ export async function GET() {
   try {
     const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
-    const { profiles, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
+    const { profiles, activeWorkspaceMembers, projectMembers, projects } = await import('@cairn/db')
     const { eq, and, count, sql, inArray } = await import('drizzle-orm')
 
     // ゲストはワークスペース全体のメンバー一覧を見られない。
@@ -74,25 +74,22 @@ export async function GET() {
       .select({
         userId: profiles.id,
         displayName: profiles.displayName,
-        avatarUrl: workspaceMembers.avatarUrl,
-        role: workspaceMembers.role,
-        joinedAt: workspaceMembers.joinedAt,
+        avatarUrl: activeWorkspaceMembers.avatarUrl,
+        role: activeWorkspaceMembers.role,
+        joinedAt: activeWorkspaceMembers.joinedAt,
         projectCount: sql<number>`coalesce(${projectCountSq.n}, 0)`,
       })
-      .from(workspaceMembers)
-      .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
-      .leftJoin(projectCountSq, eq(projectCountSq.userId, workspaceMembers.userId))
+      // active_workspace_members ビュー経由なので membership_status の絞り込みは不要
+      .from(activeWorkspaceMembers)
+      .innerJoin(profiles, eq(activeWorkspaceMembers.userId, profiles.id))
+      .leftJoin(projectCountSq, eq(projectCountSq.userId, activeWorkspaceMembers.userId))
       .where(
         isGuest
           ? and(
-            eq(workspaceMembers.workspaceId, ctx.workspaceId),
-            eq(workspaceMembers.membershipStatus, 'active'),
-            inArray(workspaceMembers.userId, visibleUserIds),
+            eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+            inArray(activeWorkspaceMembers.userId, visibleUserIds),
           )
-          : and(
-            eq(workspaceMembers.workspaceId, ctx.workspaceId),
-            eq(workspaceMembers.membershipStatus, 'active'),
-          ),
+          : eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
       )
       .orderBy(profiles.displayName)
 

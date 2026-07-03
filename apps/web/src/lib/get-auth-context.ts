@@ -28,7 +28,7 @@ type UserResult =
 
 interface MembershipQueryDeps {
   db: Awaited<typeof import('@cairn/db')>['db']
-  workspaceMembers: Awaited<typeof import('@cairn/db')>['workspaceMembers']
+  activeWorkspaceMembers: Awaited<typeof import('@cairn/db')>['activeWorkspaceMembers']
   userId: string
   workspaceId?: string | null
 }
@@ -53,17 +53,18 @@ async function getAuthenticatedUser(
   return data.user
 }
 
-async function findActiveMembership({ db, workspaceMembers, userId, workspaceId = null }: MembershipQueryDeps) {
+async function findActiveMembership({ db, activeWorkspaceMembers, userId, workspaceId = null }: MembershipQueryDeps) {
   const { eq, and } = await import('drizzle-orm')
 
-  const conditions = [eq(workspaceMembers.userId, userId), eq(workspaceMembers.membershipStatus, 'active')]
+  // active_workspace_members ビュー経由なので active 絞り込みは不要
+  const conditions = [eq(activeWorkspaceMembers.userId, userId)]
   if (workspaceId) {
-    conditions.push(eq(workspaceMembers.workspaceId, workspaceId))
+    conditions.push(eq(activeWorkspaceMembers.workspaceId, workspaceId))
   }
 
   const [member] = await db
-    .select({ workspaceId: workspaceMembers.workspaceId })
-    .from(workspaceMembers)
+    .select({ workspaceId: activeWorkspaceMembers.workspaceId })
+    .from(activeWorkspaceMembers)
     .where(and(...conditions))
     .limit(1)
 
@@ -102,7 +103,7 @@ export async function getAuthContext(): Promise<AuthResult> {
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceMembers } = await import('@cairn/db')
+    const { activeWorkspaceMembers } = await import('@cairn/db')
     const cachedWorkspaceId = cached && cached.expiresAt > Date.now() ? cached.workspaceId : null
     const requestedWorkspaceId = preferredWorkspaceId ?? cachedWorkspaceId
 
@@ -110,7 +111,7 @@ export async function getAuthContext(): Promise<AuthResult> {
     if (requestedWorkspaceId) {
       const preferred = await findActiveMembership({
         db,
-        workspaceMembers,
+        activeWorkspaceMembers,
         userId: user.id,
         workspaceId: requestedWorkspaceId,
       })
@@ -125,7 +126,7 @@ export async function getAuthContext(): Promise<AuthResult> {
 
     const member = await findActiveMembership({
       db,
-      workspaceMembers,
+      activeWorkspaceMembers,
       userId: user.id,
     })
 

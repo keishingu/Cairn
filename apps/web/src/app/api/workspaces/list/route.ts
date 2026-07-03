@@ -17,24 +17,22 @@ export async function GET() {
   if (error) return error
 
   try {
-    const { db, workspaces, workspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { db, workspaces, activeWorkspaceMembers } = await import('@cairn/db')
+    const { eq } = await import('drizzle-orm')
 
+    // active_workspace_members ビュー経由なので inactive 除外を書く必要がない
     const rows = await db
       .select({
         id: workspaces.id,
         name: workspaces.name,
         slug: workspaces.slug,
         logoUrl: workspaces.logoUrl,
-        role: workspaceMembers.role,
+        role: activeWorkspaceMembers.role,
       })
-      .from(workspaceMembers)
-      .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
-      .where(and(
-        eq(workspaceMembers.userId, userId),
-        eq(workspaceMembers.membershipStatus, 'active'),
-      ))
-      .orderBy(workspaceMembers.joinedAt)
+      .from(activeWorkspaceMembers)
+      .innerJoin(workspaces, eq(activeWorkspaceMembers.workspaceId, workspaces.id))
+      .where(eq(activeWorkspaceMembers.userId, userId))
+      .orderBy(activeWorkspaceMembers.joinedAt)
 
     return NextResponse.json(rows satisfies WorkspaceListItemDto[])
   } catch (err) {

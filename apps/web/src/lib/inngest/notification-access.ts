@@ -1,7 +1,10 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { db, channelMembers, channels, profiles, projectMembers, workspaceMembers } from '@cairn/db'
+// 通知配信の宛先解決も active_workspace_members ビューを唯一の active membership 源として使う。
+// これにより「stale な channel_members / project_members に紐づく非活性ユーザーへ通知が漏れる」
+// 経路を、各クエリで active を絞り忘れても構造的に塞ぐ。
+import { db, channelMembers, channels, profiles, projectMembers, activeWorkspaceMembers } from '@cairn/db'
 import { and, eq, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm'
 
 export interface NotificationRecipient {
@@ -21,11 +24,10 @@ export async function fetchActiveChannelRecipients(params: {
     .from(channelMembers)
     .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
     .innerJoin(
-      workspaceMembers,
+      activeWorkspaceMembers,
       and(
-        eq(workspaceMembers.userId, channelMembers.userId),
-        eq(workspaceMembers.workspaceId, workspaceId),
-        eq(workspaceMembers.membershipStatus, 'active'),
+        eq(activeWorkspaceMembers.userId, channelMembers.userId),
+        eq(activeWorkspaceMembers.workspaceId, workspaceId),
       ),
     )
     .innerJoin(channels, eq(channels.id, channelMembers.channelId))
@@ -42,7 +44,7 @@ export async function fetchActiveChannelRecipients(params: {
       or(
         ne(channels.type, 'project'),
         isNull(channels.projectId),
-        ne(workspaceMembers.role, 'guest'),
+        ne(activeWorkspaceMembers.role, 'guest'),
         isNotNull(projectMembers.id),
       ),
     ))
@@ -58,14 +60,13 @@ export async function fetchActiveMentionedMembers(params: {
   if (mentionedIds.length === 0) return []
 
   return db
-    .select({ userId: workspaceMembers.userId, displayName: profiles.displayName })
-    .from(workspaceMembers)
-    .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
+    .select({ userId: activeWorkspaceMembers.userId, displayName: profiles.displayName })
+    .from(activeWorkspaceMembers)
+    .innerJoin(profiles, eq(activeWorkspaceMembers.userId, profiles.id))
     .where(and(
-      eq(workspaceMembers.workspaceId, workspaceId),
-      eq(workspaceMembers.membershipStatus, 'active'),
-      inArray(workspaceMembers.userId, mentionedIds),
-      ne(workspaceMembers.userId, senderId),
+      eq(activeWorkspaceMembers.workspaceId, workspaceId),
+      inArray(activeWorkspaceMembers.userId, mentionedIds),
+      ne(activeWorkspaceMembers.userId, senderId),
     ))
 }
 
@@ -78,13 +79,12 @@ export async function fetchActiveGuestIds(params: {
   if (userIds.length === 0) return new Set()
 
   const rows = await db
-    .select({ userId: workspaceMembers.userId })
-    .from(workspaceMembers)
+    .select({ userId: activeWorkspaceMembers.userId })
+    .from(activeWorkspaceMembers)
     .where(and(
-      eq(workspaceMembers.workspaceId, workspaceId),
-      eq(workspaceMembers.membershipStatus, 'active'),
-      eq(workspaceMembers.role, 'guest'),
-      inArray(workspaceMembers.userId, userIds),
+      eq(activeWorkspaceMembers.workspaceId, workspaceId),
+      eq(activeWorkspaceMembers.role, 'guest'),
+      inArray(activeWorkspaceMembers.userId, userIds),
     ))
 
   return new Set(rows.map(row => row.userId))
@@ -97,12 +97,11 @@ export async function isActiveWorkspaceMember(params: {
   const { workspaceId, userId } = params
 
   const [member] = await db
-    .select({ userId: workspaceMembers.userId })
-    .from(workspaceMembers)
+    .select({ userId: activeWorkspaceMembers.userId })
+    .from(activeWorkspaceMembers)
     .where(and(
-      eq(workspaceMembers.workspaceId, workspaceId),
-      eq(workspaceMembers.userId, userId),
-      eq(workspaceMembers.membershipStatus, 'active'),
+      eq(activeWorkspaceMembers.workspaceId, workspaceId),
+      eq(activeWorkspaceMembers.userId, userId),
     ))
 
   return Boolean(member)
