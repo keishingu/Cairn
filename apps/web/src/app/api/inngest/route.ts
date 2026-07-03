@@ -6,6 +6,7 @@ import { inngest } from '@/lib/inngest/client'
 import {
   deleteStorageObjects,
   indexFileChunks,
+  compressUploadedPdf,
   indexProjectChunks,
   indexMemberChunks,
   indexExternalLink,
@@ -24,6 +25,7 @@ function resolveServeHost(): string | undefined {
 const fns = [
   deleteStorageObjects,
   indexFileChunks,
+  compressUploadedPdf,
   indexProjectChunks,
   indexMemberChunks,
   indexExternalLink,

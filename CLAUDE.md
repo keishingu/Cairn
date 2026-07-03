@@ -74,6 +74,7 @@ pnpm dev
 - **API 認証は Bearer トークン（Supabase JWT）**: Web クライアントも Expo も同じ Next.js Route Handlers を呼び出し、`Authorization: Bearer <token>` で認証する。`getAuthContext()` は `Authorization` ヘッダを優先し、なければ Cookie にフォールバックする。Hono API 分離は「Next.js からの独立スケール・デプロイ分離が必要」になった時点で改めて検討する
 - **WebView 認証はワンタイムトークンハンドオフ方式**: ネイティブ（Expo）の `refresh_token` を WebView に渡して `setSession()` するのは禁止。同一 refresh_token を 2 クライアントが共有すると rotation と衝突してセッションが突然失効する。ネイティブは `POST /api/auth/webview-handoff` で本人の使い捨て magiclink（`hashed_token`）を発行させ、WebView 側は `verifyOtp` で独立したセッションを確立する。詳細は [`docs/mobile-webview-auth-handoff.md`](docs/mobile-webview-auth-handoff.md)
 - **メール機能はアプリが持たない**: ログイン確認・パスワードリセット等のトランザクショナルメールは Supabase Auth が管理する。招待はリンク共有（30日有効）で行い、アプリ側にメール送信ロジックは実装しない。将来的に通知メール等の要望が出た場合は Resend 等を検討する
+- **依存ライブラリは AGPL 等の強いコピーレフトを原則避ける**（MIT / Apache-2.0 / BSD 系を優先）。セルフホストする第三者が非公開でフォーク改変しても AGPL のネットワーク条項に抵触するリスクがあり、また企業の法務が「依存関係に AGPL が1つでもあれば禁止」という一律ポリシーを取ることが多く、導入障壁になりやすいため。検討過程は [`docs/pdf-image-compression-design.md`](docs/pdf-image-compression-design.md) を参照（MuPDF/Ghostscriptの AGPL を理由に pdf-lib + sharp を採用した事例）
 - **権限モデルはワークスペースロールのみで決定する**（プロジェクトロールは業務上の役割であり、システム権限に影響させない）
   - `owner`: WS設定（名前・ロゴ等）変更 + admin の全権限
   - `admin`: メンバー管理・招待、プロジェクト作成・削除、ゲスト招待リンク発行 + member の全権限
