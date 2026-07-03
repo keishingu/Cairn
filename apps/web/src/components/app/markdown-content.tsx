@@ -6,11 +6,20 @@
 import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
+import { UNKNOWN_MENTION_NAME } from '@/lib/chat/mentions'
 
-const STRUCTURED_MENTION_RE = /<@[^|>\s]+\|[^>\n]+>/g
+// 構造化メンション。canonical な `<@userId>` と旧形式 `<@userId|displayName>` の両方を受理する
+const STRUCTURED_MENTION_RE = /<@([^|>\s]+)(?:\|([^>\n]+))?>/g
 const URL_RE = /https?:\/\/[^\s<>"']+/g
 
-function renderInlineText(text: string): React.ReactNode {
+// 長いURL（クエリパラメータ付きなど）は短縮URLにせず見た目だけ「…」で省略する。リンク先(href)は元のまま
+const URL_DISPLAY_MAX = 50
+function truncateUrlForDisplay(url: string): string {
+  return url.length > URL_DISPLAY_MAX ? `${url.slice(0, URL_DISPLAY_MAX)}…` : url
+}
+
+function renderInlineText(text: string, mentionNames?: Map<string, string>): React.ReactNode {
   const nodes: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
@@ -19,8 +28,10 @@ function renderInlineText(text: string): React.ReactNode {
     if (match.index > last) nodes.push(text.slice(last, match.index))
     const token = match[0]!
     if (token.startsWith('<@')) {
-      const pipeIdx = token.indexOf('|')
-      const displayName = token.slice(pipeIdx + 1, -1)
+      // 現在の表示名を優先し、無ければ旧データの埋め込み名、それも無ければフォールバック
+      const mentionedId = match[1]!
+      const embeddedName = match[2]
+      const displayName = mentionNames?.get(mentionedId) ?? embeddedName ?? UNKNOWN_MENTION_NAME
       nodes.push(
         <span key={match.index} style={{ display: 'inline', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>
           @{displayName}
@@ -30,8 +41,8 @@ function renderInlineText(text: string): React.ReactNode {
       const url = token.replace(/[.,;:!?)>\]]+$/, '')
       nodes.push(
         <a key={match.index} href={url} target="_blank" rel="noopener noreferrer"
-          style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}>
-          {url}
+          style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>
+          {truncateUrlForDisplay(url)}
         </a>,
       )
     }
@@ -41,12 +52,12 @@ function renderInlineText(text: string): React.ReactNode {
   return nodes.length === 0 ? text : nodes.length === 1 && typeof nodes[0] === 'string' ? nodes[0] : nodes
 }
 
-function processChildren(children: React.ReactNode): React.ReactNode {
-  if (typeof children === 'string') return renderInlineText(children)
+function processChildren(children: React.ReactNode, mentionNames?: Map<string, string>): React.ReactNode {
+  if (typeof children === 'string') return renderInlineText(children, mentionNames)
   if (Array.isArray(children)) {
     return children.map((child, i) => {
       if (typeof child === 'string') {
-        const processed = renderInlineText(child)
+        const processed = renderInlineText(child, mentionNames)
         if (processed === child) return child
         return <React.Fragment key={i}>{processed}</React.Fragment>
       }
@@ -60,19 +71,25 @@ interface MarkdownContentProps {
   content: string
   fontSize?: number
   lineHeight?: number
+  mentionNames?: Map<string, string> | undefined
   onCheckboxToggle?: (index: number, checked: boolean) => void
 }
 
-export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, onCheckboxToggle }: MarkdownContentProps) {
+// メッセージ一覧では最大100件が同時に描画され、その各行で react-markdown（remark 一式）の
+// パースが走る。入力欄のキーストロークなど親の再レンダーごとに全件を再パースするとモバイルの
+// WebView ではメインスレッドが数百ms〜秒単位でブロックされ、スクロール・タブ切替が固まる。
+// props が変わらない限り再パースしないよう React.memo でラップする（呼び出し側は onCheckboxToggle
+// や mentionNames を安定参照で渡すこと）。
+export const MarkdownContent = React.memo(function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, mentionNames, onCheckboxToggle }: MarkdownContentProps) {
   const checkboxCounter = React.useRef(0)
   checkboxCounter.current = 0
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkBreaks]}
       components={{
         p: ({ children }) => (
-          <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children)}</p>
+          <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children, mentionNames)}</p>
         ),
         h1: ({ children }) => (
           <h1 style={{ fontSize: fontSize * 1.4, fontWeight: 700, margin: '8px 0 4px', lineHeight: 1.3 }}>{children}</h1>
@@ -105,7 +122,7 @@ export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, on
               style={{ marginBottom: 2, lineHeight, listStyleType: isTask ? 'none' : undefined }}
               {...(isTask ? { className: String(props.className) } : {})}
             >
-              {processChildren(children)}
+              {processChildren(children, mentionNames)}
             </li>
           )
         },
@@ -127,12 +144,22 @@ export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, on
             />
           )
         },
-        a: ({ href, children }) => (
-          <a href={href} target="_blank" rel="noopener noreferrer"
-            style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}>
-            {children}
-          </a>
-        ),
+        a: ({ href, children }) => {
+          // 自動リンク化された生URL（リンクテキスト=URL自体）だけ表示を省略する。
+          // `[表示名](url)` のようにテキストを明示したリンクはそのまま表示する
+          const linkText = typeof children === 'string'
+            ? children
+            : Array.isArray(children) && children.length === 1 && typeof children[0] === 'string'
+              ? children[0]
+              : null
+          const display = linkText !== null && linkText === href ? truncateUrlForDisplay(linkText) : children
+          return (
+            <a href={href} target="_blank" rel="noopener noreferrer"
+              style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>
+              {display}
+            </a>
+          )
+        },
         code: ({ children, className }) => {
           const isBlock = className?.startsWith('language-')
           if (isBlock) return <code className={className} style={{ fontSize: fontSize * 0.9, fontFamily: 'monospace' }}>{children}</code>
@@ -165,4 +192,4 @@ export function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, on
       {content}
     </ReactMarkdown>
   )
-}
+})

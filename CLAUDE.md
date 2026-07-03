@@ -44,7 +44,7 @@ packages/config/   tsconfig / ESLint の共有設定
 
 - **Supabase CLI + Docker** を使う。`supabase start` で PostgreSQL / Auth / Storage / Realtime / Studio が一括起動する
 - 環境変数は `apps/web/.env.local.example` をコピーして使う。`supabase start` のデフォルトキーが事前入力済み
-- DBスキーマは `packages/db/src/schema/` で管理（Drizzle が正）→ `pnpm db:generate` で `supabase/migrations/` にSQLを生成 → `supabase migration up` でローカルに差分適用（データを保持したまま未適用マイグレーションだけ実行）
+- DBスキーマは `packages/db/src/schema/` で管理（Drizzle が正）→ `pnpm db:generate` で `supabase/migrations/` にSQLを生成 → `supabase migration up` でローカルに差分適用（データを保持したまま未適用マイグレーションだけ実行）。新規 migration ファイル名は `packages/db/drizzle.config.ts` の `migrations.prefix = 'timestamp'` で timestamp 方式に統一する
 - **ブランチ切り替え後は `supabase migration up` を実行する**。未適用マイグレーションがあると enum 不一致や Realtime 認可ポリシー欠如などで API が 500・Realtime が接続不能になるが、原因がマイグレーション未適用だと気づきにくい
 - `supabase db reset` はデータを全削除して再構築するため、CI や初回セットアップ専用
 
@@ -67,8 +67,10 @@ pnpm dev
   - 開発は expo-dev-client を使う。`pnpm ios` / `pnpm android` でローカルビルド（単体アプリとしてインストール）、2回目以降は `pnpm dev` で Metro 起動のみ
   - ネイティブ側の接続先 URL は `EXPO_PUBLIC_*` 未設定時に Metro の接続先ホストから自動導出する（`apps/mobile/lib/env.ts`）。シミュレータ・実機・Android エミュレータで IP の手動設定は不要
   - 実機で WebView 画面を使う場合のみ `pnpm setup:mobile-lan` で `apps/web/.env.local` の `NEXT_PUBLIC_SUPABASE_URL` を LAN IP に書き換える
+  - **Google ログインはネイティブ実装**: Web のリダイレクト方式は使えないため、`expo-web-browser` で認可コードを受け取り Supabase の PKCE フロー（`exchangeCodeForSession`）で交換する（`apps/mobile/lib/oauth.ts`）。redirect 先はアプリスキーム `cairn://auth/callback`。**Supabase の許可リストに登録が必要**（ローカルは `supabase/config.toml` の `additional_redirect_urls`、本番は Supabase ダッシュボードの Redirect URLs）。初回ログイン時も `/api/auth/setup` を呼んで profiles を作成する
 - **UA ベースのデバイス出し分け**: middleware で `x-device` ヘッダーをセットし、`app/(app)/layout.tsx` で PC シェル / モバイルシェルを切り替える。レスポンシブ CSS は使わない
 - **プロジェクトビューは localStorage で管理**: 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクト済み。ビュー切替（一覧 / カレンダー / カンバン）はURLパラメータを使わず localStorage のみで永続化（`STORAGE_KEYS.projects_view_pc` / `STORAGE_KEYS.projects_view_mob`）。`/projects/[id]` はプロジェクト詳細（現在は `/projects?open={id}` にリダイレクト）
+- **設定セクションは URL 駆動**: 設定の各セクションは `/settings/[section]`（例 `/settings/account` `/settings/integrations`）に対応する。セクション定義（一覧・ラベル・アイコン）とメインカラム本体は `apps/web/src/components/app/pages/settings.tsx` に集約し、`SETTINGS_NAV_GROUPS` / `SettingsSectionContent` を PC とモバイルで共有する。PC はサイドバー + メインカラム、モバイルは設定一覧（`MobileSettings`）→ タップで `/settings/[section]` に遷移し同じメインカラムを全画面表示（`MobileSettingsDetail`）。`/settings` 単体は PC で `account`、モバイルで一覧を表示する。`?tab=` 形式は廃止
 - **API 認証は Bearer トークン（Supabase JWT）**: Web クライアントも Expo も同じ Next.js Route Handlers を呼び出し、`Authorization: Bearer <token>` で認証する。`getAuthContext()` は `Authorization` ヘッダを優先し、なければ Cookie にフォールバックする。Hono API 分離は「Next.js からの独立スケール・デプロイ分離が必要」になった時点で改めて検討する
 - **WebView 認証はワンタイムトークンハンドオフ方式**: ネイティブ（Expo）の `refresh_token` を WebView に渡して `setSession()` するのは禁止。同一 refresh_token を 2 クライアントが共有すると rotation と衝突してセッションが突然失効する。ネイティブは `POST /api/auth/webview-handoff` で本人の使い捨て magiclink（`hashed_token`）を発行させ、WebView 側は `verifyOtp` で独立したセッションを確立する。詳細は [`docs/mobile-webview-auth-handoff.md`](docs/mobile-webview-auth-handoff.md)
 - **メール機能はアプリが持たない**: ログイン確認・パスワードリセット等のトランザクショナルメールは Supabase Auth が管理する。招待はリンク共有（30日有効）で行い、アプリ側にメール送信ロジックは実装しない。将来的に通知メール等の要望が出た場合は Resend 等を検討する
@@ -98,8 +100,10 @@ pnpm dev
 
 ## ブランチ運用
 
-- 実装を始める前に必ずフィーチャーブランチを切る（`main` に直接コミットしない）
+- **デフォルトブランチは `develop`**。フィーチャーブランチは `develop` を起点に切り、PR も `develop` を宛先にする
+- `main` は本番ブランチ。`develop` → `main` の PR で本番へ反映する（`main`・`develop` に直接コミットしない）
 - ブランチ名は `feat/`, `fix/`, `refactor/` などのプレフィックスを付ける
+- デプロイは Vercel の Git 連携で自動。`develop` への merge で `develop.oss-cairn.com`（環境変数は Preview と共通）、`main` への merge で `oss-cairn.com`（本番）にリリースされる。詳細は [`docs/production-deployment.md`](docs/production-deployment.md)
 
 
 ## コミットメッセージ
@@ -110,6 +114,7 @@ pnpm dev
 - 何を変更したかより、なぜ変更したかを優先して書く
 - どのファイルを変更したか、どのように実装したかは繰り返さない（Git の履歴に残るため）
 - 推奨スタイル: `fix: XXXXのため、ZZZZを修正`
+- AIエージェントがコミットする場合は、`Co-Authored-By: <エージェント名> <noreply メールアドレス>` トレーラーを付け、どのAIが対応したかをコミットに残す（例: `Co-Authored-By: Claude <noreply@anthropic.com>`）
 
 
 ## GitHubレビュー指摘への返信
@@ -117,6 +122,7 @@ pnpm dev
 - レビュー指摘へ返信する際は、「妥当な指摘のため、対応しました」のような汎用文だけで済ませない。
 - 指摘が問題になる理由・影響と、どのように修正したかを1文で具体的に書く。
 - 対応 commit がある場合は、commit hash だけでなく「コミットメッセージ + GitHubのcommitリンク」をMarkdownリンクで含める。
+- AIエージェントが返信する場合は、末尾に自分のエージェント名を署名する（例: `— 🤖 Claude (Claude Code)` / `— 🤖 Codex`）。どのAIが対応したか人間が一目で分かるようにする。
 
 
 ## 詳細ドキュメント

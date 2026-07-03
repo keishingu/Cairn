@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { MessageSearchResultDto } from '@/app/api/search/messages/route'
+import type { BookmarkDto } from '@/app/api/me/bookmarks/route'
 import {
   useProjectChannels,
   useWorkspaceChannels,
@@ -18,6 +19,7 @@ import {
   useCreateDm,
   useMarkChannelRead,
   useCurrentUser,
+  useBookmarks,
 } from '@/lib/chat/client'
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
@@ -29,10 +31,19 @@ import { ChatDetailSidebar, ChatInfoDrawer, type ChatDetailMember } from './chat
 import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
+import { stripMentionsToText } from '@/lib/chat/mentions'
+import { useCommand } from '@/lib/command-registry'
+import {
+  getLastVisitedChatChannelId,
+  resolveInitialChatChannelId,
+  setLastVisitedChatChannelId,
+} from '@/lib/chat-last-channel'
 
 // ─── Message search ───────────────────────────────────────────────
 
-function highlightMatch(text: string, query: string) {
+function highlightMatch(rawText: string, query: string) {
+  // 検索スニペットでも構造化メンションを素のトークンで見せず @表示名 に整形する
+  const text = stripMentionsToText(rawText)
   if (!query) return <>{text}</>
   const idx = text.toLowerCase().indexOf(query.toLowerCase())
   if (idx === -1) return <>{text}</>
@@ -228,6 +239,63 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
   )
 }
 
+// ─── Bookmarks panel ──────────────────────────────────────────────
+
+interface BookmarksPanelProps {
+  onClose: () => void
+  onJump: (channelId: string, messageId: string) => void
+  isMobile?: boolean
+}
+
+const BookmarksPanel = ({ onClose, onJump, isMobile = false }: BookmarksPanelProps) => {
+  const { data: bookmarks = [], isFetching } = useBookmarks(true)
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ padding: isMobile ? '8px 12px' : '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card)', flexShrink: 0 }}>
+        <Icon name="bookmark" size={14} color="var(--accent)"/>
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>ブックマーク</span>
+        <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-3)', padding: 2 }}>
+          <Icon name="close" size={14}/>
+        </button>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {isFetching && bookmarks.length === 0 ? (
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+        ) : bookmarks.length === 0 ? (
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+            ブックマークしたメッセージはまだありません
+          </div>
+        ) : (
+          bookmarks.map((msg: BookmarkDto) => (
+            <div
+              key={msg.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => onJump(msg.channelId, msg.id)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onJump(msg.channelId, msg.id) }}
+              style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', cursor: 'pointer' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
+                  {msg.channelName}
+                </span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                {msg.content.replace(/<@[^|>\s]+\|([^>\n]+)>/g, '@$1')}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Pending cross-channel jump (survives component remount) ─────
 let _pendingJump: { channelId: string; messageId: string } | null = null
 
@@ -243,7 +311,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     return segments[1] === 'chats' && segments[2] ? segments[2] : null
   }, [pathname])
 
-  const { openMember } = useAppShell()
+  const { openMember, crossSearchNonce, consumeCrossSearch } = useAppShell()
 
   const [channelId, setChannelId] = React.useState<string | null>(urlChannelId)
   const [showCreateChannel, setShowCreateChannel] = React.useState(false)
@@ -251,7 +319,17 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [showInfo, setShowInfo] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
+  const [bookmarksOpen, setBookmarksOpen] = React.useState(false)
   const [targetMessageId, setTargetMessageId] = React.useState<string | null>(null)
+  const [detailOpen, setDetailOpen] = React.useState(true)
+
+  // パーマリンク (/chats/<channelId>?m=<messageId>) で開いたとき、該当メッセージへジャンプする。
+  // useSearchParams は Suspense 境界を要求するため、クライアント側で location から読む
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const m = new URLSearchParams(window.location.search).get('m')
+    if (m) setTargetMessageId(m)
+  }, [pathname])
 
   // ブラウザの戻る/進むでURLが変わったとき状態を同期
   React.useEffect(() => {
@@ -266,27 +344,53 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     }
   }, [channelId])
 
-  const { data: projectChannels = [] } = useProjectChannels()
-  const { data: workspaceChannels = [] } = useWorkspaceChannels()
+  const { data: projectChannels = [], isFetched: isProjectChannelsFetched } = useProjectChannels()
+  const { data: workspaceChannels = [], isFetched: isWorkspaceChannelsFetched } = useWorkspaceChannels()
   const { data: members = [] } = useWorkspaceMembers()
-  const { data: dms = [] } = useWorkspaceDms()
+  const { data: dms = [], isFetched: isDmsFetched } = useWorkspaceDms()
   const markChannelRead = useMarkChannelRead()
   const createDmMutation = useCreateDm()
 
-  // PC: チャンネル未選択時に最初のプロジェクトチャンネルへ自動遷移
+  const fallbackChannelId = React.useMemo(
+    () => (projectChannels.find(c => !c.archived) ?? projectChannels[0] ?? null)?.channelId ?? null,
+    [projectChannels],
+  )
+
+  const availableChannelIds = React.useMemo(
+    () => [
+      ...projectChannels.map(c => c.channelId),
+      ...workspaceChannels.map(c => c.id),
+      ...dms.map(d => d.id),
+    ],
+    [projectChannels, workspaceChannels, dms],
+  )
+  const hasResolvedInitialChannelLists = isProjectChannelsFetched && isWorkspaceChannelsFetched && isDmsFetched
+
   React.useEffect(() => {
-    if (!channelId && projectChannels.length > 0 && !isMobile) {
-      // アーカイブ済みは折りたたみ表示なので、初期選択は非アーカイブを優先する
-      const firstId = (projectChannels.find(c => !c.archived) ?? projectChannels[0]!).channelId
-      setChannelId(firstId)
-      router.replace('/chats/' + firstId)
+    if (channelId) setLastVisitedChatChannelId(channelId)
+  }, [channelId])
+
+  // PC: /chats を開いた時は前回のチャットを優先し、なければ先頭のプロジェクトチャンネルへ遷移
+  React.useEffect(() => {
+    if (!channelId && !isMobile) {
+      const nextChannelId = resolveInitialChatChannelId({
+        rememberedChannelId: getLastVisitedChatChannelId(),
+        availableChannelIds,
+        fallbackChannelId,
+        allowFallback: hasResolvedInitialChannelLists,
+      })
+      if (nextChannelId) {
+        setChannelId(nextChannelId)
+        router.replace('/chats/' + nextChannelId)
+      }
     }
-  }, [channelId, projectChannels, isMobile, router])
+  }, [availableChannelIds, channelId, fallbackChannelId, hasResolvedInitialChannelLists, isMobile, router])
 
   const selectChannel = (id: string) => {
     setChannelId(id)
     setSearchOpen(false)
     setGlobalSearchOpen(false)
+    setBookmarksOpen(false)
     setTargetMessageId(null)
     router.push('/chats/' + id)
     markChannelRead.mutate(id)
@@ -297,49 +401,49 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setTargetMessageId(messageId)
   }
 
-  // ⌥N: 新規チャンネル / ⌘⇧F: 横断検索
+  // ⌥N 新規チャンネル / ⌥S 検索 / ⌥D 詳細パネル（PC のみ）
+  useCommand('ctx.create', () => setShowCreateChannel(true))
+  useCommand('ctx.searchFocus', () => { if (!isMobile) setSearchOpen(true) })
+  useCommand('chats.detail', () => { if (!isMobile) setDetailOpen(o => !o) })
+
+  // ⌘⇧F: 横断検索（シェルが chats へ遷移し crossSearchNonce を増やす）。マウント済みでも開く。
+  // 開いたら consume してシグナルを 0 に戻し、再マウント時の誤再オープンを防ぐ
   React.useEffect(() => {
-    const onCreate = () => setShowCreateChannel(true)
-    const onCross = () => { window.__cairnOpenCrossSearch = false; setGlobalSearchOpen(true) }
-    window.addEventListener('cairn:create', onCreate)
-    window.addEventListener('cairn:cross-search', onCross)
-    // ⌘⇧F で他画面から chats へ遷移してきた直後はフラグで開く
-    if (window.__cairnOpenCrossSearch) {
-      window.__cairnOpenCrossSearch = false
+    if (crossSearchNonce > 0 && !isMobile) {
       setGlobalSearchOpen(true)
+      consumeCrossSearch()
     }
-    return () => {
-      window.removeEventListener('cairn:create', onCreate)
-      window.removeEventListener('cairn:cross-search', onCross)
-    }
-  }, [])
+  }, [crossSearchNonce, isMobile, consumeCrossSearch])
 
   // ⌥↑↓（順送り）: チャンネル一覧（プロジェクト → 全体 → DM の表示順）を前/次へ
-  React.useEffect(() => {
+  const seekChannel = (dir: 'prev' | 'next') => {
     const orderedIds = [
       ...projectChannels.map(c => c.channelId),
       ...workspaceChannels.map(c => c.id),
       ...dms.map(d => d.id),
     ]
     if (orderedIds.length === 0) return
-    const onSeq = (e: Event) => {
-      const dir = (e as CustomEvent<'prev' | 'next'>).detail
-      const idx = channelId ? orderedIds.indexOf(channelId) : -1
-      const nextIdx = idx === -1
-        ? (dir === 'next' ? 0 : orderedIds.length - 1)
-        : Math.min(Math.max(idx + (dir === 'next' ? 1 : -1), 0), orderedIds.length - 1)
-      const nextId = orderedIds[nextIdx]
-      if (nextId && nextId !== channelId) selectChannel(nextId)
-    }
-    window.addEventListener('cairn:seq', onSeq)
-    return () => window.removeEventListener('cairn:seq', onSeq)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelId, projectChannels, workspaceChannels, dms])
+    const idx = channelId ? orderedIds.indexOf(channelId) : -1
+    const nextIdx = idx === -1
+      ? (dir === 'next' ? 0 : orderedIds.length - 1)
+      : Math.min(Math.max(idx + (dir === 'next' ? 1 : -1), 0), orderedIds.length - 1)
+    const nextId = orderedIds[nextIdx]
+    if (nextId && nextId !== channelId) selectChannel(nextId)
+  }
+  useCommand('seq.prev', () => seekChannel('prev'))
+  useCommand('seq.next', () => seekChannel('next'))
 
   const jumpToChannelMessage = (chanId: string, messageId: string) => {
-    _pendingJump = { channelId: chanId, messageId }
     setGlobalSearchOpen(false)
-    setChannelId(chanId)
+    setBookmarksOpen(false)
+    // 既に開いているチャンネルへのジャンプは channelId が変化しないため、
+    // _pendingJump 消費用 effect（[channelId] 依存）が発火しない。その場合は直接 targetMessageId を設定する
+    if (chanId === channelId) {
+      setTargetMessageId(messageId)
+    } else {
+      _pendingJump = { channelId: chanId, messageId }
+      setChannelId(chanId)
+    }
     router.push('/chats/' + chanId)
     markChannelRead.mutate(chanId)
   }
@@ -455,14 +559,21 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           <MobileHeader
             title="チャット"
             right={
-              <button className="btn" onClick={() => setGlobalSearchOpen(s => !s)} style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}>
-                <Icon name="search" size={16}/>
-              </button>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button className="btn" onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false) }} style={{ background: bookmarksOpen ? 'var(--card-hover)' : undefined }}>
+                  <Icon name="bookmark" size={16}/>
+                </button>
+                <button className="btn" onClick={() => { setGlobalSearchOpen(s => !s); setBookmarksOpen(false) }} style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}>
+                  <Icon name="search" size={16}/>
+                </button>
+              </div>
             }
           />
-          {globalSearchOpen
-            ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage} isMobile/>
-            : channelListNode
+          {bookmarksOpen
+            ? <BookmarksPanel onClose={() => setBookmarksOpen(false)} onJump={jumpToChannelMessage} isMobile/>
+            : globalSearchOpen
+              ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage} isMobile/>
+              : channelListNode
           }
           {createChannelUI}
         </div>
@@ -527,20 +638,30 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       <aside style={{ width: 240, background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>チャット</h2>
-          <button
-            className="btn"
-            onClick={() => setGlobalSearchOpen(s => !s)}
-            style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}
-            title="全チャンネル検索"
-          >
-            <Icon name="search" size={13}/>
-          </button>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              className="btn"
+              onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false) }}
+              style={{ background: bookmarksOpen ? 'var(--card-hover)' : undefined }}
+              title="ブックマーク"
+            >
+              <Icon name="bookmark" size={13}/>
+            </button>
+            <button
+              className="btn"
+              onClick={() => { setGlobalSearchOpen(s => !s); setBookmarksOpen(false) }}
+              style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}
+              title="全チャンネル検索"
+            >
+              <Icon name="search" size={13}/>
+            </button>
+          </div>
         </div>
         {channelListNode}
       </aside>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-        {!globalSearchOpen && (
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {!globalSearchOpen && !bookmarksOpen && (
           <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -564,16 +685,18 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         )}
 
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-          <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
-            {globalSearchOpen
-              ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
-              : searchOpen && channelId
-                ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-                : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
+          <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
+            {bookmarksOpen
+              ? <BookmarksPanel onClose={() => setBookmarksOpen(false)} onJump={jumpToChannelMessage}/>
+              : globalSearchOpen
+                ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
+                : searchOpen && channelId
+                  ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
+                  : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
             }
           </main>
 
-          <ChatDetailSidebar
+          {detailOpen && <ChatDetailSidebar
             isProject={isProject}
             isDm={isDm}
             isPrivate={isPrivate}
@@ -589,7 +712,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             onCloseMemberInvite={() => setShowMemberInvite(false)}
             onOpenProject={handleOpenProject}
             onOpenMember={handleOpenMember}
-          />
+          />}
         </div>
       </div>
     </div>

@@ -82,7 +82,11 @@ allowed_mime_types = [
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/markdown",
+  "text/csv"
 ]
 
 [storage.buckets.gallery]
@@ -96,7 +100,7 @@ enabled = true
 # in emails.
 site_url = "http://127.0.0.1:3000"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = ["https://127.0.0.1:3000", "cairn://auth/callback"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # If disabled, the refresh token will never expire.
@@ -145,6 +149,16 @@ enabled = false
 client_id = "env(AUTH_GITHUB_CLIENT_ID)"
 secret = "env(AUTH_GITHUB_SECRET)"
 # Overrides the default auth redirectUrl.
+# redirect_uri = ""
+
+# ローカルで Google ログインを試す場合は enabled = true にし、Google Cloud の
+# OAuth 2.0 クライアント（種別: ウェブ アプリケーション）の認証情報を env で渡す。
+# Google 側の「承認済みのリダイレクト URI」に Supabase のコールバックを登録する:
+#   http://127.0.0.1:54321/auth/v1/callback
+[auth.external.google]
+enabled = false
+client_id = "env(AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(AUTH_GOOGLE_SECRET)"
 # redirect_uri = ""
 
 [edge_runtime]

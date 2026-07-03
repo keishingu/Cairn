@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole } from '@/lib/permissions'
+import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 
 export interface MessageSearchResultDto extends MessageDto {
@@ -21,7 +22,7 @@ export async function GET(req: Request) {
   try {
     const { db } = await import('@cairn/db')
     const { channels, channelMembers, messages, profiles, workspaceMembers, projects, projectMembers } = await import('@cairn/db')
-    const { eq, isNull, and, ilike, or, exists, ne } = await import('drizzle-orm')
+    const { eq, ne, isNull, and, ilike, or, exists, inArray } = await import('drizzle-orm')
     const { desc, sql } = await import('drizzle-orm')
 
     const memberSubquery = db
@@ -45,6 +46,7 @@ export async function GET(req: Request) {
       .select({
         id: messages.id,
         content: messages.content,
+        messageType: messages.messageType,
         senderId: messages.senderId,
         senderName: profiles.displayName,
         senderAvatarUrl: workspaceMembers.avatarUrl,
@@ -64,15 +66,28 @@ export async function GET(req: Request) {
       .where(and(
         eq(channels.workspaceId, ctx.workspaceId),
         isNull(messages.deletedAt),
+        ne(messages.messageType, 'system'),
         ilike(messages.content, `%${q}%`),
         accessCondition,
       ))
       .orderBy(desc(messages.createdAt))
       .limit(50)
 
+    // メンションを現在の表示名へ解決（保存値は名前なしの canonical 形式のため）
+    const mentionIds = [...new Set(rows.flatMap(r => extractMentionIds(r.content)))]
+    const nameMap = new Map<string, string>()
+    if (mentionIds.length > 0) {
+      const profileRows = await db
+        .select({ id: profiles.id, displayName: profiles.displayName })
+        .from(profiles)
+        .where(inArray(profiles.id, mentionIds))
+      for (const p of profileRows) nameMap.set(p.id, p.displayName)
+    }
+
     const result: MessageSearchResultDto[] = rows.map(r => ({
       id: r.id,
-      content: r.content,
+      content: hydrateMentions(r.content, id => nameMap.get(id)),
+      messageType: r.messageType,
       senderId: r.senderId,
       senderName: r.senderName,
       senderAvatarUrl: r.senderAvatarUrl ?? null,
@@ -80,6 +95,9 @@ export async function GET(req: Request) {
       isEdited: r.updatedAt.getTime() > r.createdAt.getTime(),
       reactions: [],
       attachments: [],
+      parentMessageId: null,
+      replyTo: null,
+      bookmarked: false,
       channelId: r.channelId,
       channelName: r.channelName,
     }))
@@ -87,6 +105,6 @@ export async function GET(req: Request) {
     return NextResponse.json(result)
   } catch (err) {
     console.error('[/api/search/messages GET] DB query failed:', err)
-    return NextResponse.json([] satisfies MessageSearchResultDto[])
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

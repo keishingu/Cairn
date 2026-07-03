@@ -46,7 +46,7 @@ function isImageFile(file: ProjectFileDto): boolean {
 export const FilesTab = ({ projectId }: { projectId: string }) => {
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
-  const { data: files = [], isLoading, isError, deleteMutation } = useProjectFiles(projectId)
+  const { data: files = [], isLoading, isError, deleteMutation, setLatestMutation } = useProjectFiles(projectId)
 
   const imageFiles = React.useMemo(() => files.filter(isImageFile), [files])
   const lightboxImages = React.useMemo<LightboxImage[]>(() => imageFiles.map(f => ({
@@ -85,7 +85,7 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '12px 12px 16px' }}>
-      {files.map((f: ProjectFileDto, i: number) => {
+      {files.map((f: ProjectFileDto) => {
         const sizeStr = formatFileSize(f.fileSize)
         const dateStr = formatDate(f.createdAt)
         const meta = [sizeStr, dateStr].filter(Boolean).join(' · ')
@@ -113,7 +113,7 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {f.fileName}
-                  {i === 0 && <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>最新</span>}
+                  {f.isLatest && <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>最新版</span>}
                   {isLink && <IndexingBadge status={f.indexingStatus}/>}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{isLink ? '外部リンク' : meta}</div>
@@ -122,6 +122,9 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
 
             <RowActionMenu
               actions={[
+                f.isLatest
+                  ? { icon: 'star', label: '最新版を解除', onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
+                  : { icon: 'star', label: '最新版にする', onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },
                 { icon: 'trash', label: '削除', danger: true, onSelect: () => setDeleteTarget({ id: f.id, name: f.fileName }) },
               ]}
             />

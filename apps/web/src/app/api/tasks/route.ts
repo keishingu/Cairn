@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { createTaskSchema } from '@cairn/shared'
+import { getGuestVisibleProjectIds, getWorkspaceMemberRole, requireProjectAccess } from '@/lib/permissions'
 import { inngest } from '@/lib/inngest/client'
 import type { TaskAssignedEvent } from '@/lib/inngest/events'
 
@@ -17,6 +18,7 @@ export interface TaskDto {
   dueDate: string | null
   assigneeName: string | null
   assigneeAvatarUrl: string | null
+  isLinkedToMessage: boolean
 }
 
 export async function GET(req: Request) {
@@ -29,16 +31,24 @@ export async function GET(req: Request) {
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, inArray } = await import('drizzle-orm')
+    const { eq, inArray, and } = await import('drizzle-orm')
 
     const projectRows = await db
       .select({ id: projects.id, title: projects.title })
       .from(projects)
       .where(eq(projects.workspaceId, ctx.workspaceId))
 
+    // ゲストは参加プロジェクトのタスクのみ閲覧可。projectId 指定があっても参加外なら除外する。
+    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    let allowedProjectIds = projectRows.map(p => p.id)
+    if (role === 'guest') {
+      const guestProjectIds = new Set(await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId))
+      allowedProjectIds = allowedProjectIds.filter(id => guestProjectIds.has(id))
+    }
+
     const projectIds = projectId
-      ? [projectId]
-      : projectRows.map(p => p.id)
+      ? allowedProjectIds.filter(id => id === projectId)
+      : allowedProjectIds
 
     if (projectIds.length === 0) return NextResponse.json([])
 
@@ -50,12 +60,13 @@ export async function GET(req: Request) {
         status: tasks.status,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
+        sourceMessageId: tasks.sourceMessageId,
         assigneeName: profiles.displayName,
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(tasks)
       .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
-      .leftJoin(workspaceMembers, eq(workspaceMembers.userId, tasks.assigneeId))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, tasks.assigneeId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(inArray(tasks.projectId, projectIds))
 
     const projectMap = new Map(projectRows.map(p => [p.id, p.title]))
@@ -70,6 +81,7 @@ export async function GET(req: Request) {
       dueDate: r.dueDate,
       assigneeName: r.assigneeName ?? null,
       assigneeAvatarUrl: r.assigneeAvatarUrl ?? null,
+      isLinkedToMessage: r.sourceMessageId != null,
     }))
 
     return NextResponse.json(result)
@@ -95,6 +107,10 @@ export async function POST(req: Request) {
   try {
     const { ctx, error } = await getAuthContext()
     if (error) return error
+
+    // ゲストは参加プロジェクトにのみタスクを作成できる
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, parsed.data.projectId)
+    if (forbidden) return forbidden
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
@@ -138,6 +154,7 @@ export async function POST(req: Request) {
       dueDate: inserted.dueDate,
       assigneeName: assigneeRow?.displayName ?? null,
       assigneeAvatarUrl: assigneeRow?.avatarUrl ?? null,
+      isLinkedToMessage: false,
     }
 
     if (inserted.assigneeId && inserted.assigneeId !== ctx.userId) {
@@ -146,18 +163,22 @@ export async function POST(req: Request) {
         .from(profiles)
         .where(eq(profiles.id, ctx.userId))
 
-      await inngest.send({
-        name: 'task/assigned',
-        data: {
-          taskId: inserted.id,
-          taskTitle: inserted.title,
-          assigneeId: inserted.assigneeId,
-          projectId: inserted.projectId,
-          projectTitle: projectRow?.title ?? '',
-          workspaceId: ctx.workspaceId,
-          assignerName: assigner?.displayName ?? '不明',
-        },
-      } satisfies TaskAssignedEvent)
+      try {
+        await inngest.send({
+          name: 'task/assigned',
+          data: {
+            taskId: inserted.id,
+            taskTitle: inserted.title,
+            assigneeId: inserted.assigneeId,
+            projectId: inserted.projectId,
+            projectTitle: projectRow?.title ?? '',
+            workspaceId: ctx.workspaceId,
+            assignerName: assigner?.displayName ?? '不明',
+          },
+        } satisfies TaskAssignedEvent)
+      } catch (e) {
+        console.warn('[POST /api/tasks] Inngest event send failed (notification skipped):', e)
+      }
     }
 
     return NextResponse.json(result, { status: 201 })

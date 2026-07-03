@@ -44,6 +44,7 @@ vi.mock('@/components/app/mobile/header', () => ({
 const STUB_MEMBER: WorkspaceMemberDto = {
   userId: 'user-1',
   displayName: '山田 太郎',
+  email: 'taro@example.com',
   avatarUrl: null,
   role: 'member',
   joinedAt: '2026-01-01',
@@ -111,5 +112,13 @@ describe('PageMembers (モバイル) — initialUserId によるパネル復元'
   it('initialUserId が存在しない ID の場合はパネルを開かない', () => {
     renderMobile('unknown-id')
     expect(screen.queryByTestId('member-panel')).toBeNull()
+  })
+})
+
+describe('PageMembers — email tooltip', () => {
+  it('メンバーカードに email の title を付ける', () => {
+    renderMobile()
+
+    expect(screen.getByTitle('taro@example.com')).toBeInTheDocument()
   })
 })

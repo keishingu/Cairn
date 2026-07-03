@@ -7,20 +7,16 @@ import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
 import { hasReadMessage } from '@/lib/push/suppress'
+import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
 const PUSH_GRACE_PERIOD = '10s'
 
-// <@userId|displayName> 形式の構造化メンションから userId を抽出する
-function extractMentionedUserIds(content: string): string[] {
-  const matches = content.matchAll(/<@([^|>\s]+)\|[^>\n]+>/g)
-  return [...new Set([...matches].map(m => m[1]!))]
-}
-
-// <@userId|displayName> を @displayName に変換する
-function stripMentions(content: string): string {
-  return content.replace(/<@[^|>\s]+\|([^>\n]+)>/g, '@$1')
+// メンバー一覧から userId → 表示名のリゾルバを作る（通知本文のメンション解決用）
+function nameResolver(members: { userId: string; displayName: string }[]): (id: string) => string | undefined {
+  const map = new Map(members.map(m => [m.userId, m.displayName]))
+  return id => map.get(id)
 }
 
 // 猶予期間中に対象メッセージを既読にした受信者を Push 対象から除外する
@@ -88,6 +84,8 @@ export const onMessageCreated = inngest.createFunction(
       return ch?.type === 'dm'
     })
 
+    const dmBody = stripMentionsToText(content, nameResolver(members))
+
     if (isDm) {
       // DM はアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
       await step.run('create-dm-notifications', async () => {
@@ -99,7 +97,7 @@ export const onMessageCreated = inngest.createFunction(
             workspaceId,
             type: 'dm' as const,
             title: senderName,
-            body: stripMentions(content).slice(0, 200),
+            body: dmBody.slice(0, 200),
             data: { messageId, channelId, senderName },
           })),
         )
@@ -115,7 +113,7 @@ export const onMessageCreated = inngest.createFunction(
           await Promise.allSettled(
             unreadMembers.map(m => sendPushToUser(m.userId, {
               title: senderName,
-              body: stripMentions(content).slice(0, 100),
+              body: dmBody.slice(0, 100),
               url: `/chats/${channelId}`,
             })),
           )
@@ -125,7 +123,7 @@ export const onMessageCreated = inngest.createFunction(
     }
 
     // @メンション通知（チャンネル未参加でもワークスペースメンバーなら通知）
-    const mentionedIds = extractMentionedUserIds(content)
+    const mentionedIds = extractMentionIds(content)
 
     if (members.length === 0 && mentionedIds.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
     const mentionedMembers = mentionedIds.length > 0
@@ -144,19 +142,89 @@ export const onMessageCreated = inngest.createFunction(
         })
       : []
 
+    // 本文プレビューのメンションは送信時点の最新名で解決する（メンバー名 + メンション対象名）
+    const mentionBody = stripMentionsToText(content, nameResolver([...members, ...mentionedMembers]))
+
+    // アクセスできないチャンネルへメンション通知が飛ぶのを防ぐ。
+    // - プライベートチャンネル: チャンネルメンバーのみ
+    // - プロジェクトチャンネル: 参加外プロジェクトのゲストを除外（メンバー以上は全員可）
+    // 通知を飛ばしても遷移先で 403 になり「通知は来るのに開けない」状態になるため、
+    // requireChannelAccess と同じスコープ感でここで対象を絞る。
+    const notifyMentioned = mentionedMembers.length > 0
+      ? await step.run('filter-mention-access', async () => {
+          const { db, channels, channelMembers, projectMembers, workspaceMembers } = await import('@cairn/db')
+          const { eq, and, inArray } = await import('drizzle-orm')
+          const { filterMentionRecipients } = await import('@/lib/chat/mention-access')
+          const ids = mentionedMembers.map(m => m.userId)
+
+          const [ch] = await db
+            .select({ type: channels.type, projectId: channels.projectId, isPrivate: channels.isPrivate })
+            .from(channels)
+            .where(eq(channels.id, channelId))
+            .limit(1)
+          if (!ch) return []
+
+          // プライベートチャンネルはメンバーのみ、プロジェクトチャンネルは guest の参加判定に使う集合を引く
+          const channelMemberIds = ch.isPrivate
+            ? new Set(
+                (await db
+                  .select({ userId: channelMembers.userId })
+                  .from(channelMembers)
+                  .where(and(eq(channelMembers.channelId, channelId), inArray(channelMembers.userId, ids)))
+                ).map(r => r.userId),
+              )
+            : new Set<string>()
+
+          const guestIds = ch.type === 'project' && ch.projectId
+            ? new Set(
+                (await db
+                  .select({ userId: workspaceMembers.userId })
+                  .from(workspaceMembers)
+                  .where(and(
+                    eq(workspaceMembers.workspaceId, workspaceId),
+                    inArray(workspaceMembers.userId, ids),
+                    eq(workspaceMembers.role, 'guest'),
+                  ))
+                ).map(r => r.userId),
+              )
+            : new Set<string>()
+
+          const projectMemberIds = guestIds.size > 0 && ch.projectId
+            ? new Set(
+                (await db
+                  .select({ userId: projectMembers.userId })
+                  .from(projectMembers)
+                  .where(and(
+                    eq(projectMembers.projectId, ch.projectId),
+                    inArray(projectMembers.userId, [...guestIds]),
+                  ))
+                ).map(r => r.userId),
+              )
+            : new Set<string>()
+
+          return filterMentionRecipients({
+            channel: ch,
+            recipients: mentionedMembers,
+            channelMemberIds,
+            guestIds,
+            projectMemberIds,
+          })
+        })
+      : []
+
     let mentionNotifications = 0
-    if (mentionedMembers.length > 0) {
+    if (notifyMentioned.length > 0) {
       await step.run('create-mention-notifications', async () => {
         const { db, notifications, channelReadStates } = await import('@cairn/db')
         const { sql } = await import('drizzle-orm')
 
         await db.insert(notifications).values(
-          mentionedMembers.map(m => ({
+          notifyMentioned.map(m => ({
             userId: m.userId,
             workspaceId,
             type: 'mention' as const,
             title: `${senderName} があなたをメンションしました`,
-            body: stripMentions(content).slice(0, 200),
+            body: mentionBody.slice(0, 200),
             data: { messageId, channelId, senderName },
           })),
         )
@@ -165,7 +233,7 @@ export const onMessageCreated = inngest.createFunction(
         await db
           .insert(channelReadStates)
           .values(
-            mentionedMembers.map(m => ({
+            notifyMentioned.map(m => ({
               userId: m.userId,
               channelId,
               unreadMentionCount: 1,
@@ -176,7 +244,7 @@ export const onMessageCreated = inngest.createFunction(
             set: { unreadMentionCount: sql`${channelReadStates.unreadMentionCount} + 1` },
           })
       })
-      mentionNotifications = mentionedMembers.length
+      mentionNotifications = notifyMentioned.length
     }
 
     // ファイル添付通知（送信者以外の全メンバーへ）
@@ -213,17 +281,17 @@ export const onMessageCreated = inngest.createFunction(
     }
 
     // メンション Push は猶予後に既読を再確認してから送る（アプリ内通知・バッジは上で記録済み）
-    if (mentionedMembers.length > 0) {
+    if (notifyMentioned.length > 0) {
       await step.sleep('push-grace', PUSH_GRACE_PERIOD)
       const unreadMembers = await step.run('filter-mention-push-targets', () =>
-        filterUnreadRecipients(messageId, channelId, mentionedMembers))
+        filterUnreadRecipients(messageId, channelId, notifyMentioned))
 
       await step.run('send-mention-push', async () => {
         await Promise.allSettled(
           unreadMembers.map(m =>
             sendPushToUser(m.userId, {
               title: `${senderName} があなたをメンションしました`,
-              body: stripMentions(content).slice(0, 100),
+              body: mentionBody.slice(0, 100),
               url: `/chats/${channelId}`,
             }),
           ),

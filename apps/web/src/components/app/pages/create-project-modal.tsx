@@ -94,7 +94,7 @@ const CoverPicker = ({ onPhotoNameChange, placePhotos, selectedPhotoName }: Cove
         <Icon name="image" size={16} color="var(--text-4)"/>
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>カバー写真は自動設定されます</div>
-          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>場所を入力すると、その場所の写真から選べます</div>
+          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>場所を入力すると、カバー写真の候補を選べます</div>
         </div>
       </div>
     )
@@ -343,7 +343,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
       }}>
-        <ModalHeader icon="folder" title="新規プロジェクト" subtitle="山行・合宿・講習会など、計画単位のプロジェクトを作成します" onClose={onClose}/>
+        <ModalHeader icon="folder" title="新規プロジェクト" subtitle="顧客案件や社内プロジェクトなど、進行管理する単位を作成します" onClose={onClose}/>
 
         {/* Body — 2 columns */}
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) 360px' }}>
@@ -353,7 +353,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
               <input id="cpm-title" ref={titleRef}
                 value={form.title}
                 onChange={e => { set('title', e.target.value); if (errors.title) clearError('title') }}
-                placeholder="例: 北アルプス縦走計画"
+                placeholder="例: 新規顧客向け導入プロジェクト"
                 style={fieldInputStyle(!!errors.title)}
                 onFocus={onFocusRing}
                 onBlur={e => onBlurRing(e, !!errors.title)}
@@ -378,7 +378,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
                 onSelect={(desc, pid) => { void handleLocationSelect(desc, pid) }}
                 onClear={handleLocationClear}
                 inputStyle={fieldInputStyle(false)}
-                placeholder="例: 北アルプス、槍ヶ岳"
+                placeholder="例: 東京都渋谷区、オンライン"
               />
             </Field>
 

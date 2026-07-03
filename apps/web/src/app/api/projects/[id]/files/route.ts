@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireProjectAccess } from '@/lib/permissions'
 
 export interface ProjectFileDto {
   id: string
@@ -14,6 +15,7 @@ export interface ProjectFileDto {
   createdAt: string
   externalUrl?: string
   indexingStatus?: string
+  isLatest: boolean
 }
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -26,12 +28,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
   try {
     const { db, files, profiles, projects, galleryItems, documentChunks } = await import('@cairn/db')
     const { eq, and, isNull, desc, inArray } = await import('drizzle-orm')
-
-    const INDEXABLE_MIMES = new Set([
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    ])
+    const { isIndexable } = await import('@/lib/ai/extract-text')
 
     // プロジェクトが同一ワークスペースに属することを確認
     const [project] = await db
@@ -43,6 +40,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
     if (!project) {
       return new NextResponse(null, { status: 404 })
     }
+
+    // ゲストは参加プロジェクトのファイルのみ閲覧可
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    if (forbidden) return forbidden
 
     const rows = await db
       .select({
@@ -89,7 +90,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         if (r.fileType === 'link') {
           const s = meta['indexingStatus']
           indexingStatus = typeof s === 'string' ? s : undefined
-        } else if (INDEXABLE_MIMES.has(r.mimeType ?? '')) {
+        } else if (isIndexable(r.mimeType ?? '')) {
           indexingStatus = chunkedIdSet.has(r.id) ? 'indexed' : 'pending'
         }
 
@@ -101,6 +102,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
           fileType: r.fileType,
           uploaderName: r.uploaderName,
           createdAt: r.createdAt.toISOString(),
+          isLatest: meta['isLatest'] === true,
           ...(typeof externalUrl === 'string' ? { externalUrl } : {}),
           ...(indexingStatus !== undefined ? { indexingStatus } : {}),
         }

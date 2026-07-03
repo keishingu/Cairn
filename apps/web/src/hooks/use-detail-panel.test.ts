@@ -46,6 +46,7 @@ const STUB_PROJECT: ProjectDto = {
 const STUB_MEMBER: WorkspaceMemberDto = {
   userId: 'user-1',
   displayName: 'テストユーザー',
+  email: 'test@example.com',
   avatarUrl: null,
   role: 'member',
   joinedAt: '2026-01-01',

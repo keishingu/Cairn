@@ -3,10 +3,11 @@ import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 
-export function useProjectMembers(projectId: string) {
+export function useProjectMembers(projectId: string | null) {
   return useQuery<ProjectMemberDto[]>({
     queryKey: ['project-members', projectId],
-    queryFn: () => fetchWithAuth(`/api/projects/${projectId}/members`).then(r => r.json()),
+    queryFn: () => fetchWithAuth(`/api/projects/${projectId!}/members`).then(r => r.json()),
+    enabled: !!projectId,
   })
 }
 
@@ -21,22 +22,23 @@ export function useWorkspaceMembersForInvite(enabled: boolean) {
 export function useAddProjectMember(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+    mutationFn: async ({ userIds, role }: { userIds: string[]; role: string }) => {
       const res = await fetchWithAuth(`/api/projects/${projectId}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, role }),
+        body: JSON.stringify({ userIds, role }),
       })
       if (!res.ok) {
         const data = await res.json() as { error?: string }
         throw new Error(data.error ?? 'Failed')
       }
-      return res.json() as Promise<ProjectMemberDto>
+      const data = await res.json() as ProjectMemberDto | ProjectMemberDto[]
+      return Array.isArray(data) ? data : [data]
     },
-    onSuccess: (newMember) => {
+    onSuccess: (newMembers) => {
       queryClient.setQueryData<ProjectMemberDto[]>(
         ['project-members', projectId],
-        old => [...(old ?? []), newMember],
+        old => [...(old ?? []), ...newMembers],
       )
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
     },

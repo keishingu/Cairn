@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireProjectAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 const GALLERY_BUCKET = 'gallery'
@@ -25,6 +26,10 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       .limit(1)
 
     if (!project) return new NextResponse(null, { status: 404 })
+
+    // ゲストは参加プロジェクトのギャラリーのみ削除できる
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    if (forbidden) return forbidden
 
     const [item] = await db
       .select({ fileId: galleryItems.fileId, storagePath: files.storagePath })

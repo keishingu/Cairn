@@ -5,75 +5,44 @@
 
 import React from 'react'
 import { Modal } from './primitives'
-import { STORAGE_KEYS } from '@/lib/storage-keys'
+import { COMMANDS } from '@/lib/commands'
+import { isMac, formatCommandKeys } from '@/lib/command-keys'
+import { useCommandRegistry } from '@/lib/command-registry'
 import type { PageId } from './sidebar'
 
 /**
- * ⌘K コマンドパレット（第2段）。
- * 現状はナビゲーション＋主要アクションの静的リスト。プロジェクト/チャンネル/人の
- * ライブ検索は将来の拡張（cmdk 等の導入時に別途）。
+ * ⌘K コマンドパレット。コマンドカタログ（COMMANDS）から「今のページで有効かつ
+ * ハンドラ登録済み」のコマンドを並べる。表示も実行も単一の真実から派生する。
  */
-
-interface Action {
-  id: string
-  label: string
-  keys?: string[]
-  run: () => void
-}
-
-export function CommandPalette({
-  onClose, navigate, onNotifications,
-}: {
-  onClose: () => void
-  navigate: (page: PageId) => void
-  onNotifications: () => void
-}) {
+export function CommandPalette({ onClose, page }: { onClose: () => void; page: PageId }) {
+  const { invoke, has, version } = useCommandRegistry()
+  const mac = isMac()
   const [query, setQuery] = React.useState('')
   const [index, setIndex] = React.useState(0)
   const inputRef = React.useRef<HTMLInputElement>(null)
 
-  const actions = React.useMemo<Action[]>(() => {
-    const go = (p: PageId) => () => { navigate(p); onClose() }
-    const calView = (v: 'month' | 'week') => () => {
-      localStorage.setItem(STORAGE_KEYS.calendar_view, v)
-      navigate('calendar')
-      window.dispatchEvent(new CustomEvent('cairn:cal-view', { detail: v }))
-      onClose()
-    }
-    return [
-      { id: 'go-projects', label: 'プロジェクト一覧', run: go('projects') },
-      { id: 'go-calendar', label: 'カレンダー', run: go('calendar') },
-      { id: 'go-kanban', label: 'カンバン', run: go('kanban') },
-      { id: 'go-tasks', label: 'マイタスク', run: go('tasks') },
-      { id: 'go-chats', label: 'チャット', run: go('chats') },
-      { id: 'go-ai', label: 'AIアシスタント', run: go('ai') },
-      { id: 'go-files', label: 'ファイル', run: go('files') },
-      { id: 'go-gallery', label: 'ギャラリー', run: go('gallery') },
-      { id: 'go-members', label: 'メンバー', run: go('members') },
-      { id: 'go-settings', label: '設定', run: go('settings') },
-      { id: 'create', label: '新規作成', keys: ['⌥', 'N'], run: () => { window.dispatchEvent(new CustomEvent('cairn:create')); onClose() } },
-      { id: 'cross-search', label: '横断検索（チャット）', run: () => { window.__cairnOpenCrossSearch = true; navigate('chats'); window.dispatchEvent(new CustomEvent('cairn:cross-search')); onClose() } },
-      { id: 'notifications', label: '通知を開く', run: () => { onNotifications(); onClose() } },
-      { id: 'cal-month', label: 'カレンダー: 月表示', run: calView('month') },
-      { id: 'cal-week', label: 'カレンダー: 週表示', run: calView('week') },
-    ]
-  }, [navigate, onNotifications, onClose])
+  const commands = React.useMemo(
+    () => COMMANDS.filter(c => c.inPalette && (c.when?.(page) ?? true) && has(c.id)),
+    // version はハンドラ登録/解除のたびに再評価するために必要（has は安定参照）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [page, has, version],
+  )
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return actions
-    return actions.filter(a => a.label.toLowerCase().includes(q))
-  }, [query, actions])
+    if (!q) return commands
+    return commands.filter(c => c.title.toLowerCase().includes(q))
+  }, [query, commands])
 
   React.useEffect(() => { setIndex(0) }, [query])
   React.useEffect(() => { inputRef.current?.focus() }, [])
 
-  const run = (a: Action | undefined) => { if (a) a.run() }
+  const run = (id: string | undefined) => { if (id) { invoke(id); onClose() } }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setIndex(i => Math.min(i + 1, filtered.length - 1)) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setIndex(i => Math.max(i - 1, 0)) }
-    else if (e.key === 'Enter') { e.preventDefault(); run(filtered[index]) }
+    else if (e.key === 'Enter') { e.preventDefault(); run(filtered[index]?.id) }
   }
 
   return (
@@ -94,10 +63,10 @@ export function CommandPalette({
           {filtered.length === 0 && (
             <div style={{ padding: '16px', fontSize: 13, color: 'var(--text-4)', textAlign: 'center' }}>該当なし</div>
           )}
-          {filtered.map((a, i) => (
+          {filtered.map((c, i) => (
             <button
-              key={a.id}
-              onClick={() => run(a)}
+              key={c.id}
+              onClick={() => run(c.id)}
               onMouseEnter={() => setIndex(i)}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
@@ -106,14 +75,10 @@ export function CommandPalette({
                 fontSize: 13.5, color: 'var(--text)', fontFamily: 'inherit',
               }}
             >
-              <span>{a.label}</span>
-              {a.keys && (
-                <span style={{ display: 'flex', gap: 3 }}>
-                  {a.keys.map(k => (
-                    <kbd key={k} style={{ fontFamily: 'inherit', fontSize: 11, padding: '2px 5px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--text-3)' }}>{k}</kbd>
-                  ))}
-                </span>
-              )}
+              <span>{c.title}</span>
+              <kbd style={{ fontFamily: 'inherit', fontSize: 11, padding: '2px 6px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
+                {formatCommandKeys(c, mac)}
+              </kbd>
             </button>
           ))}
         </div>

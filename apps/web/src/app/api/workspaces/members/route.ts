@@ -4,10 +4,12 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole } from '@/lib/permissions'
+import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
 
 export interface WorkspaceMemberDto {
   userId: string
   displayName: string
+  email: string | null
   avatarUrl: string | null
   role: 'owner' | 'admin' | 'member' | 'guest'
   joinedAt: string
@@ -19,6 +21,7 @@ export async function GET() {
   if (error) return error
 
   try {
+    const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
     const { profiles, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
     const { eq, and, count, sql, inArray } = await import('drizzle-orm')
@@ -86,9 +89,12 @@ export async function GET() {
       )
       .orderBy(profiles.displayName)
 
+    const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
+
     const result: WorkspaceMemberDto[] = rows.map(r => ({
       userId: r.userId,
       displayName: r.displayName,
+      email: emails.get(r.userId) ?? null,
       avatarUrl: r.avatarUrl ?? null,
       role: r.role,
       joinedAt: r.joinedAt.toISOString().slice(0, 10),

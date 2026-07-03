@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { db, workspaceMembers, channels, channelMembers, projects, projectMembers } from '@cairn/db'
+import { db, workspaceMembers, channels, channelMembers, projects, projectMembers, messages, messageAttachments } from '@cairn/db'
 import { eq, and, sql } from 'drizzle-orm'
 
 async function getWorkspaceRole(workspaceId: string, userId: string) {
@@ -62,6 +62,52 @@ export async function requireWorkspaceMember(
   const role = await getWorkspaceRole(workspaceId, userId)
   if (!isWorkspaceMember(role)) {
     return NextResponse.json({ error: 'ゲストはこの操作を実行できません' }, { status: 403 })
+  }
+  return null
+}
+
+// ゲストがアクセス可能なプロジェクトID集合（project_members に行があるプロジェクト）を返す。
+// member 以上はワークスペース全体を参照できるため、この関数はゲストの可視範囲を絞る用途で使う。
+export async function getGuestVisibleProjectIds(
+  workspaceId: string,
+  userId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ projectId: projectMembers.projectId })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(and(eq(projectMembers.userId, userId), eq(projects.workspaceId, workspaceId)))
+  return [...new Set(rows.map(r => r.projectId))]
+}
+
+// 指定プロジェクトへのアクセス可否を検証する。
+// member 以上は常に許可。guest は project_members に行があり、かつそのプロジェクトが
+// 当該ワークスペースに属する場合のみ許可する（別ワークスペースのプロジェクトメンバーによる
+// 越境書き込みを防ぐため projects.workspaceId も検証する）。無ければ 403。
+export async function requireProjectAccess(
+  workspaceId: string,
+  userId: string,
+  projectId: string,
+): Promise<NextResponse | null> {
+  const role = await getWorkspaceRole(workspaceId, userId)
+  if (isWorkspaceMember(role)) return null
+
+  const [membership] = await db
+    .select({ id: projectMembers.id })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(and(
+      eq(projectMembers.projectId, projectId),
+      eq(projectMembers.userId, userId),
+      eq(projects.workspaceId, workspaceId),
+    ))
+    .limit(1)
+
+  if (!membership) {
+    return NextResponse.json(
+      { error: 'このプロジェクトにアクセスする権限がありません' },
+      { status: 403 },
+    )
   }
   return null
 }
@@ -126,4 +172,72 @@ export async function requireChannelAccess(
   }
 
   return null
+}
+
+export interface FileAccessRow {
+  id: string
+  workspaceId: string
+  projectId: string | null
+  uploadedBy: string
+  metadata?: unknown
+}
+
+// ファイル単体の閲覧可否を判定する。`requireChannelAccess` と同じスコープ感で、
+// ワークスペース所属だけを根拠にした越境アクセス（fileID 総当たり）を防ぐ。
+// - 別ワークスペースのファイルは不可
+// - アップロード者本人は常に可（メッセージ投稿前のアップロード直後も閲覧できる）
+// - プロジェクトファイルは member 以上なら可、guest は参加プロジェクトのみ
+// - メッセージ添付ファイルは、添付先チャンネルのいずれかにアクセスできれば可
+// - それ以外（未添付かつ非プロジェクトの他人のファイル）は不可
+export async function canAccessFile(
+  workspaceId: string,
+  userId: string,
+  file: FileAccessRow,
+): Promise<boolean> {
+  if (file.workspaceId !== workspaceId) return false
+  if (file.uploadedBy === userId) return true
+
+  const role = await getWorkspaceRole(workspaceId, userId)
+  // ワークスペース非所属（role なし）は不可
+  if (!isWorkspaceMember(role) && role !== 'guest') return false
+
+  // プロジェクトファイル: member 以上は全件可、guest は参加プロジェクトのみ
+  if (file.projectId) {
+    if (role !== 'guest') return true
+    const [pm] = await db
+      .select({ id: projectMembers.id })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, file.projectId), eq(projectMembers.userId, userId)))
+      .limit(1)
+    if (pm) return true
+    // プロジェクト未参加のゲストでも、添付経由でアクセスできる場合があるため後段で判定する
+  }
+
+  // metadata.channelIds（新形式の配列）と旧形式の単一 metadata.channelId の両方を見る
+  const meta = (file.metadata ?? {}) as Record<string, unknown>
+  const metadataChannelIds = new Set<string>()
+  const legacyChannelId = meta['channelId']
+  if (typeof legacyChannelId === 'string') metadataChannelIds.add(legacyChannelId)
+  const channelIdsArr = meta['channelIds']
+  if (Array.isArray(channelIdsArr)) {
+    for (const id of channelIdsArr) if (typeof id === 'string') metadataChannelIds.add(id)
+  }
+  for (const metadataChannelId of metadataChannelIds) {
+    const forbidden = await requireChannelAccess(workspaceId, userId, metadataChannelId)
+    if (!forbidden) return true
+  }
+
+  // メッセージ添付ファイル: 添付先チャンネルのいずれかにアクセスできれば可
+  const attached = await db
+    .selectDistinct({ channelId: messages.channelId })
+    .from(messageAttachments)
+    .innerJoin(messages, eq(messageAttachments.messageId, messages.id))
+    .where(eq(messageAttachments.fileId, file.id))
+
+  for (const { channelId } of attached) {
+    const forbidden = await requireChannelAccess(workspaceId, userId, channelId)
+    if (!forbidden) return true
+  }
+
+  return false
 }

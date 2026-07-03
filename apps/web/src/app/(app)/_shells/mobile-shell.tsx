@@ -11,7 +11,7 @@ import { ProjectListView } from '@/components/app/pages/project-list'
 import { ProjectPanel } from '@/components/app/detail-panel/project-panel'
 import { MemberDetailPanel } from '@/components/app/detail-panel/member-panel'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
-import { MobileSettings } from '@/components/app/mobile/settings'
+import { MobileSettings, MobileSettingsDetail } from '@/components/app/mobile/settings'
 import { MobileHeader } from '@/components/app/mobile/header'
 import { PageChat } from '@/components/app/pages/chat'
 import { PageTasks } from '@/components/app/pages/tasks'
@@ -72,7 +72,7 @@ function MobilePlaceholder({ title }: { title: string }) {
 }
 
 // AppShellContext.Provider の内側でレンダリングされるため useAppShell() が使える
-function MobilePage({ page, projectsView, initialMemberId }: { page: string; projectsView: ProjectsView; initialMemberId?: string | undefined }) {
+function MobilePage({ page, projectsView, initialMemberId, settingsSection }: { page: string; projectsView: ProjectsView; initialMemberId?: string | undefined; settingsSection?: string | undefined }) {
   const { openPanel } = useAppShell()
   if (page === 'projects') {
     if (projectsView === 'calendar') return <PageCalendar openPanel={openPanel} isMobile />
@@ -91,7 +91,7 @@ function MobilePage({ page, projectsView, initialMemberId }: { page: string; pro
     </div>
   )
   if (page === 'ai') return <PageAI isMobile />
-  if (page === 'settings') return <MobileSettings />
+  if (page === 'settings') return settingsSection ? <MobileSettingsDetail section={settingsSection} /> : <MobileSettings />
   if (page === 'members') return <PageMembers isMobile {...(initialMemberId ? { initialUserId: initialMemberId } : {})} />
   if (page === 'files') return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
@@ -118,10 +118,11 @@ function MobileShellInner() {
   const router = useRouter()
   const page = pageFromPathname(pathname)
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
+  const settingsSection = pathname.startsWith('/settings/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
   const [notifOpen, setNotifOpen] = React.useState(false)
 
-  const { panelState, panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
+  const { panelState, panelProject, panelMember, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
 
   const setProjectsView = React.useCallback((view: string) => {
     if (!isValidView(view)) return
@@ -134,19 +135,21 @@ function MobileShellInner() {
   }, [openProjectById])
 
   return (
-    <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), projectsView, setProjectsView }}>
+    <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), projectsView, setProjectsView, crossSearchNonce: 0, consumeCrossSearch: () => {} }}>
       <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
         <NavigationProgress />
         {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)} isMobile/>}
         {/* パネルは position:fixed でフルスクリーン表示。ブラウザ履歴でスタック管理する */}
+        {/* タブ状態は ProjectPanel の内部 state に閉じる（URL の ?tab を使わない）。
+            router.replace 経由のタブ切替はシェル全体＝裏の一覧まで再レンダーさせるため。
+            key でプロジェクトごとに初期タブ(chat)へリセットする */}
         {panelState?.type === 'project' && panelProject && (
           <ProjectPanel
+            key={panelProject.id}
             project={panelProject}
             onClose={backPanel}
             onMemberClick={openMember}
             isMobile
-            tab={panelTab}
-            onTabChange={setPanelTab}
           />
         )}
         {panelState?.type === 'member' && panelMember && (
@@ -159,7 +162,7 @@ function MobileShellInner() {
         )}
         <div className="app" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-            <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} />
+            <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} settingsSection={settingsSection} />
           </div>
           <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
         </div>

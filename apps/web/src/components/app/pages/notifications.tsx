@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { Icon, UnreadBadge } from '../primitives'
+import { Icon, UnreadBadge, Switch } from '../primitives'
 import {
   useNotifications,
   useMarkNotificationsRead,
@@ -10,6 +10,7 @@ import {
   type NotificationDto,
 } from '@/lib/notifications/client'
 import { usePushNotifications } from '@/lib/push/client'
+import { stripMentionsToText } from '@/lib/chat/mentions'
 
 const TYPE_CONFIG: Record<NotificationDto['type'], { icon: string; c: string; bg: string }> = {
   mention:  { icon: 'chat',     c: 'var(--blue)',    bg: 'var(--blue-soft)' },
@@ -22,8 +23,9 @@ const TYPE_CONFIG: Record<NotificationDto['type'], { icon: string; c: string; bg
   reaction: { icon: 'heart',    c: 'var(--rose)',    bg: 'var(--rose-soft)' },
 }
 
+// 通知本文は保存時に表示名解決済みだが、構造化トークンが残っていても素のまま見せない
 function parseMentionText(text: string): string {
-  return text.replace(/<@[^|>]+\|([^>]+)>/g, '@$1')
+  return stripMentionsToText(text)
 }
 
 const FILTERS = [
@@ -81,7 +83,7 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
   return (
     <>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--overlay)', zIndex: isMobile ? 60 : 30, animation: 'notifFadeIn .15s ease-out' }}/>
-      <aside style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: isMobile ? 0 : 'auto', width: isMobile ? 'auto' : 400, background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: isMobile ? 61 : 31, display: 'flex', flexDirection: 'column', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
+      <aside style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: isMobile ? 'min(86vw, 360px)' : 400, background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: isMobile ? 61 : 31, display: 'flex', flexDirection: 'column', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
         <div style={{ padding: isMobile ? 'max(16px, env(safe-area-inset-top)) 18px 12px' : '16px 18px 12px', borderBottom: '1px solid var(--divider)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -97,15 +99,17 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
               <Icon name="check" size={12} /> すべて既読
             </button>
             {push.permission !== 'unsupported' && push.permission !== 'denied' && (
-              <button
-                className="btn btn-ghost"
-                style={{ width: 28, height: 28, padding: 0, justifyContent: 'center', color: push.permission === 'granted' ? 'var(--accent)' : 'var(--text-3)' }}
-                onClick={push.permission === 'granted' ? push.unsubscribe : push.subscribe}
-                disabled={push.loading}
-                title={push.permission === 'granted' ? 'プッシュ通知を無効化' : 'プッシュ通知を有効化'}
-              >
-                <Icon name="bell" size={14}/>
-              </button>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="bell" size={14} color={push.permission === 'granted' ? 'var(--accent)' : 'var(--text-3)'} />
+                {!isMobile && <span style={{ fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Push通知</span>}
+                <Switch
+                  size="sm"
+                  checked={push.permission === 'granted'}
+                  disabled={push.loading}
+                  onChange={(next) => (next ? push.subscribe() : push.unsubscribe())}
+                  title={push.permission === 'granted' ? 'プッシュ通知を無効化' : 'プッシュ通知を有効化'}
+                />
+              </div>
             )}
             <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="close" size={15}/>

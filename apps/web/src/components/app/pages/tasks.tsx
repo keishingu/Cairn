@@ -6,6 +6,10 @@ import { Icon, Avatar, Fab } from '../primitives'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { CreateTaskModal } from './create-task-modal'
+import { TaskEditDialog } from '../task-edit-dialog'
+import { RowActionMenu } from '../row-action-menu'
+import { useListSelection } from '@/hooks/use-list-selection'
+import { useCommand } from '@/lib/command-registry'
 
 type FilterKey = 'all' | 'todo' | 'in_progress' | 'done'
 
@@ -43,22 +47,27 @@ function formatDueDate(dueDate: string | null): { label: string; overdue: boolea
 interface TaskRowProps {
   task: TaskDto
   onToggle: (id: string, current: TaskDto['status']) => void
+  onEdit: (task: TaskDto, mode?: 'edit' | 'delete') => void
   toggling: boolean
+  selected?: boolean
+  index?: number
 }
 
-const TaskRow = ({ task, onToggle, toggling }: TaskRowProps) => {
+const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowProps) => {
   const due = formatDueDate(task.dueDate)
   const isDone = task.status === 'done'
 
   return (
     <div
+      data-list-index={index}
       style={{
         display: 'flex', alignItems: 'center', gap: 12,
         padding: '10px 16px', borderBottom: '1px solid var(--divider)',
         opacity: toggling ? 0.5 : 1, transition: 'opacity .15s',
+        background: selected ? 'var(--accent-soft)' : 'transparent',
       }}
-      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+      onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+      onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
     >
       <button
         onClick={() => onToggle(task.id, task.status)}
@@ -115,6 +124,14 @@ const TaskRow = ({ task, onToggle, toggling }: TaskRowProps) => {
           padding: '2px 7px', borderRadius: 4, flexShrink: 0,
         }}>進行中</span>
       )}
+
+      <RowActionMenu
+        actions={[
+          { icon: 'edit', label: '編集', onSelect: () => onEdit(task, 'edit') },
+          { icon: 'trash', label: '削除', danger: true, onSelect: () => onEdit(task, 'delete') },
+        ]}
+        triggerStyle={{ padding: '6px', borderRadius: 8 }}
+      />
     </div>
   )
 }
@@ -137,16 +154,19 @@ interface SectionProps {
   count: number
   tasks: TaskDto[]
   onToggle: (id: string, current: TaskDto['status']) => void
+  onEdit: (task: TaskDto, mode?: 'edit' | 'delete') => void
   togglingId: string | null
-  defaultOpen?: boolean
+  open: boolean
+  onToggleOpen: () => void
+  selectedTaskId?: string | null
+  baseIndex?: number
 }
 
-const Section = ({ label, count, tasks, onToggle, togglingId, defaultOpen = true }: SectionProps) => {
-  const [open, setOpen] = React.useState(defaultOpen)
+const Section = ({ label, count, tasks, onToggle, onEdit, togglingId, open, onToggleOpen, selectedTaskId, baseIndex = 0 }: SectionProps) => {
   return (
     <div>
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={onToggleOpen}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 8,
           padding: '10px 16px', border: 'none', background: 'var(--card-2)',
@@ -158,12 +178,15 @@ const Section = ({ label, count, tasks, onToggle, togglingId, defaultOpen = true
         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', letterSpacing: '0.02em' }}>{label}</span>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', background: 'var(--card)', border: '1px solid var(--border)', padding: '1px 6px', borderRadius: 999 }}>{count}</span>
       </button>
-      {open && tasks.map(t => (
+      {open && tasks.map((t, i) => (
         <TaskRow
           key={t.id}
           task={t}
           onToggle={onToggle}
+          onEdit={onEdit}
           toggling={togglingId === t.id}
+          selected={t.id === selectedTaskId}
+          index={baseIndex + i}
         />
       ))}
     </div>
@@ -177,13 +200,13 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [filter, setFilter] = React.useState<FilterKey>('all')
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
   const [showAddModal, setShowAddModal] = React.useState(false)
+  const [editingTask, setEditingTask] = React.useState<TaskDto | null>(null)
+  const [dialogMode, setDialogMode] = React.useState<'edit' | 'delete'>('edit')
+  // セクション（プロジェクト別）の開閉。明示トグルが無ければ先頭3つを開く
+  const [sectionOverride, setSectionOverride] = React.useState<Record<string, boolean>>({})
 
   // ⌥N: 新規タスク
-  React.useEffect(() => {
-    const onCreate = () => setShowAddModal(true)
-    window.addEventListener('cairn:create', onCreate)
-    return () => window.removeEventListener('cairn:create', onCreate)
-  }, [])
+  useCommand('ctx.create', () => setShowAddModal(true))
 
   const { data: tasks = [], isLoading } = useQuery<TaskDto[]>({
     queryKey: ['tasks'],
@@ -223,6 +246,11 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     toggleMutation.mutate({ id, newStatus })
   }
 
+  const openEditor = (task: TaskDto, mode: 'edit' | 'delete' = 'edit') => {
+    setDialogMode(mode)
+    setEditingTask(task)
+  }
+
   const filtered = React.useMemo(() => {
     if (filter === 'all') return tasks
     return tasks.filter(t => t.status === filter)
@@ -252,12 +280,50 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     }))
   }, [filtered])
 
+  // セクションの開閉（明示トグルが無ければ先頭3つを開く）と、実際に見えているタスク列
+  const isSectionOpen = React.useCallback(
+    (key: string, idx: number) => sectionOverride[key] ?? idx < 3,
+    [sectionOverride],
+  )
+  const visibleTasks = React.useMemo(
+    () => grouped.flatMap((g, idx) => (isSectionOpen(g.key, idx) ? g.tasks : [])),
+    [grouped, isSectionOpen],
+  )
+  // 各セクションの可視タスク列における開始インデックス（scroll-into-view 用）
+  const sectionBases = React.useMemo(() => {
+    const bases: number[] = []
+    let cursor = 0
+    grouped.forEach((g, idx) => { bases[idx] = cursor; if (isSectionOpen(g.key, idx)) cursor += g.tasks.length })
+    return bases
+  }, [grouped, isSectionOpen])
+
+  // 矢印選択は「見えている行」だけを対象にする（折りたたみ内の行は選べない）
+  const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useListSelection({ count: visibleTasks.length })
+  React.useEffect(() => { setNavIdx(-1) }, [filter, setNavIdx])
+  const selectedTaskId = navIdx >= 0 ? (visibleTasks[navIdx]?.id ?? null) : null
+
   const filters: { id: FilterKey; label: string }[] = [
     { id: 'all',         label: `すべて (${counts.all})` },
     { id: 'todo',        label: `未着手 (${counts.todo})` },
     { id: 'in_progress', label: `進行中 (${counts.in_progress})` },
     { id: 'done',        label: `完了 (${counts.done})` },
   ]
+
+  // ⌥[ / ⌥]: フィルタタブ切替
+  const cycleFilterTab = (dir: 'prev' | 'next') => {
+    const idx = filters.findIndex(f => f.id === filter)
+    const next = dir === 'next' ? (idx + 1) % filters.length : (idx - 1 + filters.length) % filters.length
+    setFilter(filters[next]!.id)
+  }
+  useCommand('ctx.filterTabPrev', () => cycleFilterTab('prev'))
+  useCommand('ctx.filterTabNext', () => cycleFilterTab('next'))
+
+  // ⌥Enter: 選択中（↑↓）のタスクをトグル。トグル中（PATCH 未完了）は無視して多重発火を防ぐ
+  useCommand('tasks.toggle', () => {
+    if (togglingId) return
+    const task = navIdx >= 0 ? visibleTasks[navIdx] : undefined
+    if (task) handleToggle(task.id, task.status)
+  })
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
@@ -323,8 +389,12 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
                 count={g.tasks.length}
                 tasks={g.tasks}
                 onToggle={handleToggle}
+                onEdit={openEditor}
                 togglingId={togglingId}
-                defaultOpen={idx < 3}
+                open={isSectionOpen(g.key, idx)}
+                onToggleOpen={() => setSectionOverride(prev => ({ ...prev, [g.key]: !isSectionOpen(g.key, idx) }))}
+                selectedTaskId={selectedTaskId}
+                baseIndex={sectionBases[idx] ?? 0}
               />
             ))}
           </div>
@@ -333,6 +403,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
 
       {isMobile && <Fab onClick={() => setShowAddModal(true)} label="タスクを追加"/>}
       {showAddModal && <CreateTaskModal onClose={() => setShowAddModal(false)} />}
+      <TaskEditDialog open={editingTask != null} task={editingTask} initialMode={dialogMode} onClose={() => setEditingTask(null)} />
     </div>
   )
 }
