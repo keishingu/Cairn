@@ -92,6 +92,14 @@ describe('middleware', () => {
     expect(res.headers.get('location')).toBe('http://localhost:3000/og-image.png?v=1')
   })
 
+  it('/lp/ 配下の旧静的アセットは同一オリジン内にリダイレクトされる', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+    const { middleware } = await import('./middleware')
+    const res = await middleware(makeRequest('/lp//evil.example/x'))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toBe('http://localhost:3000/evil.example/x')
+  })
+
   it('未認証で直下の LP 静的アセットにアクセスすると middleware は通過する', async () => {
     getUser.mockResolvedValue({ data: { user: null } })
     const { middleware } = await import('./middleware')

@@ -64,7 +64,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(landingUrl)
   }
   if (isLegacyLpAsset) {
-    const assetUrl = new URL(pathname.slice('/lp'.length), request.url)
+    const assetPath = `/${pathname.slice('/lp/'.length).replace(/^\/+/, '')}`
+    const assetUrl = new URL(assetPath, request.url)
     assetUrl.search = request.nextUrl.search
     return NextResponse.redirect(assetUrl)
   }
