@@ -160,7 +160,18 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       .limit(1)
 
     if (!file) return new NextResponse(null, { status: 404 })
-    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file)
+    const pendingChannelId =
+      file.metadata &&
+      typeof file.metadata === 'object' &&
+      typeof (file.metadata as Record<string, unknown>)['pendingChannelId'] === 'string'
+        ? (file.metadata as Record<string, string>)['pendingChannelId']
+        : undefined
+    const canAccess = await canAccessFile(
+      ctx.workspaceId,
+      ctx.userId,
+      file,
+      pendingChannelId ? { pendingChannelId } : {},
+    )
     if (!canAccess) return new NextResponse(null, { status: 403 })
 
     // ベクトルデータを先に削除

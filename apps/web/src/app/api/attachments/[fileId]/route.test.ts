@@ -103,6 +103,24 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(res.status).toBe(403)
   })
 
+  it('DELETE は pendingChannelId 付き仮添付の削除権限を canAccessFile に渡す', async () => {
+    Object.assign(fileRow, {
+      uploadedBy: DEV_USER_ID,
+      metadata: { pendingChannelId: 'channel-pending-1' },
+    })
+    mockCanAccessFile.mockResolvedValue(false)
+
+    const { DELETE } = await import('./route')
+    await DELETE(new Request('http://localhost/', { method: 'DELETE' }), routeParams())
+
+    expect(mockCanAccessFile).toHaveBeenCalledWith(
+      DEV_WORKSPACE_ID,
+      DEV_USER_ID,
+      expect.objectContaining({ id: FILE_ID }),
+      { pendingChannelId: 'channel-pending-1' },
+    )
+  })
+
   it('Markdownファイルは保存MIMEが汎用でもUTF-8つきtext/markdownで返す', async () => {
     Object.assign(fileRow, {
       storagePath: 'workspace-1/channel-1/file.md',
