@@ -18,6 +18,10 @@ const { mockIsActiveWorkspaceMember, mockInngestSend } = vi.hoisted(() => ({
   mockIsActiveWorkspaceMember: vi.fn(),
   mockInngestSend: vi.fn(),
 }))
+const { mockEq, mockAnd } = vi.hoisted(() => ({
+  mockEq: vi.fn(() => Symbol('eq')),
+  mockAnd: vi.fn(() => Symbol('and')),
+}))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({
@@ -28,14 +32,23 @@ vi.mock('@/lib/permissions', () => ({
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 vi.mock('@/lib/inngest/notification-access', () => ({ isActiveWorkspaceMember: mockIsActiveWorkspaceMember }))
 vi.mock('@cairn/shared', () => ({
-  createTaskSchema: { safeParse: () => ({ success: true, data: { projectId: PROJECT_ID, title: 'task', priority: 'medium' } }) },
+  createTaskSchema: { safeParse: (body: unknown) => ({ success: true, data: body }) },
 }))
 vi.mock('@cairn/db', () => ({
   db: {},
   tasks: 'tasks',
   projects: { id: 'projects.id', title: 'projects.title' },
   profiles: { id: 'profiles.id', displayName: 'profiles.displayName' },
-  workspaceMembers: { userId: 'workspaceMembers.userId', avatarUrl: 'workspaceMembers.avatarUrl' },
+  workspaceMembers: {
+    userId: 'workspaceMembers.userId',
+    workspaceId: 'workspaceMembers.workspaceId',
+    membershipStatus: 'workspaceMembers.membershipStatus',
+    avatarUrl: 'workspaceMembers.avatarUrl',
+  },
+}))
+vi.mock('drizzle-orm', () => ({
+  eq: mockEq,
+  and: mockAnd,
 }))
 
 function postRequest() {
@@ -73,6 +86,11 @@ describe('POST /api/tasks のゲストアクセス制御', () => {
 
     const returning = vi.fn().mockResolvedValue([{ id: 'task-1', projectId: PROJECT_ID, title: 'task', status: 'todo', priority: 'medium', dueDate: null, assigneeId: 'user-2' }])
     const insertChain = { values: vi.fn().mockReturnValue({ returning }) }
+    const selectActiveAssigneeChain = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([{ userId: 'user-2' }]),
+    }
     const selectProjectChain = {
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockResolvedValue([{ title: 'Project A' }]),
@@ -86,6 +104,7 @@ describe('POST /api/tasks のゲストアクセス制御', () => {
     const { db } = await import('@cairn/db')
     db.insert = vi.fn().mockReturnValue(insertChain)
     db.select = vi.fn()
+      .mockReturnValueOnce(selectActiveAssigneeChain)
       .mockReturnValueOnce(selectProjectChain)
       .mockReturnValueOnce(selectAssigneeChain)
 
@@ -101,6 +120,35 @@ describe('POST /api/tasks のゲストアクセス制御', () => {
       workspaceId: DEV_WORKSPACE_ID,
       userId: 'user-2',
     })
+    expect(mockInngestSend).not.toHaveBeenCalled()
+  })
+
+  it('inactive な assignee を指定した作成は 422 で拒否する', async () => {
+    mockRequireProjectAccess.mockResolvedValue(null)
+
+    const selectActiveAssigneeChain = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([]),
+    }
+
+    const { db } = await import('@cairn/db')
+    db.insert = vi.fn()
+    db.select = vi.fn().mockReturnValueOnce(selectActiveAssigneeChain)
+
+    const { POST } = await import('./route')
+    const res = await POST(new Request('http://localhost/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: PROJECT_ID, title: 'task', priority: 'medium', assigneeId: 'user-2' }),
+    }))
+
+    expect(res.status).toBe(422)
+    await expect(res.json()).resolves.toEqual({
+      error: '指定されたユーザーはアクティブなワークスペースメンバーではありません',
+    })
+    expect(mockEq).toHaveBeenCalledWith('workspaceMembers.membershipStatus', 'active')
+    expect(db.insert).not.toHaveBeenCalled()
     expect(mockInngestSend).not.toHaveBeenCalled()
   })
 })

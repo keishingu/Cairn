@@ -15,6 +15,7 @@ const {
   mockEq,
   mockAnd,
   mockInArray,
+  mockNe,
   mockSql,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
@@ -23,6 +24,7 @@ const {
   mockEq: vi.fn(() => Symbol('eq')),
   mockAnd: vi.fn(() => Symbol('and')),
   mockInArray: vi.fn(() => Symbol('inArray')),
+  mockNe: vi.fn(() => Symbol('ne')),
   mockSql: vi.fn(() => Symbol('sql')),
 }))
 
@@ -39,10 +41,15 @@ vi.mock('@cairn/db', () => ({
     userId: 'channelReadStates.userId',
     lastReadAt: 'channelReadStates.lastReadAt',
   },
+  profiles: {
+    id: 'profiles.id',
+    displayName: 'profiles.displayName',
+  },
   workspaceMembers: {
     userId: 'workspaceMembers.userId',
     workspaceId: 'workspaceMembers.workspaceId',
     membershipStatus: 'workspaceMembers.membershipStatus',
+    avatarUrl: 'workspaceMembers.avatarUrl',
   },
 }))
 
@@ -50,6 +57,7 @@ vi.mock('drizzle-orm', () => ({
   and: mockAnd,
   eq: mockEq,
   inArray: mockInArray,
+  ne: mockNe,
   sql: mockSql,
 }))
 
@@ -67,7 +75,10 @@ function mockSelectResults(...results: unknown[]) {
     const result = queue.shift() ?? []
     const builder = {
       from: () => builder,
+      innerJoin: () => builder,
+      leftJoin: () => builder,
       where: () => builder,
+      orderBy: () => builder,
       limit: () => builder,
       then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
         Promise.resolve(result).then(resolve, reject),
@@ -124,5 +135,16 @@ describe('/api/workspaces/dms POST のアクセス制御', () => {
     const res = await POST(postRequest({ targetUserId: TARGET_USER_ID }))
     expect(res.status).toBe(201)
     await expect(res.json()).resolves.toEqual({ id: DM_CHANNEL_ID })
+  })
+
+  it('GET は inactive な参加者の DM を一覧から除外する', async () => {
+    mockSelectResults([])
+
+    const { GET } = await import('./route')
+    const res = await GET()
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([])
+    expect(mockEq).toHaveBeenCalledWith('workspaceMembers.membershipStatus', 'active')
   })
 })

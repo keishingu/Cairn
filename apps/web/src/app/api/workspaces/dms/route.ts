@@ -42,7 +42,14 @@ export async function GET() {
       .from(channels)
       .innerJoin(channelMembers, eq(channelMembers.channelId, channels.id))
       .innerJoin(profiles, eq(profiles.id, channelMembers.userId))
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .innerJoin(
+        workspaceMembers,
+        and(
+          eq(workspaceMembers.userId, profiles.id),
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ),
+      )
       .where(
         and(
           eq(channels.workspaceId, ctx.workspaceId),

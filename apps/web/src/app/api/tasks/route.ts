@@ -115,7 +115,25 @@ export async function POST(req: Request) {
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { and, eq } = await import('drizzle-orm')
+
+    if (parsed.data.assigneeId) {
+      const [activeAssignee] = await db
+        .select({ userId: workspaceMembers.userId })
+        .from(workspaceMembers)
+        .where(
+          and(
+            eq(workspaceMembers.workspaceId, ctx.workspaceId),
+            eq(workspaceMembers.userId, parsed.data.assigneeId),
+            eq(workspaceMembers.membershipStatus, 'active'),
+          ),
+        )
+        .limit(1)
+
+      if (!activeAssignee) {
+        return NextResponse.json({ error: '指定されたユーザーはアクティブなワークスペースメンバーではありません' }, { status: 422 })
+      }
+    }
 
     const [inserted] = await db
       .insert(tasks)
