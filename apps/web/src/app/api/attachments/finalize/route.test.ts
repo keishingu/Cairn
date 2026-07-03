@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const CHANNEL_ID = '20000000-0000-0000-0000-000000000001'
+const mockInsertValues = vi.fn()
 
 const { mockGetAuthContext, mockRequireChannelAccess, mockList, mockRemove, mockIsIndexable, mockInngestSend } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
@@ -35,9 +36,12 @@ vi.mock('@cairn/db', () => ({
       }),
     }),
     insert: () => ({
-      values: (v: Record<string, unknown>) => ({
-        returning: vi.fn().mockResolvedValue([{ id: 'file-1', ...v }]),
-      }),
+      values: (v: Record<string, unknown>) => {
+        mockInsertValues(v)
+        return {
+          returning: vi.fn().mockResolvedValue([{ id: 'file-1', ...v }]),
+        }
+      },
     }),
   },
   files: {},
@@ -55,6 +59,7 @@ function storagePathFor(name: string): string {
 
 describe('/api/attachments/finalize のアクセス制御', () => {
   beforeEach(() => {
+    mockInsertValues.mockReset()
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
       error: null,
@@ -112,6 +117,24 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     }))
 
     expect(res.status).toBe(400)
+  })
+
+  it('workspace channel の仮添付には pendingChannelId を保存する', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+
+    const { POST } = await import('./route')
+    const res = await POST(post({
+      channelId: CHANNEL_ID,
+      storagePath: storagePathFor('x.pdf'),
+      fileName: 'x.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 100,
+    }))
+
+    expect(res.status).toBe(201)
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: { pendingChannelId: CHANNEL_ID },
+    }))
   })
 })
 
