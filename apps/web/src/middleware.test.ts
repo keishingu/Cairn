@@ -1,0 +1,68 @@
+import { NextRequest } from 'next/server'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const getUser = vi.fn()
+
+vi.mock('@supabase/ssr', () => ({
+  createServerClient: () => ({
+    auth: { getUser },
+  }),
+}))
+
+function makeRequest(pathname: string): NextRequest {
+  return new NextRequest(new URL(pathname, 'http://localhost:3000'))
+}
+
+describe('middleware', () => {
+  beforeEach(() => {
+    getUser.mockReset()
+    process.env['NEXT_PUBLIC_SUPABASE_URL'] = 'http://localhost:54321'
+    process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'] = 'dummy'
+  })
+
+  it('未認証で / にアクセスすると /lp/index.html に rewrite される', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+    const { middleware } = await import('./middleware')
+    const res = await middleware(makeRequest('/'))
+    expect(res.headers.get('x-middleware-rewrite')).toContain('/lp/index.html')
+  })
+
+  it('認証済みで / にアクセスすると /projects にリダイレクトされる', async () => {
+    getUser.mockResolvedValue({ data: { user: { id: 'u1' } } })
+    const { middleware } = await import('./middleware')
+    const res = await middleware(makeRequest('/'))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toContain('/projects')
+  })
+
+  it('/lp は / にリダイレクトされる', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+    const { middleware } = await import('./middleware')
+    const res = await middleware(makeRequest('/lp'))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toBe('http://localhost:3000/')
+  })
+
+  it('/lp/index.html は / にリダイレクトされる', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+    const { middleware } = await import('./middleware')
+    const res = await middleware(makeRequest('/lp/index.html'))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toBe('http://localhost:3000/')
+  })
+
+  it('/lp/ 配下の静的アセットはリダイレクトされない', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+    const { middleware } = await import('./middleware')
+    const res = await middleware(makeRequest('/lp/cairn-lp.css'))
+    expect(res.headers.get('location')).toBeNull()
+  })
+
+  it('未認証で保護ルートにアクセスすると /auth/login にリダイレクトされる', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+    const { middleware } = await import('./middleware')
+    const res = await middleware(makeRequest('/projects'))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toContain('/auth/login')
+  })
+})
