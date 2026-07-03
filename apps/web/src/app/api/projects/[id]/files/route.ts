@@ -30,6 +30,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const { eq, and, isNull, desc, inArray } = await import('drizzle-orm')
     const { isIndexable } = await import('@/lib/ai/extract-text')
     const accessCheckBatchSize = 50
+    const candidatePageSize = 200
 
     // プロジェクトが同一ワークスペースに属することを確認
     const [project] = await db
@@ -46,51 +47,59 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
     if (forbidden) return forbidden
 
-    const rows = await db
-      .select({
-        id: files.id,
-        fileName: files.fileName,
-        mimeType: files.mimeType,
-        fileSize: files.fileSize,
-        fileType: files.fileType,
-        uploaderName: profiles.displayName,
-        createdAt: files.createdAt,
-        metadata: files.metadata,
-        workspaceId: files.workspaceId,
-        projectId: files.projectId,
-        uploadedBy: files.uploadedBy,
-      })
-      .from(files)
-      .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
-      .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
-      .where(and(
-        eq(files.projectId, projectId),
-        isNull(galleryItems.id),
-      ))
-      .orderBy(desc(files.createdAt))
-
     const visibleRows = []
-    for (let index = 0; index < rows.length; index += accessCheckBatchSize) {
-      const batch = rows.slice(index, index + accessCheckBatchSize)
-      const visibleBatch = (
-        await Promise.all(
-          batch.map(async (row) => {
-            const visible = await canAccessFile(
-              ctx.workspaceId,
-              ctx.userId,
-              {
-                id: row.id,
-                workspaceId: row.workspaceId,
-                projectId: row.projectId,
-                uploadedBy: row.uploadedBy,
-                metadata: row.metadata,
-              },
-            )
-            return visible ? row : null
-          }),
-        )
-      ).filter((row): row is typeof rows[number] => row !== null)
-      visibleRows.push(...visibleBatch)
+    let offset = 0
+    while (true) {
+      const rows = await db
+        .select({
+          id: files.id,
+          fileName: files.fileName,
+          mimeType: files.mimeType,
+          fileSize: files.fileSize,
+          fileType: files.fileType,
+          uploaderName: profiles.displayName,
+          createdAt: files.createdAt,
+          metadata: files.metadata,
+          workspaceId: files.workspaceId,
+          projectId: files.projectId,
+          uploadedBy: files.uploadedBy,
+        })
+        .from(files)
+        .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
+        .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
+        .where(and(
+          eq(files.projectId, projectId),
+          isNull(galleryItems.id),
+        ))
+        .orderBy(desc(files.createdAt))
+        .limit(candidatePageSize)
+        .offset(offset)
+
+      for (let index = 0; index < rows.length; index += accessCheckBatchSize) {
+        const batch = rows.slice(index, index + accessCheckBatchSize)
+        const visibleBatch = (
+          await Promise.all(
+            batch.map(async (row) => {
+              const visible = await canAccessFile(
+                ctx.workspaceId,
+                ctx.userId,
+                {
+                  id: row.id,
+                  workspaceId: row.workspaceId,
+                  projectId: row.projectId,
+                  uploadedBy: row.uploadedBy,
+                  metadata: row.metadata,
+                },
+              )
+              return visible ? row : null
+            }),
+          )
+        ).filter((row): row is typeof rows[number] => row !== null)
+        visibleRows.push(...visibleBatch)
+      }
+
+      if (rows.length < candidatePageSize) break
+      offset += rows.length
     }
 
     // チャンク済みファイルの ID セットを取得
