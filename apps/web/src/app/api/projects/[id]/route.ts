@@ -121,7 +121,7 @@ export async function PATCH(
     if (error) return error
 
     const [project] = await db
-      .select({ id: projects.id })
+      .select({ id: projects.id, startDate: projects.startDate, endDate: projects.endDate })
       .from(projects)
       .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
       .limit(1)
@@ -226,8 +226,8 @@ export async function PATCH(
       const changes: string[] = []
       if (b.statusName !== undefined) changes.push(`ステータスを「${b.statusName}」に変更しました`)
       if (datesChanged) {
-        const s = set.startDate ?? '未設定'
-        const e = set.endDate ?? '未設定'
+        const s = (set.startDate !== undefined ? set.startDate : project.startDate) ?? '未設定'
+        const e = (set.endDate !== undefined ? set.endDate : project.endDate) ?? '未設定'
         changes.push(`期間を ${s} 〜 ${e} に変更しました`)
       }
       if ('description' in b) changes.push('概要を更新しました')

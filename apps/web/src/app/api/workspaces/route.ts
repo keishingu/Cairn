@@ -7,7 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceOwner } from '@/lib/permissions'
 
 const patchWorkspaceSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
+  name: z.string().trim().min(1).max(100).optional(),
   description: z.string().max(1000).nullable().optional(),
   logoUrl: z.string().url().max(2048).nullable().optional(),
 }).refine(

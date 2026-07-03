@@ -7,7 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { USER_STATUSES, type UserStatus } from '@/lib/user-status'
 
 const patchMeSchema = z.object({
-  displayName: z.string().min(1).max(100).optional(),
+  displayName: z.string().trim().min(1).max(100).optional(),
   bio: z.string().max(1000).nullable().optional(),
   status: z.enum(['online', 'away', 'busy', 'offline']).optional(),
   statusMessage: z.string().max(100).nullable().optional(),
