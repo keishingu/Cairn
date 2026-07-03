@@ -37,6 +37,7 @@
 | [`07_notifications_and_unread.md`](./07_notifications_and_unread.md) | 通知・未読の設計検討 → 現行仕様は `notification-design.md` | 2026-05-27 |
 | [`user-deactivation-design.md`](./user-deactivation-design.md) | ユーザー非活性化・退会設計（卒業生対応・GDPR 消去権の整理・匿名化） | 2026-06-22 |
 | [`08_expo_roadmap.md`](./08_expo_roadmap.md) | Expo ネイティブ化ロードマップ（一部実施済み） | 2026-05-27 |
+| [`sales-marketing-self-improvement-loop.md`](./sales-marketing-self-improvement-loop.md) | 営業・マーケティング自己改善ループの戦略（開発側ループの写像。構想段階） | 2026-07-02 |
 
 ## 記録
 
