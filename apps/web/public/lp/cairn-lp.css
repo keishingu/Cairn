@@ -94,6 +94,10 @@
 [data-lang="ja"] [data-i="en"] { display: none !important; }
 [data-lang="en"] [data-i="ja"] { display: none !important; }
 
+/* persona — show only the active audience variant (?p=club|team, default club) */
+[data-persona="club"] [data-p="team"] { display: none !important; }
+[data-persona="team"] [data-p="club"] { display: none !important; }
+
 /* nav language switch */
 .lang-switch { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--hair); border-radius: 9px; background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .lang-switch button { appearance: none; border: 0; background: transparent; color: var(--ink-3); font: 500 12.5px/1 var(--font-sans); padding: 6px 9px; border-radius: 6px; cursor: pointer; transition: background .15s, color .15s; }

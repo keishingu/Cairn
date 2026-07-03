@@ -71,6 +71,8 @@ LP は単一レイアウト（B 案）。既存の静的 HTML をそのまま配
 
 旧 LP の主要 CTA「Try Demo / デモを試す」はページ内アンカー（`#demo`）止まりで実体のあるデモに繋がっていなかったため、`/auth/login`（クラウドホスティング版のログイン/サインアップ入口）に張り替えた。ラベルも「クラウド版を試す / Try Cairn Cloud」に変更。自己ホスト派の導線（GitHub / Self-Hosted / Docs）は現状維持。
 
+> **追記（2026-07-03）**: CTA ラベルはその後 [`lp-content-redesign.md`](./lp-content-redesign.md) で「無料で始める / Start for free」に変更された。
+
 対象箇所（`apps/web/public/lp/index.html`）:
 
 - ナビの CTA ボタン
