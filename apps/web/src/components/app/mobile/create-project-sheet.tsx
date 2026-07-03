@@ -74,7 +74,8 @@ export function CreateProjectSheet({ onClose, onCreated, requireStatus = false }
   const {
     data: statuses = [],
     isLoading: statusesLoading,
-    isError: statusesError,
+    error: statusesError,
+    refetch: refetchStatuses,
   } = useQuery<ProjectStatusDto[]>({
     queryKey: ['statuses'],
     queryFn: fetchStatuses,
@@ -106,6 +107,10 @@ export function CreateProjectSheet({ onClose, onCreated, requireStatus = false }
     },
     onError: (err: Error) => setTitleError(err.message),
   })
+  const statusFetchErrorMessage =
+    requireStatus && statusesError
+      ? statusesError instanceof Error ? statusesError.message : 'ステータスの取得に失敗しました'
+      : ''
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -449,16 +454,57 @@ export function CreateProjectSheet({ onClose, onCreated, requireStatus = false }
           >
             キャンセル
           </button>
+          {statusFetchErrorMessage && (
+            <div
+              role="alert"
+              style={{
+                flex: 1.5,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                padding: '10px 12px',
+                borderRadius: 12,
+                border: '1px solid color-mix(in srgb, var(--red) 35%, var(--border))',
+                background: 'color-mix(in srgb, var(--red) 8%, var(--card))',
+                color: 'var(--text)',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--red)' }}>ステータスを読み込めませんでした</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{statusFetchErrorMessage}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { void refetchStatuses() }}
+                style={{
+                  flexShrink: 0,
+                  height: 32,
+                  padding: '0 10px',
+                  borderRadius: 999,
+                  border: '1px solid var(--border)',
+                  background: 'var(--card)',
+                  color: 'var(--text-2)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  fontFamily: 'inherit',
+                  cursor: 'pointer',
+                }}
+              >
+                再試行
+              </button>
+            </div>
+          )}
           <button
             onClick={handleSubmit}
-            disabled={mutation.isPending || (requireStatus && (statusesLoading || statusesError))}
+            disabled={mutation.isPending || (requireStatus && (statusesLoading || Boolean(statusesError)))}
             style={{
               flex: 2, height: 46, borderRadius: 12,
               border: 'none',
-              background: mutation.isPending || (requireStatus && (statusesLoading || statusesError)) ? 'var(--card-2)' : 'var(--accent)',
-              color: mutation.isPending || (requireStatus && (statusesLoading || statusesError)) ? 'var(--text-4)' : 'var(--on-accent)',
+              background: mutation.isPending || (requireStatus && (statusesLoading || Boolean(statusesError))) ? 'var(--card-2)' : 'var(--accent)',
+              color: mutation.isPending || (requireStatus && (statusesLoading || Boolean(statusesError))) ? 'var(--text-4)' : 'var(--on-accent)',
               fontSize: 15, fontWeight: 700,
-              cursor: mutation.isPending || (requireStatus && (statusesLoading || statusesError)) ? 'not-allowed' : 'pointer',
+              cursor: mutation.isPending || (requireStatus && (statusesLoading || Boolean(statusesError))) ? 'not-allowed' : 'pointer',
               fontFamily: 'inherit', transition: 'background 0.15s',
             }}
           >

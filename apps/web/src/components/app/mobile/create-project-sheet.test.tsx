@@ -221,4 +221,59 @@ describe('CreateProjectSheetの作成フロー', () => {
     })
     expect(JSON.parse(String(postCall?.[1]?.body))).not.toHaveProperty('statusId')
   })
+
+  it('status 取得失敗時はエラーと再試行を表示する', async () => {
+    const user = userEvent.setup()
+    let statusAttempt = 0
+
+    mockFetch.mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url === '/api/projects/statuses') {
+        statusAttempt += 1
+        if (statusAttempt === 1) {
+          return new Response('failed', { status: 500 })
+        }
+        return new Response(JSON.stringify([
+          { id: 'status-todo', name: '未着手', color: '#999999', sortOrder: '1' },
+        ]), { status: 200 })
+      }
+      if (url === '/api/workspaces/members') {
+        return new Response(JSON.stringify([]), { status: 200 })
+      }
+      if (url === '/api/projects') {
+        return new Response(JSON.stringify({
+          id: 'project-1',
+          title: '再試行後の作成',
+          description: null,
+          statusName: '未着手',
+          statusColor: '#999999',
+          startDate: null,
+          endDate: null,
+          memberNames: [],
+          memberAvatarUrls: [],
+          memberCount: 0,
+          taskCount: 0,
+          completedTaskCount: 0,
+          isMember: true,
+          isOwner: true,
+          archived: false,
+          coverPhotoUrl: null,
+          coverPhotoIdx: 0,
+          location: null,
+          placeId: null,
+        }), { status: 200 })
+      }
+      throw new Error(`unexpected fetch: ${url} ${init?.method ?? 'GET'}`)
+    })
+
+    renderSheet({ requireStatus: true })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('ステータスを読み込めませんでした')
+    expect(screen.getByRole('button', { name: '作成する' })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: '再試行' }))
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: '作成する' })).toBeEnabled())
+  })
 })
