@@ -7,8 +7,8 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
-// 署名付きURLでのアップロード(upload-url)完了後、files レコードを登録し
-// 検索インデックスジョブを発火する。ファイル本体はここを通らないため
+// 署名付きURLでのアップロード(upload-url)完了後、pending な files レコードを登録する。
+// 検索インデックスはメッセージ送信で pending が外れた後に発火する。ファイル本体はここを通らないため
 // Vercel の 4.5MB リクエストボディ上限には掛からない。
 export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
@@ -104,24 +104,6 @@ export async function POST(req: Request) {
       .returning()
 
     if (!inserted) throw new Error('Insert returned no rows')
-
-    const { isIndexable } = await import('@/lib/ai/extract-text')
-    if (isIndexable(normalizedMime)) {
-      try {
-        const { inngest } = await import('@/lib/inngest/client')
-        await inngest.send({
-          name: 'file/uploaded',
-          data: {
-            fileId: inserted.id,
-            workspaceId: ctx.workspaceId,
-            mimeType: normalizedMime,
-            storagePath,
-          },
-        })
-      } catch (e) {
-        console.warn('[/api/attachments/finalize] Inngest event send failed (indexing skipped):', e)
-      }
-    }
 
     return NextResponse.json(
       {

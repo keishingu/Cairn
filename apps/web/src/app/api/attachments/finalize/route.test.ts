@@ -8,12 +8,11 @@ const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const CHANNEL_ID = '20000000-0000-0000-0000-000000000001'
 const mockInsertValues = vi.fn()
 
-const { mockGetAuthContext, mockRequireChannelAccess, mockList, mockRemove, mockIsIndexable, mockInngestSend } = vi.hoisted(() => ({
+const { mockGetAuthContext, mockRequireChannelAccess, mockList, mockRemove, mockInngestSend } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
   mockList: vi.fn(),
   mockRemove: vi.fn().mockResolvedValue({ error: null }),
-  mockIsIndexable: vi.fn(),
   mockInngestSend: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -24,7 +23,6 @@ vi.mock('@/lib/supabase/service', () => ({
     storage: { from: () => ({ list: mockList, remove: mockRemove }) },
   }),
 }))
-vi.mock('@/lib/ai/extract-text', () => ({ isIndexable: mockIsIndexable }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 vi.mock('@cairn/db', () => ({
   db: {
@@ -145,14 +143,13 @@ describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {
       error: null,
     })
     mockRequireChannelAccess.mockResolvedValue(null)
-    mockIsIndexable.mockReturnValue(true)
   })
 
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  it('拡張子が.csvでブラウザがapplication/vnd.ms-excelと報告した場合、text/csvとして保存・検索インデックス化する', async () => {
+  it('拡張子が.csvでブラウザがapplication/vnd.ms-excelと報告した場合、text/csvとして保存する', async () => {
     mockList.mockResolvedValue({ data: [{ name: 'data.csv', metadata: { size: 6 } }], error: null })
 
     const { POST } = await import('./route')
@@ -169,10 +166,7 @@ describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {
     expect(body.mimeType).toBe('text/csv')
     // Storage 上の権威あるサイズを採用する
     expect(body.fileSize).toBe(6)
-    expect(mockIsIndexable).toHaveBeenCalledWith('text/csv')
-    expect(mockInngestSend).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ mimeType: 'text/csv' }),
-    }))
+    expect(mockInngestSend).not.toHaveBeenCalled()
   })
 
   it('拡張子が.xlsのapplication/vnd.ms-excelは正規化せずそのまま扱う', async () => {
@@ -190,5 +184,6 @@ describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {
     expect(res.status).toBe(201)
     const body = await res.json() as { mimeType: string }
     expect(body.mimeType).toBe('application/vnd.ms-excel')
+    expect(mockInngestSend).not.toHaveBeenCalled()
   })
 })
