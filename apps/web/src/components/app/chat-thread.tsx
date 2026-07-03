@@ -339,7 +339,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             {attachments.map(a => isImageMime(a.mimeType) ? (
               <img
                 key={a.fileId}
-                src={`/api/attachments/${a.fileId}`}
+                src={`/api/attachments/${a.fileId}?thumb=1`}
                 alt={a.fileName}
                 onClick={() => onImageClick(a.id)}
                 style={{
