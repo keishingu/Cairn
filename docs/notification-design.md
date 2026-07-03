@@ -29,4 +29,4 @@
 - 未読カウントは自分の発言を除外する（`messages.sender_id != userId`）。チャンネル参加時には `channel_read_states` 行を作成し、参加時点を既読起点にする
 - 実装: `apps/web/src/lib/inngest/functions.ts` の `onMessageCreated`、既読化は `apps/web/src/app/api/channels/[channelId]/read/route.ts`
 
-> 通知・未読の全体的な再設計方針は [`docs/notification-ux-redesign.md`](notification-ux-redesign.md) を参照。上記は Phase 1（整合性修正）反映後の動作。
+> 通知・未読の全体的な再設計方針は [`docs/notification-ux-redesign.md`](notification-ux-redesign.md) を参照。上記は Phase 3（閲覧中の Push 抑制）まで反映後の動作。配信は Supabase Realtime（Broadcast from Database）で行う（同 Phase 2）。Phase 4（チャンネル別通知設定・DND）以降は未実装。

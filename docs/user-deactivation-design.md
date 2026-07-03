@@ -1,6 +1,6 @@
 # ユーザー非活性化・退会設計（卒業生対応）
 
-- **ステータス**: 設計時スナップショット（未実装）
+- **ステータス**: 設計時スナップショット（§9 の #1「スキーマ + マイグレーション」のみ実装済み。サーバー側遮断・API・UI（#2〜5）は未着手）
 - **作成**: 2026-06-22
 - **関連**: [`CLAUDE.md`](../CLAUDE.md) の権限モデル、[`packages/db/src/schema/workspaces.ts`](../packages/db/src/schema/workspaces.ts)（`workspace_members`）
 
@@ -43,9 +43,11 @@ packages/db/src/schema/workspaces.ts  (workspace_members)
 - `profiles`（＝認証ユーザー）には触れない。再活性化で同一性を保つため。
 - マイグレーション: 既存の在席ステータス `workspace_members.status` と衝突しないよう、会員状態は `membership_status='active'` を既定にする。`pnpm db:generate` → `supabase migration up`。
 
-### マイグレーションは timestamp 方式に切り替える
+### マイグレーションは timestamp 方式に切り替える（→ 切替済み）
 
-現状のマイグレーションは `0000_initial.sql`〜`0034_*.sql` の**連番方式**（Drizzle Kit の既定 `prefix: 'index'`）。複数ブランチが並行して `pnpm db:generate` すると同じ次番号（例: `0035_*`）を取り合い、**マージ時に番号衝突・適用順序の不定**が起きる。本機能のマイグレーションを作るこのタイミングで **timestamp 方式へ切り替える**:
+> この切替は実施済み（`drizzle.config.ts` の `migrations.prefix = 'timestamp'`、CLAUDE.md にも記載）。以下は当時の判断の記録。
+
+当時のマイグレーションは `0000_initial.sql`〜`0034_*.sql` の**連番方式**（Drizzle Kit の既定 `prefix: 'index'`）。複数ブランチが並行して `pnpm db:generate` すると同じ次番号（例: `0035_*`）を取り合い、**マージ時に番号衝突・適用順序の不定**が起きる。本機能のマイグレーションを作るこのタイミングで **timestamp 方式へ切り替える**:
 
 ```ts
 // packages/db/drizzle.config.ts
@@ -116,7 +118,7 @@ develop にマージする前に**それ単体で機能・検証できる**粒�
 
 | # | 単位 | 単体での検証可能性 | 依存 |
 |---|---|---|---|
-| 1 | **スキーマ + マイグレーション（timestamp 方式へ切替）** | マイグレーション適用で `workspace_members.status` 追加、既存行は `active` 既定で挙動不変。`prefix: 'timestamp'` で新規分が timestamp 形式になることを確認 | なし |
+| 1 | **スキーマ + マイグレーション（timestamp 方式へ切替）** ✅ 実装済み | マイグレーション適用で `workspace_members.membership_status` 追加、既存行は `active` 既定で挙動不変。`prefix: 'timestamp'` で新規分が timestamp 形式になることを確認 | なし |
 | 2 | **サーバー側アクセス遮断** | `getWorkspaceRole` を active 限定化、`get-auth-context` で非活性除外。非活性メンバーシップが全 `require*` で 403 になることをテストで検証（実データはまだ無いが単体テストで確認可能） | #1 |
 | 3 | **非活性化 / 再活性化 API** | `admin` 以上が `status` を切替できる。#2 と合わせ、非活性化したユーザーが当該 WS で 403、再活性化で復帰することを実地検証。最後の active owner は非活性化不可 | #1, #2 |
 | 4 | **候補リスト・メンバー一覧の active 絞り込み** | メンバー一覧 API が `status` を返し、メンション/担当割当/DM 作成の候補が active のみになることを検証 | #1（実データは #3） |

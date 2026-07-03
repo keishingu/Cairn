@@ -1,5 +1,8 @@
 # 通知・未読・Push 再設計案
 
+> **ステータス**: 現行リファレンス（**Phase 1〜3 は実装済み**。現行の Realtime 方針 = Broadcast from Database は Phase 2 節が正。Phase 4〜5 は未実装の構想）
+> §1 の「現状の問題点」は調査時（Phase 1 着手前）のスナップショットであり、Phase 1〜3 で解消済み。
+
 通知機能（Web / モバイル / デスクトップ）の不安定さ・UX 課題の調査結果と、Slack / Discord / Notion / Backlog / Google Calendar / TimeTree との比較に基づく再設計案。
 
 関連: [`docs/07_notifications_and_unread.md`](07_notifications_and_unread.md)（現行設計）、[`docs/notification-design.md`](notification-design.md)（現行の通知マトリクス）
@@ -256,7 +259,7 @@ create table notification_preferences (
 
 ### 付随する小修正（Phase 1〜2 のどこかで）
 
-- `GET /api/notifications` に `workspace_id` フィルタ追加
+- ✅ `GET /api/notifications` に `workspace_id` フィルタ追加（Phase 1 で実施済み）
 - 通知一覧のカーソルページング + 未読数専用の `count` エンドポイント（50 件上限の length 数えを廃止）
 - Web Badging API / Expo badge 数の同期
 
@@ -266,8 +269,8 @@ create table notification_preferences (
 
 | 論点 | 推奨 | 理由 |
 |---|---|---|
-| ファイル添付通知の扱い | 廃止（バッジのみ） | Slack/Discord/Notion いずれも添付だけでは通知しない。ノイズ源 |
+| ファイル添付通知の扱い | 廃止（バッジのみ） | Slack/Discord/Notion いずれも添付だけでは通知しない。ノイズ源。**未対応**（現行はチャンネルメンバー全員に記録 → `notification-design.md`） |
 | 通常未読バッジの表現 | 太字/ドットに格下げ、数字はメンション+DMのみ | Slack の2段階方式。数字の洪水を防ぐ |
-| Realtime 移行の範囲 | notifications / read_states / messages INSERT 通知のみ（本文取得はポーリング維持） | 移行コストを抑えつつ「不安定さ」の主因を解消 |
-| プレゼンス実装 | まず last_read_at ベースの簡易版 | Presence 基盤なしで Slack 的体験の 8 割を実現できる |
+| ~~Realtime 移行の範囲~~ | ~~notifications / read_states / messages INSERT 通知のみ（本文取得はポーリング維持）~~ | **Phase 2 実装時にスコープ拡張で上書き**: メッセージ本文も含め全面 Realtime 化し、ポーリングは廃止（→ Phase 2 節） |
+| プレゼンス実装 | まず last_read_at ベースの簡易版 | Presence 基盤なしで Slack 的体験の 8 割を実現できる → **Phase 3 で猶予付き既読再確認方式として実装済み** |
 | メール通知 | 当面見送り | Push + インボックスの確実化が先。需要が出たら Notion 式ダイジェストを検討 |

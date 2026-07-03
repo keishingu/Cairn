@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE, normalizeMimeType } from '@/lib/attachments'
+import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE, normalizeMimeType, resolveStorageExtension } from '@/lib/attachments'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
   if (forbidden) return forbidden
 
-  const ext = fileName.split('.').pop() ?? 'bin'
+  const ext = resolveStorageExtension(fileName, normalizedMime)
   const storagePath = `${ctx.workspaceId}/${channelId}/${crypto.randomUUID()}.${ext}`
 
   const supabase = createServiceRoleClient()

@@ -1,12 +1,31 @@
 'use client'
 
 import React from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { ConfirmDialog } from '../../confirm-dialog'
 import { RowActionMenu } from '../../row-action-menu'
+import { Icon } from '../../primitives'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useProjectFiles } from '@/hooks/use-project-files'
+
+const ACCEPT_FILE_TYPES = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/csv',
+  'text/plain',
+  'text/markdown',
+  '.csv', '.pptx',
+  '.jpg', '.jpeg', '.png', '.gif', '.webp',
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.md', '.markdown',
+].join(',')
 
 function IndexingBadge({ status }: { status: string | undefined }) {
   if (!status || status === 'indexed' || status === 'skipped') return null
@@ -43,9 +62,13 @@ function isImageFile(file: ProjectFileDto): boolean {
   return file.fileType !== 'link' && (file.mimeType?.startsWith('image/') ?? false)
 }
 
-export const FilesTab = ({ projectId }: { projectId: string }) => {
+export const FilesTab = ({ projectId, channelId }: { projectId: string; channelId: string | null }) => {
+  const queryClient = useQueryClient()
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
+  const [isUploading, setIsUploading] = React.useState(false)
+  const [uploadError, setUploadError] = React.useState<string | null>(null)
   const { data: files = [], isLoading, isError, deleteMutation, setLatestMutation } = useProjectFiles(projectId)
 
   const imageFiles = React.useMemo(() => files.filter(isImageFile), [files])
@@ -58,6 +81,44 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
     const idx = imageFiles.findIndex(f => f.id === fileId)
     if (idx >= 0) setLightboxIndex(idx)
   }, [imageFiles])
+
+  const handleFilesSelect = async (selectedFiles: FileList | null) => {
+    if (!channelId || !selectedFiles || selectedFiles.length === 0) return
+
+    setIsUploading(true)
+    setUploadError(null)
+
+    try {
+      const results = await Promise.allSettled(
+        Array.from(selectedFiles).map(async (file) => {
+          const formData = new FormData()
+          formData.append('file', file)
+          formData.append('channelId', channelId)
+          const res = await fetchWithAuth('/api/attachments/upload', { method: 'POST', body: formData })
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({})) as { error?: string }
+            throw new Error(data.error ?? `${file.name} のアップロードに失敗しました`)
+          }
+        }),
+      )
+
+      const hasSuccess = results.some((result) => result.status === 'fulfilled')
+      const firstFailure = results.find((result) => result.status === 'rejected')
+
+      if (hasSuccess) {
+        await queryClient.invalidateQueries({ queryKey: ['project-files', projectId] })
+        await queryClient.invalidateQueries({ queryKey: ['files'] })
+      }
+
+      if (firstFailure?.status === 'rejected') {
+        throw firstFailure.reason
+      }
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'アップロードに失敗しました')
+    } finally {
+      setIsUploading(false)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -75,16 +136,56 @@ export const FilesTab = ({ projectId }: { projectId: string }) => {
     )
   }
 
-  if (files.length === 0) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-        まだファイルがありません
-      </div>
-    )
-  }
-
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '12px 12px 16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ACCEPT_FILE_TYPES}
+          multiple
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            void handleFilesSelect(e.target.files)
+            e.target.value = ''
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!channelId || isUploading}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+            padding: '5px 10px',
+            borderRadius: 7,
+            border: '1px solid var(--border)',
+            background: 'var(--card)',
+            color: 'var(--text-2)',
+            fontSize: 12,
+            cursor: !channelId || isUploading ? 'default' : 'pointer',
+            fontFamily: 'inherit',
+            opacity: !channelId || isUploading ? 0.6 : 1,
+          }}
+        >
+          <Icon name="plus" size={13} />
+          {isUploading ? 'アップロード中...' : 'ファイルを追加'}
+        </button>
+      </div>
+
+      {uploadError && (
+        <div style={{ marginBottom: 8, padding: '6px 10px', borderRadius: 6, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 12 }}>
+          {uploadError}
+        </div>
+      )}
+
+      {files.length === 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13, padding: '24px 0' }}>
+          まだファイルがありません
+        </div>
+      )}
+
       {files.map((f: ProjectFileDto) => {
         const sizeStr = formatFileSize(f.fileSize)
         const dateStr = formatDate(f.createdAt)
