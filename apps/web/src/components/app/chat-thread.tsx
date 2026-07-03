@@ -439,7 +439,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, isDeletingAttachment, mentionMembers, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -455,6 +455,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onFilesSelect: (files: File[]) => void
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
+  isDeletingAttachment: boolean
   mentionMembers?: { userId: string; displayName: string }[]
   mentionNames?: Map<string, string>
   onMentionInserted?: (userId: string, displayName: string) => void
@@ -645,7 +646,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     return nodes
   }, [draft, insertedMentionNames])
 
-  const canSend = (draft.trim().length > 0 || pendingAttachments.length > 0) && !isPending && !isUploading
+  const canSend = (draft.trim().length > 0 || pendingAttachments.length > 0) && !isPending && !isUploading && !isDeletingAttachment
 
   // 返信開始時に入力欄へフォーカスする
   React.useEffect(() => {
@@ -900,6 +901,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [isComposing, setIsComposing] = React.useState(false)
   const [pendingAttachments, setPendingAttachments] = React.useState<PendingAttachment[]>([])
   const [isUploading, setIsUploading] = React.useState(false)
+  const [deletingAttachmentIds, setDeletingAttachmentIds] = React.useState<string[]>([])
   const [showTextFileDialog, setShowTextFileDialog] = React.useState(false)
   const [replyTarget, setReplyTarget] = React.useState<ReplyToDto | null>(null)
   // ジャンプ/ハイライト対象（パーマリンク・検索・引用バークリックで設定される）
@@ -1353,7 +1355,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
 
   const handleRemoveAttachment = async (fileId: string) => {
     const attachment = pendingAttachments.find(a => a.fileId === fileId)
-    if (!attachment) return
+    if (!attachment || deletingAttachmentIds.includes(fileId)) return
+    setDeletingAttachmentIds(prev => [...prev, fileId])
     try {
       await deletePendingAttachment(fileId)
       URL.revokeObjectURL(attachment.previewUrl)
@@ -1361,6 +1364,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     } catch (error) {
       const message = error instanceof Error ? error.message : '添付の削除に失敗しました'
       toast.error(message)
+    } finally {
+      setDeletingAttachmentIds(prev => prev.filter(id => id !== fileId))
     }
   }
 
@@ -1386,7 +1391,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
 
   const send = () => {
     const rawText = draft.trim()
-    if ((!rawText && pendingAttachments.length === 0) || !channelId) return
+    if ((!rawText && pendingAttachments.length === 0) || !channelId || deletingAttachmentIds.length > 0) return
     const text = transformContent(rawText)
     mentionMapRef.current.clear()
 
@@ -1524,6 +1529,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         onFilesSelect={handleFilesSelect}
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
+        isDeletingAttachment={deletingAttachmentIds.length > 0}
         mentionMembers={mentionMembers}
         mentionNames={mentionNames}
         onMentionInserted={onMentionInserted}

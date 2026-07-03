@@ -57,6 +57,74 @@ as $$
   );
 $$;
 
+create or replace function public.can_access_project_notification(
+  p_workspace_id uuid,
+  p_project_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from workspace_members wm
+    where wm.user_id = auth.uid()
+      and wm.workspace_id = p_workspace_id
+      and wm.membership_status = 'active'
+      and (
+        wm.role <> 'guest'
+        or exists (
+          select 1
+          from project_members pm
+          inner join projects p on p.id = pm.project_id
+          where pm.project_id = p_project_id
+            and pm.user_id = auth.uid()
+            and p.workspace_id = p_workspace_id
+        )
+      )
+  );
+$$;
+grant execute on function public.can_access_project_notification(uuid, uuid) to authenticated;
+
+create or replace function public.can_access_notification_scope(
+  p_workspace_id uuid,
+  p_type public.notification_type,
+  p_data jsonb
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    case
+      when jsonb_typeof(p_data -> 'channelId') = 'string'
+        then public.can_access_channel((p_data ->> 'channelId')::uuid)
+      else true
+    end
+    and case
+      when jsonb_typeof(p_data -> 'projectId') = 'string'
+        then public.can_access_project_notification(
+          p_workspace_id,
+          (p_data ->> 'projectId')::uuid
+        )
+      when p_type = 'task'
+        then exists (
+          select 1
+          from workspace_members wm
+          where wm.user_id = auth.uid()
+            and wm.workspace_id = p_workspace_id
+            and wm.membership_status = 'active'
+            and wm.role <> 'guest'
+        )
+      else true
+    end;
+$$;
+grant execute on function public.can_access_notification_scope(uuid, public.notification_type, jsonb) to authenticated;
+
 drop policy if exists "notifications_select" on "notifications";
 create policy "notifications_select" on "notifications"
   for select to authenticated
@@ -68,6 +136,11 @@ create policy "notifications_select" on "notifications"
       where wm.user_id = auth.uid()
         and wm.workspace_id = notifications.workspace_id
         and wm.membership_status = 'active'
+    )
+    and public.can_access_notification_scope(
+      notifications.workspace_id,
+      notifications.type,
+      notifications.data
     )
   );
 
