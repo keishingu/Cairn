@@ -40,6 +40,7 @@ import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
+import { GENERIC_MIME_TYPES, resolveAttachmentMimeType } from '@/lib/attachments'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 
@@ -48,6 +49,8 @@ function extractGoogleDocsUrls(text: string): string[] {
   return [...new Set(matches.map(u => u.replace(/[.,;:!?)>]+$/, '')))]
 }
 
+// MIME タイプに加えて拡張子も列挙する。OS が拡張子→MIME のマッピングを持たない
+// 環境ではファイルピッカーが MIME 指定だけだと PDF 等を選択不可にしてしまうため。
 const ACCEPT_FILE_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
   'application/pdf',
@@ -60,7 +63,9 @@ const ACCEPT_FILE_TYPES = [
   // OS/ブラウザが.csvにtext/csvを正しく対応付けられない環境では、
   // MIMEタイプのみのacceptだとネイティブファイル選択ダイアログで.csvが除外されてしまうため、
   // 拡張子も明示してnormalizeMimeType側の救済ロジックまで到達できるようにする
-  '.csv',
+  '.jpg', '.jpeg', '.png', '.gif', '.webp',
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.pptx',
+  '.txt', '.md', '.markdown', '.csv',
 ].join(',')
 
 function isImageMime(mimeType: string | null): boolean {
@@ -334,7 +339,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             {attachments.map(a => isImageMime(a.mimeType) ? (
               <img
                 key={a.fileId}
-                src={`/api/attachments/${a.fileId}`}
+                src={`/api/attachments/${a.fileId}?thumb=1`}
                 alt={a.fileName}
                 onClick={() => onImageClick(a.id)}
                 style={{
@@ -1218,6 +1223,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const uploadFile = async (file: File): Promise<PendingAttachment | null> => {
     if (!channelId) return null
     try {
+      let uploadMimeType = resolveAttachmentMimeType(file.name, file.type)
+      if (!uploadMimeType && GENERIC_MIME_TYPES.has(file.type)) {
+        const head = new Uint8Array(await file.slice(0, 16).arrayBuffer())
+        uploadMimeType = resolveAttachmentMimeType(file.name, file.type, head)
+      }
+      if (!uploadMimeType) {
+        const identifiable = file.name.includes('.') || !GENERIC_MIME_TYPES.has(file.type)
+        setSendError(identifiable
+          ? '対応していないファイル形式です（画像・PDF・Word・Excel・PowerPoint・CSV・テキスト）'
+          : 'ファイル形式が不明です。拡張子をつけて再度アップロードしてください')
+        return null
+      }
+
       // 1. 署名付きアップロードURLを発行してもらう(メタデータのみ送信)。
       //    ファイル本体を /api/attachments/upload に直接送ると Vercel の
       //    4.5MB リクエストボディ上限(FUNCTION_PAYLOAD_TOO_LARGE)に阻まれるため。
@@ -1227,7 +1245,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         body: JSON.stringify({
           channelId,
           fileName: file.name,
-          mimeType: file.type,
+          mimeType: uploadMimeType,
           fileSize: file.size,
         }),
       })
@@ -1264,7 +1282,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
           channelId,
           storagePath,
           fileName: file.name,
-          mimeType: file.type,
+          mimeType: mimeType,
           fileSize: file.size,
         }),
       })

@@ -41,27 +41,25 @@ export async function middleware(request: NextRequest) {
   const isAuthRoute = pathname.startsWith('/auth')
   // トップページは未ログインでも閲覧できる公開 LP
   const isLandingRoute = pathname === '/'
-  // 旧 LP の URL。公開 LP は / に集約するためリダイレクトする
-  const isLegacyLpPage = pathname === '/lp' || pathname === '/lp/' || pathname === '/lp/index.html'
-  // 未ログインでもアクセスできるパブリックルート（/lp/ 配下の静的アセットも含む）
-  const isPublicRoute = pathname.startsWith('/invite') || pathname.startsWith('/lp') || isLandingRoute
+  const isLandingAsset =
+    pathname === '/cairn-lp.css' ||
+    pathname === '/cairn-lp.js' ||
+    pathname === '/og-image.png' ||
+    pathname === '/og-image.svg'
+  const isSeoRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
+  // 未ログインでもアクセスできるパブリックルート（LP と関連静的アセットを含む）
+  const isPublicRoute = pathname.startsWith('/invite') || isLandingRoute || isLandingAsset || isSeoRoute
   // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
   const isOnboardingRoute = pathname.startsWith('/onboarding')
 
   if (!user && !isAuthRoute && !isPublicRoute) {
     return NextResponse.redirect(new URL('/auth/login', request.url))
   }
-  if (isLegacyLpPage) {
-    return NextResponse.redirect(new URL('/', request.url))
-  }
   if (user && isLandingRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))
   }
   if (user && isAuthRoute && !isOnboardingRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))
-  }
-  if (!user && isLandingRoute) {
-    return NextResponse.rewrite(new URL('/lp/index.html', request.url))
   }
 
   return supabaseResponse
