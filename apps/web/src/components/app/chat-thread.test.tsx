@@ -4,7 +4,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ChatMessage, copyMessageContent } from './chat-thread'
+import { ChatMessage, copyMessageContent, deletePendingAttachment } from './chat-thread'
 
 const { toastSuccess, toastError } = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
@@ -31,6 +31,12 @@ vi.mock('@/lib/toast', () => ({
     success: toastSuccess,
     error: toastError,
   },
+}))
+
+const fetchWithAuthMock = vi.fn()
+
+vi.mock('@/lib/fetch-with-auth', () => ({
+  fetchWithAuth: (...args: unknown[]) => fetchWithAuthMock(...args),
 }))
 
 describe('ChatMessage copy action', () => {
@@ -104,6 +110,22 @@ describe('ChatMessage copy action', () => {
 
     expect(writeText).toHaveBeenCalledWith('hello')
     expect(toastError).toHaveBeenCalledWith('メッセージをコピーできませんでした')
+  })
+
+  it('pending 添付の削除 API を叩く', async () => {
+    fetchWithAuthMock.mockResolvedValue(new Response(null, { status: 200 }))
+
+    await expect(deletePendingAttachment('file 1')).resolves.toBeUndefined()
+
+    expect(fetchWithAuthMock).toHaveBeenCalledWith('/api/attachments/file%201', {
+      method: 'DELETE',
+    })
+  })
+
+  it('pending 添付の削除に失敗したら例外を投げる', async () => {
+    fetchWithAuthMock.mockResolvedValue(new Response(null, { status: 500 }))
+
+    await expect(deletePendingAttachment('file-1')).rejects.toThrow('添付の削除に失敗しました')
   })
 
   it('Markdown を装飾つきで表示できる', () => {

@@ -104,6 +104,15 @@ export async function copyMessageContent(content: string): Promise<boolean> {
   }
 }
 
+export async function deletePendingAttachment(fileId: string): Promise<void> {
+  const res = await fetchWithAuth(`/api/attachments/${encodeURIComponent(fileId)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) {
+    throw new Error('添付の削除に失敗しました')
+  }
+}
+
 interface PendingAttachment {
   fileId: string
   fileName: string
@@ -1342,12 +1351,17 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     if (files.length > 0) void handleFilesSelect(files)
   }
 
-  const handleRemoveAttachment = (fileId: string) => {
-    setPendingAttachments(prev => {
-      const removed = prev.find(a => a.fileId === fileId)
-      if (removed) URL.revokeObjectURL(removed.previewUrl)
-      return prev.filter(a => a.fileId !== fileId)
-    })
+  const handleRemoveAttachment = async (fileId: string) => {
+    const attachment = pendingAttachments.find(a => a.fileId === fileId)
+    if (!attachment) return
+    try {
+      await deletePendingAttachment(fileId)
+      URL.revokeObjectURL(attachment.previewUrl)
+      setPendingAttachments(prev => prev.filter(a => a.fileId !== fileId))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '添付の削除に失敗しました'
+      toast.error(message)
+    }
   }
 
   // Google Docs URL を検出してファイルタブ・チャンネルファイル一覧に自動登録する。
