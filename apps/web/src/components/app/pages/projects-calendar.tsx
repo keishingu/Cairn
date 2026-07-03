@@ -1117,22 +1117,36 @@ const MobileDayEvents = ({ date, projects, onCreateDate, onProjectClick, isLoadi
             <div key={i} style={{ height: 56, borderRadius: 8, background: 'var(--card-2)' }} />
           ))}
         </div>
-      ) : dayProjects.length === 0 ? (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-4)', fontSize: 13, padding: '0 24px', textAlign: 'center' }}>
-          <div>予定なし</div>
-          {onCreateDate && (
-            <button
-              className="btn btn-primary"
-              onClick={() => onCreateDate(date)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <Icon name="plus" size={13} strokeWidth={2.4} />
-              この日に新規{`予定`}
-            </button>
-          )}
-        </div>
       ) : (
-        <div style={{ padding: '8px 0' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          {dayProjects.length === 0 ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-4)', fontSize: 13, padding: '0 24px', textAlign: 'center' }}>
+              <div>予定なし</div>
+              {onCreateDate && (
+                <button
+                  className="btn btn-primary"
+                  onClick={() => onCreateDate(date)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  <Icon name="plus" size={13} strokeWidth={2.4} />
+                  この日に新規{`予定`}
+                </button>
+              )}
+            </div>
+          ) : null}
+          {onCreateDate && dayProjects.length > 0 ? (
+            <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--divider)' }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => onCreateDate(date)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <Icon name="plus" size={13} strokeWidth={2.4} />
+                この日に新規{`予定`}
+              </button>
+            </div>
+          ) : null}
+          <div style={{ padding: '8px 0' }}>
           {dayProjects.map((p, i) => {
             const _c = p.statusColor ?? '#9CA3AF'
             const cfg = { bg: _c + '18', bar: _c, text: _c }
@@ -1161,6 +1175,7 @@ const MobileDayEvents = ({ date, projects, onCreateDate, onProjectClick, isLoadi
               </button>
             )
           })}
+          </div>
         </div>
       )}
     </div>

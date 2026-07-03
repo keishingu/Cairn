@@ -218,6 +218,58 @@ describe('PageCalendar (モバイル)', () => {
     expect(await screen.findByTestId('create-project-sheet')).toHaveTextContent(`${todayIso} - ${todayIso}`)
   })
 
+  it('週表示で予定あり日でもその日の作成シートを開ける', async () => {
+    const user = userEvent.setup()
+    const today = new Date()
+    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
+    mockFetchWithAuth.mockImplementation(async (url: string) => {
+      if (url === '/api/projects') {
+        return new Response(JSON.stringify([
+          {
+            id: 'existing-project',
+            title: '既存予定',
+            description: null,
+            statusName: null,
+            statusColor: null,
+            startDate: todayIso,
+            endDate: todayIso,
+            memberCount: 0,
+            memberNames: [],
+            memberAvatarUrls: [],
+            taskCount: 0,
+            completedTaskCount: 0,
+            isOwner: true,
+            isMember: true,
+            archived: false,
+            coverPhotoIdx: 0,
+            coverPhotoUrl: null,
+            location: null,
+            placeId: null,
+          },
+        ]), { status: 200 })
+      }
+      if (url === '/api/projects/statuses') {
+        return new Response(JSON.stringify([]), { status: 200 })
+      }
+      if (url === '/api/calendar/google/status') {
+        return new Response(JSON.stringify({ connected: false, configured: false }), { status: 200 })
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(mockFetchWithAuth).toHaveBeenCalledWith('/api/projects')
+    })
+
+    await user.click(screen.getByRole('button', { name: '週' }))
+    await user.click(await screen.findByRole('button', { name: 'この日に新規予定' }))
+
+    expect(await screen.findByTestId('create-project-sheet')).toHaveTextContent(`${todayIso} - ${todayIso}`)
+  })
+
   it('管理者でない場合はモバイル作成導線を出さない', async () => {
     const user = userEvent.setup()
     const today = new Date()
