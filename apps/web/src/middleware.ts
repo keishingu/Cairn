@@ -53,7 +53,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth/login', request.url))
   }
   if (isLegacyLpPage) {
-    return NextResponse.redirect(new URL('/', request.url))
+    const landingUrl = new URL('/', request.url)
+    landingUrl.search = request.nextUrl.search
+    return NextResponse.redirect(landingUrl)
   }
   if (user && isLandingRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))
