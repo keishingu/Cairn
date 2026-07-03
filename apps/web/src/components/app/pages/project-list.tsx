@@ -110,8 +110,8 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   const [search, setSearch] = React.useState('')
   const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false)
   const searchInputRef = React.useRef<HTMLInputElement>(null)
-  const panelProjectOpen = !isMobile && (searchParams.get('open')?.startsWith('project-') ?? false)
-  const showPanelSafeGrid = panelProjectOpen && view === 'table'
+  const detailPanelOpen = !isMobile && Boolean(searchParams.get('open'))
+  const showPanelSafeGrid = detailPanelOpen && view === 'table'
 
   // ⌥N 新規 / ⌥F フィルタ / ⌥G ⌥T ビュー切替（検索フォーカスは TopBarSearch が担当）
   useCommand('ctx.create', () => { if (canCreateProject) setShowCreate(true) })

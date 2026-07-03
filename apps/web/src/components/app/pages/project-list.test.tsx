@@ -133,6 +133,14 @@ describe('ProjectListView', () => {
     expect(screen.getAllByText('Epic Japan 様').length).toBeGreaterThan(0)
   })
 
+  it('メンバー詳細パネルが開いている時もカード表示へ退避する', async () => {
+    mockSearchParams = new URLSearchParams('open=member-user-1')
+
+    renderView()
+
+    expect(await screen.findByText('詳細パネル表示中は、一覧の読みやすさを優先してカード表示に切り替えています。')).toBeInTheDocument()
+  })
+
   it('詳細パネル退避中のカード順はテーブルソート順に合わせる', async () => {
     mockSearchParams = new URLSearchParams('open=project-proj-1')
     localStorage.setItem(STORAGE_KEYS.projects_table_sort, JSON.stringify({ key: 'title', dir: 'asc' }))
