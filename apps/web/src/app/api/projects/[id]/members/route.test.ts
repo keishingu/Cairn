@@ -77,6 +77,12 @@ vi.mock('@cairn/db', () => ({
     avatarUrl: 'wm.avatarUrl',
     membershipStatus: 'wm.membershipStatus',
   },
+  activeWorkspaceMembers: {
+    id: 'awm.id',
+    userId: 'awm.userId',
+    workspaceId: 'awm.workspaceId',
+    avatarUrl: 'awm.avatarUrl',
+  },
 }))
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((...args) => ({ type: 'eq', args })),
@@ -138,11 +144,11 @@ describe('GET /api/projects/[id]/members', () => {
       },
     ])
 
+    // active_workspace_members ビュー経由なので membership_status の絞り込みは不要
     const fromChain = mockDb.select.mock.results[1]?.value.from.mock.results[0]?.value
     const joinArg = fromChain.innerJoin.mock.calls[1]?.[1]
-    expect(joinArg.args).toContainEqual({ type: 'eq', args: ['wm.userId', 'pr.id'] })
-    expect(joinArg.args).toContainEqual({ type: 'eq', args: ['wm.workspaceId', '00000000-0000-0000-0000-000000000010'] })
-    expect(joinArg.args).toContainEqual({ type: 'eq', args: ['wm.membershipStatus', 'active'] })
+    expect(joinArg.args).toContainEqual({ type: 'eq', args: ['awm.userId', 'pr.id'] })
+    expect(joinArg.args).toContainEqual({ type: 'eq', args: ['awm.workspaceId', '00000000-0000-0000-0000-000000000010'] })
   })
 })
 

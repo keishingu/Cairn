@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { profiles, projects, projectMembers, workspaceMembers } = await import('@cairn/db')
+    const { profiles, projects, projectMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and, or, isNotNull } = await import('drizzle-orm')
 
     const [profile] = await db
@@ -103,13 +103,13 @@ export async function GET(req: NextRequest) {
 
     const userId = profile.id
 
+    // active_workspace_members ビュー経由なので membership_status の絞り込みは不要
     const [membership] = await db
-      .select({ workspaceId: workspaceMembers.workspaceId, role: workspaceMembers.role })
-      .from(workspaceMembers)
+      .select({ workspaceId: activeWorkspaceMembers.workspaceId, role: activeWorkspaceMembers.role })
+      .from(activeWorkspaceMembers)
       .where(and(
-        eq(workspaceMembers.userId, userId),
-        eq(workspaceMembers.workspaceId, workspaceId),
-        eq(workspaceMembers.membershipStatus, 'active'),
+        eq(activeWorkspaceMembers.userId, userId),
+        eq(activeWorkspaceMembers.workspaceId, workspaceId),
       ))
 
     if (!membership) {

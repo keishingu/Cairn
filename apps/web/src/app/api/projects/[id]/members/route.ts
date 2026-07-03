@@ -28,7 +28,7 @@ export async function GET(
   try {
     const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
-    const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
+    const { profiles, projectMembers, projects, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
     const [project] = await db
@@ -44,11 +44,12 @@ export async function GET(
     const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
     if (forbidden) return forbidden
 
+    // active_workspace_members ビュー経由なので membership_status の絞り込みは不要
     const rows = await db
       .select({
         userId: profiles.id,
         displayName: profiles.displayName,
-        avatarUrl: workspaceMembers.avatarUrl,
+        avatarUrl: activeWorkspaceMembers.avatarUrl,
         role: projectMembers.role,
         attendance: projectMembers.attendance,
         addedAt: projectMembers.createdAt,
@@ -56,11 +57,10 @@ export async function GET(
       .from(projectMembers)
       .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
       .innerJoin(
-        workspaceMembers,
+        activeWorkspaceMembers,
         and(
-          eq(workspaceMembers.userId, profiles.id),
-          eq(workspaceMembers.workspaceId, ctx.workspaceId),
-          eq(workspaceMembers.membershipStatus, 'active'),
+          eq(activeWorkspaceMembers.userId, profiles.id),
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
         ),
       )
       .where(eq(projectMembers.projectId, projectId))
@@ -123,7 +123,7 @@ export async function POST(
   try {
     const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
-    const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
+    const { profiles, projectMembers, projects, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and, inArray } = await import('drizzle-orm')
 
     const [project] = await db
@@ -138,14 +138,14 @@ export async function POST(
     const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
     if (forbidden) return forbidden
 
+    // active_workspace_members ビュー経由なので membership_status の絞り込みは不要
     const wsMembers = await db
-      .select({ userId: workspaceMembers.userId })
-      .from(workspaceMembers)
+      .select({ userId: activeWorkspaceMembers.userId })
+      .from(activeWorkspaceMembers)
       .where(
         and(
-          eq(workspaceMembers.workspaceId, ctx.workspaceId),
-          eq(workspaceMembers.membershipStatus, 'active'),
-          inArray(workspaceMembers.userId, normalizedUserIds),
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          inArray(activeWorkspaceMembers.userId, normalizedUserIds),
         ),
       )
 
@@ -180,15 +180,14 @@ export async function POST(
       .select({
         userId: profiles.id,
         displayName: profiles.displayName,
-        avatarUrl: workspaceMembers.avatarUrl,
+        avatarUrl: activeWorkspaceMembers.avatarUrl,
       })
       .from(profiles)
       .innerJoin(
-        workspaceMembers,
+        activeWorkspaceMembers,
         and(
-          eq(workspaceMembers.userId, profiles.id),
-          eq(workspaceMembers.workspaceId, ctx.workspaceId),
-          eq(workspaceMembers.membershipStatus, 'active'),
+          eq(activeWorkspaceMembers.userId, profiles.id),
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
         ),
       )
       .where(inArray(profiles.id, insertedUserIds))

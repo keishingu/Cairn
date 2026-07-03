@@ -67,18 +67,18 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers, channelReadStates, workspaceMembers } = await import('@cairn/db')
+    const { channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
     // inactive 行への再追加を防ぎ、stale な channel_members を増やさない
+    // active_workspace_members ビュー経由なので membership_status の絞り込みは不要
     const [member] = await db
-      .select({ userId: workspaceMembers.userId })
-      .from(workspaceMembers)
+      .select({ userId: activeWorkspaceMembers.userId })
+      .from(activeWorkspaceMembers)
       .where(
         and(
-          eq(workspaceMembers.workspaceId, ctx.workspaceId),
-          eq(workspaceMembers.userId, userId),
-          eq(workspaceMembers.membershipStatus, 'active'),
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, userId),
         ),
       )
       .limit(1)

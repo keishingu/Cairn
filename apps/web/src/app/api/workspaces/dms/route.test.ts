@@ -51,6 +51,10 @@ vi.mock('@cairn/db', () => ({
     membershipStatus: 'workspaceMembers.membershipStatus',
     avatarUrl: 'workspaceMembers.avatarUrl',
   },
+  activeWorkspaceMembers: {
+    userId: 'activeWorkspaceMembers.userId',
+    workspaceId: 'activeWorkspaceMembers.workspaceId',
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -124,7 +128,9 @@ describe('/api/workspaces/dms POST のアクセス制御', () => {
     await expect(res.json()).resolves.toEqual({
       error: '指定されたユーザーはアクティブなワークスペースメンバーではありません',
     })
-    expect(mockEq).toHaveBeenCalledWith('workspaceMembers.membershipStatus', 'active')
+    // active_workspace_members ビュー経由なので membership_status の絞り込みは不要
+    expect(mockEq).toHaveBeenCalledWith('activeWorkspaceMembers.workspaceId', DEV_WORKSPACE_ID)
+    expect(mockEq).toHaveBeenCalledWith('activeWorkspaceMembers.userId', TARGET_USER_ID)
     expect(mockDbInsert).not.toHaveBeenCalled()
   })
 

@@ -112,17 +112,17 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, channelReadStates, workspaceMembers } = await import('@cairn/db')
+    const { channels, channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray, sql } = await import('drizzle-orm')
 
+    // active_workspace_members ビュー経由なので membership_status の絞り込みは不要
     const [targetMember] = await db
-      .select({ userId: workspaceMembers.userId })
-      .from(workspaceMembers)
+      .select({ userId: activeWorkspaceMembers.userId })
+      .from(activeWorkspaceMembers)
       .where(
         and(
-          eq(workspaceMembers.workspaceId, ctx.workspaceId),
-          eq(workspaceMembers.userId, targetUserId),
-          eq(workspaceMembers.membershipStatus, 'active'),
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, targetUserId),
         ),
       )
       .limit(1)

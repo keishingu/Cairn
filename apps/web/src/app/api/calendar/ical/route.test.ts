@@ -19,6 +19,7 @@ vi.mock('@cairn/db', () => ({
   projects: { id: 'p.id', workspaceId: 'p.workspaceId', title: 'p.title', startDate: 'p.startDate', endDate: 'p.endDate', archived: 'p.archived', createdBy: 'p.createdBy' },
   projectMembers: { projectId: 'pm.projectId', userId: 'pm.userId' },
   workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role', membershipStatus: 'wm.membershipStatus' },
+  activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', userId: 'awm.userId', role: 'awm.role' },
 }))
 
 vi.mock('drizzle-orm', () => ({
