@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'next/navigation'
 import { chatQueryKeys } from '@/lib/chat/client'
 import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -47,6 +48,7 @@ async function fetchStatuses(): Promise<ProjectStatusDto[]> {
 }
 
 export const ProjectListView = ({ openPanel, isMobile, externalSearch }: ProjectListViewProps) => {
+  const searchParams = useSearchParams()
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const { isAdmin: canCreateProject } = useWorkspacePermissions()
@@ -108,6 +110,8 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   const [search, setSearch] = React.useState('')
   const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false)
   const searchInputRef = React.useRef<HTMLInputElement>(null)
+  const panelProjectOpen = !isMobile && (searchParams.get('open')?.startsWith('project-') ?? false)
+  const showPanelSafeGrid = panelProjectOpen && view === 'table'
 
   // ⌥N 新規 / ⌥F フィルタ / ⌥G ⌥T ビュー切替（検索フォーカスは TopBarSearch が担当）
   useCommand('ctx.create', () => { if (canCreateProject) setShowCreate(true) })
@@ -336,7 +340,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>読み込み中…</div>
         ) : filteredProjects.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>プロジェクトが見つかりません</div>
-        ) : view === 'table' && !isMobile ? (
+        ) : view === 'table' && !isMobile && !showPanelSafeGrid ? (
           /* PC table view */
           <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
             <div style={{ minWidth: 796 }}>
@@ -407,12 +411,30 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
           </div>
         ) : (
           /* Grid (PC) / List with cover photos (mobile) */
-          <div style={{
-            display: isMobile ? 'flex' : 'grid',
-            flexDirection: 'column',
-            gridTemplateColumns: isMobile ? undefined : 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: isMobile ? 10 : 16,
-          }}>
+          <>
+            {showPanelSafeGrid && (
+              <div
+                className="card"
+                style={{
+                  marginBottom: 12,
+                  padding: '10px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  color: 'var(--text-2)',
+                  fontSize: 12.5,
+                }}
+              >
+                <Icon name="panel-right" size={14}/>
+                詳細パネル表示中は、一覧の読みやすさを優先してカード表示に切り替えています。
+              </div>
+            )}
+            <div style={{
+              display: isMobile ? 'flex' : 'grid',
+              flexDirection: 'column',
+              gridTemplateColumns: isMobile ? undefined : 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: isMobile ? 10 : 16,
+            }}>
             {filteredProjects.map((p, i) => {
               const accent = p.statusColor ?? 'var(--text-3)'
               const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
@@ -492,7 +514,8 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 </div>
               )
             })}
-          </div>
+            </div>
+          </>
         )}
       </div>
 
