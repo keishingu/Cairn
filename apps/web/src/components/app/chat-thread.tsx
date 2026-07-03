@@ -1240,11 +1240,17 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         token: string; path: string; storagePath: string; mimeType: string
       }
 
-      // 2. Supabase Storage へクライアントから直接アップロード(Vercel を経由しない)
+      // 2. Supabase Storage へクライアントから直接アップロード(Vercel を経由しない)。
+      //    storage-js は Blob/File を渡すと FormData 化し fileOptions.contentType を無視するため、
+      //    Storage はファイル自身の File.type を見る。upload-url が正規化した MIME
+      //    (例: .csv の application/octet-stream → text/csv) を反映させるには
+      //    File.type がバケット許可リストに含まれる正規化後の値になっている必要がある。
+      //    元の File.type が異なる場合は正規化後の type を持つ File でラップして渡す。
+      const uploadBody = file.type === mimeType ? file : new File([file], file.name, { type: mimeType })
       const supabase = createSupabaseClient()
       const { error: uploadError } = await supabase.storage
         .from('chat-attachments')
-        .uploadToSignedUrl(path, token, file, { contentType: mimeType })
+        .uploadToSignedUrl(path, token, uploadBody)
       if (uploadError) {
         setSendError('アップロードに失敗しました')
         return null
