@@ -13,4 +13,10 @@ describe('formatTaskTitleForDisplay', () => {
       '資料 仕様書 図A',
     )
   })
+
+  it('snake_case の識別子に含まれるアンダースコアは残す', () => {
+    expect(formatTaskTitleForDisplay('user_display_name と _強調_ を一緒に表示する')).toBe(
+      'user_display_name と 強調 を一緒に表示する',
+    )
+  })
 })
