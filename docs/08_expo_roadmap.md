@@ -209,13 +209,13 @@ const { status } = await Notifications.requestPermissionsAsync()
 | 2-1 | `apps/mobile/` 新設、Expo Router・Auth・API クライアント | ✅ 完了（PR #68） |
 | 2-2 | ネイティブ画面実装（projects / chats / tasks / notifications） | ✅ 完了（PR #68） |
 | 2-3 | Expo Push Notifications 統合 | ✅ 完了（PR #68） |
-| 2-4 | WebView 化（projects / tasks / notifications）+ セッション橋渡し | 未着手 → `docs/prompts/phase2b-4-webview.md` |
-| 2-5 | ネイティブチャット強化（オフライン送信キュー・バックグラウンドアップロード） | 未着手 → `docs/prompts/phase2b-5-native-chat.md` |
+| 2-4 | WebView 化（projects / tasks / notifications）+ セッション橋渡し | ✅ 完了（認証は [`mobile-webview-auth-handoff.md`](./mobile-webview-auth-handoff.md) のワンタイムトークン方式） |
+| 2-5 | ネイティブチャット強化（オフライン送信キュー・バックグラウンドアップロード） | 未着手 → [`docs/archive/prompts/phase2b-5-native-chat.md`](./archive/prompts/phase2b-5-native-chat.md) |
 
 ### Phase 3（仕上げ・マイルストーン等）
 
 - マイルストーン機能（`channels` 拡張）→ `docs/07_notifications_and_unread.md` 参照
-- Supabase Realtime 導入（ポーリングからの移行）
+- Supabase Realtime 導入（ポーリングからの移行）→ ✅ Web 側は実施済み（[`notification-ux-redesign.md`](./notification-ux-redesign.md) Phase 2。Broadcast from Database 方式）
 - App Store / Google Play リリース対応（`app.json`, EAS Build）
 
 ---
