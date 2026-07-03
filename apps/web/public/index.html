@@ -1,10 +1,27 @@
 <!DOCTYPE html>
-<html lang="ja" data-theme="dark" data-tone="rich" data-lang="ja">
+<html lang="ja" data-theme="dark" data-tone="rich" data-lang="ja" data-persona="team">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cairn — Open Source Project Collaboration OS</title>
-<meta name="description" content="One Project. One Place. チャット・マイルストーン・カレンダー・ファイル・AIをひとつに。オープンソースのプロジェクトコラボレーション基盤。">
+<title>Cairn — チームのプロジェクトを、ひとつの場所に</title>
+<meta name="description" content="One Project. One Place. チャット・予定・ファイル・記録・AI をひとつの場所に。部活・サークルから小さなチームまで、無料で始められるオープンソースのプロジェクト基盤。">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://oss-cairn.com/">
+<meta property="og:site_name" content="Cairn">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://oss-cairn.com/">
+<meta property="og:title" content="Cairn — チームのプロジェクトを、ひとつの場所に">
+<meta property="og:description" content="チャット・予定・ファイル・記録・AI。チームに必要なものを、ひとつの場所に。無料で始められるオープンソースのプロジェクト基盤。">
+<meta property="og:image" content="https://oss-cairn.com/lp/og-image.png">
+<meta property="og:image:secure_url" content="https://oss-cairn.com/lp/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Cairn — One Project. One Place.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Cairn — チームのプロジェクトを、ひとつの場所に">
+<meta name="twitter:description" content="チャット・予定・ファイル・記録・AI。チームに必要なものを、ひとつの場所に。">
+<meta name="twitter:image" content="https://oss-cairn.com/lp/og-image.png">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -31,8 +48,8 @@
     </a>
     <nav class="nav-links" aria-label="主要ナビゲーション">
       <a href="#features"><span data-i="ja">機能</span><span data-i="en">Features</span></a>
+      <a href="#everywhere"><span data-i="ja">どこでも</span><span data-i="en">Everywhere</span></a>
       <a href="#open-source"><span data-i="ja">オープンソース</span><span data-i="en">Open Source</span></a>
-      <a href="#self-hosted"><span data-i="ja">セルフホスト</span><span data-i="en">Self-Hosted</span></a>
       <a href="#enterprise"><span data-i="ja">法人向け</span><span data-i="en">Enterprise</span></a>
       <a href="#docs"><span data-i="ja">ドキュメント</span><span data-i="en">Docs</span></a>
     </nav>
@@ -41,12 +58,12 @@
         <button type="button" data-lang-set="ja">日本語</button>
         <button type="button" data-lang-set="en">EN</button>
       </div>
-      <a class="nav-icon" href="#open-source" aria-label="GitHub">
+      <a class="nav-icon" href="https://github.com/keishingu/Cairn" target="_blank" rel="noopener" aria-label="GitHub">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
       </a>
       <span class="gh-stars">
 </span>
-      <a class="btn btn-primary btn-sm" href="/auth/login"><span data-i="ja">クラウド版を試す</span><span data-i="en">Try Cairn Cloud</span></a>
+      <a class="btn btn-primary btn-sm" data-cta="nav" href="/auth/login?utm_source=lp&amp;utm_content=nav"><span data-i="ja">無料で始める</span><span data-i="en">Start for free</span></a>
     </div>
   </div>
 </header>
@@ -66,14 +83,16 @@
       </div>
       <h1 class="display reveal" data-d="1">One&nbsp;Project.<br>One&nbsp;Place.</h1>
       <p class="hero-lead reveal" data-d="2">
-        <span data-i="en">Open source project collaboration OS.</span>
-        <span data-i="ja">オープンソースのプロジェクト・コラボレーション OS。</span>
-        <span class="jp" data-i="en">Chat, milestones, calendar, files and AI — everything your project needs, in one place.</span>
-        <span class="jp" data-i="ja">チャット・マイルストーン・カレンダー・ファイル・AI。プロジェクトに必要なものを、ひとつの場所に。</span>
+        <span data-i="ja" data-p="alpineclub">山行計画も、合宿の準備も、部の引き継ぎも。</span>
+        <span data-i="en" data-p="alpineclub">Trip plans, training camps, club handovers.</span>
+        <span data-i="ja" data-p="team">イベントの準備も、制作の進行も、日々の連絡も。</span>
+        <span data-i="en" data-p="team">Event prep, production schedules, everyday updates.</span>
+        <span class="jp" data-i="ja">チャット・予定・ファイル・記録・AI。チームに必要なものを、ひとつの場所に。</span>
+        <span class="jp" data-i="en">Chat, calendar, files, records and AI — everything your team needs, in one place.</span>
       </p>
       <div class="hero-cta reveal" data-d="3">
-        <a class="btn btn-primary btn-lg" href="/auth/login">
-          <span data-i="ja">クラウド版を試す</span><span data-i="en">Try Cairn Cloud</span>
+        <a class="btn btn-primary btn-lg" data-cta="hero" href="/auth/login?utm_source=lp&amp;utm_content=hero">
+          <span data-i="ja">無料で始める</span><span data-i="en">Start for free</span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </a>
         <a class="btn btn-ghost btn-lg" href="#open-source">
@@ -82,10 +101,10 @@
         </a>
       </div>
       <div class="hero-meta reveal" data-d="4">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span data-i="en">Free to start</span><span data-i="ja">無料で始められる</span></span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span data-i="en">Phone, PC &amp; desktop</span><span data-i="ja">スマホ・PC・デスクトップ</span></span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span data-i="en">AI that knows your project</span><span data-i="ja">AI がプロジェクトに答える</span></span>
         <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span data-i="en">100% Open Source</span><span data-i="ja">100% オープンソース</span></span>
-        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span data-i="en">Self-Hosted</span><span data-i="ja">セルフホスト</span></span>
-        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span data-i="en">Bring Your Own AI</span><span data-i="ja">AI を自由に</span></span>
-        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span data-i="en">Extensible</span><span data-i="ja">拡張可能</span></span>
       </div>
     </div>
 
@@ -95,13 +114,16 @@
         <div class="window">
           <div class="win-bar">
             <div class="dots"><i></i><i></i><i></i></div>
-            <div class="win-addr"><span><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>app.cairn.dev / 大学山岳部</span></div>
+            <div class="win-addr">
+              <span data-p="team"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>app.cairn.dev / Creative Studio</span>
+              <span data-p="alpineclub"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>app.cairn.dev / 大学山岳部</span>
+            </div>
           </div>
           <div class="app">
             <aside class="app-rail">
               <div class="rail-ws">
                 <svg class="brand-mark" style="color:var(--accent)"><use href="#cairn-mark"/></svg>
-                <div><b>大学山岳部</b></div>
+                <div><b><span data-p="team">Creative Studio</span><span data-p="alpineclub">大学山岳部</span></b></div>
               </div>
               <div class="rail-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span data-i="ja">検索</span><span data-i="en">Search</span><kbd>⌘K</kbd></div>
               <div class="rail-sec"><span data-i="ja">ワークスペース</span><span data-i="en">Workspace</span></div>
@@ -132,25 +154,25 @@
               </div>
               <div class="cal-wk"><span class="sun"><span data-i="ja">日</span><span data-i="en">Su</span></span><span><span data-i="ja">月</span><span data-i="en">Mo</span></span><span><span data-i="ja">火</span><span data-i="en">Tu</span></span><span><span data-i="ja">水</span><span data-i="en">We</span></span><span><span data-i="ja">木</span><span data-i="en">Th</span></span><span><span data-i="ja">金</span><span data-i="en">Fr</span></span><span class="sat"><span data-i="ja">土</span><span data-i="en">Sa</span></span></div>
               <div class="cal-grid">
-                <div class="cd"><span class="cn sun">31</span><span class="ev ev-blue">瑞牆・小川山</span><span class="ev ev-amber">二子山</span></div>
+                <div class="cd"><span class="cn sun">31</span><span class="ev ev-blue"><span data-p="team">キックオフ</span><span data-p="alpineclub">瑞牆・小川山</span></span><span class="ev ev-amber"><span data-p="team">提案締切</span><span data-p="alpineclub">二子山</span></span></div>
                 <div class="cd"><span class="cn">1</span></div>
                 <div class="cd"><span class="cn">2</span></div>
                 <div class="cd"><span class="cn">3</span></div>
                 <div class="cd"><span class="cn">4</span></div>
-                <div class="cd"><span class="cn">5</span><span class="ev ev-blue">Bugaboo!</span></div>
+                <div class="cd"><span class="cn">5</span><span class="ev ev-blue"><span data-p="team">展示会準備</span><span data-p="alpineclub">Bugaboo!</span></span></div>
                 <div class="cd"><span class="cn sat today">6</span></div>
 
-                <div class="cd"><span class="cn sun">7</span><span class="ev ev-blue">Bugaboo!</span></div>
+                <div class="cd"><span class="cn sun">7</span><span class="ev ev-blue"><span data-p="team">展示会準備</span><span data-p="alpineclub">Bugaboo!</span></span></div>
                 <div class="cd"><span class="cn">8</span></div>
-                <div class="cd"><span class="cn">9</span><span class="ev ev-green">クライミング講…</span></div>
+                <div class="cd"><span class="cn">9</span><span class="ev ev-green"><span data-p="team">撮影</span><span data-p="alpineclub">クライミング講…</span></span></div>
                 <div class="cd"><span class="cn">10</span></div>
                 <div class="cd"><span class="cn">11</span></div>
-                <div class="cd"><span class="cn">12</span><span class="ev ev-green">場所未定・日程確保</span><span class="ev ev-gray">北アルプス縦走</span></div>
+                <div class="cd"><span class="cn">12</span><span class="ev ev-green"><span data-p="team">会場確保</span><span data-p="alpineclub">場所未定・日程確保</span></span><span class="ev ev-gray"><span data-p="team">台本レビュー</span><span data-p="alpineclub">北アルプス縦走</span></span></div>
                 <div class="cd"><span class="cn sat">13</span></div>
 
-                <div class="cd"><span class="cn sun">14</span><span class="ev ev-gray">北アルプス縦走計画</span></div>
+                <div class="cd"><span class="cn sun">14</span><span class="ev ev-gray"><span data-p="team">台本レビュー</span><span data-p="alpineclub">北アルプス縦走計画</span></span></div>
                 <div class="cd"><span class="cn">15</span></div>
-                <div class="cd"><span class="cn">16</span><span class="ev ev-amber">雪山訓練</span></div>
+                <div class="cd"><span class="cn">16</span><span class="ev ev-amber"><span data-p="team">定例会</span><span data-p="alpineclub">雪山訓練</span></span></div>
                 <div class="cd"><span class="cn">17</span></div>
                 <div class="cd"><span class="cn">18</span></div>
                 <div class="cd"><span class="cn">19</span></div>
@@ -162,9 +184,9 @@
                 <div class="cd"><span class="cn">24</span></div>
                 <div class="cd"><span class="cn">25</span></div>
                 <div class="cd"><span class="cn">26</span></div>
-                <div class="cd sel"><span class="cn sat">27</span><span class="ev ev-blue on">剱岳</span></div>
+                <div class="cd sel"><span class="cn sat">27</span><span class="ev ev-blue on"><span data-p="team">リリース準備</span><span data-p="alpineclub">剱岳</span></span></div>
 
-                <div class="cd"><span class="cn sun">28</span><span class="ev ev-blue">剱岳</span></div>
+                <div class="cd"><span class="cn sun">28</span><span class="ev ev-blue"><span data-p="team">リリース準備</span><span data-p="alpineclub">剱岳</span></span></div>
                 <div class="cd"><span class="cn">29</span></div>
                 <div class="cd"><span class="cn">30</span></div>
                 <div class="cd dim"><span class="cn">1</span></div>
@@ -180,9 +202,9 @@
 
             <!-- detail panel -->
             <aside class="detail">
-              <div class="dt-hd"><b>剱岳</b><span class="dt-x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg></span></div>
+              <div class="dt-hd"><b><span data-p="team">リリース準備</span><span data-p="alpineclub">剱岳</span></b><span class="dt-x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg></span></div>
               <div class="dt-banner">
-                <div class="dt-date"><b>6/28 ～ 7/29</b><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 6a3 3 0 0 1 0 6M21 20a6 6 0 0 0-5-5.9"/></svg><span data-i="ja">3人参加</span><span data-i="en">3 going</span></span></div>
+                <div class="dt-date"><b><span data-p="team">6/27 ～ 6/29</span><span data-p="alpineclub">6/28 ～ 7/29</span></b><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 6a3 3 0 0 1 0 6M21 20a6 6 0 0 0-5-5.9"/></svg><span data-i="ja">3人参加</span><span data-i="en">3 going</span></span></div>
               </div>
               <div class="dt-status">
                 <span class="dt-pill"><i></i><span data-i="ja">計画中</span><span data-i="en">Planning</span></span>
@@ -190,21 +212,21 @@
                 <span class="dt-open"><span data-i="ja">詳細を開く →</span><span data-i="en">Open details →</span></span>
               </div>
               <div class="dt-tabs"><span><span data-i="ja">概要</span><span data-i="en">Overview</span></span><span class="on"><span data-i="ja">チャット</span><span data-i="en">Chat</span></span><span><span data-i="ja">ファイル</span><span data-i="en">Files</span></span><span><span data-i="ja">タスク</span><span data-i="en">Tasks</span></span><span><span data-i="ja">メンバー</span><span data-i="en">Members</span></span></div>
-              <div class="dt-chan"># 剱岳<span class="cnt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 19a6 6 0 0 1 12 0"/></svg>3</span></div>
+              <div class="dt-chan"># <span data-p="team">リリース準備</span><span data-p="alpineclub">剱岳</span><span class="cnt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 19a6 6 0 0 1 12 0"/></svg>3</span></div>
               <div class="dt-feed">
                 <div class="dm">
                   <div class="dav" style="background:linear-gradient(135deg,#E0726E,#C7564F)">圭</div>
                   <div class="dm-b">
                     <div class="dm-h"><b>新宮 圭</b><time>5/26 14:27</time></div>
-                    <div class="dm-t">ルート最終案、共有します。確認お願いします</div>
-                    <a class="link-chip"><span class="lc-i doc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg></span><span class="lc-t"><b>山行計画書</b><i>docs.google.com</i></span></a>
+                    <div class="dm-t"><span data-p="team">最終案、共有します。確認お願いします</span><span data-p="alpineclub">ルート最終案、共有します。確認お願いします</span></div>
+                    <a class="link-chip"><span class="lc-i doc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg></span><span class="lc-t"><b><span data-p="team">進行表</span><span data-p="alpineclub">山行計画書</span></b><i>docs.google.com</i></span></a>
                   </div>
                 </div>
                 <div class="dm">
                   <div class="dav" style="background:linear-gradient(135deg,#E0726E,#C7564F)">圭</div>
                   <div class="dm-b">
                     <div class="dm-h"><b>新宮 圭</b><time>5/27 16:29</time></div>
-                    <a class="link-chip"><span class="lc-i pdf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span><span class="lc-t"><b>ルートマップ.pdf</b><i>drive.google.com</i></span></a>
+                    <a class="link-chip"><span class="lc-i pdf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span><span class="lc-t"><b><span data-p="team">デザイン確認.pdf</span><span data-p="alpineclub">ルートマップ.pdf</span></b><i>drive.google.com</i></span></a>
                   </div>
                 </div>
                 <div class="dm">
@@ -222,7 +244,7 @@
                   </div>
                 </div>
               </div>
-              <div class="dt-input"><span><span data-i="ja"># 剱岳 にメッセージ送信</span><span data-i="en">Message #剱岳</span></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m22 2-7 20-4-9-9-4z"/></svg></div>
+              <div class="dt-input"><span><span data-i="ja" data-p="team"># リリース準備 にメッセージ送信</span><span data-i="en" data-p="team">Message #release-prep</span><span data-i="ja" data-p="alpineclub"># 剱岳 にメッセージ送信</span><span data-i="en" data-p="alpineclub">Message #剱岳</span></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m22 2-7 20-4-9-9-4z"/></svg></div>
             </aside>
           </div>
         </div>
@@ -238,8 +260,10 @@
         <span class="eyebrow eyebrow--muted">The Problem</span>
         <h2 class="h2" data-i="ja">プロジェクトの情報は、<br>いつも散らばっている。</h2>
         <h2 class="h2" data-i="en">Project knowledge<br>is always scattered.</h2>
-        <p data-i="ja">Slack、カレンダー、スプレッドシート、PDF、議事録。必要なものは、いつも別の場所にある。</p>
-        <p data-i="en">Slack, calendar, spreadsheets, PDFs, meeting notes — what you need always lives somewhere else.</p>
+        <p data-i="ja" data-p="alpineclub">LINE のトーク、紙の計画書、共有ドライブ、先輩の記憶。必要なものは、いつも別の場所にある。</p>
+        <p data-i="en" data-p="alpineclub">Chat threads, paper plans, shared drives, a senior member's memory — what you need always lives somewhere else.</p>
+        <p data-i="ja" data-p="team">Slack、カレンダー、スプレッドシート、PDF、議事録。必要なものは、いつも別の場所にある。</p>
+        <p data-i="en" data-p="team">Slack, calendar, spreadsheets, PDFs, meeting notes — what you need always lives somewhere else.</p>
       </div>
       <div class="prob-grid">
         <article class="prob reveal" data-d="1">
@@ -291,39 +315,78 @@
         <span class="eyebrow">Features</span>
         <h2 class="h2" data-i="ja">プロジェクトを前に進める、<br>6つの基本。</h2>
         <h2 class="h2" data-i="en">Six essentials that move<br>projects forward.</h2>
-        <p data-i="ja">機能を並べるのではなく、プロジェクトが進む流れそのものを設計しています。</p>
-        <p data-i="en">Not a pile of features — a design for the way projects actually move forward.</p>
+        <p data-i="ja">カタログの機能一覧ではなく、実際に使われている体験を紹介します。</p>
+        <p data-i="en">Not a feature catalog — these are the moments people actually use.</p>
       </div>
       <div class="feat-grid">
         <article class="feat reveal" data-d="1">
           <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
           <h3 class="h3">Chat</h3>
-          <p class="en"><span data-i="en">Conversations that move projects forward.</span><span data-i="ja">会話がそのままプロジェクトを前に進める。</span></p>
+          <p class="en"><span data-i="ja">会話が、仕事になる。返信・ブックマーク・下書き自動保存で、決めたことが流れて消えない。</span><span data-i="en">Conversations become work. Replies, bookmarks and auto-saved drafts keep decisions from washing away.</span></p>
         </article>
         <article class="feat reveal" data-d="2">
-          <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4M4 4h13l-2 4 2 4H4"/></svg></div>
-          <h3 class="h3">Milestones</h3>
-          <p class="en"><span data-i="en">Organize work around meaningful outcomes.</span><span data-i="ja">意味のある成果を軸に、仕事を整理する。</span></p>
+          <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L20 6"/><path d="M21 12v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11"/></svg></div>
+          <h3 class="h3">Tasks</h3>
+          <p class="en"><span data-i="ja">チャットに ☑ を書くと、そのままタスクに同期。カンバンとマイタスクで、やることを見失わない。</span><span data-i="en">Write a ☑ in chat and it syncs into a task. Boards and My Tasks keep the to-dos in sight.</span></p>
         </article>
         <article class="feat reveal" data-d="3">
           <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></div>
           <h3 class="h3">Calendar</h3>
-          <p class="en"><span data-i="en">See schedules and deadlines in one place.</span><span data-i="ja">予定と締切を、ひとつの場所で見渡す。</span></p>
+          <p class="en"><span data-i="ja">Google カレンダーの予定も読み込んで、プロジェクトの日程と並べて見渡せる。ドラッグで予定作成、タイムライン表示も。</span><span data-i="en">Pulls in Google Calendar next to project schedules. Drag to create events, or switch to the timeline view.</span></p>
         </article>
         <article class="feat reveal" data-d="1">
           <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6l2 3h8v11a2 2 0 0 1-2 2H4z"/></svg></div>
-          <h3 class="h3">Files</h3>
-          <p class="en"><span data-i="en">Keep project knowledge together.</span><span data-i="ja">プロジェクトの知識を、ひとつにまとめる。</span></p>
+          <h3 class="h3">Files &amp; Search</h3>
+          <p class="en"><span data-i="ja">最新版フラグで「どれが最新？」を解消。メッセージもファイルも、全チャンネル横断で一瞬で見つかる。</span><span data-i="en">A “latest” flag ends version confusion. Find any message or file across every channel, instantly.</span></p>
         </article>
         <article class="feat reveal" data-d="2">
           <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m3 17 5-4 4 3 3-2 6 5"/></svg></div>
           <h3 class="h3">Gallery</h3>
-          <p class="en"><span data-i="en">Share field reports, photos and records.</span><span data-i="ja">現場の記録や写真を、チームの資産に。</span></p>
+          <p class="en"><span data-i="ja" data-p="alpineclub">山行の写真も記録も、プロジェクトごとのアルバムに。部の歴史が、後輩への財産になる。</span><span data-i="en" data-p="alpineclub">Trip photos and records, organized by project. Your club's history becomes a gift to the next generation.</span><span data-i="ja" data-p="team">現場の写真も記録も、プロジェクトごとのアルバムに。活動の歴史がチームの資産になる。</span><span data-i="en" data-p="team">Photos and field records, organized by project. Your team's history becomes an asset.</span></p>
         </article>
         <article class="feat reveal" data-d="3">
           <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4 4.4.3-3.4 2.8 1.1 4.3L12 12.9 8.3 14.7l1.1-4.3L6 7.6l4.4-.3z"/><path d="M5 19l.7 1.6L7.3 21l-1.6.4L5 23l-.7-1.6L2.7 21l1.6-.4z"/></svg></div>
           <h3 class="h3">AI</h3>
-          <p class="en"><span data-i="en">Bring your own AI.</span><span data-i="ja">好みの AI を、そのまま組み込める。</span></p>
+          <p class="en"><span data-i="ja">ファイルや Google ドキュメントを読み込んだ AI が、プロジェクトについて出典つきで答える。</span><span data-i="en">An AI that reads your files and Google Docs — and answers about your project, with sources.</span></p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── everywhere + guests ─────────────────────────────────────── -->
+  <section class="section" id="everywhere" style="padding-top:0">
+    <div class="wrap">
+      <div class="split">
+        <article class="panel-card reveal" data-d="1">
+          <span class="eyebrow">Everywhere</span>
+          <h3 data-i="ja">スマホでも、PC でも、<br>同じ場所につながる。</h3>
+          <h3 data-i="en">Phone or PC,<br>it's the same one place.</h3>
+          <p class="desc" data-i="ja" data-p="alpineclub">山ではスマホ、家では PC。移動中に届いた連絡も、帰ってから同じ画面の続きで追える。見ている画面には通知を重ねて鳴らさない、賢いプッシュ通知つき。</p>
+          <p class="desc" data-i="en" data-p="alpineclub">Phone on the mountain, PC at home. Push notifications are smart enough to stay quiet while you're already looking.</p>
+          <p class="desc" data-i="ja" data-p="team">外出先ではスマホ、デスクでは PC。どこで開いても同じプロジェクトの続きから。見ている画面には通知を重ねて鳴らさない、賢いプッシュ通知つき。</p>
+          <p class="desc" data-i="en" data-p="team">Phone on the go, PC at your desk. Push notifications are smart enough to stay quiet while you're already looking.</p>
+          <div class="deploy-targets">
+            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3z"/></svg><b>Web</b><span>browser</span></div>
+            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg><b>iOS</b><span>app</span></div>
+            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M10 5h4"/></svg><b>Android</b><span>app</span></div>
+            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 20h10M9 16v4M15 16v4"/></svg><b>Desktop</b><span>Mac / Win</span></div>
+          </div>
+        </article>
+
+        <article class="panel-card reveal" data-d="2" id="guests">
+          <span class="eyebrow">Guests &amp; Roles</span>
+          <h3 data-i="ja">外の人とも、<br>安全に一緒に進める。</h3>
+          <h3 data-i="en">Bring outsiders in,<br>safely.</h3>
+          <p class="desc" data-i="ja" data-p="alpineclub">OB・OG や他団体の仲間は、招待リンクひとつでゲスト参加。見えるのは招待されたプロジェクトだけ。</p>
+          <p class="desc" data-i="en" data-p="alpineclub">Alumni and partner clubs join as guests with a single invite link — they only see the projects they're invited to.</p>
+          <p class="desc" data-i="ja" data-p="team">取引先や外部パートナーは、招待リンクひとつでゲスト参加。見えるのは招待されたプロジェクトだけ。</p>
+          <p class="desc" data-i="en" data-p="team">Clients and outside partners join as guests with a single invite link — they only see the projects they're invited to.</p>
+          <ul class="check-list">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span><span data-i="ja"><span class="k">招待はリンク共有だけ</span> — メール設定は不要</span><span data-i="en"><span class="k">Invite with a link</span> — no email setup needed</span></span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span><span data-i="ja"><span class="k">ゲストの視界を制限</span> — 参加プロジェクトのみ閲覧</span><span data-i="en"><span class="k">Guests see less</span> — only their invited projects</span></span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span><span data-i="ja"><span class="k">役割ベースの権限</span> — オーナー / 管理者 / メンバー / ゲスト</span><span data-i="en"><span class="k">Role-based access</span> — owner / admin / member / guest</span></span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span><span data-i="ja"><span class="k">リンクはいつでも無効化</span> — 管理者が一覧から停止</span><span data-i="en"><span class="k">Revoke anytime</span> — admins can kill any invite link</span></span></li>
+          </ul>
         </article>
       </div>
     </div>
@@ -345,30 +408,31 @@
             <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span><span data-i="ja"><span class="k">Transparent</span> — 透明性と監査可能な開発</span><span data-i="en"><span class="k">Transparent</span> — open, auditable development</span></span></li>
             <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span><span data-i="ja"><span class="k">Extensible</span> — 組織に合わせて拡張可能</span><span data-i="en"><span class="k">Extensible</span> — adapts to your organization</span></span></li>
           </ul>
-          <a class="btn btn-ghost card-cta" href="#open-source">
+          <a class="btn btn-ghost card-cta" href="https://github.com/keishingu/Cairn" target="_blank" rel="noopener">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
             View on GitHub
           </a>
         </article>
 
         <article class="panel-card reveal" data-d="2" id="self-hosted">
-          <span class="eyebrow">Deploy Anywhere</span>
-          <h3 data-i="ja">どこにでも、<br>デプロイできる。</h3>
-          <h3 data-i="en">Deploy it<br>anywhere.</h3>
-          <p class="desc" data-i="ja">クラウドでも、オンプレミスでも、自社のインフラでも。運用は、あなたの手の中に。</p>
-          <p class="desc" data-i="en">Cloud, on-premise, or your own infrastructure. Operations stay entirely in your hands.</p>
+          <span class="eyebrow">Self-Hosted</span>
+          <h3 data-i="ja">自分たちの手で、<br>動かすこともできる。</h3>
+          <h3 data-i="en">Run it with<br>your own hands.</h3>
+          <p class="desc" data-i="ja">ソースコードはすべて公開。自分のインフラで運用するためのセルフホスト構成は整備を進めています。導入・カスタマイズの伴走が必要なら、法人向けサポートへ。</p>
+          <p class="desc" data-i="en">All source code is public. Self-hosting guides are in the works — and hands-on rollout support is available for organizations.</p>
           <div class="deploy-targets">
-            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/><rect x="15" y="9" width="5" height="5"/><path d="M3 16c2 3 16 3 18 0"/></svg><b>Docker</b><span>compose</span></div>
-            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M12 7v10M7 9.5l10 5M17 9.5l-10 5"/></svg><b>Kubernetes</b><span>helm</span></div>
-            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 10a4 4 0 0 0-7.7-1.3A3.5 3.5 0 1 0 7.5 18H18a4 4 0 0 0 0-8z"/></svg><b>Cloud</b><span>AWS/GCP</span></div>
-            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 20h10M9 16v4M15 16v4"/></svg><b>On-Premise</b><span>self</span></div>
+            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 10a4 4 0 0 0-7.7-1.3A3.5 3.5 0 1 0 7.5 18H18a4 4 0 0 0 0-8z"/></svg><b>Cloud</b><span>Vercel</span></div>
+            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M12 7v10M7 9.5l10 5M17 9.5l-10 5"/></svg><b>Supabase</b><span>db / auth</span></div>
+            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/><rect x="15" y="9" width="5" height="5"/><path d="M3 16c2 3 16 3 18 0"/></svg><b>Docker</b><span>roadmap</span></div>
+            <div class="dt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 20h10M9 16v4M15 16v4"/></svg><b>On-Premise</b><span>roadmap</span></div>
           </div>
           <div class="term">
             <div class="term-hd"><i></i> bash — cairn</div>
             <div class="term-body">
-              <span class="c" data-i="ja"># 自分のインフラで起動</span><span class="c" data-i="en"># run on your own infra</span><br>
-              <span class="p">$</span> docker compose up <span class="g">-d</span><br>
-              <span class="c">✓ cairn running at :3128</span>
+              <span class="c" data-i="ja"># ローカルで起動（開発者向け）</span><span class="c" data-i="en"># run locally (for developers)</span><br>
+              <span class="p">$</span> git clone https://github.com/keishingu/Cairn<br>
+              <span class="p">$</span> supabase start <span class="g">&amp;&amp;</span> pnpm dev<br>
+              <span class="c">✓ cairn running at localhost:3000</span>
             </div>
           </div>
         </article>
@@ -387,7 +451,7 @@
           <p data-i="ja">単なる OSS ではありません。導入から定着まで、チームの課題解決を伴走します。要件整理・ワークフロー設計・連携・AI 活用まで。</p>
           <p data-i="en">More than just open source. We walk with your team from rollout to adoption — requirements, workflow design, integration and AI.</p>
           <div class="ent-cta">
-            <a class="btn btn-primary" href="#contact"><span data-i="ja">お問い合わせ</span><span data-i="en">Contact us</span></a>
+            <a class="btn btn-primary" href="https://moru.tech/#consultation" target="_blank" rel="noopener"><span data-i="ja">お問い合わせ</span><span data-i="en">Contact us</span></a>
             <a class="btn btn-bare" href="#docs"><span data-i="ja">導入の流れを見る →</span><span data-i="en">See how it works →</span></a>
           </div>
         </div>
@@ -421,8 +485,8 @@
       <h2 class="reveal" data-d="1">Move your project<br>forward, together.</h2>
       <p class="lead reveal" data-d="2" style="text-align:center"><span data-i="ja">プロジェクトの情報を整理するための、新しい場所を。今すぐ試せます。</span><span data-i="en">A new home for everything your project knows. Try it right now.</span></p>
       <div class="hero-cta reveal" data-d="3">
-        <a class="btn btn-primary btn-lg" href="/auth/login">
-          <span data-i="ja">クラウド版を試す</span><span data-i="en">Try Cairn Cloud</span>
+        <a class="btn btn-primary btn-lg" data-cta="final" href="/auth/login?utm_source=lp&amp;utm_content=final">
+          <span data-i="ja">無料で始める</span><span data-i="en">Start for free</span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </a>
         <a class="btn btn-ghost btn-lg" href="#open-source">
@@ -443,31 +507,30 @@
         <a class="brand" href="#top"><svg class="brand-mark" style="color:var(--accent)"><use href="#cairn-mark"/></svg>Cairn</a>
         <p>Open Source Project Collaboration OS. Self-hosted, extensible, yours.</p>
         <div class="foot-social">
-          <a class="nav-icon" href="#" aria-label="GitHub"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg></a>
-          <a class="nav-icon" href="/auth/login" aria-label="Cairn Cloud（公式ホスティング）" title="Cairn Cloud — 公式ホスティング"><svg viewBox="0 0 512 512"><use href="#cairn-mark"/></svg></a>
+          <a class="nav-icon" href="https://github.com/keishingu/Cairn" target="_blank" rel="noopener" aria-label="GitHub"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg></a>
+          <a class="nav-icon" data-cta="footer-icon" href="https://oss-cairn.com/invite/00678365-f1e0-4856-b60e-9208d97d9fbd" aria-label="Cairn 要望受付ワークスペース" title="Cairn 要望受付ワークスペース"><svg viewBox="0 0 512 512"><use href="#cairn-mark"/></svg></a>
           <a class="nav-icon" href="#" aria-label="X"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.2 3h3.3l-7.2 8.2L23 21h-6.7l-5.2-6.8L5 21H1.7l7.7-8.8L1 3h6.8l4.7 6.2zm-1.2 16h1.8L7.1 4.9H5.2z"/></svg></a>
         </div>
       </div>
       <div class="foot-col">
         <h4>Product</h4>
         <a href="#features">Features</a>
+        <a href="#everywhere"><span data-i="ja">アプリ</span><span data-i="en">Apps</span></a>
         <a href="#self-hosted">Self-Hosted</a>
         <a href="#enterprise">Enterprise</a>
-        <a href="/auth/login">Cairn Cloud</a>
+        <a data-cta="footer-product" href="/auth/login?utm_source=lp&amp;utm_content=footer-product">Cairn Cloud</a>
       </div>
       <div class="foot-col">
         <h4>Resources</h4>
-        <a href="#docs">Documentation</a>
-        <a href="#docs">FAQ</a>
-        <a href="#docs">Release Notes</a>
-        <a href="#open-source">Changelog</a>
+        <a href="https://github.com/keishingu/Cairn#readme" target="_blank" rel="noopener">Documentation</a>
+        <a href="https://github.com/keishingu/Cairn/releases" target="_blank" rel="noopener">Release Notes</a>
+        <a href="https://github.com/keishingu/Cairn/issues" target="_blank" rel="noopener">Issues</a>
       </div>
       <div class="foot-col">
         <h4>Community</h4>
-        <a href="#open-source">GitHub</a>
-        <a href="/auth/login">Cairn Cloud</a>
-        <a href="#">X (Twitter)</a>
-        <a href="#contact">Contact</a>
+        <a href="https://github.com/keishingu/Cairn" target="_blank" rel="noopener">GitHub</a>
+        <a data-cta="footer-community" href="https://oss-cairn.com/invite/00678365-f1e0-4856-b60e-9208d97d9fbd">Cairn Cloud</a>
+        <a href="https://moru.tech/#consultation" target="_blank" rel="noopener">Contact</a>
       </div>
     </div>
     <div class="foot-bottom">

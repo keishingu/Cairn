@@ -15,7 +15,7 @@
 
 - `/`（`apps/web/src/app/page.tsx`）は無条件で `redirect('/projects')`
 - 未認証ユーザーが `/` に来ると、middleware が `/auth/login` へ強制リダイレクト
-- 公開 LP は `apps/web/public/lp/`（`/lp/index.html`）に既に存在するが、トップではなく `/lp` 配下で、`/auth/login` 等への CTA 導線も未接続
+- 公開 LP は `apps/web/public/`（現在は `public/index.html`）で管理する。初期導入時は `/lp/index.html` 配下にあり、トップではなく `/lp` 配下で、`/auth/login` 等への CTA 導線も未接続だった
 
 このため、トップページ（`/`）が訪問者に対して何も語らず、SEO・OGP・第一印象の起点になっていなかった。本設計はこれを解消し、`/` を公開 LP にする。
 
@@ -50,18 +50,19 @@
                    /projects    （アプリ本体）
 ```
 
-### 3.2 実装方式（採用: A案 — 既存静的アセットを middleware で rewrite）
+### 3.2 実装方式（採用: 既存静的アセットを `/` の Route Handler で配信）
 
-既存 `apps/web/public/lp/` の静的 HTML/CSS/JS をゼロから作り直さず、**middleware の rewrite** で `/` にそのまま配信する。
+既存の静的 HTML/CSS/JS をゼロから作り直さず、`apps/web/src/app/route.ts` の Route Handler で `/` に直接配信する。
 
 `apps/web/src/middleware.ts`:
 
-- 未認証で `/` にアクセス → `NextResponse.rewrite('/lp/index.html')`（URL バーは `/` のまま、実体は既存の静的 LP を返す）
+- 未認証で `/` にアクセス → middleware は通過し、`apps/web/src/app/route.ts` が `public/index.html` を `text/html` として返す
 - 認証済みで `/` にアクセス → `/projects` へリダイレクト
-- `/lp`・`/lp/`・`/lp/index.html`（旧 LP の URL）へのアクセス → `/` へ 308 リダイレクト（公開 LP の URL を `/` に一本化）
+- `/lp`・`/lp/`・`/lp/index.html`（旧 LP の URL）と `/index.html` へのアクセス → `/` へリダイレクト（公開 LP の URL を `/` に一本化）
 - `/lp/cairn-lp.css` ・`/lp/cairn-lp.js` などの静的アセットは `/lp/` 配下に残置し、そのまま配信（リダイレクト対象から除外）
+- `/robots.txt`・`/sitemap.xml` は公開 SEO ルートとして未認証でもアクセス可能
 
-この方式のため、**`apps/web/src/app/page.tsx` は変更していない**。middleware が `/` へのリクエストを常に横取りして rewrite/redirect するため、App Router の `page.tsx` は実質到達しない（フォールバックとして残置）。
+この方式では、旧 `apps/web/src/app/page.tsx` の `/projects` リダイレクトは削除し、`apps/web/src/app/route.ts` が `/` のレスポンスを担当する。ログイン済みユーザーの `/projects` 誘導は引き続き middleware に集約する。
 
 ### 3.3 デバイス出し分け
 
@@ -71,7 +72,9 @@ LP は単一レイアウト（B 案）。既存の静的 HTML をそのまま配
 
 旧 LP の主要 CTA「Try Demo / デモを試す」はページ内アンカー（`#demo`）止まりで実体のあるデモに繋がっていなかったため、`/auth/login`（クラウドホスティング版のログイン/サインアップ入口）に張り替えた。ラベルも「クラウド版を試す / Try Cairn Cloud」に変更。自己ホスト派の導線（GitHub / Self-Hosted / Docs）は現状維持。
 
-対象箇所（`apps/web/public/lp/index.html`）:
+> **追記（2026-07-03）**: CTA ラベルはその後 [`lp-content-redesign.md`](./lp-content-redesign.md) で「無料で始める / Start for free」に変更された。
+
+対象箇所（`apps/web/public/index.html`）:
 
 - ナビの CTA ボタン
 - ヒーローの CTA ボタン
@@ -90,13 +93,14 @@ LP は単一レイアウト（B 案）。既存の静的 HTML をそのまま配
 
 | 対象 | 影響 | 備考 |
 |---|---|---|
-| `middleware.ts` | 修正 | `/` の公開化（rewrite）+ 認証済みの誘導分岐 + 旧 `/lp` URL のリダイレクト |
-| `app/page.tsx` | 変更なし | middleware が `/` を常に横取りするため未到達（フォールバックとして残置） |
+| `middleware.ts` | 修正 | 認証済み `/` の誘導分岐 + 旧 `/lp` URL のリダイレクト + SEO ルート公開 |
+| `app/route.ts` | 追加 | `/` で `public/index.html` を直接配信 |
+| `app/page.tsx` | 削除 | `/` は Route Handler が担当 |
 | `(app)/*` | なし | 認証シェル内は不変 |
 | `auth/*`, `onboarding/*`, `invite/*` | なし | パス・遷移先とも不変 |
-| `public/lp/index.html` | CTA リンク変更 | `#demo` → `/auth/login`、ラベル変更 |
+| `public/index.html` | CTA / SEO 変更 | `#demo` → `/auth/login`、ラベル変更、OGP/canonical 追加、フッター導線の一部を要望受付ワークスペースへ接続 |
 | `/projects` 等のハードコード参照 | なし | 遷移先が変わらない |
-| OGP / SEO / sitemap | 未着手 | 別タスク |
+| OGP / SEO / sitemap | 修正 | LP の `<head>` に OGP/canonical を追加し、`robots.ts` / `sitemap.ts` を追加 |
 
 
 ## 6. 検討した代替案と却下理由
@@ -113,13 +117,13 @@ LP は単一レイアウト（B 案）。既存の静的 HTML をそのまま配
 
 ### LP を React で作り直す案（B案） → 見送り（今回は不採用）
 
-- 既存の静的 LP（ダークテーマ・日英切替・features/open-source/self-hosted/enterprise/docs 構成）を活かせる rewrite 方式のほうが工数が小さく、デザイン移植リスクもない
+- 既存の静的 LP（ダークテーマ・日英切替・features/open-source/self-hosted/enterprise/docs 構成）を活かす方式のほうが工数が小さく、デザイン移植リスクもない
 - React 化は LP の中身を大きく作り替えるタイミングで再検討する
 
 
 ## 7. 今後の進め方（PR2 以降）
 
-- CTA 接続・コピー・料金導線・OGP・sitemap などを段階投入
+- CTA 接続・コピー・料金導線などを段階投入
 - LP のデバイス出し分けが必要になった場合は、単一レイアウト（現状）から `x-device` ベースの出し分けへの移行を再検討
 
 
