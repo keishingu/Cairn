@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const mockJson = vi.fn((body: unknown, init?: ResponseInit) => ({ body, status: init?.status ?? 200 }))
 
-const { mockDb, workspaceMembers, channels, channelMembers, projects, projectMembers, messages, messageAttachments } = vi.hoisted(() => {
+const { mockDb, workspaceMembers, activeWorkspaceMembers, channels, channelMembers, projects, projectMembers, messages, messageAttachments } = vi.hoisted(() => {
   const mockDb = {
     select: vi.fn(),
     selectDistinct: vi.fn(),
@@ -16,6 +16,12 @@ const { mockDb, workspaceMembers, channels, channelMembers, projects, projectMem
     workspaceId: 'wm.workspaceId',
     userId: 'wm.userId',
     membershipStatus: 'wm.membershipStatus',
+  }
+
+  const activeWorkspaceMembers = {
+    role: 'awm.role',
+    workspaceId: 'awm.workspaceId',
+    userId: 'awm.userId',
   }
 
   const channels = {
@@ -52,7 +58,7 @@ const { mockDb, workspaceMembers, channels, channelMembers, projects, projectMem
     messageId: 'ma.messageId',
   }
 
-  return { mockDb, workspaceMembers, channels, channelMembers, projects, projectMembers, messages, messageAttachments }
+  return { mockDb, workspaceMembers, activeWorkspaceMembers, channels, channelMembers, projects, projectMembers, messages, messageAttachments }
 })
 
 vi.mock('next/server', () => ({
@@ -64,6 +70,7 @@ vi.mock('next/server', () => ({
 vi.mock('@cairn/db', () => ({
   db: mockDb,
   workspaceMembers,
+  activeWorkspaceMembers,
   channels,
   channelMembers,
   projects,
@@ -103,8 +110,10 @@ describe('permissions', () => {
     const { getWorkspaceRole } = await import('./permissions')
     await expect(getWorkspaceRole('ws-1', 'user-1')).resolves.toBeNull()
 
-    const whereArg = mockDb.select.mock.results[0]?.value.where.mock.calls[0]?.[0]
-    expect(whereArg.args).toContainEqual({ type: 'eq', args: [workspaceMembers.membershipStatus, 'active'] })
+    // active 絞り込みは active_workspace_members ビューが担保するため、
+    // クエリがビューを参照していることで「active だけを所属扱い」を検証する
+    const chain = mockDb.select.mock.results[0]?.value
+    expect(chain.from).toHaveBeenCalledWith(activeWorkspaceMembers)
   })
 
   it('requireProjectAccess は inactive メンバーを 403 で拒否する', async () => {

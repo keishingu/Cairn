@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const { mockDb, channelMembers, channels, profiles, projectMembers, workspaceMembers } = vi.hoisted(() => {
+const { mockDb, channelMembers, channels, profiles, projectMembers, activeWorkspaceMembers } = vi.hoisted(() => {
   const mockDb = {
     select: vi.fn(),
   }
@@ -30,14 +30,13 @@ const { mockDb, channelMembers, channels, profiles, projectMembers, workspaceMem
     userId: 'pm.userId',
   }
 
-  const workspaceMembers = {
-    workspaceId: 'wm.workspaceId',
-    userId: 'wm.userId',
-    role: 'wm.role',
-    membershipStatus: 'wm.membershipStatus',
+  const activeWorkspaceMembers = {
+    workspaceId: 'awm.workspaceId',
+    userId: 'awm.userId',
+    role: 'awm.role',
   }
 
-  return { mockDb, channelMembers, channels, profiles, projectMembers, workspaceMembers }
+  return { mockDb, channelMembers, channels, profiles, projectMembers, activeWorkspaceMembers }
 })
 
 vi.mock('@cairn/db', () => ({
@@ -46,7 +45,7 @@ vi.mock('@cairn/db', () => ({
   channels,
   profiles,
   projectMembers,
-  workspaceMembers,
+  activeWorkspaceMembers,
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -82,9 +81,10 @@ describe('notification-access', () => {
     const { fetchActiveChannelRecipients } = await import('./notification-access')
     await fetchActiveChannelRecipients({ channelId: 'ch-1', workspaceId: 'ws-1', senderId: 'user-1' })
 
+    // active 絞り込みは active_workspace_members ビューへの join が担保する（述語は消える）
     const workspaceJoin = chain.innerJoin.mock.calls[1]?.[1]
-    expect(workspaceJoin.args).toContainEqual({ type: 'eq', args: [workspaceMembers.membershipStatus, 'active'] })
-    expect(workspaceJoin.args).toContainEqual({ type: 'eq', args: [workspaceMembers.workspaceId, 'ws-1'] })
+    expect(chain.innerJoin.mock.calls[1]?.[0]).toBe(activeWorkspaceMembers)
+    expect(workspaceJoin.args).toContainEqual({ type: 'eq', args: [activeWorkspaceMembers.workspaceId, 'ws-1'] })
 
     const projectJoin = chain.leftJoin.mock.calls[0]?.[1]
     expect(projectJoin.args).toContainEqual({ type: 'eq', args: [projectMembers.projectId, channels.projectId] })
@@ -97,7 +97,7 @@ describe('notification-access', () => {
       args: [
         { type: 'ne', args: [channels.type, 'project'] },
         { type: 'isNull', args: [channels.projectId] },
-        { type: 'ne', args: [workspaceMembers.role, 'guest'] },
+        { type: 'ne', args: [activeWorkspaceMembers.role, 'guest'] },
         { type: 'isNotNull', args: [projectMembers.id] },
       ],
     })
@@ -111,8 +111,8 @@ describe('notification-access', () => {
     await fetchActiveMentionedMembers({ workspaceId: 'ws-1', mentionedIds: ['user-2'], senderId: 'user-1' })
 
     const whereArg = chain.where.mock.calls[0]?.[0]
-    expect(whereArg.args).toContainEqual({ type: 'eq', args: [workspaceMembers.membershipStatus, 'active'] })
-    expect(whereArg.args).toContainEqual({ type: 'inArray', args: [workspaceMembers.userId, ['user-2']] })
+    expect(chain.from).toHaveBeenCalledWith(activeWorkspaceMembers)
+    expect(whereArg.args).toContainEqual({ type: 'inArray', args: [activeWorkspaceMembers.userId, ['user-2']] })
   })
 
   it('fetchActiveGuestIds は active guest だけを返す', async () => {
@@ -124,8 +124,8 @@ describe('notification-access', () => {
       .resolves.toEqual(new Set(['guest-1']))
 
     const whereArg = chain.where.mock.calls[0]?.[0]
-    expect(whereArg.args).toContainEqual({ type: 'eq', args: [workspaceMembers.membershipStatus, 'active'] })
-    expect(whereArg.args).toContainEqual({ type: 'eq', args: [workspaceMembers.role, 'guest'] })
+    expect(chain.from).toHaveBeenCalledWith(activeWorkspaceMembers)
+    expect(whereArg.args).toContainEqual({ type: 'eq', args: [activeWorkspaceMembers.role, 'guest'] })
   })
 
   it('isActiveWorkspaceMember は active membership のみ truthy を返す', async () => {
@@ -136,8 +136,8 @@ describe('notification-access', () => {
     await expect(isActiveWorkspaceMember({ workspaceId: 'ws-1', userId: 'user-2' })).resolves.toBe(true)
 
     const whereArg = chain.where.mock.calls[0]?.[0]
-    expect(whereArg.args).toContainEqual({ type: 'eq', args: [workspaceMembers.workspaceId, 'ws-1'] })
-    expect(whereArg.args).toContainEqual({ type: 'eq', args: [workspaceMembers.userId, 'user-2'] })
-    expect(whereArg.args).toContainEqual({ type: 'eq', args: [workspaceMembers.membershipStatus, 'active'] })
+    expect(chain.from).toHaveBeenCalledWith(activeWorkspaceMembers)
+    expect(whereArg.args).toContainEqual({ type: 'eq', args: [activeWorkspaceMembers.workspaceId, 'ws-1'] })
+    expect(whereArg.args).toContainEqual({ type: 'eq', args: [activeWorkspaceMembers.userId, 'user-2'] })
   })
 })

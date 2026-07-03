@@ -8,7 +8,7 @@
 
 import { NextResponse } from 'next/server'
 import { db, activeWorkspaceMembers } from '@cairn/db'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'guest'
 
@@ -60,30 +60,4 @@ export async function requireActiveMember(
     return NextResponse.json({ error: ROLE_ERROR[min] }, { status: 403 })
   }
   return null
-}
-
-// ワークスペースの active メンバー ID 一覧。一覧・候補系がこれを共有する。
-export async function listActiveMemberIds(workspaceId: string): Promise<string[]> {
-  const rows = await db
-    .select({ userId: activeWorkspaceMembers.userId })
-    .from(activeWorkspaceMembers)
-    .where(eq(activeWorkspaceMembers.workspaceId, workspaceId))
-  return rows.map((r) => r.userId)
-}
-
-// 与えた userId 集合のうち、当該ワークスペースで active な ID だけを残す。
-// 通知配信・メンション補完などが「stale な派生行に紐づく非活性ユーザー」を除外するのに使う。
-export async function filterActiveMemberIds(
-  workspaceId: string,
-  userIds: string[],
-): Promise<Set<string>> {
-  if (userIds.length === 0) return new Set()
-  const rows = await db
-    .select({ userId: activeWorkspaceMembers.userId })
-    .from(activeWorkspaceMembers)
-    .where(and(
-      eq(activeWorkspaceMembers.workspaceId, workspaceId),
-      inArray(activeWorkspaceMembers.userId, userIds),
-    ))
-  return new Set(rows.map((r) => r.userId))
 }

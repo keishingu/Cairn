@@ -30,6 +30,12 @@ vi.mock('@cairn/db', () => ({
     joinedAt: 'wm.joinedAt',
     membershipStatus: 'wm.membershipStatus',
   },
+  activeWorkspaceMembers: {
+    workspaceId: 'awm.workspaceId',
+    userId: 'awm.userId',
+    role: 'awm.role',
+    joinedAt: 'awm.joinedAt',
+  },
 }))
 
 const { mockEq, mockAnd } = vi.hoisted(() => ({
@@ -69,6 +75,7 @@ describe('GET /api/workspaces/list', () => {
     await expect(res.json()).resolves.toEqual([
       { id: 'ws-1', name: 'Workspace', slug: 'workspace', logoUrl: null, role: 'member' },
     ])
-    expect(chain.where.mock.calls[0]?.[0].args).toContainEqual({ type: 'eq', args: ['wm.membershipStatus', 'active'] })
+    // active_workspace_members ビュー参照で active 絞り込みは不要（where は userId 単一条件）
+    expect(chain.where.mock.calls[0]?.[0]).toEqual({ type: 'eq', args: ['awm.userId', 'user-1'] })
   })
 })

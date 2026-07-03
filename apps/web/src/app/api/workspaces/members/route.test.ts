@@ -46,6 +46,13 @@ vi.mock('@cairn/db', () => ({
     membershipStatus: 'wm.membershipStatus',
     joinedAt: 'wm.joinedAt',
   },
+  activeWorkspaceMembers: {
+    workspaceId: 'awm.workspaceId',
+    userId: 'awm.userId',
+    avatarUrl: 'awm.avatarUrl',
+    role: 'awm.role',
+    joinedAt: 'awm.joinedAt',
+  },
   projectMembers: { userId: 'pm.userId', projectId: 'pm.projectId' },
   projects: { id: 'projects.id', workspaceId: 'projects.workspaceId' },
 }))
@@ -223,8 +230,9 @@ describe('GET /api/workspaces/members', () => {
 
     const rowsChain = mockDb.select.mock.results[1]?.value.from.mock.results[0]?.value
       .innerJoin.mock.results[0]?.value.leftJoin.mock.results[0]?.value
+    // active_workspace_members ビュー参照に変わり、membership_status 述語は不要
+    // （member ロールなので where は workspaceId 単一条件）
     const whereArg = rowsChain.where.mock.calls[0]?.[0]
-    expect(whereArg.args).toContainEqual({ type: 'eq', args: ['wm.workspaceId', WS_ID] })
-    expect(whereArg.args).toContainEqual({ type: 'eq', args: ['wm.membershipStatus', 'active'] })
+    expect(whereArg).toEqual({ type: 'eq', args: ['awm.workspaceId', WS_ID] })
   })
 })
