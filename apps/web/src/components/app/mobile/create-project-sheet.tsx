@@ -179,7 +179,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
               ref={titleRef}
               value={title}
               onChange={e => { setTitle(e.target.value); if (titleError) setTitleError('') }}
-              placeholder="例: 北アルプス縦走計画"
+              placeholder="例: 新規顧客向け導入プロジェクト"
               style={titleError ? inputErrorStyle : inputStyle}
             />
             {titleError && (
@@ -231,7 +231,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
                 setSelectedPhotoName(null)
               }}
               inputStyle={inputStyle}
-              placeholder="例: 北アルプス、槍ヶ岳"
+              placeholder="例: 東京都渋谷区、オンライン"
             />
           </div>
 

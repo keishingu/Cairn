@@ -62,8 +62,16 @@ export async function PATCH(req: Request) {
   if (error) return error
 
   let body: unknown
-  try { body = await req.json() } catch { body = {} }
-  const ids = (body as { ids?: string[] }).ids
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+  const rawIds = (body as { ids?: unknown }).ids
+  if (rawIds !== undefined && (!Array.isArray(rawIds) || rawIds.some(id => typeof id !== 'string'))) {
+    return NextResponse.json({ error: 'ids は string[] で指定してください' }, { status: 400 })
+  }
+  const ids = rawIds as string[] | undefined
 
   try {
     const { db, notifications } = await import('@cairn/db')

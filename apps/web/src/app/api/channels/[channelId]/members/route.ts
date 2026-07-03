@@ -47,8 +47,16 @@ export async function POST(
   if (error) return error
 
   const { channelId } = await params
-  const body = await req.json() as { userId?: unknown }
-  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+  const userId = typeof (body as { userId?: unknown }).userId === 'string'
+    ? ((body as { userId: string }).userId).trim()
+    : ''
 
   if (!userId) {
     return NextResponse.json({ error: 'userIdが必要です' }, { status: 400 })
