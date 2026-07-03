@@ -92,6 +92,16 @@ describe('middleware', () => {
     expect(res.headers.get('location')).toBe('http://localhost:3000/og-image.png?v=1')
   })
 
+  it('未認証で直下の LP 静的アセットにアクセスすると middleware は通過する', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+    const { middleware } = await import('./middleware')
+
+    for (const assetPath of ['/cairn-lp.css', '/cairn-lp.js', '/og-image.png', '/og-image.svg']) {
+      const res = await middleware(makeRequest(assetPath))
+      expect(res.headers.get('location')).toBeNull()
+    }
+  })
+
   it('未認証で保護ルートにアクセスすると /auth/login にリダイレクトされる', async () => {
     getUser.mockResolvedValue({ data: { user: null } })
     const { middleware } = await import('./middleware')

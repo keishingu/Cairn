@@ -44,9 +44,14 @@ export async function middleware(request: NextRequest) {
   // 旧 LP と静的 HTML の直 URL。公開 LP は / に集約するためリダイレクトする
   const isLegacyLpPage = pathname === '/lp' || pathname === '/lp/' || pathname === '/lp/index.html' || pathname === '/index.html'
   const isLegacyLpAsset = pathname.startsWith('/lp/') && !isLegacyLpPage
+  const isLandingAsset =
+    pathname === '/cairn-lp.css' ||
+    pathname === '/cairn-lp.js' ||
+    pathname === '/og-image.png' ||
+    pathname === '/og-image.svg'
   const isSeoRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
-  // 未ログインでもアクセスできるパブリックルート（旧 /lp/ 配下の静的アセットも含む）
-  const isPublicRoute = pathname.startsWith('/invite') || pathname.startsWith('/lp') || isLandingRoute || isLegacyLpPage || isLegacyLpAsset || isSeoRoute
+  // 未ログインでもアクセスできるパブリックルート（LP と関連静的アセットを含む）
+  const isPublicRoute = pathname.startsWith('/invite') || pathname.startsWith('/lp') || isLandingRoute || isLegacyLpPage || isLegacyLpAsset || isLandingAsset || isSeoRoute
   // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
   const isOnboardingRoute = pathname.startsWith('/onboarding')
 
