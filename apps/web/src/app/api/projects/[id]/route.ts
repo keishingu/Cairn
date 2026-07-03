@@ -131,38 +131,8 @@ export async function PATCH(
     let resolvedCoverPhotoUrl: string | null | undefined = undefined
 
     if (b.placePhotoName) {
-      const apiKey = process.env['GOOGLE_MAPS_API_KEY']
-      if (apiKey) {
-        try {
-          const mediaRes = await fetch(
-            `https://places.googleapis.com/v1/${b.placePhotoName}/media?maxWidthPx=1200&skipHttpRedirect=true&key=${apiKey}`,
-          )
-          if (mediaRes.ok) {
-            const media = await mediaRes.json() as { photoUri?: string }
-            if (media.photoUri) {
-              const imgRes = await fetch(media.photoUri)
-              if (imgRes.ok) {
-                const buffer = await imgRes.arrayBuffer()
-                const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
-                const ext = contentType.includes('png') ? 'png' : 'jpg'
-                const slug = b.placePhotoName.split('/').join('_')
-                const storagePath = `place-photos/${slug}.${ext}`
-                const { createServiceRoleClient } = await import('@/lib/supabase/service')
-                const supabase = createServiceRoleClient()
-                const { error: uploadError } = await supabase.storage
-                  .from('covers')
-                  .upload(storagePath, buffer, { contentType, upsert: false })
-                if (!uploadError || uploadError.message.toLowerCase().includes('already exist')) {
-                  const { data: { publicUrl } } = supabase.storage.from('covers').getPublicUrl(storagePath)
-                  resolvedCoverPhotoUrl = publicUrl
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[PATCH /api/projects/[id]] place photo upload failed (skipped):', e)
-        }
-      }
+      const { fetchAndStoreCoverFromPlace } = await import('@/lib/cover-photo')
+      resolvedCoverPhotoUrl = await fetchAndStoreCoverFromPlace(b.placePhotoName)
     } else if ('coverPhotoUrl' in (b as object)) {
       resolvedCoverPhotoUrl = b.coverPhotoUrl ?? null
     }
