@@ -62,7 +62,11 @@ interface CreateProjectSheetProps {
 
 export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
-  const { data: statuses = [] } = useQuery<ProjectStatusDto[]>({
+  const {
+    data: statuses = [],
+    isLoading: statusesLoading,
+    isError: statusesError,
+  } = useQuery<ProjectStatusDto[]>({
     queryKey: ['statuses'],
     queryFn: fetchStatuses,
   })
@@ -110,10 +114,15 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
     } else {
       setEndDateError('')
     }
+    const initialStatusId = statuses[0]?.id
+    if (!initialStatusId) {
+      setTitleError('ステータスの読み込み後に作成してください')
+      hasError = true
+    }
     if (hasError) return
 
     mutation.mutate({
-      statusId: statuses[0]?.id,
+      statusId: initialStatusId,
       title: title.trim(),
       description: description.trim() || undefined,
       startDate: startDate || undefined,
@@ -375,14 +384,14 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
           </button>
           <button
             onClick={handleSubmit}
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || statusesLoading || statusesError}
             style={{
               flex: 2, height: 46, borderRadius: 12,
               border: 'none',
-              background: mutation.isPending ? 'var(--card-2)' : 'var(--accent)',
-              color: mutation.isPending ? 'var(--text-4)' : 'var(--on-accent)',
+              background: mutation.isPending || statusesLoading || statusesError ? 'var(--card-2)' : 'var(--accent)',
+              color: mutation.isPending || statusesLoading || statusesError ? 'var(--text-4)' : 'var(--on-accent)',
               fontSize: 15, fontWeight: 700,
-              cursor: mutation.isPending ? 'not-allowed' : 'pointer',
+              cursor: mutation.isPending || statusesLoading || statusesError ? 'not-allowed' : 'pointer',
               fontFamily: 'inherit', transition: 'background 0.15s',
             }}
           >
