@@ -102,26 +102,24 @@ export async function getAuthContext(): Promise<AuthResult> {
   const preferredWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
 
   const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
-  const cached = workspaceCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) {
-    const { db } = await import('@cairn/db')
-    const { workspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
-    const [member] = await db
-      .select({ workspaceId: workspaceMembers.workspaceId, role: workspaceMembers.role })
-      .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, cached.workspaceId)))
-      .limit(1)
-    if (member) {
-      setCachedWorkspaceRole(member.workspaceId, user.id, member.role)
-      return { ctx: { userId: user.id, workspaceId: member.workspaceId, workspaceRole: member.role }, error: null }
-    }
-  }
 
   try {
     const { db } = await import('@cairn/db')
     const { workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
+
+    const cached = workspaceCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) {
+      const [member] = await db
+        .select({ workspaceId: workspaceMembers.workspaceId, role: workspaceMembers.role })
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, cached.workspaceId)))
+        .limit(1)
+      if (member) {
+        setCachedWorkspaceRole(member.workspaceId, user.id, member.role)
+        return { ctx: { userId: user.id, workspaceId: member.workspaceId, workspaceRole: member.role }, error: null }
+      }
+    }
 
     // クッキーで指定されたワークスペースがあればそちらを優先、ただしメンバーシップを確認
     if (preferredWorkspaceId) {

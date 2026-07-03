@@ -51,6 +51,16 @@ function selectChain(result: unknown[]) {
   }
 }
 
+function selectChainReject(error: Error) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        limit: vi.fn().mockRejectedValue(error),
+      }),
+    }),
+  }
+}
+
 describe('get-auth-context', () => {
   afterEach(() => {
     vi.clearAllMocks()
@@ -119,5 +129,26 @@ describe('get-auth-context', () => {
     })
     await expect(getWorkspaceRole('ws-1', 'user-1')).resolves.toBe('owner')
     expect(mockDb.select).toHaveBeenCalledTimes(1)
+  })
+
+  it('warm cache の再照会が失敗しても 500 レスポンスに変換する', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'member' }]))
+      .mockReturnValueOnce(selectChainReject(new Error('db failed')))
+
+    const { getAuthContext } = await import('./get-auth-context')
+
+    const first = await getAuthContext()
+    const second = await getAuthContext()
+
+    expect(first).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1', workspaceRole: 'member' },
+      error: null,
+    })
+    expect(second.ctx).toBeNull()
+    expect(second.error?.status).toBe(500)
   })
 })

@@ -7,7 +7,7 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
 // --- vi.hoisted ---
-const { mockGetAuthContext, mockDb } = vi.hoisted(() => {
+const { mockGetAuthContext, mockGetCachedWorkspaceRole, mockSetCachedWorkspaceRole, mockDb } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -15,15 +15,19 @@ const { mockGetAuthContext, mockDb } = vi.hoisted(() => {
     },
     error: null,
   })
+  const mockGetCachedWorkspaceRole = vi.fn()
+  const mockSetCachedWorkspaceRole = vi.fn()
   const mockDb = {
     select: vi.fn(),
     insert: vi.fn(),
   }
-  return { mockGetAuthContext, mockDb }
+  return { mockGetAuthContext, mockGetCachedWorkspaceRole, mockSetCachedWorkspaceRole, mockDb }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: mockGetAuthContext,
+  getCachedWorkspaceRole: mockGetCachedWorkspaceRole,
+  setCachedWorkspaceRole: mockSetCachedWorkspaceRole,
 }))
 
 vi.mock('@cairn/db', () => ({
@@ -80,6 +84,7 @@ describe('POST /api/workspaces/invites', () => {
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID }, error: null,
     })
+    mockGetCachedWorkspaceRole.mockReturnValue(undefined)
   })
 
   it('未認証なら認証エラーを返す', async () => {
@@ -202,6 +207,7 @@ describe('GET /api/workspaces/invites', () => {
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
       error: null,
     })
+    mockGetCachedWorkspaceRole.mockReturnValue(undefined)
   })
 
   it('admin は招待一覧を取得できる', async () => {
