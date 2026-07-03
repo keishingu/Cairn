@@ -6,6 +6,14 @@ import { getAuthContext } from '@/lib/get-auth-context'
 
 type RouteContext = { params: Promise<{ fileId: string }> }
 
+function isPendingUpload(metadata: unknown) {
+  return (
+    metadata &&
+    typeof metadata === 'object' &&
+    typeof (metadata as Record<string, unknown>)['pendingChannelId'] === 'string'
+  )
+}
+
 export async function POST(_req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -25,6 +33,9 @@ export async function POST(_req: Request, { params }: RouteContext) {
     if (!file) return new NextResponse(null, { status: 404 })
     if (file.workspaceId !== ctx.workspaceId) return new NextResponse(null, { status: 403 })
     if (!file.storagePath || !file.mimeType) return NextResponse.json({ error: 'このファイルは再インデックスできません' }, { status: 422 })
+    if (isPendingUpload(file.metadata)) {
+      return NextResponse.json({ error: '未送信の添付は再インデックスできません' }, { status: 422 })
+    }
 
     const { isIndexable } = await import('@/lib/ai/extract-text')
     if (!isIndexable(file.mimeType)) {

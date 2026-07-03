@@ -20,7 +20,7 @@ export async function POST() {
     const { isIndexable } = await import('@/lib/ai/extract-text')
 
     const [allFiles, allMembers, allProjects] = await Promise.all([
-      db.select({ id: files.id, mimeType: files.mimeType, storagePath: files.storagePath })
+      db.select({ id: files.id, mimeType: files.mimeType, storagePath: files.storagePath, metadata: files.metadata })
         .from(files)
         .where(eq(files.workspaceId, ctx.workspaceId)),
       db.select({ userId: workspaceMembers.userId })
@@ -31,7 +31,16 @@ export async function POST() {
         .where(eq(projects.workspaceId, ctx.workspaceId)),
     ])
 
-    const indexableFiles = allFiles.filter(f => isIndexable(f.mimeType ?? ''))
+    const indexableFiles = allFiles.filter((f) => {
+      if (!isIndexable(f.mimeType ?? '')) return false
+      const pendingChannelId =
+        f.metadata &&
+        typeof f.metadata === 'object' &&
+        typeof (f.metadata as Record<string, unknown>)['pendingChannelId'] === 'string'
+          ? (f.metadata as Record<string, unknown>)['pendingChannelId']
+          : null
+      return pendingChannelId === null
+    })
 
     const events = [
       ...indexableFiles.map(f => ({
