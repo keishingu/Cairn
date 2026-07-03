@@ -16,6 +16,7 @@ import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
 import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import { MobileHeader } from '@/components/app/mobile/header'
+import { chatQueryKeys } from '@/lib/chat/client'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 // ─── Date helpers ──────────────────────────────────────────────────
@@ -1714,6 +1715,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             onClose={closeCreate}
             onCreated={() => {
               closeCreate()
+              void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
             }}
             initialStartDate={createDates.start}
             initialEndDate={createDates.end}
