@@ -1,6 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { sql } from 'drizzle-orm'
 import { boolean, index, integer, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { channelTypeEnum, messageTypeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
@@ -56,7 +57,10 @@ export const messages = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
-  (t) => [index('idx_messages_channel').on(t.channelId, t.createdAt)],
+  (t) => [
+    index('idx_messages_channel').on(t.channelId, t.createdAt),
+    index('idx_messages_content_trgm').using('gin', t.content.op('gin_trgm_ops')).where(sql`${t.deletedAt} is null`),
+  ],
 )
 
 export const messageReactions = pgTable(
@@ -89,4 +93,23 @@ export const messageAttachments = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('idx_message_attachments_message').on(t.messageId)],
+)
+
+// メッセージの個人ブックマーク（チーム共通のピン留めではなく、各ユーザーが「後で見返す」ための保存）
+export const messageBookmarks = pgTable(
+  'message_bookmarks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.messageId, t.userId),
+    index('idx_message_bookmarks_user').on(t.userId, t.createdAt),
+  ],
 )

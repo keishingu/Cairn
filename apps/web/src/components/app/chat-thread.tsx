@@ -4,7 +4,8 @@
 'use client'
 
 import React from 'react'
-import type { AttachmentDto } from '@cairn/shared'
+import type { AttachmentDto, MessageType } from '@cairn/shared'
+import type { ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import { useQueryClient } from '@tanstack/react-query'
 import { Avatar } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
@@ -22,17 +23,24 @@ import {
   useCurrentUser,
   useDeleteMessage,
   useEditMessage,
+  useEnsureMessageLoaded,
   useMarkChannelRead,
   useSendChannelMessage,
+  useToggleBookmark,
   useToggleMessageReaction,
   useWorkspaceMembers,
+  useProjectChannels,
+  ChannelMessagesError,
 } from '@/lib/chat/client'
+import { useProjectMembers } from '@/hooks/use-project-members'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
-import { getReactionTooltip } from '@/lib/chat/reaction-tooltip'
+import { stripMentionsToText } from '@/lib/chat/mentions'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
+import { GENERIC_MIME_TYPES, resolveAttachmentMimeType } from '@/lib/attachments'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 
@@ -50,12 +58,28 @@ const ACCEPT_FILE_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/csv',
+  // OS/ブラウザが.csvにtext/csvを正しく対応付けられない環境では、
+  // MIMEタイプのみのacceptだとネイティブファイル選択ダイアログで.csvが除外されてしまうため、
+  // 拡張子も明示してnormalizeMimeType側の救済ロジックまで到達できるようにする
   '.jpg', '.jpeg', '.png', '.gif', '.webp',
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx',
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.pptx',
+  '.txt', '.md', '.markdown', '.csv',
 ].join(',')
 
 function isImageMime(mimeType: string | null): boolean {
   return mimeType?.startsWith('image/') ?? false
+}
+
+// 引用バーやプレビューでは Markdown を描画せず、メンション記法を素朴な @表示名 に戻した一行テキストにする。
+// 通知バーと同じ stripMentionsToText を使い、canonical な `<@userId>` も旧形式 `<@userId|名前>` も可読化する。
+// 送信/編集直後の楽観・POST/PATCH レスポンスはメンションが canonical のままキャッシュに載るため、
+// nameOf（ワークスペースメンバーの userId→表示名）を渡して GET 再取得前でも @不明なメンバー を避ける
+function toPlainSnippet(content: string, nameOf?: (userId: string) => string | undefined): string {
+  return stripMentionsToText(content, nameOf)
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function isEmojiOnly(text: string): boolean {
@@ -95,8 +119,9 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, createdAt, isEdited, content, reactions, attachments, onReact, onEdit, onDelete, onCheckboxToggle, onImageClick, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
+  messageType: MessageType
   senderId: string
   currentUserId: string | undefined
   senderName: string
@@ -105,12 +130,18 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId
   createdAt: string
   isEdited: boolean
   content: string
-  reactions: Array<{ emoji: string; count: number; mine: boolean; users?: string[] }>
+  reactions: Array<{ emoji: string; count: number; mine: boolean; userNames: string[] }>
   attachments: AttachmentDto[]
+  replyTo: ReplyToDto | null
+  bookmarked: boolean
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
   onCheckboxToggle: (messageId: string, index: number, checked: boolean) => void
+  onReply: (messageId: string) => void
+  onBookmark: (messageId: string) => void
+  onJumpToMessage: (messageId: string) => void
+  onCopyLink: (messageId: string) => void
   onImageClick: (attachmentId: string) => void
   mentionNames?: Map<string, string>
   compact?: boolean
@@ -123,6 +154,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId
   const [editDraft, setEditDraft] = React.useState('')
   const [editComposing, setEditComposing] = React.useState(false)
   const [deleteConfirm, setDeleteConfirm] = React.useState(false)
+  const [hoveredReaction, setHoveredReaction] = React.useState<number | null>(null)
   const addBtnRef = React.useRef<HTMLButtonElement>(null)
   const editTextareaRef = React.useRef<HTMLTextAreaElement>(null)
   const avatarSize = compact ? 30 : 36
@@ -168,33 +200,57 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId
   const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') { e.preventDefault(); setEditMode(false) }
     if (e.key === 'Enter' && !e.shiftKey) {
+      // スマホは Enter を改行に使い、保存はボタンのみ（誤操作防止）
+      if (isMobile) return
       if (isImeConfirmingEnter(e, editComposing)) return
       e.preventDefault()
       submitEdit()
     }
   }
 
+  // ホバーツールバー（モバイルは常時表示、PC はホバー時）。返信・ブックマークは全メッセージ、コピーは内容がある場合、編集/削除は自分のみ
   const handleCopy = React.useCallback(() => {
     void copyMessageContent(content)
   }, [content])
 
-  const actions = [
-    ...(canCopy ? [{ icon: 'copy', label: 'コピー', onSelect: handleCopy }] : []),
+  // MarkdownContent の React.memo を効かせるため、チェックボックストグルを安定参照で渡す
+  const handleCheckboxToggle = React.useCallback(
+    (index: number, checked: boolean) => onCheckboxToggle(messageId, index, checked),
+    [onCheckboxToggle, messageId],
+  )
+
+  // システムメッセージ（プロジェクトのステータス・日程・概要変更の通知）は中央寄せの控えめな1行で表示する
+  if (messageType === 'system') {
+    return (
+      <div data-message-id={messageId} style={{ display: 'flex', justifyContent: 'center', padding: '6px 16px' }}>
+        <span style={{ fontSize: 11.5, color: 'var(--text-4)', background: 'var(--card-2)', border: '1px solid var(--divider)', borderRadius: 999, padding: '3px 12px', textAlign: 'center', lineHeight: 1.5 }}>
+          {toPlainSnippet(content, id => mentionNames?.get(id))}
+        </span>
+      </div>
+    )
+  }
+
+  const menuActions = [
+    { icon: 'link' as const, label: 'リンクをコピー', onSelect: () => onCopyLink(messageId) },
+    ...(canCopy ? [{ icon: 'copy' as const, label: 'コピー', onSelect: handleCopy }] : []),
     ...(isOwn ? [
-      { icon: 'edit', label: '編集', onSelect: startEdit },
-      { icon: 'trash', label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
+      { icon: 'edit' as const, label: '編集', onSelect: startEdit },
+      { icon: 'trash' as const, label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
     ] : []),
   ]
-
-  // メッセージの「…」メニュー。モバイルは常時表示、PC はホバー時に表示
-  const messageActions = !editMode && actions.length > 0 && (isMobile || hovered) && (
+  const iconBtnStyle: React.CSSProperties = { border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 3, borderRadius: 6, display: 'inline-flex', alignItems: 'center' }
+  const messageActions = !editMode && (isMobile || hovered) && (
     <div style={isMobile
-      ? { flexShrink: 0, alignSelf: 'flex-start', paddingTop: 2 }
-      : { position: 'absolute', top: 4, right: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '2px 4px', boxShadow: 'var(--shadow-sm)' }
+      ? { flexShrink: 0, alignSelf: 'flex-start', paddingTop: 2, display: 'flex', alignItems: 'center', gap: 2 }
+      : { position: 'absolute', top: 4, right: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '1px 3px', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 1 }
     }>
-      <RowActionMenu
-        actions={actions}
-      />
+      <button onClick={() => onReply(messageId)} title="返信" style={iconBtnStyle}>
+        <Icon name="reply" size={14}/>
+      </button>
+      <button onClick={() => onBookmark(messageId)} title={bookmarked ? 'ブックマーク解除' : 'ブックマーク'} style={{ ...iconBtnStyle, color: bookmarked ? 'var(--accent)' : 'var(--text-3)' }}>
+        <Icon name="bookmark" size={14}/>
+      </button>
+      <RowActionMenu actions={menuActions}/>
     </div>
   )
 
@@ -219,6 +275,23 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
           {isEdited && <span style={{ fontSize: 10, color: 'var(--text-4)', fontStyle: 'italic' }}>編集済み</span>}
         </div>
+        {replyTo && (
+          <button
+            onClick={() => !replyTo.isDeleted && onJumpToMessage(replyTo.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, padding: '2px 8px',
+              borderLeft: '2px solid var(--accent)', background: 'transparent',
+              cursor: replyTo.isDeleted ? 'default' : 'pointer', width: '100%', maxWidth: '100%',
+              minWidth: 0, overflow: 'hidden', fontFamily: 'inherit', textAlign: 'left',
+            }}
+          >
+            <Icon name="reply" size={11} color="var(--text-4)"/>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{replyTo.senderName}</span>
+            <span style={{ fontSize: 11.5, color: 'var(--text-4)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {replyTo.isDeleted ? '削除されたメッセージ' : toPlainSnippet(replyTo.content, id => mentionNames?.get(id)) || '（添付ファイル）'}
+            </span>
+          </button>
+        )}
         {editMode ? (
           <div style={{ marginBottom: 4 }}>
             <textarea
@@ -255,7 +328,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId
                   fontSize={compact ? 13 : 13.5}
                   lineHeight={1.6}
                   mentionNames={mentionNames}
-                  onCheckboxToggle={(index, checked) => onCheckboxToggle(messageId, index, checked)}
+                  onCheckboxToggle={handleCheckboxToggle}
                 />
               )}
             </div>
@@ -304,15 +377,31 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId
         )}
         <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
-            <button key={i} onClick={() => onReact(messageId, r.emoji)} title={!isMobile ? getReactionTooltip(r) : undefined} style={{
-              height: compact ? 22 : 24, padding: '0 7px', borderRadius: 12,
-              background: r.mine ? 'var(--accent-soft)' : 'var(--card-2)',
-              border: `1px solid ${r.mine ? 'var(--accent)' : 'var(--border)'}`,
-              fontSize: 11, fontWeight: 600,
-              color: r.mine ? 'var(--accent-text)' : 'var(--text-2)',
-              display: 'inline-flex', alignItems: 'center', gap: 3,
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}>{r.emoji} {r.count}</button>
+            <span key={i} style={{ position: 'relative', display: 'inline-flex' }}
+              onMouseEnter={() => !isMobile && setHoveredReaction(i)}
+              onMouseLeave={() => !isMobile && setHoveredReaction(null)}
+            >
+              <button onClick={() => onReact(messageId, r.emoji)} style={{
+                height: compact ? 22 : 24, padding: '0 7px', borderRadius: 12,
+                background: r.mine ? 'var(--accent-soft)' : 'var(--card-2)',
+                border: `1px solid ${r.mine ? 'var(--accent)' : 'var(--border)'}`,
+                fontSize: 11, fontWeight: 600,
+                color: r.mine ? 'var(--accent-text)' : 'var(--text-2)',
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>{r.emoji} {r.count}</button>
+              {/* PC: ホバーでリアクションしたユーザーを一覧表示（モバイルはネイティブ長押しで表示するため不要） */}
+              {hoveredReaction === i && r.userNames.length > 0 && (
+                <span style={{
+                  position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6,
+                  background: 'var(--text)', color: 'var(--bg)', borderRadius: 6, padding: '5px 9px',
+                  fontSize: 11, fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', zIndex: 100,
+                  boxShadow: 'var(--shadow-lg)', pointerEvents: 'none', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {r.userNames.join('、')}
+                </span>
+              )}
+            </span>
           ))}
           <button ref={addBtnRef} onClick={() => setShowPicker(p => !p)} style={{
             width: compact ? 22 : 24, height: compact ? 22 : 24, borderRadius: 12,
@@ -341,7 +430,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, senderId
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, onMentionInserted, onCreateTextFile }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -352,13 +441,17 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   isComposing: boolean
   setIsComposing: (v: boolean) => void
   compact?: boolean
+  isMobile?: boolean
   pendingAttachments: PendingAttachment[]
   onFilesSelect: (files: File[]) => void
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
   mentionMembers?: { userId: string; displayName: string }[]
+  mentionNames?: Map<string, string>
   onMentionInserted?: (userId: string, displayName: string) => void
   onCreateTextFile: () => void
+  replyTarget: ReplyToDto | null
+  onCancelReply: () => void
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false)
   const dragCounterRef = React.useRef(0)
@@ -545,6 +638,26 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
 
   const canSend = (draft.trim().length > 0 || pendingAttachments.length > 0) && !isPending && !isUploading
 
+  // 返信開始時に入力欄へフォーカスする
+  React.useEffect(() => {
+    if (replyTarget) (textareaRef.current ?? compactInputRef.current)?.focus()
+  }, [replyTarget])
+
+  const ReplyPreview = replyTarget ? (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: compact ? '6px 10px' : '8px 14px', borderBottom: '1px solid var(--divider)' }}>
+      <Icon name="reply" size={13} color="var(--accent)"/>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)' }}>{replyTarget.senderName} に返信</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {toPlainSnippet(replyTarget.content, id => mentionNames?.get(id)) || '（添付ファイル）'}
+        </div>
+      </div>
+      <button onClick={onCancelReply} title="返信をキャンセル" style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2, flexShrink: 0 }}>
+        <Icon name="close" size={14}/>
+      </button>
+    </div>
+  ) : null
+
   const AttachmentPreviews = pendingAttachments.length > 0 || isUploading ? (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: compact ? '6px 10px 0' : '6px 14px 0' }}>
       {pendingAttachments.map(a => (
@@ -631,6 +744,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           </div>
         )}
         <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
+          {ReplyPreview}
           {AttachmentPreviews}
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, padding: '7px 10px' }}>
             <div style={{ flex: 1, position: 'relative' }}>
@@ -653,6 +767,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 onCompositionEnd={() => setIsComposing(false)}
                 onKeyDown={e => handleKeyDownWithMention(e, () => {
                   if (e.key !== 'Enter' || e.shiftKey) return
+                  // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
+                  if (isMobile) return
                   if (isImeConfirmingEnter(e, isComposing)) return
                   e.preventDefault()
                   send()
@@ -715,6 +831,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           </button>
           {showPicker && <EmojiPicker anchorRef={smileBtnRef} onSelect={emoji => { setDraft(draft + emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>}
         </div>
+        {ReplyPreview}
         {AttachmentPreviews}
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, padding: '10px 14px 12px' }}>
           <div style={{ flex: 1, position: 'relative' }}>
@@ -737,6 +854,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               onCompositionEnd={() => setIsComposing(false)}
               onKeyDown={e => handleKeyDownWithMention(e, () => {
                 if (e.key !== 'Enter' || e.shiftKey) return
+                // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
+                if (isMobile) return
                 if (isImeConfirmingEnter(e, isComposing)) return
                 e.preventDefault()
                 send()
@@ -773,6 +892,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [pendingAttachments, setPendingAttachments] = React.useState<PendingAttachment[]>([])
   const [isUploading, setIsUploading] = React.useState(false)
   const [showTextFileDialog, setShowTextFileDialog] = React.useState(false)
+  const [replyTarget, setReplyTarget] = React.useState<ReplyToDto | null>(null)
+  // ジャンプ/ハイライト対象（パーマリンク・検索・引用バークリックで設定される）
+  const [highlightId, setHighlightId] = React.useState<string | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const [focusedMsgIdx, setFocusedMsgIdx] = React.useState(-1)
   const pendingDraftRef = React.useRef('')
@@ -854,16 +976,28 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   }
 
   const { data: currentUser } = useCurrentUser()
-  const { data: messages = [], isLoading, isError } = useChannelMessages(channelId)
+  const { data: messages = [], isLoading, isError, error: messagesError } = useChannelMessages(channelId)
+  // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。
+  // 生のエラーではなく「参加していない」ことを明示する案内を出す。
+  const isAccessDenied = messagesError instanceof ChannelMessagesError && messagesError.status === 403
   const { data: wsMembers = [] } = useWorkspaceMembers()
   const { data: chMemberIds = [] } = useChannelMembers(channelId)
+  const { data: projectChannels = [] } = useProjectChannels()
+  // このチャンネルがプロジェクトチャンネルなら projectId を引く（メンション候補の絞り込み用）
+  const projectId = React.useMemo(
+    () => projectChannels.find(c => c.channelId === channelId)?.projectId ?? null,
+    [projectChannels, channelId],
+  )
+  const { data: projectMembers = [] } = useProjectMembers(projectId)
   const sendMutation = useSendChannelMessage(channelId, currentUser)
   const reactMutation = useToggleMessageReaction(channelId, currentUser)
+  const bookmarkMutation = useToggleBookmark(channelId)
   const editMutation = useEditMessage(channelId)
   const deleteMutation = useDeleteMessage(channelId)
   const markChannelRead = useMarkChannelRead()
   const markChannelReadFn = markChannelRead.mutate
   const lastReadMessageIdRef = React.useRef<string | null>(null)
+  const ensureMessageLoaded = useEnsureMessageLoaded(channelId)
 
   // 表示中チャンネルに新着が届いたら自動で既読化する。
   // 開いて読んでいるのにバッジが増え続ける問題への対処。タブ非表示時は既読にしない
@@ -913,12 +1047,24 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   }, [lightboxImages])
 
   const mentionMembers = React.useMemo(() => {
+    // プライベートチャンネル・DM はチャンネルメンバーのみを候補にする
     if (chMemberIds.length > 0) {
       const idSet = new Set(chMemberIds.map(m => m.userId))
       return wsMembers.filter(m => idSet.has(m.userId) && m.userId !== currentUser?.id)
     }
+    // プロジェクトチャンネルは、そのプロジェクトにアクセスできる人だけを候補にする。
+    // member 以上は全プロジェクトチャンネルにアクセスできるため候補に残し、
+    // guest は参加プロジェクト（project_members）に居る場合のみ候補にする。
+    // これによりアクセスできない人へメンション通知が飛ぶのを未然に防ぐ（サーバー側でも防御）。
+    if (projectId) {
+      const projectMemberIds = new Set(projectMembers.map(m => m.userId))
+      return wsMembers.filter(m =>
+        m.userId !== currentUser?.id &&
+        (m.role !== 'guest' || projectMemberIds.has(m.userId)),
+      )
+    }
     return wsMembers.filter(m => m.userId !== currentUser?.id)
-  }, [chMemberIds, wsMembers, currentUser?.id])
+  }, [chMemberIds, wsMembers, currentUser?.id, projectId, projectMembers])
 
   // userId → 現在の表示名。メンションを描画時に最新名へ解決するため
   // （保存本文は名前なしの `<@userId>` であり、楽観更新メッセージもこのマップで解決する）
@@ -1007,29 +1153,145 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [focusedMsgIdx, messages, currentUser])
 
+  // チャンネル切替時は返信対象・ハイライトをリセットする
   React.useEffect(() => {
-    if (!targetMessageId || isLoading || !scrollRef.current) return
-    const el = scrollRef.current.querySelector<HTMLElement>(`[data-message-id="${targetMessageId}"]`)
+    setReplyTarget(null)
+    setHighlightId(null)
+  }, [channelId])
+
+  // 親（PageChat）からの targetMessageId（パーマリンク・ブックマーク・検索）を内部のハイライト状態へ取り込む。
+  // 直近100件の外にある古いメッセージの場合は、前後ウィンドウを取得してキャッシュへマージする
+  React.useEffect(() => {
+    if (!targetMessageId) return
+    setHighlightId(targetMessageId)
+    void ensureMessageLoaded(targetMessageId)
+  }, [targetMessageId, ensureMessageLoaded])
+
+  // 引用バー（返信先プレビュー）クリックでのジャンプ。targetMessageId 同様、
+  // 直近100件の外にある古い親メッセージの場合は前後ウィンドウを取得してから表示する
+  const jumpToMessage = React.useCallback((messageId: string) => {
+    setHighlightId(messageId)
+    void ensureMessageLoaded(messageId)
+  }, [ensureMessageLoaded])
+
+  React.useEffect(() => {
+    if (!highlightId || isLoading || !scrollRef.current) return
+    const el = scrollRef.current.querySelector<HTMLElement>(`[data-message-id="${highlightId}"]`)
     if (!el) return
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     el.classList.add('message-highlight')
-    const t = setTimeout(() => el.classList.remove('message-highlight'), 2000)
+    const t = setTimeout(() => { el.classList.remove('message-highlight'); setHighlightId(null) }, 2000)
     return () => { clearTimeout(t); el.classList.remove('message-highlight') }
-  }, [targetMessageId, isLoading])
+  }, [highlightId, isLoading, messages.length])
+
+  const handleReply = React.useCallback((messageId: string) => {
+    // 送信中（楽観的更新）のメッセージはまだサーバーに存在しないため返信対象にしない
+    if (messageId.startsWith('optimistic-')) return
+    const m = messages.find(msg => msg.id === messageId)
+    if (!m) return
+    setReplyTarget({ id: m.id, senderName: m.senderName, content: m.content, isDeleted: false })
+  }, [messages])
+
+  const handleBookmark = React.useCallback((messageId: string) => {
+    if (messageId.startsWith('optimistic-')) return
+    bookmarkMutation.mutate(messageId)
+  }, [bookmarkMutation])
+
+  // リアクション・編集・削除のハンドラも安定参照にする。インラインの矢印関数だと毎レンダーで
+  // 関数の同一性が変わり React.memo(ChatMessage) が無効化され、全メッセージが再パースされる
+  const reactMutate = reactMutation.mutate
+  const handleReact = React.useCallback((messageId: string, emoji: string) => {
+    reactMutate({ messageId, emoji })
+  }, [reactMutate])
+
+  const editMutate = editMutation.mutate
+  const handleEdit = React.useCallback((messageId: string, content: string) => {
+    editMutate({ messageId, content })
+  }, [editMutate])
+
+  const deleteMutate = deleteMutation.mutate
+  const handleDelete = React.useCallback((messageId: string) => {
+    deleteMutate(messageId)
+  }, [deleteMutate])
+
+  const handleCopyLink = React.useCallback((messageId: string) => {
+    if (!channelId) return
+    const url = `${window.location.origin}/chats/${channelId}?m=${messageId}`
+    void navigator.clipboard?.writeText(url)
+  }, [channelId])
 
   const uploadFile = async (file: File): Promise<PendingAttachment | null> => {
     if (!channelId) return null
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('channelId', channelId)
-      const res = await fetchWithAuth('/api/attachments/upload', { method: 'POST', body: formData })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({})) as { error?: string }
+      let uploadMimeType = resolveAttachmentMimeType(file.name, file.type)
+      if (!uploadMimeType && GENERIC_MIME_TYPES.has(file.type)) {
+        const head = new Uint8Array(await file.slice(0, 16).arrayBuffer())
+        uploadMimeType = resolveAttachmentMimeType(file.name, file.type, head)
+      }
+      if (!uploadMimeType) {
+        const identifiable = file.name.includes('.') || !GENERIC_MIME_TYPES.has(file.type)
+        setSendError(identifiable
+          ? '対応していないファイル形式です（画像・PDF・Word・Excel・PowerPoint・CSV・テキスト）'
+          : 'ファイル形式が不明です。拡張子をつけて再度アップロードしてください')
+        return null
+      }
+
+      // 1. 署名付きアップロードURLを発行してもらう(メタデータのみ送信)。
+      //    ファイル本体を /api/attachments/upload に直接送ると Vercel の
+      //    4.5MB リクエストボディ上限(FUNCTION_PAYLOAD_TOO_LARGE)に阻まれるため。
+      const urlRes = await fetchWithAuth('/api/attachments/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelId,
+          fileName: file.name,
+          mimeType: uploadMimeType,
+          fileSize: file.size,
+        }),
+      })
+      if (!urlRes.ok) {
+        const data = await urlRes.json().catch(() => ({})) as { error?: string }
         setSendError(data.error ?? 'アップロードに失敗しました')
         return null
       }
-      const data = await res.json() as { fileId: string; fileName: string; mimeType: string | null; fileSize: number | null }
+      const { token, path, storagePath, mimeType } = await urlRes.json() as {
+        token: string; path: string; storagePath: string; mimeType: string
+      }
+
+      // 2. Supabase Storage へクライアントから直接アップロード(Vercel を経由しない)。
+      //    storage-js は Blob/File を渡すと FormData 化し fileOptions.contentType を無視するため、
+      //    Storage はファイル自身の File.type を見る。upload-url が正規化した MIME
+      //    (例: .csv の application/octet-stream → text/csv) を反映させるには
+      //    File.type がバケット許可リストに含まれる正規化後の値になっている必要がある。
+      //    元の File.type が異なる場合は正規化後の type を持つ File でラップして渡す。
+      const uploadBody = file.type === mimeType ? file : new File([file], file.name, { type: mimeType })
+      const supabase = createSupabaseClient()
+      const { error: uploadError } = await supabase.storage
+        .from('chat-attachments')
+        .uploadToSignedUrl(path, token, uploadBody)
+      if (uploadError) {
+        setSendError('アップロードに失敗しました')
+        return null
+      }
+
+      // 3. files レコードを登録し検索インデックスジョブを発火する
+      const finalizeRes = await fetchWithAuth('/api/attachments/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelId,
+          storagePath,
+          fileName: file.name,
+          mimeType: mimeType,
+          fileSize: file.size,
+        }),
+      })
+      if (!finalizeRes.ok) {
+        const data = await finalizeRes.json().catch(() => ({})) as { error?: string }
+        setSendError(data.error ?? 'アップロードに失敗しました')
+        return null
+      }
+      const data = await finalizeRes.json() as { fileId: string; fileName: string; mimeType: string | null; fileSize: number | null }
       const previewUrl = URL.createObjectURL(file)
       return { ...data, previewUrl }
     } catch {
@@ -1088,19 +1350,24 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     })
   }
 
-  const registerGoogleDocsLinks = (text: string) => {
+  // Google Docs URL を検出してファイルタブ・チャンネルファイル一覧に自動登録する。
+  // 完了を待たずにメッセージを送信すると、メッセージ挿入の Realtime broadcast が
+  // リンクの files レコード挿入より先に飛び、他クライアントの channel-files invalidate が
+  // 早すぎて新着リンクを取りこぼすことがあるため、呼び出し側で完了を待つ
+  const registerGoogleDocsLinks = async (text: string): Promise<void> => {
     if (!channelId) return
     const urls = extractGoogleDocsUrls(text)
     if (urls.length === 0) return
-    for (const url of urls) {
-      void fetchWithAuth('/api/external-links', {
+    await Promise.allSettled(urls.map(url =>
+      fetchWithAuth('/api/external-links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, channelId }),
       }).then(() => {
         void queryClient.invalidateQueries({ queryKey: ['project-files'] })
-      }).catch(() => {})
-    }
+        void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
+      }),
+    ))
   }
 
   const send = () => {
@@ -1108,9 +1375,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     if ((!rawText && pendingAttachments.length === 0) || !channelId) return
     const text = transformContent(rawText)
     mentionMapRef.current.clear()
-
-    // Google Docs URL を検出してファイルタブに自動登録
-    if (text) registerGoogleDocsLinks(text)
 
     pendingDraftRef.current = text
     setSendError(null)
@@ -1129,11 +1393,25 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     pendingAttachments.forEach(a => URL.revokeObjectURL(a.previewUrl))
     setPendingAttachments([])
 
-    sendMutation.mutate({
-      content: text,
-      attachmentFileIds: optimisticAttachments.map(a => a.fileId),
-      optimisticAttachments,
-    })
+    const replyTo = replyTarget
+    setReplyTarget(null)
+
+    const postMessage = () => {
+      sendMutation.mutate({
+        content: text,
+        attachmentFileIds: optimisticAttachments.map(a => a.fileId),
+        optimisticAttachments,
+        ...(replyTo ? { parentMessageId: replyTo.id, optimisticReplyTo: replyTo } : {}),
+      })
+    }
+
+    // 入力欄のクリア等は即座に反映しつつ、Google Docs リンクを含む場合のみ
+    // 登録完了を待ってからメッセージを送信する
+    if (text) {
+      void registerGoogleDocsLinks(text).finally(postMessage)
+    } else {
+      postMessage()
+    }
   }
 
   const placeholder: React.ReactNode = channelName ? (
@@ -1170,6 +1448,14 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
+        ) : isAccessDenied ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 24px', textAlign: 'center' }}>
+            <Icon name="lock" size={24} />
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>このチャンネルは表示できません</div>
+            <div style={{ fontSize: 13, color: 'var(--text-3)', maxWidth: 320, lineHeight: 1.6 }}>
+              このプロジェクトに参加していないため、チャットを開けません。閲覧するにはワークスペースの管理者にプロジェクトへの招待を依頼してください。
+            </div>
+          </div>
         ) : isError ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--red-text)', fontSize: 13 }}>メッセージの取得に失敗しました</div>
         ) : messages.length === 0 ? (
@@ -1179,6 +1465,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
             <ChatMessage
               key={m.id}
               messageId={m.id}
+              messageType={m.messageType}
               senderId={m.senderId}
               currentUserId={currentUser?.id}
               senderName={m.senderName}
@@ -1189,10 +1476,16 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               content={m.content}
               reactions={m.reactions}
               attachments={m.attachments}
-              onReact={(messageId, emoji) => reactMutation.mutate({ messageId, emoji })}
-              onEdit={(messageId, content) => editMutation.mutate({ messageId, content })}
-              onDelete={(messageId) => deleteMutation.mutate(messageId)}
+              replyTo={m.replyTo}
+              bookmarked={m.bookmarked}
+              onReact={handleReact}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
               onCheckboxToggle={handleCheckboxToggle}
+              onReply={handleReply}
+              onBookmark={handleBookmark}
+              onJumpToMessage={jumpToMessage}
+              onCopyLink={handleCopyLink}
               onImageClick={openLightbox}
               focused={i === focusedMsgIdx}
               mentionNames={mentionNames}
@@ -1202,6 +1495,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
           ))
         )}
       </div>
+      {!isAccessDenied && (
       <ChatInputBar
         placeholder={placeholder}
         draft={draft}
@@ -1217,10 +1511,15 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
         mentionMembers={mentionMembers}
+        mentionNames={mentionNames}
         onMentionInserted={onMentionInserted}
         onCreateTextFile={() => setShowTextFileDialog(true)}
+        replyTarget={replyTarget}
+        onCancelReply={() => setReplyTarget(null)}
         {...(compact ? { compact: true } : {})}
+        {...(isMobile ? { isMobile: true } : {})}
       />
+      )}
       {lightboxIndex !== null && lightboxImages.length > 0 && (
         <ImageLightbox
           images={lightboxImages}

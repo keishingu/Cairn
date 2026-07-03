@@ -44,7 +44,7 @@ packages/config/   tsconfig / ESLint の共有設定
 
 - **Supabase CLI + Docker** を使う。`supabase start` で PostgreSQL / Auth / Storage / Realtime / Studio が一括起動する
 - 環境変数は `apps/web/.env.local.example` をコピーして使う。`supabase start` のデフォルトキーが事前入力済み
-- DBスキーマは `packages/db/src/schema/` で管理（Drizzle が正）→ `pnpm db:generate` で `supabase/migrations/` にSQLを生成 → `supabase migration up` でローカルに差分適用（データを保持したまま未適用マイグレーションだけ実行）
+- DBスキーマは `packages/db/src/schema/` で管理（Drizzle が正）→ `pnpm db:generate` で `supabase/migrations/` にSQLを生成 → `supabase migration up` でローカルに差分適用（データを保持したまま未適用マイグレーションだけ実行）。新規 migration ファイル名は `packages/db/drizzle.config.ts` の `migrations.prefix = 'timestamp'` で timestamp 方式に統一する
 - **ブランチ切り替え後は `supabase migration up` を実行する**。未適用マイグレーションがあると enum 不一致や Realtime 認可ポリシー欠如などで API が 500・Realtime が接続不能になるが、原因がマイグレーション未適用だと気づきにくい
 - `supabase db reset` はデータを全削除して再構築するため、CI や初回セットアップ専用
 
@@ -114,6 +114,7 @@ pnpm dev
 - 何を変更したかより、なぜ変更したかを優先して書く
 - どのファイルを変更したか、どのように実装したかは繰り返さない（Git の履歴に残るため）
 - 推奨スタイル: `fix: XXXXのため、ZZZZを修正`
+- AIエージェントがコミットする場合は、`Co-Authored-By: <エージェント名> <noreply メールアドレス>` トレーラーを付け、どのAIが対応したかをコミットに残す（例: `Co-Authored-By: Claude <noreply@anthropic.com>`）
 
 
 ## GitHubレビュー指摘への返信
@@ -121,6 +122,7 @@ pnpm dev
 - レビュー指摘へ返信する際は、「妥当な指摘のため、対応しました」のような汎用文だけで済ませない。
 - 指摘が問題になる理由・影響と、どのように修正したかを1文で具体的に書く。
 - 対応 commit がある場合は、commit hash だけでなく「コミットメッセージ + GitHubのcommitリンク」をMarkdownリンクで含める。
+- AIエージェントが返信する場合は、末尾に自分のエージェント名を署名する（例: `— 🤖 Claude (Claude Code)` / `— 🤖 Codex`）。どのAIが対応したか人間が一目で分かるようにする。
 
 
 ## 詳細ドキュメント

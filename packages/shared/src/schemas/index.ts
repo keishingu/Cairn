@@ -25,7 +25,7 @@ export const postMessageSchema = z
   .object({
     channelId: z.string().uuid(),
     content: z.string().max(10000).default(''),
-    messageType: z.enum(['text', 'html', 'system']).default('text'),
+    messageType: z.enum(['text', 'html']).default('text'),
     parentMessageId: z.string().uuid().optional(),
     attachmentFileIds: z.array(z.string().uuid()).max(10).optional(),
   })
@@ -47,6 +47,16 @@ export const createTaskSchema = z.object({
   dueDate: z.string().date().optional(),
 })
 
+export const updateTaskSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  priority: z.enum(['high', 'medium', 'low']).optional(),
+  dueDate: z.string().date().nullable().optional(),
+  status: z.enum(['todo', 'in_progress', 'done']).optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
 export const uploadGalleryItemSchema = z.object({
   projectId: z.string().uuid(),
   fileId: z.string().uuid(),
@@ -61,6 +71,7 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>
 export type UpdateProjectStatusInput = z.infer<typeof updateProjectStatusSchema>
 export type PostMessageInput = z.infer<typeof postMessageSchema>
 export type CreateTaskInput = z.infer<typeof createTaskSchema>
+export type UpdateTaskInput = z.infer<typeof updateTaskSchema>
 export type UploadGalleryItemInput = z.infer<typeof uploadGalleryItemSchema>
 
 export interface AttachmentDto {
