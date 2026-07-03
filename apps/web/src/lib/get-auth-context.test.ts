@@ -32,6 +32,7 @@ vi.mock('@cairn/db', () => ({
   workspaceMembers: {
     userId: 'wm.userId',
     workspaceId: 'wm.workspaceId',
+    role: 'wm.role',
   },
 }))
 
@@ -60,7 +61,7 @@ describe('get-auth-context', () => {
     mockHeaders.mockResolvedValue(new Headers())
     mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
     mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
-    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'member' }]))
 
     const { getAuthContext } = await import('./get-auth-context')
     const result = await getAuthContext()
@@ -68,7 +69,7 @@ describe('get-auth-context', () => {
     expect(mockSupabase.auth.getUser).toHaveBeenCalledWith()
     expect(mockSupabase.auth.getUser).toHaveBeenCalledTimes(1)
     expect(result).toEqual({
-      ctx: { userId: 'user-1', workspaceId: 'ws-1' },
+      ctx: { userId: 'user-1', workspaceId: 'ws-1', workspaceRole: 'member' },
       error: null,
     })
   })
@@ -77,7 +78,7 @@ describe('get-auth-context', () => {
     mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer token-123' }))
     mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
     mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
-    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-2' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-2', role: 'admin' }]))
 
     const { getAuthContext } = await import('./get-auth-context')
     const result = await getAuthContext()
@@ -85,7 +86,7 @@ describe('get-auth-context', () => {
     expect(mockSupabase.auth.getUser).toHaveBeenCalledWith('token-123')
     expect(mockSupabase.auth.getUser).toHaveBeenCalledTimes(1)
     expect(result).toEqual({
-      ctx: { userId: 'user-1', workspaceId: 'ws-2' },
+      ctx: { userId: 'user-1', workspaceId: 'ws-2', workspaceRole: 'admin' },
       error: null,
     })
   })
@@ -99,5 +100,24 @@ describe('get-auth-context', () => {
 
     expect(mockSupabase.auth.getUser).toHaveBeenCalledWith()
     expect(result).toEqual({ userId: 'user-1', error: null })
+  })
+
+  it('同一リクエスト内の workspace role を permissions で再利用できる', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'owner' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const { getWorkspaceRole } = await import('./permissions')
+
+    const auth = await getAuthContext()
+
+    expect(auth).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1', workspaceRole: 'owner' },
+      error: null,
+    })
+    await expect(getWorkspaceRole('ws-1', 'user-1')).resolves.toBe('owner')
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
   })
 })

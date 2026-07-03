@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { headers, cookies } from 'next/headers'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { createClient } from '@/lib/supabase/server'
 import type { User } from '@supabase/supabase-js'
 import { WORKSPACE_COOKIE } from './workspace-cookie'
@@ -13,9 +14,16 @@ export { WORKSPACE_COOKIE } from './workspace-cookie'
 // warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
 const workspaceCache = new Map<string, { workspaceId: string; expiresAt: number }>()
 
+interface RequestAuthCache {
+  workspaceRoles: Map<string, string | null>
+}
+
+const requestAuthCache = new AsyncLocalStorage<RequestAuthCache>()
+
 export interface AuthContext {
   userId: string
   workspaceId: string
+  workspaceRole: 'owner' | 'admin' | 'member' | 'guest'
 }
 
 type AuthResult =
@@ -25,6 +33,26 @@ type AuthResult =
 type UserResult =
   | { userId: string; error: null }
   | { userId: null; error: ReturnType<typeof NextResponse.json> }
+
+function ensureRequestAuthCache() {
+  const store = requestAuthCache.getStore()
+  if (store) return store
+  const nextStore: RequestAuthCache = { workspaceRoles: new Map() }
+  requestAuthCache.enterWith(nextStore)
+  return nextStore
+}
+
+function workspaceRoleCacheKey(workspaceId: string, userId: string) {
+  return `${workspaceId}:${userId}`
+}
+
+export function getCachedWorkspaceRole(workspaceId: string, userId: string): string | null | undefined {
+  return requestAuthCache.getStore()?.workspaceRoles.get(workspaceRoleCacheKey(workspaceId, userId))
+}
+
+export function setCachedWorkspaceRole(workspaceId: string, userId: string, role: string | null) {
+  ensureRequestAuthCache().workspaceRoles.set(workspaceRoleCacheKey(workspaceId, userId), role)
+}
 
 async function getAuthenticatedUser(
   authorization: string | null,
@@ -60,6 +88,7 @@ export async function getAuthUser(): Promise<UserResult> {
 }
 
 export async function getAuthContext(): Promise<AuthResult> {
+  ensureRequestAuthCache()
   const supabase = await createClient()
   const headersList = await headers()
   const authorization = headersList.get('Authorization')
@@ -75,7 +104,18 @@ export async function getAuthContext(): Promise<AuthResult> {
   const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
   const cached = workspaceCache.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) {
-    return { ctx: { userId: user.id, workspaceId: cached.workspaceId }, error: null }
+    const { db } = await import('@cairn/db')
+    const { workspaceMembers } = await import('@cairn/db')
+    const { eq, and } = await import('drizzle-orm')
+    const [member] = await db
+      .select({ workspaceId: workspaceMembers.workspaceId, role: workspaceMembers.role })
+      .from(workspaceMembers)
+      .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, cached.workspaceId)))
+      .limit(1)
+    if (member) {
+      setCachedWorkspaceRole(member.workspaceId, user.id, member.role)
+      return { ctx: { userId: user.id, workspaceId: member.workspaceId, workspaceRole: member.role }, error: null }
+    }
   }
 
   try {
@@ -86,20 +126,21 @@ export async function getAuthContext(): Promise<AuthResult> {
     // クッキーで指定されたワークスペースがあればそちらを優先、ただしメンバーシップを確認
     if (preferredWorkspaceId) {
       const [preferred] = await db
-        .select({ workspaceId: workspaceMembers.workspaceId })
+        .select({ workspaceId: workspaceMembers.workspaceId, role: workspaceMembers.role })
         .from(workspaceMembers)
         .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, preferredWorkspaceId)))
         .limit(1)
 
       if (preferred) {
         workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
-        return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
+        setCachedWorkspaceRole(preferred.workspaceId, user.id, preferred.role)
+        return { ctx: { userId: user.id, workspaceId: preferred.workspaceId, workspaceRole: preferred.role }, error: null }
       }
       // クッキーが無効（退出済み等）→ フォールバック
     }
 
     const [member] = await db
-      .select({ workspaceId: workspaceMembers.workspaceId })
+      .select({ workspaceId: workspaceMembers.workspaceId, role: workspaceMembers.role })
       .from(workspaceMembers)
       .where(eq(workspaceMembers.userId, user.id))
       .limit(1)
@@ -108,8 +149,13 @@ export async function getAuthContext(): Promise<AuthResult> {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
-    workspaceCache.set(user.id, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
-    return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
+    const expiresAt = Date.now() + 5 * 60 * 1000
+    workspaceCache.set(user.id, { workspaceId: member.workspaceId, expiresAt })
+    if (preferredWorkspaceId) {
+      workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt })
+    }
+    setCachedWorkspaceRole(member.workspaceId, user.id, member.role)
+    return { ctx: { userId: user.id, workspaceId: member.workspaceId, workspaceRole: member.role }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)
     return { ctx: null, error: NextResponse.json({ error: 'Internal server error' }, { status: 500 }) }

@@ -4,14 +4,22 @@
 import { NextResponse } from 'next/server'
 import { db, workspaceMembers, channels, channelMembers, projects, projectMembers, messages, messageAttachments } from '@cairn/db'
 import { eq, and, sql } from 'drizzle-orm'
+import { getCachedWorkspaceRole, setCachedWorkspaceRole } from './get-auth-context'
 
-async function getWorkspaceRole(workspaceId: string, userId: string) {
+export async function getWorkspaceRole(workspaceId: string, userId: string) {
+  const cachedRole = getCachedWorkspaceRole(workspaceId, userId)
+  if (cachedRole !== undefined) {
+    return cachedRole
+  }
+
   const [member] = await db
     .select({ role: workspaceMembers.role })
     .from(workspaceMembers)
     .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
     .limit(1)
-  return member?.role ?? null
+  const role = member?.role ?? null
+  setCachedWorkspaceRole(workspaceId, userId, role)
+  return role
 }
 
 export function isWorkspaceOwner(role: string | null): boolean {
