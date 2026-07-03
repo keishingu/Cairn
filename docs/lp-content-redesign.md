@@ -5,7 +5,7 @@
 - **対象**: `apps/web/public/index.html` / `apps/web/public/cairn-lp.css` / `apps/web/public/cairn-lp.js`（静的 LP）
 
 > 実装と矛盾する場合はコードと [`CLAUDE.md`](../CLAUDE.md) を正とする。
-> ルーティング（`/` への公開化・`/lp` 集約）は [`landing-page-routing-design.md`](./landing-page-routing-design.md) を参照。
+> ルーティング（`/` への公開化）は [`landing-page-routing-design.md`](./landing-page-routing-design.md) を参照。
 
 
 ## 1. 背景

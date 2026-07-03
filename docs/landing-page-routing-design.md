@@ -1,6 +1,6 @@
 # ランディングページ導入とルーティング再構成 設計
 
-- **ステータス**: PR1（ルーティング配線 + `/lp` 集約）実装済み
+- **ステータス**: PR1（`/` での LP 直配信）実装済み
 - **作成**: 2026-06-13
 - **対象**: `apps/web`（Next.js 15 App Router）
 
@@ -58,8 +58,8 @@
 
 - 未認証で `/` にアクセス → middleware は通過し、`apps/web/src/app/route.ts` が `public/index.html` を `text/html` として返す
 - 認証済みで `/` にアクセス → `/projects` へリダイレクト
-- `/lp`・`/lp/`・`/lp/index.html`（旧 LP の URL）と `/index.html` へのアクセス → `/` へリダイレクト（公開 LP の URL を `/` に一本化）
-- `/lp/cairn-lp.css`・`/lp/cairn-lp.js`・`/lp/og-image.png` など旧 `/lp/` 配下の静的アセット URL は、直下の `/cairn-lp.css`・`/cairn-lp.js`・`/og-image.png` へリダイレクトする
+- LP の静的アセット（`/cairn-lp.css`・`/cairn-lp.js`・`/og-image.png` など）は未認証でもアクセス可能
+- 旧 `/lp` 配下や `/index.html` の互換リダイレクトは持たない。公開 LP は最初から `/` を正規 URL とする
 - `/robots.txt`・`/sitemap.xml` は公開 SEO ルートとして未認証でもアクセス可能
 
 この方式では、旧 `apps/web/src/app/page.tsx` の `/projects` リダイレクトは削除し、`apps/web/src/app/route.ts` が `/` のレスポンスを担当する。ログイン済みユーザーの `/projects` 誘導は引き続き middleware に集約する。
@@ -93,7 +93,7 @@ LP は単一レイアウト（B 案）。既存の静的 HTML をそのまま配
 
 | 対象 | 影響 | 備考 |
 |---|---|---|
-| `middleware.ts` | 修正 | 認証済み `/` の誘導分岐 + 旧 `/lp` URL のリダイレクト + SEO ルート公開 |
+| `middleware.ts` | 修正 | 認証済み `/` の誘導分岐 + LP 静的アセット / SEO ルート公開 |
 | `app/route.ts` | 追加 | `/` で `public/index.html` を直接配信 |
 | `app/page.tsx` | 削除 | `/` は Route Handler が担当 |
 | `(app)/*` | なし | 認証シェル内は不変 |
@@ -134,5 +134,5 @@ LP は単一レイアウト（B 案）。既存の静的 HTML をそのまま配
 - [x] 未認証ユーザーが `/projects` 等の保護ルートに来たら従来どおり `/auth/login` に飛ぶ
 - [x] ログイン後の `/onboarding` / `/projects` 振り分けが従来どおり動く
 - [x] LP が `(app)` の認証前提コンテキストに依存していない（静的アセットのため無関係）
-- [x] 旧 `/lp/*` URL が `/` にリダイレクトされ、公開 LP が `/` の1つに集約されている
+- [x] 公開 LP が `/` を正規 URL として直接配信されている
 - [x] LP の主要 CTA（旧「Try Demo」）が `/auth/login` に遷移する（`#demo` アンカー止まりでない）

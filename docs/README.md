@@ -25,7 +25,7 @@
 | [`pricing-plan-design.md`](./pricing-plan-design.md) | 料金プラン設計（Free / Solo / Team / Expedition、ケルン消費モデル） | 2026-06-16 |
 | [`billing-implementation-design.md`](./billing-implementation-design.md) | 課金の実装設計（クレジット台帳・ストレージ家賃・風化・Stripe統合） | 2026-06-16 |
 | [`keyboard-shortcuts.md`](./keyboard-shortcuts.md) | キーボードショートカット設計（3層モデル・全画面マッピング・Vim モード。第1段のみ実装済み） | 2026-06-16 |
-| [`landing-page-routing-design.md`](./landing-page-routing-design.md) | ランディングページ導入とルーティング再構成（`/` を公開 LP 化、`/lp` を集約。実装済み） | 2026-06-13 |
+| [`landing-page-routing-design.md`](./landing-page-routing-design.md) | ランディングページ導入とルーティング再構成（`/` を公開 LP 化。実装済み） | 2026-06-13 |
 | [`lp-content-redesign.md`](./lp-content-redesign.md) | LP コンテンツの利用者ファースト化（ペルソナ切替 `?p=`、誠実化、CTA/UTM 規約） | 2026-07-03 |
 
 ## 設計時スナップショット

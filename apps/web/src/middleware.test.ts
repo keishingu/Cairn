@@ -36,68 +36,22 @@ describe('middleware', () => {
     expect(res.headers.get('location')).toContain('/projects')
   })
 
-  it('/lp は / にリダイレクトされる', async () => {
+  it('未認証で旧 LP パスにアクセスすると /auth/login にリダイレクトされる', async () => {
     getUser.mockResolvedValue({ data: { user: null } })
+    const { middleware } = await import('./middleware')
+
+    for (const legacyPath of ['/lp', '/lp/', '/lp/index.html', '/index.html', '/lp/cairn-lp.css']) {
+      const res = await middleware(makeRequest(legacyPath))
+      expect(res.status).toBe(307)
+      expect(res.headers.get('location')).toContain('/auth/login')
+    }
+  })
+
+  it('認証済みで旧 LP パスにアクセスしても / へリダイレクトしない', async () => {
+    getUser.mockResolvedValue({ data: { user: { id: 'u1' } } })
     const { middleware } = await import('./middleware')
     const res = await middleware(makeRequest('/lp'))
-    expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toBe('http://localhost:3000/')
-  })
-
-  it('/lp のクエリ文字列を維持して / にリダイレクトされる', async () => {
-    getUser.mockResolvedValue({ data: { user: null } })
-    const { middleware } = await import('./middleware')
-    const res = await middleware(makeRequest('/lp?p=alpineclub&utm_source=review'))
-    expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toBe('http://localhost:3000/?p=alpineclub&utm_source=review')
-  })
-
-  it('/lp/index.html は / にリダイレクトされる', async () => {
-    getUser.mockResolvedValue({ data: { user: null } })
-    const { middleware } = await import('./middleware')
-    const res = await middleware(makeRequest('/lp/index.html'))
-    expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toBe('http://localhost:3000/')
-  })
-
-  it('/index.html は / にリダイレクトされる', async () => {
-    getUser.mockResolvedValue({ data: { user: null } })
-    const { middleware } = await import('./middleware')
-    const res = await middleware(makeRequest('/index.html'))
-    expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toBe('http://localhost:3000/')
-  })
-
-  it('/index.html のクエリ文字列を維持して / にリダイレクトされる', async () => {
-    getUser.mockResolvedValue({ data: { user: null } })
-    const { middleware } = await import('./middleware')
-    const res = await middleware(makeRequest('/index.html?utm_content=footer'))
-    expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toBe('http://localhost:3000/?utm_content=footer')
-  })
-
-  it('/lp/ 配下の旧静的アセットは直下の URL にリダイレクトされる', async () => {
-    getUser.mockResolvedValue({ data: { user: null } })
-    const { middleware } = await import('./middleware')
-    const res = await middleware(makeRequest('/lp/cairn-lp.css'))
-    expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toBe('http://localhost:3000/cairn-lp.css')
-  })
-
-  it('/lp/ 配下の旧静的アセットのクエリ文字列を維持してリダイレクトされる', async () => {
-    getUser.mockResolvedValue({ data: { user: null } })
-    const { middleware } = await import('./middleware')
-    const res = await middleware(makeRequest('/lp/og-image.png?v=1'))
-    expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toBe('http://localhost:3000/og-image.png?v=1')
-  })
-
-  it('/lp/ 配下の旧静的アセットは同一オリジン内にリダイレクトされる', async () => {
-    getUser.mockResolvedValue({ data: { user: null } })
-    const { middleware } = await import('./middleware')
-    const res = await middleware(makeRequest('/lp//evil.example/x'))
-    expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toBe('http://localhost:3000/evil.example/x')
+    expect(res.headers.get('location')).toBeNull()
   })
 
   it('未認証で直下の LP 静的アセットにアクセスすると middleware は通過する', async () => {
