@@ -162,6 +162,8 @@ export const activeWorkspaceMembers = pgView('active_workspace_members').as((qb)
 - Realtime の SQL 関数（`can_access_channel` 等）も `join active_workspace_members wm ...` に置換し、TS と SQL で「active」の定義を 1 つに一致させる。
 - 将来 active の定義が変わっても（例: `deactivated_at IS NULL` を条件に足す、猶予期間を設ける）、ビュー定義 1 箇所を直すだけで全 read に波及する。
 
+> **追記（[PR #286](https://github.com/keishingu/Cairn/pull/286#discussion_r3517918000) の Codex 指摘を反映）**: Next.js API・Realtime SQL 関数に加えて、**Supabase Storage の RLS ポリシーも同じ穴を抱えている**。`supabase/migrations/0007_fix_chat_attachments_rls.sql` の `chat_attachments_select` / `_insert` / `_delete` はいずれも `FROM workspace_members WHERE user_id = auth.uid()` を直接参照しており、`membership_status` を見ない。非活性化された後も Supabase セッションが有効なままなら、Next.js API を経由せず Storage に直接アクセスして旧ワークスペースの添付ファイルを読み書き・削除できてしまう。Layer A の対象は **TS の読み取り・Realtime SQL 関数・Storage RLS ポリシーの 3 種すべて**とし、これら Storage ポリシーも `active_workspace_members` ビュー参照（もしくは `membership_status = 'active'` 条件の追加）に揃える。
+
 ### Layer B — 認可を読む場所を 1 モジュールに集約（クラス1）
 
 ビューで「絞り忘れ」は塞げるが、`permissions.ts` と `notification-access.ts` が role 解決・到達性判定を別々に再実装しており重複している。`workspace_members` / `project_members` / `channel_members` を**認可目的で読むのはこのモジュールだけ**という不変条件を作る。
@@ -182,6 +184,8 @@ export async function canAccessFile(/* ... */): Promise<boolean>
 - 「active を絞る」表面積が縮む。新規 read path はこの用途に限り必ずこのモジュールを通す、をレビュー規約にする。
 
 **適用対象外**: `/api/workspaces/members`（管理者向けメンバー一覧 API）はこの集約の対象に**含めない**。§6 はこの API が `status` を返し、現役/卒業生（非活性）を分離表示した上で管理者が再活性化できることを要求している。active-only ヘルパーへ寄せると非活性ユーザーが API 境界で消え、再活性化の導線自体が失われる（Codex 指摘、[PR #286](https://github.com/keishingu/Cairn/pull/286#discussion_r3517190959)）。Layer B は「認可判定・候補リストの読み取り」専用とし、管理者向けの inactive-aware な一覧 API は既存のまま `workspace_members` を直接参照する（§6・§9-4 で別途 `status` 対応する）。
+
+**適用対象外（その2）**: 「全読み取りを active view に寄せる」という一律ルールは、§5 の「既存の発言・写真・ファイル・タスクは本人名義のまま表示（履歴は変えない）」と衝突する（Codex 指摘、[PR #286](https://github.com/keishingu/Cairn/pull/286#discussion_r3517975000)）。`apps/web/src/app/api/channels/[channelId]/messages/route.ts` の発言者、`apps/web/src/app/api/files/route.ts` のアップロード者、`apps/web/src/app/api/tasks/route.ts` の担当者アバターなど、**既存コンテンツに紐づく行為者（historical actor）を装飾表示するための join** は `activeWorkspaceMembers` に置き換えてはならない。置き換えると非活性化後に卒業生の表示名・アバターが欠落する。Layer B が active view に寄せるのは「これから権限を判定する・これから宛先候補を絞る」read（authorization / candidate・recipient list）に限定し、既存コンテンツの行為者表示は今までどおり `workspace_members`（または `profiles` 単体）を無条件で参照する。
 
 ### Layer C — 非活性化を「派生までカスケードする状態遷移」に（クラス2の根治）
 
