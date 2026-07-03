@@ -57,11 +57,11 @@
   var state = Object.assign({}, TWEAK_DEFAULTS);
   apply(state);
 
-  /* ── persona variant (?p=club|team, default club) ──────────────── */
-  var persona = 'club';
+  /* ── persona variant (?p=team|alpineclub, default team) ────────── */
+  var persona = 'team';
   try {
     var pParam = new URLSearchParams(location.search).get('p');
-    if (pParam === 'team') persona = 'team';
+    if (pParam === 'alpineclub' || pParam === 'club') persona = 'alpineclub';
   } catch (e) {}
   root.setAttribute('data-persona', persona);
 

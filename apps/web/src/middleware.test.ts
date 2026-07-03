@@ -20,11 +20,12 @@ describe('middleware', () => {
     process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'] = 'dummy'
   })
 
-  it('未認証で / にアクセスすると /lp/index.html に rewrite される', async () => {
+  it('未認証で / にアクセスすると middleware は通過する', async () => {
     getUser.mockResolvedValue({ data: { user: null } })
     const { middleware } = await import('./middleware')
     const res = await middleware(makeRequest('/'))
-    expect(res.headers.get('x-middleware-rewrite')).toContain('/lp/index.html')
+    expect(res.headers.get('x-middleware-rewrite')).toBeNull()
+    expect(res.headers.get('location')).toBeNull()
   })
 
   it('認証済みで / にアクセスすると /projects にリダイレクトされる', async () => {
@@ -47,6 +48,14 @@ describe('middleware', () => {
     getUser.mockResolvedValue({ data: { user: null } })
     const { middleware } = await import('./middleware')
     const res = await middleware(makeRequest('/lp/index.html'))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toBe('http://localhost:3000/')
+  })
+
+  it('/index.html は / にリダイレクトされる', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+    const { middleware } = await import('./middleware')
+    const res = await middleware(makeRequest('/index.html'))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toBe('http://localhost:3000/')
   })

@@ -2,7 +2,7 @@
 
 - **ステータス**: 実装済み
 - **作成**: 2026-07-03
-- **対象**: `apps/web/public/lp/`（静的 LP）
+- **対象**: `apps/web/public/index.html` と `apps/web/public/lp/`（静的 LP）
 
 > 実装と矛盾する場合はコードと [`CLAUDE.md`](../CLAUDE.md) を正とする。
 > ルーティング（`/` への公開化・`/lp` 集約）は [`landing-page-routing-design.md`](./landing-page-routing-design.md) を参照。
@@ -17,16 +17,16 @@
 
 ## 2. ターゲット（二段構え）
 
-- **主役**: 現場のあるチーム（山岳部・サークル・地域団体）。Cairn の出自（山岳部の山行計画）を強みとして前面に出す
-- **サブ**: 汎用の小さなチーム（イベント運営・制作進行）
+- **主役**: 汎用の小さなチーム（イベント運営・制作進行）
+- **サブ**: 現場のあるチーム（山岳部・サークル・地域団体）。Cairn の出自（山岳部の山行計画）を必要に応じて見せる
 
 ### ペルソナ切替パラメータ
 
-言語切替（`data-lang` / `data-i`）と同じ CSS 方式で、**`?p=club|team`** による文言切替を実装した。
+言語切替（`data-lang` / `data-i`）と同じ CSS 方式で、**`?p=team|alpineclub`** による文言切替を実装した。
 
-- ルート要素に `data-persona` 属性（デフォルト `club`）、可変文言に `data-p="club|team"` を付与
-- 切替箇所: ヒーローのリード文・Problem 導入文・Gallery カード・Everywhere / Guests セクションの説明文
-- PR #282 の LP コピー PDCA で、ペルソナ別 CVR を比較する A/B の受け皿になる（例: 広告のリンク先を `?p=team` にする）
+- ルート要素に `data-persona` 属性（デフォルト `team`）、可変文言に `data-p="team|alpineclub"` を付与
+- 切替箇所: ヒーローのリード文・ヒーロー内の製品サンプル・Problem 導入文・Gallery カード・Everywhere / Guests セクションの説明文
+- PR #282 の LP コピー PDCA で、ペルソナ別 CVR を比較する A/B の受け皿になる。山岳部向けは `?p=alpineclub` で表示する（旧 `?p=club` も後方互換として受け付ける）
 
 
 ## 3. 機能訴求の根拠（マージ済み PR → LP コピー）
@@ -55,12 +55,13 @@ PR #282 の原則「実装と乖離した約束の禁止」に基づく修正:
 ## 5. CTA とパラメータ規約（#282 の PDCA 下地）
 
 - 主要 CTA ラベルは「クラウド版を試す」→「**無料で始める / Start for free**」に変更（[`landing-page-routing-design.md`](./landing-page-routing-design.md) §3.4 の決定を上書き。Free プランの存在を訴求する方が非技術者に刺さるため）
-- すべての `/auth/login` CTA に `data-cta` 属性と `?utm_source=lp&utm_content=<cta-id>` を付与: `nav` / `hero` / `final` / `footer-icon` / `footer-product` / `footer-community`
+- `/auth/login` CTA に `data-cta` 属性と `?utm_source=lp&utm_content=<cta-id>` を付与: `nav` / `hero` / `final` / `footer-product`
+- フッターの Cairn アイコンと Community の `Cairn Cloud` は、要望受付ワークスペースの招待リンクへ接続する
 - 計測（PostHog 集約イベント）は**後回し**と決定。導入時はこの `data-cta` / UTM をそのままイベントプロパティに使う
 
 
 ## 6. 今後
 
 - LP コピーの PDCA 運用（実験カード issue・`marketing.policy.yaml`）は PR #282 のスコープ
-- OGP 画像・sitemap は未整備（別タスク）
+- OGP 画像・canonical・robots・sitemap は整備済み。ペルソナ別 OGP が必要になった場合は、静的 HTML ではなくリクエストパラメータに応じて `<head>` を出し分ける構成を検討する
 - BYO AI・Docker セルフホストが実装されたら LP の該当記述を復帰・昇格させる

@@ -94,9 +94,9 @@
 [data-lang="ja"] [data-i="en"] { display: none !important; }
 [data-lang="en"] [data-i="ja"] { display: none !important; }
 
-/* persona — show only the active audience variant (?p=club|team, default club) */
-[data-persona="club"] [data-p="team"] { display: none !important; }
-[data-persona="team"] [data-p="club"] { display: none !important; }
+/* persona — show only the active audience variant (?p=team|alpineclub, default team) */
+[data-persona="team"] [data-p="alpineclub"],
+[data-persona="alpineclub"] [data-p="team"] { display: none !important; }
 
 /* nav language switch */
 .lang-switch { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--hair); border-radius: 9px; background: color-mix(in srgb, var(--ink) 4%, transparent); }
