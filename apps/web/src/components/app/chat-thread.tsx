@@ -36,6 +36,7 @@ import { useProjectMembers } from '@/hooks/use-project-members'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
@@ -1217,16 +1218,56 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const uploadFile = async (file: File): Promise<PendingAttachment | null> => {
     if (!channelId) return null
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('channelId', channelId)
-      const res = await fetchWithAuth('/api/attachments/upload', { method: 'POST', body: formData })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({})) as { error?: string }
+      // 1. 署名付きアップロードURLを発行してもらう(メタデータのみ送信)。
+      //    ファイル本体を /api/attachments/upload に直接送ると Vercel の
+      //    4.5MB リクエストボディ上限(FUNCTION_PAYLOAD_TOO_LARGE)に阻まれるため。
+      const urlRes = await fetchWithAuth('/api/attachments/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelId,
+          fileName: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+        }),
+      })
+      if (!urlRes.ok) {
+        const data = await urlRes.json().catch(() => ({})) as { error?: string }
         setSendError(data.error ?? 'アップロードに失敗しました')
         return null
       }
-      const data = await res.json() as { fileId: string; fileName: string; mimeType: string | null; fileSize: number | null }
+      const { token, path, storagePath, mimeType } = await urlRes.json() as {
+        token: string; path: string; storagePath: string; mimeType: string
+      }
+
+      // 2. Supabase Storage へクライアントから直接アップロード(Vercel を経由しない)
+      const supabase = createSupabaseClient()
+      const { error: uploadError } = await supabase.storage
+        .from('chat-attachments')
+        .uploadToSignedUrl(path, token, file, { contentType: mimeType })
+      if (uploadError) {
+        setSendError('アップロードに失敗しました')
+        return null
+      }
+
+      // 3. files レコードを登録し検索インデックスジョブを発火する
+      const finalizeRes = await fetchWithAuth('/api/attachments/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelId,
+          storagePath,
+          fileName: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+        }),
+      })
+      if (!finalizeRes.ok) {
+        const data = await finalizeRes.json().catch(() => ({})) as { error?: string }
+        setSendError(data.error ?? 'アップロードに失敗しました')
+        return null
+      }
+      const data = await finalizeRes.json() as { fileId: string; fileName: string; mimeType: string | null; fileSize: number | null }
       const previewUrl = URL.createObjectURL(file)
       return { ...data, previewUrl }
     } catch {
