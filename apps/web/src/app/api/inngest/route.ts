@@ -4,6 +4,7 @@
 import { serve } from 'inngest/next'
 import { inngest } from '@/lib/inngest/client'
 import {
+  backfillThumbnails,
   deleteStorageObjects,
   indexFileChunks,
   compressUploadedPdf,
@@ -23,6 +24,7 @@ function resolveServeHost(): string | undefined {
 }
 
 const fns = [
+  backfillThumbnails,
   deleteStorageObjects,
   indexFileChunks,
   compressUploadedPdf,
