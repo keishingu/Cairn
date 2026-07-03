@@ -1,10 +1,11 @@
 'use client'
 
 import React from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { PlacePhoto } from '@/app/api/places/photos/route'
+import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { LocationInput } from '../location-input'
 
@@ -17,6 +18,7 @@ async function createProject(body: {
   location?: string | undefined
   placeId?: string | undefined
   placePhotoName?: string | undefined
+  memberUserIds?: string[] | undefined
 }): Promise<ProjectDto> {
   const res = await fetchWithAuth('/api/projects', {
     method: 'POST',
@@ -31,6 +33,12 @@ async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
   const res = await fetchWithAuth(`/api/places/photos?placeId=${encodeURIComponent(placeId)}`)
   if (!res.ok) return []
   return res.json() as Promise<PlacePhoto[]>
+}
+
+async function fetchWorkspaceMembers(): Promise<WorkspaceMemberDto[]> {
+  const res = await fetchWithAuth('/api/workspaces/members')
+  if (!res.ok) throw new Error('fetch failed')
+  return res.json() as Promise<WorkspaceMemberDto[]>
 }
 
 const inputStyle: React.CSSProperties = {
@@ -54,6 +62,7 @@ interface CreateProjectSheetProps {
 
 export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
+  const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members'], queryFn: fetchWorkspaceMembers })
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
@@ -63,6 +72,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
   const [placeId, setPlaceId] = React.useState('')
   const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])
   const [selectedPhotoName, setSelectedPhotoName] = React.useState<string | null>(null)
+  const [memberUserIds, setMemberUserIds] = React.useState<string[]>([])
   const [photosLoading, setPhotosLoading] = React.useState(false)
   const [titleError, setTitleError] = React.useState('')
   const [endDateError, setEndDateError] = React.useState('')
@@ -108,6 +118,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
       location: location.trim() || undefined,
       placeId: placeId || undefined,
       placePhotoName: selectedPhotoName ?? undefined,
+      memberUserIds: memberUserIds.length > 0 ? memberUserIds : undefined,
     })
   }
 
@@ -308,6 +319,61 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
                 })()}
               </>
             )}
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>メンバー</label>
+              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{memberUserIds.length > 0 ? `${memberUserIds.length}人選択` : '任意'}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflow: 'auto' }}>
+              {workspaceMembers.map(member => {
+                const selected = memberUserIds.includes(member.userId)
+                return (
+                  <button
+                    key={member.userId}
+                    type="button"
+                    onClick={() => setMemberUserIds(current => selected ? current.filter(id => id !== member.userId) : [...current, member.userId])}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 10,
+                      border: `1.5px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                      background: selected ? 'var(--accent-soft)' : 'var(--card-2)',
+                      color: selected ? 'var(--accent-text)' : 'var(--text)',
+                      textAlign: 'left',
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: '50%',
+                      border: `2px solid ${selected ? 'var(--accent)' : 'var(--border-2)'}`,
+                      background: selected ? 'var(--accent)' : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>
+                      {selected && <Icon name="check" size={9} color="var(--on-accent)"/>}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {member.displayName}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 1 }}>
+                        {member.email ?? 'メール未設定'}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           {/* Dates */}
