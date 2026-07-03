@@ -58,9 +58,10 @@ const inputErrorStyle: React.CSSProperties = {
 interface CreateProjectSheetProps {
   onClose: () => void
   onCreated: (project: ProjectDto) => void
+  requireStatus?: boolean
 }
 
-export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetProps) {
+export function CreateProjectSheet({ onClose, onCreated, requireStatus = false }: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
   const {
     data: statuses = [],
@@ -115,7 +116,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
       setEndDateError('')
     }
     const initialStatusId = statuses[0]?.id
-    if (!initialStatusId) {
+    if (requireStatus && !initialStatusId) {
       setTitleError('ステータスの読み込み後に作成してください')
       hasError = true
     }
@@ -384,14 +385,14 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
           </button>
           <button
             onClick={handleSubmit}
-            disabled={mutation.isPending || statusesLoading || statusesError}
+            disabled={mutation.isPending || (requireStatus && (statusesLoading || statusesError))}
             style={{
               flex: 2, height: 46, borderRadius: 12,
               border: 'none',
-              background: mutation.isPending || statusesLoading || statusesError ? 'var(--card-2)' : 'var(--accent)',
-              color: mutation.isPending || statusesLoading || statusesError ? 'var(--text-4)' : 'var(--on-accent)',
+              background: mutation.isPending || (requireStatus && (statusesLoading || statusesError)) ? 'var(--card-2)' : 'var(--accent)',
+              color: mutation.isPending || (requireStatus && (statusesLoading || statusesError)) ? 'var(--text-4)' : 'var(--on-accent)',
               fontSize: 15, fontWeight: 700,
-              cursor: mutation.isPending || statusesLoading || statusesError ? 'not-allowed' : 'pointer',
+              cursor: mutation.isPending || (requireStatus && (statusesLoading || statusesError)) ? 'not-allowed' : 'pointer',
               fontFamily: 'inherit', transition: 'background 0.15s',
             }}
           >

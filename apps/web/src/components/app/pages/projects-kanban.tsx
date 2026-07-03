@@ -88,6 +88,7 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
           <CreateProjectSheet
             onClose={() => setShowCreate(false)}
             onCreated={handleMobileCreated}
+            requireStatus
           />
         )}
         <MobileHeader title="カンバン" />
