@@ -46,4 +46,20 @@ describe('TaskEditDialog', () => {
     expect(screen.getByRole('heading', { name: 'タスクを編集' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'タスクを削除しますか？' })).toBeNull()
   })
+
+  it('削除確認では task title の Markdown 記法をそのまま見せない', () => {
+    const client = new QueryClient()
+    render(
+      <QueryClientProvider client={client}>
+        <TaskEditDialog
+          open
+          task={{ ...task, title: 'Kei - **レビュー対応** を `確認`' }}
+          initialMode="delete"
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText('「Kei - レビュー対応 を 確認」を削除します。この操作は元に戻せません。')).toBeInTheDocument()
+  })
 })
