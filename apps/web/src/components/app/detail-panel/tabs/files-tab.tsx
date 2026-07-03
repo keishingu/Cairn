@@ -8,6 +8,7 @@ import { Icon } from '../../primitives'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
+import { formatFileSize } from '@/lib/format'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useProjectFiles } from '@/hooks/use-project-files'
 
@@ -46,12 +47,6 @@ function IndexingBadge({ status }: { status: string | undefined }) {
   return null
 }
 
-function formatFileSize(bytes: number | null): string {
-  if (!bytes) return ''
-  if (bytes < 1024) return `${bytes}B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
-}
 
 function formatDate(iso: string): string {
   const d = new Date(iso)

@@ -2,7 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { requireWorkspaceAdmin, requireWorkspaceMember } from '@/lib/permissions'
+
+const patchProjectSchema = z.object({
+  title: z.string().min(1).max(100).optional(),
+  description: z.string().max(1000).nullable().optional(),
+  startDate: z.string().date().nullable().optional(),
+  endDate: z.string().date().nullable().optional(),
+  statusName: z.string().max(100).optional(),
+  archived: z.boolean().optional(),
+  coverPhotoUrl: z.string().url().max(2048).nullable().optional(),
+  placePhotoName: z.string().max(500).regex(/^[A-Za-z0-9/._-]+$/).optional(),
+  location: z.string().max(500).nullable().optional(),
+  placeId: z.string().max(500).nullable().optional(),
+})
 
 export async function DELETE(
   _req: Request,
@@ -81,28 +95,19 @@ export async function PATCH(
 ) {
   const { id } = await params
 
-  let body: unknown
+  let rawBody: unknown
   try {
-    body = await req.json()
+    rawBody = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  type PatchBody = {
-    title?: string
-    description?: string | null
-    startDate?: string | null
-    endDate?: string | null
-    statusName?: string
-    archived?: boolean
-    coverPhotoUrl?: string | null
-    placePhotoName?: string
-    location?: string | null
-    placeId?: string | null
+  const parsedBody = patchProjectSchema.safeParse(rawBody)
+  if (!parsedBody.success) {
+    return NextResponse.json({ error: parsedBody.error.flatten() }, { status: 422 })
   }
-  const b = body as PatchBody
-  const keys = Object.keys(b as object)
-  if (keys.length === 0) {
+  const b = parsedBody.data
+  if (Object.keys(b).length === 0) {
     return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
   }
 
@@ -180,13 +185,13 @@ export async function PATCH(
     } = { updatedAt: new Date() }
 
     if (b.title !== undefined) set.title = b.title
-    if ('description' in (b as object)) set.description = b.description ?? null
-    if ('startDate' in (b as object)) set.startDate = b.startDate ?? null
-    if ('endDate' in (b as object)) set.endDate = b.endDate ?? null
+    if ('description' in b) set.description = b.description ?? null
+    if ('startDate' in b) set.startDate = b.startDate ?? null
+    if ('endDate' in b) set.endDate = b.endDate ?? null
     if (b.archived !== undefined) set.archived = b.archived
     if (resolvedCoverPhotoUrl !== undefined) set.coverPhotoUrl = resolvedCoverPhotoUrl
-    if ('location' in (b as object)) set.location = b.location ?? null
-    if ('placeId' in (b as object)) set.placeId = b.placeId ?? null
+    if ('location' in b) set.location = b.location ?? null
+    if ('placeId' in b) set.placeId = b.placeId ?? null
 
     if (b.statusName !== undefined) {
       const [status] = await db
@@ -217,19 +222,15 @@ export async function PATCH(
     // プロジェクトのステータス・日程・概要・名称の変更をプロジェクトチャンネルに system メッセージで通知する。
     // チーム共通の重要情報（決定事項）をチャットに残すための仕組み。失敗しても PATCH 自体は成功させる
     try {
-      const datesChanged = 'startDate' in (b as object) || 'endDate' in (b as object)
+      const datesChanged = 'startDate' in b || 'endDate' in b
       const changes: string[] = []
       if (b.statusName !== undefined) changes.push(`ステータスを「${b.statusName}」に変更しました`)
       if (datesChanged) {
-        const [p] = await db
-          .select({ startDate: projects.startDate, endDate: projects.endDate })
-          .from(projects)
-          .where(eq(projects.id, id))
-        const s = p?.startDate ?? '未設定'
-        const e = p?.endDate ?? '未設定'
+        const s = set.startDate ?? '未設定'
+        const e = set.endDate ?? '未設定'
         changes.push(`期間を ${s} 〜 ${e} に変更しました`)
       }
-      if ('description' in (b as object)) changes.push('概要を更新しました')
+      if ('description' in b) changes.push('概要を更新しました')
       if (b.title !== undefined) changes.push(`プロジェクト名を「${b.title}」に変更しました`)
 
       if (changes.length > 0) {

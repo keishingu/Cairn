@@ -2,8 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceOwner } from '@/lib/permissions'
+
+const patchWorkspaceSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().max(1000).nullable().optional(),
+  logoUrl: z.string().url().max(2048).nullable().optional(),
+}).refine(
+  d => d.name !== undefined || 'description' in d || 'logoUrl' in d,
+  { message: 'At least one field is required' },
+)
 
 export interface WorkspaceDto {
   id: string
@@ -45,24 +55,18 @@ export async function PATCH(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  let body: unknown
+  let rawBody: unknown
   try {
-    body = await req.json()
+    rawBody = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const b = body as { name?: string; description?: string | null; logoUrl?: string | null }
-  const hasName = b.name !== undefined
-  const hasDescription = 'description' in (b as object)
-  const hasLogo = 'logoUrl' in (b as object)
-
-  if (!hasName && !hasDescription && !hasLogo) {
-    return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
+  const parsed = patchWorkspaceSchema.safeParse(rawBody)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
-  if (hasName && !b.name?.trim()) {
-    return NextResponse.json({ error: 'ワークスペース名は必須です' }, { status: 422 })
-  }
+  const b = parsed.data
 
   const forbidden = await requireWorkspaceOwner(ctx.workspaceId, ctx.userId)
   if (forbidden) return forbidden
@@ -72,9 +76,9 @@ export async function PATCH(req: Request) {
     const { eq } = await import('drizzle-orm')
 
     const set: { name?: string; description?: string | null; logoUrl?: string | null; updatedAt: Date } = { updatedAt: new Date() }
-    if (hasName) set.name = b.name!.trim()
-    if (hasDescription) set.description = b.description ?? null
-    if (hasLogo) set.logoUrl = b.logoUrl ?? null
+    if (b.name !== undefined) set.name = b.name.trim()
+    if ('description' in b) set.description = b.description ?? null
+    if ('logoUrl' in b) set.logoUrl = b.logoUrl ?? null
 
     const [updated] = await db
       .update(workspaces)

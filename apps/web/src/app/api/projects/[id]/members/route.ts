@@ -86,32 +86,27 @@ export async function POST(
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  let body: unknown
+  let rawBody: unknown
   try {
-    body = await req.json()
+    rawBody = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { userId, userIds, role = 'member' } = body as { userId?: string; userIds?: string[]; role?: string }
-  if (userIds !== undefined && !Array.isArray(userIds)) {
-    return NextResponse.json({ error: 'userIds must be an array' }, { status: 422 })
-  }
-  if (userIds?.some(candidate => typeof candidate !== 'string' || candidate.length === 0)) {
-    return NextResponse.json({ error: 'userIds must contain only non-empty strings' }, { status: 422 })
-  }
-  const normalizedUserIds = [...new Set((userIds ?? (userId ? [userId] : [])).filter(Boolean))]
-  if (normalizedUserIds.length === 0) {
-    return NextResponse.json({ error: 'userId or userIds is required' }, { status: 422 })
-  }
-  if (normalizedUserIds.some(candidate => !z.string().uuid().safeParse(candidate).success)) {
-    return NextResponse.json({ error: 'userId and userIds must be UUIDs' }, { status: 422 })
-  }
+  const addMemberSchema = z.object({
+    userId: z.string().uuid().optional(),
+    userIds: z.array(z.string().uuid()).max(50).optional(),
+    role: z.enum(['leader', 'subleader', 'member', 'reviewer', 'observer']).default('member'),
+  }).refine(d => d.userId !== undefined || (d.userIds?.length ?? 0) > 0, {
+    message: 'userId or userIds is required',
+  })
 
-  const validRoles = ['leader', 'subleader', 'member', 'reviewer', 'observer']
-  if (!validRoles.includes(role)) {
-    return NextResponse.json({ error: 'Invalid role' }, { status: 422 })
+  const parsed = addMemberSchema.safeParse(rawBody)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
+  const { userId, userIds, role } = parsed.data
+  const normalizedUserIds = [...new Set((userIds ?? (userId ? [userId] : [])).filter(Boolean))]
 
   try {
     const admin = createServiceRoleClient()

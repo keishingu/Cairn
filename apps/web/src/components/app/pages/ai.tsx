@@ -244,7 +244,7 @@ function ChatView({
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{m.content}</div>
-                <MessageSources annotations={m.annotations as unknown[]} toolInvocations={m.toolInvocations}/>
+                <MessageSources annotations={m.annotations} toolInvocations={m.toolInvocations}/>
                 <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
                   <button
                     className="btn btn-ghost"
@@ -304,7 +304,7 @@ function ChatView({
                 onChange={handleInputChange}
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={() => setIsComposing(false)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isImeConfirmingEnter(e, isComposing)) { e.preventDefault(); handleSubmit(e as unknown as React.FormEvent) } }}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isImeConfirmingEnter(e, isComposing)) { e.preventDefault(); handleSubmit() } }}
                 placeholder={isMobile ? 'AIに質問する…' : '質問を入力 (Shift+Enterで改行)'}
                 rows={1}
                 disabled={isLoading}

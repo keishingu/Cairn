@@ -10,6 +10,7 @@ import { useChannelFiles } from '@/hooks/use-channel-files'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
 import type { ChannelFileDto } from '@/app/api/channels/[channelId]/files/route'
+import { formatFileSize } from '@/lib/format'
 
 export interface ChatDetailMember {
   /** ワークスペースメンバーの userId（プロフィールを開けるときのみ。全体チャンネルでは未取得） */
@@ -59,12 +60,6 @@ function formatDateRange(start: string | null, end: string | null): string | nul
   return `〜 ${formatDate(end!)}`
 }
 
-function formatFileSize(bytes: number | null): string {
-  if (!bytes) return ''
-  if (bytes < 1024) return `${bytes}B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
-}
 
 function formatFileTimestamp(iso: string): string {
   const d = new Date(iso)

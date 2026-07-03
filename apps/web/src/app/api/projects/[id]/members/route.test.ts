@@ -190,7 +190,8 @@ describe('POST /api/projects/[id]/members', () => {
     )
 
     expect(res.status).toBe(422)
-    expect(await res.json()).toEqual({ error: 'userIds must be an array' })
+    const body = await res.json() as { error: { fieldErrors: Record<string, string[]> } }
+    expect(body.error.fieldErrors['userIds']).toBeDefined()
     expect(mockDb.select).not.toHaveBeenCalled()
     expect(mockDb.insert).not.toHaveBeenCalled()
   })
@@ -207,7 +208,8 @@ describe('POST /api/projects/[id]/members', () => {
     )
 
     expect(res.status).toBe(422)
-    expect(await res.json()).toEqual({ error: 'userIds must contain only non-empty strings' })
+    const body = await res.json() as { error: { fieldErrors: Record<string, string[]> } }
+    expect(body.error.fieldErrors['userIds']).toBeDefined()
     expect(mockDb.select).not.toHaveBeenCalled()
     expect(mockDb.insert).not.toHaveBeenCalled()
   })
@@ -224,7 +226,8 @@ describe('POST /api/projects/[id]/members', () => {
     )
 
     expect(res.status).toBe(422)
-    expect(await res.json()).toEqual({ error: 'userId and userIds must be UUIDs' })
+    const body = await res.json() as { error: { fieldErrors: Record<string, string[]> } }
+    expect(body.error.fieldErrors['userIds']).toBeDefined()
     expect(mockDb.select).not.toHaveBeenCalled()
     expect(mockDb.insert).not.toHaveBeenCalled()
   })
