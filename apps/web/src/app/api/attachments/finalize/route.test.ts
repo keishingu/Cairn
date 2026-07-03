@@ -61,7 +61,9 @@ function storagePathFor(name: string): string {
 
 describe('/api/attachments/finalize のアクセス制御', () => {
   beforeEach(() => {
-    mockInsertValues.mockReset()
+    mockInsertValues.mockImplementation((v: Record<string, unknown>) => ({
+      returning: vi.fn().mockResolvedValue([{ id: 'file-1', ...v }]),
+    }))
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
       error: null,
