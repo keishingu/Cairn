@@ -21,29 +21,45 @@ const JPEG_QUALITY = 80
 // 概ね200x200相当未満はアイコン・ロゴ等の非写真画像とみなし対象外にする
 const MIN_PIXELS = 40_000
 
+// 概ね8000x5000相当を超える場合、宣言サイズ詐称によるサーバーレスワーカーの
+// OOMを避けるため対象外にする（インフレート前にWidth/Heightの申告値だけで判定できる）
+const MAX_PIXELS = 40_000_000
+
 // 差し替えエンジンを容易に切り替えられるよう、入出力を Buffer のみに閉じたシグネチャにする。
 // 実装の詳細（pdf-lib + sharp）は呼び出し側から一切見えない。
 // 対象画像が無い場合や、再圧縮しても縮まらない場合は元の buffer をそのまま返す。
 export async function compressPdfImages(buffer: Buffer): Promise<Buffer> {
   const pdfDoc = await PDFDocument.load(buffer, { updateMetadata: false })
 
-  let modified = false
+  // 同じ画像オブジェクトが複数ページ・複数リソース名から参照されることがあるため、
+  // 差し替え要否は参照(ref)ごとに一度だけ判定し、参照している箇所を全て書き換えてから
+  // 元のオブジェクトを削除する。参照箇所を一部だけ書き換えて即座に削除すると、
+  // 残りの箇所が存在しないオブジェクトを指したまま（参照切れ）になってしまう
+  const locationsByRef = new Map<PDFRef, { dict: PDFDict; name: PDFName }[]>()
+
   for (const page of pdfDoc.getPages()) {
     const xobjects = page.node.Resources()?.lookupMaybe(PDFName.of('XObject'), PDFDict)
     if (!xobjects) continue
 
     for (const [name, ref] of xobjects.entries()) {
-      const stream = pdfDoc.context.lookupMaybe(ref, PDFStream)
-      if (!(stream instanceof PDFRawStream)) continue
-      const replaced = await recompressIfPhoto(pdfDoc, stream)
-      if (replaced) {
-        xobjects.set(name, replaced)
-        // 差し替え後も古い画像オブジェクトが参照されないまま残ると save() でそのまま
-        // 書き出されてしまい、圧縮したのにファイルサイズが増える結果になるため明示的に消す
-        if (ref instanceof PDFRef) pdfDoc.context.delete(ref)
-        modified = true
-      }
+      if (!(ref instanceof PDFRef)) continue
+      const locations = locationsByRef.get(ref) ?? []
+      locations.push({ dict: xobjects, name })
+      locationsByRef.set(ref, locations)
     }
+  }
+
+  let modified = false
+  for (const [ref, locations] of locationsByRef) {
+    const stream = pdfDoc.context.lookupMaybe(ref, PDFStream)
+    if (!(stream instanceof PDFRawStream)) continue
+
+    const replaced = await recompressIfPhoto(pdfDoc, stream)
+    if (!replaced) continue
+
+    for (const { dict, name } of locations) dict.set(name, replaced)
+    pdfDoc.context.delete(ref)
+    modified = true
   }
 
   if (!modified) return buffer
@@ -69,16 +85,32 @@ async function recompressIfPhoto(doc: PDFDocument, stream: PDFRawStream): Promis
   const filter = dict.get(PDFName.of('Filter'))
   if (filter && filter !== PDFName.of('FlateDecode')) return null
 
+  // DecodeParmsにPredictor(PNG/TIFFの予測符号化)が指定されている場合、
+  // インフレート後のバイト列はまだ生のピクセル値ではなくスキャンライン単位で
+  // 予測符号化されたままなので、rawピクセルとして扱うと壊れた画像になる。
+  // 復号ロジックは未対応のため対象外にする
+  const decodeParms = doc.context.lookupMaybe(dict.get(PDFName.of('DecodeParms')), PDFDict)
+  const predictor = decodeParms?.lookupMaybe(PDFName.of('Predictor'), PDFNumber)?.asNumber()
+  if (predictor && predictor !== 1) return null
+
+  // 非デフォルトの/Decodeはサンプル値の再マッピング（階調反転等）を意味し、単純にJPEG化すると
+  // 見た目が変わってしまう。判定コストに見合わないため、指定があれば一律で対象外にする
+  if (dict.get(PDFName.of('Decode'))) return null
+
   const bpc = dict.lookupMaybe(PDFName.of('BitsPerComponent'), PDFNumber)?.asNumber()
   if (bpc !== 8) return null
 
   const width = dict.lookupMaybe(PDFName.of('Width'), PDFNumber)?.asNumber()
   const height = dict.lookupMaybe(PDFName.of('Height'), PDFNumber)?.asNumber()
-  if (!width || !height || width * height < MIN_PIXELS) return null
+  if (!width || !height) return null
+
+  const pixels = width * height
+  if (pixels < MIN_PIXELS || pixels > MAX_PIXELS) return null
 
   const channels = resolveChannels(dict, doc.context)
   if (!channels) return null
 
+  // ここまでの時点で申告サイズは上限内と確認済みなので、ここで初めてインフレートする
   const decoded = decodePDFRawStream(stream).decode()
   const pixelBytes = width * height * channels
   if (decoded.byteLength < pixelBytes) return null
