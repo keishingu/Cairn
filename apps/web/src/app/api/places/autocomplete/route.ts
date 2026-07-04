@@ -23,6 +23,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const input = searchParams.get('input')?.trim()
   if (!input || input.length < 2) return NextResponse.json([])
+  if (input.length > 200) return NextResponse.json([])
 
   let res: Response
   try {

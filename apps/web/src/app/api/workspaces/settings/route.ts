@@ -2,11 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceOwner } from '@/lib/permissions'
 import type { WorkspaceSettings } from '@cairn/db'
 
 export type { WorkspaceSettings as WorkspaceSettingsDto }
+
+const coverPhotoSchema = z.object({
+  id: z.string().min(1),
+  url: z.string().min(1),
+  storagePath: z.string().min(1),
+  name: z.string().min(1),
+})
+
+const workspaceSettingsPatchSchema = z.object({
+  projectLabel: z.string().max(50).nullable().optional(),
+  coverPhotos: z.array(coverPhotoSchema).optional(),
+}).strict()
 
 export async function GET() {
   const { ctx, error } = await getAuthContext()
@@ -37,7 +50,19 @@ export async function PATCH(req: Request) {
   const forbidden = await requireWorkspaceOwner(ctx.workspaceId, ctx.userId)
   if (forbidden) return forbidden
 
-  const patch = await req.json() as Partial<WorkspaceSettings>
+  let rawBody: unknown
+  try {
+    rawBody = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const parsed = workspaceSettingsPatchSchema.safeParse(rawBody)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request body' }, { status: 422 })
+  }
+
+  const patch = parsed.data as Partial<WorkspaceSettings>
 
   try {
     const { db } = await import('@cairn/db')

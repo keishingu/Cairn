@@ -424,7 +424,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
   }, [])
 
   async function fetchExistingInvites() {
-    const res = await fetch('/api/workspaces/invites')
+    const res = await fetchWithAuth('/api/workspaces/invites')
     if (!res.ok) return
     const data = await res.json().catch(() => ({})) as { invites?: InviteRecord[] }
     setExistingInvites(data.invites ?? [])
@@ -434,7 +434,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
     setGenerating(true)
     setCopied(false)
     setGenerateError(null)
-    const res = await fetch('/api/workspaces/invites', {
+    const res = await fetchWithAuth('/api/workspaces/invites', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ expiresIn }),
@@ -451,7 +451,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
 
   async function revokeInvite(token: string) {
     setRevoking(token)
-    await fetch(`/api/workspaces/invites/${token}`, { method: 'DELETE' })
+    await fetchWithAuth(`/api/workspaces/invites/${token}`, { method: 'DELETE' })
     setExistingInvites(prev => prev.filter(inv => inv.token !== token))
     if (inviteUrl?.includes(token)) setInviteUrl(null)
     setRevoking(null)
