@@ -168,6 +168,34 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(body.error).toContain('usage limit')
   })
 
+  it('claim 前に期限切れになった招待は 410 を返す', async () => {
+    const invite = {
+      id: 'inv-02b',
+      workspaceId: WORKSPACE_ID,
+      role: 'member',
+      expiresAt: '2099-01-01T00:00:00.000Z',
+      maxUses: 5,
+      useCount: 0,
+    }
+
+    mockDb.select
+      .mockReturnValueOnce(selectChain([invite]))
+      .mockReturnValueOnce(selectChain([]))
+
+    // claim 時点では expires_at 条件を満たさず行が返らない
+    mockDb.update.mockReturnValueOnce(updateChain([]))
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/invite/${VALID_TOKEN}/accept`, { method: 'POST' }),
+      { params: Promise.resolve({ token: VALID_TOKEN }) },
+    )
+
+    expect(res.status).toBe(410)
+    const body = await res.json() as { error: string }
+    expect(body.error).toContain('usage limit')
+  })
+
   it('有効なトークン・未参加ユーザー → ワークスペースに追加して workspaceId を返す', async () => {
     const invite = { id: 'inv-03', workspaceId: WORKSPACE_ID, role: 'member', expiresAt: null, maxUses: null, useCount: 0 }
 
