@@ -151,4 +151,29 @@ describe('get-auth-context', () => {
     expect(second.ctx).toBeNull()
     expect(second.error?.status).toBe(500)
   })
+
+  it('無効な preferred workspace の fallback を preferred key に固定しない', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-preferred' }) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-fallback', role: 'member' }]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-preferred', role: 'admin' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+
+    const first = await getAuthContext()
+    const second = await getAuthContext()
+
+    expect(first).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-fallback', workspaceRole: 'member' },
+      error: null,
+    })
+    expect(second).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-preferred', workspaceRole: 'admin' },
+      error: null,
+    })
+    expect(mockDb.select).toHaveBeenCalledTimes(3)
+  })
 })

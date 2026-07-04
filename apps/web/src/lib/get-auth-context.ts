@@ -149,9 +149,6 @@ export async function getAuthContext(): Promise<AuthResult> {
 
     const expiresAt = Date.now() + 5 * 60 * 1000
     workspaceCache.set(user.id, { workspaceId: member.workspaceId, expiresAt })
-    if (preferredWorkspaceId) {
-      workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt })
-    }
     setCachedWorkspaceRole(member.workspaceId, user.id, member.role)
     return { ctx: { userId: user.id, workspaceId: member.workspaceId, workspaceRole: member.role }, error: null }
   } catch (err) {
