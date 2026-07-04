@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 
 // --- vi.hoisted ---
-const { mockGetAuthUser, mockDb } = vi.hoisted(() => {
+const { mockGetAuthUser, mockDb, mockGt, mockSql } = vi.hoisted(() => {
   const mockGetAuthUser = vi.fn().mockResolvedValue({
     userId: '00000000-0000-0000-0000-000000000001',
     error: null,
@@ -16,7 +16,13 @@ const { mockGetAuthUser, mockDb } = vi.hoisted(() => {
     insert: vi.fn(),
     update: vi.fn(),
   }
-  return { mockGetAuthUser, mockDb }
+  const mockGt = vi.fn(() => 'gt')
+  const mockSql = vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({
+    kind: 'sql',
+    text: strings.join('?'),
+    values,
+  }))
+  return { mockGetAuthUser, mockDb, mockGt, mockSql }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -54,8 +60,8 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
   or: vi.fn(() => 'or'),
   isNull: vi.fn(() => 'isNull'),
-  gt: vi.fn(() => 'gt'),
-  sql: vi.fn(() => 'sql'),
+  gt: mockGt,
+  sql: mockSql,
 }))
 
 vi.mock('@/lib/inngest/client', () => ({
@@ -194,6 +200,7 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(res.status).toBe(410)
     const body = await res.json() as { error: string }
     expect(body.error).toContain('usage limit')
+    expect(mockGt).toHaveBeenNthCalledWith(2, 'wi.expiresAt', expect.objectContaining({ text: 'now()' }))
   })
 
   it('有効なトークン・未参加ユーザー → ワークスペースに追加して workspaceId を返す', async () => {

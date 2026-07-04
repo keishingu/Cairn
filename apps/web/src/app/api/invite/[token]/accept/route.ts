@@ -61,7 +61,7 @@ export async function POST(
       .where(
         and(
           eq(workspaceInvites.id, invite.id),
-          or(isNull(workspaceInvites.expiresAt), gt(workspaceInvites.expiresAt, now)),
+          or(isNull(workspaceInvites.expiresAt), gt(workspaceInvites.expiresAt, sql`now()`)),
           or(
             isNull(workspaceInvites.maxUses),
             sql`${workspaceInvites.useCount} < ${workspaceInvites.maxUses}`,
