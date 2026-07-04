@@ -68,5 +68,9 @@ CREATE POLICY "poll_votes_select" ON "poll_votes"
       FROM polls p
       WHERE p.id = poll_votes.poll_id
         AND public.can_access_channel(p.channel_id)
+        AND (
+          p.anonymous = false
+          OR poll_votes.user_id = auth.uid()
+        )
     )
   );
