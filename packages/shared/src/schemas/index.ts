@@ -26,7 +26,7 @@ export const postMessageSchema = z
   .object({
     channelId: z.string().uuid(),
     content: z.string().max(10000).default(''),
-    messageType: z.enum(['text', 'html']).default('text'),
+    messageType: z.enum(['text', 'html', 'poll']).default('text'),
     parentMessageId: z.string().uuid().optional(),
     attachmentFileIds: z.array(z.string().uuid()).max(10).optional(),
   })
