@@ -40,3 +40,33 @@ CREATE INDEX "idx_poll_votes_option" ON "poll_votes" ("option_id","created_at");
 CREATE UNIQUE INDEX "idx_poll_votes_single_choice_user"
   ON "poll_votes" ("poll_id","user_id")
   WHERE "allow_multiple" = false;
+
+ALTER TABLE "polls" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "poll_options" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "poll_votes" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "polls_select" ON "polls"
+  FOR SELECT TO authenticated
+  USING (public.can_access_channel(channel_id));
+
+CREATE POLICY "poll_options_select" ON "poll_options"
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM polls p
+      WHERE p.id = poll_options.poll_id
+        AND public.can_access_channel(p.channel_id)
+    )
+  );
+
+CREATE POLICY "poll_votes_select" ON "poll_votes"
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM polls p
+      WHERE p.id = poll_votes.poll_id
+        AND public.can_access_channel(p.channel_id)
+    )
+  );

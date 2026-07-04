@@ -11,6 +11,7 @@ const {
   mockRequireChannelAccess,
   mockDb,
   mockTx,
+  mockInngestSend,
 } = vi.hoisted(() => {
   const USER_ID = '00000000-0000-0000-0000-000000000001'
   const WORKSPACE_ID = '00000000-0000-0000-0000-000000000010'
@@ -22,11 +23,13 @@ const {
   const mockRequireChannelAccess = vi.fn().mockResolvedValue(null)
   const mockDb = {
     transaction: vi.fn(),
+    select: vi.fn(),
   }
   const mockTx = {
     insert: vi.fn(),
   }
-  return { USER_ID, WORKSPACE_ID, CHANNEL_ID, mockGetAuthContext, mockRequireChannelAccess, mockDb, mockTx }
+  const mockInngestSend = vi.fn().mockResolvedValue(undefined)
+  return { USER_ID, WORKSPACE_ID, CHANNEL_ID, mockGetAuthContext, mockRequireChannelAccess, mockDb, mockTx, mockInngestSend }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -35,6 +38,12 @@ vi.mock('@/lib/get-auth-context', () => ({
 
 vi.mock('@/lib/permissions', () => ({
   requireChannelAccess: mockRequireChannelAccess,
+}))
+
+vi.mock('@/lib/inngest/client', () => ({
+  inngest: {
+    send: mockInngestSend,
+  },
 }))
 
 vi.mock('@cairn/db', () => ({
@@ -46,6 +55,14 @@ vi.mock('@cairn/db', () => ({
     id: 'polls.id',
   },
   pollOptions: {},
+  profiles: {
+    id: 'profiles.id',
+    displayName: 'profiles.displayName',
+  },
+  workspaceMembers: {
+    userId: 'workspaceMembers.userId',
+    workspaceId: 'workspaceMembers.workspaceId',
+  },
 }))
 
 function insertReturning(result: unknown[]) {
@@ -59,6 +76,16 @@ function insertReturning(result: unknown[]) {
 function insertValuesOnly() {
   return {
     values: vi.fn().mockResolvedValue([]),
+  }
+}
+
+function selectWithProfile(result: unknown[]) {
+  return {
+    from: vi.fn().mockReturnValue({
+      leftJoin: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(result),
+      }),
+    }),
   }
 }
 
@@ -79,6 +106,7 @@ describe('POST /api/polls', () => {
       .mockReturnValueOnce(insertValuesOnly())
 
     mockDb.transaction.mockImplementation(async (cb: (tx: typeof mockTx) => Promise<unknown>) => cb(mockTx))
+    mockDb.select.mockReturnValueOnce(selectWithProfile([{ displayName: 'Alice' }]))
 
     const { POST } = await import('./route')
     const res = await POST(new Request('http://localhost/api/polls', {
@@ -96,6 +124,18 @@ describe('POST /api/polls', () => {
     expect(mockRequireChannelAccess).toHaveBeenCalledWith(WORKSPACE_ID, USER_ID, CHANNEL_ID)
     expect(mockDb.transaction).toHaveBeenCalledTimes(1)
     expect(mockTx.insert).toHaveBeenCalledTimes(3)
+    expect(mockInngestSend).toHaveBeenCalledWith({
+      name: 'message/created',
+      data: {
+        messageId: 'msg-1',
+        channelId: CHANNEL_ID,
+        workspaceId: WORKSPACE_ID,
+        senderId: USER_ID,
+        senderName: 'Alice',
+        content: '来週の定例はどこでやる？',
+        attachmentFileIds: [],
+      },
+    })
 
     const messageValues = mockTx.insert.mock.calls[0]?.[0]
     expect(messageValues).toBeTruthy()

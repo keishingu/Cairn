@@ -5,6 +5,8 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
+import { inngest } from '@/lib/inngest/client'
+import type { MessageCreatedEvent } from '@/lib/inngest/events'
 
 const createPollSchema = z.object({
   channelId: z.string().uuid(),
@@ -40,7 +42,8 @@ export async function POST(req: Request) {
   if (forbidden) return forbidden
 
   try {
-    const { db, messages, polls, pollOptions } = await import('@cairn/db')
+    const { db, messages, polls, pollOptions, profiles, workspaceMembers } = await import('@cairn/db')
+    const { and, eq } = await import('drizzle-orm')
 
     const result = await db.transaction(async (tx) => {
       const [message] = await tx
@@ -80,6 +83,32 @@ export async function POST(req: Request) {
       )
 
       return { pollId: poll.id, messageId: message.id }
+    })
+
+    const [profile] = await db
+      .select({
+        displayName: profiles.displayName,
+      })
+      .from(profiles)
+      .leftJoin(
+        workspaceMembers,
+        and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+      )
+      .where(eq(profiles.id, ctx.userId))
+
+    inngest.send({
+      name: 'message/created',
+      data: {
+        messageId: result.messageId,
+        channelId: parsed.data.channelId,
+        workspaceId: ctx.workspaceId,
+        senderId: ctx.userId,
+        senderName: profile?.displayName ?? '不明',
+        content: parsed.data.question,
+        attachmentFileIds: [],
+      },
+    } satisfies MessageCreatedEvent).catch((err: unknown) => {
+      console.warn('[inngest] message/created send failed (Inngest not running?):', err)
     })
 
     return NextResponse.json(result satisfies CreatePollResponseDto, { status: 201 })
