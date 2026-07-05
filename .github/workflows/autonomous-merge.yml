@@ -103,8 +103,11 @@ jobs:
 
           # ---- 1) develop 宛の open PR を巡回 ----
           gh pr list --base develop --state open --limit 50 \
-            --json number,author,isDraft,labels,createdAt,mergeable,title > /tmp/prs.json
+            --json number,author,isDraft,labels,createdAt,mergeable,title,headRefOid > /tmp/prs.json
 
+          # 自動マージは 1 スイープにつき 1 件まで。develop が進んだ後の他 PR は
+          # 「マージ済み内容との組み合わせ」が未検証のため、次のスイープで再評価する
+          MERGED=""
           while IFS= read -r pr; do
             num=$(jq -r '.number' <<<"$pr")
             author=$(norm_author "$(jq -r '.author.login' <<<"$pr")")
@@ -112,6 +115,7 @@ jobs:
             created=$(jq -r '.createdAt' <<<"$pr")
             mergeable=$(jq -r '.mergeable' <<<"$pr")
             title=$(jq -r '.title' <<<"$pr")
+            head_sha=$(jq -r '.headRefOid' <<<"$pr")
 
             [ "$(jq -r '.isDraft' <<<"$pr")" = "false" ] || { echo "PR #$num: draft のためスキップ"; continue; }
             case ",$labels," in *,needs-human,*) echo "PR #$num: needs-human のためスキップ"; continue;; esac
@@ -157,9 +161,21 @@ jobs:
             [ "$age_h" -ge "$DEV_MIN_AGE" ] || { echo "PR #$num: ソーク時間未達（${age_h}h < ${DEV_MIN_AGE}h）"; continue; }
             is_green "$num" || { echo "PR #$num: CI が green でないためスキップ"; continue; }
             [ "$mergeable" = "MERGEABLE" ] || { echo "PR #$num: mergeable=$mergeable のためスキップ"; continue; }
+            [ -z "$MERGED" ] || { echo "PR #$num: 今回のスイープでは既に 1 件マージ済みのため見送り（次回再評価）"; continue; }
 
-            echo "PR #$num: 自動マージ実行"
-            gh pr merge "$num" --squash --delete-branch
+            # CI を確認した head に固定してマージする（確認後の push が紛れ込むのを防ぐ）
+            echo "PR #$num: 自動マージ実行（head: $head_sha）"
+            if gh pr merge "$num" --squash --delete-branch --match-head-commit "$head_sha"; then
+              MERGED="$num"
+            else
+              current=$(gh pr view "$num" --json headRefOid --jq '.headRefOid')
+              if [ "$current" != "$head_sha" ]; then
+                echo "::warning::PR #$num: 判定後に head が進んだためマージを見送り（次回スイープで再評価）"
+              else
+                echo "::error::PR #$num: マージに失敗しました"
+                exit 1
+              fi
+            fi
           done < <(jq -c '.[]' /tmp/prs.json)
 
           # ---- 2) Release PR（develop → main）のマージ可否を判定し、後段ジョブへ渡す ----
@@ -246,8 +262,19 @@ jobs:
           REPO="${GITHUB_REPOSITORY}"
           NUM="${{ needs.sweep.outputs.release_pr }}"
 
-          gh pr merge "$NUM" --merge
-          echo "Release PR #$NUM を main にマージしました。"
+          # マージ対象を「このジョブで検証した SHA」に固定する。検証中に develop へ
+          # 新しい push があった場合は未検証のためマージせず、次回スイープで再検証する
+          VERIFIED_SHA=$(git rev-parse HEAD)
+          if ! gh pr merge "$NUM" --merge --match-head-commit "$VERIFIED_SHA"; then
+            current=$(gh pr view "$NUM" --json headRefOid --jq '.headRefOid')
+            if [ "$current" != "$VERIFIED_SHA" ]; then
+              echo "::notice::検証中に develop が進んだため、今回のリリースマージは見送ります（次回スイープで再検証）。"
+              exit 0
+            fi
+            echo "::error::Release PR #$NUM のマージに失敗しました。"
+            exit 1
+          fi
+          echo "Release PR #$NUM を main にマージしました（検証済み SHA: $VERIFIED_SHA）。"
 
           # release.yml が用意した Draft Release（release-*）を Publish する。
           # タグは Publish 時に main の HEAD（＝いまマージした内容）に作られる。

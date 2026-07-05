@@ -56,6 +56,11 @@
 5. コンフリクトが無い（コンフリクト時は `has-conflict` が付き、解消されると次のスイープで自動マージ）
 6. dependabot のメジャー更新でない
 
+安全のための追加ルール:
+
+- **自動マージは 1 スイープにつき 1 件**。マージで develop が進むと他 PR の CI 結果は「マージ済み内容との組み合わせ」を保証しなくなるため、残りは次のスイープで再評価する（毎時実行なので最大 24 件/日）
+- マージは **CI を確認した head SHA に固定**（`--match-head-commit`）。判定後に push があった場合はマージせず次回再評価する
+
 forbidden_zones（権限・認証・DB スキーマ・課金・ワークフロー・soul.policy.yaml 自体・CLAUDE.md）は「AI に自動変更させない領域」。この領域の PR だけが人間のマージを待つ。
 
 ## 4. リリースの自動化
@@ -64,6 +69,7 @@ forbidden_zones（権限・認証・DB スキーマ・課金・ワークフロ�
 - **24 時間のソーク**: Release PR は作成から 24h（`automerge.main.min_age_hours`）は放置される。**この間が人間の拒否権ウィンドウ**（`needs-human` を付ければ止まる）。
 - **火曜朝ごろ**: `autonomous-merge.yml` が develop の内容をその場でフル検証（install / typecheck / lint / test）し、通れば main へマージ → Vercel が本番デプロイ → Draft Release を自動 Publish。
   - スイーパー自身が検証し直すのは、GITHUB_TOKEN が作った squash コミットには push イベントの CI が走らないため（GitHub Actions の仕様）。push CI の結果には依存しない。
+  - マージは**検証したチェックアウト時点の SHA に固定**（`--match-head-commit`）。検証中に develop へ新しい push があった場合はマージせず、次回スイープで再検証する。
 - **失敗時**: `release-blocked` ラベル付きの issue が起票され、**close されるまで自動リリースは停止**する。修正 PR が develop に入ったら issue を close すると再開。
 
 ## 5. 自己修復ループ
