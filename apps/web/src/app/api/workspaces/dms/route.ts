@@ -47,7 +47,6 @@ export async function GET() {
         and(
           eq(channels.workspaceId, ctx.workspaceId),
           eq(channels.type, 'dm'),
-          eq(workspaceMembers.membershipStatus, 'active'),
           ne(channelMembers.userId, ctx.userId),
           inArray(channels.id, myChannelIds),
         ),
