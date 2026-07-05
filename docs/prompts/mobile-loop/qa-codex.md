@@ -22,7 +22,15 @@ pnpm install
 supabase start                 # 未起動の場合
 supabase migration up          # ブランチ切替後は必須（CLAUDE.md 参照）
 cp -n apps/web/.env.local.example apps/web/.env.local
-pnpm dev                       # Web (Next.js) をバックグラウンドで起動
+
+# モバイル側の anon キー（プレースホルダのままだと Supabase クライアントが初期化できず S0/S1 が始まらない）
+cp -n apps/mobile/.env.local.example apps/mobile/.env.local
+ANON_KEY=$(supabase status -o env | grep '^ANON_KEY' | cut -d= -f2- | tr -d '"')
+sed -i '' "s|^EXPO_PUBLIC_SUPABASE_ANON_KEY=.*|EXPO_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}|" apps/mobile/.env.local
+
+# Web だけ起動する（ルートの pnpm dev は apps/mobile の Metro も起動してしまい、
+# 後段の pnpm ios と競合する）
+pnpm --filter @cairn/web dev   # バックグラウンドで起動
 npx inngest-cli@latest dev     # 通知検証(S10)をする場合のみ。別ターミナルで
 ```
 

@@ -75,13 +75,22 @@ jobs:
             --auto-submit
           echo "::notice::EAS ビルドを開始しました。進捗: https://expo.dev/accounts/keishingu/projects/cairn/builds"
 
+      # eas update は eas.json の build プロファイルの env を読まない
+      # （https://docs.expo.dev/build/updates/#environment-variables-and-eas-update）ため、
+      # 公開値の EXPO_PUBLIC_* はここで明示的に注入する（eas.json の production と同値に保つ）。
+      # EXPO_PUBLIC_SUPABASE_ANON_KEY は --environment production で EAS 環境変数から取得される。
+      # message 入力はシェルとして再解釈されないよう env 経由で渡す
       - name: Publish OTA update (production channel)
         if: github.event.inputs.mode == 'ota-update'
         working-directory: apps/mobile
         env:
           APP_VARIANT: production
+          MESSAGE_INPUT: ${{ github.event.inputs.message }}
+          EXPO_PUBLIC_API_BASE_URL: https://oss-cairn.com
+          EXPO_PUBLIC_SUPABASE_URL: https://bmhcgjqisqnyvbrrvqug.supabase.co
+          EXPO_PUBLIC_EAS_PROJECT_ID: 46195650-8dc8-4c73-9b32-c1b5134c0326
         run: |
-          MESSAGE="${{ github.event.inputs.message }}"
+          MESSAGE="$MESSAGE_INPUT"
           if [ -z "$MESSAGE" ]; then
             MESSAGE="$(git log -1 --pretty=%s)"
           fi

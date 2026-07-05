@@ -44,6 +44,7 @@ TestFlight（iOS）/ Play internal track（Android）に自動で届く
    ```
    URL 系（`EXPO_PUBLIC_API_BASE_URL` / `EXPO_PUBLIC_SUPABASE_URL`）は公開情報のため `eas.json` に直書き済み。
 2. **GitHub の `Production` environment に `EXPO_TOKEN` を登録**する（`mobile-preview.yml` が使っている Preview 環境と同じトークンでよい。https://expo.dev/settings/access-tokens で発行）。
+3. **本番 Supabase ダッシュボードの Redirect URLs に `cairn://auth/callback` を登録**する（Google ログインのコールバック先。preview ビルドを検証環境に向ける場合は検証側に `cairn-preview://auth/callback` も登録）。
 
 ### 2-1. iOS（App Store）
 

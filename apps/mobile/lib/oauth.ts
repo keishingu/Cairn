@@ -1,5 +1,6 @@
 import * as WebBrowser from 'expo-web-browser'
 import * as Linking from 'expo-linking'
+import Constants from 'expo-constants'
 import { supabase } from './supabase'
 import { apiFetch } from './api-fetch'
 
@@ -15,7 +16,14 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
   // scheme を明示する。明示しないと dev ビルドで exp:// 形式や
   // スラッシュ3つの cairn:///... を返すことがあり、それだと Supabase の
   // 許可リストに一致せず Site URL（web）へフォールバックして 500 になる。
-  const redirectTo = Linking.createURL('auth/callback', { scheme: 'cairn' })
+  // scheme は APP_VARIANT ごとに異なる（cairn-dev / cairn-preview / cairn）ため
+  // app.config.ts の解決結果から取得する
+  const configScheme = Constants.expoConfig?.scheme
+  const scheme = Array.isArray(configScheme) ? configScheme[0] : configScheme
+  if (!scheme) {
+    throw new Error('アプリスキームを取得できませんでした。app.config.ts の scheme を確認してください')
+  }
+  const redirectTo = Linking.createURL('auth/callback', { scheme })
   // redirectTo はクエリを含まないため出力可。認可 URL / 戻り URL は
   // PKCE チャレンジや認可コードを含むため、クエリを除いたオリジンのみ出す。
   if (__DEV__) console.log('[oauth] redirectTo =', redirectTo)

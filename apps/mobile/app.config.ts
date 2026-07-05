@@ -14,11 +14,14 @@ if (rawVariant !== 'development' && rawVariant !== 'preview' && rawVariant !== '
 }
 const APP_VARIANT = rawVariant as Variant
 
-const VARIANTS: Record<Variant, { name: string; iosBundleId: string; androidPackage: string }> = {
-  development: { name: 'Cairn (dev)', iosBundleId: 'com.oss-cairn.dev', androidPackage: 'com.oss_cairn.dev' },
-  preview: { name: 'Cairn (preview)', iosBundleId: 'com.oss-cairn.preview', androidPackage: 'com.oss_cairn.preview' },
-  // 本番の ID は app.json 時代の値を維持する（ストア公開後は変更不可）
-  production: { name: 'Cairn', iosBundleId: 'com.oss-cairn', androidPackage: 'com.oss_cairn' },
+// scheme も variant ごとに分ける。共存インストール時に同一 scheme だと、
+// OAuth コールバック（<scheme>://auth/callback）が別 variant のアプリへ
+// ルーティングされ、ログインを開始したアプリに認可コードが戻らないため
+const VARIANTS: Record<Variant, { name: string; scheme: string; iosBundleId: string; androidPackage: string }> = {
+  development: { name: 'Cairn (dev)', scheme: 'cairn-dev', iosBundleId: 'com.oss-cairn.dev', androidPackage: 'com.oss_cairn.dev' },
+  preview: { name: 'Cairn (preview)', scheme: 'cairn-preview', iosBundleId: 'com.oss-cairn.preview', androidPackage: 'com.oss_cairn.preview' },
+  // 本番の ID・scheme は app.json 時代の値を維持する（ストア公開後は変更不可）
+  production: { name: 'Cairn', scheme: 'cairn', iosBundleId: 'com.oss-cairn', androidPackage: 'com.oss_cairn' },
 }
 
 const variant = VARIANTS[APP_VARIANT]
@@ -26,7 +29,7 @@ const variant = VARIANTS[APP_VARIANT]
 const config: ExpoConfig = {
   name: variant.name,
   slug: 'cairn',
-  scheme: 'cairn',
+  scheme: variant.scheme,
   version: '1.0.0',
   icon: './assets/icon.png',
   splash: {
