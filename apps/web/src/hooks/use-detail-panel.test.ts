@@ -49,6 +49,7 @@ const STUB_MEMBER: WorkspaceMemberDto = {
   email: 'test@example.com',
   avatarUrl: null,
   role: 'member',
+  status: 'active',
   joinedAt: '2026-01-01',
   projectCount: 0,
 }

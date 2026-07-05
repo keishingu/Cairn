@@ -47,6 +47,7 @@ export async function GET() {
         and(
           eq(channels.workspaceId, ctx.workspaceId),
           eq(channels.type, 'dm'),
+          eq(workspaceMembers.membershipStatus, 'active'),
           ne(channelMembers.userId, ctx.userId),
           inArray(channels.id, myChannelIds),
         ),
@@ -105,8 +106,22 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, channelReadStates } = await import('@cairn/db')
+    const { channels, channelMembers, channelReadStates, workspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray, sql } = await import('drizzle-orm')
+
+    const [targetMembership] = await db
+      .select({ userId: workspaceMembers.userId })
+      .from(workspaceMembers)
+      .where(and(
+        eq(workspaceMembers.workspaceId, ctx.workspaceId),
+        eq(workspaceMembers.userId, targetUserId),
+        eq(workspaceMembers.membershipStatus, 'active'),
+      ))
+      .limit(1)
+
+    if (!targetMembership) {
+      return NextResponse.json({ error: '非活性ユーザーとは DM を開始できません' }, { status: 422 })
+    }
 
     // 既存の DM チャンネルを探す（両者が参加している）
     const myChannelIds = db
