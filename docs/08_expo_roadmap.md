@@ -236,6 +236,8 @@ const { status } = await Notifications.requestPermissionsAsync()
 
 ## 7. 今後の課題: 環境定義の一元化（app.config.ts 化）
 
+> **2026-07-05 実施済み**: `app.config.ts` 化（APP_VARIANT 分岐）と EAS production プロファイルは導入済み。現行の運用は [`mobile-store-release.md`](./mobile-store-release.md) を正とする。
+
 現状の環境管理は以下の構成になっている:
 
 - `app.json`（静的）でアプリ設定を管理

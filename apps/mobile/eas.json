@@ -7,13 +7,36 @@
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development",
+      "env": { "APP_VARIANT": "development" },
       "ios": {
         "simulator": true
       }
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "preview",
+      "env": { "APP_VARIANT": "preview" }
+    },
+    "production": {
+      "autoIncrement": true,
+      "channel": "production",
+      "environment": "production",
+      "env": {
+        "APP_VARIANT": "production",
+        "EXPO_PUBLIC_API_BASE_URL": "https://oss-cairn.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://bmhcgjqisqnyvbrrvqug.supabase.co",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "46195650-8dc8-4c73-9b32-c1b5134c0326"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "TODO_ASC_APP_ID"
+      },
+      "android": {
+        "track": "internal"
+      }
     }
   }
 }

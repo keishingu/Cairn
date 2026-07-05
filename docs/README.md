@@ -27,6 +27,7 @@
 | [`keyboard-shortcuts.md`](./keyboard-shortcuts.md) | キーボードショートカット設計（3層モデル・全画面マッピング・Vim モード。第1段のみ実装済み） | 2026-06-16 |
 | [`mobile-native-completion.md`](./mobile-native-completion.md) | モバイルネイティブ化の完成定義・受け入れチェックリスト・バックログ | 2026-07-05 |
 | [`prompts/mobile-loop/README.md`](./prompts/mobile-loop/README.md) | モバイルネイティブ化 自動改善ループ（QA=Codex Computer Use / Builder=日次ルーティン）の運用 | 2026-07-05 |
+| [`mobile-store-release.md`](./mobile-store-release.md) | App Store / Google Play リリース運用（初回セットアップ + ワンクリックリリース + OTA） | 2026-07-05 |
 
 ## 設計時スナップショット
 

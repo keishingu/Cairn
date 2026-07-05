@@ -84,7 +84,7 @@ Builder エージェントは `mobile` + `ready-for-ai` ラベルの issue が�
 | M3 | オフライン送信キュー（AsyncStorage + NetInfo） | S12 | `docs/archive/prompts/phase2b-5-native-chat.md` |
 | M4 | Push 深リンク: 通知タップで該当チャンネルのスレッドへ直行 | S10 | M2 完了後 |
 | M5 | チャット添付: 画像表示・送信、バックグラウンドアップロード | S6 | |
-| M6 | 配布準備: `app.config.ts` 化（APP_VARIANT 分岐）・EAS production ビルド・TestFlight | — | 旧 PR #84（/api/version・互換性チェック）の再実装判断を含む。着手前に issue で人間の合意を取る |
+| M6 | 配布準備: ストア公開 | — | インフラは整備済み（`app.config.ts` 化・EAS production プロファイル・Mobile Release workflow）。残りは [`mobile-store-release.md`](./mobile-store-release.md) §2 の初回セットアップ（人間）と、旧 PR #84（/api/version・互換性チェック）の再実装判断 |
 
 ---
 
