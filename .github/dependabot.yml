@@ -1,0 +1,31 @@
+# 依存関係の自動更新。minor / patch は 1 本の PR にグループ化され、
+# CI green なら autonomous-merge.yml が develop に自動マージする。
+# メジャー更新は個別 PR となり、自動マージ対象外（needs-human が付く）。
+# 運用設計: docs/autonomous-operations.md
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "07:00"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "chore"

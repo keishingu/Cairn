@@ -1,11 +1,18 @@
 name: Release (develop → main)
 
-# develop の内容を main へリリースするための手動ワークフロー。
-# - develop → main の Release PR を作成 / 更新する（マージは手動）
-# - 同じ内容で Draft Release を作成する（タグ確定・公開は PR マージ後に手動）
+# develop の内容を main へリリースするワークフロー（週次自動 + 手動実行可）。
+# - develop → main の Release PR を作成 / 更新する
+# - 同じ内容で Draft Release を作成する
 # - 本文は OpenAI(gpt-4o) でコミットから生成する。OPENAI_API_KEY は必須
 #   （未設定・API 失敗時は誤った内容を出さないようエラーで中断し、フォールバックしない）
+#
+# ここではマージも Publish もしない。Release PR のマージと Draft の Publish は
+# autonomous-merge.yml が「作成から 24h のソーク + フル検証」を経て自動で行う
+# （止めたい場合は Release PR に needs-human ラベル）。手動でマージ・Publish してもよい。
+# 運用設計: docs/autonomous-operations.md
 on:
+  schedule:
+    - cron: "0 21 * * 0" # 月曜 6:00 JST（マージは 24h ソーク後 ≒ 火曜朝）
   workflow_dispatch:
     inputs:
       release_tag:
@@ -16,6 +23,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 concurrency:
   group: release-develop-to-main
@@ -194,4 +202,25 @@ jobs:
             --target main \
             --title "$TAG" \
             --notes "$RELEASE_NOTES"
-          echo "::notice::Draft Release $TAG を作成しました（公開は PR マージ後に手動で）。"
+          echo "::notice::Draft Release $TAG を作成しました（Publish は autonomous-merge が PR マージ後に自動実行。手動でも可）。"
+
+      - name: 失敗を ops issue として起票
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TITLE="🚨 リリースワークフロー（Release PR 作成）が失敗"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh label create "ready-for-ai" -c "1D76DB" -d "AI エージェントが着手してよい issue" -f
+          gh label create "source:ops"   -c "5319E7" -d "自動運用ワークフローが起票" -f
+          existing=$(gh issue list --state open --label "source:ops" \
+            --search "in:title \"$TITLE\"" --json number --jq '.[0].number // empty')
+          BODY="Release PR / Draft Release の作成が失敗しました（OPENAI_API_KEY 未設定・API エラーの可能性）。ログを確認し、修正してください。
+
+          実行ログ: ${RUN_URL}"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "再発しました: ${RUN_URL}"
+          else
+            gh issue create --title "$TITLE" --body "$BODY" --label "ready-for-ai" --label "source:ops"
+          fi

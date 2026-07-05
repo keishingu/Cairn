@@ -1,0 +1,106 @@
+name: Health Check
+
+# 週次ヘルスチェック（土曜 6:00 JST）。push が無い週でも、依存解決の変化や
+# 新規に公開された脆弱性でリポジトリが壊れていないかを検知する。
+# 失敗すると ready-for-ai issue が起票され、AI エージェントのループが修復 PR を作る。
+# 運用設計: docs/autonomous-operations.md
+
+on:
+  schedule:
+    - cron: "0 21 * * 5" # 土曜 6:00 JST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: health-check
+  cancel-in-progress: true
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        id: install
+        continue-on-error: true
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        id: typecheck
+        continue-on-error: true
+        run: pnpm typecheck
+
+      - name: Lint
+        id: lint
+        continue-on-error: true
+        run: pnpm lint
+
+      - name: Test
+        id: test
+        continue-on-error: true
+        run: pnpm test
+
+      - name: Audit (high 以上の既知脆弱性)
+        id: audit
+        continue-on-error: true
+        run: pnpm audit --prod --audit-level=high
+
+      - name: Report
+        if: always()
+        env:
+          O_INSTALL: ${{ steps.install.outcome }}
+          O_TYPECHECK: ${{ steps.typecheck.outcome }}
+          O_LINT: ${{ steps.lint.outcome }}
+          O_TEST: ${{ steps.test.outcome }}
+          O_AUDIT: ${{ steps.audit.outcome }}
+        run: |
+          set -euo pipefail
+          FAILED=""
+          [ "$O_INSTALL" = "success" ]   || FAILED="$FAILED install"
+          [ "$O_TYPECHECK" = "success" ] || FAILED="$FAILED typecheck"
+          [ "$O_LINT" = "success" ]      || FAILED="$FAILED lint"
+          [ "$O_TEST" = "success" ]      || FAILED="$FAILED test"
+          [ "$O_AUDIT" = "success" ]     || FAILED="$FAILED audit"
+
+          TITLE="🩺 定期ヘルスチェック失敗"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh label create "ready-for-ai" -c "1D76DB" -d "AI エージェントが着手してよい issue" -f
+          gh label create "source:ops"   -c "5319E7" -d "自動運用ワークフローが起票" -f
+          existing=$(gh issue list --state open --label "source:ops" \
+            --search "in:title \"$TITLE\"" --json number --jq '.[0].number // empty')
+
+          if [ -n "$FAILED" ]; then
+            BODY="develop の定期ヘルスチェックで次のステップが失敗しました:${FAILED}
+
+          実行ログ: ${RUN_URL}
+
+          ログを確認し、修正 PR を作成してください（audit 失敗の場合は該当依存の更新）。修正が develop にマージされ、次回のヘルスチェックが成功するとこの issue は自動 close されます。"
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --body "引き続き失敗しています（${FAILED## }）: ${RUN_URL}"
+            else
+              gh issue create --title "$TITLE" --body "$BODY" --label "ready-for-ai" --label "source:ops"
+            fi
+            echo "::error::ヘルスチェック失敗:${FAILED}"
+            exit 1
+          fi
+
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "✅ ヘルスチェックが回復しました: ${RUN_URL}"
+          fi
+          echo "ヘルスチェック成功"

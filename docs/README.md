@@ -21,6 +21,7 @@
 | モバイル（Expo） | CLAUDE.md「決定済みの技術判断」 | `08_expo_roadmap.md`、`mobile-webview-auth-handoff.md`（WebView 認証） |
 | キーボードショートカット | `keyboard-shortcuts.md` | — |
 | デプロイ・リリース・本番設定 | `production-deployment.md` | — |
+| 自律運用（自動マージ・自動リリース・グロースループ） | `autonomous-operations.md` | `ai-self-improvement-loop.md`（intake〜Soul 審査の設計思想） |
 | 課金（未実装・設計のみ） | `pricing-plan-design.md`（何を売るか） | `billing-implementation-design.md`（どう実装するか） |
 | AI メンバー・定期ジョブ（未実装・設計のみ） | `10_ai_member_design.md` / `scheduled-jobs-design.md` | `ai-self-improvement-loop.md` |
 | LP・マーケティング | `lp-content-redesign.md` | `landing-page-routing-design.md`、`lp-soul-page-copy.md` |
@@ -36,7 +37,8 @@
 | [`mobile-webview-auth-handoff.md`](./mobile-webview-auth-handoff.md) | モバイル WebView 認証のワンタイムトークンハンドオフ（実装済み） | 2026-07-03 |
 | [`10_ai_member_design.md`](./10_ai_member_design.md) | AIメンバー設計（構想段階の現行合意。実装着手時に更新する） | 2026-06-11 |
 | [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) | 定期ジョブ（cron・自然言語で定義）+ アプリ内投票機能の設計（構想段階） | 2026-06-25 |
-| [`production-deployment.md`](./production-deployment.md) | 本番環境構成・残タスク・一般公開に向けた設定 | 2026-06-21 |
+| [`production-deployment.md`](./production-deployment.md) | 本番環境構成・残タスク・一般公開に向けた設定 | 2026-07-05 |
+| [`autonomous-operations.md`](./autonomous-operations.md) | 自律運用の全体像（リスク階層付き自動マージ・週次自動リリース・自己修復・グロースループ） | 2026-07-05 |
 | [`pricing-plan-design.md`](./pricing-plan-design.md) | 料金プラン設計（Free / Solo / Team / Expedition、ケルン消費モデル。実装未着手） | 2026-06-16 |
 | [`billing-implementation-design.md`](./billing-implementation-design.md) | 課金の実装設計（クレジット台帳・ストレージ家賃・風化・Stripe統合。実装未着手） | 2026-06-16 |
 | [`keyboard-shortcuts.md`](./keyboard-shortcuts.md) | キーボードショートカット設計（3層モデル・全画面マッピング。第2.5段まで実装済み、Vim モードは未実装） | 2026-06-17 |
@@ -55,7 +57,7 @@
 | [`07_notifications_and_unread.md`](./07_notifications_and_unread.md) | 通知・未読の設計検討 → 現行仕様は `notification-design.md` | 2026-05-27 |
 | [`user-deactivation-design.md`](./user-deactivation-design.md) | ユーザー非活性化・退会設計（卒業生対応・GDPR 消去権の整理・匿名化）。スキーマのみ実装済み、遮断・API・UI は未着手 | 2026-06-22 |
 | [`08_expo_roadmap.md`](./08_expo_roadmap.md) | Expo ネイティブ化ロードマップ（WebView 化・Push まで実施済み） | 2026-05-27 |
-| [`ai-self-improvement-loop.md`](./ai-self-improvement-loop.md) | AI 自己改善ループ（提案 → issue → AI 実装 → SOUL 審査 → 人間 merge）の設計メモ（実装前） | 2026-07-03 |
+| [`ai-self-improvement-loop.md`](./ai-self-improvement-loop.md) | AI 自己改善ループ（提案 → issue → AI 実装 → SOUL 審査）の設計メモ。Builder / 自動マージ / soul ゲートは `autonomous-operations.md` として実装済み。intake（提案チャンネル・PostHog）は未実装 | 2026-07-03 |
 | [`lp-soul-page-copy.md`](./lp-soul-page-copy.md) | Soul ページ（Open Soul Software / SOUL.md）のコピー案ドラフト（ページ未実装） | 2026-07-03 |
 
 ## 記録

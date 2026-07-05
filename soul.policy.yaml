@@ -1,0 +1,55 @@
+# Cairn 自律運用のガードレール（機械可読）
+#
+# - non_goals / principles: AI が提案・実装を判断する際の基準（docs/ai-self-improvement-loop.md）
+# - forbidden_zones / automerge: .github/workflows/autonomous-merge.yml が参照する自動マージポリシー
+# - このファイル自体が forbidden_zones に含まれるため、AI はこのファイルを自動マージで変更できない
+#   （変更 PR には needs-human が付き、人間のマージ待ちになる）
+version: 1
+
+# 何を作らないか。該当する提案・issue は soul:reject とし、理由を残して却下する
+non_goals:
+  - rank_individuals # 個人のランク付け・活動量ランキング
+  - track_attendance_for_management # 管理目的の出欠・稼働トラッキング
+  - productivity_score # 生産性スコア
+  - maximize_engagement # エンゲージメント最大化のためのダークパターン
+  - surveillance_dashboard # 監視ダッシュボード
+
+# 何のために作るか
+principles:
+  - optimize_for_action_not_control # 管理ではなく行動を推進する
+  - help_prepare_not_evaluate # 評価ではなく準備を助ける
+  - reduce_barriers_to_exploration # 探究の障壁を減らす
+
+# AI の自動マージを禁止する領域（人間のレビュー・マージ必須）。
+# ここに触れる PR は risk:high + needs-human が付き、自動マージ対象から外れる。
+# パターンは fnmatch 形式（* は / をまたいでマッチする）
+forbidden_zones:
+  - "soul.policy.yaml" # 魂そのもの
+  - "SOUL.md"
+  - "CLAUDE.md" # AI への憲法
+  - ".github/workflows/**" # 自動化パイプライン自体
+  - ".github/dependabot.yml"
+  - "supabase/migrations/**" # DB スキーマ
+  - "packages/db/src/schema/**"
+  - "apps/web/src/lib/permissions.ts" # 権限モデル
+  - "apps/web/src/middleware.ts" # 認証ルーティング
+  - "apps/web/src/app/api/auth/**" # 認証 API
+  - ".env*" # 環境変数
+  - "**/.env*"
+
+# 自動マージの動作設定（autonomous-merge.yml が読む）
+automerge:
+  # 自動マージ対象にする PR 作者。fork からの外部 PR を除外するための許可リスト。
+  # bot は "app/" プレフィックスと "[bot]" サフィックスを除いた名前で書く（例: dependabot）
+  allowed_authors:
+    - keishingu # AI エージェント（OpenCraw / Claude Code）はこのアカウントで push する
+    - dependabot
+  # マージ判定に必須の CI チェック名（.github/workflows/ci.yml のジョブ名）
+  required_checks:
+    - Typecheck
+    - Lint
+    - Test
+  develop:
+    min_age_hours: 0 # develop へは CI green になり次第マージ
+  main:
+    min_age_hours: 24 # Release PR は作成から 24 時間のソーク後にマージ（人間の拒否権ウィンドウ）

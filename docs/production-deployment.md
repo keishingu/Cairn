@@ -1,6 +1,6 @@
 # 本番デプロイ・運用リファレンス
 
-> ステータス: **現行リファレンス** ／ 最終更新: 2026-07-01
+> ステータス: **現行リファレンス** ／ 最終更新: 2026-07-05
 >
 > 本番環境（Vercel + Supabase）の構成・残タスク・将来の一般公開に向けた設定をまとめる。
 > 実装・設定が変わったら本ファイルを更新すること。
@@ -44,12 +44,20 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
 
 ## リリース手順（develop → main）
 
-`develop` の内容を本番（`main`）へリリースする手順。リリースノート生成・Release PR・Draft Release の作成は `.github/workflows/release.yml`（手動実行）が担う。**順序が重要**で、必ず「PR マージ → その後に Draft を Publish」で行う。
+**リリースは週次で自動実行される**（詳細は [`autonomous-operations.md`](./autonomous-operations.md)）。人間の操作は不要。
+
+1. 月曜朝: `.github/workflows/release.yml` が Release PR（develop → main、本文は AI 生成ノート）と Draft Release を自動作成。
+2. 24 時間のソーク（この間に Release PR へ `needs-human` ラベルを付ければ自動リリースを止められる）。
+3. 火曜朝ごろ: `.github/workflows/autonomous-merge.yml` が develop をフル検証（typecheck / lint / test）し、通れば main へ自動マージ → Vercel が本番デプロイ → Draft Release を自動 Publish。
+4. 失敗時は `release-blocked` issue が起票され、close されるまで自動リリースは停止する。
+
+### 手動でリリースする場合
+
+自動を待たずにリリースしたい場合の手順。**順序が重要**で、必ず「PR マージ → その後に Draft を Publish」で行う。
 
 1. **リリースワークフローを手動実行**
    - GitHub の **Actions** タブ → **`Release (develop → main)`** → **Run workflow**。
    - （任意）入力 `release_tag` にタグ名（例 `v1.1.0`）。空なら `release-YYYY-MM-DD` で自動採番。
-   - 生成物: **Release PR（develop → main、本文は AI 生成ノート）** と **Draft Release（同じ本文。※この時点ではタグ未作成）**。
    - ノートは利用ユーザー向けに絞り込む（docs/CI/テスト/依存・設定のみのコミットは除外。全差分が除外パスのみなら汎用のメンテナンス文）。
 2. **Release PR を `main` にマージ**
    - CI と Vercel プレビューを確認してマージ。`main` が `develop` の内容に更新され、Vercel が本番デプロイする。
@@ -59,6 +67,7 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
 
 - **順序が命**: マージ前に Publish すると promote 前のコミットにタグが付く（Draft 本文の先頭にも同じ警告が出る）。
 - Draft 段階ではタグ ref を持たないため、やり直したい場合は同名タグで再実行してよい。
+- 手動タグ（`v1.1.0` 等）の Draft は自動 Publish の対象外（自動 Publish は `release-*` タグの Draft のみ）。
 
 ## 完了済み（本番）
 

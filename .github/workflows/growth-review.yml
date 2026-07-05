@@ -1,0 +1,63 @@
+name: Growth Review
+
+# 月次グロースレビュー（毎月 1 日 6:00 JST）。プロダクトを前に進める定常タスクを
+# ready-for-ai issue として起票し、AI エージェントのループに投入する。
+# 「機能追加」ではなく「訴求の追い付き・誠実化・棚卸し」が目的（soul.policy.yaml の principles 準拠）。
+# 運用設計: docs/autonomous-operations.md
+
+on:
+  schedule:
+    - cron: "0 21 1 * *" # 毎月 1 日 6:00 JST
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  create-issue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: 月次グロースレビュー issue を起票
+        run: |
+          set -euo pipefail
+          gh label create "ready-for-ai"  -c "1D76DB" -d "AI エージェントが着手してよい issue" -f
+          gh label create "source:growth" -c "0E8A16" -d "月次グロースレビューが起票" -f
+
+          # 前月分が未消化なら新規に作らず、リマインドに留める（issue の乱立防止）
+          existing=$(gh issue list --state open --label "source:growth" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "📅 新しい月になりました。このグロースレビューは未消化です。優先して着手してください。"
+            exit 0
+          fi
+
+          MONTH=$(TZ=Asia/Tokyo date +%Y-%m)
+          BODY=$(cat <<'MD'
+          AI エージェントへ: 以下を順に点検し、対応が必要な項目は **PR（軽微なもの）または ready-for-ai issue（大きいもの）** として残すこと。
+          判断に迷う項目は `soul.policy.yaml` の non_goals / principles と `docs/ai-self-improvement-loop.md` の Soul ゲートに照らす。
+
+          ## 訴求の追い付き（グロース）
+          - [ ] 直近 1 ヶ月のリリース内容（Releases 参照）が LP・README の訴求に反映されているか
+          - [ ] LP のコピーと実装が乖離していないか（存在しない機能を謳っていないか＝誠実化）
+          - [ ] SEO: 主要ページの title / meta description / OGP が適切か
+
+          ## ドキュメントの鮮度
+          - [ ] `docs/README.md` のインデックスと各文書のステータスが現状と一致しているか
+          - [ ] CLAUDE.md の「決定済みの技術判断」が実装と矛盾していないか
+
+          ## 棚卸し（自律運用の健全性）
+          - [ ] open のまま滞留している PR（needs-human / has-conflict）を一覧化し、対処方針を issue コメントに書く
+          - [ ] release-blocked issue が残っていないか
+          - [ ] dependabot のメジャー更新 PR を評価し、安全と判断できるものは検証結果を添えて人間に推薦コメントを書く
+          - [ ] 改善提案チャンネル・PostHog の集約シグナルに未処理の示唆があれば issue 化する（個人の監視は絶対にしない）
+
+          完了したら、実施内容の要約をこの issue にコメントして close すること。
+          MD
+          )
+          gh issue create \
+            --title "📈 月次グロースレビュー ${MONTH}" \
+            --body "$BODY" \
+            --label "ready-for-ai" --label "source:growth"

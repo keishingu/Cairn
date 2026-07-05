@@ -106,6 +106,17 @@ pnpm dev
 - デプロイは Vercel の Git 連携で自動。`develop` への merge で `develop.oss-cairn.com`（環境変数は Preview と共通）、`main` への merge で `oss-cairn.com`（本番）にリリースされる。詳細は [`docs/production-deployment.md`](docs/production-deployment.md)
 
 
+## 自律運用（人手最小オペレーション）
+
+メンテナが開発リソースを割けなくても回るよう、マージ・リリースは自動化されている。詳細は [`docs/autonomous-operations.md`](docs/autonomous-operations.md)。
+
+- **develop への自動マージ**: `.github/workflows/autonomous-merge.yml` が毎時、open PR をリスク分類し、[`soul.policy.yaml`](soul.policy.yaml) の `forbidden_zones`（権限・認証・DB スキーマ・ワークフロー・CLAUDE.md 等）に触れない CI green の PR を自動マージする。触れる PR には `needs-human` が付き人間のマージ待ちになる
+- **週次自動リリース**: 月曜朝に Release PR + AI 生成ノートが作られ、24h ソーク後にフル検証を経て main へ自動マージ・Draft Release 自動 Publish される
+- **自己修復**: 定期ワークフローの失敗・週次ヘルスチェックの失敗は `ready-for-ai` issue として起票され、AI エージェントのループが修復する
+- **止め方**: PR 単位は `needs-human` ラベル、リリースは `release-blocked` issue、全体は workflow の Disable
+- AI エージェントは `soul.policy.yaml` の non_goals（個人のランク付け・監視系機能など）に該当する実装をしてはならない。forbidden_zones の変更が必要な場合は PR にその理由を明記し、人間の判断に委ねる
+
+
 ## コミットメッセージ
 
 - `feat:`, `fix:`, `chore:`, `docs:` などの Conventional Commits のプレフィックスを使う
