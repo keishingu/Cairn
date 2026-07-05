@@ -35,6 +35,8 @@ jobs:
     timeout-minutes: 15
     outputs:
       release_pr: ${{ steps.sweep.outputs.release_pr }}
+      merge_pr: ${{ steps.sweep.outputs.merge_pr }}
+      merge_sha: ${{ steps.sweep.outputs.merge_sha }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -105,9 +107,12 @@ jobs:
           gh pr list --base develop --state open --limit 50 \
             --json number,author,isDraft,labels,createdAt,mergeable,title,headRefOid > /tmp/prs.json
 
-          # 自動マージは 1 スイープにつき 1 件まで。develop が進んだ後の他 PR は
-          # 「マージ済み内容との組み合わせ」が未検証のため、次のスイープで再評価する
-          MERGED=""
+          # 自動マージは 1 スイープにつき 1 件まで。ここでは候補の選定だけを行い、
+          # 実際のマージは後段の merge ジョブが「現在の develop との合成結果」を
+          # 検証してから実行する（PR の CI は push 時点の develop に対する結果であり、
+          # 他 PR のマージで develop が進むと合成結果は未検証になるため）
+          MERGE_PR=""
+          MERGE_SHA=""
           while IFS= read -r pr; do
             num=$(jq -r '.number' <<<"$pr")
             author=$(norm_author "$(jq -r '.author.login' <<<"$pr")")
@@ -161,22 +166,14 @@ jobs:
             [ "$age_h" -ge "$DEV_MIN_AGE" ] || { echo "PR #$num: ソーク時間未達（${age_h}h < ${DEV_MIN_AGE}h）"; continue; }
             is_green "$num" || { echo "PR #$num: CI が green でないためスキップ"; continue; }
             [ "$mergeable" = "MERGEABLE" ] || { echo "PR #$num: mergeable=$mergeable のためスキップ"; continue; }
-            [ -z "$MERGED" ] || { echo "PR #$num: 今回のスイープでは既に 1 件マージ済みのため見送り（次回再評価）"; continue; }
+            [ -z "$MERGE_PR" ] || { echo "PR #$num: 今回の候補は PR #$MERGE_PR のため見送り（次回スイープで再評価）"; continue; }
 
-            # CI を確認した head に固定してマージする（確認後の push が紛れ込むのを防ぐ）
-            echo "PR #$num: 自動マージ実行（head: $head_sha）"
-            if gh pr merge "$num" --squash --delete-branch --match-head-commit "$head_sha"; then
-              MERGED="$num"
-            else
-              current=$(gh pr view "$num" --json headRefOid --jq '.headRefOid')
-              if [ "$current" != "$head_sha" ]; then
-                echo "::warning::PR #$num: 判定後に head が進んだためマージを見送り（次回スイープで再評価）"
-              else
-                echo "::error::PR #$num: マージに失敗しました"
-                exit 1
-              fi
-            fi
+            MERGE_PR="$num"
+            MERGE_SHA="$head_sha"
+            echo "PR #$num: 自動マージ候補に選定（head: $head_sha）。後段ジョブで develop との合成を検証してからマージする"
           done < <(jq -c '.[]' /tmp/prs.json)
+          echo "merge_pr=$MERGE_PR" >> "$GITHUB_OUTPUT"
+          echo "merge_sha=$MERGE_SHA" >> "$GITHUB_OUTPUT"
 
           # ---- 2) Release PR（develop → main）のマージ可否を判定し、後段ジョブへ渡す ----
           RELEASE_PR=""
@@ -223,11 +220,123 @@ jobs:
             gh issue create --title "$TITLE" --body "$BODY" --label "ready-for-ai" --label "source:ops"
           fi
 
+  # 低リスク PR の develop へのマージ。PR の CI 結果には依存せず、
+  # 「現在の develop に PR を合成した結果」をこの場で検証してからマージする。
+  merge:
+    needs: sweep
+    if: needs.sweep.outputs.merge_pr != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MERGE_PR: ${{ needs.sweep.outputs.merge_pr }}
+      MERGE_SHA: ${{ needs.sweep.outputs.merge_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0 # PR head との合成マージに履歴が必要
+
+      - name: PR を develop へローカル合成
+        id: prep
+        run: |
+          set -euo pipefail
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git fetch origin "refs/pull/${MERGE_PR}/head"
+          if [ "$(git rev-parse FETCH_HEAD)" != "$MERGE_SHA" ]; then
+            echo "::warning::PR #${MERGE_PR}: 判定後に head が進んだため今回は見送り（次回スイープで再評価）"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git -c user.name="autonomous-merge" -c user.email="actions@github.com" \
+              merge --no-ff --no-edit "$MERGE_SHA"; then
+            git merge --abort || true
+            echo "::warning::PR #${MERGE_PR}: develop と合成できないため見送り（次回スイープで再評価）"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: steps.prep.outputs.skip != 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.prep.outputs.skip != 'true'
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.prep.outputs.skip != 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        if: steps.prep.outputs.skip != 'true'
+        run: pnpm typecheck
+
+      - name: Lint
+        if: steps.prep.outputs.skip != 'true'
+        run: pnpm lint
+
+      - name: Test
+        if: steps.prep.outputs.skip != 'true'
+        run: pnpm test
+
+      - name: Merge PR
+        if: steps.prep.outputs.skip != 'true'
+        env:
+          BASE_SHA: ${{ steps.prep.outputs.base_sha }}
+        run: |
+          set -euo pipefail
+          # 検証中の人間の介入（needs-human 付与）を尊重して直前に再確認する
+          labels_now=$(gh pr view "$MERGE_PR" --json labels --jq '[.labels[].name] | join(",")')
+          case ",$labels_now," in
+            *,needs-human,*)
+              echo "::notice::PR #${MERGE_PR}: 検証中に needs-human が付いたためマージしません。"
+              exit 0
+              ;;
+          esac
+          # 検証した合成の前提（develop の位置）が変わっていないことを確認する
+          if [ "$(git ls-remote origin develop | cut -f1)" != "$BASE_SHA" ]; then
+            echo "::warning::PR #${MERGE_PR}: 検証中に develop が進んだため見送り（次回スイープで再評価）"
+            exit 0
+          fi
+          if ! gh pr merge "$MERGE_PR" --squash --delete-branch --match-head-commit "$MERGE_SHA"; then
+            current=$(gh pr view "$MERGE_PR" --json headRefOid --jq '.headRefOid')
+            if [ "$current" != "$MERGE_SHA" ]; then
+              echo "::warning::PR #${MERGE_PR}: 判定後に head が進んだためマージを見送り（次回スイープで再評価）"
+              exit 0
+            fi
+            echo "::error::PR #${MERGE_PR}: マージに失敗しました"
+            exit 1
+          fi
+          echo "PR #${MERGE_PR} を develop にマージしました（検証済み head: $MERGE_SHA）。"
+
+      - name: 失敗を ops issue として起票
+        if: failure()
+        run: |
+          set -euo pipefail
+          TITLE="🚨 autonomous-merge（合成検証）が失敗"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          BODY="PR #${MERGE_PR} を develop へ合成した状態での検証（install / typecheck / lint / test）が失敗しました。PR 単体の CI は green のため、develop 側との組み合わせで壊れている可能性があります。原因を調査し、修正 PR を作成してください。
+
+          実行ログ: ${RUN_URL}"
+          existing=$(gh issue list --state open --label "source:ops" --search "in:title \"$TITLE\"" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "再発しました（PR #${MERGE_PR}）: ${RUN_URL}"
+          else
+            gh issue create --title "$TITLE" --body "$BODY" --label "ready-for-ai" --label "source:ops"
+          fi
+
   # Release PR のマージは、develop の現時点の内容をこの場で検証してから行う。
   # （スイープで develop に squash された commit には push イベントの CI が走らないため）
+  # merge ジョブの後に実行する（同一 run 内で develop が進む場合の競合を避ける）。
   release:
-    needs: sweep
-    if: needs.sweep.outputs.release_pr != ''
+    needs: [sweep, merge]
+    if: >-
+      always() && needs.sweep.result == 'success' &&
+      needs.sweep.outputs.release_pr != '' &&
+      (needs.merge.result == 'success' || needs.merge.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -261,6 +370,21 @@ jobs:
           set -euo pipefail
           REPO="${GITHUB_REPOSITORY}"
           NUM="${{ needs.sweep.outputs.release_pr }}"
+
+          # 検証中（数分〜十数分）に人間が停止スイッチを入れた場合を尊重するため、
+          # スイープ時点の判定に頼らずマージ直前にブロッカーを再確認する
+          labels_now=$(gh pr view "$NUM" --json labels --jq '[.labels[].name] | join(",")')
+          case ",$labels_now," in
+            *,needs-human,*)
+              echo "::notice::Release PR #$NUM: 検証中に needs-human が付いたため自動リリースを中止します。"
+              exit 0
+              ;;
+          esac
+          blocked=$(gh issue list --state open --label "release-blocked" --json number --jq 'length')
+          if [ "$blocked" != "0" ]; then
+            echo "::notice::release-blocked issue が open のため自動リリースを中止します。"
+            exit 0
+          fi
 
           # マージ対象を「このジョブで検証した SHA」に固定する。検証中に develop へ
           # 新しい push があった場合は未検証のためマージせず、次回スイープで再検証する

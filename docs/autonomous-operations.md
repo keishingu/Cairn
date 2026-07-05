@@ -58,8 +58,9 @@
 
 安全のための追加ルール:
 
-- **自動マージは 1 スイープにつき 1 件**。マージで develop が進むと他 PR の CI 結果は「マージ済み内容との組み合わせ」を保証しなくなるため、残りは次のスイープで再評価する（毎時実行なので最大 24 件/日）
-- マージは **CI を確認した head SHA に固定**（`--match-head-commit`）。判定後に push があった場合はマージせず次回再評価する
+- **自動マージは 1 スイープにつき 1 件**（毎時実行なので最大 24 件/日）
+- PR の CI は「その PR の push 時点の develop」に対する結果でしかない（他 PR のマージで develop が進んでも再実行されない）ため、PR の CI green は**候補選定の条件**に留める。最終マージは merge ジョブが**現在の develop に PR を合成した状態**で install / typecheck / lint / test を実行し、通った場合のみ行う（簡易マージキュー）
+- マージは**検証した head SHA・develop 位置に固定**（`--match-head-commit` + base SHA 確認）。検証中に PR への push・develop の前進・`needs-human` の付与があった場合はマージせず次回スイープで再評価する
 
 forbidden_zones（権限・認証・DB スキーマ・課金・ワークフロー・soul.policy.yaml 自体・CLAUDE.md）は「AI に自動変更させない領域」。この領域の PR だけが人間のマージを待つ。
 
@@ -70,6 +71,7 @@ forbidden_zones（権限・認証・DB スキーマ・課金・ワークフロ�
 - **火曜朝ごろ**: `autonomous-merge.yml` が develop の内容をその場でフル検証（install / typecheck / lint / test）し、通れば main へマージ → Vercel が本番デプロイ → Draft Release を自動 Publish。
   - スイーパー自身が検証し直すのは、GITHUB_TOKEN が作った squash コミットには push イベントの CI が走らないため（GitHub Actions の仕様）。push CI の結果には依存しない。
   - マージは**検証したチェックアウト時点の SHA に固定**（`--match-head-commit`）。検証中に develop へ新しい push があった場合はマージせず、次回スイープで再検証する。
+  - 検証中に人間が停止スイッチ（Release PR への `needs-human` / `release-blocked` issue）を入れた場合を尊重するため、**マージ直前にもブロッカーを再確認**する。
 - **失敗時**: `release-blocked` ラベル付きの issue が起票され、**close されるまで自動リリースは停止**する。修正 PR が develop に入ったら issue を close すると再開。
 
 ## 5. 自己修復ループ
