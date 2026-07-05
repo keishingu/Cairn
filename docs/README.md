@@ -25,6 +25,8 @@
 | [`pricing-plan-design.md`](./pricing-plan-design.md) | 料金プラン設計（Free / Solo / Team / Expedition、ケルン消費モデル） | 2026-06-16 |
 | [`billing-implementation-design.md`](./billing-implementation-design.md) | 課金の実装設計（クレジット台帳・ストレージ家賃・風化・Stripe統合） | 2026-06-16 |
 | [`keyboard-shortcuts.md`](./keyboard-shortcuts.md) | キーボードショートカット設計（3層モデル・全画面マッピング・Vim モード。第1段のみ実装済み） | 2026-06-16 |
+| [`mobile-native-completion.md`](./mobile-native-completion.md) | モバイルネイティブ化の完成定義・受け入れチェックリスト・バックログ | 2026-07-05 |
+| [`prompts/mobile-loop/README.md`](./prompts/mobile-loop/README.md) | モバイルネイティブ化 自動改善ループ（QA=Codex Computer Use / Builder=日次ルーティン）の運用 | 2026-07-05 |
 
 ## 設計時スナップショット
 

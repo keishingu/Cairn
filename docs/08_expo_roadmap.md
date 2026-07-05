@@ -2,6 +2,7 @@
 
 > **ステータス**: 設計時スナップショット（作成: 2026-05-27 / 最終更新: 2026-05-29）
 > 作成時点のロードマップ。一部は実施済み（`apps/mobile` の WebView ラッパー等、[`docs/archive/prompts/`](./archive/prompts/) の Phase 2-B 参照）。進捗はコードを正とする。
+> **現状の完成定義・残作業は [`mobile-native-completion.md`](./mobile-native-completion.md) を正とする**（本書 §5 の進捗表は古い）。
 
 ---
 

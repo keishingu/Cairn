@@ -134,3 +134,4 @@ pnpm dev
 - [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md) — コンポーネント設計・Domain Hook パターン・UIディレクトリ構成
 - [`docs/api-conventions.md`](docs/api-conventions.md) — API ルート実装規約・認証・サインアップフロー
 - [`docs/notification-design.md`](docs/notification-design.md) — 通知設計（メンション・Push・アプリ内通知）
+- [`docs/mobile-native-completion.md`](docs/mobile-native-completion.md) — モバイルネイティブ化の完成定義・チェックリスト・バックログ（`apps/mobile` に触れるときは必読。自動改善ループは [`docs/prompts/mobile-loop/README.md`](docs/prompts/mobile-loop/README.md)）
