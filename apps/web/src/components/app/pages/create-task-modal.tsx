@@ -2,7 +2,9 @@
 
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Modal, ModalHeader, fieldInputStyle } from '../primitives'
+import { fieldInputStyle } from '../primitives'
+import { TaskDialog } from '../task-dialog'
+import { TaskFormFields } from '../task-form-fields'
 import type { TaskDto } from '@/app/api/tasks/route'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -50,37 +52,29 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
     })
   }
 
+  const errorMessage = mutation.isError ? 'タスクの作成に失敗しました。もう一度お試しください。' : undefined
+
   return (
-    <Modal onClose={onClose}>
-      <div style={{
-        position: 'relative',
-        background: 'var(--card)', borderRadius: 14,
-        width: '100%', maxWidth: 480,
-        boxShadow: 'var(--shadow-lg)',
-        display: 'flex', flexDirection: 'column',
-        overflow: 'hidden',
-        animation: 'fadeSlideIn .15s ease',
-      }}>
-        <ModalHeader title="タスクを追加" onClose={onClose}/>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
-              タイトル <span style={{ color: 'var(--red)' }}>*</span>
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="タスク名を入力..."
-              required
-              // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus
-              style={fieldInputStyle(false)}
-            />
-          </div>
-
+    <TaskDialog
+      title="タスクを追加"
+      onClose={onClose}
+      onSubmit={handleSubmit}
+      submitLabel="追加"
+      submittingLabel="追加中..."
+      isSubmitting={mutation.isPending}
+      submitDisabled={!title.trim() || !projectId}
+      disableClose={mutation.isPending}
+      {...(errorMessage ? { errorMessage } : {})}
+    >
+      <TaskFormFields
+        title={title}
+        onTitleChange={setTitle}
+        priority={priority}
+        onPriorityChange={setPriority}
+        dueDate={dueDate}
+        onDueDateChange={setDueDate}
+        titlePlaceholder="タスク名を入力..."
+        afterTitle={(
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
               プロジェクト <span style={{ color: 'var(--red)' }}>*</span>
@@ -97,55 +91,8 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
               ))}
             </select>
           </div>
-
-          <div style={{ display: 'flex', gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>優先度</label>
-              <select
-                value={priority}
-                onChange={e => setPriority(e.target.value as TaskDto['priority'])}
-                style={fieldInputStyle(false)}
-              >
-                <option value="high">高</option>
-                <option value="medium">中</option>
-                <option value="low">低</option>
-              </select>
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>期限日</label>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={e => setDueDate(e.target.value)}
-                style={fieldInputStyle(false)}
-              />
-            </div>
-          </div>
-
-          {mutation.isError && (
-            <div style={{
-              fontSize: 12.5, color: 'var(--red-text)', background: 'var(--red-soft)',
-              padding: '8px 12px', borderRadius: 6,
-            }}>
-              タスクの作成に失敗しました。もう一度お試しください。
-            </div>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4 }}>
-            <button type="button" onClick={onClose} className="btn" style={{ padding: '8px 16px' }}>
-              キャンセル
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={!title.trim() || !projectId || mutation.isPending}
-              style={{ padding: '8px 16px' }}
-            >
-              {mutation.isPending ? '追加中...' : '追加'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </Modal>
+        )}
+      />
+    </TaskDialog>
   )
 }

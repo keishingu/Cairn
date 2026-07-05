@@ -39,13 +39,24 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
   const isAuthRoute = pathname.startsWith('/auth')
-  // 未ログインでもアクセスできるパブリックルート
-  const isPublicRoute = pathname.startsWith('/invite') || pathname.startsWith('/lp')
+  // トップページは未ログインでも閲覧できる公開 LP
+  const isLandingRoute = pathname === '/'
+  const isLandingAsset =
+    pathname === '/cairn-lp.css' ||
+    pathname === '/cairn-lp.js' ||
+    pathname === '/og-image.png' ||
+    pathname === '/og-image.svg'
+  const isSeoRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
+  // 未ログインでもアクセスできるパブリックルート（LP と関連静的アセットを含む）
+  const isPublicRoute = pathname.startsWith('/invite') || isLandingRoute || isLandingAsset || isSeoRoute
   // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
   const isOnboardingRoute = pathname.startsWith('/onboarding')
 
   if (!user && !isAuthRoute && !isPublicRoute) {
     return NextResponse.redirect(new URL('/auth/login', request.url))
+  }
+  if (user && isLandingRoute) {
+    return NextResponse.redirect(new URL('/projects', request.url))
   }
   if (user && isAuthRoute && !isOnboardingRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))

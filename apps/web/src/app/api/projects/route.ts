@@ -187,8 +187,20 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, channels, projectStatuses } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { projects, channels, projectStatuses, projectMembers, workspaceMembers, profiles } = await import('@cairn/db')
+    const { eq, and, inArray } = await import('drizzle-orm')
+    const selectedMemberIds = [...new Set(parsed.data.memberUserIds ?? [])]
+
+    if (selectedMemberIds.length > 0) {
+      const wsRows = await db
+        .select({ userId: workspaceMembers.userId })
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, selectedMemberIds)))
+
+      if (wsRows.length !== selectedMemberIds.length) {
+        return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })
+      }
+    }
 
     let coverPhotoUrl = parsed.data.coverPhotoUrl ?? null
 
@@ -263,6 +275,37 @@ export async function POST(req: Request) {
       type: 'project',
     })
 
+    let memberNames: string[] = []
+    let memberAvatarUrls: (string | null)[] = []
+    if (selectedMemberIds.length > 0) {
+      await db.insert(projectMembers).values(
+        selectedMemberIds.map(userId => ({
+          projectId: inserted.id,
+          userId,
+          role: 'member' as const,
+          attendance: 'attending' as const,
+        })),
+      )
+
+      const memberRows = await db
+        .select({
+          userId: profiles.id,
+          displayName: profiles.displayName,
+          avatarUrl: workspaceMembers.avatarUrl,
+        })
+        .from(profiles)
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+        .where(inArray(profiles.id, selectedMemberIds))
+
+      const memberMap = new Map(memberRows.map(row => [row.userId, row]))
+      const selectedMembers = selectedMemberIds
+        .map(userId => memberMap.get(userId))
+        .filter((row): row is NonNullable<typeof row> => row !== undefined)
+
+      memberNames = selectedMembers.slice(0, 4).map(row => row.displayName)
+      memberAvatarUrls = selectedMembers.slice(0, 4).map(row => row.avatarUrl ?? null)
+    }
+
     try {
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({
@@ -281,13 +324,13 @@ export async function POST(req: Request) {
       statusColor,
       startDate: inserted.startDate,
       endDate: inserted.endDate,
-      memberCount: 0,
-      memberNames: [],
-      memberAvatarUrls: [],
+      memberCount: selectedMemberIds.length,
+      memberNames,
+      memberAvatarUrls,
       taskCount: 0,
       completedTaskCount: 0,
       isOwner: true,
-      isMember: false,
+      isMember: selectedMemberIds.includes(ctx.userId),
       archived: false,
       coverPhotoIdx: coverPhotoIdxFromId(inserted.id),
       coverPhotoUrl: inserted.coverPhotoUrl ?? null,
