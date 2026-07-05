@@ -72,7 +72,9 @@ describe('RealtimeProvider', () => {
   })
 
   afterEach(() => {
-    vi.runOnlyPendingTimers()
+    act(() => {
+      vi.runOnlyPendingTimers()
+    })
     vi.useRealTimers()
   })
 
@@ -103,6 +105,10 @@ describe('RealtimeProvider', () => {
       channelRecords[0]?.callback?.('CHANNEL_ERROR', { message: 'boom' })
     })
 
+    await act(async () => {
+      await Promise.resolve()
+    })
+
     act(() => {
       vi.advanceTimersByTime(9_999)
     })
@@ -128,5 +134,43 @@ describe('RealtimeProvider', () => {
       await Promise.resolve()
     })
     expect(screen.queryByText('再接続中…')).toBeNull()
+  })
+
+  it('古い user channel の CLOSED を再接続後の channel に波及させない', async () => {
+    renderProvider()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(channelRecords).toHaveLength(1)
+    const staleChannel = channelRecords[0]
+
+    act(() => {
+      staleChannel?.callback?.('CHANNEL_ERROR', { message: 'boom' })
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(3_000)
+      await Promise.resolve()
+    })
+
+    expect(channelRecords).toHaveLength(2)
+
+    act(() => {
+      staleChannel?.callback?.('CLOSED')
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+      vi.advanceTimersByTime(3_000)
+      await Promise.resolve()
+    })
+
+    expect(channelRecords).toHaveLength(2)
   })
 })

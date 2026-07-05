@@ -113,6 +113,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    const removeUserChannel = async (channel: RealtimeChannel) => {
+      if (userChannel === channel) {
+        userChannel = null
+      }
+      await supabase.removeChannel(channel)
+    }
+
     const connectUserChannel = async () => {
       const { data } = await supabase.auth.getSession()
       if (cancelled) return
@@ -121,7 +128,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       if (token) await supabase.realtime.setAuth(token)
       if (cancelled) return
 
-      userChannel = supabase
+      const currentChannel = supabase
         .channel(`user:${userId}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
           const table = tableOf((message as { payload?: unknown }).payload)
@@ -135,9 +142,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           }
         })
+      userChannel = currentChannel
 
-      userChannel.subscribe((subStatus, err) => {
-        if (cancelled) return
+      currentChannel.subscribe((subStatus, err) => {
+        if (cancelled || currentChannel !== userChannel) return
         if (subStatus === 'SUBSCRIBED') {
           clearRetryTimer()
           // デプロイにRealtimeコードが入っているか・接続できているかを判別できるよう成功も1行出す
@@ -151,16 +159,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           // 購読失敗の原因（認可ポリシー・トークン等）を隠さない
           console.error('[Realtime] subscription failed:', subStatus, err?.message ?? err)
           setStatus('disconnected')
-          if (userChannel) {
-            void supabase.removeChannel(userChannel)
-            userChannel = null
-          }
-          if (!retryTimer) {
+          void (async () => {
+            await removeUserChannel(currentChannel)
+            if (cancelled || retryTimer) return
             retryTimer = setTimeout(() => {
               retryTimer = null
               void connectUserChannel()
             }, RETRY_DELAY_MS)
-          }
+          })()
         }
       })
     }
@@ -179,7 +185,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       cancelled = true
       clearRetryTimer()
       authSub.subscription.unsubscribe()
-      if (userChannel) void supabase.removeChannel(userChannel)
+      if (userChannel) void removeUserChannel(userChannel)
     }
   }, [queryClient, userId, scheduleListInvalidate])
 
