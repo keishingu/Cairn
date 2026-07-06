@@ -37,6 +37,7 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
     },
     onSuccess: (newTask) => {
       queryClient.setQueryData<TaskDto[]>(['tasks'], old => old ? [newTask, ...old] : [newTask])
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
       onClose()
     },
   })

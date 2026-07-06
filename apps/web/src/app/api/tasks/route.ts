@@ -22,9 +22,46 @@ export interface TaskDto {
   isLinkedToMessage: boolean
 }
 
+export interface TaskListPage {
+  tasks: TaskDto[]
+  nextCursor: string | null
+}
+
+const DEFAULT_TASK_PAGE_SIZE = 50
+const MAX_TASK_PAGE_SIZE = 200
+
+function parseLimit(rawLimit: string | null): number | null {
+  if (rawLimit == null) return null
+  const parsed = Number.parseInt(rawLimit, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_TASK_PAGE_SIZE
+  return Math.min(parsed, MAX_TASK_PAGE_SIZE)
+}
+
+function encodeTaskCursor(createdAt: Date, id: string): string {
+  return `${createdAt.toISOString()}__${id}`
+}
+
+function decodeTaskCursor(cursor: string): { createdAt: Date; id: string } | null {
+  const separatorIndex = cursor.lastIndexOf('__')
+  if (separatorIndex <= 0) return null
+
+  const createdAt = new Date(cursor.slice(0, separatorIndex))
+  const id = cursor.slice(separatorIndex + 2)
+  if (Number.isNaN(createdAt.getTime()) || id.length === 0) return null
+  return { createdAt, id }
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId') ?? undefined
+  const pageSize = parseLimit(searchParams.get('limit'))
+  const cursor = searchParams.get('cursor')
+  const paginationEnabled = pageSize != null
+  const decodedCursor = cursor ? decodeTaskCursor(cursor) : null
+
+  if (cursor && (!paginationEnabled || decodedCursor == null)) {
+    return NextResponse.json({ error: 'Invalid cursor' }, { status: 400 })
+  }
 
   try {
     const { ctx, error } = await getAuthContext()
@@ -32,7 +69,7 @@ export async function GET(req: Request) {
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, inArray, and } = await import('drizzle-orm')
+    const { eq, inArray, and, or, lt, desc } = await import('drizzle-orm')
 
     const projectRows = await db
       .select({ id: projects.id, title: projects.title })
@@ -53,7 +90,17 @@ export async function GET(req: Request) {
 
     if (projectIds.length === 0) return NextResponse.json([])
 
-    const taskRows = await db
+    const taskWhere = decodedCursor
+      ? and(
+          inArray(tasks.projectId, projectIds),
+          or(
+            lt(tasks.createdAt, decodedCursor.createdAt),
+            and(eq(tasks.createdAt, decodedCursor.createdAt), lt(tasks.id, decodedCursor.id)),
+          ),
+        )
+      : inArray(tasks.projectId, projectIds)
+
+    const taskQuery = db
       .select({
         id: tasks.id,
         projectId: tasks.projectId,
@@ -61,6 +108,7 @@ export async function GET(req: Request) {
         status: tasks.status,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
+        createdAt: tasks.createdAt,
         sourceMessageId: tasks.sourceMessageId,
         assigneeName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
@@ -68,11 +116,17 @@ export async function GET(req: Request) {
       .from(tasks)
       .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, tasks.assigneeId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-      .where(inArray(tasks.projectId, projectIds))
+      .where(taskWhere)
+      .orderBy(desc(tasks.createdAt), desc(tasks.id))
+
+    const taskRows = paginationEnabled
+      ? await taskQuery.limit(pageSize + 1)
+      : await taskQuery
 
     const projectMap = new Map(projectRows.map(p => [p.id, p.title]))
+    const pageRows = paginationEnabled ? taskRows.slice(0, pageSize) : taskRows
 
-    const result: TaskDto[] = taskRows.map(r => ({
+    const result: TaskDto[] = pageRows.map(r => ({
       id: r.id,
       projectId: r.projectId,
       projectTitle: projectMap.get(r.projectId) ?? '',
@@ -84,6 +138,14 @@ export async function GET(req: Request) {
       assigneeAvatarUrl: r.assigneeAvatarUrl ?? null,
       isLinkedToMessage: r.sourceMessageId != null,
     }))
+
+    if (paginationEnabled) {
+      const lastRow = pageRows.at(-1)
+      const nextCursor = taskRows.length > pageSize && lastRow
+        ? encodeTaskCursor(lastRow.createdAt, lastRow.id)
+        : null
+      return NextResponse.json({ tasks: result, nextCursor } satisfies TaskListPage)
+    }
 
     return NextResponse.json(result)
   } catch (err) {
