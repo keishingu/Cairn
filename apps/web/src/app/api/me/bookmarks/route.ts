@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface BookmarkDto {
   id: string
@@ -51,7 +52,7 @@ export async function GET(_req: Request) {
       .select({
         id: messages.id,
         content: messages.content,
-        senderName: profiles.displayName,
+        senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         senderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: messages.createdAt,
         channelId: channels.id,

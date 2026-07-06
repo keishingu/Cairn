@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface DmChannelDto {
   id: string
@@ -36,7 +37,7 @@ export async function GET() {
       .select({
         id: channels.id,
         participantId: profiles.id,
-        participantName: profiles.displayName,
+        participantName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         participantAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(channels)
@@ -58,7 +59,7 @@ export async function GET() {
           inArray(channels.id, myChannelIds),
         ),
       )
-      .orderBy(profiles.displayName)
+      .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
 
     const channelIds = rows.map(r => r.id)
     if (channelIds.length > 0) {

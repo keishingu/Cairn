@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
 import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ProjectMemberDto {
   userId: string
@@ -47,7 +48,7 @@ export async function GET(
     const rows = await db
       .select({
         userId: profiles.id,
-        displayName: profiles.displayName,
+        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         role: projectMembers.role,
         attendance: projectMembers.attendance,
@@ -64,7 +65,7 @@ export async function GET(
         ),
       )
       .where(eq(projectMembers.projectId, projectId))
-      .orderBy(profiles.displayName)
+      .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
 
     const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
 
@@ -179,7 +180,7 @@ export async function POST(
     const profileRows = await db
       .select({
         userId: profiles.id,
-        displayName: profiles.displayName,
+        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(profiles)

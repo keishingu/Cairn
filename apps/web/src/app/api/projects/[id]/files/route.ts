@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { canAccessFile, requireProjectAccess } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ProjectFileDto {
   id: string
@@ -26,13 +27,12 @@ export async function GET(_req: Request, { params }: RouteContext) {
   if (error) return error
 
   try {
-    const { db, files, profiles, projects, galleryItems, documentChunks } = await import('@cairn/db')
+    const { db, files, profiles, projects, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
     const { eq, and, isNull, desc, inArray } = await import('drizzle-orm')
     const { isIndexable } = await import('@/lib/ai/extract-text')
     const accessCheckBatchSize = 50
     const candidatePageSize = 200
 
-    // プロジェクトが同一ワークスペースに属することを確認
     const [project] = await db
       .select({ id: projects.id })
       .from(projects)
@@ -43,7 +43,6 @@ export async function GET(_req: Request, { params }: RouteContext) {
       return new NextResponse(null, { status: 404 })
     }
 
-    // ゲストは参加プロジェクトのファイルのみ閲覧可
     const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
     if (forbidden) return forbidden
 
@@ -57,7 +56,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
           mimeType: files.mimeType,
           fileSize: files.fileSize,
           fileType: files.fileType,
-          uploaderName: profiles.displayName,
+          uploaderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
           createdAt: files.createdAt,
           metadata: files.metadata,
           workspaceId: files.workspaceId,
@@ -66,6 +65,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
         })
         .from(files)
         .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
+        .leftJoin(
+          workspaceMembers,
+          and(eq(workspaceMembers.userId, files.uploadedBy), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+        )
         .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
         .where(and(
           eq(files.projectId, projectId),
@@ -102,7 +105,6 @@ export async function GET(_req: Request, { params }: RouteContext) {
       offset += rows.length
     }
 
-    // チャンク済みファイルの ID セットを取得
     const fileIds = visibleRows.map(r => r.id)
     const chunkedIdSet = new Set<string>()
     if (fileIds.length > 0) {
@@ -121,8 +123,6 @@ export async function GET(_req: Request, { params }: RouteContext) {
         const meta = (r.metadata ?? {}) as Record<string, unknown>
         const externalUrl = meta['externalUrl']
 
-        // リンク: metadata の indexingStatus をそのまま使う
-        // アップロードファイル: indexable なら chunk の有無でステータスを決定
         let indexingStatus: string | undefined
         if (r.fileType === 'link') {
           const s = meta['indexingStatus']

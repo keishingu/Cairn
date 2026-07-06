@@ -74,6 +74,7 @@ vi.mock('@cairn/db', () => ({
     id: 'wm.id',
     userId: 'wm.userId',
     workspaceId: 'wm.workspaceId',
+    displayName: 'wm.displayName',
     avatarUrl: 'wm.avatarUrl',
     membershipStatus: 'wm.membershipStatus',
   },
@@ -82,6 +83,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn((...args) => ({ type: 'eq', args })),
   and: vi.fn((...args) => ({ type: 'and', args })),
   inArray: vi.fn((...args) => ({ type: 'inArray', args })),
+  sql: vi.fn(() => 'sql'),
 }))
 
 function chain(result: unknown[]) {

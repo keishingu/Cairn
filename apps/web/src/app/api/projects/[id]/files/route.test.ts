@@ -43,6 +43,11 @@ vi.mock('@cairn/db', () => ({
   },
   profiles: { id: 'profiles.id', displayName: 'profiles.displayName' },
   projects: { id: 'projects.id', workspaceId: 'projects.workspaceId' },
+  workspaceMembers: {
+    userId: 'workspaceMembers.userId',
+    workspaceId: 'workspaceMembers.workspaceId',
+    displayName: 'workspaceMembers.displayName',
+  },
   galleryItems: { id: 'galleryItems.id', fileId: 'galleryItems.fileId' },
   documentChunks: { sourceId: 'documentChunks.sourceId', sourceType: 'documentChunks.sourceType' },
 }))
@@ -53,6 +58,7 @@ vi.mock('drizzle-orm', () => ({
   isNull: vi.fn((...args: unknown[]) => ({ type: 'isNull', args })),
   desc: vi.fn((...args: unknown[]) => ({ type: 'desc', args })),
   inArray: vi.fn((...args: unknown[]) => ({ type: 'inArray', args })),
+  sql: vi.fn(() => ({ type: 'sql' })),
 }))
 
 function chain(result: unknown[], { resolveOn = 'limit' }: { resolveOn?: 'limit' | 'offset' } = {}) {

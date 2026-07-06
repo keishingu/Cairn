@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 
 // --- vi.hoisted ---
-const { mockGetAuthUser, mockDb } = vi.hoisted(() => {
+const { mockGetAuthUser, mockDb, mockGt, mockSql } = vi.hoisted(() => {
   const mockGetAuthUser = vi.fn().mockResolvedValue({
     userId: '00000000-0000-0000-0000-000000000001',
     error: null,
@@ -18,7 +18,13 @@ const { mockGetAuthUser, mockDb } = vi.hoisted(() => {
     delete: vi.fn(),
     transaction: vi.fn(),
   }
-  return { mockGetAuthUser, mockDb }
+  const mockGt = vi.fn(() => 'gt')
+  const mockSql = vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({
+    kind: 'sql',
+    text: strings.join('?'),
+    values,
+  }))
+  return { mockGetAuthUser, mockDb, mockGt, mockSql }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -82,9 +88,9 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
   or: vi.fn(() => 'or'),
   isNull: vi.fn(() => 'isNull'),
-  gt: vi.fn(() => 'gt'),
+  gt: mockGt,
+  sql: mockSql,
   inArray: vi.fn(() => 'inArray'),
-  sql: vi.fn(() => 'sql'),
 }))
 
 vi.mock('@/lib/inngest/client', () => ({
@@ -372,6 +378,35 @@ describe('POST /api/invite/[token]/accept', () => {
     const body = await res.json() as { error: string }
     expect(body.error).toContain('usage limit')
     expect(mockDb.transaction).toHaveBeenCalledTimes(1)
+  })
+
+  it('claim 前に期限切れになった招待は 410 を返す', async () => {
+    const invite = {
+      id: 'inv-02b',
+      workspaceId: WORKSPACE_ID,
+      role: 'member',
+      expiresAt: '2099-01-01T00:00:00.000Z',
+      maxUses: 5,
+      useCount: 0,
+    }
+
+    mockDb.select
+      .mockReturnValueOnce(selectChain([invite]))
+      .mockReturnValueOnce(selectChain([]))
+
+    // claim 時点では expires_at 条件を満たさず行が返らない
+    mockDb.update.mockReturnValueOnce(updateChain([]))
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/invite/${VALID_TOKEN}/accept`, { method: 'POST' }),
+      { params: Promise.resolve({ token: VALID_TOKEN }) },
+    )
+
+    expect(res.status).toBe(410)
+    const body = await res.json() as { error: string }
+    expect(body.error).toContain('usage limit')
+    expect(mockGt).toHaveBeenNthCalledWith(2, 'wi.expiresAt', expect.objectContaining({ text: 'now()' }))
   })
 
   it('有効なトークン・未参加ユーザー → ワークスペースに追加して workspaceId を返す', async () => {

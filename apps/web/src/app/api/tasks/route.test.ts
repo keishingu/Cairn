@@ -43,12 +43,14 @@ vi.mock('@cairn/db', () => ({
     userId: 'workspaceMembers.userId',
     workspaceId: 'workspaceMembers.workspaceId',
     membershipStatus: 'workspaceMembers.membershipStatus',
+    displayName: 'workspaceMembers.displayName',
     avatarUrl: 'workspaceMembers.avatarUrl',
   },
 }))
 vi.mock('drizzle-orm', () => ({
   eq: mockEq,
   and: mockAnd,
+  sql: vi.fn(() => Symbol('sql')),
 }))
 
 function postRequest() {

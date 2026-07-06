@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { canAccessFile, getWorkspaceMemberRole } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface FileDto {
   id: string
@@ -78,8 +79,6 @@ export async function GET() {
           and(
             eq(channels.isPrivate, false),
             ne(channels.type, 'dm'),
-            // 旧データの project channel は workspace_id が null のことがあるため許容する。
-            // files.workspace_id 側で現在ワークスペースには絞れている。
             or(eq(channels.workspaceId, ctx.workspaceId), isNull(channels.workspaceId)),
           ),
           exists(channelMemberSq),
@@ -95,7 +94,6 @@ export async function GET() {
         channelAccessCondition,
       ))
 
-    // metadata.channelIds（新形式の配列）と旧形式の単一 metadata.channelId の両方を対象にする
     const metadataChannelAccessSq = db
       .select({ one: sql<number>`1` })
       .from(channels)
@@ -143,7 +141,7 @@ export async function GET() {
           fileType: files.fileType,
           metadata: files.metadata,
           uploadedBy: files.uploadedBy,
-          uploaderName: profiles.displayName,
+          uploaderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
           uploaderAvatarUrl: workspaceMembers.avatarUrl,
           createdAt: files.createdAt,
         })

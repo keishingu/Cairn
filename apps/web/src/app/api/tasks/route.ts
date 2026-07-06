@@ -8,6 +8,7 @@ import { getGuestVisibleProjectIds, getWorkspaceMemberRole, requireProjectAccess
 import { inngest } from '@/lib/inngest/client'
 import type { TaskAssignedEvent } from '@/lib/inngest/events'
 import { isActiveWorkspaceMember } from '@/lib/inngest/notification-access'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface TaskDto {
   id: string
@@ -62,7 +63,7 @@ export async function GET(req: Request) {
         priority: tasks.priority,
         dueDate: tasks.dueDate,
         sourceMessageId: tasks.sourceMessageId,
-        assigneeName: profiles.displayName,
+        assigneeName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(tasks)
@@ -157,9 +158,12 @@ export async function POST(req: Request) {
 
     const assigneeRow = inserted.assigneeId
       ? (await db
-          .select({ displayName: profiles.displayName, avatarUrl: workspaceMembers.avatarUrl })
+          .select({
+            displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+            avatarUrl: workspaceMembers.avatarUrl,
+          })
           .from(profiles)
-          .leftJoin(workspaceMembers, eq(workspaceMembers.userId, profiles.id))
+          .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
           .where(eq(profiles.id, inserted.assigneeId)))[0]
       : null
 
@@ -189,8 +193,9 @@ export async function POST(req: Request) {
 
     if (shouldNotifyAssignee && assigneeIdForNotification) {
       const [assigner] = await db
-        .select({ displayName: profiles.displayName })
+        .select({ displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
         .from(profiles)
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
         .where(eq(profiles.id, ctx.userId))
 
       try {
