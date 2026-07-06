@@ -56,6 +56,15 @@ vi.mock('@cairn/db', () => ({
     role: 'pm.role',
     attendance: 'pm.attendance',
   },
+  channelMembers: {
+    channelId: 'cm.channelId',
+    userId: 'cm.userId',
+  },
+  channels: {
+    id: 'c.id',
+    workspaceId: 'c.workspaceId',
+    projectId: 'c.projectId',
+  },
   projects: {
     id: 'p.id',
     workspaceId: 'p.workspaceId',
@@ -295,13 +304,23 @@ describe('POST /api/invite/[token]/accept', () => {
       .mockReturnValueOnce(selectChain([invite]))
       .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id', membershipStatus: 'inactive', role: 'guest' }]))
       .mockReturnValueOnce(selectWhereChain([{ id: 'project-a' }, { id: 'project-b' }]))
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          leftJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ id: 'channel-a' }, { id: 'channel-b' }]),
+          }),
+        }),
+      })
 
     const membershipUpdate = updateWithoutReturningChain()
     const staleProjectDelete = deleteChain()
+    const staleChannelDelete = deleteChain()
     mockDb.update
       .mockReturnValueOnce(updateChain([{ id: 'inv-05', workspaceId: WORKSPACE_ID, role: 'guest' }]))
       .mockReturnValueOnce(membershipUpdate)
-    mockDb.delete.mockReturnValueOnce(staleProjectDelete)
+    mockDb.delete
+      .mockReturnValueOnce(staleProjectDelete)
+      .mockReturnValueOnce(staleChannelDelete)
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -314,9 +333,10 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(body).toEqual({ ok: true, workspaceId: WORKSPACE_ID })
     expect(mockDb.insert).not.toHaveBeenCalled()
     expect(mockDb.update).toHaveBeenCalledTimes(2)
-    expect(mockDb.delete).toHaveBeenCalledTimes(1)
+    expect(mockDb.delete).toHaveBeenCalledTimes(2)
     expect(membershipUpdate.set).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'guest' })
     expect(mockInArray).toHaveBeenCalledWith('pm.projectId', ['project-a', 'project-b'])
+    expect(mockInArray).toHaveBeenCalledWith('cm.channelId', ['channel-a', 'channel-b'])
   })
 
   it('inactive な通常メンバーを guest 招待で再有効化しようとすると 422 を返す', async () => {

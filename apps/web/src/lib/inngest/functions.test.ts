@@ -116,7 +116,9 @@ describe('onTaskAssigned', () => {
       event: { data: Record<string, string> }
       step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> }
     }) => Promise<unknown>
-    const step = { run: vi.fn(async (_name: string, fn: () => Promise<unknown>) => fn()) }
+    const step = {
+      run: <T,>(_name: string, fn: () => Promise<T>) => fn(),
+    }
 
     const result = await handler({
       event: {
@@ -159,8 +161,8 @@ describe('onTaskAssigned', () => {
     }) => Promise<unknown>
 
     const step = {
-      run: vi.fn(async (_name: string, fn: () => Promise<unknown>) => fn()),
-      sleep: vi.fn(async () => {}),
+      run: <T,>(_name: string, fn: () => Promise<T>) => fn(),
+      sleep: async (_name: string, _duration: string) => {},
     }
 
     const result = await handler({
