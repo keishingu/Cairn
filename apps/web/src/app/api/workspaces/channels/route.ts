@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole, requireWorkspaceAdmin } from '@/lib/permissions'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface WorkspaceChannelDto {
   id: string
@@ -52,10 +52,13 @@ export async function GET() {
     if (channelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
 
     const { workspaceMembers } = await import('@cairn/db')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
     const memberRows = await db
       .select({
         channelId: channelMembers.channelId,
-        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        displayName: displayNameExpr,
         avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(channelMembers)

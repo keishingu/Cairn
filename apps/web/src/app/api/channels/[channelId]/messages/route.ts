@@ -9,7 +9,7 @@ import { inngest } from '@/lib/inngest/client'
 import type { MessageCreatedEvent } from '@/lib/inngest/events'
 import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions, extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ReactionDto {
   emoji: string
@@ -65,6 +65,9 @@ export async function GET(req: Request, { params }: RouteContext) {
     const { desc, asc } = await import('drizzle-orm')
 
     const { workspaceMembers } = await import('@cairn/db')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     const selectFields = {
       id: messages.id,
@@ -72,7 +75,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       messageType: messages.messageType,
       parentMessageId: messages.parentMessageId,
       senderId: messages.senderId,
-      senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+      senderName: displayNameExpr,
       senderAvatarUrl: workspaceMembers.avatarUrl,
       createdAt: messages.createdAt,
       updatedAt: messages.updatedAt,
@@ -155,7 +158,7 @@ export async function GET(req: Request, { params }: RouteContext) {
               messageId: messageReactions.messageId,
               emoji: messageReactions.emoji,
               userId: messageReactions.userId,
-              userName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+              userName: displayNameExpr,
             })
             .from(messageReactions)
             .innerJoin(profiles, eq(messageReactions.userId, profiles.id))
@@ -192,7 +195,7 @@ export async function GET(req: Request, { params }: RouteContext) {
             .select({
               id: messages.id,
               content: messages.content,
-              senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+              senderName: displayNameExpr,
               deletedAt: messages.deletedAt,
             })
             .from(messages)
@@ -244,7 +247,7 @@ export async function GET(req: Request, { params }: RouteContext) {
     const nameMap = new Map<string, string>()
     if (mentionIds.length > 0) {
       const profileRows = await db
-        .select({ id: profiles.id, displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
+        .select({ id: profiles.id, displayName: displayNameExpr })
         .from(profiles)
         .leftJoin(
           workspaceMembers,
@@ -311,6 +314,10 @@ export async function POST(req: Request, { params }: RouteContext) {
     const { db } = await import('@cairn/db')
     const { messages, profiles, messageAttachments, files } = await import('@cairn/db')
     const { eq, and, isNull, inArray } = await import('drizzle-orm')
+    const { workspaceMembers } = await import('@cairn/db')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     // 引用返信の親は、同一チャンネルの未削除メッセージに限定する。
     // 他チャンネルの ID を親に偽装して内容を引用バーに漏らす攻撃を防ぐ
@@ -411,12 +418,11 @@ export async function POST(req: Request, { params }: RouteContext) {
       return msg
     })
 
-    const { workspaceMembers } = await import('@cairn/db')
     const { and: and2 } = await import('drizzle-orm')
 
     const [profile] = await db
       .select({
-        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        displayName: displayNameExpr,
         avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(profiles)

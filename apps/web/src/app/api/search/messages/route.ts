@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole } from '@/lib/permissions'
 import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 
 export interface MessageSearchResultDto extends MessageDto {
@@ -25,6 +25,9 @@ export async function GET(req: Request) {
     const { channels, channelMembers, messages, profiles, workspaceMembers, projects, projectMembers } = await import('@cairn/db')
     const { eq, ne, isNull, and, ilike, or, exists, inArray } = await import('drizzle-orm')
     const { desc, sql } = await import('drizzle-orm')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     const memberSubquery = db
       .select({ one: sql<number>`1` })
@@ -49,7 +52,7 @@ export async function GET(req: Request) {
         content: messages.content,
         messageType: messages.messageType,
         senderId: messages.senderId,
-        senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        senderName: displayNameExpr,
         senderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: messages.createdAt,
         updatedAt: messages.updatedAt,
@@ -79,7 +82,7 @@ export async function GET(req: Request) {
     const nameMap = new Map<string, string>()
     if (mentionIds.length > 0) {
       const profileRows = await db
-        .select({ id: profiles.id, displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
+        .select({ id: profiles.id, displayName: displayNameExpr })
         .from(profiles)
         .leftJoin(
           workspaceMembers,

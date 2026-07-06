@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ChannelFileDto {
   id: string
@@ -32,6 +32,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const { db, files, profiles, messageAttachments, messages, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
     const { eq, and, isNull, desc, inArray, exists, or, sql } = await import('drizzle-orm')
     const { isIndexable } = await import('@/lib/ai/extract-text')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     // メッセージ添付ファイルに加え、チャットに貼った Google Docs リンク
     // （metadata.channelIds に紐付く。旧形式 metadata.channelId の単一文字列も後方互換で見る）も対象にする。
@@ -53,7 +56,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         mimeType: files.mimeType,
         fileSize: files.fileSize,
         fileType: files.fileType,
-        uploaderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        uploaderName: displayNameExpr,
         createdAt: files.createdAt,
         metadata: files.metadata,
       })

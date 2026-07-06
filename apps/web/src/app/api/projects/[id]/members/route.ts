@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
 import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ProjectMemberDto {
   userId: string
@@ -31,6 +31,9 @@ export async function GET(
     const { db } = await import('@cairn/db')
     const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     const [project] = await db
       .select({ id: projects.id })
@@ -48,7 +51,7 @@ export async function GET(
     const rows = await db
       .select({
         userId: profiles.id,
-        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        displayName: displayNameExpr,
         avatarUrl: workspaceMembers.avatarUrl,
         role: projectMembers.role,
         attendance: projectMembers.attendance,
@@ -58,7 +61,7 @@ export async function GET(
       .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(eq(projectMembers.projectId, projectId))
-      .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
+      .orderBy(displayNameExpr)
 
     const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
 
@@ -119,6 +122,9 @@ export async function POST(
     const { db } = await import('@cairn/db')
     const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
     const { eq, and, inArray } = await import('drizzle-orm')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     const [project] = await db
       .select({ id: projects.id })
@@ -167,7 +173,7 @@ export async function POST(
     const profileRows = await db
       .select({
         userId: profiles.id,
-        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        displayName: displayNameExpr,
         avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(profiles)

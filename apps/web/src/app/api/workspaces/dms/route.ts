@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface DmChannelDto {
   id: string
@@ -25,6 +25,9 @@ export async function GET() {
     const { db } = await import('@cairn/db')
     const { channels, channelMembers, profiles, workspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray, ne } = await import('drizzle-orm')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     // 自分が参加している DM チャンネル ID を取得
     const myChannelIds = db
@@ -37,7 +40,7 @@ export async function GET() {
       .select({
         id: channels.id,
         participantId: profiles.id,
-        participantName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        participantName: displayNameExpr,
         participantAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(channels)
@@ -52,7 +55,7 @@ export async function GET() {
           inArray(channels.id, myChannelIds),
         ),
       )
-      .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
+      .orderBy(displayNameExpr)
 
     const channelIds = rows.map(r => r.id)
     if (channelIds.length > 0) {

@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole } from '@/lib/permissions'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface FileDto {
   id: string
@@ -30,6 +30,9 @@ export async function GET() {
     const { db, files, profiles, projects, projectMembers, messageAttachments, messages, channels, channelMembers, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
     const { eq, and, desc, isNull, isNotNull, inArray, sql, exists, or, ne } = await import('drizzle-orm')
     const { isIndexable } = await import('@/lib/ai/extract-text')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
     if (!role) {
@@ -122,7 +125,7 @@ export async function GET() {
         fileSize: files.fileSize,
         fileType: files.fileType,
         metadata: files.metadata,
-        uploaderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        uploaderName: displayNameExpr,
         uploaderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: files.createdAt,
       })

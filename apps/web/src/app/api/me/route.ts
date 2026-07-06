@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface CurrentUserDto {
   id: string
@@ -29,11 +29,14 @@ export async function GET() {
 
     const { workspaceMembers } = await import('@cairn/db')
     const { and } = await import('drizzle-orm')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     const [row] = await db
       .select({
         id: profiles.id,
-        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        displayName: displayNameExpr,
         avatarUrl: workspaceMembers.avatarUrl,
         bio: profiles.bio,
         wsRole: workspaceMembers.role,

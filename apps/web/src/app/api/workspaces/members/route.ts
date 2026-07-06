@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole } from '@/lib/permissions'
 import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface WorkspaceMemberDto {
   userId: string
@@ -26,6 +26,9 @@ export async function GET() {
     const { db } = await import('@cairn/db')
     const { profiles, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
     const { eq, and, count, sql, inArray } = await import('drizzle-orm')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     // ゲストはワークスペース全体のメンバー一覧を見られない。
     // 参加プロジェクトの共同メンバーのみに絞り、projectCount も共有プロジェクト数に限定して、
@@ -74,7 +77,7 @@ export async function GET() {
     const rows = await db
       .select({
         userId: profiles.id,
-        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        displayName: displayNameExpr,
         avatarUrl: workspaceMembers.avatarUrl,
         role: workspaceMembers.role,
         joinedAt: workspaceMembers.joinedAt,
@@ -88,7 +91,7 @@ export async function GET() {
           ? and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, visibleUserIds))
           : eq(workspaceMembers.workspaceId, ctx.workspaceId),
       )
-      .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
+      .orderBy(displayNameExpr)
 
     const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
 

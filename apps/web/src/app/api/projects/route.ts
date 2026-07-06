@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { createProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceAdmin } from '@/lib/permissions'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ProjectDto {
   id: string
@@ -44,6 +44,9 @@ export async function GET() {
     const { projects, projectStatuses, projectMembers, tasks, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, count, and, inArray } = await import('drizzle-orm')
     const { sql } = await import('drizzle-orm')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     // ゲストは参加中のプロジェクトのみ参照可能
     const [wsMember] = await db
@@ -100,7 +103,7 @@ export async function GET() {
     const memberRows = await db
       .select({
         projectId: projectMembers.projectId,
-        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        displayName: displayNameExpr,
         avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(projectMembers)
@@ -190,6 +193,9 @@ export async function POST(req: Request) {
     const { db } = await import('@cairn/db')
     const { projects, channels, projectStatuses, projectMembers, workspaceMembers, profiles } = await import('@cairn/db')
     const { eq, and, inArray } = await import('drizzle-orm')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
     const selectedMemberIds = [...new Set(parsed.data.memberUserIds ?? [])]
 
     if (selectedMemberIds.length > 0) {
@@ -288,12 +294,12 @@ export async function POST(req: Request) {
         })),
       )
 
-      const memberRows = await db
-        .select({
-          userId: profiles.id,
-          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
-          avatarUrl: workspaceMembers.avatarUrl,
-        })
+        const memberRows = await db
+          .select({
+            userId: profiles.id,
+            displayName: displayNameExpr,
+            avatarUrl: workspaceMembers.avatarUrl,
+          })
         .from(profiles)
         .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
         .where(inArray(profiles.id, selectedMemberIds))

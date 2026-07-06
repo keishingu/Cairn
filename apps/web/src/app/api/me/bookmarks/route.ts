@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole } from '@/lib/permissions'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface BookmarkDto {
   id: string
@@ -26,6 +26,9 @@ export async function GET(_req: Request) {
     const { db } = await import('@cairn/db')
     const { messageBookmarks, messages, channels, channelMembers, profiles, workspaceMembers, projects, projectMembers } = await import('@cairn/db')
     const { eq, isNull, and, or, exists, desc, sql } = await import('drizzle-orm')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     // プライベートチャンネル・DM は現在もメンバーである場合のみ表示する（アクセスを失った後のブックマーク内容漏洩を防ぐ）。
     // DM は isPrivate=false でも channel_members 参加者限定のチャンネルのため、type も判定に含める
@@ -52,7 +55,7 @@ export async function GET(_req: Request) {
       .select({
         id: messages.id,
         content: messages.content,
-        senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        senderName: displayNameExpr,
         senderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: messages.createdAt,
         channelId: channels.id,

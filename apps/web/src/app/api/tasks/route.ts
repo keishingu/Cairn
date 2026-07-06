@@ -7,7 +7,7 @@ import { createTaskSchema } from '@cairn/shared'
 import { getGuestVisibleProjectIds, getWorkspaceMemberRole, requireProjectAccess } from '@/lib/permissions'
 import { inngest } from '@/lib/inngest/client'
 import type { TaskAssignedEvent } from '@/lib/inngest/events'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface TaskDto {
   id: string
@@ -33,6 +33,9 @@ export async function GET(req: Request) {
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, inArray, and } = await import('drizzle-orm')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     const projectRows = await db
       .select({ id: projects.id, title: projects.title })
@@ -62,7 +65,7 @@ export async function GET(req: Request) {
         priority: tasks.priority,
         dueDate: tasks.dueDate,
         sourceMessageId: tasks.sourceMessageId,
-        assigneeName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        assigneeName: displayNameExpr,
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(tasks)
@@ -116,6 +119,9 @@ export async function POST(req: Request) {
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     const [inserted] = await db
       .insert(tasks)
@@ -140,7 +146,7 @@ export async function POST(req: Request) {
     const assigneeRow = inserted.assigneeId
       ? (await db
           .select({
-            displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+            displayName: displayNameExpr,
             avatarUrl: workspaceMembers.avatarUrl,
           })
           .from(profiles)
@@ -163,7 +169,7 @@ export async function POST(req: Request) {
 
     if (inserted.assigneeId && inserted.assigneeId !== ctx.userId) {
       const [assigner] = await db
-        .select({ displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
+        .select({ displayName: displayNameExpr })
         .from(profiles)
         .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
         .where(eq(profiles.id, ctx.userId))
