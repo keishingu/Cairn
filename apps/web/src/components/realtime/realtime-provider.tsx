@@ -61,6 +61,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const { data: currentUser } = useCurrentUser()
   const userId = currentUser?.id ?? null
+  const workspaceId = currentUser?.workspaceId ?? null
 
   const [status, setStatus] = React.useState<RealtimeStatus>('connecting')
   const [degraded, setDegraded] = React.useState(false)
@@ -99,7 +100,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   // ─── ユーザートピック（notifications / channel_read_states）────
   React.useEffect(() => {
-    if (!userId) return
+    if (!userId || !workspaceId) return
 
     const supabase = createClient()
     let cancelled = false
@@ -129,7 +130,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       if (cancelled) return
 
       const currentChannel = supabase
-        .channel(`user:${userId}`, { config: { private: true } })
+        .channel(`user:${userId}:workspace:${workspaceId}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
           const table = tableOf((message as { payload?: unknown }).payload)
           if (table === 'notifications') {
@@ -187,7 +188,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       authSub.subscription.unsubscribe()
       if (userChannel) void removeUserChannel(userChannel)
     }
-  }, [queryClient, userId, scheduleListInvalidate])
+  }, [queryClient, userId, workspaceId, scheduleListInvalidate])
 
   // ─── チャンネルトピック（messages / message_reactions）─────────
   // 一覧の変化に追従して join/leave を差分反映する
