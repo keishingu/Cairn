@@ -64,12 +64,13 @@ vi.mock('@cairn/db', () => ({
     projectId: 'pm.projectId',
   },
   projects: { id: 'p.id', workspaceId: 'p.workspaceId' },
-  workspaceMembers: { id: 'wm.id', userId: 'wm.userId', workspaceId: 'wm.workspaceId', avatarUrl: 'wm.avatarUrl' },
+  workspaceMembers: { id: 'wm.id', userId: 'wm.userId', workspaceId: 'wm.workspaceId', displayName: 'wm.displayName', avatarUrl: 'wm.avatarUrl' },
 }))
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   and: vi.fn(() => 'and'),
   inArray: vi.fn(() => 'inArray'),
+  sql: vi.fn(() => 'sql'),
 }))
 
 function chain(result: unknown[]) {

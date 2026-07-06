@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { USER_STATUSES, type UserStatus } from '@/lib/user-status'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface CurrentUserDto {
   id: string
@@ -35,7 +36,7 @@ export async function GET() {
     const [row] = await db
       .select({
         id: profiles.id,
-        displayName: profiles.displayName,
+        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         bio: profiles.bio,
         status: workspaceMembers.status,
@@ -104,10 +105,18 @@ export async function PATCH(req: Request) {
     const { eq, and } = await import('drizzle-orm')
 
     if (hasDisplayName || hasBio) {
-      const set: { displayName?: string; bio?: string | null; updatedAt: Date } = { updatedAt: new Date() }
-      if (hasDisplayName) set.displayName = b.displayName!.trim()
+      const set: { bio?: string | null; updatedAt: Date } = { updatedAt: new Date() }
       if (hasBio) set.bio = b.bio ?? null
-      await db.update(profiles).set(set).where(eq(profiles.id, ctx.userId))
+      if (hasBio) {
+        await db.update(profiles).set(set).where(eq(profiles.id, ctx.userId))
+      }
+    }
+
+    if (hasDisplayName) {
+      await db
+        .update(workspaceMembers)
+        .set({ displayName: b.displayName!.trim() })
+        .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
     }
 
     if (hasStatus || hasStatusMessage) {

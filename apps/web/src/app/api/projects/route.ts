@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { createProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ProjectDto {
   id: string
@@ -99,7 +100,7 @@ export async function GET() {
     const memberRows = await db
       .select({
         projectId: projectMembers.projectId,
-        displayName: profiles.displayName,
+        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(projectMembers)
@@ -290,7 +291,7 @@ export async function POST(req: Request) {
       const memberRows = await db
         .select({
           userId: profiles.id,
-          displayName: profiles.displayName,
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
           avatarUrl: workspaceMembers.avatarUrl,
         })
         .from(profiles)
