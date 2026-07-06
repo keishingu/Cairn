@@ -43,6 +43,7 @@ export async function POST(
         id: workspaceMembers.id,
         membershipStatus: workspaceMembers.membershipStatus,
         role: workspaceMembers.role,
+        deactivatedAt: workspaceMembers.deactivatedAt,
       })
       .from(workspaceMembers)
       .where(
@@ -55,6 +56,16 @@ export async function POST(
 
     if (existingMembership?.membershipStatus === 'active') {
       return NextResponse.json({ ok: true, workspaceId: invite.workspaceId })
+    }
+
+    if (
+      existingMembership?.membershipStatus === 'inactive' &&
+      (!existingMembership.deactivatedAt || invite.createdAt <= existingMembership.deactivatedAt)
+    ) {
+      return NextResponse.json(
+        { error: '非活性化後に発行された招待リンクで招待し直してください' },
+        { status: 422 },
+      )
     }
 
     const isGuestTransition =

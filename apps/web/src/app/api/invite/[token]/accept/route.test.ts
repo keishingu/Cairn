@@ -49,6 +49,7 @@ vi.mock('@cairn/db', () => ({
     userId: 'wm.userId',
     role: 'wm.role',
     membershipStatus: 'wm.membershipStatus',
+    deactivatedAt: 'wm.deactivatedAt',
   },
   projectMembers: {
     projectId: 'pm.projectId',
@@ -298,11 +299,24 @@ describe('POST /api/invite/[token]/accept', () => {
   })
 
   it('inactive な既存メンバーは招待受諾で active 化し、招待の role を反映する', async () => {
-    const invite = { id: 'inv-05', workspaceId: WORKSPACE_ID, role: 'guest', expiresAt: null, maxUses: null, useCount: 0 }
+    const invite = {
+      id: 'inv-05',
+      workspaceId: WORKSPACE_ID,
+      role: 'guest',
+      expiresAt: null,
+      maxUses: null,
+      useCount: 0,
+      createdAt: new Date('2026-07-06T00:00:00.000Z'),
+    }
 
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))
-      .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id', membershipStatus: 'inactive', role: 'guest' }]))
+      .mockReturnValueOnce(selectChain([{
+        id: 'existing-membership-id',
+        membershipStatus: 'inactive',
+        role: 'guest',
+        deactivatedAt: new Date('2026-07-05T00:00:00.000Z'),
+      }]))
       .mockReturnValueOnce(selectWhereChain([{ id: 'project-a' }, { id: 'project-b' }]))
       .mockReturnValueOnce({
         from: vi.fn().mockReturnValue({
@@ -340,11 +354,24 @@ describe('POST /api/invite/[token]/accept', () => {
   })
 
   it('inactive な通常メンバーを guest 招待で再有効化しようとすると 422 を返す', async () => {
-    const invite = { id: 'inv-06', workspaceId: WORKSPACE_ID, role: 'guest', expiresAt: null, maxUses: null, useCount: 0 }
+    const invite = {
+      id: 'inv-06',
+      workspaceId: WORKSPACE_ID,
+      role: 'guest',
+      expiresAt: null,
+      maxUses: null,
+      useCount: 0,
+      createdAt: new Date('2026-07-06T00:00:00.000Z'),
+    }
 
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))
-      .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id', membershipStatus: 'inactive', role: 'member' }]))
+      .mockReturnValueOnce(selectChain([{
+        id: 'existing-membership-id',
+        membershipStatus: 'inactive',
+        role: 'member',
+        deactivatedAt: new Date('2026-07-05T00:00:00.000Z'),
+      }]))
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -355,5 +382,36 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(res.status).toBe(422)
     expect(mockDb.insert).not.toHaveBeenCalled()
     expect(mockDb.update).not.toHaveBeenCalled()
+  })
+
+  it('inactive メンバーは非活性化前に発行された招待では再有効化できない', async () => {
+    const invite = {
+      id: 'inv-07',
+      workspaceId: WORKSPACE_ID,
+      role: 'member',
+      expiresAt: null,
+      maxUses: null,
+      useCount: 0,
+      createdAt: new Date('2026-07-05T00:00:00.000Z'),
+    }
+
+    mockDb.select
+      .mockReturnValueOnce(selectChain([invite]))
+      .mockReturnValueOnce(selectChain([{
+        id: 'existing-membership-id',
+        membershipStatus: 'inactive',
+        role: 'member',
+        deactivatedAt: new Date('2026-07-06T00:00:00.000Z'),
+      }]))
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/invite/${VALID_TOKEN}/accept`, { method: 'POST' }),
+      { params: Promise.resolve({ token: VALID_TOKEN }) },
+    )
+
+    expect(res.status).toBe(422)
+    expect(mockDb.update).not.toHaveBeenCalled()
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 })
