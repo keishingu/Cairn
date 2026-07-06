@@ -40,6 +40,7 @@ export default function NotificationsScreen() {
   const notificationsQuery = useNotifications()
   const markRead = useMarkNotificationsRead()
   const notifications = notificationsQuery.data ?? []
+  const errorMessage = notificationsQuery.error instanceof Error ? notificationsQuery.error.message : '通知の取得に失敗しました'
 
   function handlePress(item: NotificationDto) {
     if (!item.readAt) {
@@ -52,6 +53,23 @@ export default function NotificationsScreen() {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="small" color="#2563EB" />
+      </SafeAreaView>
+    )
+  }
+
+  if (notificationsQuery.error) {
+    return (
+      <SafeAreaView style={styles.loadingContainer}>
+        <View style={styles.errorState}>
+          <Text style={styles.errorTitle}>通知を読み込めませんでした</Text>
+          <Text style={styles.errorBody}>{errorMessage}</Text>
+          <Pressable
+            onPress={() => void notificationsQuery.refetch()}
+            style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
+          >
+            <Text style={styles.retryLabel}>再読み込み</Text>
+          </Pressable>
+        </View>
       </SafeAreaView>
     )
   }
@@ -131,4 +149,15 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', gap: 8 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
   emptyBody: { fontSize: 14, lineHeight: 20, color: '#64748B', textAlign: 'center' },
+  errorState: { alignItems: 'center', gap: 12, paddingHorizontal: 24 },
+  errorTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', textAlign: 'center' },
+  errorBody: { fontSize: 14, lineHeight: 20, color: '#64748B', textAlign: 'center' },
+  retryButton: {
+    borderRadius: 999,
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  retryButtonPressed: { opacity: 0.9 },
+  retryLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 })
