@@ -27,7 +27,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    // 自分自身の退出は常に許可、他メンバーの削除は project manager 以上が必要
+    // 自分自身の退出は常に許可、他メンバーの削除はメンバー以上が必要
     if (userId !== ctx.userId) {
       const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
       if (forbidden) return forbidden

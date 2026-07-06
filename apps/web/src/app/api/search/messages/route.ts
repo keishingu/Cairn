@@ -18,6 +18,7 @@ export async function GET(req: Request) {
 
   const q = new URL(req.url).searchParams.get('q')?.trim() ?? ''
   if (!q) return NextResponse.json([] satisfies MessageSearchResultDto[])
+  if (q.length > 200) return NextResponse.json([] satisfies MessageSearchResultDto[])
 
   try {
     const { db } = await import('@cairn/db')
@@ -67,7 +68,7 @@ export async function GET(req: Request) {
         eq(channels.workspaceId, ctx.workspaceId),
         isNull(messages.deletedAt),
         ne(messages.messageType, 'system'),
-        ilike(messages.content, `%${q}%`),
+        ilike(messages.content, `%${q.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`),
         accessCondition,
       ))
       .orderBy(desc(messages.createdAt))

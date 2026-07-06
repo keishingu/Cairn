@@ -114,7 +114,21 @@ export async function POST(req: Request) {
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { eq, and } = await import('drizzle-orm')
+
+    if (parsed.data.assigneeId) {
+      const [assigneeMember] = await db
+        .select({ id: workspaceMembers.id })
+        .from(workspaceMembers)
+        .where(and(
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.userId, parsed.data.assigneeId),
+        ))
+        .limit(1)
+      if (!assigneeMember) {
+        return NextResponse.json({ error: '担当者はこのワークスペースのメンバーではありません' }, { status: 422 })
+      }
+    }
 
     const [inserted] = await db
       .insert(tasks)

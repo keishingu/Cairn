@@ -92,6 +92,12 @@ export async function PATCH(req: Request) {
   if (hasDisplayName && !b.displayName?.trim()) {
     return NextResponse.json({ error: '表示名は必須です' }, { status: 422 })
   }
+  if (hasDisplayName && b.displayName!.trim().length > 100) {
+    return NextResponse.json({ error: '表示名は100文字以内で入力してください' }, { status: 422 })
+  }
+  if (hasBio && b.bio != null && b.bio.length > 500) {
+    return NextResponse.json({ error: '自己紹介は500文字以内で入力してください' }, { status: 422 })
+  }
   if (hasStatus && !USER_STATUSES.includes(b.status!)) {
     return NextResponse.json({ error: 'ステータスの値が不正です' }, { status: 422 })
   }
