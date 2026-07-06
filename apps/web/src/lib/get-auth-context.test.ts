@@ -32,6 +32,7 @@ vi.mock('@cairn/db', () => ({
   workspaceMembers: {
     userId: 'wm.userId',
     workspaceId: 'wm.workspaceId',
+    membershipStatus: 'wm.membershipStatus',
   },
 }))
 
@@ -99,5 +100,18 @@ describe('get-auth-context', () => {
 
     expect(mockSupabase.auth.getUser).toHaveBeenCalledWith()
     expect(result).toEqual({ userId: 'user-1', error: null })
+  })
+
+  it('active なワークスペース所属が無いと 403 を返す', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext()
+
+    expect(result.ctx).toBeNull()
+    expect(result.error?.status).toBe(403)
   })
 })
