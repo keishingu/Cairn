@@ -54,6 +54,7 @@ export const workspaceMembers = pgTable(
     deactivatedAt: timestamp('deactivated_at', { withTimezone: true }),
     deactivatedBy: uuid('deactivated_by').references(() => profiles.id),
     avatarUrl: text('avatar_url'),
+    displayName: text('display_name'),
     status: userStatusEnum('status').notNull().default('online'),
     statusMessage: text('status_message'),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),

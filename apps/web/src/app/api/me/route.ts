@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface CurrentUserDto {
   id: string
@@ -32,7 +33,7 @@ export async function GET() {
     const [row] = await db
       .select({
         id: profiles.id,
-        displayName: profiles.displayName,
+        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         bio: profiles.bio,
         wsRole: workspaceMembers.role,
@@ -85,13 +86,21 @@ export async function PATCH(req: Request) {
   }
 
   try {
-    const { db, profiles } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { db, profiles, workspaceMembers } = await import('@cairn/db')
+    const { eq, and } = await import('drizzle-orm')
+    if (hasBio) {
+      await db
+        .update(profiles)
+        .set({ bio: b.bio ?? null, updatedAt: new Date() })
+        .where(eq(profiles.id, ctx.userId))
+    }
 
-    const set: { displayName?: string; bio?: string | null; updatedAt: Date } = { updatedAt: new Date() }
-    if (hasDisplayName) set.displayName = b.displayName!.trim()
-    if (hasBio) set.bio = b.bio ?? null
-    await db.update(profiles).set(set).where(eq(profiles.id, ctx.userId))
+    if (hasDisplayName) {
+      await db
+        .update(workspaceMembers)
+        .set({ displayName: b.displayName!.trim() })
+        .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+    }
 
     return NextResponse.json({ id: ctx.userId, ...b })
   } catch (err) {

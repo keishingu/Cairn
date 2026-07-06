@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole, requireWorkspaceAdmin } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface WorkspaceChannelDto {
   id: string
@@ -52,7 +53,11 @@ export async function GET() {
 
     const { workspaceMembers } = await import('@cairn/db')
     const memberRows = await db
-      .select({ channelId: channelMembers.channelId, displayName: profiles.displayName, avatarUrl: workspaceMembers.avatarUrl })
+      .select({
+        channelId: channelMembers.channelId,
+        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        avatarUrl: workspaceMembers.avatarUrl,
+      })
       .from(channelMembers)
       .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, channelMembers.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
