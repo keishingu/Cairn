@@ -11,6 +11,9 @@ import { createClient } from '@/lib/supabase/client'
 import {
   chatQueryKeys,
   useCurrentUser,
+  useProjectChannels,
+  useWorkspaceChannels,
+  useWorkspaceDms,
 } from '@/lib/chat/client'
 import { RealtimeIndicator } from './realtime-indicator'
 
@@ -64,9 +67,25 @@ function activeChannelIdFromPath(pathname: string | null): string | null {
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const { data: currentUser } = useCurrentUser()
+  const { data: projectChannels = [], isFetched: isProjectChannelsFetched } = useProjectChannels()
+  const { data: workspaceChannels = [], isFetched: isWorkspaceChannelsFetched } = useWorkspaceChannels()
+  const { data: dms = [], isFetched: isDmsFetched } = useWorkspaceDms()
   const userId = currentUser?.id ?? null
   const pathname = usePathname()
   const activeChannelId = React.useMemo(() => activeChannelIdFromPath(pathname), [pathname])
+  const isChannelListsFetched = isProjectChannelsFetched && isWorkspaceChannelsFetched && isDmsFetched
+  const accessibleChannelIds = React.useMemo(
+    () => new Set([
+      ...projectChannels.map(channel => channel.channelId),
+      ...workspaceChannels.map(channel => channel.id),
+      ...dms.map(channel => channel.id),
+    ]),
+    [projectChannels, workspaceChannels, dms],
+  )
+  const subscribedChannelId = React.useMemo(() => {
+    if (!activeChannelId || !isChannelListsFetched) return null
+    return accessibleChannelIds.has(activeChannelId) ? activeChannelId : null
+  }, [accessibleChannelIds, activeChannelId, isChannelListsFetched])
 
   const [status, setStatus] = React.useState<RealtimeStatus>('connecting')
   const [degraded, setDegraded] = React.useState(false)
@@ -196,7 +215,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     const supabase = createClient()
     const current = topicChannelsRef.current
-    const wanted = new Set(activeChannelId ? [activeChannelId] : [])
+    const wanted = new Set(subscribedChannelId ? [subscribedChannelId] : [])
 
     for (const [id, ch] of [...current]) {
       if (!wanted.has(id)) {
@@ -228,7 +247,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       })
       current.set(id, ch)
     }
-  }, [activeChannelId, userId, status, queryClient, scheduleListInvalidate])
+  }, [subscribedChannelId, userId, status, queryClient, scheduleListInvalidate])
 
   // アンマウント時に全チャンネルトピックを解放
   React.useEffect(() => {

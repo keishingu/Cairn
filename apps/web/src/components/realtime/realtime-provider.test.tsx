@@ -34,6 +34,9 @@ vi.mock('@/lib/supabase/client', () => ({
 }))
 
 const mockUsePathname = vi.fn(() => '/chats/channel-1')
+const mockUseProjectChannels = vi.fn(() => ({ data: [{ channelId: 'channel-1' }], isFetched: true }))
+const mockUseWorkspaceChannels = vi.fn(() => ({ data: [], isFetched: true }))
+const mockUseWorkspaceDms = vi.fn(() => ({ data: [], isFetched: true }))
 
 vi.mock('next/navigation', () => ({
   usePathname: () => mockUsePathname(),
@@ -47,9 +50,9 @@ vi.mock('@/lib/chat/client', () => ({
     messages: (id: string) => ['messages', id],
   },
   useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Tester' } }),
-  useProjectChannels: () => ({ data: [] }),
-  useWorkspaceChannels: () => ({ data: [] }),
-  useWorkspaceDms: () => ({ data: [] }),
+  useProjectChannels: () => mockUseProjectChannels(),
+  useWorkspaceChannels: () => mockUseWorkspaceChannels(),
+  useWorkspaceDms: () => mockUseWorkspaceDms(),
 }))
 
 function renderProvider() {
@@ -76,6 +79,9 @@ describe('RealtimeProvider', () => {
     channelRecords.length = 0
     mockCreateClient.mockClear()
     mockUsePathname.mockReturnValue('/chats/channel-1')
+    mockUseProjectChannels.mockReturnValue({ data: [{ channelId: 'channel-1' }], isFetched: true })
+    mockUseWorkspaceChannels.mockReturnValue({ data: [], isFetched: true })
+    mockUseWorkspaceDms.mockReturnValue({ data: [], isFetched: true })
   })
 
   afterEach(() => {
@@ -201,5 +207,29 @@ describe('RealtimeProvider', () => {
     })
 
     expect(channelRecords).toHaveLength(2)
+  })
+
+  it('可視一覧にない channelId では topic を購読しない', async () => {
+    mockUsePathname.mockReturnValue('/chats/forbidden-channel')
+    mockUseProjectChannels.mockReturnValue({ data: [{ channelId: 'channel-1' }], isFetched: true })
+
+    renderProvider()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(channelRecords).toHaveLength(1)
+
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(channelRecords).toHaveLength(1)
+    expect(channelRecords[0]?.topic).toBe('user:user-1')
   })
 })
