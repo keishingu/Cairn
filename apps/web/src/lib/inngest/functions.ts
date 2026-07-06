@@ -19,6 +19,23 @@ function nameResolver(members: { userId: string; displayName: string }[]): (id: 
   return id => map.get(id)
 }
 
+async function isActiveWorkspaceMember(params: { workspaceId: string; userId: string }): Promise<boolean> {
+  const { db, workspaceMembers } = await import('@cairn/db')
+  const { eq, and } = await import('drizzle-orm')
+
+  const [member] = await db
+    .select({ userId: workspaceMembers.userId })
+    .from(workspaceMembers)
+    .where(and(
+      eq(workspaceMembers.workspaceId, params.workspaceId),
+      eq(workspaceMembers.userId, params.userId),
+      eq(workspaceMembers.membershipStatus, 'active'),
+    ))
+    .limit(1)
+
+  return !!member
+}
+
 // 猶予期間中に対象メッセージを既読にした受信者を Push 対象から除外する
 async function filterUnreadRecipients<T extends { userId: string }>(
   messageId: string,
@@ -318,6 +335,14 @@ export const onTaskAssigned = inngest.createFunction(
   async ({ event, step }) => {
     const { taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
       event.data as TaskAssignedEvent['data']
+    const { taskId, projectId } = event.data as TaskAssignedEvent['data']
+
+    const isActiveAssignee = await step.run('check-active-assignee', async () =>
+      isActiveWorkspaceMember({ workspaceId, userId: assigneeId }))
+
+    if (!isActiveAssignee) {
+      return { notified: null, skippedInactive: true }
+    }
 
     await step.run('create-task-notification', async () => {
       const { db, notifications } = await import('@cairn/db')
@@ -327,7 +352,7 @@ export const onTaskAssigned = inngest.createFunction(
         type: 'task' as const,
         title: `${assignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
-        data: { assignerName, projectTitle },
+        data: { assignerName, projectTitle, projectId, taskId },
       })
     })
 

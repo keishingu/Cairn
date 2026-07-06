@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   try {
     const { db } = await import('@cairn/db')
     const { profiles, workspaces, workspaceMembers, channels } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { eq, and } = await import('drizzle-orm')
 
     const existing = await db.select({ id: profiles.id }).from(profiles).where(
       eq(profiles.id, user.id)
@@ -54,7 +54,10 @@ export async function POST(req: Request) {
       const existingMembership = await db
         .select({ workspaceId: workspaceMembers.workspaceId })
         .from(workspaceMembers)
-        .where(eq(workspaceMembers.userId, user.id))
+        .where(and(
+          eq(workspaceMembers.userId, user.id),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ))
         .limit(1)
 
       return NextResponse.json({

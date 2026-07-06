@@ -117,6 +117,25 @@ export async function POST(req: Request) {
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
+    if (parsed.data.assigneeId) {
+      const [activeAssignee] = await db
+        .select({ userId: workspaceMembers.userId })
+        .from(workspaceMembers)
+        .where(and(
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.userId, parsed.data.assigneeId),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ))
+        .limit(1)
+
+      if (!activeAssignee) {
+        return NextResponse.json(
+          { error: '指定されたユーザーはアクティブなワークスペースメンバーではありません' },
+          { status: 422 },
+        )
+      }
+    }
+
     const [inserted] = await db
       .insert(tasks)
       .values({
@@ -161,7 +180,11 @@ export async function POST(req: Request) {
       isLinkedToMessage: false,
     }
 
-    if (inserted.assigneeId && inserted.assigneeId !== ctx.userId) {
+    const assigneeIdForNotification = inserted.assigneeId && inserted.assigneeId !== ctx.userId
+      ? inserted.assigneeId
+      : null
+
+    if (assigneeIdForNotification) {
       const [assigner] = await db
         .select({ displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
         .from(profiles)
@@ -174,7 +197,7 @@ export async function POST(req: Request) {
           data: {
             taskId: inserted.id,
             taskTitle: inserted.title,
-            assigneeId: inserted.assigneeId,
+            assigneeId: assigneeIdForNotification,
             projectId: inserted.projectId,
             projectTitle: projectRow?.title ?? '',
             workspaceId: ctx.workspaceId,
