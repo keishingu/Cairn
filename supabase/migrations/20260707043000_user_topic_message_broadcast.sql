@@ -53,6 +53,16 @@ begin
        and wm.workspace_id = v_workspace_id
        and wm.membership_status = 'active'
       where cm.channel_id = v_channel_id
+        and (
+          v_channel_type <> 'project'
+          or wm.role <> 'guest'
+          or exists (
+            select 1
+            from public.project_members pm
+            where pm.project_id = v_project_id
+              and pm.user_id = cm.user_id
+          )
+        )
 
       union
 
