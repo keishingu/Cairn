@@ -7,6 +7,7 @@ import { FileTypeIcon, GoogleDocsIcon } from '../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import { useProjectTasks } from '@/hooks/use-project-tasks'
 import { useChannelFiles } from '@/hooks/use-channel-files'
+import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
 import type { ChannelFileDto } from '@/app/api/channels/[channelId]/files/route'
@@ -187,7 +188,7 @@ const TaskChecklist = ({ project }: { project: ProjectDto }) => {
                       {done && <Icon name="check" size={10} color="#fff" strokeWidth={3}/>}
                     </button>
                     <span style={{ fontSize: 12.5, lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1 }}>
-                      {t.title}
+                      {formatTaskTitleForDisplay(t.title)}
                     </span>
                   </div>
                 )
