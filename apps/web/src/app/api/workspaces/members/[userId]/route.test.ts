@@ -159,7 +159,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
 
   it('owner が複数いる場合、owner を降格できる', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 2 }]))
     mockDb.update.mockReturnValueOnce(updateChain())
     const { PATCH } = await import('./route')
@@ -169,7 +169,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
 
   it('唯一の owner は降格できない（422）', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 1 }]))
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
@@ -180,13 +180,24 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
 
   it('inactive owner は owner 残数に数えない', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 1 }]))
 
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(422)
+  })
+
+  it('inactive owner の降格は active owner 残数に関係なく通る', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'inactive' }]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
   })
 
   it('ゲストを通常ロールへ昇格できない（422）', async () => {
