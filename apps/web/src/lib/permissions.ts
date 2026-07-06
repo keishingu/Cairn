@@ -95,6 +95,12 @@ export async function requireProjectAccess(
 ): Promise<NextResponse | null> {
   const role = await getWorkspaceRole(workspaceId, userId)
   if (isWorkspaceMember(role)) return null
+  if (role !== 'guest') {
+    return NextResponse.json(
+      { error: 'このプロジェクトにアクセスする権限がありません' },
+      { status: 403 },
+    )
+  }
 
   const [membership] = await db
     .select({ id: projectMembers.id })
@@ -147,7 +153,7 @@ export async function requireChannelAccess(
     .where(eq(channels.id, channelId))
     .limit(1)
 
-  if (!channel || channel.effectiveWorkspaceId !== workspaceId) {
+  if (!channel || channel['effectiveWorkspaceId'] !== workspaceId) {
     return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
   }
 

@@ -14,7 +14,7 @@ const {
   const mockSelectProjectMembershipResult = vi.fn()
   const mockDb = {
     select: vi.fn((fields?: Record<string, unknown>) => {
-      if (fields?.role) {
+      if (fields?.['role']) {
         return {
           from: vi.fn().mockReturnValue({
             where: vi.fn().mockReturnValue({
@@ -24,7 +24,7 @@ const {
         }
       }
 
-      if (fields?.effectiveWorkspaceId) {
+      if (fields?.['effectiveWorkspaceId']) {
         return {
           from: vi.fn().mockReturnValue({
             leftJoin: vi.fn().mockReturnValue({
