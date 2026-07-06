@@ -66,6 +66,10 @@ vi.mock('@cairn/db', () => ({
     workspaceId: 'c.workspaceId',
     projectId: 'c.projectId',
   },
+  notifications: {
+    userId: 'n.userId',
+    workspaceId: 'n.workspaceId',
+  },
   projects: {
     id: 'p.id',
     workspaceId: 'p.workspaceId',
@@ -329,12 +333,14 @@ describe('POST /api/invite/[token]/accept', () => {
     const membershipUpdate = updateWithoutReturningChain()
     const staleProjectDelete = deleteChain()
     const staleChannelDelete = deleteChain()
+    const staleNotificationDelete = deleteChain()
     mockDb.update
       .mockReturnValueOnce(updateChain([{ id: 'inv-05', workspaceId: WORKSPACE_ID, role: 'guest' }]))
       .mockReturnValueOnce(membershipUpdate)
     mockDb.delete
       .mockReturnValueOnce(staleProjectDelete)
       .mockReturnValueOnce(staleChannelDelete)
+      .mockReturnValueOnce(staleNotificationDelete)
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -347,7 +353,7 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(body).toEqual({ ok: true, workspaceId: WORKSPACE_ID })
     expect(mockDb.insert).not.toHaveBeenCalled()
     expect(mockDb.update).toHaveBeenCalledTimes(2)
-    expect(mockDb.delete).toHaveBeenCalledTimes(2)
+    expect(mockDb.delete).toHaveBeenCalledTimes(3)
     expect(membershipUpdate.set).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'guest' })
     expect(mockInArray).toHaveBeenCalledWith('pm.projectId', ['project-a', 'project-b'])
     expect(mockInArray).toHaveBeenCalledWith('cm.channelId', ['channel-a', 'channel-b'])
