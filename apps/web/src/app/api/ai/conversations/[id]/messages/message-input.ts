@@ -5,10 +5,11 @@ import type { CoreMessage } from 'ai'
 import { z } from 'zod'
 
 export const MAX_HISTORY_MESSAGES = 40
+export const MAX_CLIENT_MESSAGES = 50
 const MAX_MESSAGE_CHARS = 4000
 
 const aiRequestSchema = z.object({
-  messages: z.array(z.unknown()).min(1),
+  messages: z.array(z.unknown()).min(1).max(MAX_CLIENT_MESSAGES),
 })
 
 const clientMessageSchema = z.object({

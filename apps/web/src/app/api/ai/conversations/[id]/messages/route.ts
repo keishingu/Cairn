@@ -14,6 +14,12 @@ import {
   parseLatestUserInput,
   type StoredConversationMessage,
 } from './message-input'
+import {
+  AI_CHAT_RATE_LIMIT_MAX_REQUESTS,
+  AI_CHAT_RATE_LIMIT_WINDOW_MS,
+  createAiChatRateLimitErrorMessage,
+  isAiChatRateLimited,
+} from './rate-limit'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -98,7 +104,7 @@ export async function POST(req: Request, { params }: RouteContext) {
   let historyMessages: StoredConversationMessage[] = []
   {
     const { db, aiConversations, aiMessages } = await import('@cairn/db')
-    const { eq, and, asc, desc } = await import('drizzle-orm')
+    const { eq, and, desc, count, gte } = await import('drizzle-orm')
     const [conv] = await db
       .select({ id: aiConversations.id })
       .from(aiConversations)
@@ -114,6 +120,30 @@ export async function POST(req: Request, { params }: RouteContext) {
       .limit(MAX_HISTORY_MESSAGES)
 
     historyMessages = normalizeStoredConversationMessages<StoredMessageRow>(rows)
+
+    const rateLimitWindowStart = new Date(Date.now() - AI_CHAT_RATE_LIMIT_WINDOW_MS)
+    const [recentUsage] = await db
+      .select({ count: count() })
+      .from(aiMessages)
+      .innerJoin(aiConversations, eq(aiMessages.conversationId, aiConversations.id))
+      .where(and(
+        eq(aiConversations.workspaceId, ctx.workspaceId),
+        eq(aiConversations.createdBy, ctx.userId),
+        eq(aiMessages.role, 'user'),
+        gte(aiMessages.createdAt, rateLimitWindowStart),
+      ))
+
+    if (isAiChatRateLimited(recentUsage?.count ?? 0)) {
+      return NextResponse.json(
+        { error: createAiChatRateLimitErrorMessage() },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil(AI_CHAT_RATE_LIMIT_WINDOW_MS / 1000)),
+          },
+        },
+      )
+    }
   }
 
   let requestBody: unknown

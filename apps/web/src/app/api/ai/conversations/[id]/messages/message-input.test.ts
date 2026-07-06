@@ -53,10 +53,9 @@ describe('parseLatestUserInput', () => {
     }))
     messages.push({ role: 'user', content: '最後の質問' })
 
-    expect(parseLatestUserInput({ messages })).toEqual({
-      lastUserContent: '最後の質問',
-      clientMessageCount: 61,
-    })
+    expect(() => parseLatestUserInput({ messages })).toThrow(
+      'messages は user/assistant の文字列メッセージを 1〜50 件で指定してください',
+    )
   })
 })
 
