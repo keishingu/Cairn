@@ -114,4 +114,31 @@ describe('get-auth-context', () => {
     expect(result.ctx).toBeNull()
     expect(result.error?.status).toBe(403)
   })
+
+  it('指定ユーザーのワークスペースキャッシュをまとめて破棄できる', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1' }]))
+
+    const { clearWorkspaceAccessCache, getAuthContext } = await import('./get-auth-context')
+
+    await getAuthContext()
+
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-2' }) })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-2' }]))
+    await getAuthContext()
+
+    clearWorkspaceAccessCache('user-1')
+
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-3' }]))
+    const result = await getAuthContext()
+
+    expect(result).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-3' },
+      error: null,
+    })
+    expect(mockDb.select).toHaveBeenCalledTimes(3)
+  })
 })

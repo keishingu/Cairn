@@ -7,7 +7,7 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const OTHER_USER_ID = '00000000-0000-0000-0000-000000000002'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole } = vi.hoisted(() => {
+const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockClearWorkspaceAccessCache } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -17,11 +17,13 @@ const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole } = vi.hoisted(()
   })
   const mockDb = { select: vi.fn(), update: vi.fn() }
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('admin')
-  return { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole }
+  const mockClearWorkspaceAccessCache = vi.fn()
+  return { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockClearWorkspaceAccessCache }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: mockGetAuthContext,
+  clearWorkspaceAccessCache: mockClearWorkspaceAccessCache,
 }))
 
 vi.mock('@/lib/permissions', () => ({
@@ -91,6 +93,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
       error: null,
     })
     mockGetWorkspaceMemberRole.mockResolvedValue('admin')
+    mockClearWorkspaceAccessCache.mockReset()
   })
 
   it('未認証なら 401 を返す', async () => {
@@ -239,6 +242,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
       deactivatedBy: DEV_USER_ID,
       deactivatedAt: expect.any(Date),
     }))
+    expect(mockClearWorkspaceAccessCache).toHaveBeenCalledWith(OTHER_USER_ID)
     await expect(res.json()).resolves.toMatchObject({
       userId: OTHER_USER_ID,
       role: 'member',
@@ -263,11 +267,24 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
       deactivatedAt: null,
       deactivatedBy: null,
     }))
+    expect(mockClearWorkspaceAccessCache).toHaveBeenCalledWith(OTHER_USER_ID)
     await expect(res.json()).resolves.toMatchObject({
       userId: OTHER_USER_ID,
       role: 'member',
       status: 'active',
     })
+  })
+
+  it('ロール変更だけならワークスペースキャッシュは破棄しない', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    const { PATCH } = await import('./route')
+
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockClearWorkspaceAccessCache).not.toHaveBeenCalled()
   })
 
   it('唯一の active owner は非活性化できない（422）', async () => {
