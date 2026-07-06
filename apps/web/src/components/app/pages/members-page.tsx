@@ -410,8 +410,14 @@ interface InviteRecord {
   createdByName: string
 }
 
+const INVITE_ROLE_OPTIONS = [
+  { value: 'member', label: 'メンバー', description: '通常メンバーとして参加' },
+  { value: 'guest', label: 'ゲスト', description: '閲覧中心の外部参加向け' },
+] as const
+
 function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boolean }) {
   const [expiresIn, setExpiresIn] = React.useState<ExpiresIn>('1h')
+  const [inviteRole, setInviteRole] = React.useState<'member' | 'guest'>('member')
   const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
   const [generating, setGenerating] = React.useState(false)
   const [generateError, setGenerateError] = React.useState<string | null>(null)
@@ -437,7 +443,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
     const res = await fetch('/api/workspaces/invites', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ expiresIn }),
+      body: JSON.stringify({ expiresIn, role: inviteRole }),
     })
     const data = await res.json().catch(() => ({})) as { url?: string; error?: string }
     if (res.ok && data.url) {
@@ -492,6 +498,41 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>招待時の役割</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {INVITE_ROLE_OPTIONS.map(opt => {
+                const selected = inviteRole === opt.value
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => { setInviteRole(opt.value); setInviteUrl(null) }}
+                    style={{
+                      flex: 1,
+                      padding: '9px 10px',
+                      borderRadius: 10,
+                      border: `1.5px solid ${selected ? 'var(--accent)' : 'var(--border-2)'}`,
+                      background: selected ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'var(--bg)',
+                      color: selected ? 'var(--accent)' : 'var(--text-3)',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: selected ? 700 : 600, marginBottom: 2 }}>
+                      {opt.label}
+                    </div>
+                    <div style={{ fontSize: 11.5, lineHeight: 1.4, color: selected ? 'var(--accent)' : 'var(--text-4)' }}>
+                      {opt.description}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>リンクの有効期限</div>
             <div style={{ display: 'flex', gap: 8 }}>

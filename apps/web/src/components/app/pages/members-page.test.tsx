@@ -9,6 +9,15 @@ import React from 'react'
 import { PageMembers } from './members-page'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 
+const mockFetchWithAuth = vi.fn()
+const mockUseWorkspacePermissions = vi.fn(() => ({
+  wsRole: 'admin',
+  isOwner: false,
+  isAdmin: true,
+  isMember: true,
+  isGuest: false,
+}))
+
 // ─── next/navigation モック ────────────────────────────────────────
 
 const mockPush = vi.fn()
@@ -16,6 +25,18 @@ const mockPush = vi.fn()
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
 }))
+
+vi.mock('@/lib/fetch-with-auth', () => ({
+  fetchWithAuth: (...args: unknown[]) => mockFetchWithAuth(...args),
+}))
+
+vi.mock('@/hooks/use-current-user', async () => {
+  const actual = await vi.importActual<typeof import('@/hooks/use-current-user')>('@/hooks/use-current-user')
+  return {
+    ...actual,
+    useWorkspacePermissions: () => mockUseWorkspacePermissions(),
+  }
+})
 
 // ─── 子コンポーネントモック ────────────────────────────────────────
 
@@ -65,10 +86,22 @@ function renderMobile(initialUserId?: string) {
   )
 }
 
+function renderDesktop() {
+  return render(
+    <QueryClientProvider client={makeQC()}>
+      <PageMembers />
+    </QueryClientProvider>,
+  )
+}
+
 // ─── テスト ────────────────────────────────────────────────────────
 
 describe('PageMembers (モバイル) — カードタップの URL 更新', () => {
-  beforeEach(() => mockPush.mockClear())
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockFetchWithAuth.mockReset()
+    mockFetchWithAuth.mockResolvedValue({ json: async () => [STUB_MEMBER] })
+  })
 
   it('メンバーカードをタップすると /members/{userId} に router.push する', async () => {
     renderMobile()
@@ -84,7 +117,11 @@ describe('PageMembers (モバイル) — カードタップの URL 更新', () =
 })
 
 describe('PageMembers (モバイル) — パネルを閉じたときの URL 更新', () => {
-  beforeEach(() => mockPush.mockClear())
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockFetchWithAuth.mockReset()
+    mockFetchWithAuth.mockResolvedValue({ json: async () => [STUB_MEMBER] })
+  })
 
   it('パネルの閉じるボタンは /members に router.push する', async () => {
     renderMobile()
@@ -102,7 +139,11 @@ describe('PageMembers (モバイル) — パネルを閉じたときの URL 更�
 })
 
 describe('PageMembers (モバイル) — initialUserId によるパネル復元', () => {
-  beforeEach(() => mockPush.mockClear())
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockFetchWithAuth.mockReset()
+    mockFetchWithAuth.mockResolvedValue({ json: async () => [STUB_MEMBER] })
+  })
 
   it('initialUserId が渡されたとき、メンバーが読み込まれ次第パネルを開く', async () => {
     renderMobile('user-1')
@@ -120,5 +161,68 @@ describe('PageMembers — email tooltip', () => {
     renderMobile()
 
     expect(screen.getByTitle('taro@example.com')).toBeInTheDocument()
+  })
+})
+
+describe('InviteModal', () => {
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockFetchWithAuth.mockReset()
+    mockFetchWithAuth.mockResolvedValue({ json: async () => [STUB_MEMBER] })
+  })
+
+  it('招待リンク生成時に選択した role=guest を送る', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ invites: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ url: 'https://example.com/invite/guest-token' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ invites: [{ token: 'guest-token', url: 'https://example.com/invite/guest-token', expiresAt: null, maxUses: null, useCount: 0, role: 'guest', id: '1', createdAt: '2026-01-01', createdByName: 'Admin' }] }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDesktop()
+    await userEvent.click(screen.getByRole('button', { name: 'メンバーを招待' }))
+    await userEvent.click(screen.getByRole('button', { name: 'ゲスト 閲覧中心の外部参加向け' }))
+    await userEvent.click(screen.getByRole('button', { name: '招待リンクを生成' }))
+
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/workspaces/invites', expect.objectContaining({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expiresIn: '1h', role: 'guest' }),
+    }))
+  })
+
+  it('role を変更しなければ member のまま送る', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ invites: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ url: 'https://example.com/invite/member-token' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ invites: [{ token: 'member-token', url: 'https://example.com/invite/member-token', expiresAt: null, maxUses: null, useCount: 0, role: 'member', id: '1', createdAt: '2026-01-01', createdByName: 'Admin' }] }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDesktop()
+    await userEvent.click(screen.getByRole('button', { name: 'メンバーを招待' }))
+    await userEvent.click(screen.getByRole('button', { name: '招待リンクを生成' }))
+
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/workspaces/invites', expect.objectContaining({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expiresIn: '1h', role: 'member' }),
+    }))
   })
 })
