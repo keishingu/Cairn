@@ -163,6 +163,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create Release PR (release branch → main)
+        id: create_pr
         if: steps.commits.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -177,6 +178,7 @@ jobs:
             --jq '[.[] | select(.headRefName == "develop" or (.headRefName | startswith("release/")))][0].number // empty')
           if [ -n "$EXISTING" ]; then
             echo "::notice::open の Release PR #$EXISTING が残っているため、今回は作成しません（マージ or クローズ後の次回実行で作成されます）。"
+            echo "created=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           BRANCH="release/$(date +%Y-%m-%d)"
@@ -185,9 +187,14 @@ jobs:
           TITLE="Release: develop → main ($(date +%Y-%m-%d))"
           gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$BODY"
           echo "::notice::Release PR を作成しました（$BRANCH @ $SNAP_SHA）。"
+          echo "created=true" >> "$GITHUB_OUTPUT"
 
       - name: Create Draft Release
-        if: steps.commits.outputs.has_changes == 'true'
+        # Release PR を実際に作成できた（= 新しいスナップショットの PR がある）ときのみ、
+        # 対応する Draft Release を作る。既存 PR が残っていて今回 PR を作らなかった場合に
+        # 作ると、後で古い PR がマージされた際 main の内容と一致しない Draft が Publish
+        # されてしまうため。
+        if: steps.create_pr.outputs.created == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BODY: ${{ steps.notes.outputs.body }}

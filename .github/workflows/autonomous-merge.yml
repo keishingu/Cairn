@@ -61,6 +61,9 @@ jobs:
           REPO="${GITHUB_REPOSITORY}"
           NOW=$(date -u +%s)
 
+          # PyYAML は ubuntu-latest イメージに保証されているわけではないため明示的に用意する
+          python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
           # soul.policy.yaml を JSON 化
           python3 - <<'PY' > /tmp/policy.json
           import yaml, json
