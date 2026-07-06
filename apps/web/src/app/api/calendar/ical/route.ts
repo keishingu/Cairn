@@ -109,6 +109,7 @@ export async function GET(req: NextRequest) {
       .where(and(
         eq(workspaceMembers.userId, userId),
         eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.membershipStatus, 'active'),
       ))
 
     if (!membership) {
