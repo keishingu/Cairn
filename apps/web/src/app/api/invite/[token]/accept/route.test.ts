@@ -292,4 +292,26 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(mockDb.update).toHaveBeenCalledTimes(2)
     expect(membershipUpdate.set).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'guest' })
   })
+
+  it('inactive な通常メンバーを guest 招待で再有効化しようとすると 422 を返す', async () => {
+    const invite = { id: 'inv-06', workspaceId: WORKSPACE_ID, role: 'guest', expiresAt: null, maxUses: null, useCount: 0 }
+
+    mockDb.select
+      .mockReturnValueOnce(selectChain([invite]))
+      .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id', membershipStatus: 'inactive', role: 'member' }]))
+
+    mockDb.update.mockReturnValueOnce(
+      updateChain([{ id: 'inv-06', workspaceId: WORKSPACE_ID, role: 'guest', projectId: 'project-1' }]),
+    )
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/invite/${VALID_TOKEN}/accept`, { method: 'POST' }),
+      { params: Promise.resolve({ token: VALID_TOKEN }) },
+    )
+
+    expect(res.status).toBe(422)
+    expect(mockDb.insert).not.toHaveBeenCalled()
+    expect(mockDb.update).toHaveBeenCalledTimes(1)
+  })
 })

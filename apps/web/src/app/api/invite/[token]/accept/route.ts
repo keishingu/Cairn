@@ -39,7 +39,11 @@ export async function POST(
 
     // 既にメンバーか確認
     const [existingMembership] = await db
-      .select({ id: workspaceMembers.id, membershipStatus: workspaceMembers.membershipStatus })
+      .select({
+        id: workspaceMembers.id,
+        membershipStatus: workspaceMembers.membershipStatus,
+        role: workspaceMembers.role,
+      })
       .from(workspaceMembers)
       .where(
         and(
@@ -77,6 +81,14 @@ export async function POST(
 
     if (!claimed) {
       return NextResponse.json({ error: 'Invite link has reached its usage limit' }, { status: 410 })
+    }
+
+    const isGuestTransition = existingMembership && ((existingMembership.role === 'guest') !== (claimed.role === 'guest'))
+    if (isGuestTransition) {
+      return NextResponse.json(
+        { error: 'ゲストと通常ロール間の再有効化はできません。招待し直してください' },
+        { status: 422 },
+      )
     }
 
     if (existingMembership) {
