@@ -82,7 +82,7 @@ export async function POST(
     if (existingMembership) {
       await db
         .update(workspaceMembers)
-        .set({ membershipStatus: 'active' })
+        .set({ membershipStatus: 'active', role: claimed.role })
         .where(eq(workspaceMembers.id, existingMembership.id))
     } else {
       await db.insert(workspaceMembers).values({

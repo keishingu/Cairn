@@ -267,16 +267,17 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(res.status).toBe(200)
   })
 
-  it('inactive な既存メンバーは招待受諾で active に戻す', async () => {
-    const invite = { id: 'inv-05', workspaceId: WORKSPACE_ID, role: 'member', expiresAt: null, maxUses: null, useCount: 0 }
+  it('inactive な既存メンバーは招待受諾で active 化し、招待の role を反映する', async () => {
+    const invite = { id: 'inv-05', workspaceId: WORKSPACE_ID, role: 'guest', expiresAt: null, maxUses: null, useCount: 0 }
 
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))
       .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id', membershipStatus: 'inactive' }]))
 
+    const membershipUpdate = updateWithoutReturningChain()
     mockDb.update
-      .mockReturnValueOnce(updateChain([{ id: 'inv-05', workspaceId: WORKSPACE_ID, role: 'member' }]))
-      .mockReturnValueOnce(updateWithoutReturningChain())
+      .mockReturnValueOnce(updateChain([{ id: 'inv-05', workspaceId: WORKSPACE_ID, role: 'guest' }]))
+      .mockReturnValueOnce(membershipUpdate)
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -289,5 +290,6 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(body).toEqual({ ok: true, workspaceId: WORKSPACE_ID })
     expect(mockDb.insert).not.toHaveBeenCalled()
     expect(mockDb.update).toHaveBeenCalledTimes(2)
+    expect(membershipUpdate.set).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'guest' })
   })
 })
