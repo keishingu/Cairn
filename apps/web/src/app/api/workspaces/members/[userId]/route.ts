@@ -6,7 +6,9 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
 
 const VALID_ROLES = ['owner', 'admin', 'member', 'guest'] as const
+const VALID_STATUSES = ['active', 'inactive'] as const
 type WorkspaceRole = (typeof VALID_ROLES)[number]
+type WorkspaceMembershipStatus = (typeof VALID_STATUSES)[number]
 
 export async function PATCH(
   req: Request,
@@ -23,10 +25,27 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { role: newRole } = body as { role?: string }
-  if (!newRole || !VALID_ROLES.includes(newRole as WorkspaceRole)) {
+  const { role: requestedRole, status: requestedStatus } = body as { role?: string, status?: string }
+  const newRole = requestedRole as WorkspaceRole | undefined
+  const newStatus = requestedStatus as WorkspaceMembershipStatus | undefined
+
+  if (!newRole && !newStatus) {
+    return NextResponse.json(
+      { error: 'role か status のいずれかが必要です' },
+      { status: 422 },
+    )
+  }
+
+  if (newRole && !VALID_ROLES.includes(newRole)) {
     return NextResponse.json(
       { error: 'role は owner/admin/member/guest のいずれかが必要です' },
+      { status: 422 },
+    )
+  }
+
+  if (newStatus && !VALID_STATUSES.includes(newStatus)) {
+    return NextResponse.json(
+      { error: 'status は active/inactive のいずれかが必要です' },
       { status: 422 },
     )
   }
@@ -42,7 +61,10 @@ export async function PATCH(
     }
 
     const [target] = await db
-      .select({ role: workspaceMembers.role })
+      .select({
+        role: workspaceMembers.role,
+        membershipStatus: workspaceMembers.membershipStatus,
+      })
       .from(workspaceMembers)
       .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
       .limit(1)
@@ -52,12 +74,15 @@ export async function PATCH(
     }
 
     const currentRole = target.role
+    const currentStatus = target.membershipStatus
 
     // ゲストと通常ロール間の遷移は禁止する。
     // ゲストのアクセス範囲は project_members で表現されるが、通常ロールはWS全体を参照するため、
     // 相互変換すると project_members が実態と乖離した無効データ（ゾンビ）として残り、整合性が壊れる。
     // ゲストを通常メンバーにしたい場合は招待し直す運用とする。
-    const isGuestTransition = (currentRole === 'guest') !== (newRole === 'guest')
+    const isGuestTransition = newRole
+      ? (currentRole === 'guest') !== (newRole === 'guest')
+      : false
     if (isGuestTransition) {
       return NextResponse.json(
         { error: 'ゲストと通常ロール間のロール変更はできません。招待し直してください' },
@@ -66,7 +91,7 @@ export async function PATCH(
     }
 
     // admin は owner に関わる変更を行えない
-    if (callerRole !== 'owner') {
+    if (callerRole !== 'owner' && newRole) {
       if (newRole === 'owner') {
         return NextResponse.json(
           { error: 'owner への昇格は owner のみ実行できます' },
@@ -82,7 +107,7 @@ export async function PATCH(
     }
 
     // owner を降格する場合、ワークスペースに最低1人の owner が残るか確認
-    if (currentRole === 'owner' && newRole !== 'owner') {
+    if (currentRole === 'owner' && newRole && newRole !== 'owner') {
       const ownerCountRows = await db
         .select({ ownerCount: count() })
         .from(workspaceMembers)
@@ -97,12 +122,57 @@ export async function PATCH(
       }
     }
 
+    // 最後の active owner は非活性化できない
+    if (currentRole === 'owner' && currentStatus === 'active' && newStatus === 'inactive') {
+      const activeOwnerCountRows = await db
+        .select({ ownerCount: count() })
+        .from(workspaceMembers)
+        .where(and(
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.role, 'owner'),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ))
+      const activeOwnerCount = Number(activeOwnerCountRows[0]?.ownerCount ?? 0)
+
+      if (activeOwnerCount <= 1) {
+        return NextResponse.json(
+          { error: 'ワークスペースには最低1人の active な owner が必要です' },
+          { status: 422 },
+        )
+      }
+    }
+
+    const patch: {
+      role?: WorkspaceRole
+      membershipStatus?: WorkspaceMembershipStatus
+      deactivatedAt?: Date | null
+      deactivatedBy?: string | null
+    } = {}
+
+    if (newRole) {
+      patch.role = newRole
+    }
+    if (newStatus) {
+      patch.membershipStatus = newStatus
+      if (newStatus === 'inactive') {
+        patch.deactivatedAt = new Date()
+        patch.deactivatedBy = ctx.userId
+      } else {
+        patch.deactivatedAt = null
+        patch.deactivatedBy = null
+      }
+    }
+
     await db
       .update(workspaceMembers)
-      .set({ role: newRole as WorkspaceRole })
+      .set(patch)
       .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
 
-    return NextResponse.json({ userId: targetUserId, role: newRole })
+    return NextResponse.json({
+      userId: targetUserId,
+      role: patch.role ?? currentRole,
+      status: patch.membershipStatus ?? currentStatus,
+    })
   } catch (err) {
     console.error('[PATCH /api/workspaces/members/[userId]]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
