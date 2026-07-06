@@ -14,6 +14,7 @@ import {
   useWorkspaceChannels,
   useWorkspaceDms,
 } from '@/lib/chat/client'
+import { WORKSPACE_COOKIE } from '@/lib/workspace-cookie'
 import { RealtimeIndicator } from './realtime-indicator'
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected'
@@ -128,7 +129,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       clearRetryTimer()
       setStatus('disconnected')
       await supabase.removeAllChannels()
-      await supabase.auth.signOut()
+      document.cookie = `${WORKSPACE_COOKIE}=; path=/; SameSite=Lax; Max-Age=0`
       window.location.reload()
     }
 

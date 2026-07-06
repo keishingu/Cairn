@@ -9,7 +9,6 @@ const {
   channelRecords,
   mockCreateClient,
   mockRemoveAllChannels,
-  mockSignOut,
 } = vi.hoisted(() => {
   const channelRecords: Array<{
     topic: string
@@ -17,7 +16,6 @@ const {
     handlers: Record<string, ((payload?: unknown) => void)[]>
   }> = []
   const mockRemoveAllChannels = vi.fn().mockResolvedValue([])
-  const mockSignOut = vi.fn().mockResolvedValue(undefined)
   const mockCreateClient = vi.fn(() => ({
     channel: vi.fn((topic: string) => {
       const record: {
@@ -48,10 +46,9 @@ const {
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'token' } } }),
       onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
-      signOut: mockSignOut,
     },
   }))
-  return { channelRecords, mockCreateClient, mockRemoveAllChannels, mockSignOut }
+  return { channelRecords, mockCreateClient, mockRemoveAllChannels }
 })
 
 vi.mock('@/lib/supabase/client', () => ({
@@ -95,7 +92,6 @@ describe('RealtimeProvider', () => {
     channelRecords.length = 0
     mockCreateClient.mockClear()
     mockRemoveAllChannels.mockClear()
-    mockSignOut.mockClear()
   })
 
   afterEach(() => {
@@ -201,9 +197,16 @@ describe('RealtimeProvider', () => {
     expect(channelRecords).toHaveLength(2)
   })
 
-  it('membership-revoked を受けたら全 channel を外して sign out する', async () => {
+  it('membership-revoked を受けたら全 channel を外して対象ワークスペースの cookie を捨てて reload する', async () => {
     const reloadSpy = vi.fn()
     vi.stubGlobal('location', { ...window.location, reload: reloadSpy })
+    const cookieDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie')
+    const cookieSetter = vi.fn()
+    Object.defineProperty(document, 'cookie', {
+      configurable: true,
+      get: () => '',
+      set: cookieSetter,
+    })
     renderProvider()
 
     await act(async () => {
@@ -219,8 +222,11 @@ describe('RealtimeProvider', () => {
     })
 
     expect(mockRemoveAllChannels).toHaveBeenCalledTimes(1)
-    expect(mockSignOut).toHaveBeenCalledTimes(1)
+    expect(cookieSetter).toHaveBeenCalledWith('cairn_workspace_id=; path=/; SameSite=Lax; Max-Age=0')
     expect(reloadSpy).toHaveBeenCalledTimes(1)
+    if (cookieDescriptor) {
+      Object.defineProperty(document, 'cookie', cookieDescriptor)
+    }
     vi.unstubAllGlobals()
   })
 })
