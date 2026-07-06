@@ -405,6 +405,16 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
             <div style={{ fontSize: 12.5 }}>
               {filter === 'all' ? 'タスクを追加してみましょう' : `「${STATUS_LABEL[filter as TaskDto['status']]}」のタスクはありません`}
             </div>
+            {hasNextPage && (
+              <button
+                className="btn"
+                onClick={() => { void fetchNextPage() }}
+                disabled={isFetchingNextPage}
+                style={{ minWidth: 180 }}
+              >
+                {isFetchingNextPage ? '読み込み中...' : 'さらに読み込む'}
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ margin: isMobile ? '12px' : '16px 20px', display: 'grid', gap: 12 }}>

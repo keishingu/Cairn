@@ -180,4 +180,15 @@ describe('GET /api/tasks のページネーション', () => {
     })
     expect(taskBuilder.limit).toHaveBeenCalledWith(2)
   })
+
+  it('limit 指定時に参照可能プロジェクトがなくても空ページ形式を返す', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValue('guest')
+    mockDbSelect.mockReturnValueOnce(createAwaitableBuilder([{ id: PROJECT_ID, title: 'Alpha' }]))
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/tasks?limit=50'))
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ tasks: [], nextCursor: null })
+  })
 })

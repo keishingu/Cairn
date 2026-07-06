@@ -110,4 +110,14 @@ describe('PageTasks', () => {
     expect(await screen.findByText('追加で読むタスク')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'さらに読み込む' })).toBeNull()
   })
+
+  it('先頭ページの現在フィルタが空でも次ページを読める', async () => {
+    renderPageTasks()
+
+    await userEvent.click(await screen.findByRole('button', { name: /完了/ }))
+    const moreButton = await screen.findByRole('button', { name: 'さらに読み込む' })
+    await userEvent.click(moreButton)
+
+    expect(await screen.findByText('追加で読むタスク')).toBeInTheDocument()
+  })
 })

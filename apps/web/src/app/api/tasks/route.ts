@@ -88,7 +88,12 @@ export async function GET(req: Request) {
       ? allowedProjectIds.filter(id => id === projectId)
       : allowedProjectIds
 
-    if (projectIds.length === 0) return NextResponse.json([])
+    if (projectIds.length === 0) {
+      if (paginationEnabled) {
+        return NextResponse.json({ tasks: [], nextCursor: null } satisfies TaskListPage)
+      }
+      return NextResponse.json([])
+    }
 
     const taskWhere = decodedCursor
       ? and(
