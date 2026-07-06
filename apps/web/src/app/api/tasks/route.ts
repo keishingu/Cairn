@@ -92,6 +92,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
+
   let body: unknown
   try {
     body = await req.json()
@@ -105,8 +108,6 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { ctx, error } = await getAuthContext()
-    if (error) return error
 
     // ゲストは参加プロジェクトにのみタスクを作成できる
     const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, parsed.data.projectId)

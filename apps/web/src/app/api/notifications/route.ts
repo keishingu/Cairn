@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
+
+const patchNotificationsSchema = z.object({
+  ids: z.array(z.string().uuid()).max(200).optional(),
+})
 
 export interface NotificationDto {
   id: string
@@ -61,17 +66,17 @@ export async function PATCH(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  let body: unknown
+  let rawBody: unknown
   try {
-    body = await req.json()
+    rawBody = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
-  const rawIds = (body as { ids?: unknown }).ids
-  if (rawIds !== undefined && (!Array.isArray(rawIds) || rawIds.some(id => typeof id !== 'string'))) {
-    return NextResponse.json({ error: 'ids は string[] で指定してください' }, { status: 400 })
+  const parsed = patchNotificationsSchema.safeParse(rawBody)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
-  const ids = rawIds as string[] | undefined
+  const { ids } = parsed.data
 
   try {
     const { db, notifications } = await import('@cairn/db')

@@ -12,6 +12,7 @@ import type { FileDto } from '@/app/api/files/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
+import { formatFileSize } from '@/lib/format'
 
 type FilterKey = 'all' | 'pdf' | 'img' | 'doc'
 
@@ -36,12 +37,6 @@ const REINDEXABLE_MIME_TYPES = new Set([
 
 const PAGE_SIZE = 20
 
-function formatFileSize(bytes: number | null): string {
-  if (!bytes) return ''
-  if (bytes < 1024) return `${bytes}B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
-}
 
 function formatDate(iso: string): string {
   const d = new Date(iso)

@@ -2,8 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { USER_STATUSES, type UserStatus } from '@/lib/user-status'
+
+const patchMeSchema = z.object({
+  displayName: z.string().trim().min(1).max(100).optional(),
+  bio: z.string().max(1000).nullable().optional(),
+  status: z.enum(['online', 'away', 'busy', 'offline']).optional(),
+  statusMessage: z.string().max(100).nullable().optional(),
+}).refine(
+  d => d.displayName !== undefined || 'bio' in d || d.status !== undefined || 'statusMessage' in d,
+  { message: 'At least one field is required' },
+)
 
 export interface CurrentUserDto {
   id: string
@@ -73,31 +84,22 @@ export async function PATCH(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  let body: unknown
+  let rawBody: unknown
   try {
-    body = await req.json()
+    rawBody = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const b = body as { displayName?: string; bio?: string | null; status?: UserStatus; statusMessage?: string | null }
+  const parsed = patchMeSchema.safeParse(rawBody)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
+  }
+  const b = parsed.data
   const hasDisplayName = b.displayName !== undefined
-  const hasBio = 'bio' in (b as object)
+  const hasBio = 'bio' in b
   const hasStatus = b.status !== undefined
-  const hasStatusMessage = 'statusMessage' in (b as object)
-
-  if (!hasDisplayName && !hasBio && !hasStatus && !hasStatusMessage) {
-    return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
-  }
-  if (hasDisplayName && !b.displayName?.trim()) {
-    return NextResponse.json({ error: '表示名は必須です' }, { status: 422 })
-  }
-  if (hasStatus && !USER_STATUSES.includes(b.status!)) {
-    return NextResponse.json({ error: 'ステータスの値が不正です' }, { status: 422 })
-  }
-  if (hasStatusMessage && b.statusMessage != null && b.statusMessage.length > 100) {
-    return NextResponse.json({ error: 'ステータスメッセージは100文字以内で入力してください' }, { status: 422 })
-  }
+  const hasStatusMessage = 'statusMessage' in b
 
   try {
     const { db, profiles, workspaceMembers } = await import('@cairn/db')

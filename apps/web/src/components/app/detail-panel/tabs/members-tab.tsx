@@ -15,7 +15,7 @@ import {
   useRemoveProjectMember,
 } from '@/hooks/use-project-members'
 
-const ROLE_LABEL: Record<string, string> = {
+const ROLE_LABEL: Record<ProjectMemberDto['role'], string> = {
   leader:    'リーダー',
   subleader: 'サブリーダー',
   member:    'メンバー',
@@ -23,7 +23,7 @@ const ROLE_LABEL: Record<string, string> = {
   observer:  'オブザーバー',
 }
 
-const ROLE_STYLE: { [key: string]: { c: string; bg: string } } = {
+const ROLE_STYLE: Record<ProjectMemberDto['role'], { c: string; bg: string }> = {
   leader:    { c: 'var(--accent-text)',  bg: 'var(--accent-soft)' },
   subleader: { c: 'var(--violet-text)', bg: 'var(--violet-soft)' },
   member:    { c: 'var(--text-3)',       bg: 'var(--card-2)' },
@@ -206,7 +206,7 @@ const InvitePanel = ({
             役割
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {Object.entries(ROLE_LABEL).map(([val, label]) => {
+            {(Object.entries(ROLE_LABEL) as [ProjectMemberDto['role'], string][]).map(([val, label]) => {
               const rs = ROLE_STYLE[val] ?? DEFAULT_ROLE_STYLE
               const sel = selectedRole === val
               return (

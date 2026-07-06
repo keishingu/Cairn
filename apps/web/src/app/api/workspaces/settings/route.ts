@@ -2,11 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceOwner } from '@/lib/permissions'
 import type { WorkspaceSettings } from '@cairn/db'
 
 export type { WorkspaceSettings as WorkspaceSettingsDto }
+
+const coverPhotoSchema = z.object({
+  id: z.string().min(1).max(100),
+  url: z.string().url().max(2048),
+  storagePath: z.string().min(1).max(500),
+  name: z.string().min(1).max(200),
+})
+
+const patchWorkspaceSettingsSchema = z.object({
+  projectLabel: z.string().max(50).nullable().optional(),
+  coverPhotos: z.array(coverPhotoSchema).max(20).optional(),
+}).strict()
 
 export async function GET() {
   const { ctx, error } = await getAuthContext()
@@ -37,7 +50,18 @@ export async function PATCH(req: Request) {
   const forbidden = await requireWorkspaceOwner(ctx.workspaceId, ctx.userId)
   if (forbidden) return forbidden
 
-  const patch = await req.json() as Partial<WorkspaceSettings>
+  let rawBody: unknown
+  try {
+    rawBody = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const parsed = patchWorkspaceSettingsSchema.safeParse(rawBody)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
+  }
+  const patch = parsed.data
 
   try {
     const { db } = await import('@cairn/db')
@@ -51,7 +75,11 @@ export async function PATCH(req: Request) {
       .where(eq(workspaces.id, ctx.workspaceId))
       .limit(1)
 
-    const merged: WorkspaceSettings = { ...(ws?.settings ?? {}), ...patch }
+    // undefined キーをスキップして exactOptionalPropertyTypes と互換させる
+    const definedPatch: WorkspaceSettings = {}
+    if (patch.projectLabel !== undefined) definedPatch.projectLabel = patch.projectLabel
+    if (patch.coverPhotos !== undefined) definedPatch.coverPhotos = patch.coverPhotos
+    const merged: WorkspaceSettings = { ...(ws?.settings ?? {}), ...definedPatch }
 
     await db
       .update(workspaces)
