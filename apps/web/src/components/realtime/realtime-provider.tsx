@@ -4,15 +4,13 @@
 'use client'
 
 import React from 'react'
+import { usePathname } from 'next/navigation'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import {
   chatQueryKeys,
   useCurrentUser,
-  useProjectChannels,
-  useWorkspaceChannels,
-  useWorkspaceDms,
 } from '@/lib/chat/client'
 import { RealtimeIndicator } from './realtime-indicator'
 
@@ -57,25 +55,21 @@ function tableOf(payload: unknown): string | undefined {
   return typeof table === 'string' ? table : undefined
 }
 
+function activeChannelIdFromPath(pathname: string | null): string | null {
+  if (!pathname?.startsWith('/chats/')) return null
+  const channelId = pathname.slice('/chats/'.length).split('/')[0]
+  return channelId ? decodeURIComponent(channelId) : null
+}
+
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const { data: currentUser } = useCurrentUser()
   const userId = currentUser?.id ?? null
+  const pathname = usePathname()
+  const activeChannelId = React.useMemo(() => activeChannelIdFromPath(pathname), [pathname])
 
   const [status, setStatus] = React.useState<RealtimeStatus>('connecting')
   const [degraded, setDegraded] = React.useState(false)
-
-  // 購読すべきチャンネルトピックの決定にチャンネル一覧を使う（サイドバーと同じクエリを共有）
-  const { data: projectChannels = [] } = useProjectChannels()
-  const { data: workspaceChannels = [] } = useWorkspaceChannels()
-  const { data: dms = [] } = useWorkspaceDms()
-  const channelIdsKey = React.useMemo(() => {
-    const ids = new Set<string>()
-    for (const c of projectChannels) ids.add(c.channelId)
-    for (const c of workspaceChannels) ids.add(c.id)
-    for (const d of dms) ids.add(d.id)
-    return [...ids].sort().join(',')
-  }, [projectChannels, workspaceChannels, dms])
 
   // status が disconnected に留まった時だけ degraded を立てる
   React.useEffect(() => {
@@ -136,6 +130,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             void queryClient.invalidateQueries({ queryKey: ['notifications'] })
             // 新規DM・未参加チャンネルでの活動はチャンネル一覧の再取得で拾う
             scheduleListInvalidate()
+          } else if (table === 'messages') {
+            // 他チャンネルの未読数・最終メッセージは user topic 側で集約更新する
+            scheduleListInvalidate()
           } else if (table === 'channel_read_states') {
             // 他デバイスでの既読を即時反映（バッジ消去 + ベルの既読同期）
             scheduleListInvalidate()
@@ -190,7 +187,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   }, [queryClient, userId, scheduleListInvalidate])
 
   // ─── チャンネルトピック（messages / message_reactions）─────────
-  // 一覧の変化に追従して join/leave を差分反映する
+  // 一覧全件ではなく、現在表示中の 1 チャンネルだけを購読する
   const topicChannelsRef = React.useRef<Map<string, RealtimeChannel>>(new Map())
 
   React.useEffect(() => {
@@ -199,7 +196,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     const supabase = createClient()
     const current = topicChannelsRef.current
-    const wanted = new Set(channelIdsKey ? channelIdsKey.split(',') : [])
+    const wanted = new Set(activeChannelId ? [activeChannelId] : [])
 
     for (const [id, ch] of [...current]) {
       if (!wanted.has(id)) {
@@ -231,7 +228,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       })
       current.set(id, ch)
     }
-  }, [channelIdsKey, userId, status, queryClient, scheduleListInvalidate])
+  }, [activeChannelId, userId, status, queryClient, scheduleListInvalidate])
 
   // アンマウント時に全チャンネルトピックを解放
   React.useEffect(() => {

@@ -33,6 +33,12 @@ vi.mock('@/lib/supabase/client', () => ({
   createClient: mockCreateClient,
 }))
 
+const mockUsePathname = vi.fn(() => '/chats/channel-1')
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => mockUsePathname(),
+}))
+
 vi.mock('@/lib/chat/client', () => ({
   chatQueryKeys: {
     projectChannels: ['project-channels'],
@@ -69,6 +75,7 @@ describe('RealtimeProvider', () => {
     vi.useFakeTimers()
     channelRecords.length = 0
     mockCreateClient.mockClear()
+    mockUsePathname.mockReturnValue('/chats/channel-1')
   })
 
   afterEach(() => {
@@ -90,6 +97,28 @@ describe('RealtimeProvider', () => {
     })
 
     expect(screen.queryByText('再接続中…')).toBeNull()
+  })
+
+  it('接続後は user topic と現在開いている channel topic だけを購読する', async () => {
+    renderProvider()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(channelRecords).toHaveLength(1)
+    expect(channelRecords[0]?.topic).toBe('user:user-1')
+
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(channelRecords).toHaveLength(2)
+    expect(channelRecords[1]?.topic).toBe('channel:channel-1')
   })
 
   it('購読失敗後に再試行し、復帰したら再接続バナーを消す', async () => {
