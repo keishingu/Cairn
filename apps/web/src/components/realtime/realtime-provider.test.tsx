@@ -5,28 +5,53 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 type SubscribeCallback = (status: 'SUBSCRIBED' | 'CHANNEL_ERROR' | 'TIMED_OUT' | 'CLOSED', err?: { message?: string }) => void
 
-const { channelRecords, mockCreateClient } = vi.hoisted(() => {
-  const channelRecords: Array<{ topic: string; callback?: SubscribeCallback }> = []
+const {
+  channelRecords,
+  mockCreateClient,
+  mockRemoveAllChannels,
+  mockSignOut,
+} = vi.hoisted(() => {
+  const channelRecords: Array<{
+    topic: string
+    callback?: SubscribeCallback
+    handlers: Record<string, ((payload?: unknown) => void)[]>
+  }> = []
+  const mockRemoveAllChannels = vi.fn().mockResolvedValue([])
+  const mockSignOut = vi.fn().mockResolvedValue(undefined)
   const mockCreateClient = vi.fn(() => ({
     channel: vi.fn((topic: string) => {
-      const record: { topic: string; callback?: SubscribeCallback } = { topic }
+      const record: {
+        topic: string
+        callback?: SubscribeCallback
+        handlers: Record<string, ((payload?: unknown) => void)[]>
+      } = { topic, handlers: {} }
       channelRecords.push(record)
-      return {
-        on: vi.fn().mockReturnThis(),
+      const channel = {
+        on: vi.fn((type: string, filter: { event: string }, callback: (payload?: unknown) => void) => {
+          const key = `${type}:${filter.event}`
+          record.handlers[key] ??= []
+          record.handlers[key]?.push(callback)
+          return channel
+        }),
         subscribe: vi.fn((callback: SubscribeCallback) => {
           record.callback = callback
           return record
         }),
       }
+      return {
+        ...channel,
+      }
     }),
     removeChannel: vi.fn().mockResolvedValue(undefined),
+    removeAllChannels: mockRemoveAllChannels,
     realtime: { setAuth: vi.fn().mockResolvedValue(undefined) },
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'token' } } }),
       onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+      signOut: mockSignOut,
     },
   }))
-  return { channelRecords, mockCreateClient }
+  return { channelRecords, mockCreateClient, mockRemoveAllChannels, mockSignOut }
 })
 
 vi.mock('@/lib/supabase/client', () => ({
@@ -69,6 +94,8 @@ describe('RealtimeProvider', () => {
     vi.useFakeTimers()
     channelRecords.length = 0
     mockCreateClient.mockClear()
+    mockRemoveAllChannels.mockClear()
+    mockSignOut.mockClear()
   })
 
   afterEach(() => {
@@ -172,5 +199,28 @@ describe('RealtimeProvider', () => {
     })
 
     expect(channelRecords).toHaveLength(2)
+  })
+
+  it('membership-revoked を受けたら全 channel を外して sign out する', async () => {
+    const reloadSpy = vi.fn()
+    vi.stubGlobal('location', { ...window.location, reload: reloadSpy })
+    renderProvider()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const revokedHandlers = channelRecords[0]?.handlers['broadcast:membership-revoked'] ?? []
+    expect(revokedHandlers).toHaveLength(1)
+
+    await act(async () => {
+      revokedHandlers[0]?.()
+      await Promise.resolve()
+    })
+
+    expect(mockRemoveAllChannels).toHaveBeenCalledTimes(1)
+    expect(mockSignOut).toHaveBeenCalledTimes(1)
+    expect(reloadSpy).toHaveBeenCalledTimes(1)
+    vi.unstubAllGlobals()
   })
 })

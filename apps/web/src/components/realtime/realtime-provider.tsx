@@ -104,6 +104,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     const supabase = createClient()
     let cancelled = false
+    let revoked = false
     let userChannel: RealtimeChannel | null = null
     let retryTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -119,6 +120,16 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         userChannel = null
       }
       await supabase.removeChannel(channel)
+    }
+
+    const handleMembershipRevoked = async () => {
+      if (cancelled || revoked) return
+      revoked = true
+      clearRetryTimer()
+      setStatus('disconnected')
+      await supabase.removeAllChannels()
+      await supabase.auth.signOut()
+      window.location.reload()
     }
 
     const connectUserChannel = async () => {
@@ -142,6 +153,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             scheduleListInvalidate()
             void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           }
+        })
+        .on('broadcast', { event: 'membership-revoked' }, () => {
+          void handleMembershipRevoked()
         })
       userChannel = currentChannel
 

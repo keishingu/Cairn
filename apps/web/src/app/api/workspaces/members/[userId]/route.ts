@@ -4,11 +4,28 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
+import { createServiceRoleClient } from '@/lib/supabase/service'
 
 const VALID_ROLES = ['owner', 'admin', 'member', 'guest'] as const
 const VALID_STATUSES = ['active', 'inactive'] as const
 type WorkspaceRole = (typeof VALID_ROLES)[number]
 type WorkspaceMembershipStatus = (typeof VALID_STATUSES)[number]
+
+async function notifyMembershipRevoked(workspaceId: string, userId: string) {
+  const supabase = createServiceRoleClient()
+  const channel = supabase.channel(`user:${userId}:workspace:${workspaceId}`, {
+    config: { private: true },
+  })
+
+  try {
+    const result = await channel.httpSend('membership-revoked', { reason: 'inactive-membership' })
+    if (!result.success) {
+      throw new Error(`Failed to send membership revocation signal: ${result.status} ${result.error}`)
+    }
+  } finally {
+    await supabase.removeChannel(channel)
+  }
+}
 
 export async function PATCH(
   req: Request,
@@ -171,6 +188,10 @@ export async function PATCH(
       .update(workspaceMembers)
       .set(patch)
       .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
+
+    if (currentStatus !== 'inactive' && patch.membershipStatus === 'inactive') {
+      await notifyMembershipRevoked(ctx.workspaceId, targetUserId)
+    }
 
     return NextResponse.json({
       userId: targetUserId,

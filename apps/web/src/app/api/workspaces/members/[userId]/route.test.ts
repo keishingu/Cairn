@@ -7,7 +7,22 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const OTHER_USER_ID = '00000000-0000-0000-0000-000000000002'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole } = vi.hoisted(() => {
+const {
+  mockChannelHttpSend,
+  mockCreateServiceRoleClient,
+  mockDb,
+  mockGetAuthContext,
+  mockGetWorkspaceMemberRole,
+  mockRemoveChannel,
+} = vi.hoisted(() => {
+  const mockChannelHttpSend = vi.fn().mockResolvedValue({ success: true })
+  const mockRemoveChannel = vi.fn().mockResolvedValue(undefined)
+  const mockCreateServiceRoleClient = vi.fn(() => ({
+    channel: vi.fn(() => ({
+      httpSend: mockChannelHttpSend,
+    })),
+    removeChannel: mockRemoveChannel,
+  }))
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -17,7 +32,14 @@ const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole } = vi.hoisted(()
   })
   const mockDb = { select: vi.fn(), update: vi.fn() }
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('admin')
-  return { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole }
+  return {
+    mockChannelHttpSend,
+    mockCreateServiceRoleClient,
+    mockDb,
+    mockGetAuthContext,
+    mockGetWorkspaceMemberRole,
+    mockRemoveChannel,
+  }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -27,6 +49,10 @@ vi.mock('@/lib/get-auth-context', () => ({
 vi.mock('@/lib/permissions', () => ({
   getWorkspaceMemberRole: mockGetWorkspaceMemberRole,
   isWorkspaceAdmin: (role: string | null) => role === 'owner' || role === 'admin',
+}))
+
+vi.mock('@/lib/supabase/service', () => ({
+  createServiceRoleClient: mockCreateServiceRoleClient,
 }))
 
 vi.mock('@cairn/db', () => ({
@@ -86,6 +112,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   afterEach(() => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
+    mockChannelHttpSend.mockResolvedValue({ success: true })
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
       error: null,
@@ -239,6 +266,9 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
       deactivatedBy: DEV_USER_ID,
       deactivatedAt: expect.any(Date),
     }))
+    expect(mockCreateServiceRoleClient).toHaveBeenCalledTimes(1)
+    expect(mockChannelHttpSend).toHaveBeenCalledWith('membership-revoked', { reason: 'inactive-membership' })
+    expect(mockRemoveChannel).toHaveBeenCalledTimes(1)
     await expect(res.json()).resolves.toMatchObject({
       userId: OTHER_USER_ID,
       role: 'member',
@@ -263,6 +293,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
       deactivatedAt: null,
       deactivatedBy: null,
     }))
+    expect(mockCreateServiceRoleClient).not.toHaveBeenCalled()
     await expect(res.json()).resolves.toMatchObject({
       userId: OTHER_USER_ID,
       role: 'member',
@@ -279,6 +310,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
+    expect(mockCreateServiceRoleClient).not.toHaveBeenCalled()
   })
 
   it('唯一の active owner は非活性化できない（422）', async () => {
@@ -325,6 +357,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
       membershipStatus: 'inactive',
       deactivatedBy: DEV_USER_ID,
     }))
+    expect(mockCreateServiceRoleClient).toHaveBeenCalledTimes(1)
   })
 
   it('inactive owner は active owner 数に影響せず降格できる', async () => {
@@ -339,5 +372,19 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(res.status).toBe(200)
     expect(update.set).toHaveBeenCalledWith(expect.objectContaining({ role: 'admin' }))
     expect(mockDb.select).toHaveBeenCalledTimes(1)
+  })
+
+  it('強制離脱シグナル送信に失敗したら 500 を返す', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockChannelHttpSend.mockResolvedValueOnce({ success: false, status: 500, error: 'boom' })
+    const { PATCH } = await import('./route')
+
+    const res = await PATCH(patchRequestWithBody(OTHER_USER_ID, { status: 'inactive' }), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
+
+    expect(res.status).toBe(500)
   })
 })
