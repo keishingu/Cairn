@@ -66,13 +66,20 @@ export const onMessageCreated = inngest.createFunction(
 
     // チャンネルメンバー（送信者を除く）を取得
     const members = await step.run('fetch-members', async () => {
-      const { db, channelMembers, profiles } = await import('@cairn/db')
-      const { eq } = await import('drizzle-orm')
+      const { db, channelMembers, profiles, workspaceMembers } = await import('@cairn/db')
+      const { eq, and } = await import('drizzle-orm')
       return db
         .select({ userId: channelMembers.userId, displayName: profiles.displayName })
         .from(channelMembers)
         .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
-        .where(eq(channelMembers.channelId, channelId))
+        .innerJoin(workspaceMembers, and(
+          eq(channelMembers.userId, workspaceMembers.userId),
+          eq(workspaceMembers.workspaceId, workspaceId),
+        ))
+        .where(and(
+          eq(channelMembers.channelId, channelId),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ))
         .then(rows => rows.filter(r => r.userId !== senderId))
     })
 
@@ -137,6 +144,7 @@ export const onMessageCreated = inngest.createFunction(
             .where(and(
               eq(workspaceMembers.workspaceId, workspaceId),
               inArray(workspaceMembers.userId, mentionedIds),
+              eq(workspaceMembers.membershipStatus, 'active'),
               ne(workspaceMembers.userId, senderId),
             ))
         })
@@ -184,6 +192,7 @@ export const onMessageCreated = inngest.createFunction(
                     eq(workspaceMembers.workspaceId, workspaceId),
                     inArray(workspaceMembers.userId, ids),
                     eq(workspaceMembers.role, 'guest'),
+                    eq(workspaceMembers.membershipStatus, 'active'),
                   ))
                 ).map(r => r.userId),
               )

@@ -91,16 +91,16 @@ export async function PATCH(
     }
 
     // admin は owner に関わる変更を行えない
-    if (callerRole !== 'owner' && newRole) {
+    if (callerRole !== 'owner') {
       if (newRole === 'owner') {
         return NextResponse.json(
           { error: 'owner への昇格は owner のみ実行できます' },
           { status: 403 },
         )
       }
-      if (currentRole === 'owner') {
+      if (currentRole === 'owner' && (newRole || newStatus)) {
         return NextResponse.json(
-          { error: 'owner のロール変更は owner のみ実行できます' },
+          { error: 'owner のロール・状態変更は owner のみ実行できます' },
           { status: 403 },
         )
       }
