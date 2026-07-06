@@ -57,6 +57,16 @@ export async function POST(
       return NextResponse.json({ ok: true, workspaceId: invite.workspaceId })
     }
 
+    const isGuestTransition =
+      existingMembership &&
+      ((existingMembership.role === 'guest') !== (invite.role === 'guest'))
+    if (isGuestTransition) {
+      return NextResponse.json(
+        { error: 'ゲストと通常ロール間の再有効化はできません。招待し直してください' },
+        { status: 422 },
+      )
+    }
+
     // max_uses チェックとインクリメントをアトミックに実行し、
     // 上限未満の場合のみ行が返る → 競合状態を防ぐ
     const [claimed] = await db
@@ -81,14 +91,6 @@ export async function POST(
 
     if (!claimed) {
       return NextResponse.json({ error: 'Invite link has reached its usage limit' }, { status: 410 })
-    }
-
-    const isGuestTransition = existingMembership && ((existingMembership.role === 'guest') !== (claimed.role === 'guest'))
-    if (isGuestTransition) {
-      return NextResponse.json(
-        { error: 'ゲストと通常ロール間の再有効化はできません。招待し直してください' },
-        { status: 422 },
-      )
     }
 
     if (existingMembership) {

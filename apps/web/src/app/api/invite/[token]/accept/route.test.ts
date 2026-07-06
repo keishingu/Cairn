@@ -300,10 +300,6 @@ describe('POST /api/invite/[token]/accept', () => {
       .mockReturnValueOnce(selectChain([invite]))
       .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id', membershipStatus: 'inactive', role: 'member' }]))
 
-    mockDb.update.mockReturnValueOnce(
-      updateChain([{ id: 'inv-06', workspaceId: WORKSPACE_ID, role: 'guest', projectId: 'project-1' }]),
-    )
-
     const { POST } = await import('./route')
     const res = await POST(
       new Request(`http://localhost/api/invite/${VALID_TOKEN}/accept`, { method: 'POST' }),
@@ -312,6 +308,6 @@ describe('POST /api/invite/[token]/accept', () => {
 
     expect(res.status).toBe(422)
     expect(mockDb.insert).not.toHaveBeenCalled()
-    expect(mockDb.update).toHaveBeenCalledTimes(1)
+    expect(mockDb.update).not.toHaveBeenCalled()
   })
 })
