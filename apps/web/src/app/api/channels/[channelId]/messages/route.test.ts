@@ -62,7 +62,7 @@ vi.mock('@cairn/db', () => ({
     channelId: 'messages.channelId',
     deletedAt: 'messages.deletedAt',
   },
-  profiles: { id: 'profiles.id', displayName: 'profiles.displayName' },
+  profiles: { id: 'profiles.id', kind: 'profiles.kind', displayName: 'profiles.displayName' },
   workspaceMembers: {
     userId: 'workspaceMembers.userId',
     workspaceId: 'workspaceMembers.workspaceId',
@@ -167,6 +167,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
           id: 'msg-1',
           content: 'hello',
           senderId: 'user-2',
+          senderKind: 'human',
           senderName: 'Sender',
           senderAvatarUrl: null,
           createdAt: new Date('2026-06-24T01:00:00.000Z'),
@@ -188,6 +189,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     await expect(res.json()).resolves.toEqual([
       expect.objectContaining({
         id: 'msg-1',
+        senderKind: 'human',
         reactions: [
           {
             emoji: '👍',

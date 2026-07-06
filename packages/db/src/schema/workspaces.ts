@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { boolean, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
-import { memberStatusEnum, userStatusEnum, workspaceRoleEnum } from './enums'
+import { memberStatusEnum, profileKindEnum, userStatusEnum, workspaceRoleEnum } from './enums'
 
 export interface WorkspaceCoverPhoto {
   id: string
@@ -18,6 +18,7 @@ export interface WorkspaceSettings {
 
 export const profiles = pgTable('profiles', {
   id: uuid('id').primaryKey(),
+  kind: profileKindEnum('kind').notNull().default('human'),
   displayName: text('display_name').notNull(),
   bio: text('bio'),
   icalToken: text('ical_token').unique(),

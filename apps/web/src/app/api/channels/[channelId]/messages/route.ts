@@ -32,6 +32,7 @@ export interface MessageDto {
   content: string
   messageType: MessageType
   senderId: string
+  senderKind: 'human' | 'bot'
   senderName: string
   senderAvatarUrl: string | null
   createdAt: string
@@ -72,6 +73,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       messageType: messages.messageType,
       parentMessageId: messages.parentMessageId,
       senderId: messages.senderId,
+      senderKind: profiles.kind,
       senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
       senderAvatarUrl: workspaceMembers.avatarUrl,
       createdAt: messages.createdAt,
@@ -84,6 +86,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       messageType: MessageType
       parentMessageId: string | null
       senderId: string
+      senderKind: 'human' | 'bot'
       senderName: string
       senderAvatarUrl: string | null
       createdAt: Date
@@ -269,6 +272,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       content: hydrateMentions(r.content, id => nameMap.get(id)),
       messageType: r.messageType,
       senderId: r.senderId,
+      senderKind: r.senderKind,
       senderName: r.senderName,
       senderAvatarUrl: r.senderAvatarUrl ?? null,
       createdAt: r.createdAt.toISOString(),
@@ -416,6 +420,7 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     const [profile] = await db
       .select({
+        kind: profiles.kind,
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
       })
@@ -448,6 +453,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       content: inserted.content,
       messageType: parsed.data.messageType ?? 'text',
       senderId: inserted.senderId,
+      senderKind: profile?.kind ?? 'human',
       senderName,
       senderAvatarUrl: profile?.avatarUrl ?? null,
       createdAt: inserted.createdAt.toISOString(),

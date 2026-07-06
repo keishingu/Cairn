@@ -119,10 +119,11 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, senderKind, currentUserId, senderName, senderAvatarUrl, senderEmail, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
+  senderKind?: 'human' | 'bot'
   currentUserId: string | undefined
   senderName: string
   senderAvatarUrl?: string | null
@@ -272,6 +273,11 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       <div style={{ flex: 1, minWidth: 0 }}>
         <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
           <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
+          {senderKind === 'bot' && (
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--accent)', background: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: 999, padding: '1px 6px' }}>
+              Bot
+            </span>
+          )}
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
           {isEdited && <span style={{ fontSize: 10, color: 'var(--text-4)', fontStyle: 'italic' }}>編集済み</span>}
         </div>
@@ -1467,6 +1473,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               messageId={m.id}
               messageType={m.messageType}
               senderId={m.senderId}
+              senderKind={m.senderKind}
               currentUserId={currentUser?.id}
               senderName={m.senderName}
               senderAvatarUrl={m.senderAvatarUrl}
