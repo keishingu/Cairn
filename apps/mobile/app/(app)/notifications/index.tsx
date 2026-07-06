@@ -2,17 +2,7 @@ import { useRouter } from 'expo-router'
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useMarkNotificationsRead, useNotifications, type NotificationDto } from '../../../hooks/use-notifications'
-
-function routeFromUrl(url: string) {
-  if (url.startsWith('/chat')) return '/(app)/chats'
-  if (url.startsWith('/tasks')) return '/(app)/tasks'
-  if (url.startsWith('/ai')) return '/(app)/ai'
-  if (url.startsWith('/files')) return '/(app)/files'
-  if (url.startsWith('/gallery')) return '/(app)/gallery'
-  if (url.startsWith('/members')) return '/(app)/members'
-  if (url.startsWith('/settings')) return '/(app)/settings'
-  return '/(app)/projects'
-}
+import { routeFromNotification } from '../../../lib/notification-routing'
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('ja-JP', {
@@ -55,8 +45,7 @@ export default function NotificationsScreen() {
     if (!item.readAt) {
       markRead.mutate([item.id])
     }
-    const url = item.data?.['url']
-    router.push(url ? routeFromUrl(url) : '/(app)/projects')
+    router.push(routeFromNotification(item))
   }
 
   if (notificationsQuery.isLoading) {

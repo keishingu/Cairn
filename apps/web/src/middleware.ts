@@ -14,7 +14,8 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set('x-device', detectMobile(ua) ? 'mobile' : 'desktop')
 
   const isWebView = request.nextUrl.searchParams.get('webview') === '1'
-  if (isWebView) requestHeaders.set('x-webview', '1')
+  const persistedWebView = request.cookies.get('cairn-webview')?.value === '1'
+  if (isWebView || persistedWebView) requestHeaders.set('x-webview', '1')
 
   let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
 
@@ -60,6 +61,14 @@ export async function middleware(request: NextRequest) {
   }
   if (user && isAuthRoute && !isOnboardingRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))
+  }
+
+  if (isWebView) {
+    supabaseResponse.cookies.set('cairn-webview', '1', {
+      sameSite: 'lax',
+      secure: request.nextUrl.protocol === 'https:',
+      path: '/',
+    })
   }
 
   return supabaseResponse

@@ -137,6 +137,10 @@ export default function AppLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="list-outline" size={size} color={color} />,
         }}
       />
+      <Tabs.Screen name="files" options={{ href: null }} />
+      <Tabs.Screen name="gallery" options={{ href: null }} />
+      <Tabs.Screen name="members" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   )
 }
