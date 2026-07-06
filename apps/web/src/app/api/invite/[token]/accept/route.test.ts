@@ -46,6 +46,7 @@ vi.mock('@cairn/db', () => ({
     workspaceId: 'wm.workspaceId',
     userId: 'wm.userId',
     role: 'wm.role',
+    membershipStatus: 'wm.membershipStatus',
   },
   projectMembers: {
     projectId: 'pm.projectId',
@@ -89,6 +90,14 @@ function updateChain(result: unknown[]) {
       where: vi.fn().mockReturnValue({
         returning: vi.fn().mockResolvedValue(result),
       }),
+    }),
+  }
+}
+
+function updateWithoutReturningChain() {
+  return {
+    set: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue([]),
     }),
   }
 }
@@ -137,7 +146,7 @@ describe('POST /api/invite/[token]/accept', () => {
 
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))                                // 招待取得
-      .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id' }]))     // 既存メンバー
+      .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id', membershipStatus: 'active' }]))     // 既存メンバー
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -256,5 +265,29 @@ describe('POST /api/invite/[token]/accept', () => {
     )
 
     expect(res.status).toBe(200)
+  })
+
+  it('inactive な既存メンバーは招待受諾で active に戻す', async () => {
+    const invite = { id: 'inv-05', workspaceId: WORKSPACE_ID, role: 'member', expiresAt: null, maxUses: null, useCount: 0 }
+
+    mockDb.select
+      .mockReturnValueOnce(selectChain([invite]))
+      .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id', membershipStatus: 'inactive' }]))
+
+    mockDb.update
+      .mockReturnValueOnce(updateChain([{ id: 'inv-05', workspaceId: WORKSPACE_ID, role: 'member' }]))
+      .mockReturnValueOnce(updateWithoutReturningChain())
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/invite/${VALID_TOKEN}/accept`, { method: 'POST' }),
+      { params: Promise.resolve({ token: VALID_TOKEN }) },
+    )
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { ok: boolean; workspaceId: string }
+    expect(body).toEqual({ ok: true, workspaceId: WORKSPACE_ID })
+    expect(mockDb.insert).not.toHaveBeenCalled()
+    expect(mockDb.update).toHaveBeenCalledTimes(2)
   })
 })

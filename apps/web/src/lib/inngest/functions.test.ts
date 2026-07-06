@@ -50,20 +50,55 @@ vi.mock('@cairn/db', () => ({
     workspaceId: 'wm.workspaceId',
     membershipStatus: 'wm.membershipStatus',
   },
+  channelMembers: {
+    userId: 'cm.userId',
+    channelId: 'cm.channelId',
+  },
+  profiles: {
+    id: 'profiles.id',
+    displayName: 'profiles.displayName',
+  },
+  channels: {
+    id: 'channels.id',
+    type: 'channels.type',
+  },
+  messages: {
+    id: 'messages.id',
+    createdAt: 'messages.createdAt',
+    deletedAt: 'messages.deletedAt',
+  },
+  channelReadStates: {
+    userId: 'crs.userId',
+    channelId: 'crs.channelId',
+    lastReadAt: 'crs.lastReadAt',
+    lastReadMessageId: 'crs.lastReadMessageId',
+  },
+  notifications: 'notifications',
 }))
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   and: vi.fn(() => 'and'),
+  inArray: vi.fn(() => 'inArray'),
 }))
 
-function selectChain(result: unknown[]) {
+function whereChain(result: unknown[]) {
+  const whereResult = {
+    limit: vi.fn().mockResolvedValue(result),
+    then: (onFulfilled: (value: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
+      Promise.resolve(result).then(onFulfilled, onRejected),
+  }
+  const base = {
+    innerJoin: vi.fn(),
+    leftJoin: vi.fn(),
+    where: vi.fn(),
+  }
+  base.innerJoin.mockReturnValue(base)
+  base.leftJoin.mockReturnValue(base)
+  base.where.mockReturnValue(whereResult)
+
   return {
-    from: vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockResolvedValue(result),
-      }),
-    }),
+    from: vi.fn().mockReturnValue(base),
   }
 }
 
@@ -74,7 +109,7 @@ describe('onTaskAssigned', () => {
   })
 
   it('inactive な assignee には通知を作らず push もしない', async () => {
-    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.select.mockReturnValueOnce(whereChain([]))
 
     const { onTaskAssigned } = await import('./functions')
     const handler = onTaskAssigned as unknown as (input: {
@@ -100,6 +135,50 @@ describe('onTaskAssigned', () => {
 
     expect(result).toEqual({ notified: null, skippedInactive: true })
     expect(mockDb.insert).not.toHaveBeenCalled()
+    expect(mockSendPushToUser).not.toHaveBeenCalled()
+  })
+
+  it('push 猶予中に inactive 化された DM 受信者には push しない', async () => {
+    mockDb.select
+      .mockReturnValueOnce(whereChain([{ userId: 'user-2', displayName: '受信者' }]))
+      .mockReturnValueOnce(whereChain([{ type: 'dm' }]))
+      .mockReturnValueOnce(whereChain([{ createdAt: new Date('2026-07-06T12:00:00.000Z'), deletedAt: null }]))
+      .mockReturnValueOnce(whereChain([]))
+      .mockReturnValueOnce(whereChain([]))
+    mockDb.insert.mockReturnValueOnce({
+      values: vi.fn().mockResolvedValue([]),
+    })
+
+    const { onMessageCreated } = await import('./functions')
+    const handler = onMessageCreated as unknown as (input: {
+      event: { data: Record<string, unknown> }
+      step: {
+        run: <T>(name: string, fn: () => Promise<T>) => Promise<T>
+        sleep: (name: string, duration: string) => Promise<void>
+      }
+    }) => Promise<unknown>
+
+    const step = {
+      run: vi.fn(async (_name: string, fn: () => Promise<unknown>) => fn()),
+      sleep: vi.fn(async () => {}),
+    }
+
+    const result = await handler({
+      event: {
+        data: {
+          messageId: 'message-1',
+          channelId: 'channel-1',
+          workspaceId: 'ws-1',
+          senderId: 'user-1',
+          senderName: '送信者',
+          content: 'hello',
+          attachmentFileIds: [],
+        },
+      },
+      step,
+    })
+
+    expect(result).toEqual({ mentionNotifications: 0, fileNotifications: 0, dm: true })
     expect(mockSendPushToUser).not.toHaveBeenCalled()
   })
 })

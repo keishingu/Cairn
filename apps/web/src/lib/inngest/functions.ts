@@ -19,21 +19,47 @@ function nameResolver(members: { userId: string; displayName: string }[]): (id: 
   return id => map.get(id)
 }
 
-async function isActiveWorkspaceMember(params: { workspaceId: string; userId: string }): Promise<boolean> {
-  const { db, workspaceMembers } = await import('@cairn/db')
-  const { eq, and } = await import('drizzle-orm')
+async function fetchActiveWorkspaceMemberIds(params: {
+  workspaceId: string
+  userIds: string[]
+}): Promise<Set<string>> {
+  if (params.userIds.length === 0) return new Set()
 
-  const [member] = await db
+  const { db, workspaceMembers } = await import('@cairn/db')
+  const { eq, and, inArray } = await import('drizzle-orm')
+
+  const rows = await db
     .select({ userId: workspaceMembers.userId })
     .from(workspaceMembers)
     .where(and(
       eq(workspaceMembers.workspaceId, params.workspaceId),
-      eq(workspaceMembers.userId, params.userId),
+      inArray(workspaceMembers.userId, params.userIds),
       eq(workspaceMembers.membershipStatus, 'active'),
     ))
-    .limit(1)
 
-  return !!member
+  return new Set(rows.map(row => row.userId))
+}
+
+async function isActiveWorkspaceMember(params: { workspaceId: string; userId: string }): Promise<boolean> {
+  const activeIds = await fetchActiveWorkspaceMemberIds({
+    workspaceId: params.workspaceId,
+    userIds: [params.userId],
+  })
+  return activeIds.has(params.userId)
+}
+
+async function filterActiveWorkspaceRecipients<T extends { userId: string }>(
+  workspaceId: string,
+  recipients: T[],
+): Promise<T[]> {
+  if (recipients.length === 0) return []
+
+  const activeIds = await fetchActiveWorkspaceMemberIds({
+    workspaceId,
+    userIds: recipients.map(recipient => recipient.userId),
+  })
+
+  return recipients.filter(recipient => activeIds.has(recipient.userId))
 }
 
 // 猶予期間中に対象メッセージを既読にした受信者を Push 対象から除外する
@@ -132,10 +158,12 @@ export const onMessageCreated = inngest.createFunction(
         await step.sleep('push-grace', PUSH_GRACE_PERIOD)
         const unreadMembers = await step.run('filter-dm-push-targets', () =>
           filterUnreadRecipients(messageId, channelId, members))
+        const activeUnreadMembers = await step.run('filter-dm-active-push-targets', () =>
+          filterActiveWorkspaceRecipients(workspaceId, unreadMembers))
 
         await step.run('send-dm-push', async () => {
           await Promise.allSettled(
-            unreadMembers.map(m => sendPushToUser(m.userId, {
+            activeUnreadMembers.map(m => sendPushToUser(m.userId, {
               title: senderName,
               body: dmBody.slice(0, 100),
               url: `/chats/${channelId}`,
@@ -311,10 +339,12 @@ export const onMessageCreated = inngest.createFunction(
       await step.sleep('push-grace', PUSH_GRACE_PERIOD)
       const unreadMembers = await step.run('filter-mention-push-targets', () =>
         filterUnreadRecipients(messageId, channelId, notifyMentioned))
+      const activeUnreadMembers = await step.run('filter-mention-active-push-targets', () =>
+        filterActiveWorkspaceRecipients(workspaceId, unreadMembers))
 
       await step.run('send-mention-push', async () => {
         await Promise.allSettled(
-          unreadMembers.map(m =>
+          activeUnreadMembers.map(m =>
             sendPushToUser(m.userId, {
               title: `${senderName} があなたをメンションしました`,
               body: mentionBody.slice(0, 100),
