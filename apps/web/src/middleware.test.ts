@@ -93,4 +93,11 @@ describe('middleware', () => {
     const res = await middleware(makeRequest('/auth/mobile-handoff?redirect=%2Fai%3Fwebview%3D1'))
     expect(res.headers.get('location')).toBeNull()
   })
+
+  it('認証済みでも /auth/mobile-signout は /projects に潰さない', async () => {
+    getUser.mockResolvedValue({ data: { user: { id: 'u1' } } })
+    const { middleware } = await import('./middleware')
+    const res = await middleware(makeRequest('/auth/mobile-signout?webview=1'))
+    expect(res.headers.get('location')).toBeNull()
+  })
 })

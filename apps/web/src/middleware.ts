@@ -41,6 +41,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isAuthRoute = pathname.startsWith('/auth')
   const isMobileHandoffRoute = pathname === '/auth/mobile-handoff'
+  const isMobileSignoutRoute = pathname === '/auth/mobile-signout'
   // トップページは未ログインでも閲覧できる公開 LP
   const isLandingRoute = pathname === '/'
   const isLandingAsset =
@@ -60,7 +61,7 @@ export async function middleware(request: NextRequest) {
   if (user && isLandingRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))
   }
-  if (user && isAuthRoute && !isOnboardingRoute && !isMobileHandoffRoute) {
+  if (user && isAuthRoute && !isOnboardingRoute && !isMobileHandoffRoute && !isMobileSignoutRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))
   }
 
