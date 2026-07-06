@@ -9,18 +9,6 @@ import { WORKSPACE_COOKIE } from './workspace-cookie'
 
 export { WORKSPACE_COOKIE } from './workspace-cookie'
 
-// サーバーレス関数インスタンス内でワークスペース ID をキャッシュし、
-// warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
-const workspaceCache = new Map<string, { workspaceId: string; expiresAt: number }>()
-
-export function clearWorkspaceAccessCache(userId: string) {
-  for (const key of workspaceCache.keys()) {
-    if (key === userId || key.startsWith(`${userId}:`)) {
-      workspaceCache.delete(key)
-    }
-  }
-}
-
 export interface AuthContext {
   userId: string
   workspaceId: string
@@ -80,12 +68,6 @@ export async function getAuthContext(): Promise<AuthResult> {
   const cookieStore = await cookies()
   const preferredWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
 
-  const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
-  const cached = workspaceCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) {
-    return { ctx: { userId: user.id, workspaceId: cached.workspaceId }, error: null }
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { workspaceMembers } = await import('@cairn/db')
@@ -104,7 +86,6 @@ export async function getAuthContext(): Promise<AuthResult> {
         .limit(1)
 
       if (preferred) {
-        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
         return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
       }
       // クッキーが無効（退出済み等）→ フォールバック
@@ -123,7 +104,6 @@ export async function getAuthContext(): Promise<AuthResult> {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
-    workspaceCache.set(user.id, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)
