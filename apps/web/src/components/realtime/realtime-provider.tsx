@@ -58,6 +58,15 @@ function tableOf(payload: unknown): string | undefined {
   return typeof table === 'string' ? table : undefined
 }
 
+function cookieValue(name: string): string | null {
+  const prefix = `${name}=`
+  for (const part of document.cookie.split(';')) {
+    const trimmed = part.trim()
+    if (trimmed.startsWith(prefix)) return trimmed.slice(prefix.length)
+  }
+  return null
+}
+
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const { data: currentUser } = useCurrentUser()
@@ -129,7 +138,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       clearRetryTimer()
       setStatus('disconnected')
       await supabase.removeAllChannels()
-      document.cookie = `${WORKSPACE_COOKIE}=; path=/; SameSite=Lax; Max-Age=0`
+      if (cookieValue(WORKSPACE_COOKIE) === workspaceId) {
+        document.cookie = `${WORKSPACE_COOKIE}=; path=/; SameSite=Lax; Max-Age=0`
+      }
       window.location.reload()
     }
 

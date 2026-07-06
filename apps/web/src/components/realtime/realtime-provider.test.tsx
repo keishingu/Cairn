@@ -2,6 +2,7 @@ import React from 'react'
 import { act, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { WORKSPACE_COOKIE } from '@/lib/workspace-cookie'
 
 type SubscribeCallback = (status: 'SUBSCRIBED' | 'CHANNEL_ERROR' | 'TIMED_OUT' | 'CLOSED', err?: { message?: string }) => void
 
@@ -92,6 +93,7 @@ describe('RealtimeProvider', () => {
     channelRecords.length = 0
     mockCreateClient.mockClear()
     mockRemoveAllChannels.mockClear()
+    document.cookie = `${WORKSPACE_COOKIE}=; path=/; SameSite=Lax; Max-Age=0`
   })
 
   afterEach(() => {
@@ -200,13 +202,7 @@ describe('RealtimeProvider', () => {
   it('membership-revoked を受けたら全 channel を外して対象ワークスペースの cookie を捨てて reload する', async () => {
     const reloadSpy = vi.fn()
     vi.stubGlobal('location', { ...window.location, reload: reloadSpy })
-    const cookieDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie')
-    const cookieSetter = vi.fn()
-    Object.defineProperty(document, 'cookie', {
-      configurable: true,
-      get: () => '',
-      set: cookieSetter,
-    })
+    document.cookie = `${WORKSPACE_COOKIE}=ws-1; path=/; SameSite=Lax`
     renderProvider()
 
     await act(async () => {
@@ -222,11 +218,30 @@ describe('RealtimeProvider', () => {
     })
 
     expect(mockRemoveAllChannels).toHaveBeenCalledTimes(1)
-    expect(cookieSetter).toHaveBeenCalledWith('cairn_workspace_id=; path=/; SameSite=Lax; Max-Age=0')
     expect(reloadSpy).toHaveBeenCalledTimes(1)
-    if (cookieDescriptor) {
-      Object.defineProperty(document, 'cookie', cookieDescriptor)
-    }
+    expect(document.cookie).not.toContain(`${WORKSPACE_COOKIE}=`)
+    vi.unstubAllGlobals()
+  })
+
+  it('membership-revoked でも別 workspace の cookie は残す', async () => {
+    const reloadSpy = vi.fn()
+    vi.stubGlobal('location', { ...window.location, reload: reloadSpy })
+    document.cookie = `${WORKSPACE_COOKIE}=ws-2; path=/; SameSite=Lax`
+    renderProvider()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const revokedHandlers = channelRecords[0]?.handlers['broadcast:membership-revoked'] ?? []
+    expect(revokedHandlers).toHaveLength(1)
+
+    await act(async () => {
+      revokedHandlers[0]?.()
+      await Promise.resolve()
+    })
+
+    expect(document.cookie).toContain(`${WORKSPACE_COOKIE}=ws-2`)
     vi.unstubAllGlobals()
   })
 })
