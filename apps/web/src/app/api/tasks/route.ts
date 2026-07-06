@@ -97,12 +97,16 @@ export async function GET(req: Request) {
       return NextResponse.json([])
     }
 
-    const taskWhere = decodedCursor
+    const cursorCreatedAt = decodedCursor
+      ? sql`to_timestamp((${decodedCursor.createdAtMicros})::double precision / 1000000.0)`
+      : null
+
+    const taskWhere = decodedCursor && cursorCreatedAt
       ? and(
           inArray(tasks.projectId, projectIds),
           or(
-            sql`${taskCreatedAtMicros} < ${decodedCursor.createdAtMicros}`,
-            and(sql`${taskCreatedAtMicros} = ${decodedCursor.createdAtMicros}`, lt(tasks.id, decodedCursor.id)),
+            sql`${tasks.createdAt} < ${cursorCreatedAt}`,
+            and(sql`${tasks.createdAt} = ${cursorCreatedAt}`, lt(tasks.id, decodedCursor.id)),
           ),
         )
       : inArray(tasks.projectId, projectIds)
