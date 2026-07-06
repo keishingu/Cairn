@@ -46,6 +46,7 @@ vi.mock('@cairn/db', () => ({
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   and: vi.fn(() => 'and'),
+  sql: vi.fn(() => 'sql'),
 }))
 
 function chain<T>(result: T) {
@@ -97,8 +98,11 @@ describe('/api/me', () => {
   })
 
   it('PATCH は表示名と bio だけを更新する', async () => {
-    const update = updateChain()
-    mockDb.update.mockReturnValueOnce(update)
+    const profileUpdate = updateChain()
+    const workspaceMemberUpdate = updateChain()
+    mockDb.update
+      .mockReturnValueOnce(profileUpdate)
+      .mockReturnValueOnce(workspaceMemberUpdate)
 
     const { PATCH } = await import('./route')
     const res = await PATCH(new Request('http://localhost/api/me', {
@@ -108,11 +112,15 @@ describe('/api/me', () => {
     }))
 
     expect(res.status).toBe(200)
-    expect(mockDb.update).toHaveBeenCalledTimes(1)
-    expect(update.set).toHaveBeenCalledWith(
+    expect(mockDb.update).toHaveBeenCalledTimes(2)
+    expect(profileUpdate.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bio: '相棒',
+      }),
+    )
+    expect(workspaceMemberUpdate.set).toHaveBeenCalledWith(
       expect.objectContaining({
         displayName: 'えびちゃん',
-        bio: '相棒',
       }),
     )
   })
