@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 
 // --- vi.hoisted ---
-const { mockGetAuthUser, mockDb, mockGt, mockSql } = vi.hoisted(() => {
+const { mockGetAuthUser, mockDb, mockGt, mockInArray, mockSql } = vi.hoisted(() => {
   const mockGetAuthUser = vi.fn().mockResolvedValue({
     userId: '00000000-0000-0000-0000-000000000001',
     error: null,
@@ -15,14 +15,16 @@ const { mockGetAuthUser, mockDb, mockGt, mockSql } = vi.hoisted(() => {
     select: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
+    delete: vi.fn(),
   }
   const mockGt = vi.fn(() => 'gt')
+  const mockInArray = vi.fn(() => 'inArray')
   const mockSql = vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({
     kind: 'sql',
     text: strings.join('?'),
     values,
   }))
-  return { mockGetAuthUser, mockDb, mockGt, mockSql }
+  return { mockGetAuthUser, mockDb, mockGt, mockInArray, mockSql }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -54,6 +56,10 @@ vi.mock('@cairn/db', () => ({
     role: 'pm.role',
     attendance: 'pm.attendance',
   },
+  projects: {
+    id: 'p.id',
+    workspaceId: 'p.workspaceId',
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -62,6 +68,7 @@ vi.mock('drizzle-orm', () => ({
   or: vi.fn(() => 'or'),
   isNull: vi.fn(() => 'isNull'),
   gt: mockGt,
+  inArray: mockInArray,
   sql: mockSql,
 }))
 
@@ -99,6 +106,20 @@ function updateWithoutReturningChain() {
     set: vi.fn().mockReturnValue({
       where: vi.fn().mockResolvedValue([]),
     }),
+  }
+}
+
+function selectWhereChain(result: unknown[]) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(result),
+    }),
+  }
+}
+
+function deleteChain() {
+  return {
+    where: vi.fn().mockResolvedValue([]),
   }
 }
 
@@ -272,12 +293,15 @@ describe('POST /api/invite/[token]/accept', () => {
 
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))
-      .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id', membershipStatus: 'inactive' }]))
+      .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id', membershipStatus: 'inactive', role: 'guest' }]))
+      .mockReturnValueOnce(selectWhereChain([{ id: 'project-a' }, { id: 'project-b' }]))
 
     const membershipUpdate = updateWithoutReturningChain()
+    const staleProjectDelete = deleteChain()
     mockDb.update
       .mockReturnValueOnce(updateChain([{ id: 'inv-05', workspaceId: WORKSPACE_ID, role: 'guest' }]))
       .mockReturnValueOnce(membershipUpdate)
+    mockDb.delete.mockReturnValueOnce(staleProjectDelete)
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -290,7 +314,9 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(body).toEqual({ ok: true, workspaceId: WORKSPACE_ID })
     expect(mockDb.insert).not.toHaveBeenCalled()
     expect(mockDb.update).toHaveBeenCalledTimes(2)
+    expect(mockDb.delete).toHaveBeenCalledTimes(1)
     expect(membershipUpdate.set).toHaveBeenCalledWith({ membershipStatus: 'active', role: 'guest' })
+    expect(mockInArray).toHaveBeenCalledWith('pm.projectId', ['project-a', 'project-b'])
   })
 
   it('inactive な通常メンバーを guest 招待で再有効化しようとすると 422 を返す', async () => {

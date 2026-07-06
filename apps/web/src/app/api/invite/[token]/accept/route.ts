@@ -15,8 +15,8 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceInvites, workspaceMembers, projectMembers } = await import('@cairn/db')
-    const { eq, and, or, isNull, gt, sql } = await import('drizzle-orm')
+    const { workspaceInvites, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
+    const { eq, and, or, isNull, gt, sql, inArray } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client').catch(() => ({ inngest: null }))
 
     const now = new Date()
@@ -91,6 +91,20 @@ export async function POST(
 
     if (!claimed) {
       return NextResponse.json({ error: 'Invite link has reached its usage limit' }, { status: 410 })
+    }
+
+    if (existingMembership?.membershipStatus === 'inactive' && existingMembership.role === 'guest' && claimed.role === 'guest') {
+      const workspaceProjectRows = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.workspaceId, claimed.workspaceId))
+
+      const workspaceProjectIds = workspaceProjectRows.map((project) => project.id)
+      if (workspaceProjectIds.length > 0) {
+        await db
+          .delete(projectMembers)
+          .where(and(eq(projectMembers.userId, userId), inArray(projectMembers.projectId, workspaceProjectIds)))
+      }
     }
 
     if (existingMembership) {
