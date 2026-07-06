@@ -9,10 +9,11 @@ import { RealtimeProvider } from '@/components/realtime/realtime-provider'
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const headersList = await headers()
   const isMobile = headersList.get('x-device') === 'mobile'
+  const isWebView = headersList.get('x-webview') === '1'
 
   return (
     <RealtimeProvider>
-      {isMobile ? <MobileShell /> : <PCShell>{children}</PCShell>}
+      {isMobile ? <MobileShell hideNav={isWebView} /> : <PCShell>{children}</PCShell>}
     </RealtimeProvider>
   )
 }

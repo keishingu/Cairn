@@ -56,6 +56,10 @@ const MENU_PAGE_LABELS: Record<string, string> = {
   members: 'メンバー',
 }
 
+export function shouldRenderMobileNav(hideNav: boolean) {
+  return !hideNav
+}
+
 function MobilePlaceholder({ title }: { title: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
@@ -113,7 +117,7 @@ function MobilePage({ page, projectsView, initialMemberId, settingsSection }: { 
   )
 }
 
-function MobileShellInner() {
+function MobileShellInner({ hideNav }: { hideNav: boolean }) {
   const pathname = usePathname()
   const router = useRouter()
   const page = pageFromPathname(pathname)
@@ -164,13 +168,15 @@ function MobileShellInner() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
             <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} settingsSection={settingsSection} />
           </div>
-          <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
+          {shouldRenderMobileNav(hideNav) && (
+            <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
+          )}
         </div>
       </div>
     </AppShellContext.Provider>
   )
 }
 
-export function MobileShell() {
-  return <MobileShellInner />
+export function MobileShell({ hideNav = false }: { hideNav?: boolean }) {
+  return <MobileShellInner hideNav={hideNav} />
 }
