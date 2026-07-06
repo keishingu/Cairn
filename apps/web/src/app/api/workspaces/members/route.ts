@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole } from '@/lib/permissions'
 import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface WorkspaceMemberDto {
   userId: string
@@ -74,7 +75,7 @@ export async function GET() {
     const rows = await db
       .select({
         userId: profiles.id,
-        displayName: profiles.displayName,
+        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         role: workspaceMembers.role,
         status: workspaceMembers.membershipStatus,
@@ -89,7 +90,7 @@ export async function GET() {
           ? and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, visibleUserIds))
           : eq(workspaceMembers.workspaceId, ctx.workspaceId),
       )
-      .orderBy(profiles.displayName)
+      .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
 
     const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
 
