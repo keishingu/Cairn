@@ -1,6 +1,5 @@
 import { useRouter } from 'expo-router'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
-import { supabase } from '../../../lib/supabase'
 
 const MENU_ITEMS = [
   { label: 'ファイル', route: '/(app)/files' },
@@ -12,8 +11,8 @@ const MENU_ITEMS = [
 export default function MenuScreen() {
   const router = useRouter()
 
-  async function handleSignOut() {
-    await supabase.auth.signOut()
+  function handleSignOut() {
+    router.push('/(app)/signout')
   }
 
   return (

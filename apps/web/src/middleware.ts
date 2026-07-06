@@ -40,6 +40,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
   const isAuthRoute = pathname.startsWith('/auth')
+  const isMobileHandoffRoute = pathname === '/auth/mobile-handoff'
   // トップページは未ログインでも閲覧できる公開 LP
   const isLandingRoute = pathname === '/'
   const isLandingAsset =
@@ -59,7 +60,7 @@ export async function middleware(request: NextRequest) {
   if (user && isLandingRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))
   }
-  if (user && isAuthRoute && !isOnboardingRoute) {
+  if (user && isAuthRoute && !isOnboardingRoute && !isMobileHandoffRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))
   }
 

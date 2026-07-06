@@ -7,6 +7,7 @@ import type { WebViewNavigation, WebViewMessageEvent } from 'react-native-webvie
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/api-fetch'
 import { API_BASE_URL as WEB_BASE } from '../lib/env'
+import { webPath } from '../lib/webview-path'
 
 // Web 側の globals.css --bg と揃える
 const BG_DARK = '#0B0F14'
@@ -16,8 +17,8 @@ interface Props {
   path: string
 }
 
-function webUrl(path: string): string {
-  return `${WEB_BASE}${path}?webview=1`
+export function webUrl(path: string): string {
+  return `${WEB_BASE}${webPath(path)}`
 }
 
 export function AppWebView({ path }: Props) {
@@ -64,7 +65,7 @@ export function AppWebView({ path }: Props) {
         const data = (await res.json()) as { tokenHash?: string }
         if (!data.tokenHash) throw new Error('handoff response missing tokenHash')
 
-        const redirect = encodeURIComponent(webUrl(targetPath))
+        const redirect = encodeURIComponent(webPath(targetPath))
         const th = encodeURIComponent(data.tokenHash)
         initialPathRef.current = targetPath
         loadedRef.current = false

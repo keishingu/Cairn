@@ -141,6 +141,7 @@ export default function AppLayout() {
       <Tabs.Screen name="gallery" options={{ href: null }} />
       <Tabs.Screen name="members" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
+      <Tabs.Screen name="signout" options={{ href: null }} />
     </Tabs>
   )
 }
