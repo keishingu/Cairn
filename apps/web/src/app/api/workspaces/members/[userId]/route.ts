@@ -86,7 +86,13 @@ export async function PATCH(
       const ownerCountRows = await db
         .select({ ownerCount: count() })
         .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.role, 'owner')))
+        .where(
+          and(
+            eq(workspaceMembers.workspaceId, ctx.workspaceId),
+            eq(workspaceMembers.role, 'owner'),
+            eq(workspaceMembers.membershipStatus, 'active'),
+          ),
+        )
       const ownerCount = Number(ownerCountRows[0]?.ownerCount ?? 0)
 
       if (ownerCount <= 1) {

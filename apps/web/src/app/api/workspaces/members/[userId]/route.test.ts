@@ -31,7 +31,12 @@ vi.mock('@/lib/permissions', () => ({
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
-  workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role' },
+  workspaceMembers: {
+    workspaceId: 'wm.workspaceId',
+    userId: 'wm.userId',
+    role: 'wm.role',
+    membershipStatus: 'wm.membershipStatus',
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -171,6 +176,17 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(res.status).toBe(422)
     const body = await res.json() as { error: string }
     expect(body.error).toContain('owner')
+  })
+
+  it('inactive owner は owner 残数に数えない', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 1 }]))
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(422)
   })
 
   it('ゲストを通常ロールへ昇格できない（422）', async () => {
