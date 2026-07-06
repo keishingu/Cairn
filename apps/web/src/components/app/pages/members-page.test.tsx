@@ -227,7 +227,7 @@ describe('InviteModal', () => {
   })
 
   it('生成中は role を切り替えられない', async () => {
-    let resolveInvite: ((value: { ok: boolean; json: () => Promise<{ url: string }> }) => void) | null = null
+    let resolveInvite!: (value: { ok: boolean; json: () => Promise<{ url: string }> }) => void
     const pendingInvite = new Promise<{ ok: boolean; json: () => Promise<{ url: string }> }>(resolve => {
       resolveInvite = resolve
     })
@@ -259,7 +259,7 @@ describe('InviteModal', () => {
       body: JSON.stringify({ expiresIn: '1h', role: 'member' }),
     }))
 
-    resolveInvite?.({
+    resolveInvite({
       ok: true,
       json: async () => ({ url: 'https://example.com/invite/member-token' }),
     })
