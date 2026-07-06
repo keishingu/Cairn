@@ -8,6 +8,7 @@ import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface CurrentUserDto {
   id: string
+  workspaceId: string
   displayName: string
   avatarUrl: string | null
   email: string | null
@@ -56,6 +57,7 @@ export async function GET() {
 
     return NextResponse.json({
       id: row.id,
+      workspaceId: ctx.workspaceId,
       displayName: row.displayName,
       avatarUrl: row.avatarUrl ?? null,
       email,

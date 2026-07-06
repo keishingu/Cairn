@@ -40,7 +40,7 @@ vi.mock('@/lib/chat/client', () => ({
     dms: ['dms'],
     messages: (id: string) => ['messages', id],
   },
-  useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Tester' } }),
+  useCurrentUser: () => ({ data: { id: 'user-1', workspaceId: 'ws-1', displayName: 'Tester' } }),
   useProjectChannels: () => ({ data: [] }),
   useWorkspaceChannels: () => ({ data: [] }),
   useWorkspaceDms: () => ({ data: [] }),
