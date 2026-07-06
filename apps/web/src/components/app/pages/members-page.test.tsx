@@ -225,4 +225,45 @@ describe('InviteModal', () => {
       body: JSON.stringify({ expiresIn: '1h', role: 'member' }),
     }))
   })
+
+  it('生成中は role を切り替えられない', async () => {
+    let resolveInvite: ((value: { ok: boolean; json: () => Promise<{ url: string }> }) => void) | null = null
+    const pendingInvite = new Promise<{ ok: boolean; json: () => Promise<{ url: string }> }>(resolve => {
+      resolveInvite = resolve
+    })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ invites: [] }),
+      })
+      .mockReturnValueOnce(pendingInvite)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ invites: [{ token: 'member-token', url: 'https://example.com/invite/member-token', expiresAt: null, maxUses: null, useCount: 0, role: 'member', id: '1', createdAt: '2026-01-01', createdByName: 'Admin' }] }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDesktop()
+    await userEvent.click(screen.getByRole('button', { name: 'メンバーを招待' }))
+
+    const memberButton = screen.getByRole('button', { name: 'メンバー 通常メンバーとして参加' })
+    const guestButton = screen.getByRole('button', { name: 'ゲスト 閲覧中心の外部参加向け' })
+    await userEvent.click(screen.getByRole('button', { name: '招待リンクを生成' }))
+
+    expect(memberButton).toBeDisabled()
+    expect(guestButton).toBeDisabled()
+
+    await userEvent.click(guestButton)
+
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/workspaces/invites', expect.objectContaining({
+      body: JSON.stringify({ expiresIn: '1h', role: 'member' }),
+    }))
+
+    resolveInvite?.({
+      ok: true,
+      json: async () => ({ url: 'https://example.com/invite/member-token' }),
+    })
+
+    expect(await screen.findByText('コピー')).toBeInTheDocument()
+  })
 })

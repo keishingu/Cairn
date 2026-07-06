@@ -507,6 +507,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                   <button
                     key={opt.value}
                     type="button"
+                    disabled={generating}
                     onClick={() => { setInviteRole(opt.value); setInviteUrl(null) }}
                     style={{
                       flex: 1,
@@ -516,7 +517,8 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                       background: selected ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'var(--bg)',
                       color: selected ? 'var(--accent)' : 'var(--text-3)',
                       textAlign: 'left',
-                      cursor: 'pointer',
+                      cursor: generating ? 'default' : 'pointer',
+                      opacity: generating ? 0.7 : 1,
                       fontFamily: 'inherit',
                       transition: 'all 0.15s',
                     }}
