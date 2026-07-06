@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { createProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ProjectDto {
   id: string
@@ -99,7 +100,7 @@ export async function GET() {
     const memberRows = await db
       .select({
         projectId: projectMembers.projectId,
-        displayName: profiles.displayName,
+        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(projectMembers)
@@ -205,38 +206,8 @@ export async function POST(req: Request) {
     let coverPhotoUrl = parsed.data.coverPhotoUrl ?? null
 
     if (parsed.data.placePhotoName && !coverPhotoUrl) {
-      const apiKey = process.env['GOOGLE_MAPS_API_KEY']
-      if (apiKey) {
-        try {
-          const mediaRes = await fetch(
-            `https://places.googleapis.com/v1/${parsed.data.placePhotoName}/media?maxWidthPx=1200&skipHttpRedirect=true&key=${apiKey}`,
-          )
-          if (mediaRes.ok) {
-            const media = await mediaRes.json() as { photoUri?: string }
-            if (media.photoUri) {
-              const imgRes = await fetch(media.photoUri)
-              if (imgRes.ok) {
-                const buffer = await imgRes.arrayBuffer()
-                const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
-                const ext = contentType.includes('png') ? 'png' : 'jpg'
-                const slug = parsed.data.placePhotoName.split('/').join('_')
-                const storagePath = `place-photos/${slug}.${ext}`
-                const { createServiceRoleClient } = await import('@/lib/supabase/service')
-                const supabase = createServiceRoleClient()
-                const { error: uploadError } = await supabase.storage
-                  .from('covers')
-                  .upload(storagePath, buffer, { contentType, upsert: false })
-                if (!uploadError || uploadError.message.toLowerCase().includes('already exist')) {
-                  const { data: { publicUrl } } = supabase.storage.from('covers').getPublicUrl(storagePath)
-                  coverPhotoUrl = publicUrl
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[/api/projects POST] place photo upload failed (skipped):', e)
-        }
-      }
+      const { fetchAndStoreCoverFromPlace } = await import('@/lib/cover-photo')
+      coverPhotoUrl = await fetchAndStoreCoverFromPlace(parsed.data.placePhotoName)
     }
 
     const [inserted] = await db
@@ -290,7 +261,7 @@ export async function POST(req: Request) {
       const memberRows = await db
         .select({
           userId: profiles.id,
-          displayName: profiles.displayName,
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
           avatarUrl: workspaceMembers.avatarUrl,
         })
         .from(profiles)

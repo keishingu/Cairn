@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface FileDto {
   id: string
@@ -121,7 +122,7 @@ export async function GET() {
         fileSize: files.fileSize,
         fileType: files.fileType,
         metadata: files.metadata,
-        uploaderName: profiles.displayName,
+        uploaderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         uploaderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: files.createdAt,
       })

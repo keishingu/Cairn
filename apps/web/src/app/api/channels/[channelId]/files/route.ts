@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ChannelFileDto {
   id: string
@@ -28,7 +29,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
   if (forbidden) return forbidden
 
   try {
-    const { db, files, profiles, messageAttachments, messages, galleryItems, documentChunks } = await import('@cairn/db')
+    const { db, files, profiles, messageAttachments, messages, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
     const { eq, and, isNull, desc, inArray, exists, or, sql } = await import('drizzle-orm')
     const { isIndexable } = await import('@/lib/ai/extract-text')
 
@@ -52,12 +53,16 @@ export async function GET(_req: Request, { params }: RouteContext) {
         mimeType: files.mimeType,
         fileSize: files.fileSize,
         fileType: files.fileType,
-        uploaderName: profiles.displayName,
+        uploaderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         createdAt: files.createdAt,
         metadata: files.metadata,
       })
       .from(files)
       .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
+      .leftJoin(
+        workspaceMembers,
+        and(eq(workspaceMembers.userId, files.uploadedBy), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+      )
       .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
       .where(and(
         eq(files.workspaceId, ctx.workspaceId),

@@ -3,9 +3,11 @@
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, StatusChip } from '../primitives'
+import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { PageToolbar, SegmentedControl } from './page-toolbar'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
@@ -14,6 +16,7 @@ import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
 import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import { MobileHeader } from '@/components/app/mobile/header'
+import { chatQueryKeys } from '@/lib/chat/client'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 // ─── Date helpers ──────────────────────────────────────────────────
@@ -977,12 +980,13 @@ interface MobileCalendarGridProps {
   projects: ProjectDto[]
   selectedDate: Date
   onSelectDate: (d: Date) => void
+  onCreateDate?: (d: Date) => void
   onProjectClick: (project: ProjectDto) => void
 }
 
 const MOBILE_MAX_CHIPS = 3
 
-const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate, onProjectClick }: MobileCalendarGridProps) => {
+const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate, onCreateDate, onProjectClick }: MobileCalendarGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const cells = buildCells(year, month)
 
@@ -1011,7 +1015,14 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
             return (
               <button
                 key={col}
-                onClick={() => onSelectDate(cell.fullDate)}
+                aria-label={formatDateLabel(cell.fullDate)}
+                onClick={() => {
+                  if (isSelected && onCreateDate) {
+                    onCreateDate(cell.fullDate)
+                    return
+                  }
+                  onSelectDate(cell.fullDate)
+                }}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
                   justifyContent: 'flex-start',
@@ -1082,11 +1093,12 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
 interface MobileDayEventsProps {
   date: Date
   projects: ProjectDto[]
+  onCreateDate?: (d: Date) => void
   onProjectClick: (project: ProjectDto) => void
   isLoading: boolean
 }
 
-const MobileDayEvents = ({ date, projects, onProjectClick, isLoading }: MobileDayEventsProps) => {
+const MobileDayEvents = ({ date, projects, onCreateDate, onProjectClick, isLoading }: MobileDayEventsProps) => {
   const dayProjects = getDateProjects(projects, date)
 
   return (
@@ -1106,12 +1118,36 @@ const MobileDayEvents = ({ date, projects, onProjectClick, isLoading }: MobileDa
             <div key={i} style={{ height: 56, borderRadius: 8, background: 'var(--card-2)' }} />
           ))}
         </div>
-      ) : dayProjects.length === 0 ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-          予定なし
-        </div>
       ) : (
-        <div style={{ padding: '8px 0' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          {dayProjects.length === 0 ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-4)', fontSize: 13, padding: '0 24px', textAlign: 'center' }}>
+              <div>予定なし</div>
+              {onCreateDate && (
+                <button
+                  className="btn btn-primary"
+                  onClick={() => onCreateDate(date)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  <Icon name="plus" size={13} strokeWidth={2.4} />
+                  この日に新規{`予定`}
+                </button>
+              )}
+            </div>
+          ) : null}
+          {onCreateDate && dayProjects.length > 0 ? (
+            <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--divider)' }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => onCreateDate(date)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <Icon name="plus" size={13} strokeWidth={2.4} />
+                この日に新規{`予定`}
+              </button>
+            </div>
+          ) : null}
+          <div style={{ padding: '8px 0' }}>
           {dayProjects.map((p, i) => {
             const _c = p.statusColor ?? '#9CA3AF'
             const cfg = { bg: _c + '18', bar: _c, text: _c }
@@ -1140,6 +1176,7 @@ const MobileDayEvents = ({ date, projects, onProjectClick, isLoading }: MobileDa
               </button>
             )
           })}
+          </div>
         </div>
       )}
     </div>
@@ -1490,6 +1527,7 @@ const CAL_VIEWS: CalView[] = ['month', 'week', 'timeline']
 export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps) => {
   const today = new Date()
   const queryClient = useQueryClient()
+  const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const projectLabel = useProjectLabel()
   const [year, setYear] = React.useState(today.getFullYear())
   const [month, setMonth] = React.useState(today.getMonth())
@@ -1512,6 +1550,10 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const [createDates, setCreateDates] = React.useState<{ start: string; end: string } | null>(null)
   const showCreate = createDates !== null
   const openCreate = (start: string, end: string) => setCreateDates({ start, end })
+  const openCreateForDate = React.useCallback((date: Date) => {
+    const iso = formatISO(date)
+    openCreate(iso, iso)
+  }, [])
   const closeCreate = () => setCreateDates(null)
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
@@ -1652,6 +1694,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   useCommand('calendar.today', () => goToday())
   useCommand('ctx.filter', () => setFilterOpen(o => !o))
   useCommand('ctx.create', () => {
+    if (!canCreateProject) return
     // クリック導線（ツールバーの新規ボタン）と同じローカル日付を使う（toISOString は UTC でズレる）
     const iso = formatISO(new Date())
     openCreate(iso, iso)
@@ -1667,6 +1710,17 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
+        {showCreate && createDates && (
+          <CreateProjectSheet
+            onClose={closeCreate}
+            onCreated={() => {
+              closeCreate()
+              void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
+            }}
+            initialStartDate={createDates.start}
+            initialEndDate={createDates.end}
+          />
+        )}
         <MobileHeader
           title="カレンダー"
           right={
@@ -1726,6 +1780,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             onProjectClick={openPanel}
+            {...(canCreateProject ? { onCreateDate: openCreateForDate } : {})}
           />
         )}
         {calView === 'week' && (
@@ -1741,6 +1796,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               projects={visibleProjects}
               onProjectClick={openPanel}
               isLoading={isLoading}
+              {...(canCreateProject ? { onCreateDate: openCreateForDate } : {})}
             />
           </>
         )}

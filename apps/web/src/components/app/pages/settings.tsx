@@ -175,6 +175,7 @@ const SettingsAccount = () => {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['me'] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
       setNameSaved(true)
       setTimeout(() => setNameSaved(false), 2000)
     },

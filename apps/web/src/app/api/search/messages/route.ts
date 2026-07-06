@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole } from '@/lib/permissions'
 import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 
 export interface MessageSearchResultDto extends MessageDto {
@@ -48,7 +49,7 @@ export async function GET(req: Request) {
         content: messages.content,
         messageType: messages.messageType,
         senderId: messages.senderId,
-        senderName: profiles.displayName,
+        senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         senderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: messages.createdAt,
         updatedAt: messages.updatedAt,
@@ -78,8 +79,12 @@ export async function GET(req: Request) {
     const nameMap = new Map<string, string>()
     if (mentionIds.length > 0) {
       const profileRows = await db
-        .select({ id: profiles.id, displayName: profiles.displayName })
+        .select({ id: profiles.id, displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
         .from(profiles)
+        .leftJoin(
+          workspaceMembers,
+          and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+        )
         .where(inArray(profiles.id, mentionIds))
       for (const p of profileRows) nameMap.set(p.id, p.displayName)
     }

@@ -66,6 +66,7 @@ vi.mock('@cairn/db', () => ({
   workspaceMembers: {
     userId: 'workspaceMembers.userId',
     workspaceId: 'workspaceMembers.workspaceId',
+    displayName: 'workspaceMembers.displayName',
     avatarUrl: 'workspaceMembers.avatarUrl',
   },
   messageReactions: {
@@ -95,6 +96,7 @@ vi.mock('drizzle-orm', () => ({
   asc: mockAsc,
   lte: mockLte,
   gt: mockGt,
+  sql: vi.fn(() => 'sql'),
 }))
 
 function ctxRouteParams() {

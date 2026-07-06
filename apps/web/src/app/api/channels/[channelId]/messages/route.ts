@@ -9,6 +9,7 @@ import { inngest } from '@/lib/inngest/client'
 import type { MessageCreatedEvent } from '@/lib/inngest/events'
 import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions, extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ReactionDto {
   emoji: string
@@ -71,7 +72,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       messageType: messages.messageType,
       parentMessageId: messages.parentMessageId,
       senderId: messages.senderId,
-      senderName: profiles.displayName,
+      senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
       senderAvatarUrl: workspaceMembers.avatarUrl,
       createdAt: messages.createdAt,
       updatedAt: messages.updatedAt,
@@ -154,10 +155,14 @@ export async function GET(req: Request, { params }: RouteContext) {
               messageId: messageReactions.messageId,
               emoji: messageReactions.emoji,
               userId: messageReactions.userId,
-              userName: profiles.displayName,
+              userName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
             })
             .from(messageReactions)
             .innerJoin(profiles, eq(messageReactions.userId, profiles.id))
+            .leftJoin(
+              workspaceMembers,
+              and(eq(workspaceMembers.userId, messageReactions.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+            )
             .where(inArray(messageReactions.messageId, messageIds))
         : Promise.resolve([]),
       messageIds.length > 0
@@ -187,11 +192,15 @@ export async function GET(req: Request, { params }: RouteContext) {
             .select({
               id: messages.id,
               content: messages.content,
-              senderName: profiles.displayName,
+              senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
               deletedAt: messages.deletedAt,
             })
             .from(messages)
             .innerJoin(profiles, eq(messages.senderId, profiles.id))
+            .leftJoin(
+              workspaceMembers,
+              and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+            )
             // 引用バーに他チャンネル/他ワークスペースの内容が漏れないよう、親は同一チャンネルに限定する
             .where(and(inArray(messages.id, parentIds), eq(messages.channelId, channelId)))
         : Promise.resolve([]),
@@ -235,8 +244,12 @@ export async function GET(req: Request, { params }: RouteContext) {
     const nameMap = new Map<string, string>()
     if (mentionIds.length > 0) {
       const profileRows = await db
-        .select({ id: profiles.id, displayName: profiles.displayName })
+        .select({ id: profiles.id, displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
         .from(profiles)
+        .leftJoin(
+          workspaceMembers,
+          and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+        )
         .where(inArray(profiles.id, mentionIds))
       for (const p of profileRows) nameMap.set(p.id, p.displayName)
     }
@@ -403,7 +416,7 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     const [profile] = await db
       .select({
-        displayName: profiles.displayName,
+        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(profiles)

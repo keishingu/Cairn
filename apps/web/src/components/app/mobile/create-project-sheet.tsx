@@ -67,9 +67,17 @@ interface CreateProjectSheetProps {
   onClose: () => void
   onCreated: (project: ProjectDto) => void
   requireStatus?: boolean
+  initialStartDate?: string
+  initialEndDate?: string
 }
 
-export function CreateProjectSheet({ onClose, onCreated, requireStatus = false }: CreateProjectSheetProps) {
+export function CreateProjectSheet({
+  onClose,
+  onCreated,
+  requireStatus = false,
+  initialStartDate = '',
+  initialEndDate = '',
+}: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
   const {
     data: statuses = [],
@@ -84,8 +92,8 @@ export function CreateProjectSheet({ onClose, onCreated, requireStatus = false }
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
-  const [startDate, setStartDate] = React.useState('')
-  const [endDate, setEndDate] = React.useState('')
+  const [startDate, setStartDate] = React.useState(initialStartDate)
+  const [endDate, setEndDate] = React.useState(initialEndDate)
   const [location, setLocation] = React.useState('')
   const [placeId, setPlaceId] = React.useState('')
   const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])

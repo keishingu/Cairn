@@ -10,6 +10,7 @@ import { TaskEditDialog } from '../task-edit-dialog'
 import { RowActionMenu } from '../row-action-menu'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
+import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 
 type FilterKey = 'all' | 'todo' | 'in_progress' | 'done'
 
@@ -56,6 +57,7 @@ interface TaskRowProps {
 const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowProps) => {
   const due = formatDueDate(task.dueDate)
   const isDone = task.status === 'done'
+  const displayTitle = formatTaskTitleForDisplay(task.title)
 
   return (
     <div
@@ -90,7 +92,7 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
           color: isDone ? 'var(--text-3)' : 'var(--text)',
           textDecoration: isDone ? 'line-through' : 'none',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{task.title}</div>
+        }}>{displayTitle}</div>
         <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{task.projectTitle}</div>
       </div>
 
