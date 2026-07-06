@@ -126,6 +126,7 @@ describe('GET /api/tasks のページネーション', () => {
 
   it('limit 指定時は tasks と nextCursor を返す', async () => {
     const createdAt = new Date('2026-07-01T00:00:00.000Z')
+    const createdAtMicros = '1751328000123456'
     const projectBuilder = createAwaitableBuilder([{ id: PROJECT_ID, title: 'Alpha' }])
     const taskBuilder = createAwaitableBuilder([
       {
@@ -136,6 +137,7 @@ describe('GET /api/tasks のページネーション', () => {
         priority: 'medium',
         dueDate: null,
         createdAt,
+        createdAtMicros,
         sourceMessageId: null,
         assigneeName: null,
         assigneeAvatarUrl: null,
@@ -148,6 +150,7 @@ describe('GET /api/tasks のページネーション', () => {
         priority: 'low',
         dueDate: null,
         createdAt,
+        createdAtMicros,
         sourceMessageId: 'msg-1',
         assigneeName: 'Kei',
         assigneeAvatarUrl: null,
@@ -176,7 +179,7 @@ describe('GET /api/tasks のページネーション', () => {
           isLinkedToMessage: false,
         },
       ],
-      nextCursor: '2026-07-01T00:00:00.000Z__task-2',
+      nextCursor: '1751328000123456__task-2',
     })
     expect(taskBuilder.limit).toHaveBeenCalledWith(2)
   })

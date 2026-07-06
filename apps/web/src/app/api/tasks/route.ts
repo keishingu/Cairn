@@ -8,6 +8,7 @@ import { getGuestVisibleProjectIds, getWorkspaceMemberRole, requireProjectAccess
 import { inngest } from '@/lib/inngest/client'
 import type { TaskAssignedEvent } from '@/lib/inngest/events'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { sql } from 'drizzle-orm'
 
 export interface TaskDto {
   id: string
@@ -37,18 +38,18 @@ function parseLimit(rawLimit: string | null): number | null {
   return Math.min(parsed, MAX_TASK_PAGE_SIZE)
 }
 
-function encodeTaskCursor(createdAt: Date, id: string): string {
-  return `${createdAt.toISOString()}__${id}`
+function encodeTaskCursor(createdAtMicros: string, id: string): string {
+  return `${createdAtMicros}__${id}`
 }
 
-function decodeTaskCursor(cursor: string): { createdAt: Date; id: string } | null {
+function decodeTaskCursor(cursor: string): { createdAtMicros: string; id: string } | null {
   const separatorIndex = cursor.lastIndexOf('__')
   if (separatorIndex <= 0) return null
 
-  const createdAt = new Date(cursor.slice(0, separatorIndex))
+  const createdAtMicros = cursor.slice(0, separatorIndex)
   const id = cursor.slice(separatorIndex + 2)
-  if (Number.isNaN(createdAt.getTime()) || id.length === 0) return null
-  return { createdAt, id }
+  if (!/^\d+$/.test(createdAtMicros) || id.length === 0) return null
+  return { createdAtMicros, id }
 }
 
 export async function GET(req: Request) {
@@ -70,6 +71,7 @@ export async function GET(req: Request) {
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, inArray, and, or, lt, desc } = await import('drizzle-orm')
+    const taskCreatedAtMicros = sql<string>`((extract(epoch from ${tasks.createdAt}) * 1000000)::bigint)::text`
 
     const projectRows = await db
       .select({ id: projects.id, title: projects.title })
@@ -99,8 +101,8 @@ export async function GET(req: Request) {
       ? and(
           inArray(tasks.projectId, projectIds),
           or(
-            lt(tasks.createdAt, decodedCursor.createdAt),
-            and(eq(tasks.createdAt, decodedCursor.createdAt), lt(tasks.id, decodedCursor.id)),
+            sql`${taskCreatedAtMicros} < ${decodedCursor.createdAtMicros}`,
+            and(sql`${taskCreatedAtMicros} = ${decodedCursor.createdAtMicros}`, lt(tasks.id, decodedCursor.id)),
           ),
         )
       : inArray(tasks.projectId, projectIds)
@@ -114,6 +116,7 @@ export async function GET(req: Request) {
         priority: tasks.priority,
         dueDate: tasks.dueDate,
         createdAt: tasks.createdAt,
+        createdAtMicros: taskCreatedAtMicros,
         sourceMessageId: tasks.sourceMessageId,
         assigneeName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
@@ -147,7 +150,7 @@ export async function GET(req: Request) {
     if (paginationEnabled) {
       const lastRow = pageRows.at(-1)
       const nextCursor = taskRows.length > pageSize && lastRow
-        ? encodeTaskCursor(lastRow.createdAt, lastRow.id)
+        ? encodeTaskCursor(lastRow.createdAtMicros, lastRow.id)
         : null
       return NextResponse.json({ tasks: result, nextCursor } satisfies TaskListPage)
     }
