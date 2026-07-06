@@ -62,6 +62,10 @@ function isImageFile(file: ProjectFileDto): boolean {
   return file.fileType !== 'link' && (file.mimeType?.startsWith('image/') ?? false)
 }
 
+function openFileTarget(url: string) {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 export const FilesTab = ({ projectId, channelId }: { projectId: string; channelId: string | null }) => {
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
@@ -192,8 +196,13 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
         const meta = [sizeStr, dateStr].filter(Boolean).join(' · ')
 
         const isLink = f.fileType === 'link'
-        const linkHref = isLink ? f.externalUrl : `/api/attachments/${f.id}`
+        const linkHref = isLink ? (f.externalUrl ?? '#') : `/api/attachments/${f.id}`
         const isImage = isImageFile(f)
+        const primaryAction = isLink
+          ? { icon: 'external', label: 'リンクを開く', onSelect: () => openFileTarget(linkHref) }
+          : isImage
+            ? { icon: 'image', label: 'プレビュー', onSelect: () => openLightbox(f.id) }
+            : { icon: 'download', label: 'ダウンロード', onSelect: () => openFileTarget(linkHref) }
 
         return (
           <div key={f.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderBottom: '1px solid var(--divider)', borderRadius: 6 }}>
@@ -223,6 +232,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
             <RowActionMenu
               actions={[
+                primaryAction,
                 f.isLatest
                   ? { icon: 'star', label: '最新版を解除', onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
                   : { icon: 'star', label: '最新版にする', onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },

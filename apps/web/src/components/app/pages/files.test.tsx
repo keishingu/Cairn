@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
@@ -31,6 +31,20 @@ const FILES_FIXTURE: FileDto[] = [
     uploaderName: '山田 太郎',
     uploaderAvatarUrl: null,
     createdAt: '2026-06-29T09:00:00Z',
+    indexingStatus: 'indexed',
+    projectTitle: '登山計画',
+    channelName: null,
+    projectId: null,
+  },
+  {
+    id: 'file-2',
+    fileName: 'guide.pdf',
+    mimeType: 'application/pdf',
+    fileSize: 24000,
+    fileType: 'file',
+    uploaderName: '山田 太郎',
+    uploaderAvatarUrl: null,
+    createdAt: '2026-06-30T09:00:00Z',
     indexingStatus: 'indexed',
     projectTitle: '登山計画',
     channelName: null,
@@ -82,6 +96,7 @@ describe('ファイル一覧ページ', () => {
     })
 
     vi.stubGlobal('IntersectionObserver', createIntersectionObserverStub())
+    vi.stubGlobal('open', vi.fn())
   })
 
   it('txtファイルをプレーンテキストとしてプレビューする', async () => {
@@ -93,5 +108,16 @@ describe('ファイル一覧ページ', () => {
     expect(dialog).toBeInTheDocument()
     expect(dialog.querySelector('pre')?.textContent).toBe('# 見出し\n- Markdownとしては解釈しない')
     expect(screen.queryByRole('heading', { name: '見出し' })).toBeNull()
+  })
+
+  it('行メニューからダウンロード導線を選べる', async () => {
+    renderPageFiles()
+
+    const row = (await screen.findByText('guide.pdf')).closest('[data-list-index="1"]')
+    expect(row).not.toBeNull()
+    await userEvent.click(within(row as HTMLElement).getByTitle('操作'))
+    await userEvent.click(await screen.findByRole('button', { name: 'ダウンロード' }))
+
+    expect(window.open).toHaveBeenCalledWith('/api/attachments/file-2', '_blank', 'noopener,noreferrer')
   })
 })
