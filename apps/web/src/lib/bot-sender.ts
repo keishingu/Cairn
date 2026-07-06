@@ -77,37 +77,41 @@ export async function postBotMessage(input: PostBotMessageInput) {
   const { workspaceId, channelId, content, messageType = 'text', parentMessageId = null, attachmentFileIds = [] } = input
   const bot = await ensureWorkspaceBotProfile(workspaceId)
 
-  const [message] = await db
-    .insert(messages)
-    .values({
-      channelId,
-      senderId: bot.id,
-      messageType,
-      content,
-      parentMessageId,
-    })
-    .returning({
-      id: messages.id,
-      content: messages.content,
-      senderId: messages.senderId,
-      createdAt: messages.createdAt,
-    })
+  const message = await db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(messages)
+      .values({
+        channelId,
+        senderId: bot.id,
+        messageType,
+        content,
+        parentMessageId,
+      })
+      .returning({
+        id: messages.id,
+        content: messages.content,
+        senderId: messages.senderId,
+        createdAt: messages.createdAt,
+      })
 
-  if (!message) {
-    throw new Error('Bot message insert returned no rows')
-  }
+    if (!inserted) {
+      throw new Error('Bot message insert returned no rows')
+    }
 
-  if (attachmentFileIds.length > 0) {
-    await db
-      .insert(messageAttachments)
-      .values(
-        attachmentFileIds.map((fileId, displayOrder) => ({
-          messageId: message.id,
-          fileId,
-          displayOrder,
-        })),
-      )
-  }
+    if (attachmentFileIds.length > 0) {
+      await tx
+        .insert(messageAttachments)
+        .values(
+          attachmentFileIds.map((fileId, displayOrder) => ({
+            messageId: inserted.id,
+            fileId,
+            displayOrder,
+          })),
+        )
+    }
+
+    return inserted
+  })
 
   inngest.send({
     name: 'message/created',

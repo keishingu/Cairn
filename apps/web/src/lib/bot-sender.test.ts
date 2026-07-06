@@ -83,8 +83,8 @@ describe('bot sender helpers', () => {
       }),
     }
     mockTxInsert.mockReturnValue(insertBuilder)
-    mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<void>) => {
-      await fn({ insert: mockTxInsert })
+    mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<unknown>) => {
+      return fn({ insert: mockTxInsert })
     })
 
     const { ensureWorkspaceBotProfile, workspaceBotProfileId } = await import('./bot-sender')
@@ -105,24 +105,32 @@ describe('bot sender helpers', () => {
   it('postBotMessage は bot 名義の投稿を保存して message/created を送る', async () => {
     mockSelectResult([{ name: 'Cairn' }])
 
-    mockTxInsert.mockReturnValue({
+    const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
+    const profileInsertBuilder = {
       values: vi.fn().mockReturnValue({
-        onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
+        onConflictDoNothing,
       }),
-    })
-    mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<void>) => {
-      await fn({ insert: mockTxInsert })
-    })
-
-    const returning = vi.fn().mockResolvedValue([{
+    }
+    const attachmentValues = vi.fn().mockResolvedValue(undefined)
+    const messageReturning = vi.fn().mockResolvedValue([{
       id: 'message-1',
       content: 'hello from bot',
       senderId: 'bot-1',
       createdAt: new Date('2026-07-07T00:00:00.000Z'),
     }])
-    const messageValues = vi.fn().mockReturnValue({ returning })
-    mockDbInsert.mockReturnValue({
-      values: messageValues,
+    const messageInsertBuilder = {
+      values: vi.fn().mockReturnValue({ returning: messageReturning }),
+    }
+    const attachmentInsertBuilder = {
+      values: attachmentValues,
+    }
+    mockTxInsert
+      .mockReturnValueOnce(profileInsertBuilder)
+      .mockReturnValueOnce(profileInsertBuilder)
+      .mockReturnValueOnce(messageInsertBuilder)
+      .mockReturnValueOnce(attachmentInsertBuilder)
+    mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<unknown>) => {
+      return fn({ insert: mockTxInsert })
     })
 
     const { postBotMessage } = await import('./bot-sender')
@@ -130,13 +138,18 @@ describe('bot sender helpers', () => {
       workspaceId: '10000000-0000-0000-0000-000000000001',
       channelId: '20000000-0000-0000-0000-000000000001',
       content: 'hello from bot',
+      attachmentFileIds: ['file-1', 'file-2'],
     })
 
-    expect(messageValues).toHaveBeenCalledWith(expect.objectContaining({
+    expect(messageInsertBuilder.values).toHaveBeenCalledWith(expect.objectContaining({
       channelId: '20000000-0000-0000-0000-000000000001',
       content: 'hello from bot',
       messageType: 'text',
     }))
+    expect(attachmentValues).toHaveBeenCalledWith([
+      { messageId: 'message-1', fileId: 'file-1', displayOrder: 0 },
+      { messageId: 'message-1', fileId: 'file-2', displayOrder: 1 },
+    ])
     expect(mockInngestSend).toHaveBeenCalledWith(expect.objectContaining({
       name: 'message/created',
       data: expect.objectContaining({
