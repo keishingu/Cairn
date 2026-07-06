@@ -3,8 +3,9 @@ name: Autonomous Merge
 # 自律運用の中核スイーパー（毎時実行）。人間がリソースを割けなくても開発が前進するよう、
 # 1) develop 宛の open PR を soul.policy.yaml でリスク分類し、
 #    低リスク（forbidden_zones 非接触）かつ CI green の PR を自動マージする
-# 2) Release PR（develop → main）を min_age_hours のソーク後、この場でフル検証
-#    （typecheck / lint / test）を通してから自動マージし、Draft Release を自動 Publish する
+# 2) Release PR（release/* スナップショット → main）を min_age_hours のソーク後、
+#    この場でフル検証（typecheck / lint / test）を通してから自動マージし、
+#    Draft Release を自動 Publish する
 #    ※ GITHUB_TOKEN によるマージコミットでは CI ワークフローがトリガーされないため、
 #      push イベントの CI に頼らず必ずこのジョブ内で検証し直す
 #
@@ -35,6 +36,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       release_pr: ${{ steps.sweep.outputs.release_pr }}
+      release_sha: ${{ steps.sweep.outputs.release_sha }}
       merge_pr: ${{ steps.sweep.outputs.merge_pr }}
       merge_sha: ${{ steps.sweep.outputs.merge_sha }}
     env:
@@ -175,18 +177,26 @@ jobs:
           echo "merge_pr=$MERGE_PR" >> "$GITHUB_OUTPUT"
           echo "merge_sha=$MERGE_SHA" >> "$GITHUB_OUTPUT"
 
-          # ---- 2) Release PR（develop → main）のマージ可否を判定し、後段ジョブへ渡す ----
+          # ---- 2) Release PR（release/* → main）のマージ可否を判定し、後段ジョブへ渡す ----
+          # Release PR の head は release.yml が切った不動のスナップショットブランチ。
+          # ソークは「PR 作成」と「head の最終コミット」の遅い方を起点にする
+          # （万一 release ブランチに後から push があった場合、ソークをやり直すため）
           RELEASE_PR=""
+          RELEASE_SHA=""
           rp=$(gh pr list --base main --state open --limit 10 \
-            --json number,labels,createdAt,mergeable,headRefName,isDraft \
-            --jq '[.[] | select(.headRefName == "develop" and .isDraft == false)][0] // empty')
+            --json number,labels,createdAt,mergeable,headRefName,headRefOid,isDraft \
+            --jq '[.[] | select((.headRefName | startswith("release/")) and .isDraft == false)][0] // empty')
           if [ -n "$rp" ]; then
             rnum=$(jq -r '.number' <<<"$rp")
             rlabels=$(jq -r '[.labels[].name] | join(",")' <<<"$rp")
             rcreated=$(jq -r '.createdAt' <<<"$rp")
             rmergeable=$(jq -r '.mergeable' <<<"$rp")
+            rsha=$(jq -r '.headRefOid' <<<"$rp")
             blocked=$(gh issue list --state open --label "release-blocked" --json number --jq 'length')
-            rage_h=$(( (NOW - $(date -u -d "$rcreated" +%s)) / 3600 ))
+            created_s=$(date -u -d "$rcreated" +%s)
+            head_s=$(date -u -d "$(gh api "repos/$REPO/commits/$rsha" --jq '.commit.committer.date')" +%s)
+            anchor_s=$(( created_s > head_s ? created_s : head_s ))
+            rage_h=$(( (NOW - anchor_s) / 3600 ))
             case ",$rlabels," in
               *,needs-human,*) echo "Release PR #$rnum: needs-human のため自動リリースしない";;
               *)
@@ -198,11 +208,13 @@ jobs:
                   echo "Release PR #$rnum: コンフリクトのためスキップ"
                 else
                   RELEASE_PR="$rnum"
+                  RELEASE_SHA="$rsha"
                 fi
                 ;;
             esac
           fi
           echo "release_pr=$RELEASE_PR" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
 
       - name: 失敗を ops issue として起票
         if: failure()
@@ -328,9 +340,9 @@ jobs:
             gh issue create --title "$TITLE" --body "$BODY" --label "ready-for-ai" --label "source:ops"
           fi
 
-  # Release PR のマージは、develop の現時点の内容をこの場で検証してから行う。
-  # （スイープで develop に squash された commit には push イベントの CI が走らないため）
-  # merge ジョブの後に実行する（同一 run 内で develop が進む場合の競合を避ける）。
+  # Release PR（release/* スナップショット → main）のマージは、ソーク済みの
+  # スナップショット SHA をこの場で検証してから行う。
+  # （GITHUB_TOKEN が作った commit には push イベントの CI が走らないため、CI の結果には頼らない）
   release:
     needs: [sweep, merge]
     if: >-
@@ -344,7 +356,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: develop
+          # ソークを経たスナップショット SHA を固定で検証・マージする
+          ref: ${{ needs.sweep.outputs.release_sha }}
 
       - uses: pnpm/action-setup@v4
 
@@ -386,13 +399,13 @@ jobs:
             exit 0
           fi
 
-          # マージ対象を「このジョブで検証した SHA」に固定する。検証中に develop へ
+          # マージ対象を「このジョブで検証した SHA」に固定する。万一 release ブランチに
           # 新しい push があった場合は未検証のためマージせず、次回スイープで再検証する
           VERIFIED_SHA=$(git rev-parse HEAD)
-          if ! gh pr merge "$NUM" --merge --match-head-commit "$VERIFIED_SHA"; then
+          if ! gh pr merge "$NUM" --merge --delete-branch --match-head-commit "$VERIFIED_SHA"; then
             current=$(gh pr view "$NUM" --json headRefOid --jq '.headRefOid')
             if [ "$current" != "$VERIFIED_SHA" ]; then
-              echo "::notice::検証中に develop が進んだため、今回のリリースマージは見送ります（次回スイープで再検証）。"
+              echo "::notice::検証中に release ブランチが動いたため、今回のリリースマージは見送ります（次回スイープで再検証）。"
               exit 0
             fi
             echo "::error::Release PR #$NUM のマージに失敗しました。"

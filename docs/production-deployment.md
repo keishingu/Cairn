@@ -46,9 +46,9 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
 
 **リリースは週次で自動実行される**（詳細は [`autonomous-operations.md`](./autonomous-operations.md)）。人間の操作は不要。
 
-1. 月曜朝: `.github/workflows/release.yml` が Release PR（develop → main、本文は AI 生成ノート）と Draft Release を自動作成。
+1. 月曜朝: `.github/workflows/release.yml` がその時点の develop を固定したスナップショットブランチ `release/YYYY-MM-DD` を切り、main への Release PR（本文は AI 生成ノート）と Draft Release を自動作成。スナップショット後に develop へ入った変更は翌週のリリースに回る。
 2. 24 時間のソーク（この間に Release PR へ `needs-human` ラベルを付ければ自動リリースを止められる）。
-3. 火曜朝ごろ: `.github/workflows/autonomous-merge.yml` が develop をフル検証（typecheck / lint / test）し、通れば main へ自動マージ → Vercel が本番デプロイ → Draft Release を自動 Publish。
+3. 火曜朝ごろ: `.github/workflows/autonomous-merge.yml` がスナップショット SHA をフル検証（typecheck / lint / test）し、通れば main へ自動マージ → Vercel が本番デプロイ → Draft Release を自動 Publish。
 4. 失敗時は `release-blocked` issue が起票され、close されるまで自動リリースは停止する。
 
 ### 手動でリリースする場合

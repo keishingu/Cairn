@@ -66,11 +66,13 @@ forbidden_zones（権限・認証・DB スキーマ・課金・ワークフロ�
 
 ## 4. リリースの自動化
 
-- **月曜朝**: `release.yml` が Release PR（develop → main）と Draft Release を自動作成。リリースノートは AI 生成（利用者向けの変更のみ。docs/CI/依存のみならメンテナンス文）。
-- **24 時間のソーク**: Release PR は作成から 24h（`automerge.main.min_age_hours`）は放置される。**この間が人間の拒否権ウィンドウ**（`needs-human` を付ければ止まる）。
-- **火曜朝ごろ**: `autonomous-merge.yml` が develop の内容をその場でフル検証（install / typecheck / lint / test）し、通れば main へマージ → Vercel が本番デプロイ → Draft Release を自動 Publish。
-  - スイーパー自身が検証し直すのは、GITHUB_TOKEN が作った squash コミットには push イベントの CI が走らないため（GitHub Actions の仕様）。push CI の結果には依存しない。
-  - マージは**検証したチェックアウト時点の SHA に固定**（`--match-head-commit`）。検証中に develop へ新しい push があった場合はマージせず、次回スイープで再検証する。
+- **月曜朝**: `release.yml` がその時点の develop を固定した **スナップショットブランチ `release/YYYY-MM-DD`** を切り、main への Release PR と Draft Release を自動作成。リリースノートは AI 生成（利用者向けの変更のみ。docs/CI/依存のみならメンテナンス文）。
+  - head を動く develop にしないのは、ソーク（拒否権ウィンドウ）とリリースノートを**不動の内容**に対して効かせるため。スナップショット後に develop へ入った変更は翌週のリリースに回る。
+  - open の Release PR が残っている間は新しい Release PR を作らない（リリーストレインを一列に保つ）。
+- **24 時間のソーク**: Release PR は 24h（`automerge.main.min_age_hours`）放置される。**この間が人間の拒否権ウィンドウ**（`needs-human` を付ければ止まる）。ソークの起点は「PR 作成」と「head の最終コミット」の遅い方（万一 release ブランチへ後から push された場合はソークをやり直す）。
+- **火曜朝ごろ**: `autonomous-merge.yml` がスナップショット SHA をその場でフル検証（install / typecheck / lint / test）し、通れば main へマージ → Vercel が本番デプロイ → Draft Release を自動 Publish。
+  - スイーパー自身が検証し直すのは、GITHUB_TOKEN が作った commit には push イベントの CI が走らないため（GitHub Actions の仕様）。push CI の結果には依存しない。
+  - マージは**検証した SHA に固定**（`--match-head-commit`）。検証中に release ブランチが動いた場合はマージせず、次回スイープで再検証する。
   - 検証中に人間が停止スイッチ（Release PR への `needs-human` / `release-blocked` issue）を入れた場合を尊重するため、**マージ直前にもブロッカーを再確認**する。
 - **失敗時**: `release-blocked` ラベル付きの issue が起票され、**close されるまで自動リリースは停止**する。修正 PR が develop に入ったら issue を close すると再開。
 
