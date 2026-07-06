@@ -145,4 +145,14 @@ describe('RealtimeProvider', () => {
       expect(channelMock).toHaveBeenCalledWith('channel:project-channel-1', { config: { private: true } })
     })
   })
+
+  it('アクセス不能な visible channel は購読しない', async () => {
+    renderRealtime(<VisibleChannelProbe channelId="project-channel-2" />)
+
+    await waitFor(() => {
+      expect(channelMock).toHaveBeenCalledWith('user:user-1', { config: { private: true } })
+    })
+
+    expect(channelMock).not.toHaveBeenCalledWith('channel:project-channel-2', { config: { private: true } })
+  })
 })

@@ -235,7 +235,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     const supabase = createClient()
     const current = topicChannelsRef.current
-    const wanted = new Set<string>(visibleChannelIds)
+    const wanted = new Set<string>(visibleChannelIds.filter(id => accessibleChannelIds.has(id)))
     if (subscribedChannelId) wanted.add(subscribedChannelId)
 
     for (const [id, ch] of [...current]) {
@@ -268,7 +268,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       })
       current.set(id, ch)
     }
-  }, [subscribedChannelId, userId, status, queryClient, scheduleListInvalidate, visibleChannelIds])
+  }, [accessibleChannelIds, subscribedChannelId, userId, status, queryClient, scheduleListInvalidate, visibleChannelIds])
 
   // アンマウント時に全チャンネルトピックを解放
   React.useEffect(() => {

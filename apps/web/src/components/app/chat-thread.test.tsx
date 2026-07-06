@@ -13,18 +13,22 @@ const { toastSuccess, toastError } = vi.hoisted(() => ({
 
 let clipboardWriteText: ReturnType<typeof vi.fn>
 
-vi.mock('@/lib/chat/client', () => ({
-  formatChatMessageTime: () => '12:34',
-  useChannelMembers: vi.fn(),
-  useChannelMessages: vi.fn(),
-  useCurrentUser: vi.fn(),
-  useDeleteMessage: vi.fn(),
-  useEditMessage: vi.fn(),
-  useMarkChannelRead: vi.fn(),
-  useSendChannelMessage: vi.fn(),
-  useToggleMessageReaction: vi.fn(),
-  useWorkspaceMembers: vi.fn(),
-}))
+vi.mock('@/lib/chat/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/chat/client')>()
+  return {
+    ...actual,
+    formatChatMessageTime: () => '12:34',
+    useChannelMembers: vi.fn(),
+    useChannelMessages: vi.fn(),
+    useCurrentUser: vi.fn(),
+    useDeleteMessage: vi.fn(),
+    useEditMessage: vi.fn(),
+    useMarkChannelRead: vi.fn(),
+    useSendChannelMessage: vi.fn(),
+    useToggleMessageReaction: vi.fn(),
+    useWorkspaceMembers: vi.fn(),
+  }
+})
 
 vi.mock('@/lib/toast', () => ({
   toast: {
