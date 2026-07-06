@@ -17,8 +17,8 @@ export async function hasWorkspaceMemberDisplayNameColumn(db: DbWithExecute) {
   }
 
   if (!hasDisplayNameColumnPromise) {
-    hasDisplayNameColumnPromise = db
-      .execute(sql`
+    hasDisplayNameColumnPromise = Promise.resolve(
+      db.execute(sql`
         select exists (
           select 1
           from information_schema.columns
@@ -26,7 +26,8 @@ export async function hasWorkspaceMemberDisplayNameColumn(db: DbWithExecute) {
             and table_name = 'workspace_members'
             and column_name = 'display_name'
         ) as "exists"
-      `)
+      `),
+    )
       .then(rows => rows[0]?.exists === true)
       .catch((error) => {
         hasDisplayNameColumnPromise = null
