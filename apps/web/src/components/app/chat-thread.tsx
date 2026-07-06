@@ -41,6 +41,7 @@ import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
 import { GENERIC_MIME_TYPES, resolveAttachmentMimeType } from '@/lib/attachments'
+import { useRealtime } from '../realtime/realtime-provider'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 
@@ -886,6 +887,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   isMobile?: boolean
   targetMessageId?: string | null
 }) => {
+  const { registerVisibleChannel } = useRealtime()
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [isComposing, setIsComposing] = React.useState(false)
@@ -905,6 +907,11 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   // Ref to latest draft state for cleanup-time saves (avoids stale closure)
   const latestDraftRef = React.useRef({ draft: '', pendingAttachments: [] as PendingAttachment[] })
   latestDraftRef.current = { draft, pendingAttachments }
+
+  React.useEffect(() => {
+    if (!channelId) return
+    return registerVisibleChannel(channelId)
+  }, [channelId, registerVisibleChannel])
 
   const persistDraft = React.useCallback((id: string, text: string, attachments: PendingAttachment[]) => {
     const key = chatDraftKey(id)

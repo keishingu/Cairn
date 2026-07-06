@@ -23,11 +23,13 @@ interface RealtimeContextValue {
   status: RealtimeStatus
   // 一定時間（DEGRADED_DELAY_MS）復帰できない切断状態。UI で「再接続中…」表示に使う
   degraded: boolean
+  registerVisibleChannel: (channelId: string) => () => void
 }
 
 const RealtimeContext = React.createContext<RealtimeContextValue>({
   status: 'connecting',
   degraded: false,
+  registerVisibleChannel: () => () => {},
 })
 
 export const useRealtime = () => React.useContext(RealtimeContext)
@@ -89,6 +91,24 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   const [status, setStatus] = React.useState<RealtimeStatus>('connecting')
   const [degraded, setDegraded] = React.useState(false)
+  const [visibleChannelIds, setVisibleChannelIds] = React.useState<string[]>([])
+  const visibleChannelEntriesRef = React.useRef(new Map<number, string>())
+  const visibleChannelEntryIdRef = React.useRef(0)
+
+  const syncVisibleChannelIds = React.useCallback(() => {
+    setVisibleChannelIds([...new Set(visibleChannelEntriesRef.current.values())].sort())
+  }, [])
+
+  const registerVisibleChannel = React.useCallback((channelId: string) => {
+    const entryId = visibleChannelEntryIdRef.current
+    visibleChannelEntryIdRef.current += 1
+    visibleChannelEntriesRef.current.set(entryId, channelId)
+    syncVisibleChannelIds()
+    return () => {
+      if (!visibleChannelEntriesRef.current.delete(entryId)) return
+      syncVisibleChannelIds()
+    }
+  }, [syncVisibleChannelIds])
 
   // status が disconnected に留まった時だけ degraded を立てる
   React.useEffect(() => {
@@ -215,7 +235,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     const supabase = createClient()
     const current = topicChannelsRef.current
-    const wanted = new Set(subscribedChannelId ? [subscribedChannelId] : [])
+    const wanted = new Set<string>(visibleChannelIds)
+    if (subscribedChannelId) wanted.add(subscribedChannelId)
 
     for (const [id, ch] of [...current]) {
       if (!wanted.has(id)) {
@@ -247,7 +268,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       })
       current.set(id, ch)
     }
-  }, [subscribedChannelId, userId, status, queryClient, scheduleListInvalidate])
+  }, [subscribedChannelId, userId, status, queryClient, scheduleListInvalidate, visibleChannelIds])
 
   // アンマウント時に全チャンネルトピックを解放
   React.useEffect(() => {
@@ -261,7 +282,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <RealtimeContext.Provider value={{ status, degraded }}>
+    <RealtimeContext.Provider value={{ status, degraded, registerVisibleChannel }}>
       {children}
       <RealtimeIndicator />
     </RealtimeContext.Provider>
