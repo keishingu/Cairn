@@ -57,7 +57,7 @@ vi.mock('@cairn/db', () => ({
     senderId: 'messages.senderId',
     createdAt: 'messages.createdAt',
   },
-  messageAttachments: { messageId: 'messageAttachments.messageId' },
+  messageAttachments: { messageId: 'messageAttachments.messageId', fileId: 'messageAttachments.fileId' },
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -76,6 +76,7 @@ function mockSelectResult(result: unknown) {
   const builder = {
     from: () => builder,
     leftJoin: () => builder,
+    innerJoin: () => builder,
     where: () => builder,
     limit: () => Promise.resolve(result),
   }
@@ -85,6 +86,16 @@ function mockSelectResult(result: unknown) {
 describe('bot sender helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockDbSelect.mockReset()
+    mockDbTransaction.mockReset()
+    mockDbInsert.mockReset()
+    mockTxInsert.mockReset()
+    mockEq.mockReset().mockReturnValue(Symbol('eq'))
+    mockAnd.mockReset().mockReturnValue(Symbol('and'))
+    mockInArray.mockReset().mockReturnValue(Symbol('inArray'))
+    mockIsNull.mockReset().mockReturnValue(Symbol('isNull'))
+    mockSql.mockReset().mockReturnValue(Symbol('sql'))
+    mockInngestSend.mockReset().mockResolvedValue(undefined)
   })
 
   it('workspaceBotProfileId は同じ workspace から同じ UUID を生成する', async () => {
@@ -344,6 +355,7 @@ describe('bot sender helpers', () => {
       storagePath: '10000000-0000-0000-0000-000000000001/another-channel/file-1.png',
       metadata: {},
     }])
+    mockSelectResult([])
 
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
     const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
@@ -415,6 +427,66 @@ describe('bot sender helpers', () => {
       storagePath: null,
       metadata: { channelIds: ['20000000-0000-0000-0000-000000000001'] },
     }])
+
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
+    const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
+    const profileInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate,
+      }),
+    }
+    const workspaceMemberInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing,
+      }),
+    }
+    const messageReturning = vi.fn().mockResolvedValue([{
+      id: 'message-1',
+      content: 'hello from bot',
+      senderId: 'bot-1',
+      createdAt: new Date('2026-07-07T00:00:00.000Z'),
+    }])
+    const messageInsertBuilder = {
+      values: vi.fn().mockReturnValue({ returning: messageReturning }),
+    }
+    const attachmentValues = vi.fn().mockResolvedValue(undefined)
+    const attachmentInsertBuilder = {
+      values: attachmentValues,
+    }
+    mockTxInsert
+      .mockReturnValueOnce(profileInsertBuilder)
+      .mockReturnValueOnce(workspaceMemberInsertBuilder)
+      .mockReturnValueOnce(messageInsertBuilder)
+      .mockReturnValueOnce(attachmentInsertBuilder)
+    mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<unknown>) => {
+      return fn({ insert: mockTxInsert })
+    })
+
+    const { postBotMessage } = await import('./bot-sender')
+
+    await expect(postBotMessage({
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      channelId: '20000000-0000-0000-0000-000000000001',
+      content: 'hello from bot',
+      attachmentFileIds: ['file-1'],
+    })).resolves.toMatchObject({ id: 'message-1' })
+    expect(attachmentValues).toHaveBeenCalledWith([
+      { messageId: 'message-1', fileId: 'file-1', displayOrder: 0 },
+    ])
+  })
+
+  it('postBotMessage は同じ channel に既に添付済みの file を許可する', async () => {
+    mockSelectResult([{ name: 'Cairn' }])
+    mockSelectResult([{ effectiveWorkspaceId: '10000000-0000-0000-0000-000000000001', projectId: null }])
+    mockSelectResult([{
+      id: 'file-1',
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      projectId: null,
+      fileType: 'document',
+      storagePath: '10000000-0000-0000-0000-000000000001/another-channel/file-1.png',
+      metadata: {},
+    }])
+    mockSelectResult([{ messageId: 'existing-message-1' }])
 
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
     const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)

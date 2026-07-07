@@ -146,7 +146,21 @@ async function assertBotPostTargets(workspaceId: string, channelId: string, atta
 
     const storageParts = row.storagePath?.split('/') ?? []
     const sourceChannelId = storageParts.length >= 3 && storageParts[0] === workspaceId ? storageParts[1] : null
-    if (sourceChannelId !== channelId) {
+    if (sourceChannelId === channelId) {
+      continue
+    }
+
+    const [sharedIntoChannel] = await db
+      .select({ messageId: messageAttachments.messageId })
+      .from(messageAttachments)
+      .innerJoin(messages, eq(messageAttachments.messageId, messages.id))
+      .where(and(
+        eq(messageAttachments.fileId, fileId),
+        eq(messages.channelId, channelId),
+      ))
+      .limit(1)
+
+    if (!sharedIntoChannel) {
       throw new Error('Bot post attachment is not accessible from target channel')
     }
   }
