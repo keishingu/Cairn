@@ -100,26 +100,25 @@ export async function PATCH(req: Request, { params }: RouteContext) {
           )
         }
 
-        // タイトルまたはチェック状態が変わった既存チェックボックスを更新
-        for (const nb of newBoxes) {
+        // タイトルまたはチェック状態が変わった既存チェックボックスを一括更新
+        // （個別 UPDATE を避け N+1 を防ぐ）
+        const changedBoxes = newBoxes.filter(nb => {
           const existing = oldBoxes.find(ob => ob.index === nb.index)
-          if (existing && (existing.text !== nb.text || existing.checked !== nb.checked)) {
-            await db.update(tasks)
-              .set({
-                title: nb.text,
-                status: nb.checked ? 'done' : 'todo',
-                updatedAt: new Date(),
-              })
-              .where(and(
-                eq(tasks.sourceMessageId, messageId),
-                eq(tasks.sourceCheckboxIndex, nb.index),
-              ))
-          }
+          return existing && (existing.text !== nb.text || existing.checked !== nb.checked)
+        })
+        for (const nb of changedBoxes) {
+          // インデックスが一意のため index ごとに 1 行しか更新されない
+          await db.update(tasks)
+            .set({ title: nb.text, status: nb.checked ? 'done' : 'todo', updatedAt: new Date() })
+            .where(and(eq(tasks.sourceMessageId, messageId), eq(tasks.sourceCheckboxIndex, nb.index)))
         }
       }
     }
 
-    return NextResponse.json({ id: updated!.id, content: updated!.content })
+    if (!updated) {
+      return NextResponse.json({ error: 'メッセージの更新に失敗しました' }, { status: 500 })
+    }
+    return NextResponse.json({ id: updated.id, content: updated.content })
   } catch (err) {
     console.error('[/api/messages/[messageId] PATCH] DB query failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

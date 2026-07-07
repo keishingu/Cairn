@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole } from '@/lib/permissions'
+import { coverPhotoIdxFromId } from '@/lib/utils'
 
 export interface MemberProjectDto {
   projectId: string
@@ -16,12 +17,6 @@ export interface MemberProjectDto {
   memberCount: number
   coverPhotoIdx: number
   archived: boolean
-}
-
-function coverPhotoIdxFromId(id: string): number {
-  let h = 0
-  for (const c of id) h = (h * 31 + c.charCodeAt(0)) & 0xffff
-  return h
 }
 
 export async function GET(
@@ -89,10 +84,15 @@ export async function GET(
       ))
       .orderBy(projects.createdAt)
 
-    const memberCounts = await db
-      .select({ projectId: projectMembers.projectId, n: count() })
-      .from(projectMembers)
-      .groupBy(projectMembers.projectId)
+    // rows が空のときはスキップ（全 project_members を全件取得するのを防ぐ）
+    const projectIds = rows.map(r => r.projectId)
+    const memberCounts = projectIds.length > 0
+      ? await db
+          .select({ projectId: projectMembers.projectId, n: count() })
+          .from(projectMembers)
+          .where(inArray(projectMembers.projectId, projectIds))
+          .groupBy(projectMembers.projectId)
+      : []
     const countMap = new Map(memberCounts.map(r => [r.projectId, Number(r.n)]))
 
     return NextResponse.json(
