@@ -82,7 +82,9 @@ function getRateLimiters() {
 }
 
 export function isRateLimitedPath(pathname: string): pathname is RateLimitPath {
-  return pathname in RATE_LIMIT_POLICIES
+  const normalizedPathname =
+    pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
+  return normalizedPathname in RATE_LIMIT_POLICIES
 }
 
 export async function enforceRateLimit(
@@ -90,9 +92,11 @@ export async function enforceRateLimit(
   event?: Pick<NextFetchEvent, 'waitUntil'>,
 ): Promise<NextResponse | null> {
   const { pathname } = request.nextUrl
-  if (!isRateLimitedPath(pathname) || request.method !== 'POST') return null
+  const normalizedPathname =
+    pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
+  if (!isRateLimitedPath(normalizedPathname) || request.method !== 'POST') return null
 
-  const policy = RATE_LIMIT_POLICIES[pathname]
+  const policy = RATE_LIMIT_POLICIES[normalizedPathname]
   const identifier = resolveClientIp(request)
 
   if (!identifier) {
@@ -104,7 +108,7 @@ export async function enforceRateLimit(
 
   let limiter: InstanceType<typeof Ratelimit>
   try {
-    limiter = getRateLimiters()[pathname]!
+    limiter = getRateLimiters()[normalizedPathname]!
   } catch (error) {
     console.error('[rate-limit] Redis configuration is missing:', error)
     return NextResponse.json({ error: 'Rate limit is unavailable' }, { status: 503 })
