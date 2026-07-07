@@ -137,6 +137,7 @@ describe('PageMembers (PC) — 詳細パネルの配置', () => {
   it('メンバー詳細パネルは一覧幅を潰さない絶対配置スロットに乗る', async () => {
     renderDesktop()
     await userEvent.click(screen.getByText('山田 太郎'))
+    expect(screen.getByTestId('members-page-desktop-root')).toHaveStyle({ position: 'relative' })
     const slot = screen.getByTestId('desktop-detail-panel-slot')
     expect(slot).toHaveStyle({ position: 'absolute', right: '0px', width: 'min(420px, 100%)' })
   })

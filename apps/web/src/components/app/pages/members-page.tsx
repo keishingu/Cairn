@@ -318,7 +318,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+    <div data-testid="members-page-desktop-root" style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
       {/* Left: list */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {/* Toolbar */}
