@@ -9,10 +9,10 @@ const { mockDb, mockEq, mockAnd, mockSql, selectResults, selectDistinctResults }
 
   function createSelectChain(result: unknown[], terminalAtWhere: boolean) {
     const chain: Record<string, unknown> = {}
-    chain.from = vi.fn().mockReturnValue(chain)
-    chain.leftJoin = vi.fn().mockReturnValue(chain)
-    chain.innerJoin = vi.fn().mockReturnValue(chain)
-    chain.where = vi.fn().mockImplementation(() => {
+    chain['from'] = vi.fn().mockReturnValue(chain)
+    chain['leftJoin'] = vi.fn().mockReturnValue(chain)
+    chain['innerJoin'] = vi.fn().mockReturnValue(chain)
+    chain['where'] = vi.fn().mockImplementation(() => {
       if (terminalAtWhere) return Promise.resolve(result)
       return {
         limit: vi.fn().mockResolvedValue(result),
