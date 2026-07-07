@@ -134,6 +134,26 @@ describe('middleware', () => {
     expect(getUser).not.toHaveBeenCalled()
   })
 
+  it('rate limit 対象 API は通過時にページ認証リダイレクトへ進まない', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+
+    const { middleware } = await import('./middleware')
+    const res = await middleware(
+      makeRequest('/api/auth/webview-handoff?webview=1', {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer native-token',
+          'user-agent': 'CairnNative/1.0 (iPhone)',
+          'x-forwarded-for': '203.0.113.10',
+        },
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('location')).toBeNull()
+    expect(getUser).not.toHaveBeenCalled()
+  })
+
   it('rate limit 対象 API は Redis 設定がないと 503 を返す', async () => {
     getUser.mockResolvedValue({ data: { user: null } })
     delete process.env['UPSTASH_REDIS_REST_URL']

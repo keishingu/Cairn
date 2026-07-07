@@ -13,12 +13,17 @@ export async function middleware(request: NextRequest) {
   const rateLimited = await enforceRateLimit(request)
   if (rateLimited) return rateLimited
 
+  const { pathname } = request.nextUrl
   const ua = request.headers.get('user-agent') ?? ''
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-device', detectMobile(ua) ? 'mobile' : 'desktop')
 
   const isWebView = request.nextUrl.searchParams.get('webview') === '1'
   if (isWebView) requestHeaders.set('x-webview', '1')
+
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next({ request: { headers: requestHeaders } })
+  }
 
   let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
 
@@ -41,7 +46,6 @@ export async function middleware(request: NextRequest) {
   })
 
   const { data: { user } } = await supabase.auth.getUser()
-  const { pathname } = request.nextUrl
   const isAuthRoute = pathname.startsWith('/auth')
   // トップページは未ログインでも閲覧できる公開 LP
   const isLandingRoute = pathname === '/'
