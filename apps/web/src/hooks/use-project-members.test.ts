@@ -4,13 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import {
   useProjectMembers,
-  useWorkspaceMembersForInvite,
   useAddProjectMember,
   useRemoveProjectMember,
 } from './use-project-members'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
-import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 
 vi.mock('@/lib/fetch-with-auth')
 const mockFetch = vi.mocked(fetchWithAuth)
@@ -29,11 +27,6 @@ const STUB_MEMBERS: ProjectMemberDto[] = [
   { userId: 'u2', displayName: 'Bob', email: 'bob@example.com', avatarUrl: null, role: 'member', attendance: 'attending', addedAt: '2026-01-02' },
 ]
 
-const STUB_WS_MEMBERS: WorkspaceMemberDto[] = [
-  { userId: 'u1', displayName: 'Alice', email: 'alice@example.com', avatarUrl: null, role: 'owner', joinedAt: '2026-01-01', projectCount: 1 },
-  { userId: 'u3', displayName: 'Carol', email: 'carol@example.com', avatarUrl: null, role: 'member', joinedAt: '2026-01-03', projectCount: 0 },
-]
-
 describe('useProjectMembers', () => {
   beforeEach(() => { mockFetch.mockClear() })
 
@@ -44,24 +37,6 @@ describe('useProjectMembers', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toEqual(STUB_MEMBERS)
     expect(mockFetch).toHaveBeenCalledWith('/api/projects/p1/members')
-  })
-})
-
-describe('useWorkspaceMembersForInvite', () => {
-  beforeEach(() => { mockFetch.mockClear() })
-
-  it('enabled=true のときワークスペースメンバーを取得する', async () => {
-    mockFetch.mockResolvedValue(new Response(JSON.stringify(STUB_WS_MEMBERS), { status: 200 }))
-    const { wrapper } = makeWrapper()
-    const { result } = renderHook(() => useWorkspaceMembersForInvite(true), { wrapper })
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.data).toEqual(STUB_WS_MEMBERS)
-  })
-
-  it('enabled=false のときフェッチしない', () => {
-    const { wrapper } = makeWrapper()
-    renderHook(() => useWorkspaceMembersForInvite(false), { wrapper })
-    expect(mockFetch).not.toHaveBeenCalled()
   })
 })
 

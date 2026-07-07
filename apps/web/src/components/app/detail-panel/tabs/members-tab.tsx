@@ -6,14 +6,15 @@ import { ConfirmDialog } from '../../confirm-dialog'
 import { RowActionMenu } from '../../row-action-menu'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import {
   useProjectMembers,
-  useWorkspaceMembersForInvite,
   useAddProjectMember,
   useRemoveProjectMember,
 } from '@/hooks/use-project-members'
+import { useWorkspaceMembers } from '@/hooks/use-workspace-members'
+import { useProjectGuestInvite } from '@/hooks/use-project-guest-invite'
+import { useRevokeWorkspaceInvite } from '@/hooks/use-workspace-invites'
 
 const ROLE_LABEL: Record<string, string> = {
   leader:    'リーダー',
@@ -273,26 +274,19 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
   const [url, setUrl] = React.useState<string | null>(null)
   const [token, setToken] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
-  const [isLoading, setIsLoading] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
-  const [revoking, setRevoking] = React.useState(false)
   const [revoked, setRevoked] = React.useState(false)
+  const { data: inviteData, isLoading, error: inviteError } = useProjectGuestInvite(projectId, !revoked)
+  const revokeInviteMutation = useRevokeWorkspaceInvite()
 
   React.useEffect(() => {
-    setIsLoading(true)
-    fetchWithAuth(`/api/projects/${projectId}/guest-invite`, { method: 'POST' })
-      .then(async (res) => {
-        const data = await res.json() as { url?: string; token?: string; error?: string }
-        if (!res.ok) {
-          setError(data.error ?? '招待リンクの生成に失敗しました')
-        } else {
-          setUrl(data.url ?? null)
-          setToken(data.token ?? null)
-        }
-      })
-      .catch(() => setError('招待リンクの生成に失敗しました'))
-      .finally(() => setIsLoading(false))
-  }, [projectId])
+    setUrl(inviteData?.url ?? null)
+    setToken(inviteData?.token ?? null)
+  }, [inviteData])
+
+  React.useEffect(() => {
+    setError(inviteError instanceof Error ? inviteError.message : null)
+  }, [inviteError])
 
   const handleCopy = () => {
     if (!url) return
@@ -304,21 +298,14 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
 
   const handleRevoke = async () => {
     if (!token) return
-    setRevoking(true)
+    setError(null)
     try {
-      const res = await fetchWithAuth(`/api/workspaces/invites/${token}`, { method: 'DELETE' })
-      if (res.ok) {
-        setUrl(null)
-        setToken(null)
-        setRevoked(true)
-      } else {
-        const data = await res.json() as { error?: string }
-        setError(data.error ?? '無効化に失敗しました')
-      }
-    } catch {
-      setError('無効化に失敗しました')
-    } finally {
-      setRevoking(false)
+      await revokeInviteMutation.mutateAsync(token)
+      setUrl(null)
+      setToken(null)
+      setRevoked(true)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '無効化に失敗しました')
     }
   }
 
@@ -409,18 +396,18 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
 
             <button
               onClick={() => { void handleRevoke() }}
-              disabled={revoking}
+              disabled={revokeInviteMutation.isPending}
               style={{
                 marginTop: 20, width: '100%', padding: '9px',
                 borderRadius: 8, border: '1px solid var(--red)',
                 background: 'transparent',
-                color: revoking ? 'var(--text-4)' : 'var(--red)',
+                color: revokeInviteMutation.isPending ? 'var(--text-4)' : 'var(--red)',
                 fontSize: 12.5, fontWeight: 600,
-                cursor: revoking ? 'not-allowed' : 'pointer',
+                cursor: revokeInviteMutation.isPending ? 'not-allowed' : 'pointer',
                 fontFamily: 'inherit',
               }}
             >
-              {revoking ? '無効化中…' : 'このリンクを無効化'}
+              {revokeInviteMutation.isPending ? '無効化中…' : 'このリンクを無効化'}
             </button>
           </>
         )}
@@ -446,7 +433,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
   const { isMember: canManageMembers, isAdmin: canInviteGuest } = useWorkspacePermissions()
 
   const { data: members = [], isLoading } = useProjectMembers(projectId)
-  const { data: wsMembers = [], isLoading: isLoadingWs } = useWorkspaceMembersForInvite(showInvite)
+  const { data: wsMembers = [], isLoading: isLoadingWs } = useWorkspaceMembers(showInvite)
   const addMutation = useAddProjectMember(projectId)
   const removeMutation = useRemoveProjectMember(projectId)
 

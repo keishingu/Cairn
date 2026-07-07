@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import { Icon, Avatar, Fab } from '../primitives'
@@ -11,8 +11,15 @@ import { MemberDetailPanel } from '../detail-panel/member-panel'
 import { ProjectPanel } from '../detail-panel/project-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useWorkspaceMembers } from '@/hooks/use-workspace-members'
+import {
+  useWorkspaceInvites,
+  useCreateWorkspaceInvite,
+  useRevokeWorkspaceInvite,
+  type WorkspaceInviteRecord,
+  type InviteExpiresIn,
+} from '@/hooks/use-workspace-invites'
 import { useCommand } from '@/lib/command-registry'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
@@ -157,10 +164,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
     })
   }
 
-  const { data: members = [], isLoading } = useQuery<WorkspaceMemberDto[]>({
-    queryKey: ['workspace-members'],
-    queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
-  })
+  const { data: members = [], isLoading } = useWorkspaceMembers()
 
   // ⌥S（検索フォーカス）は TopBarSearch（route ラッパー）が担当
 
@@ -391,70 +395,44 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
   )
 }
 
-type ExpiresIn = '1h' | '30d' | 'never'
-const EXPIRES_OPTIONS: { value: ExpiresIn; label: string }[] = [
+const EXPIRES_OPTIONS: { value: InviteExpiresIn; label: string }[] = [
   { value: '1h', label: '1時間' },
   { value: '30d', label: '30日間' },
   { value: 'never', label: '無期限' },
 ]
 
-interface InviteRecord {
-  id: string
-  token: string
-  url: string
-  expiresAt: string | null
-  maxUses: number | null
-  useCount: number
-  role: string
-  createdAt: string
-  createdByName: string
-}
-
 function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boolean }) {
-  const [expiresIn, setExpiresIn] = React.useState<ExpiresIn>('1h')
+  const [expiresIn, setExpiresIn] = React.useState<InviteExpiresIn>('1h')
   const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
-  const [generating, setGenerating] = React.useState(false)
-  const [generateError, setGenerateError] = React.useState<string | null>(null)
   const [copied, setCopied] = React.useState(false)
-  const [existingInvites, setExistingInvites] = React.useState<InviteRecord[]>([])
-  const [revoking, setRevoking] = React.useState<string | null>(null)
+  const { data: existingInvites = [] } = useWorkspaceInvites(true)
+  const createInviteMutation = useCreateWorkspaceInvite()
+  const revokeInviteMutation = useRevokeWorkspaceInvite()
 
-  React.useEffect(() => {
-    void fetchExistingInvites()
-  }, [])
+  const generating = createInviteMutation.isPending
+  const inviteError = createInviteMutation.error?.message ?? revokeInviteMutation.error?.message ?? null
 
-  async function fetchExistingInvites() {
-    const res = await fetch('/api/workspaces/invites')
-    if (!res.ok) return
-    const data = await res.json().catch(() => ({})) as { invites?: InviteRecord[] }
-    setExistingInvites(data.invites ?? [])
-  }
-
-  async function generateLink() {
-    setGenerating(true)
+  const generateLink = () => {
     setCopied(false)
-    setGenerateError(null)
-    const res = await fetch('/api/workspaces/invites', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ expiresIn }),
-    })
-    const data = await res.json().catch(() => ({})) as { url?: string; error?: string }
-    if (res.ok && data.url) {
-      setInviteUrl(data.url)
-      void fetchExistingInvites()
-    } else {
-      setGenerateError(data.error ?? '招待リンクの生成に失敗しました')
-    }
-    setGenerating(false)
+    createInviteMutation.mutate(
+      { expiresIn },
+      {
+        onSuccess: (data) => {
+          setInviteUrl(data.url ?? null)
+        },
+      },
+    )
   }
 
-  async function revokeInvite(token: string) {
-    setRevoking(token)
-    await fetch(`/api/workspaces/invites/${token}`, { method: 'DELETE' })
-    setExistingInvites(prev => prev.filter(inv => inv.token !== token))
-    if (inviteUrl?.includes(token)) setInviteUrl(null)
-    setRevoking(null)
+  const revokeInvite = (invite: WorkspaceInviteRecord) => {
+    revokeInviteMutation.mutate(
+      invite.token,
+      {
+        onSuccess: () => {
+          if (inviteUrl?.includes(invite.token)) setInviteUrl(null)
+        },
+      },
+    )
   }
 
   async function copyLink() {
@@ -522,12 +500,12 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
 
           {!inviteUrl ? (
             <>
-              {generateError && (
+              {inviteError && (
                 <div style={{
                   padding: '8px 12px', borderRadius: 8, fontSize: 12.5,
                   background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)',
                 }}>
-                  {generateError}
+                  {inviteError}
                 </div>
               )}
               <button
@@ -619,17 +597,17 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                     </div>
                     <button
                       type="button"
-                      onClick={() => revokeInvite(inv.token)}
-                      disabled={revoking === inv.token}
+                      onClick={() => revokeInvite(inv)}
+                      disabled={revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token}
                       style={{
                         flexShrink: 0, padding: '4px 10px', borderRadius: 6,
                         border: '1px solid var(--red)', background: 'transparent',
-                        color: revoking === inv.token ? 'var(--text-4)' : 'var(--red-text)',
-                        fontSize: 11.5, fontWeight: 600, cursor: revoking === inv.token ? 'default' : 'pointer',
+                        color: revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token ? 'var(--text-4)' : 'var(--red-text)',
+                        fontSize: 11.5, fontWeight: 600, cursor: revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token ? 'default' : 'pointer',
                         fontFamily: 'inherit', whiteSpace: 'nowrap',
                       }}
                     >
-                      {revoking === inv.token ? '処理中...' : '無効化'}
+                      {revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token ? '処理中...' : '無効化'}
                     </button>
                   </div>
                 )

@@ -1,21 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
-import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 
 export function useProjectMembers(projectId: string | null) {
   return useQuery<ProjectMemberDto[]>({
     queryKey: ['project-members', projectId],
     queryFn: () => fetchWithAuth(`/api/projects/${projectId!}/members`).then(r => r.json()),
     enabled: !!projectId,
-  })
-}
-
-export function useWorkspaceMembersForInvite(enabled: boolean) {
-  return useQuery<WorkspaceMemberDto[]>({
-    queryKey: ['workspace-members'],
-    queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
-    enabled,
   })
 }
 
