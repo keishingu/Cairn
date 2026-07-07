@@ -34,7 +34,12 @@ vi.mock('@cairn/db', () => ({
   workspaces: { id: 'workspaces.id', name: 'workspaces.name' },
   profiles: { id: 'profiles.id', kind: 'profiles.kind', displayName: 'profiles.displayName' },
   channels: { id: 'channels.id', workspaceId: 'channels.workspaceId', projectId: 'channels.projectId' },
-  files: { id: 'files.id', workspaceId: 'files.workspaceId' },
+  files: {
+    id: 'files.id',
+    workspaceId: 'files.workspaceId',
+    projectId: 'files.projectId',
+    storagePath: 'files.storagePath',
+  },
   projects: { id: 'projects.id', workspaceId: 'projects.workspaceId' },
   workspaceMembers: {
     workspaceId: 'workspaceMembers.workspaceId',
@@ -128,8 +133,21 @@ describe('bot sender helpers', () => {
 
   it('postBotMessage は bot 名義の投稿を保存して message/created を送る', async () => {
     mockSelectResult([{ name: 'Cairn' }])
-    mockSelectResult([{ effectiveWorkspaceId: '10000000-0000-0000-0000-000000000001' }])
-    mockSelectResult([{ id: 'file-1' }, { id: 'file-2' }])
+    mockSelectResult([{ effectiveWorkspaceId: '10000000-0000-0000-0000-000000000001', projectId: null }])
+    mockSelectResult([
+      {
+        id: 'file-1',
+        workspaceId: '10000000-0000-0000-0000-000000000001',
+        projectId: null,
+        storagePath: '10000000-0000-0000-0000-000000000001/20000000-0000-0000-0000-000000000001/file-1.png',
+      },
+      {
+        id: 'file-2',
+        workspaceId: '10000000-0000-0000-0000-000000000001',
+        projectId: null,
+        storagePath: '10000000-0000-0000-0000-000000000001/20000000-0000-0000-0000-000000000001/file-2.png',
+      },
+    ])
 
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
     const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
@@ -194,7 +212,7 @@ describe('bot sender helpers', () => {
 
   it('postBotMessage は別 workspace の channel を拒否する', async () => {
     mockSelectResult([{ name: 'Cairn' }])
-    mockSelectResult([{ effectiveWorkspaceId: 'another-workspace' }])
+    mockSelectResult([{ effectiveWorkspaceId: 'another-workspace', projectId: null }])
 
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
     const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
@@ -225,8 +243,13 @@ describe('bot sender helpers', () => {
 
   it('postBotMessage は別 workspace の attachment を拒否する', async () => {
     mockSelectResult([{ name: 'Cairn' }])
-    mockSelectResult([{ effectiveWorkspaceId: '10000000-0000-0000-0000-000000000001' }])
-    mockSelectResult([{ id: 'file-1' }])
+    mockSelectResult([{ effectiveWorkspaceId: '10000000-0000-0000-0000-000000000001', projectId: null }])
+    mockSelectResult([{
+      id: 'file-1',
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      projectId: null,
+      storagePath: '10000000-0000-0000-0000-000000000001/20000000-0000-0000-0000-000000000001/file-1.png',
+    }])
 
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
     const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
@@ -254,5 +277,79 @@ describe('bot sender helpers', () => {
       attachmentFileIds: ['file-1', 'file-2'],
     })).rejects.toThrow('Bot post attachment does not belong to workspace')
     expect(mockDbTransaction).toHaveBeenCalledTimes(1)
+  })
+
+  it('postBotMessage は別 project の attachment を project channel へ流し込ませない', async () => {
+    mockSelectResult([{ name: 'Cairn' }])
+    mockSelectResult([{ effectiveWorkspaceId: '10000000-0000-0000-0000-000000000001', projectId: 'project-1' }])
+    mockSelectResult([{
+      id: 'file-1',
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      projectId: 'project-2',
+      storagePath: '10000000-0000-0000-0000-000000000001/another-channel/file-1.png',
+    }])
+
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
+    const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
+    const profileInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate,
+      }),
+    }
+    const workspaceMemberInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing,
+      }),
+    }
+    mockTxInsert.mockReturnValueOnce(profileInsertBuilder).mockReturnValueOnce(workspaceMemberInsertBuilder)
+    mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<unknown>) => {
+      return fn({ insert: mockTxInsert })
+    })
+
+    const { postBotMessage } = await import('./bot-sender')
+
+    await expect(postBotMessage({
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      channelId: '20000000-0000-0000-0000-000000000001',
+      content: 'hello from bot',
+      attachmentFileIds: ['file-1'],
+    })).rejects.toThrow('Bot post attachment is not accessible from target project')
+  })
+
+  it('postBotMessage は別 channel 由来の workspace attachment を private channel へ流し込ませない', async () => {
+    mockSelectResult([{ name: 'Cairn' }])
+    mockSelectResult([{ effectiveWorkspaceId: '10000000-0000-0000-0000-000000000001', projectId: null }])
+    mockSelectResult([{
+      id: 'file-1',
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      projectId: null,
+      storagePath: '10000000-0000-0000-0000-000000000001/another-channel/file-1.png',
+    }])
+
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
+    const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
+    const profileInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate,
+      }),
+    }
+    const workspaceMemberInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing,
+      }),
+    }
+    mockTxInsert.mockReturnValueOnce(profileInsertBuilder).mockReturnValueOnce(workspaceMemberInsertBuilder)
+    mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<unknown>) => {
+      return fn({ insert: mockTxInsert })
+    })
+
+    const { postBotMessage } = await import('./bot-sender')
+
+    await expect(postBotMessage({
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      channelId: '20000000-0000-0000-0000-000000000001',
+      content: 'hello from bot',
+      attachmentFileIds: ['file-1'],
+    })).rejects.toThrow('Bot post attachment is not accessible from target channel')
   })
 })

@@ -80,6 +80,7 @@ async function assertBotPostTargets(workspaceId: string, channelId: string, atta
   const [channel] = await db
     .select({
       effectiveWorkspaceId: sql<string | null>`coalesce(${channels.workspaceId}, ${projects.workspaceId})`,
+      projectId: channels.projectId,
     })
     .from(channels)
     .leftJoin(projects, eq(channels.projectId, projects.id))
@@ -95,15 +96,38 @@ async function assertBotPostTargets(workspaceId: string, channelId: string, atta
   }
 
   const attachmentRows = await db
-    .select({ id: files.id })
+    .select({
+      id: files.id,
+      workspaceId: files.workspaceId,
+      projectId: files.projectId,
+      storagePath: files.storagePath,
+    })
     .from(files)
-    .where(and(eq(files.workspaceId, workspaceId), inArray(files.id, attachmentFileIds)))
+    .where(inArray(files.id, attachmentFileIds))
     .limit(attachmentFileIds.length)
 
-  const validFileIds = new Set(attachmentRows.map((row) => row.id))
+  const attachmentMap = new Map(attachmentRows.map((row) => [row.id, row]))
   for (const fileId of attachmentFileIds) {
-    if (!validFileIds.has(fileId)) {
+    const row = attachmentMap.get(fileId)
+    if (!row || row.workspaceId !== workspaceId) {
       throw new Error('Bot post attachment does not belong to workspace')
+    }
+
+    if (channel.projectId) {
+      if (row.projectId !== channel.projectId) {
+        throw new Error('Bot post attachment is not accessible from target project')
+      }
+      continue
+    }
+
+    if (row.projectId) {
+      throw new Error('Bot post attachment is not accessible from target channel')
+    }
+
+    const storageParts = row.storagePath?.split('/') ?? []
+    const sourceChannelId = storageParts.length >= 3 && storageParts[0] === workspaceId ? storageParts[1] : null
+    if (sourceChannelId !== channelId) {
+      throw new Error('Bot post attachment is not accessible from target channel')
     }
   }
 }
