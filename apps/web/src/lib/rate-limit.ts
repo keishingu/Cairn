@@ -166,6 +166,11 @@ export async function enforceRateLimit(
     void result.pending
   }
 
+  if (result.reason === 'timeout') {
+    console.error('[rate-limit] Redis request timed out')
+    return NextResponse.json({ error: 'Rate limit is unavailable' }, { status: 503 })
+  }
+
   if (result.success) {
     return null
   }

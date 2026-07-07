@@ -126,4 +126,29 @@ describe('rate-limit', () => {
       token: 'kv-token',
     })
   })
+
+  it('Upstash timeout は 503 で fail-closed する', async () => {
+    limitMock.mockResolvedValue({
+      success: true,
+      reason: 'timeout',
+      limit: 10,
+      remaining: 9,
+      reset: Date.now() + 60_000,
+      pending: Promise.resolve(),
+    })
+
+    const { enforceRateLimit } = await import('./rate-limit')
+    const res = await enforceRateLimit(
+      makeRequest('/api/auth/webview-handoff', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.27' },
+      }),
+      { waitUntil: waitUntilMock },
+    )
+
+    expect(res?.status).toBe(503)
+    await expect(res?.json()).resolves.toEqual({ error: 'Rate limit is unavailable' })
+    expect(waitUntilMock).toHaveBeenCalledTimes(1)
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[rate-limit] Redis request timed out')
+  })
 })
