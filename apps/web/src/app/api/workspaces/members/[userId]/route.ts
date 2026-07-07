@@ -59,7 +59,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
     }
 
     const [target] = await db
-      .select({ role: workspaceMembers.role, membershipStatus: workspaceMembers.membershipStatus })
+      .select({
+        role: workspaceMembers.role,
+        membershipStatus: workspaceMembers.membershipStatus,
+        deactivatedAt: workspaceMembers.deactivatedAt,
+        deactivatedBy: workspaceMembers.deactivatedBy,
+      })
       .from(workspaceMembers)
       .where(
         and(
@@ -138,13 +143,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
     }
 
     const membershipPatch =
-      newMembershipStatus === 'inactive'
+      newMembershipStatus === currentMembershipStatus
         ? {
             membershipStatus: newMembershipStatus,
-            deactivatedAt: new Date(),
-            deactivatedBy: ctx.userId,
+            deactivatedAt: target.deactivatedAt,
+            deactivatedBy: target.deactivatedBy,
           }
-        : { membershipStatus: newMembershipStatus, deactivatedAt: null, deactivatedBy: null }
+        : newMembershipStatus === 'inactive'
+          ? {
+              membershipStatus: newMembershipStatus,
+              deactivatedAt: new Date(),
+              deactivatedBy: ctx.userId,
+            }
+          : { membershipStatus: newMembershipStatus, deactivatedAt: null, deactivatedBy: null }
 
     await db
       .update(workspaceMembers)

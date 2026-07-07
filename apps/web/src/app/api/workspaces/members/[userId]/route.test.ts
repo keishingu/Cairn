@@ -242,7 +242,11 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
 
   it('admin は member を卒業生にできる', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(
+      selectChain([
+        { role: 'member', membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null },
+      ]),
+    )
     mockDb.update.mockReturnValueOnce(updateChain())
     const { PATCH } = await import('./route')
     const res = await PATCH(statusPatchRequest(OTHER_USER_ID, 'inactive'), {
@@ -255,7 +259,11 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
 
   it('唯一の active owner は卒業生にできない（422）', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(
+      selectChain([
+        { role: 'owner', membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null },
+      ]),
+    )
     mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 1 }]))
     const { PATCH } = await import('./route')
     const res = await PATCH(statusPatchRequest(OTHER_USER_ID, 'inactive'), {
@@ -264,5 +272,34 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(res.status).toBe(422)
     const body = (await res.json()) as { error: string }
     expect(body.error).toContain('active owner')
+  })
+
+  it('inactive メンバーの role 変更では deactivated 情報を維持する', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    const target = {
+      role: 'member',
+      membershipStatus: 'inactive',
+      deactivatedAt: new Date('2026-07-01T00:00:00.000Z'),
+      deactivatedBy: OTHER_USER_ID,
+    }
+    const whereMock = vi.fn().mockResolvedValue([])
+    const setMock = vi.fn().mockReturnValue({ where: whereMock })
+    mockDb.select.mockReturnValueOnce(selectChain([target]))
+    mockDb.update.mockReturnValueOnce({ set: setMock })
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(setMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'admin',
+        membershipStatus: 'inactive',
+        deactivatedAt: target.deactivatedAt,
+        deactivatedBy: OTHER_USER_ID,
+      }),
+    )
   })
 })

@@ -88,7 +88,13 @@ export async function getAuthContext(): Promise<AuthResult> {
       const [preferred] = await db
         .select({ workspaceId: workspaceMembers.workspaceId })
         .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, preferredWorkspaceId)))
+        .where(
+          and(
+            eq(workspaceMembers.userId, user.id),
+            eq(workspaceMembers.workspaceId, preferredWorkspaceId),
+            eq(workspaceMembers.membershipStatus, 'active'),
+          ),
+        )
         .limit(1)
 
       if (preferred) {
@@ -101,7 +107,12 @@ export async function getAuthContext(): Promise<AuthResult> {
     const [member] = await db
       .select({ workspaceId: workspaceMembers.workspaceId })
       .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, user.id))
+      .where(
+        and(
+          eq(workspaceMembers.userId, user.id),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ),
+      )
       .limit(1)
 
     if (!member) {
