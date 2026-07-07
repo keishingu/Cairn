@@ -45,17 +45,31 @@ function resolveClientIp(request: NextRequest): string | null {
   return realIp || null
 }
 
+function resolveRedisCredentials() {
+  const upstashUrl = process.env['UPSTASH_REDIS_REST_URL']?.trim() || null
+  const upstashToken = process.env['UPSTASH_REDIS_REST_TOKEN']?.trim() || null
+  if (upstashUrl && upstashToken) {
+    return { url: upstashUrl, token: upstashToken }
+  }
+
+  const kvUrl = getFirstConfiguredEnv('KV_REST_API_URL')
+  const kvToken = getFirstConfiguredEnv('KV_REST_API_TOKEN')
+  if (kvUrl && kvToken) {
+    return { url: kvUrl, token: kvToken }
+  }
+
+  return null
+}
+
 function getRateLimiters() {
   if (ratelimiters) return ratelimiters
 
-  const redisUrl = getFirstConfiguredEnv('UPSTASH_REDIS_REST_URL', 'KV_REST_API_URL')
-  const redisToken = getFirstConfiguredEnv('UPSTASH_REDIS_REST_TOKEN', 'KV_REST_API_TOKEN')
-
-  if (!redisUrl || !redisToken) {
+  const credentials = resolveRedisCredentials()
+  if (!credentials) {
     throw new Error('UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are required')
   }
 
-  const redis = new Redis({ url: redisUrl, token: redisToken })
+  const redis = new Redis(credentials)
 
   ratelimiters = {
     '/api/auth/webview-handoff': new Ratelimit({

@@ -89,4 +89,26 @@ describe('rate-limit', () => {
     expect(res?.status).toBe(429)
     await expect(res?.json()).resolves.toEqual({ error: 'Too many requests' })
   })
+
+  it('Upstash が片方だけ設定されていても KV の組み合わせへフォールバックする', async () => {
+    process.env['UPSTASH_REDIS_REST_URL'] = 'https://upstash.example.com'
+    delete process.env['UPSTASH_REDIS_REST_TOKEN']
+    process.env['KV_REST_API_URL'] = 'https://kv.example.com'
+    process.env['KV_REST_API_TOKEN'] = 'kv-token'
+
+    const { enforceRateLimit } = await import('./rate-limit')
+    const res = await enforceRateLimit(
+      makeRequest('/api/workspaces/invites', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.25' },
+      }),
+      { waitUntil: waitUntilMock },
+    )
+
+    expect(res).toBeNull()
+    expect(redisCtorMock).toHaveBeenCalledWith({
+      url: 'https://kv.example.com',
+      token: 'kv-token',
+    })
+  })
 })
