@@ -16,6 +16,11 @@ const RATE_LIMIT_POLICIES = {
     limit: 10,
     window: '1 h',
   },
+  '/api/projects/[id]/guest-invite': {
+    bucket: 'workspace-invites',
+    limit: 10,
+    window: '1 h',
+  },
 } as const
 
 type RateLimitPath = keyof typeof RATE_LIMIT_POLICIES
@@ -90,27 +95,46 @@ function getRateLimiters() {
       analytics: true,
       prefix: '@cairn/workspace-invites',
     }),
+    '/api/projects/[id]/guest-invite': new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(
+        RATE_LIMIT_POLICIES['/api/projects/[id]/guest-invite'].limit,
+        RATE_LIMIT_POLICIES['/api/projects/[id]/guest-invite'].window,
+      ),
+      analytics: true,
+      prefix: '@cairn/workspace-invites',
+    }),
   }
 
   return ratelimiters
 }
 
-export function isRateLimitedPath(pathname: string): pathname is RateLimitPath {
+function normalizeRateLimitedPath(pathname: string): RateLimitPath | null {
   const normalizedPathname =
     pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
-  return normalizedPathname in RATE_LIMIT_POLICIES
+  if (normalizedPathname in RATE_LIMIT_POLICIES) {
+    return normalizedPathname as RateLimitPath
+  }
+
+  if (/^\/api\/projects\/[^/]+\/guest-invite$/.test(normalizedPathname)) {
+    return '/api/projects/[id]/guest-invite'
+  }
+
+  return null
+}
+
+export function isRateLimitedPath(pathname: string): pathname is RateLimitPath {
+  return normalizeRateLimitedPath(pathname) !== null
 }
 
 export async function enforceRateLimit(
   request: NextRequest,
   event?: Pick<NextFetchEvent, 'waitUntil'>,
 ): Promise<NextResponse | null> {
-  const { pathname } = request.nextUrl
-  const normalizedPathname =
-    pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
-  if (!isRateLimitedPath(normalizedPathname) || request.method !== 'POST') return null
+  const rateLimitPath = normalizeRateLimitedPath(request.nextUrl.pathname)
+  if (!rateLimitPath || request.method !== 'POST') return null
 
-  const policy = RATE_LIMIT_POLICIES[normalizedPathname]
+  const policy = RATE_LIMIT_POLICIES[rateLimitPath]
   const identifier = resolveClientIp(request)
 
   if (!identifier) {
@@ -122,7 +146,7 @@ export async function enforceRateLimit(
 
   let limiter: InstanceType<typeof Ratelimit>
   try {
-    limiter = getRateLimiters()[normalizedPathname]!
+    limiter = getRateLimiters()[rateLimitPath]!
   } catch (error) {
     console.error('[rate-limit] Redis configuration is missing:', error)
     return NextResponse.json({ error: 'Rate limit is unavailable' }, { status: 503 })

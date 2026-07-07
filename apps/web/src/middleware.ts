@@ -78,5 +78,6 @@ export const config = {
     '/((?!_next/static|_next/image|favicon.ico|sw.js|.*\\.webmanifest|api/).*)',
     '/api/auth/webview-handoff',
     '/api/workspaces/invites',
+    '/api/projects/:path*/guest-invite',
   ],
 }

@@ -68,6 +68,21 @@ describe('rate-limit', () => {
     expect(waitUntilMock).toHaveBeenCalledTimes(1)
   })
 
+  it('project guest invite API も workspace invite と同じ制限を使う', async () => {
+    const { enforceRateLimit } = await import('./rate-limit')
+    const res = await enforceRateLimit(
+      makeRequest('/api/projects/project-1/guest-invite', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.26' },
+      }),
+      { waitUntil: waitUntilMock },
+    )
+
+    expect(res).toBeNull()
+    expect(limitMock).toHaveBeenCalledWith('workspace-invites:203.0.113.26')
+    expect(waitUntilMock).toHaveBeenCalledTimes(1)
+  })
+
   it('末尾スラッシュ付きでも上限超過なら 429 を返す', async () => {
     limitMock.mockResolvedValue({
       success: false,
