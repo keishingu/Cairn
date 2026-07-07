@@ -33,7 +33,7 @@ export async function PATCH(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceMembers } = await import('@cairn/db')
+    const { profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and, count } = await import('drizzle-orm')
 
     const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
@@ -42,8 +42,9 @@ export async function PATCH(
     }
 
     const [target] = await db
-      .select({ role: workspaceMembers.role })
+      .select({ role: workspaceMembers.role, kind: profiles.kind })
       .from(workspaceMembers)
+      .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
       .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
       .limit(1)
 
@@ -52,6 +53,9 @@ export async function PATCH(
     }
 
     const currentRole = target.role
+    if (target.kind === 'bot') {
+      return NextResponse.json({ error: 'Bot member role cannot be changed' }, { status: 422 })
+    }
 
     // ゲストと通常ロール間の遷移は禁止する。
     // ゲストのアクセス範囲は project_members で表現されるが、通常ロールはWS全体を参照するため、
@@ -86,7 +90,12 @@ export async function PATCH(
       const ownerCountRows = await db
         .select({ ownerCount: count() })
         .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.role, 'owner')))
+        .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
+        .where(and(
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.role, 'owner'),
+          eq(profiles.kind, 'human'),
+        ))
       const ownerCount = Number(ownerCountRows[0]?.ownerCount ?? 0)
 
       if (ownerCount <= 1) {

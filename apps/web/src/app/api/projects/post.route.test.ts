@@ -66,6 +66,7 @@ vi.mock('@cairn/db', () => ({
   profiles: {
     id: 'pr.id',
     displayName: 'pr.displayName',
+    kind: 'pr.kind',
   },
 }))
 
@@ -138,7 +139,7 @@ describe('POST /api/projects', () => {
         catch: p.catch.bind(p),
         finally: p.finally.bind(p),
       }
-      for (const m of ['from', 'where', 'leftJoin']) c[m] = vi.fn().mockReturnValue(c)
+      for (const m of ['from', 'where', 'leftJoin', 'innerJoin']) c[m] = vi.fn().mockReturnValue(c)
       return c
     }
 
@@ -190,5 +191,34 @@ describe('POST /api/projects', () => {
     expect(body.memberNames).toEqual(['Alice', 'Bob'])
     expect(body.isMember).toBe(false)
     expect(mockDb.insert).toHaveBeenCalledTimes(3)
+  })
+
+  it('bot プロフィールは project_members に追加できない', async () => {
+    const selectChain = (result: unknown[]) => {
+      const p = Promise.resolve(result)
+      const c: Record<string, unknown> = {
+        then: p.then.bind(p),
+        catch: p.catch.bind(p),
+        finally: p.finally.bind(p),
+      }
+      for (const m of ['from', 'where', 'leftJoin', 'innerJoin']) c[m] = vi.fn().mockReturnValue(c)
+      return c
+    }
+
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+
+    const { POST } = await import('./route')
+    const res = await POST(new Request('http://localhost/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: '新規プロジェクト',
+        memberUserIds: [MEMBER_A],
+      }),
+    }))
+
+    expect(res.status).toBe(422)
+    await expect(res.json()).resolves.toMatchObject({ error: 'User is not a workspace member' })
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 })
