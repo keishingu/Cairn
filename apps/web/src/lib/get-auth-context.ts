@@ -82,6 +82,7 @@ export async function getAuthContext(): Promise<AuthResult> {
   const preferredWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
 
   const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
+  const fallbackCacheKey = user.id
   const cached = workspaceCache.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) {
     return { ctx: { userId: user.id, workspaceId: cached.workspaceId }, error: null }
@@ -120,7 +121,7 @@ export async function getAuthContext(): Promise<AuthResult> {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
-    workspaceCache.set(cacheKey, {
+    workspaceCache.set(fallbackCacheKey, {
       workspaceId: member.workspaceId,
       expiresAt: Date.now() + WORKSPACE_CACHE_TTL_MS,
     })

@@ -140,4 +140,29 @@ describe('get-auth-context', () => {
     })
     expect(mockDb.select).toHaveBeenCalledTimes(2)
   })
+
+  it('inactive な preferred workspace の fallback を同じ preferred key へキャッシュしない', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-preferred' }) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-fallback' }]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-preferred' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+
+    const first = await getAuthContext()
+    const second = await getAuthContext()
+
+    expect(first).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-fallback' },
+      error: null,
+    })
+    expect(second).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-preferred' },
+      error: null,
+    })
+    expect(mockDb.select).toHaveBeenCalledTimes(3)
+  })
 })
