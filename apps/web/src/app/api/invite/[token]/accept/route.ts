@@ -37,19 +37,11 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid or expired invite' }, { status: 404 })
     }
 
-    // 既にメンバーか確認
-    const [existingMembership] = await db
-      .select({ id: workspaceMembers.id })
-      .from(workspaceMembers)
-      .where(
-        and(
-          eq(workspaceMembers.workspaceId, invite.workspaceId),
-          eq(workspaceMembers.userId, userId),
-        )
-      )
-      .limit(1)
-
-    if (existingMembership) {
+    // 既存メンバーか確認。非活性（卒業生）なら招待受け入れで再活性化し、同一性・履歴のまま復帰させる。
+    // 既に活性なら何もしない。いずれも招待の消費（useCount 加算）は行わない（復帰扱いのため）。
+    const { reactivateViaInvite } = await import('@/lib/access/lifecycle')
+    const membershipState = await reactivateViaInvite(invite.workspaceId, userId)
+    if (membershipState !== 'none') {
       return NextResponse.json({ ok: true, workspaceId: invite.workspaceId })
     }
 

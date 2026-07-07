@@ -132,12 +132,12 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(res.status).toBe(404)
   })
 
-  it('既にメンバーの場合はべき等に 200 を返す（use_count を増やさない）', async () => {
+  it('既に active なメンバーの場合はべき等に 200 を返す（use_count を増やさない）', async () => {
     const invite = { id: 'inv-01', workspaceId: WORKSPACE_ID, role: 'member', expiresAt: null, maxUses: null, useCount: 0 }
 
     mockDb.select
-      .mockReturnValueOnce(selectChain([invite]))                                // 招待取得
-      .mockReturnValueOnce(selectChain([{ id: 'existing-membership-id' }]))     // 既存メンバー
+      .mockReturnValueOnce(selectChain([invite]))                                        // 招待取得
+      .mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }])) // 既存 active メンバー
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -149,8 +149,28 @@ describe('POST /api/invite/[token]/accept', () => {
     const body = await res.json() as { ok: boolean; workspaceId: string }
     expect(body.ok).toBe(true)
     expect(body.workspaceId).toBe(WORKSPACE_ID)
-    // update は呼ばれないこと（use_count が増えない）
+    // update は呼ばれないこと（use_count が増えない・再活性化もしない）
     expect(mockDb.update).not.toHaveBeenCalled()
+  })
+
+  it('非活性（卒業生）メンバーは招待受け入れで再活性化され、use_count は増やさない', async () => {
+    const invite = { id: 'inv-01', workspaceId: WORKSPACE_ID, role: 'member', expiresAt: null, maxUses: null, useCount: 0 }
+
+    mockDb.select
+      .mockReturnValueOnce(selectChain([invite]))                                          // 招待取得
+      .mockReturnValueOnce(selectChain([{ role: 'guest', membershipStatus: 'inactive' }]))  // 既存 inactive メンバー
+    // reactivateViaInvite の membership 更新
+    mockDb.update.mockReturnValueOnce({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) })
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/invite/${VALID_TOKEN}/accept`, { method: 'POST' }),
+      { params: Promise.resolve({ token: VALID_TOKEN }) },
+    )
+
+    expect(res.status).toBe(200)
+    // membership の再活性化 update は 1 回、招待の useCount 更新（2 回目の update）は行われない
+    expect(mockDb.update).toHaveBeenCalledTimes(1)
   })
 
   it('max_uses に達していると 410 を返す', async () => {
