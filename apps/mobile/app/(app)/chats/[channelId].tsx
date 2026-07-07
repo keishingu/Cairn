@@ -26,7 +26,17 @@ function MessageBubble({ message, mine }: { message: MessageDto; mine: boolean }
     <View style={[styles.bubbleRow, mine && styles.bubbleRowMine]}>
       <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
         {!mine && <Text style={styles.senderName}>{message.senderName}</Text>}
-        <Text style={[styles.bubbleText, mine && styles.bubbleTextMine]}>{parseMentions(message.content)}</Text>
+        {message.content.length > 0 && (
+          <Text style={[styles.bubbleText, mine && styles.bubbleTextMine]}>{parseMentions(message.content)}</Text>
+        )}
+        {message.attachments.map((attachment) => (
+          <View key={attachment.id} style={styles.attachmentRow}>
+            <Ionicons name="attach" size={14} color={mine ? '#DBEAFE' : '#64748B'} />
+            <Text style={[styles.attachmentText, mine && styles.attachmentTextMine]} numberOfLines={1}>
+              {attachment.fileName}
+            </Text>
+          </View>
+        ))}
         <Text style={[styles.bubbleTime, mine && styles.bubbleTimeMine]}>{formatTime(message.createdAt)}</Text>
       </View>
     </View>
@@ -162,6 +172,9 @@ const styles = StyleSheet.create({
   senderName: { fontSize: 12, fontWeight: '600', color: '#64748B' },
   bubbleText: { fontSize: 15, color: '#0F172A' },
   bubbleTextMine: { color: '#FFFFFF' },
+  attachmentRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  attachmentText: { fontSize: 13, color: '#334155', flexShrink: 1 },
+  attachmentTextMine: { color: '#EFF6FF' },
   bubbleTime: { fontSize: 10, color: '#94A3B8', alignSelf: 'flex-end' },
   bubbleTimeMine: { color: '#DBEAFE' },
   inputRow: {
