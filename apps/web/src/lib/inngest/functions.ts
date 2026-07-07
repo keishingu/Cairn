@@ -64,14 +64,20 @@ export const onMessageCreated = inngest.createFunction(
     const { messageId, channelId, workspaceId, senderId, senderName, content, attachmentFileIds } =
       event.data as MessageCreatedEvent['data']
 
-    // チャンネルメンバー（送信者を除く）を取得
+    // チャンネルメンバー（送信者を除く）を取得。非活性メンバーは DM・ファイル通知の宛先に
+    // しないよう active_workspace_members に inner join して active のみに絞る
+    // （deactivation は履歴のため channel_members 行を残すため、ここで除外しないと通知が飛ぶ）
     const members = await step.run('fetch-members', async () => {
-      const { db, channelMembers, profiles } = await import('@cairn/db')
-      const { eq } = await import('drizzle-orm')
+      const { db, channelMembers, profiles, activeWorkspaceMembers } = await import('@cairn/db')
+      const { eq, and } = await import('drizzle-orm')
       return db
         .select({ userId: channelMembers.userId, displayName: profiles.displayName })
         .from(channelMembers)
         .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
+        .innerJoin(activeWorkspaceMembers, and(
+          eq(activeWorkspaceMembers.userId, channelMembers.userId),
+          eq(activeWorkspaceMembers.workspaceId, workspaceId),
+        ))
         .where(eq(channelMembers.channelId, channelId))
         .then(rows => rows.filter(r => r.userId !== senderId))
     })

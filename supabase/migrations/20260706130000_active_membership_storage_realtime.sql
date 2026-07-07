@@ -42,8 +42,9 @@ USING (
 );
 
 -- ─── Realtime: can_access_channel を active membership に限定 ─────────
--- 公開チャンネル（workspace / project）の判定を active_workspace_members 経由にし、
 -- 非活性メンバーが Realtime のメッセージ・リアクション等を受信し続けないようにする。
+-- deactivation は履歴のため channel_members 行を残すので、プライベート・DM でも
+-- 「チャンネルメンバーである」だけでなく「当該 WS の active メンバーである」ことを要求する。
 create or replace function public.can_access_channel(p_channel_id uuid)
 returns boolean
 language sql
@@ -55,6 +56,15 @@ as $$
     select 1
     from channels c
     where c.id = p_channel_id
+      -- 全チャンネル共通: 当該ワークスペースの active メンバーであること
+      and exists (
+        select 1 from active_workspace_members wm
+        where wm.user_id = auth.uid()
+          and wm.workspace_id = coalesce(
+            c.workspace_id,
+            (select p.workspace_id from projects p where p.id = c.project_id)
+          )
+      )
       and (
         -- プライベートチャンネル・DM: チャンネルメンバーのみ
         (
@@ -69,14 +79,6 @@ as $$
         (
           c.is_private = false
           and c.type in ('workspace', 'project')
-          and exists (
-            select 1 from active_workspace_members wm
-            where wm.user_id = auth.uid()
-              and wm.workspace_id = coalesce(
-                c.workspace_id,
-                (select p.workspace_id from projects p where p.id = c.project_id)
-              )
-          )
         )
       )
   );

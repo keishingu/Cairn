@@ -34,16 +34,18 @@ export async function GET(
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { projects, projectStatuses, projectMembers, workspaceMembers } = await import('@cairn/db')
     const { eq, and, count, inArray } = await import('drizzle-orm')
 
-    // verify the target user is an active member of this workspace
+    // 対象ユーザーが当該 WS に所属していることを確認する。ここはアーカイブ（非活性）済み
+    // メンバーの保存済みプロジェクト履歴を管理者が閲覧する経路でもあるため、active に絞らず
+    // workspace_members を引く（§5: 履歴は本人名義で残し、閲覧できるようにする）
     const [wsMember] = await db
-      .select({ id: activeWorkspaceMembers.id })
-      .from(activeWorkspaceMembers)
+      .select({ id: workspaceMembers.id })
+      .from(workspaceMembers)
       .where(and(
-        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
-        eq(activeWorkspaceMembers.userId, userId),
+        eq(workspaceMembers.workspaceId, ctx.workspaceId),
+        eq(workspaceMembers.userId, userId),
       ))
 
     if (!wsMember) {
