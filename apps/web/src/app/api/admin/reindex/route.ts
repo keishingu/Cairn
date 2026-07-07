@@ -14,8 +14,8 @@ export async function POST() {
   if (forbidden) return forbidden
 
   try {
-    const { db, files, workspaceMembers, projects } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { db, files, profiles, workspaceMembers, projects } = await import('@cairn/db')
+    const { and, eq } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client')
     const { isIndexable } = await import('@/lib/ai/extract-text')
 
@@ -25,7 +25,11 @@ export async function POST() {
         .where(eq(files.workspaceId, ctx.workspaceId)),
       db.select({ userId: workspaceMembers.userId })
         .from(workspaceMembers)
-        .where(eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+        .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
+        .where(and(
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(profiles.kind, 'human'),
+        )),
       db.select({ id: projects.id })
         .from(projects)
         .where(eq(projects.workspaceId, ctx.workspaceId)),
