@@ -1,0 +1,9 @@
+{
+  "name": "vertical-video-scripts",
+  "private": true,
+  "type": "module",
+  "description": "vertical-video Skill のレンダリング依存（pnpm workspace 対象外）",
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}
