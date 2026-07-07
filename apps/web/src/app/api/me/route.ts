@@ -3,7 +3,6 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { USER_STATUSES, type UserStatus } from '@/lib/user-status'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface CurrentUserDto {
@@ -12,8 +11,6 @@ export interface CurrentUserDto {
   avatarUrl: string | null
   email: string | null
   bio: string | null
-  status: UserStatus
-  statusMessage: string | null
   wsRole: 'owner' | 'admin' | 'member' | 'guest'
 }
 
@@ -39,8 +36,6 @@ export async function GET() {
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         bio: profiles.bio,
-        status: workspaceMembers.status,
-        statusMessage: workspaceMembers.statusMessage,
         wsRole: workspaceMembers.role,
       })
       .from(profiles)
@@ -60,8 +55,6 @@ export async function GET() {
       avatarUrl: row.avatarUrl ?? null,
       email,
       bio: row.bio,
-      status: row.status ?? 'online',
-      statusMessage: row.statusMessage ?? null,
       wsRole: row.wsRole ?? 'member',
     } satisfies CurrentUserDto)
   } catch (err) {
@@ -81,23 +74,15 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const b = body as { displayName?: string; bio?: string | null; status?: UserStatus; statusMessage?: string | null }
+  const b = body as { displayName?: string; bio?: string | null }
   const hasDisplayName = b.displayName !== undefined
   const hasBio = 'bio' in (b as object)
-  const hasStatus = b.status !== undefined
-  const hasStatusMessage = 'statusMessage' in (b as object)
 
-  if (!hasDisplayName && !hasBio && !hasStatus && !hasStatusMessage) {
+  if (!hasDisplayName && !hasBio) {
     return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
   }
   if (hasDisplayName && !b.displayName?.trim()) {
     return NextResponse.json({ error: '表示名は必須です' }, { status: 422 })
-  }
-  if (hasStatus && !USER_STATUSES.includes(b.status!)) {
-    return NextResponse.json({ error: 'ステータスの値が不正です' }, { status: 422 })
-  }
-  if (hasStatusMessage && b.statusMessage != null && b.statusMessage.length > 100) {
-    return NextResponse.json({ error: 'ステータスメッセージは100文字以内で入力してください' }, { status: 422 })
   }
 
   try {
@@ -116,16 +101,6 @@ export async function PATCH(req: Request) {
       await db
         .update(workspaceMembers)
         .set({ displayName: b.displayName!.trim() })
-        .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-    }
-
-    if (hasStatus || hasStatusMessage) {
-      const set: { status?: UserStatus; statusMessage?: string | null } = {}
-      if (hasStatus) set.status = b.status!
-      if (hasStatusMessage) set.statusMessage = b.statusMessage?.trim() || null
-      await db
-        .update(workspaceMembers)
-        .set(set)
         .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
     }
 
