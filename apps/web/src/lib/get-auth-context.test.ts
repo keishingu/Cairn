@@ -114,4 +114,26 @@ describe('get-auth-context', () => {
     expect(result.ctx).toBeNull()
     expect(result.error?.status).toBe(403)
   })
+
+  it('warm cache に残った workspace も inactive 化後に再検証する', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1' }]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const first = await getAuthContext()
+    const second = await getAuthContext()
+
+    expect(first).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1' },
+      error: null,
+    })
+    expect(second.ctx).toBeNull()
+    expect(second.error?.status).toBe(403)
+    expect(mockDb.select).toHaveBeenCalledTimes(3)
+  })
 })

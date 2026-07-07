@@ -318,6 +318,7 @@ interface FormState {
 export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initialEndDate }: CreateProjectModalProps) => {
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
   const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members'], queryFn: fetchWorkspaceMembers })
+  const activeWorkspaceMembers = workspaceMembers.filter((member) => member.membershipStatus === 'active')
   const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])
   const [photosLoading, setPhotosLoading] = React.useState(false)
 
@@ -485,12 +486,16 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
             </Field>
 
             <Field label="メンバー" hint={form.memberUserIds.length > 0 ? `${form.memberUserIds.length}人選択` : '任意'}>
-              {workspaceMembers.length === 0 ? (
+              {activeWorkspaceMembers.length === 0 ? (
                 <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--card)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-4)' }}>
                   追加候補を読み込み中…
                 </div>
               ) : (
-                <MemberPicker members={workspaceMembers} value={form.memberUserIds} onChange={v => set('memberUserIds', v)}/>
+                <MemberPicker
+                  members={activeWorkspaceMembers}
+                  value={form.memberUserIds}
+                  onChange={v => set('memberUserIds', v)}
+                />
               )}
             </Field>
 

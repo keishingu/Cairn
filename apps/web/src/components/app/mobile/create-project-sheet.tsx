@@ -65,6 +65,7 @@ interface CreateProjectSheetProps {
 export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', initialEndDate = '' }: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
   const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members'], queryFn: fetchWorkspaceMembers })
+  const activeWorkspaceMembers = workspaceMembers.filter((member) => member.membershipStatus === 'active')
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
@@ -329,7 +330,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
               <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{memberUserIds.length > 0 ? `${memberUserIds.length}人選択` : '任意'}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflow: 'auto' }}>
-              {workspaceMembers.map(member => {
+              {activeWorkspaceMembers.map(member => {
                 const selected = memberUserIds.includes(member.userId)
                 return (
                   <button

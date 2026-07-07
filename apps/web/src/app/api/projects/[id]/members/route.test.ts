@@ -64,7 +64,14 @@ vi.mock('@cairn/db', () => ({
     projectId: 'pm.projectId',
   },
   projects: { id: 'p.id', workspaceId: 'p.workspaceId' },
-  workspaceMembers: { id: 'wm.id', userId: 'wm.userId', workspaceId: 'wm.workspaceId', displayName: 'wm.displayName', avatarUrl: 'wm.avatarUrl' },
+  workspaceMembers: {
+    id: 'wm.id',
+    userId: 'wm.userId',
+    workspaceId: 'wm.workspaceId',
+    membershipStatus: 'wm.membershipStatus',
+    displayName: 'wm.displayName',
+    avatarUrl: 'wm.avatarUrl',
+  },
 }))
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
@@ -177,6 +184,26 @@ describe('POST /api/projects/[id]/members', () => {
     expect(body.userId).toBe(USER_A)
     expect(body.role).toBe('leader')
     expect(body.email).toBe('alice@example.com')
+  })
+
+  it('inactive メンバーは追加できない', async () => {
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: PROJECT_ID }]))
+      .mockReturnValueOnce(chain([]))
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/projects/${PROJECT_ID}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: [USER_A], role: 'member' }),
+      }),
+      { params: Promise.resolve({ id: PROJECT_ID }) },
+    )
+
+    expect(res.status).toBe(422)
+    expect(await res.json()).toEqual({ error: 'User is not a workspace member' })
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 
   it('userIds が配列でない場合は 422 を返す', async () => {

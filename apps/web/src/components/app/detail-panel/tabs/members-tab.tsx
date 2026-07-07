@@ -451,7 +451,9 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
   const removeMutation = useRemoveProjectMember(projectId)
 
   const memberUserIds = new Set(members.map(m => m.userId))
-  const inviteable = wsMembers.filter(m => !memberUserIds.has(m.userId))
+  const inviteable = wsMembers.filter(
+    (member) => member.membershipStatus === 'active' && !memberUserIds.has(member.userId),
+  )
 
   const closeInvite = () => {
     setShowInvite(false)
