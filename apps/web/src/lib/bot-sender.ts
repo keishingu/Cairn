@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto'
 import type { MessageType } from '@cairn/shared'
 import { channels, db, files, messageAttachments, messages, profiles, projects, workspaceMembers, workspaces } from '@cairn/db'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { inngest } from '@/lib/inngest/client'
 import type { MessageCreatedEvent } from '@/lib/inngest/events'
 
@@ -132,10 +132,31 @@ async function assertBotPostTargets(workspaceId: string, channelId: string, atta
   }
 }
 
+async function assertBotReplyTarget(channelId: string, parentMessageId: string | null) {
+  if (!parentMessageId) {
+    return
+  }
+
+  const [parent] = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(and(
+      eq(messages.id, parentMessageId),
+      eq(messages.channelId, channelId),
+      isNull(messages.deletedAt),
+    ))
+    .limit(1)
+
+  if (!parent) {
+    throw new Error('Bot reply target message is not accessible from target channel')
+  }
+}
+
 export async function postBotMessage(input: PostBotMessageInput) {
   const { workspaceId, channelId, content, messageType = 'text', parentMessageId = null, attachmentFileIds = [] } = input
   const bot = await ensureWorkspaceBotProfile(workspaceId)
   await assertBotPostTargets(workspaceId, channelId, attachmentFileIds)
+  await assertBotReplyTarget(channelId, parentMessageId)
 
   const message = await db.transaction(async (tx) => {
     const [inserted] = await tx

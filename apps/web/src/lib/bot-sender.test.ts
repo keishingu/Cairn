@@ -11,6 +11,7 @@ const {
   mockEq,
   mockAnd,
   mockInArray,
+  mockIsNull,
   mockSql,
   mockInngestSend,
 } = vi.hoisted(() => ({
@@ -21,6 +22,7 @@ const {
   mockEq: vi.fn(() => Symbol('eq')),
   mockAnd: vi.fn(() => Symbol('and')),
   mockInArray: vi.fn(() => Symbol('inArray')),
+  mockIsNull: vi.fn(() => Symbol('isNull')),
   mockSql: vi.fn(() => Symbol('sql')),
   mockInngestSend: vi.fn(() => Promise.resolve(undefined)),
 }))
@@ -47,6 +49,8 @@ vi.mock('@cairn/db', () => ({
   },
   messages: {
     id: 'messages.id',
+    channelId: 'messages.channelId',
+    deletedAt: 'messages.deletedAt',
     content: 'messages.content',
     senderId: 'messages.senderId',
     createdAt: 'messages.createdAt',
@@ -58,6 +62,7 @@ vi.mock('drizzle-orm', () => ({
   and: mockAnd,
   eq: mockEq,
   inArray: mockInArray,
+  isNull: mockIsNull,
   sql: mockSql,
 }))
 
@@ -148,6 +153,7 @@ describe('bot sender helpers', () => {
         storagePath: '10000000-0000-0000-0000-000000000001/20000000-0000-0000-0000-000000000001/file-2.png',
       },
     ])
+    mockSelectResult([{ id: 'parent-1' }])
 
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
     const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
@@ -188,6 +194,7 @@ describe('bot sender helpers', () => {
       workspaceId: '10000000-0000-0000-0000-000000000001',
       channelId: '20000000-0000-0000-0000-000000000001',
       content: 'hello from bot',
+      parentMessageId: 'parent-1',
       attachmentFileIds: ['file-1', 'file-2'],
     })
 
@@ -351,5 +358,37 @@ describe('bot sender helpers', () => {
       content: 'hello from bot',
       attachmentFileIds: ['file-1'],
     })).rejects.toThrow('Bot post attachment is not accessible from target channel')
+  })
+
+  it('postBotMessage は別 channel の親メッセージを返信先にできない', async () => {
+    mockSelectResult([{ name: 'Cairn' }])
+    mockSelectResult([{ effectiveWorkspaceId: '10000000-0000-0000-0000-000000000001', projectId: null }])
+    mockSelectResult([])
+
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
+    const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
+    const profileInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate,
+      }),
+    }
+    const workspaceMemberInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing,
+      }),
+    }
+    mockTxInsert.mockReturnValueOnce(profileInsertBuilder).mockReturnValueOnce(workspaceMemberInsertBuilder)
+    mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<unknown>) => {
+      return fn({ insert: mockTxInsert })
+    })
+
+    const { postBotMessage } = await import('./bot-sender')
+
+    await expect(postBotMessage({
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      channelId: '20000000-0000-0000-0000-000000000001',
+      content: 'hello from bot',
+      parentMessageId: 'parent-404',
+    })).rejects.toThrow('Bot reply target message is not accessible from target channel')
   })
 })
