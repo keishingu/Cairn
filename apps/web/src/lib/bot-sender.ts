@@ -57,7 +57,10 @@ export async function ensureWorkspaceBotProfile(workspaceId: string): Promise<Bo
         kind: 'bot',
         displayName,
       })
-      .onConflictDoNothing()
+      .onConflictDoUpdate({
+        target: profiles.id,
+        set: { displayName },
+      })
 
     await tx
       .insert(workspaceMembers)

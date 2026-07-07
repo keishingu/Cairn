@@ -76,13 +76,20 @@ describe('bot sender helpers', () => {
   it('ensureWorkspaceBotProfile は bot profile と workspace member を idempotent に用意する', async () => {
     mockSelectResult([{ name: 'Cairn' }])
 
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
     const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
     const insertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate,
+      }),
+    }
+    const memberInsertBuilder = {
       values: vi.fn().mockReturnValue({
         onConflictDoNothing,
       }),
     }
     mockTxInsert.mockReturnValue(insertBuilder)
+    mockTxInsert.mockReturnValueOnce(insertBuilder).mockReturnValueOnce(memberInsertBuilder)
     mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<unknown>) => {
       return fn({ insert: mockTxInsert })
     })
@@ -100,13 +107,23 @@ describe('bot sender helpers', () => {
       kind: 'bot',
       displayName: 'Cairn Bot',
     }))
+    expect(onConflictDoUpdate).toHaveBeenCalledWith({
+      target: 'profiles.id',
+      set: { displayName: 'Cairn Bot' },
+    })
   })
 
   it('postBotMessage は bot 名義の投稿を保存して message/created を送る', async () => {
     mockSelectResult([{ name: 'Cairn' }])
 
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
     const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
     const profileInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate,
+      }),
+    }
+    const workspaceMemberInsertBuilder = {
       values: vi.fn().mockReturnValue({
         onConflictDoNothing,
       }),
@@ -126,7 +143,7 @@ describe('bot sender helpers', () => {
     }
     mockTxInsert
       .mockReturnValueOnce(profileInsertBuilder)
-      .mockReturnValueOnce(profileInsertBuilder)
+      .mockReturnValueOnce(workspaceMemberInsertBuilder)
       .mockReturnValueOnce(messageInsertBuilder)
       .mockReturnValueOnce(attachmentInsertBuilder)
     mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<unknown>) => {
