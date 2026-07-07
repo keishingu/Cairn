@@ -40,7 +40,9 @@ vi.mock('@cairn/db', () => ({
     id: 'files.id',
     workspaceId: 'files.workspaceId',
     projectId: 'files.projectId',
+    fileType: 'files.fileType',
     storagePath: 'files.storagePath',
+    metadata: 'files.metadata',
   },
   projects: { id: 'projects.id', workspaceId: 'projects.workspaceId' },
   workspaceMembers: {
@@ -144,13 +146,17 @@ describe('bot sender helpers', () => {
         id: 'file-1',
         workspaceId: '10000000-0000-0000-0000-000000000001',
         projectId: null,
+        fileType: 'document',
         storagePath: '10000000-0000-0000-0000-000000000001/20000000-0000-0000-0000-000000000001/file-1.png',
+        metadata: {},
       },
       {
         id: 'file-2',
         workspaceId: '10000000-0000-0000-0000-000000000001',
         projectId: null,
+        fileType: 'document',
         storagePath: '10000000-0000-0000-0000-000000000001/20000000-0000-0000-0000-000000000001/file-2.png',
+        metadata: {},
       },
     ])
     mockSelectResult([{ id: 'parent-1' }])
@@ -255,7 +261,9 @@ describe('bot sender helpers', () => {
       id: 'file-1',
       workspaceId: '10000000-0000-0000-0000-000000000001',
       projectId: null,
+      fileType: 'document',
       storagePath: '10000000-0000-0000-0000-000000000001/20000000-0000-0000-0000-000000000001/file-1.png',
+      metadata: {},
     }])
 
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
@@ -293,7 +301,9 @@ describe('bot sender helpers', () => {
       id: 'file-1',
       workspaceId: '10000000-0000-0000-0000-000000000001',
       projectId: 'project-2',
+      fileType: 'document',
       storagePath: '10000000-0000-0000-0000-000000000001/another-channel/file-1.png',
+      metadata: {},
     }])
 
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
@@ -330,7 +340,9 @@ describe('bot sender helpers', () => {
       id: 'file-1',
       workspaceId: '10000000-0000-0000-0000-000000000001',
       projectId: null,
+      fileType: 'document',
       storagePath: '10000000-0000-0000-0000-000000000001/another-channel/file-1.png',
+      metadata: {},
     }])
 
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
@@ -390,5 +402,64 @@ describe('bot sender helpers', () => {
       content: 'hello from bot',
       parentMessageId: 'parent-404',
     })).rejects.toThrow('Bot reply target message is not accessible from target channel')
+  })
+
+  it('postBotMessage は同じ channel に紐づく link attachment を許可する', async () => {
+    mockSelectResult([{ name: 'Cairn' }])
+    mockSelectResult([{ effectiveWorkspaceId: '10000000-0000-0000-0000-000000000001', projectId: null }])
+    mockSelectResult([{
+      id: 'file-1',
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      projectId: null,
+      fileType: 'link',
+      storagePath: null,
+      metadata: { channelIds: ['20000000-0000-0000-0000-000000000001'] },
+    }])
+
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
+    const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
+    const profileInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate,
+      }),
+    }
+    const workspaceMemberInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing,
+      }),
+    }
+    const messageReturning = vi.fn().mockResolvedValue([{
+      id: 'message-1',
+      content: 'hello from bot',
+      senderId: 'bot-1',
+      createdAt: new Date('2026-07-07T00:00:00.000Z'),
+    }])
+    const messageInsertBuilder = {
+      values: vi.fn().mockReturnValue({ returning: messageReturning }),
+    }
+    const attachmentValues = vi.fn().mockResolvedValue(undefined)
+    const attachmentInsertBuilder = {
+      values: attachmentValues,
+    }
+    mockTxInsert
+      .mockReturnValueOnce(profileInsertBuilder)
+      .mockReturnValueOnce(workspaceMemberInsertBuilder)
+      .mockReturnValueOnce(messageInsertBuilder)
+      .mockReturnValueOnce(attachmentInsertBuilder)
+    mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<unknown>) => {
+      return fn({ insert: mockTxInsert })
+    })
+
+    const { postBotMessage } = await import('./bot-sender')
+
+    await expect(postBotMessage({
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      channelId: '20000000-0000-0000-0000-000000000001',
+      content: 'hello from bot',
+      attachmentFileIds: ['file-1'],
+    })).resolves.toMatchObject({ id: 'message-1' })
+    expect(attachmentValues).toHaveBeenCalledWith([
+      { messageId: 'message-1', fileId: 'file-1', displayOrder: 0 },
+    ])
   })
 })

@@ -24,6 +24,19 @@ export interface BotProfileSummary {
   displayName: string
 }
 
+function readMetadataChannelIds(meta: Record<string, unknown>): Set<string> {
+  const ids = new Set<string>()
+  const legacyChannelId = meta['channelId']
+  if (typeof legacyChannelId === 'string') ids.add(legacyChannelId)
+  const channelIds = meta['channelIds']
+  if (Array.isArray(channelIds)) {
+    for (const id of channelIds) {
+      if (typeof id === 'string') ids.add(id)
+    }
+  }
+  return ids
+}
+
 function formatUuidFromHex(hex: string): string {
   const body = hex.slice(0, 32).split('')
   body[12] = '5'
@@ -100,7 +113,9 @@ async function assertBotPostTargets(workspaceId: string, channelId: string, atta
       id: files.id,
       workspaceId: files.workspaceId,
       projectId: files.projectId,
+      fileType: files.fileType,
       storagePath: files.storagePath,
+      metadata: files.metadata,
     })
     .from(files)
     .where(inArray(files.id, attachmentFileIds))
@@ -122,6 +137,11 @@ async function assertBotPostTargets(workspaceId: string, channelId: string, atta
 
     if (row.projectId) {
       throw new Error('Bot post attachment is not accessible from target channel')
+    }
+
+    const metadataChannelIds = readMetadataChannelIds((row.metadata ?? {}) as Record<string, unknown>)
+    if (row.fileType === 'link' && metadataChannelIds.has(channelId)) {
+      continue
     }
 
     const storageParts = row.storagePath?.split('/') ?? []
