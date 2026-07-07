@@ -128,17 +128,6 @@ async function assertBotPostTargets(workspaceId: string, channelId: string, atta
       throw new Error('Bot post attachment does not belong to workspace')
     }
 
-    if (channel.projectId) {
-      if (row.projectId !== channel.projectId) {
-        throw new Error('Bot post attachment is not accessible from target project')
-      }
-      continue
-    }
-
-    if (row.projectId) {
-      throw new Error('Bot post attachment is not accessible from target channel')
-    }
-
     const metadataChannelIds = readMetadataChannelIds((row.metadata ?? {}) as Record<string, unknown>)
     if (row.fileType === 'link' && metadataChannelIds.has(channelId)) {
       continue
@@ -161,7 +150,20 @@ async function assertBotPostTargets(workspaceId: string, channelId: string, atta
       .limit(1)
 
     if (!sharedIntoChannel) {
+      if (channel.projectId) {
+        if (row.projectId !== channel.projectId) {
+          throw new Error('Bot post attachment is not accessible from target project')
+        }
+        continue
+      }
+
+      if (row.projectId) {
+        throw new Error('Bot post attachment is not accessible from target channel')
+      }
+
       throw new Error('Bot post attachment is not accessible from target channel')
+    } else {
+      continue
     }
   }
 }

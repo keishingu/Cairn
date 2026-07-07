@@ -316,6 +316,7 @@ describe('bot sender helpers', () => {
       storagePath: '10000000-0000-0000-0000-000000000001/another-channel/file-1.png',
       metadata: {},
     }])
+    mockSelectResult([])
 
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
     const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
@@ -342,6 +343,66 @@ describe('bot sender helpers', () => {
       content: 'hello from bot',
       attachmentFileIds: ['file-1'],
     })).rejects.toThrow('Bot post attachment is not accessible from target project')
+  })
+
+  it('postBotMessage は project channel に既に添付済みの workspace attachment を再利用できる', async () => {
+    mockSelectResult([{ name: 'Cairn' }])
+    mockSelectResult([{ effectiveWorkspaceId: '10000000-0000-0000-0000-000000000001', projectId: 'project-1' }])
+    mockSelectResult([{
+      id: 'file-1',
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      projectId: null,
+      fileType: 'document',
+      storagePath: '10000000-0000-0000-0000-000000000001/another-channel/file-1.png',
+      metadata: {},
+    }])
+    mockSelectResult([{ messageId: 'existing-message-1' }])
+
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
+    const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
+    const profileInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate,
+      }),
+    }
+    const workspaceMemberInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing,
+      }),
+    }
+    const messageReturning = vi.fn().mockResolvedValue([{
+      id: 'message-1',
+      content: 'hello from bot',
+      senderId: 'bot-1',
+      createdAt: new Date('2026-07-07T00:00:00.000Z'),
+    }])
+    const messageInsertBuilder = {
+      values: vi.fn().mockReturnValue({ returning: messageReturning }),
+    }
+    const attachmentValues = vi.fn().mockResolvedValue(undefined)
+    const attachmentInsertBuilder = {
+      values: attachmentValues,
+    }
+    mockTxInsert
+      .mockReturnValueOnce(profileInsertBuilder)
+      .mockReturnValueOnce(workspaceMemberInsertBuilder)
+      .mockReturnValueOnce(messageInsertBuilder)
+      .mockReturnValueOnce(attachmentInsertBuilder)
+    mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<unknown>) => {
+      return fn({ insert: mockTxInsert })
+    })
+
+    const { postBotMessage } = await import('./bot-sender')
+
+    await expect(postBotMessage({
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      channelId: '20000000-0000-0000-0000-000000000001',
+      content: 'hello from bot',
+      attachmentFileIds: ['file-1'],
+    })).resolves.toMatchObject({ id: 'message-1' })
+    expect(attachmentValues).toHaveBeenCalledWith([
+      { messageId: 'message-1', fileId: 'file-1', displayOrder: 0 },
+    ])
   })
 
   it('postBotMessage は別 channel 由来の workspace attachment を private channel へ流し込ませない', async () => {
