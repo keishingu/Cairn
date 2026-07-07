@@ -172,6 +172,29 @@ describe('middleware', () => {
     expect(getUser).not.toHaveBeenCalled()
   })
 
+  it('rate limit 対象 API は Upstash が空文字でも KV 設定へフォールバックする', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+    process.env['UPSTASH_REDIS_REST_URL'] = ''
+    process.env['UPSTASH_REDIS_REST_TOKEN'] = ''
+    process.env['KV_REST_API_URL'] = 'https://kv.example.com'
+    process.env['KV_REST_API_TOKEN'] = 'kv-token'
+
+    const { middleware } = await import('./middleware')
+    const res = await middleware(
+      makeRequest('/api/workspaces/invites', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.21' },
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(redisCtorMock).toHaveBeenCalledWith({
+      token: 'kv-token',
+      url: 'https://kv.example.com',
+    })
+    expect(getUser).not.toHaveBeenCalled()
+  })
+
   it('rate limit 対象 API は IP を解決できないと 400 を返す', async () => {
     getUser.mockResolvedValue({ data: { user: null } })
 

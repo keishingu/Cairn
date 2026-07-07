@@ -24,6 +24,15 @@ let ratelimiters:
   | Partial<Record<RateLimitPath, InstanceType<typeof Ratelimit>>>
   | null = null
 
+function getFirstConfiguredEnv(...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = process.env[key]?.trim()
+    if (value) return value
+  }
+
+  return null
+}
+
 function resolveClientIp(request: NextRequest): string | null {
   const forwardedFor = request.headers.get('x-forwarded-for')
   if (forwardedFor) {
@@ -39,8 +48,8 @@ function resolveClientIp(request: NextRequest): string | null {
 function getRateLimiters() {
   if (ratelimiters) return ratelimiters
 
-  const redisUrl = process.env['UPSTASH_REDIS_REST_URL'] ?? process.env['KV_REST_API_URL']
-  const redisToken = process.env['UPSTASH_REDIS_REST_TOKEN'] ?? process.env['KV_REST_API_TOKEN']
+  const redisUrl = getFirstConfiguredEnv('UPSTASH_REDIS_REST_URL', 'KV_REST_API_URL')
+  const redisToken = getFirstConfiguredEnv('UPSTASH_REDIS_REST_TOKEN', 'KV_REST_API_TOKEN')
 
   if (!redisUrl || !redisToken) {
     throw new Error('UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are required')
