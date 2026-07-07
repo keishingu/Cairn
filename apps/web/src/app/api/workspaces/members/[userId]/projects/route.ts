@@ -34,16 +34,16 @@ export async function GET(
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers, workspaceMembers } = await import('@cairn/db')
+    const { projects, projectStatuses, projectMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and, count, inArray } = await import('drizzle-orm')
 
-    // verify the target user belongs to this workspace
+    // verify the target user is an active member of this workspace
     const [wsMember] = await db
-      .select({ id: workspaceMembers.id })
-      .from(workspaceMembers)
+      .select({ id: activeWorkspaceMembers.id })
+      .from(activeWorkspaceMembers)
       .where(and(
-        eq(workspaceMembers.workspaceId, ctx.workspaceId),
-        eq(workspaceMembers.userId, userId),
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, userId),
       ))
 
     if (!wsMember) {

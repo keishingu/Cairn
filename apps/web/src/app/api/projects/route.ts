@@ -41,15 +41,15 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers, tasks, profiles, workspaceMembers } = await import('@cairn/db')
+    const { projects, projectStatuses, projectMembers, tasks, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, count, and, inArray } = await import('drizzle-orm')
     const { sql } = await import('drizzle-orm')
 
-    // ゲストは参加中のプロジェクトのみ参照可能
+    // ゲストは参加中のプロジェクトのみ参照可能（active membership のロールで判定）
     const [wsMember] = await db
-      .select({ role: workspaceMembers.role })
-      .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, ctx.userId)))
+      .select({ role: activeWorkspaceMembers.role })
+      .from(activeWorkspaceMembers)
+      .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), eq(activeWorkspaceMembers.userId, ctx.userId)))
       .limit(1)
 
     const isGuest = wsMember?.role === 'guest'
@@ -188,15 +188,16 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, channels, projectStatuses, projectMembers, workspaceMembers, profiles } = await import('@cairn/db')
+    const { projects, channels, projectStatuses, projectMembers, workspaceMembers, activeWorkspaceMembers, profiles } = await import('@cairn/db')
     const { eq, and, inArray } = await import('drizzle-orm')
     const selectedMemberIds = [...new Set(parsed.data.memberUserIds ?? [])]
 
     if (selectedMemberIds.length > 0) {
+      // 新規プロジェクトに追加できるのは active メンバーのみ
       const wsRows = await db
-        .select({ userId: workspaceMembers.userId })
-        .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, selectedMemberIds)))
+        .select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
+        .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), inArray(activeWorkspaceMembers.userId, selectedMemberIds)))
 
       if (wsRows.length !== selectedMemberIds.length) {
         return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })

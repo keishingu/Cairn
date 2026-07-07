@@ -128,16 +128,17 @@ export const onMessageCreated = inngest.createFunction(
     if (members.length === 0 && mentionedIds.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
     const mentionedMembers = mentionedIds.length > 0
       ? await step.run('fetch-mentioned-members', async () => {
-          const { db, workspaceMembers, profiles } = await import('@cairn/db')
+          const { db, activeWorkspaceMembers, profiles } = await import('@cairn/db')
           const { eq, inArray, and, ne } = await import('drizzle-orm')
+          // 非活性メンバーにはメンション通知を送らない（active membership のみ宛先にする）
           return db
-            .select({ userId: workspaceMembers.userId, displayName: profiles.displayName })
-            .from(workspaceMembers)
-            .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
+            .select({ userId: activeWorkspaceMembers.userId, displayName: profiles.displayName })
+            .from(activeWorkspaceMembers)
+            .innerJoin(profiles, eq(activeWorkspaceMembers.userId, profiles.id))
             .where(and(
-              eq(workspaceMembers.workspaceId, workspaceId),
-              inArray(workspaceMembers.userId, mentionedIds),
-              ne(workspaceMembers.userId, senderId),
+              eq(activeWorkspaceMembers.workspaceId, workspaceId),
+              inArray(activeWorkspaceMembers.userId, mentionedIds),
+              ne(activeWorkspaceMembers.userId, senderId),
             ))
         })
       : []
@@ -152,7 +153,7 @@ export const onMessageCreated = inngest.createFunction(
     // requireChannelAccess と同じスコープ感でここで対象を絞る。
     const notifyMentioned = mentionedMembers.length > 0
       ? await step.run('filter-mention-access', async () => {
-          const { db, channels, channelMembers, projectMembers, workspaceMembers } = await import('@cairn/db')
+          const { db, channels, channelMembers, projectMembers, activeWorkspaceMembers } = await import('@cairn/db')
           const { eq, and, inArray } = await import('drizzle-orm')
           const { filterMentionRecipients } = await import('@/lib/chat/mention-access')
           const ids = mentionedMembers.map(m => m.userId)
@@ -178,12 +179,12 @@ export const onMessageCreated = inngest.createFunction(
           const guestIds = ch.type === 'project' && ch.projectId
             ? new Set(
                 (await db
-                  .select({ userId: workspaceMembers.userId })
-                  .from(workspaceMembers)
+                  .select({ userId: activeWorkspaceMembers.userId })
+                  .from(activeWorkspaceMembers)
                   .where(and(
-                    eq(workspaceMembers.workspaceId, workspaceId),
-                    inArray(workspaceMembers.userId, ids),
-                    eq(workspaceMembers.role, 'guest'),
+                    eq(activeWorkspaceMembers.workspaceId, workspaceId),
+                    inArray(activeWorkspaceMembers.userId, ids),
+                    eq(activeWorkspaceMembers.role, 'guest'),
                   ))
                 ).map(r => r.userId),
               )

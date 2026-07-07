@@ -117,7 +117,7 @@ export async function POST(
   try {
     const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
-    const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
+    const { profiles, projectMembers, projects, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and, inArray } = await import('drizzle-orm')
 
     const [project] = await db
@@ -132,10 +132,11 @@ export async function POST(
     const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
     if (forbidden) return forbidden
 
+    // プロジェクトに追加できるのは active メンバーのみ（非活性メンバーは追加不可）
     const wsMembers = await db
-      .select({ userId: workspaceMembers.userId })
-      .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, normalizedUserIds)))
+      .select({ userId: activeWorkspaceMembers.userId })
+      .from(activeWorkspaceMembers)
+      .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), inArray(activeWorkspaceMembers.userId, normalizedUserIds)))
 
     if (wsMembers.length !== normalizedUserIds.length) {
       return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })

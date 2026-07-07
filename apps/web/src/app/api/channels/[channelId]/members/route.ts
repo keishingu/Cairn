@@ -67,14 +67,15 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers, channelReadStates, workspaceMembers } = await import('@cairn/db')
+    const { channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    // 自ワークスペースに属さない userId を追加できないようにする（不正な channel_members 行の作成防止）
+    // 自ワークスペースの active メンバー以外を追加できないようにする（不正な channel_members 行や
+    // 非活性メンバーの追加を防ぐ）
     const [member] = await db
-      .select({ userId: workspaceMembers.userId })
-      .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, userId)))
+      .select({ userId: activeWorkspaceMembers.userId })
+      .from(activeWorkspaceMembers)
+      .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), eq(activeWorkspaceMembers.userId, userId)))
       .limit(1)
 
     if (!member) {
