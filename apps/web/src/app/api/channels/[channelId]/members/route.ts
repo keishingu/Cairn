@@ -81,16 +81,20 @@ export async function POST(
       return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
     }
 
-    await db
-      .insert(channelMembers)
-      .values({ channelId, userId })
-      .onConflictDoNothing()
+    // channelMembers と channelReadStates を 1 トランザクションにまとめ、
+    // 後者の INSERT が失敗してもメンバー行だけが残る不整合を防ぐ
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(channelMembers)
+        .values({ channelId, userId })
+        .onConflictDoNothing()
 
-    // 参加時点を既読の起点にする。これがないと参加直後に過去メッセージ全件が未読として表示される
-    await db
-      .insert(channelReadStates)
-      .values({ userId, channelId, lastReadAt: new Date() })
-      .onConflictDoNothing()
+      // 参加時点を既読の起点にする。これがないと参加直後に過去メッセージ全件が未読として表示される
+      await tx
+        .insert(channelReadStates)
+        .values({ userId, channelId, lastReadAt: new Date() })
+        .onConflictDoNothing()
+    })
 
     return NextResponse.json({ userId, channelId } satisfies ChannelMemberDto, { status: 201 })
   } catch (err) {

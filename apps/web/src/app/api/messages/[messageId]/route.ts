@@ -100,22 +100,23 @@ export async function PATCH(req: Request, { params }: RouteContext) {
           )
         }
 
-        // タイトルまたはチェック状態が変わった既存チェックボックスを更新
-        for (const nb of newBoxes) {
+        // タイトルまたはチェック状態が変わった既存チェックボックスを並列更新（N+1 回避）
+        const changedBoxes = newBoxes.filter(nb => {
           const existing = oldBoxes.find(ob => ob.index === nb.index)
-          if (existing && (existing.text !== nb.text || existing.checked !== nb.checked)) {
-            await db.update(tasks)
-              .set({
-                title: nb.text,
-                status: nb.checked ? 'done' : 'todo',
-                updatedAt: new Date(),
-              })
-              .where(and(
-                eq(tasks.sourceMessageId, messageId),
-                eq(tasks.sourceCheckboxIndex, nb.index),
-              ))
-          }
-        }
+          return existing && (existing.text !== nb.text || existing.checked !== nb.checked)
+        })
+        await Promise.all(changedBoxes.map(nb =>
+          db.update(tasks)
+            .set({
+              title: nb.text,
+              status: nb.checked ? 'done' : 'todo',
+              updatedAt: new Date(),
+            })
+            .where(and(
+              eq(tasks.sourceMessageId, messageId),
+              eq(tasks.sourceCheckboxIndex, nb.index),
+            ))
+        ))
       }
     }
 

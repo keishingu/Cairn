@@ -23,7 +23,9 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { role: newRole } = body as { role?: string }
+  const newRole = (body !== null && typeof body === 'object' && 'role' in body)
+    ? (body as { role?: string }).role
+    : undefined
   if (!newRole || !VALID_ROLES.includes(newRole as WorkspaceRole)) {
     return NextResponse.json(
       { error: 'role は owner/admin/member/guest のいずれかが必要です' },

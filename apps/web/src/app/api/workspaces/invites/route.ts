@@ -7,7 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceAdmin } from '@/lib/permissions'
 
 const createInviteSchema = z.object({
-  expiresIn: z.enum(['1h', '30d', 'never']).default('1h'),
+  expiresIn: z.enum(['1h', '30d', 'never']).default('30d'),
   maxUses: z.number().int().positive().nullable().optional(),
   role: z.enum(['member', 'guest']).default('member'),
 })

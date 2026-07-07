@@ -24,6 +24,8 @@ const {
   mockAnd: vi.fn(() => Symbol('and')),
 }))
 
+const mockDbTransaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({ insert: mockDbInsert }))
+
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: mockGetAuthContext,
 }))
@@ -33,7 +35,7 @@ vi.mock('@/lib/permissions', () => ({
 }))
 
 vi.mock('@cairn/db', () => ({
-  db: { select: mockDbSelect, insert: mockDbInsert },
+  db: { select: mockDbSelect, insert: mockDbInsert, transaction: mockDbTransaction },
   channelMembers: { userId: 'channelMembers.userId', channelId: 'channelMembers.channelId' },
   channelReadStates: { userId: 'channelReadStates.userId', channelId: 'channelReadStates.channelId', lastReadAt: 'channelReadStates.lastReadAt' },
   workspaceMembers: { userId: 'workspaceMembers.userId', workspaceId: 'workspaceMembers.workspaceId' },
