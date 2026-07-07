@@ -5,6 +5,7 @@ const getUser = vi.fn()
 const limitMock = vi.fn()
 const slidingWindowMock = vi.fn()
 const redisCtorMock = vi.fn()
+const waitUntilMock = vi.fn()
 const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
 vi.mock('@supabase/ssr', () => ({
@@ -45,6 +46,7 @@ describe('middleware', () => {
     limitMock.mockReset()
     slidingWindowMock.mockReset()
     redisCtorMock.mockReset()
+    waitUntilMock.mockReset()
     consoleErrorSpy.mockClear()
     process.env['NEXT_PUBLIC_SUPABASE_URL'] = 'http://localhost:54321'
     process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'] = 'dummy'
@@ -62,7 +64,7 @@ describe('middleware', () => {
   it('未認証で / にアクセスすると middleware は通過する', async () => {
     getUser.mockResolvedValue({ data: { user: null } })
     const { middleware } = await import('./middleware')
-    const res = await middleware(makeRequest('/'))
+    const res = await middleware(makeRequest('/'), { waitUntil: waitUntilMock } as never)
     expect(res.headers.get('x-middleware-rewrite')).toBeNull()
     expect(res.headers.get('location')).toBeNull()
   })
@@ -70,7 +72,7 @@ describe('middleware', () => {
   it('認証済みで / にアクセスすると /projects にリダイレクトされる', async () => {
     getUser.mockResolvedValue({ data: { user: { id: 'u1' } } })
     const { middleware } = await import('./middleware')
-    const res = await middleware(makeRequest('/'))
+    const res = await middleware(makeRequest('/'), { waitUntil: waitUntilMock } as never)
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/projects')
   })
@@ -80,7 +82,7 @@ describe('middleware', () => {
     const { middleware } = await import('./middleware')
 
     for (const legacyPath of ['/lp', '/lp/', '/lp/index.html', '/index.html', '/lp/cairn-lp.css']) {
-      const res = await middleware(makeRequest(legacyPath))
+      const res = await middleware(makeRequest(legacyPath), { waitUntil: waitUntilMock } as never)
       expect(res.status).toBe(307)
       expect(res.headers.get('location')).toContain('/auth/login')
     }
@@ -89,7 +91,7 @@ describe('middleware', () => {
   it('認証済みで旧 LP パスにアクセスしても / へリダイレクトしない', async () => {
     getUser.mockResolvedValue({ data: { user: { id: 'u1' } } })
     const { middleware } = await import('./middleware')
-    const res = await middleware(makeRequest('/lp'))
+    const res = await middleware(makeRequest('/lp'), { waitUntil: waitUntilMock } as never)
     expect(res.headers.get('location')).toBeNull()
   })
 
@@ -98,7 +100,7 @@ describe('middleware', () => {
     const { middleware } = await import('./middleware')
 
     for (const assetPath of ['/cairn-lp.css', '/cairn-lp.js', '/og-image.png', '/og-image.svg']) {
-      const res = await middleware(makeRequest(assetPath))
+      const res = await middleware(makeRequest(assetPath), { waitUntil: waitUntilMock } as never)
       expect(res.headers.get('location')).toBeNull()
     }
   })
@@ -106,7 +108,7 @@ describe('middleware', () => {
   it('未認証で保護ルートにアクセスすると /auth/login にリダイレクトされる', async () => {
     getUser.mockResolvedValue({ data: { user: null } })
     const { middleware } = await import('./middleware')
-    const res = await middleware(makeRequest('/projects'))
+    const res = await middleware(makeRequest('/projects'), { waitUntil: waitUntilMock } as never)
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/auth/login')
   })
@@ -127,6 +129,7 @@ describe('middleware', () => {
         method: 'POST',
         headers: { 'x-forwarded-for': '203.0.113.10' },
       }),
+      { waitUntil: waitUntilMock } as never,
     )
 
     expect(res.status).toBe(429)
@@ -147,11 +150,13 @@ describe('middleware', () => {
           'x-forwarded-for': '203.0.113.10',
         },
       }),
+      { waitUntil: waitUntilMock } as never,
     )
 
     expect(res.status).toBe(200)
     expect(res.headers.get('location')).toBeNull()
     expect(getUser).not.toHaveBeenCalled()
+    expect(waitUntilMock).toHaveBeenCalledTimes(1)
   })
 
   it('rate limit 対象 API は Redis 設定がないと 503 を返す', async () => {
@@ -165,6 +170,7 @@ describe('middleware', () => {
         method: 'POST',
         headers: { 'x-forwarded-for': '203.0.113.20' },
       }),
+      { waitUntil: waitUntilMock } as never,
     )
 
     expect(res.status).toBe(503)
@@ -185,6 +191,7 @@ describe('middleware', () => {
         method: 'POST',
         headers: { 'x-forwarded-for': '203.0.113.21' },
       }),
+      { waitUntil: waitUntilMock } as never,
     )
 
     expect(res.status).toBe(200)
@@ -203,10 +210,35 @@ describe('middleware', () => {
       makeRequest('/api/workspaces/invites', {
         method: 'POST',
       }),
+      { waitUntil: waitUntilMock } as never,
     )
 
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ error: 'Unable to determine client IP for rate limiting' })
     expect(getUser).not.toHaveBeenCalled()
+  })
+
+  it('rate limit 対象 API は pending を waitUntil に逃がす', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+    const pending = Promise.resolve()
+    limitMock.mockResolvedValue({
+      success: true,
+      limit: 5,
+      remaining: 4,
+      reset: Date.now() + 30_000,
+      pending,
+    })
+
+    const { middleware } = await import('./middleware')
+    const res = await middleware(
+      makeRequest('/api/workspaces/invites', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.22' },
+      }),
+      { waitUntil: waitUntilMock } as never,
+    )
+
+    expect(res.status).toBe(200)
+    expect(waitUntilMock).toHaveBeenCalledWith(pending)
   })
 })

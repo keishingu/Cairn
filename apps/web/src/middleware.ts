@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { type NextRequest, NextResponse } from 'next/server'
+import { type NextFetchEvent, type NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { enforceRateLimit } from '@/lib/rate-limit'
 
@@ -9,8 +9,8 @@ function detectMobile(ua: string): boolean {
   return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
 }
 
-export async function middleware(request: NextRequest) {
-  const rateLimited = await enforceRateLimit(request)
+export async function middleware(request: NextRequest, event: NextFetchEvent) {
+  const rateLimited = await enforceRateLimit(request, event)
   if (rateLimited) return rateLimited
 
   const { pathname } = request.nextUrl

@@ -3,7 +3,7 @@
 
 import { Ratelimit } from '@upstash/ratelimit'
 import { Redis } from '@upstash/redis'
-import { type NextRequest, NextResponse } from 'next/server'
+import { type NextFetchEvent, type NextRequest, NextResponse } from 'next/server'
 
 const RATE_LIMIT_POLICIES = {
   '/api/auth/webview-handoff': {
@@ -85,7 +85,10 @@ export function isRateLimitedPath(pathname: string): pathname is RateLimitPath {
   return pathname in RATE_LIMIT_POLICIES
 }
 
-export async function enforceRateLimit(request: NextRequest): Promise<NextResponse | null> {
+export async function enforceRateLimit(
+  request: NextRequest,
+  event?: Pick<NextFetchEvent, 'waitUntil'>,
+): Promise<NextResponse | null> {
   const { pathname } = request.nextUrl
   if (!isRateLimitedPath(pathname) || request.method !== 'POST') return null
 
@@ -108,7 +111,11 @@ export async function enforceRateLimit(request: NextRequest): Promise<NextRespon
   }
 
   const result = await limiter.limit(`${policy.bucket}:${identifier}`)
-  await result.pending
+  if (event) {
+    event.waitUntil(result.pending)
+  } else {
+    void result.pending
+  }
 
   if (result.success) {
     return null
