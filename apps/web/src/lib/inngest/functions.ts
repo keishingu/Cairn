@@ -136,6 +136,7 @@ export const onMessageCreated = inngest.createFunction(
             .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
             .where(and(
               eq(workspaceMembers.workspaceId, workspaceId),
+              eq(profiles.kind, 'human'),
               inArray(workspaceMembers.userId, mentionedIds),
               ne(workspaceMembers.userId, senderId),
             ))
