@@ -44,13 +44,20 @@ export default function ChatThreadScreen() {
   const sendMessage = useSendMessage(channelId ?? '')
   const markRead = useMarkChannelRead(channelId ?? '')
   const [draft, setDraft] = React.useState('')
+  const messages = messagesQuery.data ?? []
 
-  // チャンネルを開いたタイミングでのみ既読化する（メッセージ更新のたびには送らない）
+  // 表示中に届いたポーリング更新も既読化する（開いた瞬間だけだと、5秒ポーリング中の
+  // 新着がスレッド上には表示されるのに未読バッジへ残り続けてしまう）
   const markReadRef = React.useRef(markRead)
   markReadRef.current = markRead
+  const lastReadMessageIdRef = React.useRef<string | null>(null)
   React.useEffect(() => {
-    if (channelId) markReadRef.current.mutate()
-  }, [channelId])
+    if (!channelId || messages.length === 0) return
+    const lastId = messages[messages.length - 1]?.id
+    if (!lastId || lastReadMessageIdRef.current === lastId) return
+    lastReadMessageIdRef.current = lastId
+    markReadRef.current.mutate()
+  }, [channelId, messages])
 
   async function handleSend() {
     const content = draft.trim()
@@ -63,7 +70,6 @@ export default function ChatThreadScreen() {
     }
   }
 
-  const messages = messagesQuery.data ?? []
   // FlatList を inverted 表示するため新しい順に並べ替える
   const reversedMessages = [...messages].reverse()
 
