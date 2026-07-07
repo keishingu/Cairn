@@ -65,6 +65,14 @@ function renderMobile(initialUserId?: string) {
   )
 }
 
+function renderDesktop(initialUserId?: string) {
+  return render(
+    <QueryClientProvider client={makeQC()}>
+      <PageMembers {...(initialUserId !== undefined ? { initialUserId } : {})} />
+    </QueryClientProvider>,
+  )
+}
+
 // ─── テスト ────────────────────────────────────────────────────────
 
 describe('PageMembers (モバイル) — カードタップの URL 更新', () => {
@@ -120,5 +128,16 @@ describe('PageMembers — email tooltip', () => {
     renderMobile()
 
     expect(screen.getByTitle('taro@example.com')).toBeInTheDocument()
+  })
+})
+
+describe('PageMembers (PC) — 詳細パネルの配置', () => {
+  beforeEach(() => mockPush.mockClear())
+
+  it('メンバー詳細パネルは一覧幅を潰さない絶対配置スロットに乗る', async () => {
+    renderDesktop()
+    await userEvent.click(screen.getByText('山田 太郎'))
+    const slot = screen.getByTestId('desktop-detail-panel-slot')
+    expect(slot).toHaveStyle({ position: 'absolute', right: '0px', width: 'min(420px, 100%)' })
   })
 })

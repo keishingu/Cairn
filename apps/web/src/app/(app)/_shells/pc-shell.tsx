@@ -24,6 +24,19 @@ const PC_STORAGE_KEY = STORAGE_KEYS.projects_view_pc
 const SIDEBAR_COLLAPSED_KEY = STORAGE_KEYS.sidebar_collapsed
 type ProjectsView = 'list' | 'calendar' | 'kanban'
 
+const desktopPanelSlotStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 0,
+  right: 0,
+  bottom: 0,
+  width: 'min(420px, 100%)',
+  display: 'flex',
+  justifyContent: 'flex-end',
+  minHeight: 0,
+  minWidth: 0,
+  zIndex: 20,
+}
+
 function isValidView(v: string | null | undefined): v is ProjectsView {
   return v === 'list' || v === 'calendar' || v === 'kanban'
 }
@@ -147,19 +160,23 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
                 {children}
               </div>
               {panelMember ? (
-                <MemberDetailPanel
-                  member={panelMember}
-                  onProjectClick={handleMemberProjectClick}
-                  onClose={closePanel}
-                />
+                <div data-testid="desktop-detail-panel-slot" style={desktopPanelSlotStyle}>
+                  <MemberDetailPanel
+                    member={panelMember}
+                    onProjectClick={handleMemberProjectClick}
+                    onClose={closePanel}
+                  />
+                </div>
               ) : panelProject ? (
-                <ProjectPanel
-                  project={panelProject}
-                  onClose={closePanel}
-                  onMemberClick={handleMemberClick}
-                  tab={panelTab}
-                  onTabChange={setPanelTab}
-                />
+                <div data-testid="desktop-detail-panel-slot" style={desktopPanelSlotStyle}>
+                  <ProjectPanel
+                    project={panelProject}
+                    onClose={closePanel}
+                    onMemberClick={handleMemberClick}
+                    tab={panelTab}
+                    onTabChange={setPanelTab}
+                  />
+                </div>
               ) : null}
               {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)}/>}
             </div>
