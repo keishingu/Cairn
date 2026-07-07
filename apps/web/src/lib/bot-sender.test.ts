@@ -9,6 +9,9 @@ const {
   mockDbInsert,
   mockTxInsert,
   mockEq,
+  mockAnd,
+  mockInArray,
+  mockSql,
   mockInngestSend,
 } = vi.hoisted(() => ({
   mockDbSelect: vi.fn(),
@@ -16,6 +19,9 @@ const {
   mockDbInsert: vi.fn(),
   mockTxInsert: vi.fn(),
   mockEq: vi.fn(() => Symbol('eq')),
+  mockAnd: vi.fn(() => Symbol('and')),
+  mockInArray: vi.fn(() => Symbol('inArray')),
+  mockSql: vi.fn(() => Symbol('sql')),
   mockInngestSend: vi.fn(() => Promise.resolve(undefined)),
 }))
 
@@ -27,6 +33,9 @@ vi.mock('@cairn/db', () => ({
   },
   workspaces: { id: 'workspaces.id', name: 'workspaces.name' },
   profiles: { id: 'profiles.id', kind: 'profiles.kind', displayName: 'profiles.displayName' },
+  channels: { id: 'channels.id', workspaceId: 'channels.workspaceId', projectId: 'channels.projectId' },
+  files: { id: 'files.id', workspaceId: 'files.workspaceId' },
+  projects: { id: 'projects.id', workspaceId: 'projects.workspaceId' },
   workspaceMembers: {
     workspaceId: 'workspaceMembers.workspaceId',
     userId: 'workspaceMembers.userId',
@@ -41,7 +50,10 @@ vi.mock('@cairn/db', () => ({
 }))
 
 vi.mock('drizzle-orm', () => ({
+  and: mockAnd,
   eq: mockEq,
+  inArray: mockInArray,
+  sql: mockSql,
 }))
 
 vi.mock('@/lib/inngest/client', () => ({
@@ -51,10 +63,11 @@ vi.mock('@/lib/inngest/client', () => ({
 function mockSelectResult(result: unknown) {
   const builder = {
     from: () => builder,
+    leftJoin: () => builder,
     where: () => builder,
     limit: () => Promise.resolve(result),
   }
-  mockDbSelect.mockReturnValue(builder)
+  mockDbSelect.mockReturnValueOnce(builder)
 }
 
 describe('bot sender helpers', () => {
@@ -115,6 +128,8 @@ describe('bot sender helpers', () => {
 
   it('postBotMessage は bot 名義の投稿を保存して message/created を送る', async () => {
     mockSelectResult([{ name: 'Cairn' }])
+    mockSelectResult([{ effectiveWorkspaceId: '10000000-0000-0000-0000-000000000001' }])
+    mockSelectResult([{ id: 'file-1' }, { id: 'file-2' }])
 
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
     const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
@@ -175,5 +190,69 @@ describe('bot sender helpers', () => {
       }),
     }))
     expect(result.senderKind).toBe('bot')
+  })
+
+  it('postBotMessage は別 workspace の channel を拒否する', async () => {
+    mockSelectResult([{ name: 'Cairn' }])
+    mockSelectResult([{ effectiveWorkspaceId: 'another-workspace' }])
+
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
+    const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
+    const profileInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate,
+      }),
+    }
+    const workspaceMemberInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing,
+      }),
+    }
+    mockTxInsert.mockReturnValueOnce(profileInsertBuilder).mockReturnValueOnce(workspaceMemberInsertBuilder)
+    mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<unknown>) => {
+      return fn({ insert: mockTxInsert })
+    })
+
+    const { postBotMessage } = await import('./bot-sender')
+
+    await expect(postBotMessage({
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      channelId: '20000000-0000-0000-0000-000000000001',
+      content: 'hello from bot',
+    })).rejects.toThrow('Bot post target channel does not belong to workspace')
+    expect(mockDbTransaction).toHaveBeenCalledTimes(1)
+  })
+
+  it('postBotMessage は別 workspace の attachment を拒否する', async () => {
+    mockSelectResult([{ name: 'Cairn' }])
+    mockSelectResult([{ effectiveWorkspaceId: '10000000-0000-0000-0000-000000000001' }])
+    mockSelectResult([{ id: 'file-1' }])
+
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
+    const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
+    const profileInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate,
+      }),
+    }
+    const workspaceMemberInsertBuilder = {
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing,
+      }),
+    }
+    mockTxInsert.mockReturnValueOnce(profileInsertBuilder).mockReturnValueOnce(workspaceMemberInsertBuilder)
+    mockDbTransaction.mockImplementation(async (fn: (tx: { insert: typeof mockTxInsert }) => Promise<unknown>) => {
+      return fn({ insert: mockTxInsert })
+    })
+
+    const { postBotMessage } = await import('./bot-sender')
+
+    await expect(postBotMessage({
+      workspaceId: '10000000-0000-0000-0000-000000000001',
+      channelId: '20000000-0000-0000-0000-000000000001',
+      content: 'hello from bot',
+      attachmentFileIds: ['file-1', 'file-2'],
+    })).rejects.toThrow('Bot post attachment does not belong to workspace')
+    expect(mockDbTransaction).toHaveBeenCalledTimes(1)
   })
 })

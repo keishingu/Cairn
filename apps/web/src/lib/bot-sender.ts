@@ -3,8 +3,8 @@
 
 import { createHash } from 'node:crypto'
 import type { MessageType } from '@cairn/shared'
-import { db, messageAttachments, messages, profiles, workspaceMembers, workspaces } from '@cairn/db'
-import { eq } from 'drizzle-orm'
+import { channels, db, files, messageAttachments, messages, profiles, projects, workspaceMembers, workspaces } from '@cairn/db'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { inngest } from '@/lib/inngest/client'
 import type { MessageCreatedEvent } from '@/lib/inngest/events'
 
@@ -76,9 +76,42 @@ export async function ensureWorkspaceBotProfile(workspaceId: string): Promise<Bo
   return { id, displayName }
 }
 
+async function assertBotPostTargets(workspaceId: string, channelId: string, attachmentFileIds: string[]) {
+  const [channel] = await db
+    .select({
+      effectiveWorkspaceId: sql<string | null>`coalesce(${channels.workspaceId}, ${projects.workspaceId})`,
+    })
+    .from(channels)
+    .leftJoin(projects, eq(channels.projectId, projects.id))
+    .where(eq(channels.id, channelId))
+    .limit(1)
+
+  if (!channel || channel.effectiveWorkspaceId !== workspaceId) {
+    throw new Error('Bot post target channel does not belong to workspace')
+  }
+
+  if (attachmentFileIds.length === 0) {
+    return
+  }
+
+  const attachmentRows = await db
+    .select({ id: files.id })
+    .from(files)
+    .where(and(eq(files.workspaceId, workspaceId), inArray(files.id, attachmentFileIds)))
+    .limit(attachmentFileIds.length)
+
+  const validFileIds = new Set(attachmentRows.map((row) => row.id))
+  for (const fileId of attachmentFileIds) {
+    if (!validFileIds.has(fileId)) {
+      throw new Error('Bot post attachment does not belong to workspace')
+    }
+  }
+}
+
 export async function postBotMessage(input: PostBotMessageInput) {
   const { workspaceId, channelId, content, messageType = 'text', parentMessageId = null, attachmentFileIds = [] } = input
   const bot = await ensureWorkspaceBotProfile(workspaceId)
+  await assertBotPostTargets(workspaceId, channelId, attachmentFileIds)
 
   const message = await db.transaction(async (tx) => {
     const [inserted] = await tx
