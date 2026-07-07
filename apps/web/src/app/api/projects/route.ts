@@ -6,6 +6,7 @@ import { createProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceAdmin } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { coverPhotoIdxFromId } from '@/lib/utils'
 
 export interface ProjectDto {
   id: string
@@ -27,12 +28,6 @@ export interface ProjectDto {
   coverPhotoUrl: string | null
   location: string | null
   placeId: string | null
-}
-
-function coverPhotoIdxFromId(id: string): number {
-  let h = 0
-  for (const c of id) h = (h * 31 + c.charCodeAt(0)) & 0xffff
-  return h
 }
 
 export async function GET() {
@@ -121,10 +116,11 @@ export async function GET() {
       memberAvatarUrlsMap.set(row.projectId, avatarUrls)
     }
 
+    // visibleProjectIds にスコープを絞る（全ワークスペース横断クエリを防ぐ）
     const userMemberRows = await db
       .select({ projectId: projectMembers.projectId })
       .from(projectMembers)
-      .where(eq(projectMembers.userId, ctx.userId))
+      .where(and(eq(projectMembers.userId, ctx.userId), inArray(projectMembers.projectId, visibleProjectIds)))
     const userProjectIds = new Set(userMemberRows.map(r => r.projectId))
 
     const taskRows = await db
