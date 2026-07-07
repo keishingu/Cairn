@@ -132,4 +132,17 @@ describe('/api/me', () => {
     await expect(res.json()).resolves.toEqual({ error: 'At least one field is required' })
     expect(mockDbUpdate).not.toHaveBeenCalled()
   })
+
+  it('PATCH はプロフィール更新に deprecated な在線フィールドが混ざると拒否する', async () => {
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request('http://localhost/', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: 'Kei', status: 'away' }),
+    }))
+
+    expect(res.status).toBe(422)
+    await expect(res.json()).resolves.toEqual({ error: 'status/statusMessage は廃止されました' })
+    expect(mockDbUpdate).not.toHaveBeenCalled()
+  })
 })

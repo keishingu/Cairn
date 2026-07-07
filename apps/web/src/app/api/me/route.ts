@@ -77,9 +77,14 @@ export async function PATCH(req: Request) {
   const b = body as { displayName?: string; bio?: string | null }
   const hasDisplayName = b.displayName !== undefined
   const hasBio = 'bio' in (b as object)
+  const hasDeprecatedStatus = 'status' in (b as object)
+  const hasDeprecatedStatusMessage = 'statusMessage' in (b as object)
 
   if (!hasDisplayName && !hasBio) {
     return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
+  }
+  if (hasDeprecatedStatus || hasDeprecatedStatusMessage) {
+    return NextResponse.json({ error: 'status/statusMessage は廃止されました' }, { status: 422 })
   }
   if (hasDisplayName && !b.displayName?.trim()) {
     return NextResponse.json({ error: '表示名は必須です' }, { status: 422 })
