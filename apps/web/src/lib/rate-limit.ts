@@ -152,7 +152,14 @@ export async function enforceRateLimit(
     return NextResponse.json({ error: 'Rate limit is unavailable' }, { status: 503 })
   }
 
-  const result = await limiter.limit(`${policy.bucket}:${identifier}`)
+  let result: Awaited<ReturnType<InstanceType<typeof Ratelimit>['limit']>>
+  try {
+    result = await limiter.limit(`${policy.bucket}:${identifier}`)
+  } catch (error) {
+    console.error('[rate-limit] Redis request failed:', error)
+    return NextResponse.json({ error: 'Rate limit is unavailable' }, { status: 503 })
+  }
+
   if (event) {
     event.waitUntil(result.pending)
   } else {

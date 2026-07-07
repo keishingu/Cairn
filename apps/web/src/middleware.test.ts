@@ -178,6 +178,24 @@ describe('middleware', () => {
     expect(getUser).not.toHaveBeenCalled()
   })
 
+  it('rate limit 対象 API は Redis 呼び出し失敗でも 503 を返す', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+    limitMock.mockRejectedValue(new Error('upstash unavailable'))
+
+    const { middleware } = await import('./middleware')
+    const res = await middleware(
+      makeRequest('/api/workspaces/invites', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.20' },
+      }),
+      { waitUntil: waitUntilMock } as never,
+    )
+
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'Rate limit is unavailable' })
+    expect(getUser).not.toHaveBeenCalled()
+  })
+
   it('rate limit 対象 API は Upstash が空文字でも KV 設定へフォールバックする', async () => {
     getUser.mockResolvedValue({ data: { user: null } })
     process.env['UPSTASH_REDIS_REST_URL'] = ''
