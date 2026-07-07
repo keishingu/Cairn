@@ -52,14 +52,19 @@ export function useSendMessage(channelId: string) {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['messages', channelId] })
       await apiFetch(`/api/channels/${channelId}/read`, { method: 'POST' })
+      await qc.invalidateQueries({ queryKey: ['project-channels'] })
     },
   })
 }
 
 export function useMarkChannelRead(channelId: string) {
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
       await apiFetch(`/api/channels/${channelId}/read`, { method: 'POST' })
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['project-channels'] })
     },
   })
 }

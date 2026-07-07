@@ -8,7 +8,12 @@ function ChannelItem({ channel }: { channel: ProjectChannelDto }) {
   return (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => router.push(`/projects/${channel.projectId}`)}
+      onPress={() =>
+        router.push({
+          pathname: '/chats/[channelId]',
+          params: { channelId: channel.channelId, channelName: channel.channelName },
+        })
+      }
       activeOpacity={0.7}
     >
       <View style={styles.cardLeft}>
