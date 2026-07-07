@@ -108,7 +108,7 @@ export async function getAuthContext(): Promise<AuthResult> {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
-    workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+    workspaceCache.set(user.id, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)
