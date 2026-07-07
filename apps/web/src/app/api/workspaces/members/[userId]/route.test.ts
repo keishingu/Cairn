@@ -31,7 +31,14 @@ vi.mock('@/lib/permissions', () => ({
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
-  workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role' },
+  workspaceMembers: {
+    workspaceId: 'wm.workspaceId',
+    userId: 'wm.userId',
+    role: 'wm.role',
+    membershipStatus: 'wm.membershipStatus',
+    deactivatedAt: 'wm.deactivatedAt',
+    deactivatedBy: 'wm.deactivatedBy',
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -69,6 +76,14 @@ function patchRequest(targetUserId: string, role: string) {
   })
 }
 
+function statusPatchRequest(targetUserId: string, membershipStatus: 'active' | 'inactive') {
+  return new Request(`http://localhost/api/workspaces/members/${targetUserId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ membershipStatus }),
+  })
+}
+
 describe('PATCH /api/workspaces/members/[userId]', () => {
   beforeEach(() => {
     process.env['DATABASE_URL'] = 'postgresql://test'
@@ -90,104 +105,128 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
       error: new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }),
     })
     const { PATCH } = await import('./route')
-    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(401)
   })
 
   it('無効なロール値は 422 を返す', async () => {
     const { PATCH } = await import('./route')
-    const res = await PATCH(patchRequest(OTHER_USER_ID, 'superadmin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'superadmin'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(422)
   })
 
   it('member は変更できない（403）', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('member')
     const { PATCH } = await import('./route')
-    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(403)
   })
 
   it('admin は member を admin に昇格できる', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
     mockDb.update.mockReturnValueOnce(updateChain())
     const { PATCH } = await import('./route')
-    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(200)
-    const body = await res.json() as { role: string }
+    const body = (await res.json()) as { role: string }
     expect(body.role).toBe('admin')
   })
 
   it('admin は admin を member に降格できる', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'admin' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'admin', membershipStatus: 'active' }]))
     mockDb.update.mockReturnValueOnce(updateChain())
     const { PATCH } = await import('./route')
-    const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(200)
   })
 
   it('admin は owner への昇格を行えない（403）', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
     const { PATCH } = await import('./route')
-    const res = await PATCH(patchRequest(OTHER_USER_ID, 'owner'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'owner'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(403)
   })
 
   it('admin は owner のロールを変更できない（403）', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
     const { PATCH } = await import('./route')
-    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(403)
   })
 
   it('owner は member を owner に昇格できる', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
     mockDb.update.mockReturnValueOnce(updateChain())
     const { PATCH } = await import('./route')
-    const res = await PATCH(patchRequest(OTHER_USER_ID, 'owner'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'owner'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(200)
   })
 
   it('owner が複数いる場合、owner を降格できる', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 2 }]))
     mockDb.update.mockReturnValueOnce(updateChain())
     const { PATCH } = await import('./route')
-    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(200)
   })
 
   it('唯一の owner は降格できない（422）', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 1 }]))
     const { PATCH } = await import('./route')
-    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(422)
-    const body = await res.json() as { error: string }
+    const body = (await res.json()) as { error: string }
     expect(body.error).toContain('owner')
   })
 
   it('ゲストを通常ロールへ昇格できない（422）', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'guest' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'guest', membershipStatus: 'active' }]))
     const { PATCH } = await import('./route')
-    const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(422)
-    const body = await res.json() as { error: string }
+    const body = (await res.json()) as { error: string }
     expect(body.error).toContain('ゲスト')
   })
 
   it('通常ロールをゲストへ降格できない（422）', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
     const { PATCH } = await import('./route')
-    const res = await PATCH(patchRequest(OTHER_USER_ID, 'guest'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'guest'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(422)
   })
 
@@ -195,7 +234,35 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
     mockDb.select.mockReturnValueOnce(selectChain([]))
     const { PATCH } = await import('./route')
-    const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(404)
+  })
+
+  it('admin は member を卒業生にできる', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    const { PATCH } = await import('./route')
+    const res = await PATCH(statusPatchRequest(OTHER_USER_ID, 'inactive'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { membershipStatus: string }
+    expect(body.membershipStatus).toBe('inactive')
+  })
+
+  it('唯一の active owner は卒業生にできない（422）', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 1 }]))
+    const { PATCH } = await import('./route')
+    const res = await PATCH(statusPatchRequest(OTHER_USER_ID, 'inactive'), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toContain('active owner')
   })
 })

@@ -9,33 +9,38 @@ import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
-  owner:  'オーナー',
-  admin:  '管理者',
+  owner: 'オーナー',
+  admin: '管理者',
   member: 'メンバー',
-  guest:  'ゲスト',
+  guest: 'ゲスト',
 }
 
 const WS_ROLE_STYLE: Record<WorkspaceMemberDto['role'], { c: string; bg: string }> = {
-  owner:  { c: 'var(--accent-text)',  bg: 'var(--accent-soft)' },
-  admin:  { c: 'var(--violet-text)', bg: 'var(--violet-soft)' },
-  member: { c: 'var(--text-3)',       bg: 'var(--card-2)' },
-  guest:  { c: 'var(--text-4)',       bg: 'var(--card-2)' },
+  owner: { c: 'var(--accent-text)', bg: 'var(--accent-soft)' },
+  admin: { c: 'var(--violet-text)', bg: 'var(--violet-soft)' },
+  member: { c: 'var(--text-3)', bg: 'var(--card-2)' },
+  guest: { c: 'var(--text-4)', bg: 'var(--card-2)' },
+}
+
+const MEMBER_STATUS_LABEL: Record<WorkspaceMemberDto['membershipStatus'], string> = {
+  active: '現役',
+  inactive: '卒業生',
 }
 
 const PROJECT_ROLE_LABEL: Record<string, string> = {
-  leader:    'リーダー',
+  leader: 'リーダー',
   subleader: 'サブリーダー',
-  member:    'メンバー',
-  reviewer:  'レビュワー',
-  observer:  'オブザーバー',
+  member: 'メンバー',
+  reviewer: 'レビュワー',
+  observer: 'オブザーバー',
 }
 
 const PROJECT_ROLE_STYLE: { [key: string]: { c: string; bg: string } } = {
-  leader:    { c: 'var(--accent-text)',  bg: 'var(--accent-soft)' },
+  leader: { c: 'var(--accent-text)', bg: 'var(--accent-soft)' },
   subleader: { c: 'var(--violet-text)', bg: 'var(--violet-soft)' },
-  member:    { c: 'var(--text-3)',       bg: 'var(--card-2)' },
-  reviewer:  { c: 'var(--text-2)',       bg: 'var(--card-2)' },
-  observer:  { c: 'var(--text-4)',       bg: 'var(--card-2)' },
+  member: { c: 'var(--text-3)', bg: 'var(--card-2)' },
+  reviewer: { c: 'var(--text-2)', bg: 'var(--card-2)' },
+  observer: { c: 'var(--text-4)', bg: 'var(--card-2)' },
 }
 
 function formatJoinedAt(dateStr: string): string {
@@ -52,7 +57,6 @@ function formatDateRange(start: string | null, end: string | null): string {
   return end && end !== start ? `${fmt(start)}–${fmt(end)}` : fmt(start)
 }
 
-
 interface ProjectRowProps {
   project: MemberProjectDto
   onClick: () => void
@@ -67,35 +71,72 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
       <button
         onClick={onClick}
         style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-          padding: '14px 16px', border: 'none', borderBottom: '1px solid var(--divider)',
-          background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '14px 16px',
+          border: 'none',
+          borderBottom: '1px solid var(--divider)',
+          background: 'transparent',
+          cursor: 'pointer',
+          textAlign: 'left',
+          fontFamily: 'inherit',
           opacity: project.archived ? ARCHIVED_OPACITY : 1,
         }}
       >
-        <div style={{
-          width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-          background: 'var(--card)', border: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)',
-        }}>
-          <Icon name="folder" size={16}/>
+        <div
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 10,
+            flexShrink: 0,
+            background: 'var(--card)',
+            border: '1px solid var(--border)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--text-3)',
+          }}
+        >
+          <Icon name="folder" size={16} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: 'var(--text)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              marginBottom: 4,
+            }}
+          >
             {project.title}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
-            {project.archived && <ArchivedBadge/>}
+            <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'} />
+            {project.archived && <ArchivedBadge />}
             <span style={{ fontSize: 12, color: 'var(--text-4)' }}>
               {formatDateRange(project.startDate, project.endDate)}
             </span>
           </div>
         </div>
-        <span style={{ fontSize: 11, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 7px', borderRadius: 4, flexShrink: 0 }}>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: rs.c,
+            background: rs.bg,
+            padding: '2px 7px',
+            borderRadius: 4,
+            flexShrink: 0,
+          }}
+        >
           {PROJECT_ROLE_LABEL[project.role] ?? project.role}
         </span>
-        <Icon name="chevRight" size={14} color="var(--text-4)"/>
+        <Icon name="chevRight" size={14} color="var(--text-4)" />
       </button>
     )
   }
@@ -104,47 +145,72 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
     <div
       onClick={onClick}
       style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '10px 6px', borderBottom: '1px solid var(--divider)',
-        cursor: 'pointer', borderRadius: 6, margin: '0 -6px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '10px 6px',
+        borderBottom: '1px solid var(--divider)',
+        cursor: 'pointer',
+        borderRadius: 6,
+        margin: '0 -6px',
         transition: 'background .1s',
         opacity: project.archived ? ARCHIVED_OPACITY : 1,
       }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-hover)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--card-hover)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
     >
-      <div style={{
-        width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-        background: 'var(--card-2)', border: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: 'var(--text-3)',
-      }}>
-        <Icon name="folder" size={14}/>
+      <div
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          flexShrink: 0,
+          background: 'var(--card-2)',
+          border: '1px solid var(--border)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text-3)',
+        }}
+      >
+        <Icon name="folder" size={14} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 12.5, fontWeight: 600, color: 'var(--text)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          marginBottom: 3,
-        }}>
+        <div
+          style={{
+            fontSize: 12.5,
+            fontWeight: 600,
+            color: 'var(--text)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            marginBottom: 3,
+          }}
+        >
           {project.title}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
-          {project.archived && <ArchivedBadge/>}
+          <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'} />
+          {project.archived && <ArchivedBadge />}
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>
             {formatDateRange(project.startDate, project.endDate)}
           </span>
         </div>
       </div>
-      <span style={{
-        fontSize: 10.5, fontWeight: 700, flexShrink: 0,
-        color: rs.c, background: rs.bg,
-        padding: '2px 7px', borderRadius: 4,
-      }}>
+      <span
+        style={{
+          fontSize: 10.5,
+          fontWeight: 700,
+          flexShrink: 0,
+          color: rs.c,
+          background: rs.bg,
+          padding: '2px 7px',
+          borderRadius: 4,
+        }}
+      >
         {PROJECT_ROLE_LABEL[project.role] ?? project.role}
       </span>
-      <Icon name="chevRight" size={12} color="var(--text-4)"/>
+      <Icon name="chevRight" size={12} color="var(--text-4)" />
     </div>
   )
 }
@@ -156,12 +222,25 @@ interface MemberDetailPanelProps {
   isMobile?: boolean
 }
 
-export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }: MemberDetailPanelProps) => {
+export const MemberDetailPanel = ({
+  member,
+  onProjectClick,
+  onClose,
+  isMobile,
+}: MemberDetailPanelProps) => {
   const queryClient = useQueryClient()
 
   // ---- ロール変更 ----
   const [currentRole, setCurrentRole] = React.useState(member.role)
-  React.useEffect(() => { setCurrentRole(member.role) }, [member.role])
+  React.useEffect(() => {
+    setCurrentRole(member.role)
+  }, [member.role])
+  const [currentMembershipStatus, setCurrentMembershipStatus] = React.useState(
+    member.membershipStatus,
+  )
+  React.useEffect(() => {
+    setCurrentMembershipStatus(member.membershipStatus)
+  }, [member.membershipStatus])
 
   const [showRoleMenu, setShowRoleMenu] = React.useState(false)
   const dropdownRef = React.useRef<HTMLDivElement>(null)
@@ -176,14 +255,16 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
 
   const { data: me } = useQuery<CurrentUserDto>({
     queryKey: ['me'],
-    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/me').then((r) => r.json()),
   })
   const { data: allMembers = [] } = useQuery<WorkspaceMemberDto[]>({
     queryKey: ['workspace-members'],
-    queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
+    queryFn: () => fetchWithAuth('/api/workspaces/members').then((r) => r.json()),
   })
-  const viewerRole = allMembers.find(m => m.userId === me?.id)?.role ?? null
-  const canChangeRole = !isMobile && (viewerRole === 'owner' || (viewerRole === 'admin' && currentRole !== 'owner'))
+  const viewerRole = allMembers.find((m) => m.userId === me?.id)?.role ?? null
+  const canChangeRole =
+    !isMobile && (viewerRole === 'owner' || (viewerRole === 'admin' && currentRole !== 'owner'))
+  const canManageMembership = viewerRole === 'owner' || viewerRole === 'admin'
   const allowedRoles: WorkspaceMemberDto['role'][] =
     viewerRole === 'owner' ? ['owner', 'admin', 'member', 'guest'] : ['admin', 'member', 'guest']
 
@@ -193,8 +274,11 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: newRole }),
-      }).then(async r => {
-        if (!r.ok) { const e = await r.json() as { error?: string }; throw e }
+      }).then(async (r) => {
+        if (!r.ok) {
+          const e = (await r.json()) as { error?: string }
+          throw e
+        }
         return r.json() as Promise<{ userId: string; role: WorkspaceMemberDto['role'] }>
       }),
     onSuccess: () => {
@@ -203,7 +287,10 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
   })
 
   const handleRoleChange = (newRole: WorkspaceMemberDto['role']) => {
-    if (newRole === currentRole) { setShowRoleMenu(false); return }
+    if (newRole === currentRole) {
+      setShowRoleMenu(false)
+      return
+    }
     const prev = currentRole
     setCurrentRole(newRole)
     setShowRoleMenu(false)
@@ -211,12 +298,50 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
   }
   // ---- /ロール変更 ----
 
+  const membershipMutation = useMutation({
+    mutationFn: (membershipStatus: WorkspaceMemberDto['membershipStatus']) =>
+      fetchWithAuth(`/api/workspaces/members/${member.userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ membershipStatus }),
+      }).then(async (r) => {
+        if (!r.ok) {
+          const e = (await r.json()) as { error?: string }
+          throw e
+        }
+        return r.json() as Promise<{
+          userId: string
+          membershipStatus: WorkspaceMemberDto['membershipStatus']
+        }>
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+    },
+  })
+
+  const handleMembershipStatusToggle = () => {
+    const nextStatus: WorkspaceMemberDto['membershipStatus'] =
+      currentMembershipStatus === 'active' ? 'inactive' : 'active'
+    const confirmed = window.confirm(
+      nextStatus === 'inactive'
+        ? 'このメンバーを卒業生にすると、このワークスペースへのアクセスを失います。続けますか？'
+        : 'このメンバーを現役に戻します。ワークスペースへのアクセスを再開します。続けますか？',
+    )
+    if (!confirmed) return
+
+    const prev = currentMembershipStatus
+    setCurrentMembershipStatus(nextStatus)
+    membershipMutation.mutate(nextStatus, {
+      onError: () => setCurrentMembershipStatus(prev),
+    })
+  }
+
   const rs = WS_ROLE_STYLE[currentRole]
 
   const { data: projects = [], isLoading } = useQuery<MemberProjectDto[]>({
     queryKey: ['member-projects', member.userId],
     queryFn: () =>
-      fetchWithAuth(`/api/workspaces/members/${member.userId}/projects`).then(r => r.json()),
+      fetchWithAuth(`/api/workspaces/members/${member.userId}/projects`).then((r) => r.json()),
   })
 
   // アーカイブ済みは履歴の下部にまとめる（進行中の順序は維持したいので安定ソート）
@@ -231,16 +356,21 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
 
   const containerStyle: React.CSSProperties = isMobile
     ? {
-        position: 'fixed', inset: 0, zIndex: 100,
+        position: 'fixed',
+        inset: 0,
+        zIndex: 100,
         background: 'var(--bg)',
-        display: 'flex', flexDirection: 'column',
+        display: 'flex',
+        flexDirection: 'column',
         animation: 'slideInRight .22s cubic-bezier(.2,.7,.3,1)',
       }
     : {
-        width: 420, flexShrink: 0,
+        width: 420,
+        flexShrink: 0,
         background: 'var(--card)',
         borderLeft: '1px solid var(--border)',
-        display: 'flex', flexDirection: 'column',
+        display: 'flex',
+        flexDirection: 'column',
         minHeight: 0,
         boxShadow: 'var(--shadow-lg)',
         animation: 'projectPanelIn .2s cubic-bezier(.2,.7,.3,1)',
@@ -250,26 +380,42 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     <aside style={containerStyle}>
       {/* Mobile header */}
       {isMobile && (
-        <div style={{
-          background: 'var(--card)', borderBottom: '1px solid var(--border)',
-          padding: 'max(16px, env(safe-area-inset-top)) 16px 14px',
-          flexShrink: 0,
-        }}>
+        <div
+          style={{
+            background: 'var(--card)',
+            borderBottom: '1px solid var(--border)',
+            padding: 'max(16px, env(safe-area-inset-top)) 16px 14px',
+            flexShrink: 0,
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
             <button
               onClick={onClose}
               style={{
-                width: 34, height: 34, borderRadius: 10, border: 'none',
-                background: 'var(--card-2)', color: 'var(--text-2)',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                border: 'none',
+                background: 'var(--card-2)',
+                color: 'var(--text-2)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
               }}
             >
-              <Icon name="chevLeft" size={18}/>
+              <Icon name="chevLeft" size={18} />
             </button>
-            <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', flex: 1 }}>メンバー詳細</span>
+            <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', flex: 1 }}>
+              メンバー詳細
+            </span>
           </div>
-          <div title={member.email ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <Avatar name={member.displayName} url={member.avatarUrl} size={52}/>
+          <div
+            title={member.email ?? undefined}
+            style={{ display: 'flex', alignItems: 'center', gap: 14 }}
+          >
+            <Avatar name={member.displayName} url={member.avatarUrl} size={52} />
             <div>
               <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
                 {member.displayName}
@@ -289,15 +435,70 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: rs.c,
+                    background: rs.bg,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                  }}
+                >
                   {WS_ROLE_LABEL[currentRole]}
                 </span>
-                <span style={{ fontSize: 12, color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                  <Icon name="clock" size={11}/> {formatJoinedAt(member.joinedAt)}
+                {currentMembershipStatus === 'inactive' && (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: 'var(--amber-text)',
+                      background: 'var(--amber-soft)',
+                      padding: '2px 8px',
+                      borderRadius: 4,
+                    }}
+                  >
+                    {MEMBER_STATUS_LABEL[currentMembershipStatus]}
+                  </span>
+                )}
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--text-4)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 3,
+                  }}
+                >
+                  <Icon name="clock" size={11} /> {formatJoinedAt(member.joinedAt)}
                 </span>
               </div>
             </div>
           </div>
+          {canManageMembership && (
+            <button
+              onClick={handleMembershipStatusToggle}
+              disabled={membershipMutation.isPending}
+              style={{
+                marginTop: 14,
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: 10,
+                border: '1px solid var(--border)',
+                background:
+                  currentMembershipStatus === 'inactive' ? 'var(--accent-soft)' : 'var(--card-2)',
+                color:
+                  currentMembershipStatus === 'inactive' ? 'var(--accent-text)' : 'var(--text-2)',
+                cursor: membershipMutation.isPending ? 'default' : 'pointer',
+                fontSize: 13.5,
+                fontWeight: 600,
+                fontFamily: 'inherit',
+                opacity: membershipMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {currentMembershipStatus === 'active' ? '卒業生にする' : '現役に戻す'}
+            </button>
+          )}
         </div>
       )}
 
@@ -306,12 +507,15 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         <div
           title={member.email ?? undefined}
           style={{
-          padding: '16px 16px 14px',
-          borderBottom: '1px solid var(--divider)',
-          display: 'flex', alignItems: 'flex-start', gap: 12, flexShrink: 0,
+            padding: '16px 16px 14px',
+            borderBottom: '1px solid var(--divider)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 12,
+            flexShrink: 0,
           }}
         >
-          <Avatar name={member.displayName} size={52}/>
+          <Avatar name={member.displayName} size={52} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
               {member.displayName}
@@ -334,41 +538,67 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
               {canChangeRole ? (
                 <div ref={dropdownRef} style={{ position: 'relative' }}>
                   <button
-                    onClick={() => setShowRoleMenu(v => !v)}
+                    onClick={() => setShowRoleMenu((v) => !v)}
                     disabled={roleMutation.isPending}
                     style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      fontSize: 10.5, fontWeight: 700,
-                      color: rs.c, background: rs.bg,
-                      padding: '2px 6px 2px 8px', borderRadius: 4,
-                      border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      color: rs.c,
+                      background: rs.bg,
+                      padding: '2px 6px 2px 8px',
+                      borderRadius: 4,
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
                       opacity: roleMutation.isPending ? 0.6 : 1,
                     }}
                   >
                     {WS_ROLE_LABEL[currentRole]}
-                    <Icon name="chevDown" size={9}/>
+                    <Icon name="chevDown" size={9} />
                   </button>
                   {showRoleMenu && (
-                    <div style={{
-                      position: 'absolute', top: 'calc(100% + 4px)', left: 0,
-                      background: 'var(--card)', border: '1px solid var(--border)',
-                      borderRadius: 8, boxShadow: 'var(--shadow-lg)',
-                      zIndex: 100, overflow: 'hidden', minWidth: 110,
-                    }}>
-                      {allowedRoles.map(role => (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        left: 0,
+                        background: 'var(--card)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 8,
+                        boxShadow: 'var(--shadow-lg)',
+                        zIndex: 100,
+                        overflow: 'hidden',
+                        minWidth: 110,
+                      }}
+                    >
+                      {allowedRoles.map((role) => (
                         <button
                           key={role}
                           onClick={() => handleRoleChange(role)}
                           style={{
-                            display: 'block', width: '100%',
-                            padding: '7px 12px', border: 'none',
+                            display: 'block',
+                            width: '100%',
+                            padding: '7px 12px',
+                            border: 'none',
                             background: currentRole === role ? 'var(--card-2)' : 'transparent',
                             color: currentRole === role ? 'var(--text)' : 'var(--text-2)',
-                            fontSize: 12.5, fontWeight: currentRole === role ? 600 : 500,
-                            cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                            fontSize: 12.5,
+                            fontWeight: currentRole === role ? 600 : 500,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontFamily: 'inherit',
                           }}
-                          onMouseEnter={e => { if (currentRole !== role) (e.currentTarget.style.background = 'var(--card-hover)') }}
-                          onMouseLeave={e => { if (currentRole !== role) (e.currentTarget.style.background = 'transparent') }}
+                          onMouseEnter={(e) => {
+                            if (currentRole !== role)
+                              e.currentTarget.style.background = 'var(--card-hover)'
+                          }}
+                          onMouseLeave={(e) => {
+                            if (currentRole !== role)
+                              e.currentTarget.style.background = 'transparent'
+                          }}
                         >
                           {WS_ROLE_LABEL[role]}
                         </button>
@@ -377,97 +607,247 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
                   )}
                 </div>
               ) : (
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    color: rs.c,
+                    background: rs.bg,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                  }}
+                >
                   {WS_ROLE_LABEL[currentRole]}
                 </span>
               )}
-              <span style={{ fontSize: 11, color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                <Icon name="clock" size={10}/>
+              {currentMembershipStatus === 'inactive' && (
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    color: 'var(--amber-text)',
+                    background: 'var(--amber-soft)',
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                  }}
+                >
+                  {MEMBER_STATUS_LABEL[currentMembershipStatus]}
+                </span>
+              )}
+              <span
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text-4)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                }}
+              >
+                <Icon name="clock" size={10} />
                 {formatJoinedAt(member.joinedAt)}
               </span>
             </div>
+            {canManageMembership && (
+              <button
+                onClick={handleMembershipStatusToggle}
+                disabled={membershipMutation.isPending}
+                style={{
+                  marginTop: 10,
+                  padding: '7px 10px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background:
+                    currentMembershipStatus === 'inactive' ? 'var(--accent-soft)' : 'var(--card-2)',
+                  color:
+                    currentMembershipStatus === 'inactive' ? 'var(--accent-text)' : 'var(--text-2)',
+                  cursor: membershipMutation.isPending ? 'default' : 'pointer',
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  fontFamily: 'inherit',
+                  opacity: membershipMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {currentMembershipStatus === 'active' ? '卒業生にする' : '現役に戻す'}
+              </button>
+            )}
           </div>
           <button
             onClick={onClose}
             style={{
-              width: 28, height: 28, borderRadius: 7, border: 'none',
-              background: 'transparent', color: 'var(--text-3)',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 28,
+              height: 28,
+              borderRadius: 7,
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--text-3)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               flexShrink: 0,
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--card-2)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           >
-            <Icon name="close" size={15}/>
+            <Icon name="close" size={15} />
           </button>
         </div>
       )}
 
       {/* Stats row */}
-      <div style={{
-        display: 'flex', gap: 0,
-        borderBottom: '1px solid var(--divider)',
-        background: isMobile ? 'var(--card)' : undefined,
-        flexShrink: 0,
-      }}>
-        <div style={{
-          flex: 1, padding: isMobile ? '12px 20px' : '12px 16px',
-          borderRight: '1px solid var(--divider)',
-          display: 'flex', flexDirection: 'column', gap: 2,
-        }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 0,
+          borderBottom: '1px solid var(--divider)',
+          background: isMobile ? 'var(--card)' : undefined,
+          flexShrink: 0,
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            padding: isMobile ? '12px 20px' : '12px 16px',
+            borderRight: '1px solid var(--divider)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+          }}
+        >
           <span style={{ fontSize: isMobile ? 22 : 20, fontWeight: 700, color: 'var(--text)' }}>
             {isLoading ? '—' : projects.length}
           </span>
-          <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: isMobile ? 2 : 0 }}>
-            <Icon name="folder" size={isMobile ? 12 : 11}/> 参加プロジェクト
+          <span
+            style={{
+              fontSize: isMobile ? 12 : 11,
+              color: 'var(--text-3)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              marginTop: isMobile ? 2 : 0,
+            }}
+          >
+            <Icon name="folder" size={isMobile ? 12 : 11} /> 参加プロジェクト
           </span>
         </div>
-        <div style={{ flex: 1, padding: isMobile ? '12px 20px' : '12px 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div
+          style={{
+            flex: 1,
+            padding: isMobile ? '12px 20px' : '12px 16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+          }}
+        >
           <span style={{ fontSize: isMobile ? 22 : 20, fontWeight: 700, color: 'var(--text)' }}>
-            {isLoading ? '—' : projects.filter(p => p.role === 'leader' || p.role === 'subleader').length}
+            {isLoading
+              ? '—'
+              : projects.filter((p) => p.role === 'leader' || p.role === 'subleader').length}
           </span>
-          <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: isMobile ? 2 : 0 }}>
-            <Icon name="users" size={isMobile ? 12 : 11}/> リーダー経験
+          <span
+            style={{
+              fontSize: isMobile ? 12 : 11,
+              color: 'var(--text-3)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              marginTop: isMobile ? 2 : 0,
+            }}
+          >
+            <Icon name="users" size={isMobile ? 12 : 11} /> リーダー経験
           </span>
         </div>
       </div>
 
       {/* Project history */}
-      <div style={{
-        flex: 1, overflow: 'auto',
-        padding: isMobile ? '0' : '12px 16px',
-        paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined,
-      }}>
-        <div style={{
-          fontSize: 11, fontWeight: 600, color: 'var(--text-4)',
-          letterSpacing: '0.06em', textTransform: 'uppercase',
-          padding: isMobile ? '14px 16px 6px' : '0 0 4px',
-        }}>
+      <div
+        style={{
+          flex: 1,
+          overflow: 'auto',
+          padding: isMobile ? '0' : '12px 16px',
+          paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: 'var(--text-4)',
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            padding: isMobile ? '14px 16px 6px' : '0 0 4px',
+          }}
+        >
           プロジェクト履歴
         </div>
 
         {isLoading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 0 : 10, marginTop: isMobile ? 0 : 8 }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: isMobile ? 0 : 10,
+              marginTop: isMobile ? 0 : 8,
+            }}
+          >
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 10, padding: isMobile ? '14px 16px' : '10px 0', borderBottom: '1px solid var(--divider)' }}>
-                <div style={{ width: isMobile ? 38 : 32, height: isMobile ? 38 : 32, borderRadius: isMobile ? 10 : 8, background: 'var(--card-2)', flexShrink: 0 }}/>
+              <div
+                key={i}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: isMobile ? 12 : 10,
+                  padding: isMobile ? '14px 16px' : '10px 0',
+                  borderBottom: '1px solid var(--divider)',
+                }}
+              >
+                <div
+                  style={{
+                    width: isMobile ? 38 : 32,
+                    height: isMobile ? 38 : 32,
+                    borderRadius: isMobile ? 10 : 8,
+                    background: 'var(--card-2)',
+                    flexShrink: 0,
+                  }}
+                />
                 <div style={{ flex: 1 }}>
-                  <div style={{ height: isMobile ? 13 : 12, width: isMobile ? '65%' : '70%', borderRadius: 4, background: 'var(--card-2)', marginBottom: isMobile ? 7 : 6 }}/>
-                  <div style={{ height: isMobile ? 11 : 10, width: '40%', borderRadius: 4, background: 'var(--card-2)' }}/>
+                  <div
+                    style={{
+                      height: isMobile ? 13 : 12,
+                      width: isMobile ? '65%' : '70%',
+                      borderRadius: 4,
+                      background: 'var(--card-2)',
+                      marginBottom: isMobile ? 7 : 6,
+                    }}
+                  />
+                  <div
+                    style={{
+                      height: isMobile ? 11 : 10,
+                      width: '40%',
+                      borderRadius: 4,
+                      background: 'var(--card-2)',
+                    }}
+                  />
                 </div>
               </div>
             ))}
           </div>
         ) : projects.length === 0 ? (
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            gap: isMobile ? 10 : 8, padding: isMobile ? '40px 16px' : '32px 0', color: 'var(--text-4)',
-          }}>
-            <Icon name="folder" size={isMobile ? 32 : 28}/>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: isMobile ? 10 : 8,
+              padding: isMobile ? '40px 16px' : '32px 0',
+              color: 'var(--text-4)',
+            }}
+          >
+            <Icon name="folder" size={isMobile ? 32 : 28} />
             <span style={{ fontSize: isMobile ? 14 : 12.5 }}>参加プロジェクトはありません</span>
           </div>
         ) : (
-          sortedProjects.map(p => (
+          sortedProjects.map((p) => (
             <ProjectRow
               key={p.projectId}
               project={p}

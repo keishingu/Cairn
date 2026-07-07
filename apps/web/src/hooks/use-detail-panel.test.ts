@@ -49,11 +49,15 @@ const STUB_MEMBER: WorkspaceMemberDto = {
   email: 'test@example.com',
   avatarUrl: null,
   role: 'member',
+  membershipStatus: 'active',
   joinedAt: '2026-01-01',
   projectCount: 0,
 }
 
-function makeWrapper(projects: ProjectDto[] = [STUB_PROJECT], members: WorkspaceMemberDto[] = [STUB_MEMBER]) {
+function makeWrapper(
+  projects: ProjectDto[] = [STUB_PROJECT],
+  members: WorkspaceMemberDto[] = [STUB_MEMBER],
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   qc.setQueryData(['projects'], projects)
   qc.setQueryData(['workspace-members'], members)
@@ -188,7 +192,9 @@ describe('useDetailPanel — panelTab / setPanelTab', () => {
     mockSearchParams = new URLSearchParams('open=project-proj-1')
     const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
     act(() => result.current.setPanelTab('members'))
-    expect(mockReplace).toHaveBeenCalledWith('/projects?open=project-proj-1&tab=members', { scroll: false })
+    expect(mockReplace).toHaveBeenCalledWith('/projects?open=project-proj-1&tab=members', {
+      scroll: false,
+    })
     expect(mockPush).not.toHaveBeenCalled()
   })
 })

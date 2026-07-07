@@ -47,6 +47,7 @@ const STUB_MEMBER: WorkspaceMemberDto = {
   email: 'taro@example.com',
   avatarUrl: null,
   role: 'member',
+  membershipStatus: 'active',
   joinedAt: '2026-01-01',
   projectCount: 3,
 }
@@ -120,5 +121,27 @@ describe('PageMembers — email tooltip', () => {
     renderMobile()
 
     expect(screen.getByTitle('taro@example.com')).toBeInTheDocument()
+  })
+})
+
+describe('PageMembers — membership sections', () => {
+  it('現役と卒業生を分けて表示する', () => {
+    const inactiveMember: WorkspaceMemberDto = {
+      ...STUB_MEMBER,
+      userId: 'user-2',
+      displayName: '佐藤 花子',
+      email: 'hanako@example.com',
+      membershipStatus: 'inactive',
+    }
+
+    render(
+      <QueryClientProvider client={makeQC([STUB_MEMBER, inactiveMember])}>
+        <PageMembers isMobile />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText('現役')).toBeInTheDocument()
+    expect(screen.getAllByText('卒業生').length).toBeGreaterThan(0)
+    expect(screen.getByText('佐藤 花子')).toBeInTheDocument()
   })
 })

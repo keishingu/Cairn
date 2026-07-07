@@ -13,6 +13,7 @@ export interface WorkspaceMemberDto {
   email: string | null
   avatarUrl: string | null
   role: 'owner' | 'admin' | 'member' | 'guest'
+  membershipStatus: 'active' | 'inactive'
   joinedAt: string
   projectCount: number
 }
@@ -40,8 +41,10 @@ export async function GET() {
         .select({ projectId: projectMembers.projectId })
         .from(projectMembers)
         .innerJoin(projects, eq(projectMembers.projectId, projects.id))
-        .where(and(eq(projectMembers.userId, ctx.userId), eq(projects.workspaceId, ctx.workspaceId)))
-      guestProjectIds = [...new Set(ownProjects.map(r => r.projectId))]
+        .where(
+          and(eq(projectMembers.userId, ctx.userId), eq(projects.workspaceId, ctx.workspaceId)),
+        )
+      guestProjectIds = [...new Set(ownProjects.map((r) => r.projectId))]
 
       if (guestProjectIds.length === 0) {
         // どのプロジェクトにも属さないゲストは自分自身のみ見える
@@ -51,7 +54,7 @@ export async function GET() {
           .select({ userId: projectMembers.userId })
           .from(projectMembers)
           .where(inArray(projectMembers.projectId, guestProjectIds))
-        visibleUserIds = [...new Set([ctx.userId, ...coMembers.map(r => r.userId)])]
+        visibleUserIds = [...new Set([ctx.userId, ...coMembers.map((r) => r.userId)])]
       }
     }
 
@@ -65,7 +68,10 @@ export async function GET() {
       .innerJoin(projects, eq(projectMembers.projectId, projects.id))
       .where(
         isGuest && guestProjectIds.length > 0
-          ? and(eq(projects.workspaceId, ctx.workspaceId), inArray(projectMembers.projectId, guestProjectIds))
+          ? and(
+              eq(projects.workspaceId, ctx.workspaceId),
+              inArray(projectMembers.projectId, guestProjectIds),
+            )
           : eq(projects.workspaceId, ctx.workspaceId),
       )
       .groupBy(projectMembers.userId)
@@ -77,6 +83,7 @@ export async function GET() {
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         role: workspaceMembers.role,
+        membershipStatus: workspaceMembers.membershipStatus,
         joinedAt: workspaceMembers.joinedAt,
         projectCount: sql<number>`coalesce(${projectCountSq.n}, 0)`,
       })
@@ -85,19 +92,26 @@ export async function GET() {
       .leftJoin(projectCountSq, eq(projectCountSq.userId, workspaceMembers.userId))
       .where(
         isGuest
-          ? and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, visibleUserIds))
+          ? and(
+              eq(workspaceMembers.workspaceId, ctx.workspaceId),
+              inArray(workspaceMembers.userId, visibleUserIds),
+            )
           : eq(workspaceMembers.workspaceId, ctx.workspaceId),
       )
       .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
 
-    const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
+    const emails = await resolveEmailsByUserId(
+      admin,
+      rows.map((row) => row.userId),
+    )
 
-    const result: WorkspaceMemberDto[] = rows.map(r => ({
+    const result: WorkspaceMemberDto[] = rows.map((r) => ({
       userId: r.userId,
       displayName: r.displayName,
       email: emails.get(r.userId) ?? null,
       avatarUrl: r.avatarUrl ?? null,
       role: r.role,
+      membershipStatus: r.membershipStatus,
       joinedAt: r.joinedAt.toISOString().slice(0, 10),
       projectCount: Number(r.projectCount),
     }))
