@@ -135,10 +135,15 @@ export async function POST(
     const wsMembers = await db
       .select({ userId: workspaceMembers.userId })
       .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, normalizedUserIds)))
+      .innerJoin(profiles, eq(profiles.id, workspaceMembers.userId))
+      .where(and(
+        eq(workspaceMembers.workspaceId, ctx.workspaceId),
+        inArray(workspaceMembers.userId, normalizedUserIds),
+        eq(profiles.kind, 'human'),
+      ))
 
     if (wsMembers.length !== normalizedUserIds.length) {
-      return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })
+      return NextResponse.json({ error: 'User is not a human workspace member' }, { status: 422 })
     }
 
     const inserted = await db

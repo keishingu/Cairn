@@ -36,6 +36,7 @@ vi.mock('@cairn/db', () => ({
   db: { select: mockDbSelect, insert: mockDbInsert },
   channelMembers: { userId: 'channelMembers.userId', channelId: 'channelMembers.channelId' },
   channelReadStates: { userId: 'channelReadStates.userId', channelId: 'channelReadStates.channelId', lastReadAt: 'channelReadStates.lastReadAt' },
+  profiles: { id: 'profiles.id', kind: 'profiles.kind' },
   workspaceMembers: { userId: 'workspaceMembers.userId', workspaceId: 'workspaceMembers.workspaceId' },
 }))
 
@@ -54,6 +55,7 @@ function mockSelectResults(...results: unknown[]) {
     const result = queue.shift() ?? []
     const builder = {
       from: () => builder,
+      innerJoin: () => builder,
       where: () => builder,
       limit: () => builder,
       then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
@@ -129,7 +131,17 @@ describe('/api/channels/[channelId]/members のアクセス制御', () => {
     const { POST } = await import('./route')
     const res = await POST(postRequest({ userId: TARGET_USER_ID }), ctxRouteParams())
     expect(res.status).toBe(422)
-    await expect(res.json()).resolves.toEqual({ error: '指定されたユーザーはワークスペースのメンバーではありません' })
+    await expect(res.json()).resolves.toEqual({ error: '指定されたユーザーは人間メンバーではありません' })
+    expect(mockDbInsert).not.toHaveBeenCalled()
+  })
+
+  it('bot profile を指定すると 422 を返し、channelMembers に追加されない', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockSelectResults([])
+    const { POST } = await import('./route')
+    const res = await POST(postRequest({ userId: TARGET_USER_ID }), ctxRouteParams())
+    expect(res.status).toBe(422)
+    await expect(res.json()).resolves.toEqual({ error: '指定されたユーザーは人間メンバーではありません' })
     expect(mockDbInsert).not.toHaveBeenCalled()
   })
 
