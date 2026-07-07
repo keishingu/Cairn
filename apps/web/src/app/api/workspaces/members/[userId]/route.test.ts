@@ -7,7 +7,7 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const OTHER_USER_ID = '00000000-0000-0000-0000-000000000002'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole } = vi.hoisted(() => {
+const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockInvalidateWorkspaceCacheForUser } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -17,11 +17,13 @@ const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole } = vi.hoisted(()
   })
   const mockDb = { select: vi.fn(), update: vi.fn() }
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('admin')
-  return { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole }
+  const mockInvalidateWorkspaceCacheForUser = vi.fn()
+  return { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockInvalidateWorkspaceCacheForUser }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: mockGetAuthContext,
+  invalidateWorkspaceCacheForUser: mockInvalidateWorkspaceCacheForUser,
 }))
 
 vi.mock('@/lib/permissions', () => ({
@@ -114,6 +116,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(200)
+    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID)
     const body = await res.json() as { role: string }
     expect(body.role).toBe('admin')
   })
@@ -197,5 +200,17 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(404)
+  })
+
+  it('更新失敗時は workspace cache を無効化しない', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
+    mockDb.update.mockImplementationOnce(() => {
+      throw new Error('update failed')
+    })
+    const { PATCH } = await import('./route')
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    expect(res.status).toBe(500)
+    expect(mockInvalidateWorkspaceCacheForUser).not.toHaveBeenCalled()
   })
 })

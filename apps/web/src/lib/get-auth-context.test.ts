@@ -100,4 +100,44 @@ describe('get-auth-context', () => {
     expect(mockSupabase.auth.getUser).toHaveBeenCalledWith()
     expect(result).toEqual({ userId: 'user-1', error: null })
   })
+
+  it('同じ preferred workspace では 2 回目に DB を引かずキャッシュを再利用する', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-preferred' }) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-preferred' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+
+    const first = await getAuthContext()
+    const second = await getAuthContext()
+
+    expect(first).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-preferred' },
+      error: null,
+    })
+    expect(second).toEqual(first)
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
+  })
+
+  it('invalidateWorkspaceCacheForUser() 後は DB を引き直す', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-preferred' }) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-preferred' }]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-preferred' }]))
+
+    const { getAuthContext, invalidateWorkspaceCacheForUser } = await import('./get-auth-context')
+
+    await getAuthContext()
+    invalidateWorkspaceCacheForUser('user-1')
+    const result = await getAuthContext()
+
+    expect(result).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-preferred' },
+      error: null,
+    })
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
+  })
 })

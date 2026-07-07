@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { getAuthContext } from '@/lib/get-auth-context'
+import { getAuthContext, invalidateWorkspaceCacheForUser } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
 
 const VALID_ROLES = ['owner', 'admin', 'member', 'guest'] as const
@@ -101,6 +101,8 @@ export async function PATCH(
       .update(workspaceMembers)
       .set({ role: newRole as WorkspaceRole })
       .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
+
+    invalidateWorkspaceCacheForUser(targetUserId)
 
     return NextResponse.json({ userId: targetUserId, role: newRole })
   } catch (err) {
