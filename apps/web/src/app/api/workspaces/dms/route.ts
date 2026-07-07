@@ -86,7 +86,7 @@ export async function GET() {
     return NextResponse.json(rows.map(r => ({ ...r, participantAvatarUrl: r.participantAvatarUrl ?? null, unreadCount: 0, unreadMentionCount: 0 })) satisfies DmChannelDto[])
   } catch (err) {
     console.error('[/api/workspaces/dms GET] failed:', err)
-    return NextResponse.json([] satisfies DmChannelDto[])
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -137,27 +137,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ id: existing[0]!.id })
     }
 
-    const [ch] = await db
-      .insert(channels)
-      .values({ workspaceId: ctx.workspaceId, type: 'dm' })
-      .returning({ id: channels.id })
+    // channels → channelMembers → channelReadStates を 1 トランザクションにまとめ、
+    // 並行リクエストによる孤立チャンネルや重複 DM チャンネルの生成を防ぐ
+    const newChannelId = await db.transaction(async (tx) => {
+      const [ch] = await tx
+        .insert(channels)
+        .values({ workspaceId: ctx.workspaceId, type: 'dm' })
+        .returning({ id: channels.id })
 
-    if (!ch) throw new Error('channel insert failed')
+      if (!ch) throw new Error('channel insert failed')
 
-    await db.insert(channelMembers).values([
-      { channelId: ch.id, userId: ctx.userId },
-      { channelId: ch.id, userId: targetUserId },
-    ])
+      await tx.insert(channelMembers).values([
+        { channelId: ch.id, userId: ctx.userId },
+        { channelId: ch.id, userId: targetUserId },
+      ])
 
-    // 両参加者の既読起点を作成時点にする（参加直後の過去履歴未読を防ぐ。新規DMでは履歴ゼロだが一貫性のため）
-    await db.insert(channelReadStates).values([
-      { channelId: ch.id, userId: ctx.userId, lastReadAt: new Date() },
-      { channelId: ch.id, userId: targetUserId, lastReadAt: new Date() },
-    ]).onConflictDoNothing()
+      // 両参加者の既読起点を作成時点にする（参加直後の過去履歴未読を防ぐ。新規DMでは履歴ゼロだが一貫性のため）
+      await tx.insert(channelReadStates).values([
+        { channelId: ch.id, userId: ctx.userId, lastReadAt: new Date() },
+        { channelId: ch.id, userId: targetUserId, lastReadAt: new Date() },
+      ]).onConflictDoNothing()
+
+      return ch.id
+    })
 
     void sql // suppress unused import warning
 
-    return NextResponse.json({ id: ch.id }, { status: 201 })
+    return NextResponse.json({ id: newChannelId }, { status: 201 })
   } catch (err) {
     console.error('[/api/workspaces/dms POST] failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

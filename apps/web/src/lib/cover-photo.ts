@@ -13,9 +13,17 @@ const COVER_QUALITY = 78
 
 // Google Place の写真を取得し、圧縮して covers バケットへ保存し、公開URLを返す。
 // 失敗時は null（呼び出し側はカバー無しで続行する）。
+// Google Places photo resource name の形式: places/{placeId}/photos/{photoRef}
+const PLACE_PHOTO_NAME_RE = /^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/
+
 export async function fetchAndStoreCoverFromPlace(placePhotoName: string): Promise<string | null> {
   const apiKey = process.env['GOOGLE_MAPS_API_KEY']
   if (!apiKey) return null
+
+  if (!PLACE_PHOTO_NAME_RE.test(placePhotoName)) {
+    console.warn('[cover-photo] invalid placePhotoName rejected:', placePhotoName)
+    return null
+  }
 
   try {
     const mediaRes = await fetch(

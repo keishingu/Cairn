@@ -74,7 +74,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'アップロードされたファイルが見つかりません' }, { status: 400 })
   }
 
-  const actualSize = typeof object.metadata?.['size'] === 'number' ? object.metadata['size'] as number : fileSize
+  if (typeof object.metadata?.['size'] !== 'number') {
+    console.error('[/api/attachments/finalize] Storage metadata missing size field:', object)
+    return NextResponse.json({ error: 'アップロードの確認に失敗しました' }, { status: 500 })
+  }
+  const actualSize = object.metadata['size'] as number
   let thumbnailPath: string | null = null
   if (normalizedMime.startsWith('image/')) {
     try {

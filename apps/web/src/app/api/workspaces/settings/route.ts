@@ -37,7 +37,12 @@ export async function PATCH(req: Request) {
   const forbidden = await requireWorkspaceOwner(ctx.workspaceId, ctx.userId)
   if (forbidden) return forbidden
 
-  const patch = await req.json() as Partial<WorkspaceSettings>
+  let patch: Partial<WorkspaceSettings>
+  try {
+    patch = await req.json() as Partial<WorkspaceSettings>
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
 
   try {
     const { db } = await import('@cairn/db')
