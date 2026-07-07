@@ -1,19 +1,21 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
-import { Icon, Avatar, Fab } from '../primitives'
+import { Icon, Avatar, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { MemberDetailPanel } from '../detail-panel/member-panel'
 import { ProjectPanel } from '../detail-panel/project-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
+import { ConfirmDialog } from '../confirm-dialog'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useCurrentUser, useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useCommand } from '@/lib/command-registry'
+import { toast } from '@/lib/toast'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -51,15 +53,29 @@ interface MemberCardProps {
   projectCount: number
   selected: boolean
   onClick: () => void
+  canManage?: boolean
+  onArchiveToggle?: () => void
 }
 
-const MemberCard = ({ member, projectCount, selected, onClick }: MemberCardProps) => {
+const MemberCard = ({ member, projectCount, selected, onClick, canManage, onArchiveToggle }: MemberCardProps) => {
   const role = ROLE_STYLE[member.role]
+  const isArchived = member.membershipStatus === 'inactive'
+  const [menuOpen, setMenuOpen] = React.useState(false)
+
+  // カード外クリックでメニューを閉じる
+  React.useEffect(() => {
+    if (!menuOpen) return
+    const close = () => setMenuOpen(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [menuOpen])
+
   return (
     <div
       className="card"
       onClick={onClick}
       style={{
+        position: 'relative',
         padding: '16px 18px', cursor: 'pointer', transition: 'box-shadow .12s, transform .12s',
         border: selected ? '1.5px solid var(--accent)' : undefined,
         background: selected ? 'var(--accent-soft)' : undefined,
@@ -75,36 +91,81 @@ const MemberCard = ({ member, projectCount, selected, onClick }: MemberCardProps
         ;(e.currentTarget as HTMLElement).style.transform = 'translateY(0)'
       }}
     >
-      <div title={member.email ?? undefined} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-        <Avatar name={member.displayName} url={member.avatarUrl} size={44} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{member.displayName}</div>
-          {member.email && (
+      {/* 操作メニュー（admin のみ）。減光の影響を受けないようカード直下に置く */}
+      {canManage && (
+        <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
+          <button
+            aria-label="メンバー操作"
+            onClick={e => { e.stopPropagation(); setMenuOpen(o => !o) }}
+            style={{
+              width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent',
+              color: 'var(--text-4)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Icon name="more" size={16} />
+          </button>
+          {menuOpen && (
             <div
+              onClick={e => e.stopPropagation()}
               style={{
-                fontSize: 11.5,
-                color: 'var(--text-4)',
-                marginBottom: 6,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
+                position: 'absolute', top: 30, right: 0, minWidth: 160, padding: 4,
+                background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8,
+                boxShadow: 'var(--shadow-lg)', zIndex: 10,
               }}
             >
-              {member.email}
+              <button
+                onClick={() => { setMenuOpen(false); onArchiveToggle?.() }}
+                style={{
+                  width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 6, border: 'none',
+                  background: 'transparent', color: 'var(--text-2)', fontSize: 12.5, cursor: 'pointer',
+                  fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8,
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              >
+                <Icon name={isArchived ? 'refresh' : 'archive'} size={13} />
+                {isArchived ? 'アーカイブを解除' : 'アーカイブする'}
+              </button>
             </div>
           )}
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: role.c, background: role.bg, padding: '2px 8px', borderRadius: 4 }}>
-            {ROLE_LABEL[member.role]}
+        </div>
+      )}
+
+      <div style={{ opacity: isArchived ? ARCHIVED_OPACITY : 1 }}>
+        <div title={member.email ?? undefined} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+          <Avatar name={member.displayName} url={member.avatarUrl} size={44} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{member.displayName}</div>
+            {member.email && (
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: 'var(--text-4)',
+                  marginBottom: 6,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {member.email}
+              </div>
+            )}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: role.c, background: role.bg, padding: '2px 8px', borderRadius: 4 }}>
+                {ROLE_LABEL[member.role]}
+              </span>
+              {isArchived && <ArchivedBadge />}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 16, fontSize: 11.5, color: 'var(--text-3)', borderTop: '1px solid var(--divider)', paddingTop: 10 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Icon name="folder" size={11} /> {projectCount} プロジェクト
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Icon name="clock" size={11} /> {formatJoinedAt(member.joinedAt)}
           </span>
         </div>
-      </div>
-      <div style={{ display: 'flex', gap: 16, fontSize: 11.5, color: 'var(--text-3)', borderTop: '1px solid var(--divider)', paddingTop: 10 }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Icon name="folder" size={11} /> {projectCount} プロジェクト
-        </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Icon name="clock" size={11} /> {formatJoinedAt(member.joinedAt)}
-        </span>
       </div>
     </div>
   )
@@ -119,10 +180,14 @@ interface PageMembersProps {
 export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMembersProps) => {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { isAdmin: canInvite } = useWorkspacePermissions()
+  const { isAdmin, isOwner } = useWorkspacePermissions()
+  const canInvite = isAdmin
+  const { data: currentUser } = useCurrentUser()
   const [search, setSearch] = React.useState('')
   const effectiveSearch = isMobile ? search : (externalSearch ?? search)
   const [roleFilter, setRoleFilter] = React.useState<WorkspaceMemberDto['role'] | 'all'>('all')
+  const [showArchived, setShowArchived] = React.useState(false)
+  const [archiveTarget, setArchiveTarget] = React.useState<WorkspaceMemberDto | null>(null)
   // ナビゲーション時の remount でパネルが一瞬消えないよう、キャッシュから初期値を復元する
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(() => {
     if (!initialUserId || isMobile) return null
@@ -179,25 +244,52 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
   }, [initialUserId, isMobile, members])
 
 
+  // アーカイブ（非活性化）/ 解除。成功時にメンバー一覧を再取得する。
+  const archiveMutation = useMutation({
+    mutationFn: async ({ userId, status }: { userId: string; status: 'active' | 'inactive' }) => {
+      const res = await fetchWithAuth(`/api/workspaces/members/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(data.error ?? '操作に失敗しました')
+      }
+    },
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+      toast.success(variables.status === 'inactive' ? 'メンバーをアーカイブしました' : 'アーカイブを解除しました')
+    },
+  })
+
+  // admin 以上のみ操作可。自分自身・owner（owner 以外の操作者）は対象外。
+  const canManageMember = (m: WorkspaceMemberDto): boolean =>
+    isAdmin && m.userId !== currentUser?.id && (m.role !== 'owner' || isOwner)
+
   const filtered = React.useMemo(() => {
     return members.filter(m => {
+      const matchStatus = showArchived ? m.membershipStatus === 'inactive' : m.membershipStatus === 'active'
       const normalizedSearch = effectiveSearch.toLowerCase()
       const matchSearch =
         effectiveSearch === ''
         || m.displayName.toLowerCase().includes(normalizedSearch)
         || m.email?.toLowerCase().includes(normalizedSearch)
       const matchRole = roleFilter === 'all' || m.role === roleFilter
-      return matchSearch && matchRole
+      return matchStatus && matchSearch && matchRole
     })
-  }, [members, effectiveSearch, roleFilter])
+  }, [members, effectiveSearch, roleFilter, showArchived])
+
+  const activeMembers = React.useMemo(() => members.filter(m => m.membershipStatus === 'active'), [members])
+  const archivedCount = members.length - activeMembers.length
 
   const counts = React.useMemo(() => {
-    const c = new Map<string, number>([['all', members.length]])
-    for (const m of members) {
+    const c = new Map<string, number>([['all', activeMembers.length]])
+    for (const m of activeMembers) {
       c.set(m.role, (c.get(m.role) ?? 0) + 1)
     }
     return c
-  }, [members])
+  }, [activeMembers])
 
   const roleFilters: { id: WorkspaceMemberDto['role'] | 'all'; label: string }[] = [
     { id: 'all',    label: `すべて (${counts.get('all') ?? 0})` },
@@ -216,6 +308,29 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
   useCommand('ctx.filterTabPrev', () => cycleRoleFilter('prev'))
   useCommand('ctx.filterTabNext', () => cycleRoleFilter('next'))
 
+  const willUnarchive = archiveTarget?.membershipStatus === 'inactive'
+  const archiveDialog = (
+    <ConfirmDialog
+      open={archiveTarget !== null}
+      title={willUnarchive ? 'アーカイブを解除' : 'メンバーをアーカイブ'}
+      message={
+        willUnarchive
+          ? <><b>{archiveTarget?.displayName}</b> をアーカイブ解除します。ワークスペースへのアクセスが復帰し、一覧・候補にも再表示されます。</>
+          : <><b>{archiveTarget?.displayName}</b> をアーカイブします。このワークスペースへのアクセスは失効し、メンバー一覧やメンション・担当などの候補から外れます。発言・写真・履歴は本人名義のまま残り、いつでも解除できます。</>
+      }
+      confirmLabel={willUnarchive ? 'アーカイブを解除' : 'アーカイブする'}
+      busyLabel="処理中…"
+      onConfirm={async () => {
+        if (!archiveTarget) return
+        await archiveMutation.mutateAsync({
+          userId: archiveTarget.userId,
+          status: willUnarchive ? 'active' : 'inactive',
+        })
+      }}
+      onClose={() => setArchiveTarget(null)}
+    />
+  )
+
   if (isMobile) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
@@ -232,6 +347,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
         )}
         <MobileHeader title="メンバー" />
         {showInviteModal && <InviteModal onClose={() => setShowInviteModal(false)} isMobile />}
+        {archiveDialog}
         {canInvite && <Fab onClick={() => setShowInviteModal(true)} label="メンバーを招待"/>}
 
         {/* Search */}
@@ -270,6 +386,19 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
               }}
             >{f.label}</button>
           ))}
+          {archivedCount > 0 && (
+            <button
+              onClick={() => setShowArchived(v => !v)}
+              style={{
+                padding: '5px 12px', borderRadius: 999, whiteSpace: 'nowrap',
+                border: showArchived ? 'none' : '1px solid var(--border-2)',
+                background: showArchived ? 'var(--text-3)' : 'transparent',
+                color: showArchived ? 'var(--on-accent)' : 'var(--text-4)',
+                fontSize: 12.5, fontWeight: showArchived ? 700 : 500,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >アーカイブ済み ({archivedCount})</button>
+          )}
         </div>
 
         {/* 2-column card grid */}
@@ -291,6 +420,8 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
                   member={m}
                   projectCount={m.projectCount}
                   selected={false}
+                  canManage={canManageMember(m)}
+                  onArchiveToggle={() => setArchiveTarget(m)}
                   onClick={() => {
                     setMobileDetailMember(m)
                     router.push(`/members/${m.userId}`, { scroll: false })
@@ -324,6 +455,20 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
                 }}
               >{f.label}</button>
             ))}
+            {archivedCount > 0 && (
+              <button
+                onClick={() => setShowArchived(v => !v)}
+                title="アーカイブされたメンバー（アクセス失効）"
+                style={{
+                  marginLeft: 4, padding: '6px 12px', borderRadius: 6, border: 'none',
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  background: showArchived ? 'var(--card-hover)' : 'transparent',
+                  color: showArchived ? 'var(--text)' : 'var(--text-4)',
+                  fontSize: 12.5, fontWeight: showArchived ? 600 : 500,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              ><Icon name="archive" size={12} /> アーカイブ済み ({archivedCount})</button>
+            )}
           </div>
           <button
             className="btn btn-primary"
@@ -358,6 +503,8 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
                   member={m}
                   projectCount={m.projectCount}
                   selected={selectedMember?.userId === m.userId}
+                  canManage={canManageMember(m)}
+                  onArchiveToggle={() => setArchiveTarget(m)}
                   onClick={() => {
                     if (selectedMember?.userId === m.userId) {
                       setSelectedMember(null)
@@ -387,6 +534,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
           onClose={() => { setSelectedMember(null); router.push('/members') }}
         />
       ) : null}
+      {archiveDialog}
     </div>
   )
 }
