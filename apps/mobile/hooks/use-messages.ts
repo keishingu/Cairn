@@ -35,6 +35,9 @@ export function useMessages(channelId: string | null) {
     },
     enabled: !!channelId,
     refetchInterval: 5000,
+    // スレッドを開くたびに未読化判定の基準を最新化する。
+    // staleTime 内のキャッシュに任せると、直近の新着を取得しないまま既読化してしまう
+    refetchOnMount: 'always',
   })
 }
 

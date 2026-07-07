@@ -47,17 +47,20 @@ export default function ChatThreadScreen() {
   const messages = messagesQuery.data ?? []
 
   // 表示中に届いたポーリング更新も既読化する（開いた瞬間だけだと、5秒ポーリング中の
-  // 新着がスレッド上には表示されるのに未読バッジへ残り続けてしまう）
+  // 新着がスレッド上には表示されるのに未読バッジへ残り続けてしまう）。
+  // /read はサーバー側の最新メッセージを既読化するため、取得中（キャッシュがまだ最新と
+  // 限らない状態）に呼ぶと、画面にまだ表示していない新着まで既読化されてしまう。
+  // そのため fetch 完了後（isFetching が false）になってから既読化する
   const markReadRef = React.useRef(markRead)
   markReadRef.current = markRead
   const lastReadMessageIdRef = React.useRef<string | null>(null)
   React.useEffect(() => {
-    if (!channelId || messages.length === 0) return
+    if (!channelId || messagesQuery.isFetching || messages.length === 0) return
     const lastId = messages[messages.length - 1]?.id
     if (!lastId || lastReadMessageIdRef.current === lastId) return
     lastReadMessageIdRef.current = lastId
     markReadRef.current.mutate()
-  }, [channelId, messages])
+  }, [channelId, messages, messagesQuery.isFetching])
 
   async function handleSend() {
     const content = draft.trim()
