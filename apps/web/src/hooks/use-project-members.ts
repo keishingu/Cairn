@@ -110,6 +110,7 @@ export function useRevokeWorkspaceInvite() {
 }
 
 export function useCreateProjectGuestInvite(projectId: string) {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async () => {
       const res = await fetchWithAuth(`/api/projects/${projectId}/guest-invite`, { method: 'POST' })
@@ -118,6 +119,9 @@ export function useCreateProjectGuestInvite(projectId: string) {
         throw new Error(data.error ?? '招待リンクの生成に失敗しました')
       }
       return data as CreateGuestInviteResponse
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace-invites'] })
     },
   })
 }

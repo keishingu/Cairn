@@ -158,13 +158,14 @@ describe('workspace invite hooks', () => {
     expect(queryClient.getQueryData(['workspace-invites'])).toBeUndefined()
   })
 
-  it('useCreateProjectGuestInvite が guest 招待リンクを生成する', async () => {
+  it('useCreateProjectGuestInvite が guest 招待リンク生成後に一覧を再取得する', async () => {
     mockFetch.mockResolvedValue(new Response(JSON.stringify({
       token: 'guest-token',
       url: 'https://example.com/invite/guest-token',
       expiresAt: '2026-07-31T00:00:00.000Z',
     }), { status: 200 }))
-    const { wrapper } = makeWrapper()
+    const { wrapper, queryClient } = makeWrapper()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
     const { result } = renderHook(() => useCreateProjectGuestInvite('project-1'), { wrapper })
 
     await act(async () => {
@@ -175,6 +176,7 @@ describe('workspace invite hooks', () => {
       '/api/projects/project-1/guest-invite',
       expect.objectContaining({ method: 'POST' }),
     )
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workspace-invites'] })
   })
 })
 
