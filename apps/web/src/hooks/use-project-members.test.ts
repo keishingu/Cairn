@@ -146,6 +146,18 @@ describe('workspace invite hooks', () => {
     expect(cached).toEqual([])
   })
 
+  it('useRevokeWorkspaceInvite は未読込キャッシュを空配列で seed しない', async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    const { wrapper, queryClient } = makeWrapper()
+    const { result } = renderHook(() => useRevokeWorkspaceInvite(), { wrapper })
+
+    await act(async () => {
+      await result.current.mutateAsync('token-1')
+    })
+
+    expect(queryClient.getQueryData(['workspace-invites'])).toBeUndefined()
+  })
+
   it('useCreateProjectGuestInvite が guest 招待リンクを生成する', async () => {
     mockFetch.mockResolvedValue(new Response(JSON.stringify({
       token: 'guest-token',

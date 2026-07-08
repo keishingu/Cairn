@@ -103,7 +103,7 @@ export function useRevokeWorkspaceInvite() {
     onSuccess: (token) => {
       queryClient.setQueryData<WorkspaceInviteDto[]>(
         ['workspace-invites'],
-        old => old?.filter(invite => invite.token !== token) ?? [],
+        old => old?.filter(invite => invite.token !== token),
       )
     },
   })
