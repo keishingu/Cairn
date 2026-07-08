@@ -75,6 +75,21 @@ AS $$
             WHERE "channel_members"."channel_id" = "channels"."id"
               AND "channel_members"."user_id" = auth.uid()
           )
+          AND (
+            "channels"."type" <> 'project'
+            OR (
+              "workspace_members"."user_id" IS NOT NULL
+              AND (
+                "workspace_members"."role" <> 'guest'
+                OR EXISTS (
+                  SELECT 1
+                  FROM "project_members"
+                  WHERE "project_members"."project_id" = "channels"."project_id"
+                    AND "project_members"."user_id" = auth.uid()
+                )
+              )
+            )
+          )
         )
         OR (
           "channels"."is_private" = false
