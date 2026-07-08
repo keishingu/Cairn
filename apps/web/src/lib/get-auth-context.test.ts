@@ -124,4 +124,33 @@ describe('get-auth-context', () => {
     expect(mockDb.select).toHaveBeenCalledTimes(3)
     expect(getCookie).toHaveBeenCalledTimes(2)
   })
+
+  it('cookie で選んだ workspace を bare user key に共有しない', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-cookie' }]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-default' }]))
+
+    const { getAuthContext, WORKSPACE_COOKIE } = await import('./get-auth-context')
+
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({
+      get: vi.fn().mockImplementation((name: string) => (name === WORKSPACE_COOKIE ? { value: 'ws-cookie' } : undefined)),
+    })
+    const cookieScoped = await getAuthContext()
+
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    const bareRequest = await getAuthContext()
+
+    expect(cookieScoped).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-cookie' },
+      error: null,
+    })
+    expect(bareRequest).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-default' },
+      error: null,
+    })
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
+  })
 })

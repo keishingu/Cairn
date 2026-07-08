@@ -99,7 +99,6 @@ export async function getAuthContext(): Promise<AuthResult> {
       if (preferred) {
         const cachedEntry = { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 }
         workspaceCache.set(cacheKey, cachedEntry)
-        workspaceCache.set(fallbackCacheKey, cachedEntry)
         return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
       }
       const cachedFallback = workspaceCache.get(fallbackCacheKey)
