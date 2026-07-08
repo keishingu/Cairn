@@ -7,7 +7,7 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const OTHER_USER_ID = '00000000-0000-0000-0000-000000000002'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole } = vi.hoisted(() => {
+const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockInvalidateWorkspaceCacheForUser } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -17,11 +17,13 @@ const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole } = vi.hoisted(()
   })
   const mockDb = { select: vi.fn(), update: vi.fn() }
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('admin')
-  return { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole }
+  const mockInvalidateWorkspaceCacheForUser = vi.fn()
+  return { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockInvalidateWorkspaceCacheForUser }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: mockGetAuthContext,
+  invalidateWorkspaceCacheForUser: mockInvalidateWorkspaceCacheForUser,
 }))
 
 vi.mock('@/lib/permissions', () => ({
@@ -82,6 +84,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
       error: null,
     })
     mockGetWorkspaceMemberRole.mockResolvedValue('admin')
+    mockInvalidateWorkspaceCacheForUser.mockReset()
   })
 
   it('未認証なら 401 を返す', async () => {
@@ -116,6 +119,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(res.status).toBe(200)
     const body = await res.json() as { role: string }
     expect(body.role).toBe('admin')
+    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID)
   })
 
   it('admin は admin を member に降格できる', async () => {
@@ -197,5 +201,6 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(404)
+    expect(mockInvalidateWorkspaceCacheForUser).not.toHaveBeenCalled()
   })
 })

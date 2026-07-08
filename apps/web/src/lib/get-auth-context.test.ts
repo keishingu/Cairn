@@ -100,4 +100,54 @@ describe('get-auth-context', () => {
     expect(mockSupabase.auth.getUser).toHaveBeenCalledWith()
     expect(result).toEqual({ userId: 'user-1', error: null })
   })
+
+  it('invalidateWorkspaceCacheForUser で user と workspace 指定キャッシュをまとめて無効化できる', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-2' }]))
+
+    const authModule = await import('./get-auth-context')
+
+    const first = await authModule.getAuthContext()
+    expect(first).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1' },
+      error: null,
+    })
+
+    authModule.invalidateWorkspaceCacheForUser('user-1')
+
+    const second = await authModule.getAuthContext()
+    expect(second).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-2' },
+      error: null,
+    })
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
+  })
+
+  it('preferredWorkspaceId 付きキャッシュも invalidateWorkspaceCacheForUser で消える', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-preferred' }) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-preferred' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-preferred-2' }]))
+
+    const authModule = await import('./get-auth-context')
+
+    const first = await authModule.getAuthContext()
+    expect(first).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-preferred' },
+      error: null,
+    })
+
+    authModule.invalidateWorkspaceCacheForUser('user-1')
+
+    const second = await authModule.getAuthContext()
+    expect(second).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-preferred-2' },
+      error: null,
+    })
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
+  })
 })
