@@ -58,6 +58,50 @@ export const updateTaskSchema = z.object({
   { message: 'At least one field is required' },
 )
 
+export const patchProjectSchema = z.object({
+  title: z.string().min(1).max(100).optional(),
+  description: z.string().max(1000).nullable().optional(),
+  startDate: z.string().date().nullable().optional(),
+  endDate: z.string().date().nullable().optional(),
+  statusName: z.string().max(100).optional(),
+  archived: z.boolean().optional(),
+  coverPhotoUrl: z.string().url().nullable().optional(),
+  placePhotoName: z.string().max(500).optional(),
+  location: z.string().max(500).nullable().optional(),
+  placeId: z.string().max(500).nullable().optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
+export const patchWorkspaceSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().max(1000).nullable().optional(),
+  logoUrl: z.string().url().nullable().optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
+export const patchMeSchema = z.object({
+  displayName: z.string().min(1).max(100).optional(),
+  bio: z.string().max(1000).nullable().optional(),
+  status: z.enum(['online', 'away', 'busy', 'offline']).optional(),
+  statusMessage: z.string().max(100).nullable().optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
+export const patchProjectStatusSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  sortOrder: z.string().max(100).optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
 export const uploadGalleryItemSchema = z.object({
   projectId: z.string().uuid(),
   fileId: z.string().uuid(),
@@ -74,6 +118,10 @@ export type PostMessageInput = z.infer<typeof postMessageSchema>
 export type CreateTaskInput = z.infer<typeof createTaskSchema>
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>
 export type UploadGalleryItemInput = z.infer<typeof uploadGalleryItemSchema>
+export type PatchProjectInput = z.infer<typeof patchProjectSchema>
+export type PatchWorkspaceInput = z.infer<typeof patchWorkspaceSchema>
+export type PatchMeInput = z.infer<typeof patchMeSchema>
+export type PatchProjectStatusInput = z.infer<typeof patchProjectStatusSchema>
 
 export interface AttachmentDto {
   id: string

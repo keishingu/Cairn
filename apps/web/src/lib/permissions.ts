@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { db, workspaceMembers, channels, channelMembers, projects, projectMembers, messages, messageAttachments } from '@cairn/db'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, sql, inArray } from 'drizzle-orm'
 
 async function getWorkspaceRole(workspaceId: string, userId: string) {
   const [member] = await db
@@ -222,10 +222,6 @@ export async function canAccessFile(
   if (Array.isArray(channelIdsArr)) {
     for (const id of channelIdsArr) if (typeof id === 'string') metadataChannelIds.add(id)
   }
-  for (const metadataChannelId of metadataChannelIds) {
-    const forbidden = await requireChannelAccess(workspaceId, userId, metadataChannelId)
-    if (!forbidden) return true
-  }
 
   // メッセージ添付ファイル: 添付先チャンネルのいずれかにアクセスできれば可
   const attached = await db
@@ -234,10 +230,65 @@ export async function canAccessFile(
     .innerJoin(messages, eq(messageAttachments.messageId, messages.id))
     .where(eq(messageAttachments.fileId, file.id))
 
-  for (const { channelId } of attached) {
-    const forbidden = await requireChannelAccess(workspaceId, userId, channelId)
-    if (!forbidden) return true
+  // 全候補チャンネルを一括チェック（N+1 を避けるため requireChannelAccess をループで呼ばない）
+  const allCandidateChannelIds = [...new Set([...metadataChannelIds, ...attached.map(r => r.channelId)])]
+  if (allCandidateChannelIds.length === 0) return false
+
+  return canAccessViaAnyChannel(workspaceId, userId, role, allCandidateChannelIds)
+}
+
+// 指定チャンネル群のうち少なくとも1つにアクセスできるか一括チェックする。
+// requireChannelAccess をループで呼ぶ N+1 を避けるため、チャンネルメタデータと
+// メンバーシップを2回のバッチクエリで取得して評価する。
+async function canAccessViaAnyChannel(
+  workspaceId: string,
+  userId: string,
+  role: string | null,
+  channelIds: string[],
+): Promise<boolean> {
+  const channelRows = await db
+    .select({
+      id: channels.id,
+      isPrivate: channels.isPrivate,
+      type: channels.type,
+      projectId: channels.projectId,
+      effectiveWorkspaceId: sql<string | null>`coalesce(${channels.workspaceId}, ${projects.workspaceId})`,
+    })
+    .from(channels)
+    .leftJoin(projects, eq(channels.projectId, projects.id))
+    .where(inArray(channels.id, channelIds))
+
+  const wsChannels = channelRows.filter(c => c.effectiveWorkspaceId === workspaceId)
+  if (wsChannels.length === 0) return false
+
+  // member 以上かつ非プライベート・非 DM チャンネルはメンバーシップ確認なしで許可
+  if (role !== 'guest') {
+    const hasOpenChannel = wsChannels.some(c => !c.isPrivate && c.type !== 'dm')
+    if (hasOpenChannel) return true
   }
+
+  const needsMemberCheckIds = wsChannels.filter(c => c.isPrivate || c.type === 'dm').map(c => c.id)
+  const guestProjectIds = role === 'guest'
+    ? [...new Set(wsChannels.filter(c => c.type === 'project' && c.projectId).map(c => c.projectId!))]
+    : []
+
+  const [membershipRows, projectMemberRows] = await Promise.all([
+    needsMemberCheckIds.length > 0
+      ? db
+          .select({ channelId: channelMembers.channelId })
+          .from(channelMembers)
+          .where(and(eq(channelMembers.userId, userId), inArray(channelMembers.channelId, needsMemberCheckIds)))
+      : Promise.resolve([]),
+    guestProjectIds.length > 0
+      ? db
+          .select({ projectId: projectMembers.projectId })
+          .from(projectMembers)
+          .where(and(eq(projectMembers.userId, userId), inArray(projectMembers.projectId, guestProjectIds)))
+      : Promise.resolve([]),
+  ])
+
+  if (membershipRows.length > 0) return true
+  if (projectMemberRows.length > 0) return true
 
   return false
 }
