@@ -49,9 +49,61 @@ ALTER TABLE "polls" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "poll_options" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "poll_votes" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 
+CREATE OR REPLACE FUNCTION "public"."can_access_poll_channel"(p_channel_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM "channels"
+    LEFT JOIN "projects" ON "projects"."id" = "channels"."project_id"
+    LEFT JOIN "workspace_members" ON "workspace_members"."user_id" = auth.uid()
+      AND "workspace_members"."workspace_id" = coalesce(
+        "channels"."workspace_id",
+        "projects"."workspace_id"
+      )
+    WHERE "channels"."id" = p_channel_id
+      AND (
+        (
+          ("channels"."is_private" = true OR "channels"."type" = 'dm')
+          AND EXISTS (
+            SELECT 1
+            FROM "channel_members"
+            WHERE "channel_members"."channel_id" = "channels"."id"
+              AND "channel_members"."user_id" = auth.uid()
+          )
+        )
+        OR (
+          "channels"."is_private" = false
+          AND "channels"."type" = 'workspace'
+          AND "workspace_members"."user_id" IS NOT NULL
+        )
+        OR (
+          "channels"."is_private" = false
+          AND "channels"."type" = 'project'
+          AND "workspace_members"."user_id" IS NOT NULL
+          AND (
+            "workspace_members"."role" <> 'guest'
+            OR EXISTS (
+              SELECT 1
+              FROM "project_members"
+              WHERE "project_members"."project_id" = "channels"."project_id"
+                AND "project_members"."user_id" = auth.uid()
+            )
+          )
+        )
+      )
+  );
+$$;--> statement-breakpoint
+
+GRANT EXECUTE ON FUNCTION "public"."can_access_poll_channel"(uuid) TO authenticated;--> statement-breakpoint
+
 CREATE POLICY "polls_select" ON "polls"
   FOR SELECT TO authenticated
-  USING (public.can_access_channel(channel_id));--> statement-breakpoint
+  USING (public.can_access_poll_channel(channel_id));--> statement-breakpoint
 
 CREATE POLICY "poll_options_select" ON "poll_options"
   FOR SELECT TO authenticated
@@ -60,7 +112,7 @@ CREATE POLICY "poll_options_select" ON "poll_options"
       SELECT 1
       FROM "polls"
       WHERE "polls"."id" = "poll_options"."poll_id"
-        AND public.can_access_channel("polls"."channel_id")
+        AND public.can_access_poll_channel("polls"."channel_id")
     )
   );--> statement-breakpoint
 
@@ -71,6 +123,7 @@ CREATE POLICY "poll_votes_select" ON "poll_votes"
       SELECT 1
       FROM "polls"
       WHERE "polls"."id" = "poll_votes"."poll_id"
-        AND public.can_access_channel("polls"."channel_id")
+        AND public.can_access_poll_channel("polls"."channel_id")
+        AND "polls"."anonymous" = false
     )
   );
