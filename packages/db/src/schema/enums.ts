@@ -10,7 +10,10 @@ export const workspaceRoleEnum = pgEnum('workspace_role', [
   'guest',
 ])
 
-export const memberStatusEnum = pgEnum('workspace_member_status', ['active', 'inactive'])
+export const memberStatusEnum = pgEnum('workspace_member_status', [
+  'active',
+  'inactive',
+])
 
 export const userStatusEnum = pgEnum('user_status', [
   'online',
@@ -33,7 +36,12 @@ export const attendanceStatusEnum = pgEnum('attendance_status', [
   'declined',
 ])
 
-export const messageTypeEnum = pgEnum('message_type', ['text', 'html', 'system'])
+export const messageTypeEnum = pgEnum('message_type', [
+  'text',
+  'html',
+  'system',
+  'poll',
+])
 
 export const fileTypeEnum = pgEnum('file_type', [
   'document',
@@ -44,13 +52,25 @@ export const fileTypeEnum = pgEnum('file_type', [
   'link',
 ])
 
-export const taskStatusEnum = pgEnum('task_status', ['todo', 'in_progress', 'done'])
+export const taskStatusEnum = pgEnum('task_status', [
+  'todo',
+  'in_progress',
+  'done',
+])
 
-export const taskPriorityEnum = pgEnum('task_priority', ['high', 'medium', 'low'])
+export const taskPriorityEnum = pgEnum('task_priority', [
+  'high',
+  'medium',
+  'low',
+])
 
 export const aiScopeEnum = pgEnum('ai_scope', ['workspace', 'project'])
 
-export const channelTypeEnum = pgEnum('channel_type', ['workspace', 'project', 'dm'])
+export const channelTypeEnum = pgEnum('channel_type', [
+  'workspace',
+  'project',
+  'dm',
+])
 
 export const notificationTypeEnum = pgEnum('notification_type', [
   'mention',

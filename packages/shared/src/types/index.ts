@@ -3,11 +3,16 @@
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'guest'
 
-export type ProjectMemberRole = 'leader' | 'subleader' | 'member' | 'reviewer' | 'observer'
+export type ProjectMemberRole =
+  | 'leader'
+  | 'subleader'
+  | 'member'
+  | 'reviewer'
+  | 'observer'
 
 export type AttendanceStatus = 'attending' | 'tentative' | 'declined'
 
-export type MessageType = 'text' | 'html' | 'system'
+export type MessageType = 'text' | 'html' | 'system' | 'poll'
 
 export type FileType = 'document' | 'image' | 'video' | 'audio' | 'other'
 
