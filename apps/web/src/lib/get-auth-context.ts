@@ -77,9 +77,10 @@ export async function getAuthContext(): Promise<AuthResult> {
   const preferredWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
 
   const cacheKey = buildWorkspaceCacheKey(user.id, preferredWorkspaceId)
-  const cached = workspaceCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) {
-    return { ctx: { userId: user.id, workspaceId: cached.workspaceId }, error: null }
+  const fallbackCacheKey = buildWorkspaceCacheKey(user.id, null)
+  const cachedPreferred = workspaceCache.get(cacheKey)
+  if (cachedPreferred && cachedPreferred.expiresAt > Date.now()) {
+    return { ctx: { userId: user.id, workspaceId: cachedPreferred.workspaceId }, error: null }
   }
 
   try {
@@ -96,10 +97,23 @@ export async function getAuthContext(): Promise<AuthResult> {
         .limit(1)
 
       if (preferred) {
-        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+        const cachedEntry = { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 }
+        workspaceCache.set(cacheKey, cachedEntry)
+        workspaceCache.set(fallbackCacheKey, cachedEntry)
         return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
       }
+      const cachedFallback = workspaceCache.get(fallbackCacheKey)
+      if (cachedFallback && cachedFallback.expiresAt > Date.now()) {
+        return { ctx: { userId: user.id, workspaceId: cachedFallback.workspaceId }, error: null }
+      }
       // クッキーが無効（退出済み等）→ フォールバック
+    }
+
+    if (!preferredWorkspaceId) {
+      const cachedFallback = workspaceCache.get(fallbackCacheKey)
+      if (cachedFallback && cachedFallback.expiresAt > Date.now()) {
+        return { ctx: { userId: user.id, workspaceId: cachedFallback.workspaceId }, error: null }
+      }
     }
 
     const [member] = await db
@@ -112,7 +126,8 @@ export async function getAuthContext(): Promise<AuthResult> {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
-    workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+    const cachedEntry = { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 }
+    workspaceCache.set(fallbackCacheKey, cachedEntry)
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)

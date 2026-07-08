@@ -2,18 +2,41 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { headers } from 'next/headers'
 import { db, workspaceMembers, channels, channelMembers, projects, projectMembers, messages, messageAttachments } from '@cairn/db'
 import { eq, and, sql } from 'drizzle-orm'
-import { cache } from 'react'
 
-const getWorkspaceRole = cache(async (workspaceId: string, userId: string) => {
+const requestRoleCache = new WeakMap<object, Map<string, Promise<string | null>>>()
+
+async function fetchWorkspaceRole(workspaceId: string, userId: string) {
   const [member] = await db
     .select({ role: workspaceMembers.role })
     .from(workspaceMembers)
     .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
     .limit(1)
   return member?.role ?? null
-})
+}
+
+async function getWorkspaceRole(workspaceId: string, userId: string) {
+  try {
+    const requestHeaders = await headers()
+    const cacheKey = `${workspaceId}:${userId}`
+    let roleCache = requestRoleCache.get(requestHeaders)
+    if (!roleCache) {
+      roleCache = new Map<string, Promise<string | null>>()
+      requestRoleCache.set(requestHeaders, roleCache)
+    }
+    const cached = roleCache.get(cacheKey)
+    if (cached) {
+      return cached
+    }
+    const pending = fetchWorkspaceRole(workspaceId, userId)
+    roleCache.set(cacheKey, pending)
+    return pending
+  } catch {
+    return fetchWorkspaceRole(workspaceId, userId)
+  }
+}
 
 export function isWorkspaceOwner(role: string | null): boolean {
   return role === 'owner'

@@ -3,10 +3,15 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const { mockDb } = vi.hoisted(() => ({
+const { mockDb, mockHeaders } = vi.hoisted(() => ({
   mockDb: {
     select: vi.fn(),
   },
+  mockHeaders: vi.fn(),
+}))
+
+vi.mock('next/headers', () => ({
+  headers: mockHeaders,
 }))
 
 vi.mock('@cairn/db', () => ({
@@ -30,19 +35,6 @@ vi.mock('drizzle-orm', () => ({
   sql: vi.fn(() => 'sql'),
 }))
 
-vi.mock('react', () => ({
-  cache: <Args extends unknown[], Result>(fn: (...args: Args) => Result) => {
-    const memo = new Map<string, Result>()
-    return (...args: Args) => {
-      const key = JSON.stringify(args)
-      if (!memo.has(key)) {
-        memo.set(key, fn(...args))
-      }
-      return memo.get(key) as Result
-    }
-  },
-}))
-
 function selectChain(result: unknown[]) {
   return {
     from: vi.fn().mockReturnValue({
@@ -60,6 +52,7 @@ describe('permissions', () => {
   })
 
   it('同じ workspace/user のロール取得は 1 回だけ問い合わせる', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
     mockDb.select.mockReturnValue(selectChain([{ role: 'admin' }]))
 
     const { getWorkspaceMemberRole, requireWorkspaceAdmin } = await import('./permissions')
