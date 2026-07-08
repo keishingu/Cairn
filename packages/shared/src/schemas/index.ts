@@ -75,7 +75,7 @@ export const patchProjectSchema = z.object({
 )
 
 export const patchWorkspaceSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
+  name: z.string().trim().min(1).max(100).optional(),
   description: z.string().max(1000).nullable().optional(),
   logoUrl: z.string().url().nullable().optional(),
 }).refine(
@@ -84,7 +84,7 @@ export const patchWorkspaceSchema = z.object({
 )
 
 export const patchMeSchema = z.object({
-  displayName: z.string().min(1).max(100).optional(),
+  displayName: z.string().trim().min(1).max(100).optional(),
   bio: z.string().max(1000).nullable().optional(),
   status: z.enum(['online', 'away', 'busy', 'offline']).optional(),
   statusMessage: z.string().max(100).nullable().optional(),
@@ -94,7 +94,7 @@ export const patchMeSchema = z.object({
 )
 
 export const patchProjectStatusSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
+  name: z.string().trim().min(1).max(100).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   sortOrder: z.string().max(100).optional(),
 }).refine(

@@ -215,7 +215,9 @@ export async function PATCH(
       console.warn('[PATCH /api/projects/[id]] system message insert failed (skipped):', e)
     }
 
-    return NextResponse.json({ id: updated.id })
+    const resp: { id: string; coverPhotoUrl?: string | null } = { id: updated.id }
+    if (resolvedCoverPhotoUrl !== undefined) resp.coverPhotoUrl = resolvedCoverPhotoUrl
+    return NextResponse.json(resp)
   } catch (err) {
     console.error('[PATCH /api/projects/[id]]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

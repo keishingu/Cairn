@@ -268,8 +268,9 @@ async function canAccessViaAnyChannel(
   }
 
   const needsMemberCheckIds = wsChannels.filter(c => c.isPrivate || c.type === 'dm').map(c => c.id)
+  // プライベートチャンネルはチャンネルメンバーシップが必須。プロジェクトメンバーシップでは代替できない
   const guestProjectIds = role === 'guest'
-    ? [...new Set(wsChannels.filter(c => c.type === 'project' && c.projectId).map(c => c.projectId!))]
+    ? [...new Set(wsChannels.filter(c => c.type === 'project' && !c.isPrivate && c.projectId).map(c => c.projectId!))]
     : []
 
   const [membershipRows, projectMemberRows] = await Promise.all([
