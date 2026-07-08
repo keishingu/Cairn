@@ -261,24 +261,29 @@ async function canAccessViaAnyChannel(
   const wsChannels = channelRows.filter(c => c.effectiveWorkspaceId === workspaceId)
   if (wsChannels.length === 0) return false
 
-  // member 以上かつ非プライベート・非 DM チャンネルはメンバーシップ確認なしで許可
-  if (role !== 'guest') {
-    const hasOpenChannel = wsChannels.some(c => !c.isPrivate && c.type !== 'dm')
-    if (hasOpenChannel) return true
-  }
+  const isGuest = role === 'guest'
 
-  const needsMemberCheckIds = wsChannels.filter(c => c.isPrivate || c.type === 'dm').map(c => c.id)
-  // プライベートチャンネルはチャンネルメンバーシップが必須。プロジェクトメンバーシップでは代替できない
-  const guestProjectIds = role === 'guest'
-    ? [...new Set(wsChannels.filter(c => c.type === 'project' && !c.isPrivate && c.projectId).map(c => c.projectId!))]
-    : []
+  // member以上: 非プライベート・非DMチャンネルが1つでもあれば即時許可
+  if (!isGuest && wsChannels.some(c => !c.isPrivate && c.type !== 'dm')) return true
+
+  // guest: 非プライベート・非DM・非プロジェクトの一般ワークスペースチャンネルは即時許可
+  // requireChannelAccess はゲストの一般チャンネルを制限しない
+  if (isGuest && wsChannels.some(c => !c.isPrivate && c.type !== 'dm' && c.type !== 'project')) return true
+
+  // プライベートまたはDMはチャンネルメンバーシップが必要
+  const needsChannelCheck = wsChannels.filter(c => c.isPrivate || c.type === 'dm')
+  // ゲストのプロジェクトチャンネルはプロジェクトメンバーシップが必要（open/private 両方）
+  const guestProjectChannels = isGuest ? wsChannels.filter(c => c.type === 'project' && c.projectId) : []
+  const guestProjectIds = [...new Set(guestProjectChannels.map(c => c.projectId!))]
+
+  if (needsChannelCheck.length === 0 && guestProjectIds.length === 0) return false
 
   const [membershipRows, projectMemberRows] = await Promise.all([
-    needsMemberCheckIds.length > 0
+    needsChannelCheck.length > 0
       ? db
           .select({ channelId: channelMembers.channelId })
           .from(channelMembers)
-          .where(and(eq(channelMembers.userId, userId), inArray(channelMembers.channelId, needsMemberCheckIds)))
+          .where(and(eq(channelMembers.userId, userId), inArray(channelMembers.channelId, needsChannelCheck.map(c => c.id))))
       : Promise.resolve([]),
     guestProjectIds.length > 0
       ? db
@@ -288,8 +293,28 @@ async function canAccessViaAnyChannel(
       : Promise.resolve([]),
   ])
 
-  if (membershipRows.length > 0) return true
-  if (projectMemberRows.length > 0) return true
+  // member以上: プライベート/DMチャンネルのいずれかのメンバーであれば許可
+  if (!isGuest) return membershipRows.length > 0
+
+  // guest: チャンネルごとに requireChannelAccess と同じ条件で評価する
+  const joinedChannelIds = new Set(membershipRows.map(r => r.channelId))
+  const joinedProjectIds = new Set(projectMemberRows.map(r => r.projectId))
+
+  for (const ch of wsChannels) {
+    if (ch.type === 'project' && ch.projectId) {
+      if (ch.isPrivate) {
+        // プライベートプロジェクトチャンネル: チャンネルメンバーシップ AND プロジェクトメンバーシップ
+        if (joinedChannelIds.has(ch.id) && joinedProjectIds.has(ch.projectId)) return true
+      } else {
+        // 非プライベートプロジェクトチャンネル: プロジェクトメンバーシップのみ
+        if (joinedProjectIds.has(ch.projectId)) return true
+      }
+    } else if (ch.isPrivate || ch.type === 'dm') {
+      // プライベート/DM（非プロジェクト）: チャンネルメンバーシップのみ
+      if (joinedChannelIds.has(ch.id)) return true
+    }
+    // 非プライベート・非DM・非プロジェクト: 上の early return で処理済み
+  }
 
   return false
 }
