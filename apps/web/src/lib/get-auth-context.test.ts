@@ -100,4 +100,27 @@ describe('get-auth-context', () => {
     expect(mockSupabase.auth.getUser).toHaveBeenCalledWith()
     expect(result).toEqual({ userId: 'user-1', error: null })
   })
+
+  it('無効な workspace cookie でもフォールバック結果を同じキーで再利用する', async () => {
+    const getCookie = vi.fn().mockReturnValue({ value: 'ws-missing' })
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: getCookie })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-fallback' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+
+    const first = await getAuthContext()
+    const second = await getAuthContext()
+
+    expect(first).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-fallback' },
+      error: null,
+    })
+    expect(second).toEqual(first)
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
+    expect(getCookie).toHaveBeenCalledTimes(2)
+  })
 })

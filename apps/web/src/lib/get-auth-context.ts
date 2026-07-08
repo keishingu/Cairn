@@ -13,6 +13,10 @@ export { WORKSPACE_COOKIE } from './workspace-cookie'
 // warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
 const workspaceCache = new Map<string, { workspaceId: string; expiresAt: number }>()
 
+function buildWorkspaceCacheKey(userId: string, preferredWorkspaceId: string | null): string {
+  return preferredWorkspaceId ? `${userId}:${preferredWorkspaceId}` : userId
+}
+
 export interface AuthContext {
   userId: string
   workspaceId: string
@@ -72,7 +76,7 @@ export async function getAuthContext(): Promise<AuthResult> {
   const cookieStore = await cookies()
   const preferredWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
 
-  const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
+  const cacheKey = buildWorkspaceCacheKey(user.id, preferredWorkspaceId)
   const cached = workspaceCache.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) {
     return { ctx: { userId: user.id, workspaceId: cached.workspaceId }, error: null }
@@ -108,7 +112,7 @@ export async function getAuthContext(): Promise<AuthResult> {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
-    workspaceCache.set(user.id, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+    workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)
