@@ -6,6 +6,10 @@ import { projectQueryKeys } from './use-projects'
 export function useProjectStatuses() {
   return useQuery<ProjectStatusDto[]>({
     queryKey: projectQueryKeys.statuses,
-    queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/projects/statuses')
+      if (!res.ok) throw new Error('fetch failed')
+      return res.json() as Promise<ProjectStatusDto[]>
+    },
   })
 }
