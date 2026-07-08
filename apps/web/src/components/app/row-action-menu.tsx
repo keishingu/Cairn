@@ -43,7 +43,10 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
         ref={btnRef}
         onClick={e => { e.preventDefault(); e.stopPropagation(); setOpen(p => !p) }}
         style={{ border: 'none', background: open ? 'var(--card-hover)' : 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', ...triggerStyle }}
-        title="操作"
+        title="操作メニュー"
+        aria-label="操作メニュー"
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         <Icon name="more" size={15}/>
       </button>
@@ -51,12 +54,14 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
         <div
           ref={menuRef}
           onClick={e => e.stopPropagation()}
+          role="menu"
           style={{ ...menuStyle, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden', padding: '4px 0' }}
         >
           {actions.map(a => (
             <button
               key={a.label}
               onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setOpen(false); a.onSelect() }}
+              role="menuitem"
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', border: 'none', background: 'transparent', color: a.danger ? 'var(--red-text)' : 'var(--text-2)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', whiteSpace: 'nowrap' }}
             >
               <Icon name={a.icon} size={13}/> {a.label}

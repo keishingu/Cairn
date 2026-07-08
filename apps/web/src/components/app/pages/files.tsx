@@ -75,6 +75,11 @@ function isPreviewableTextFile(file: FileDto): boolean {
   return isMarkdownFile(file) || isPlainTextFile(file)
 }
 
+function getFileActionLink(file: FileDto): string | null {
+  if (file.fileType === 'link') return file.externalUrl ?? null
+  return `/api/attachments/${file.id}`
+}
+
 function matchesFilter(file: FileDto, filter: FilterKey): boolean {
   if (filter === 'all') return true
   if (filter === 'pdf') return file.mimeType === 'application/pdf'
@@ -110,6 +115,7 @@ const FileRow = ({
   const metaParts = [projectLabel, sizeStr, dateStr].filter(Boolean).join(' · ')
   const isImage = isImageFile(file)
   const isPreviewableText = isPreviewableTextFile(file)
+  const actionLink = getFileActionLink(file)
 
   return (
     <div
@@ -194,6 +200,13 @@ const FileRow = ({
       <Avatar name={file.uploaderName} url={file.uploaderAvatarUrl} size={22} />
       <RowActionMenu
         actions={[
+          ...(actionLink
+            ? [{
+                icon: file.fileType === 'link' ? 'link' : 'download',
+                label: file.fileType === 'link' ? 'リンクを開く' : 'ダウンロード',
+                onSelect: () => window.open(actionLink, '_blank', 'noopener,noreferrer'),
+              }]
+            : []),
           ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
             ? [{ icon: 'refresh', label: '再インデックス', onSelect: () => onReindex(file.id) }]
             : []),

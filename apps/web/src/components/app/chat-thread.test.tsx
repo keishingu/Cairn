@@ -77,11 +77,11 @@ describe('ChatMessage copy action', () => {
       />,
     )
 
-    await user.click(screen.getByTitle('操作'))
+    await user.click(screen.getByTitle('操作メニュー'))
 
-    expect(screen.getByRole('button', { name: 'コピー' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '編集' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '削除' })).toBeNull()
+    expect(screen.getByRole('menuitem', { name: 'コピー' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: '編集' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: '削除' })).toBeNull()
   })
 
   it('元の本文をそのままコピーして成功トーストを出す', async () => {
