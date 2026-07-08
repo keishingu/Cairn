@@ -32,6 +32,7 @@ vi.mock('@cairn/db', () => ({
   workspaceMembers: {
     userId: 'wm.userId',
     workspaceId: 'wm.workspaceId',
+    membershipStatus: 'wm.membershipStatus',
   },
 }))
 
@@ -99,5 +100,23 @@ describe('get-auth-context', () => {
 
     expect(mockSupabase.auth.getUser).toHaveBeenCalledWith()
     expect(result).toEqual({ userId: 'user-1', error: null })
+  })
+
+  it('inactive な preferred workspace cookie は認証コンテキストに採用しない', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-inactive' }) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-active' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext()
+
+    expect(result).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-active' },
+      error: null,
+    })
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
   })
 })

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { getAuthContext } from '@/lib/get-auth-context'
+import { clearWorkspaceCacheForUser, getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
 
 const ANONYMIZED_DISPLAY_NAME = '退会したユーザー'
@@ -41,7 +41,7 @@ export async function POST(
 
   try {
     const { db, profiles, workspaceMembers } = await import('@cairn/db')
-    const { and, eq } = await import('drizzle-orm')
+    const { and, count, eq } = await import('drizzle-orm')
 
     const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
     if (!isWorkspaceAdmin(callerRole)) {
@@ -49,7 +49,7 @@ export async function POST(
     }
 
     const [memberInWorkspace] = await db
-      .select({ userId: workspaceMembers.userId })
+      .select({ userId: workspaceMembers.userId, role: workspaceMembers.role })
       .from(workspaceMembers)
       .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
       .limit(1)
@@ -58,10 +58,33 @@ export async function POST(
       return NextResponse.json({ error: 'Member not found' }, { status: 404 })
     }
 
+    const targetRole = memberInWorkspace.role
+    if (targetRole === 'owner') {
+      if (callerRole !== 'owner') {
+        return NextResponse.json({ error: 'owner の匿名化は owner のみ実行できます' }, { status: 403 })
+      }
+
+      const ownerCountRows = await db
+        .select({ ownerCount: count() })
+        .from(workspaceMembers)
+        .where(and(
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.role, 'owner'),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ))
+      const ownerCount = Number(ownerCountRows[0]?.ownerCount ?? 0)
+      if (ownerCount <= 1) {
+        return NextResponse.json(
+          { error: 'ワークスペースには最低1人の owner が必要です' },
+          { status: 422 },
+        )
+      }
+    }
+
     const avatarRows = await db
       .select({ avatarUrl: workspaceMembers.avatarUrl })
       .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, targetUserId))
+      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
 
     const avatarPaths = [...new Set(
       avatarRows
@@ -82,19 +105,9 @@ export async function POST(
     const now = new Date()
 
     await db
-      .update(profiles)
-      .set({
-        displayName: ANONYMIZED_DISPLAY_NAME,
-        bio: null,
-        icalToken: null,
-        updatedAt: now,
-      })
-      .where(eq(profiles.id, targetUserId))
-
-    await db
       .update(workspaceMembers)
       .set({
-        displayName: null,
+        displayName: ANONYMIZED_DISPLAY_NAME,
         avatarUrl: null,
         membershipStatus: 'inactive',
         deactivatedAt: now,
@@ -102,7 +115,27 @@ export async function POST(
         status: 'offline',
         statusMessage: null,
       })
-      .where(eq(workspaceMembers.userId, targetUserId))
+      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
+
+    clearWorkspaceCacheForUser(targetUserId)
+
+    const activeMembershipRows = await db
+      .select({ membershipCount: count() })
+      .from(workspaceMembers)
+      .where(and(eq(workspaceMembers.userId, targetUserId), eq(workspaceMembers.membershipStatus, 'active')))
+    const activeMembershipCount = Number(activeMembershipRows[0]?.membershipCount ?? 0)
+
+    if (activeMembershipCount === 0) {
+      await db
+        .update(profiles)
+        .set({
+          displayName: ANONYMIZED_DISPLAY_NAME,
+          bio: null,
+          icalToken: null,
+          updatedAt: now,
+        })
+        .where(eq(profiles.id, targetUserId))
+    }
 
     return NextResponse.json({ userId: targetUserId, anonymized: true })
   } catch (err) {

@@ -13,6 +13,14 @@ export { WORKSPACE_COOKIE } from './workspace-cookie'
 // warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
 const workspaceCache = new Map<string, { workspaceId: string; expiresAt: number }>()
 
+export function clearWorkspaceCacheForUser(userId: string) {
+  for (const key of workspaceCache.keys()) {
+    if (key === userId || key.startsWith(`${userId}:`)) {
+      workspaceCache.delete(key)
+    }
+  }
+}
+
 export interface AuthContext {
   userId: string
   workspaceId: string
@@ -82,13 +90,18 @@ export async function getAuthContext(): Promise<AuthResult> {
     const { db } = await import('@cairn/db')
     const { workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
+    const activeMembership = eq(workspaceMembers.membershipStatus, 'active')
 
     // クッキーで指定されたワークスペースがあればそちらを優先、ただしメンバーシップを確認
     if (preferredWorkspaceId) {
       const [preferred] = await db
         .select({ workspaceId: workspaceMembers.workspaceId })
         .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, preferredWorkspaceId)))
+        .where(and(
+          eq(workspaceMembers.userId, user.id),
+          eq(workspaceMembers.workspaceId, preferredWorkspaceId),
+          activeMembership,
+        ))
         .limit(1)
 
       if (preferred) {
@@ -101,7 +114,7 @@ export async function getAuthContext(): Promise<AuthResult> {
     const [member] = await db
       .select({ workspaceId: workspaceMembers.workspaceId })
       .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, user.id))
+      .where(and(eq(workspaceMembers.userId, user.id), activeMembership))
       .limit(1)
 
     if (!member) {
