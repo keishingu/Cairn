@@ -43,4 +43,34 @@ CREATE INDEX "idx_polls_channel" ON "polls" USING btree ("channel_id","created_a
 CREATE INDEX "idx_poll_options_poll" ON "poll_options" USING btree ("poll_id","display_order");--> statement-breakpoint
 CREATE INDEX "idx_poll_votes_poll" ON "poll_votes" USING btree ("poll_id");--> statement-breakpoint
 CREATE INDEX "idx_poll_votes_option" ON "poll_votes" USING btree ("option_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_poll_votes_single_choice" ON "poll_votes" USING btree ("poll_id","user_id") WHERE "poll_votes"."allow_multiple" = false;
+CREATE UNIQUE INDEX "idx_poll_votes_single_choice" ON "poll_votes" USING btree ("poll_id","user_id") WHERE "poll_votes"."allow_multiple" = false;--> statement-breakpoint
+
+ALTER TABLE "polls" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "poll_options" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "poll_votes" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+
+CREATE POLICY "polls_select" ON "polls"
+  FOR SELECT TO authenticated
+  USING (public.can_access_channel(channel_id));--> statement-breakpoint
+
+CREATE POLICY "poll_options_select" ON "poll_options"
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM "polls"
+      WHERE "polls"."id" = "poll_options"."poll_id"
+        AND public.can_access_channel("polls"."channel_id")
+    )
+  );--> statement-breakpoint
+
+CREATE POLICY "poll_votes_select" ON "poll_votes"
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM "polls"
+      WHERE "polls"."id" = "poll_votes"."poll_id"
+        AND public.can_access_channel("polls"."channel_id")
+    )
+  );
