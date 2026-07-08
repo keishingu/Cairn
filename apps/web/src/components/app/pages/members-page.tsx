@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import { Icon, Avatar, Fab } from '../primitives'
@@ -11,8 +11,14 @@ import { MemberDetailPanel } from '../detail-panel/member-panel'
 import { ProjectPanel } from '../detail-panel/project-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import {
+  useWorkspaceMembers,
+  useWorkspaceInvites,
+  useCreateWorkspaceInvite,
+  useRevokeWorkspaceInvite,
+  type WorkspaceInviteDto,
+} from '@/hooks/use-project-members'
 import { useCommand } from '@/lib/command-registry'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
@@ -157,10 +163,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
     })
   }
 
-  const { data: members = [], isLoading } = useQuery<WorkspaceMemberDto[]>({
-    queryKey: ['workspace-members'],
-    queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
-  })
+  const { data: members = [], isLoading } = useWorkspaceMembers()
 
   // ⌥S（検索フォーカス）は TopBarSearch（route ラッパー）が担当
 
@@ -398,63 +401,33 @@ const EXPIRES_OPTIONS: { value: ExpiresIn; label: string }[] = [
   { value: 'never', label: '無期限' },
 ]
 
-interface InviteRecord {
-  id: string
-  token: string
-  url: string
-  expiresAt: string | null
-  maxUses: number | null
-  useCount: number
-  role: string
-  createdAt: string
-  createdByName: string
-}
-
 function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boolean }) {
   const [expiresIn, setExpiresIn] = React.useState<ExpiresIn>('1h')
   const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
-  const [generating, setGenerating] = React.useState(false)
   const [generateError, setGenerateError] = React.useState<string | null>(null)
   const [copied, setCopied] = React.useState(false)
-  const [existingInvites, setExistingInvites] = React.useState<InviteRecord[]>([])
-  const [revoking, setRevoking] = React.useState<string | null>(null)
-
-  React.useEffect(() => {
-    void fetchExistingInvites()
-  }, [])
-
-  async function fetchExistingInvites() {
-    const res = await fetch('/api/workspaces/invites')
-    if (!res.ok) return
-    const data = await res.json().catch(() => ({})) as { invites?: InviteRecord[] }
-    setExistingInvites(data.invites ?? [])
-  }
+  const { data: existingInvites = [] } = useWorkspaceInvites()
+  const createInviteMutation = useCreateWorkspaceInvite()
+  const revokeInviteMutation = useRevokeWorkspaceInvite()
 
   async function generateLink() {
-    setGenerating(true)
     setCopied(false)
     setGenerateError(null)
-    const res = await fetch('/api/workspaces/invites', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ expiresIn }),
-    })
-    const data = await res.json().catch(() => ({})) as { url?: string; error?: string }
-    if (res.ok && data.url) {
+    try {
+      const data = await createInviteMutation.mutateAsync({ expiresIn })
       setInviteUrl(data.url)
-      void fetchExistingInvites()
-    } else {
-      setGenerateError(data.error ?? '招待リンクの生成に失敗しました')
+    } catch (error) {
+      setGenerateError(error instanceof Error ? error.message : '招待リンクの生成に失敗しました')
     }
-    setGenerating(false)
   }
 
   async function revokeInvite(token: string) {
-    setRevoking(token)
-    await fetch(`/api/workspaces/invites/${token}`, { method: 'DELETE' })
-    setExistingInvites(prev => prev.filter(inv => inv.token !== token))
-    if (inviteUrl?.includes(token)) setInviteUrl(null)
-    setRevoking(null)
+    try {
+      await revokeInviteMutation.mutateAsync(token)
+      if (inviteUrl?.includes(token)) setInviteUrl(null)
+    } catch (error) {
+      setGenerateError(error instanceof Error ? error.message : '招待リンクの無効化に失敗しました')
+    }
   }
 
   async function copyLink() {
@@ -533,17 +506,17 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
               <button
                 type="button"
                 onClick={generateLink}
-                disabled={generating}
+                disabled={createInviteMutation.isPending}
                 style={{
                   padding: '10px 16px', borderRadius: 8, border: 'none',
-                  background: generating ? 'var(--border-2)' : 'var(--accent)',
-                  color: generating ? 'var(--text-4)' : 'var(--on-accent)',
+                  background: createInviteMutation.isPending ? 'var(--border-2)' : 'var(--accent)',
+                  color: createInviteMutation.isPending ? 'var(--text-4)' : 'var(--on-accent)',
                   fontSize: 14, fontWeight: 600,
-                  cursor: generating ? 'default' : 'pointer',
+                  cursor: createInviteMutation.isPending ? 'default' : 'pointer',
                   fontFamily: 'inherit',
               }}
             >
-              {generating ? '生成中...' : '招待リンクを生成'}
+              {createInviteMutation.isPending ? '生成中...' : '招待リンクを生成'}
             </button>
             </>
           ) : (
@@ -595,7 +568,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
           {existingInvites.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>有効なリンク</div>
-              {existingInvites.map(inv => {
+              {existingInvites.map((inv: WorkspaceInviteDto) => {
                 const expiresLabel = inv.expiresAt
                   ? `${new Date(inv.expiresAt).toLocaleDateString('ja-JP')} まで`
                   : '無期限'
@@ -620,16 +593,16 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                     <button
                       type="button"
                       onClick={() => revokeInvite(inv.token)}
-                      disabled={revoking === inv.token}
+                      disabled={revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token}
                       style={{
                         flexShrink: 0, padding: '4px 10px', borderRadius: 6,
                         border: '1px solid var(--red)', background: 'transparent',
-                        color: revoking === inv.token ? 'var(--text-4)' : 'var(--red-text)',
-                        fontSize: 11.5, fontWeight: 600, cursor: revoking === inv.token ? 'default' : 'pointer',
+                        color: revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token ? 'var(--text-4)' : 'var(--red-text)',
+                        fontSize: 11.5, fontWeight: 600, cursor: revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token ? 'default' : 'pointer',
                         fontFamily: 'inherit', whiteSpace: 'nowrap',
                       }}
                     >
-                      {revoking === inv.token ? '処理中...' : '無効化'}
+                      {revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token ? '処理中...' : '無効化'}
                     </button>
                   </div>
                 )
