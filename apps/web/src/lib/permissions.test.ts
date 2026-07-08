@@ -105,7 +105,7 @@ function selectDistinctResult(result: unknown[]) {
   return chain
 }
 
-describe('permissions', () => {
+describe('権限制御', () => {
   beforeEach(() => {
     vi.resetModules()
   })
