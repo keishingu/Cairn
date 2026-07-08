@@ -14,6 +14,7 @@ const {
   mockEq,
   mockAnd,
   mockInArray,
+  mockOr,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -21,6 +22,7 @@ const {
   mockEq: vi.fn(() => Symbol('eq')),
   mockAnd: vi.fn(() => Symbol('and')),
   mockInArray: vi.fn(() => Symbol('inArray')),
+  mockOr: vi.fn(() => Symbol('or')),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -63,6 +65,7 @@ vi.mock('drizzle-orm', () => ({
   eq: mockEq,
   and: mockAnd,
   inArray: mockInArray,
+  or: mockOr,
   sql: Object.assign(
     vi.fn(() => 'sql'),
     { raw: vi.fn() },
@@ -251,5 +254,35 @@ describe('GET /api/polls/[id]', () => {
         ],
       }),
     )
+  })
+
+  it('messageId でも poll を取得できる', async () => {
+    mockSelectResults(
+      [
+        {
+          id: 'poll-1',
+          channelId: CHANNEL_ID,
+          messageId: 'message-1',
+          question: '来月の山行先は？',
+          allowMultiple: false,
+          anonymous: false,
+          createdBy: USER_ID,
+          createdAt: new Date('2026-07-08T18:00:00.000Z'),
+        },
+      ],
+      [],
+      [],
+    )
+
+    const { GET } = await import('./route')
+    const res = await GET(
+      new Request('http://localhost/api/polls/message-1'),
+      routeParams('message-1'),
+    )
+
+    expect(res.status).toBe(200)
+    expect(mockEq).toHaveBeenCalledWith('polls.id', 'message-1')
+    expect(mockEq).toHaveBeenCalledWith('polls.messageId', 'message-1')
+    expect(mockOr).toHaveBeenCalledTimes(1)
   })
 })

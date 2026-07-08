@@ -37,7 +37,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
   try {
     const { db, pollOptions, polls, pollVotes, profiles, workspaceMembers } =
       await import('@cairn/db')
-    const { eq, and, inArray } = await import('drizzle-orm')
+    const { eq, and, inArray, or } = await import('drizzle-orm')
 
     const [poll] = await db
       .select({
@@ -51,7 +51,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         createdAt: polls.createdAt,
       })
       .from(polls)
-      .where(eq(polls.id, id))
+      .where(or(eq(polls.id, id), eq(polls.messageId, id)))
 
     if (!poll) {
       return NextResponse.json({ error: 'Poll not found' }, { status: 404 })

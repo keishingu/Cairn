@@ -30,6 +30,18 @@ vi.mock('@/lib/permissions', () => ({
   requireChannelAccess: mockRequireChannelAccess,
 }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
+vi.mock('@cairn/shared', async () => {
+  const { z } = await import('zod')
+  return {
+    createPollSchema: z.object({
+      channelId: z.string().uuid(),
+      question: z.string().trim().min(1).max(500),
+      options: z.array(z.string().trim().min(1).max(200)).min(2).max(10),
+      allowMultiple: z.boolean().default(false),
+      anonymous: z.boolean().default(false),
+    }),
+  }
+})
 vi.mock('@cairn/db', () => ({
   db: mockDb,
   messages: { id: 'messages.id', createdAt: 'messages.createdAt' },
@@ -57,7 +69,15 @@ vi.mock('drizzle-orm', () => ({
 
 function selectChain(result: unknown[]) {
   const promise = Promise.resolve(result)
-  const chain: any = {
+  type SelectChain = {
+    then: PromiseLike<unknown[]>['then']
+    catch: Promise<unknown[]>['catch']
+    finally: Promise<unknown[]>['finally']
+    from: ReturnType<typeof vi.fn>
+    leftJoin: ReturnType<typeof vi.fn>
+    where: ReturnType<typeof vi.fn>
+  }
+  const chain: SelectChain = {
     then: promise.then.bind(promise),
     catch: promise.catch.bind(promise),
     finally: promise.finally.bind(promise),
