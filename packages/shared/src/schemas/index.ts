@@ -93,6 +93,12 @@ export const patchMeSchema = z.object({
   { message: 'At least one field is required' },
 )
 
+export const createProjectStatusSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+})
+export type CreateProjectStatusInput = z.infer<typeof createProjectStatusSchema>
+
 export const patchProjectStatusSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
