@@ -30,8 +30,8 @@ const ROLE_STYLE: Record<WorkspaceMemberDto['role'], { c: string; bg: string }> 
 }
 
 const MEMBER_STATUS_LABEL: Record<WorkspaceMemberDto['membershipStatus'], string> = {
-  active: '現役',
-  inactive: '卒業生',
+  active: 'アクティブ',
+  inactive: '非アクティブ',
 }
 
 function formatJoinedAt(dateStr: string): string {

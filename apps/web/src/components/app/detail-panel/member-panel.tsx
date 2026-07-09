@@ -23,8 +23,8 @@ const WS_ROLE_STYLE: Record<WorkspaceMemberDto['role'], { c: string; bg: string 
 }
 
 const MEMBER_STATUS_LABEL: Record<WorkspaceMemberDto['membershipStatus'], string> = {
-  active: '現役',
-  inactive: '卒業生',
+  active: 'アクティブ',
+  inactive: '非アクティブ',
 }
 
 const PROJECT_ROLE_LABEL: Record<string, string> = {
@@ -324,8 +324,8 @@ export const MemberDetailPanel = ({
       currentMembershipStatus === 'active' ? 'inactive' : 'active'
     const confirmed = window.confirm(
       nextStatus === 'inactive'
-        ? 'このメンバーを卒業生にすると、このワークスペースへのアクセスを失います。続けますか？'
-        : 'このメンバーを現役に戻します。ワークスペースへのアクセスを再開します。続けますか？',
+        ? 'このメンバーを非アクティブにすると、このワークスペースへのアクセスを失います。続けますか？'
+        : 'このメンバーをアクティブに戻します。ワークスペースへのアクセスを再開します。続けますか？',
     )
     if (!confirmed) return
 
@@ -496,7 +496,7 @@ export const MemberDetailPanel = ({
                 opacity: membershipMutation.isPending ? 0.7 : 1,
               }}
             >
-              {currentMembershipStatus === 'active' ? '卒業生にする' : '現役に戻す'}
+              {currentMembershipStatus === 'active' ? '非アクティブにする' : 'アクティブに戻す'}
             </button>
           )}
         </div>
@@ -667,7 +667,7 @@ export const MemberDetailPanel = ({
                   opacity: membershipMutation.isPending ? 0.7 : 1,
                 }}
               >
-                {currentMembershipStatus === 'active' ? '卒業生にする' : '現役に戻す'}
+                {currentMembershipStatus === 'active' ? '非アクティブにする' : 'アクティブに戻す'}
               </button>
             )}
           </div>

@@ -240,7 +240,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(res.status).toBe(404)
   })
 
-  it('admin は member を卒業生にできる', async () => {
+  it('admin は member を非アクティブにできる', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
     mockDb.select.mockReturnValueOnce(
       selectChain([
@@ -257,7 +257,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(body.membershipStatus).toBe('inactive')
   })
 
-  it('唯一の active owner は卒業生にできない（422）', async () => {
+  it('唯一の active owner は非アクティブにできない（422）', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
     mockDb.select.mockReturnValueOnce(
       selectChain([

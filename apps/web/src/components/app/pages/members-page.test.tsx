@@ -125,7 +125,7 @@ describe('PageMembers — email tooltip', () => {
 })
 
 describe('PageMembers — membership sections', () => {
-  it('現役と卒業生を分けて表示する', () => {
+  it('アクティブと非アクティブを分けて表示する', () => {
     const inactiveMember: WorkspaceMemberDto = {
       ...STUB_MEMBER,
       userId: 'user-2',
@@ -140,8 +140,8 @@ describe('PageMembers — membership sections', () => {
       </QueryClientProvider>,
     )
 
-    expect(screen.getByText('現役')).toBeInTheDocument()
-    expect(screen.getAllByText('卒業生').length).toBeGreaterThan(0)
+    expect(screen.getByText('アクティブ')).toBeInTheDocument()
+    expect(screen.getAllByText('非アクティブ').length).toBeGreaterThan(0)
     expect(screen.getByText('佐藤 花子')).toBeInTheDocument()
   })
 })
