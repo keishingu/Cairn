@@ -37,13 +37,22 @@ export async function GET() {
       .select({
         id: channels.id,
         participantId: profiles.id,
-        participantName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        participantName: workspaceMemberDisplayName(
+          workspaceMembers.displayName,
+          profiles.displayName,
+        ),
         participantAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(channels)
       .innerJoin(channelMembers, eq(channelMembers.channelId, channels.id))
       .innerJoin(profiles, eq(profiles.id, channelMembers.userId))
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .leftJoin(
+        workspaceMembers,
+        and(
+          eq(workspaceMembers.userId, profiles.id),
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+        ),
+      )
       .where(
         and(
           eq(channels.workspaceId, ctx.workspaceId),
@@ -54,7 +63,7 @@ export async function GET() {
       )
       .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
 
-    const channelIds = rows.map(r => r.id)
+    const channelIds = rows.map((r) => r.id)
     if (channelIds.length > 0) {
       const { channelReadStates, messages } = await import('@cairn/db')
       const { isNull, gt, count, sql: sql2, inArray, ne } = await import('drizzle-orm')
@@ -63,27 +72,60 @@ export async function GET() {
         db
           .select({ channelId: messages.channelId, cnt: count() })
           .from(messages)
-          .leftJoin(channelReadStates, and(eq(channelReadStates.channelId, messages.channelId), eq(channelReadStates.userId, ctx.userId)))
-          .where(and(inArray(messages.channelId, channelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), gt(messages.createdAt, sql2`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
+          .leftJoin(
+            channelReadStates,
+            and(
+              eq(channelReadStates.channelId, messages.channelId),
+              eq(channelReadStates.userId, ctx.userId),
+            ),
+          )
+          .where(
+            and(
+              inArray(messages.channelId, channelIds),
+              isNull(messages.deletedAt),
+              ne(messages.senderId, ctx.userId),
+              gt(
+                messages.createdAt,
+                sql2`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`,
+              ),
+            ),
+          )
           .groupBy(messages.channelId),
         db
-          .select({ channelId: channelReadStates.channelId, cnt: channelReadStates.unreadMentionCount })
+          .select({
+            channelId: channelReadStates.channelId,
+            cnt: channelReadStates.unreadMentionCount,
+          })
           .from(channelReadStates)
-          .where(and(eq(channelReadStates.userId, ctx.userId), inArray(channelReadStates.channelId, channelIds))),
+          .where(
+            and(
+              eq(channelReadStates.userId, ctx.userId),
+              inArray(channelReadStates.channelId, channelIds),
+            ),
+          ),
       ])
 
-      const unreadMap = new Map(unreadRows.map(r => [r.channelId, r.cnt]))
-      const mentionMap = new Map(mentionRows.map(r => [r.channelId, r.cnt]))
+      const unreadMap = new Map(unreadRows.map((r) => [r.channelId, r.cnt]))
+      const mentionMap = new Map(mentionRows.map((r) => [r.channelId, r.cnt]))
 
-      return NextResponse.json(rows.map(r => ({
-        ...r,
-        participantAvatarUrl: r.participantAvatarUrl ?? null,
-        unreadCount: unreadMap.get(r.id) ?? 0,
-        unreadMentionCount: mentionMap.get(r.id) ?? 0,
-      })) satisfies DmChannelDto[])
+      return NextResponse.json(
+        rows.map((r) => ({
+          ...r,
+          participantAvatarUrl: r.participantAvatarUrl ?? null,
+          unreadCount: unreadMap.get(r.id) ?? 0,
+          unreadMentionCount: mentionMap.get(r.id) ?? 0,
+        })) satisfies DmChannelDto[],
+      )
     }
 
-    return NextResponse.json(rows.map(r => ({ ...r, participantAvatarUrl: r.participantAvatarUrl ?? null, unreadCount: 0, unreadMentionCount: 0 })) satisfies DmChannelDto[])
+    return NextResponse.json(
+      rows.map((r) => ({
+        ...r,
+        participantAvatarUrl: r.participantAvatarUrl ?? null,
+        unreadCount: 0,
+        unreadMentionCount: 0,
+      })) satisfies DmChannelDto[],
+    )
   } catch (err) {
     console.error('[/api/workspaces/dms GET] failed:', err)
     return NextResponse.json([] satisfies DmChannelDto[])
@@ -95,7 +137,9 @@ export async function POST(req: Request) {
   if (error) return error
 
   let body: unknown
-  try { body = await req.json() } catch {
+  try {
+    body = await req.json()
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
   const parsed = createDmSchema.safeParse(body)
@@ -106,8 +150,30 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, channelReadStates } = await import('@cairn/db')
+    const { channels, channelMembers, channelReadStates, workspaceMembers } =
+      await import('@cairn/db')
     const { and, eq, inArray, sql } = await import('drizzle-orm')
+
+    const [targetMember] = await db
+      .select({
+        userId: workspaceMembers.userId,
+        membershipStatus: workspaceMembers.membershipStatus,
+      })
+      .from(workspaceMembers)
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.userId, targetUserId),
+        ),
+      )
+      .limit(1)
+
+    if (!targetMember || targetMember.membershipStatus !== 'active') {
+      return NextResponse.json(
+        { error: '指定されたユーザーはアクティブなワークスペースメンバーではありません' },
+        { status: 422 },
+      )
+    }
 
     // 既存の DM チャンネルを探す（両者が参加している）
     const myChannelIds = db
@@ -150,10 +216,13 @@ export async function POST(req: Request) {
     ])
 
     // 両参加者の既読起点を作成時点にする（参加直後の過去履歴未読を防ぐ。新規DMでは履歴ゼロだが一貫性のため）
-    await db.insert(channelReadStates).values([
-      { channelId: ch.id, userId: ctx.userId, lastReadAt: new Date() },
-      { channelId: ch.id, userId: targetUserId, lastReadAt: new Date() },
-    ]).onConflictDoNothing()
+    await db
+      .insert(channelReadStates)
+      .values([
+        { channelId: ch.id, userId: ctx.userId, lastReadAt: new Date() },
+        { channelId: ch.id, userId: targetUserId, lastReadAt: new Date() },
+      ])
+      .onConflictDoNothing()
 
     void sql // suppress unused import warning
 

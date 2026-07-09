@@ -35,8 +35,16 @@ vi.mock('@/lib/permissions', () => ({
 vi.mock('@cairn/db', () => ({
   db: { select: mockDbSelect, insert: mockDbInsert },
   channelMembers: { userId: 'channelMembers.userId', channelId: 'channelMembers.channelId' },
-  channelReadStates: { userId: 'channelReadStates.userId', channelId: 'channelReadStates.channelId', lastReadAt: 'channelReadStates.lastReadAt' },
-  workspaceMembers: { userId: 'workspaceMembers.userId', workspaceId: 'workspaceMembers.workspaceId' },
+  channelReadStates: {
+    userId: 'channelReadStates.userId',
+    channelId: 'channelReadStates.channelId',
+    lastReadAt: 'channelReadStates.lastReadAt',
+  },
+  workspaceMembers: {
+    userId: 'workspaceMembers.userId',
+    workspaceId: 'workspaceMembers.workspaceId',
+    membershipStatus: 'workspaceMembers.membershipStatus',
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -129,13 +137,27 @@ describe('/api/channels/[channelId]/members のアクセス制御', () => {
     const { POST } = await import('./route')
     const res = await POST(postRequest({ userId: TARGET_USER_ID }), ctxRouteParams())
     expect(res.status).toBe(422)
-    await expect(res.json()).resolves.toEqual({ error: '指定されたユーザーはワークスペースのメンバーではありません' })
+    await expect(res.json()).resolves.toEqual({
+      error: '指定されたユーザーはワークスペースのメンバーではありません',
+    })
+    expect(mockDbInsert).not.toHaveBeenCalled()
+  })
+
+  it('inactive なワークスペースメンバーはチャンネルへ追加できない', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockSelectResults([{ userId: TARGET_USER_ID, membershipStatus: 'inactive' }])
+    const { POST } = await import('./route')
+    const res = await POST(postRequest({ userId: TARGET_USER_ID }), ctxRouteParams())
+    expect(res.status).toBe(422)
+    await expect(res.json()).resolves.toEqual({
+      error: '指定されたユーザーはアクティブなワークスペースメンバーではありません',
+    })
     expect(mockDbInsert).not.toHaveBeenCalled()
   })
 
   it('自ワークスペースのメンバーは正常にチャンネルへ追加できる', async () => {
     mockRequireChannelAccess.mockResolvedValue(null)
-    mockSelectResults([{ userId: TARGET_USER_ID }])
+    mockSelectResults([{ userId: TARGET_USER_ID, membershipStatus: 'active' }])
     mockInsertChain()
     const { POST } = await import('./route')
     const res = await POST(postRequest({ userId: TARGET_USER_ID }), ctxRouteParams())

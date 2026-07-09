@@ -10,10 +10,7 @@ export interface ChannelMemberDto {
   channelId: string
 }
 
-export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ channelId: string }> },
-) {
+export async function GET(_req: Request, { params }: { params: Promise<{ channelId: string }> }) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
@@ -39,10 +36,7 @@ export async function GET(
   }
 }
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ channelId: string }> },
-) {
+export async function POST(req: Request, { params }: { params: Promise<{ channelId: string }> }) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
@@ -54,9 +48,10 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
-  const userId = typeof (body as { userId?: unknown }).userId === 'string'
-    ? ((body as { userId: string }).userId).trim()
-    : ''
+  const userId =
+    typeof (body as { userId?: unknown }).userId === 'string'
+      ? (body as { userId: string }).userId.trim()
+      : ''
 
   if (!userId) {
     return NextResponse.json({ error: 'userIdが必要です' }, { status: 400 })
@@ -72,19 +67,30 @@ export async function POST(
 
     // 自ワークスペースに属さない userId を追加できないようにする（不正な channel_members 行の作成防止）
     const [member] = await db
-      .select({ userId: workspaceMembers.userId })
+      .select({
+        userId: workspaceMembers.userId,
+        membershipStatus: workspaceMembers.membershipStatus,
+      })
       .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, userId)))
+      .where(
+        and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, userId)),
+      )
       .limit(1)
 
     if (!member) {
-      return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
+      return NextResponse.json(
+        { error: '指定されたユーザーはワークスペースのメンバーではありません' },
+        { status: 422 },
+      )
+    }
+    if (member.membershipStatus !== 'active') {
+      return NextResponse.json(
+        { error: '指定されたユーザーはアクティブなワークスペースメンバーではありません' },
+        { status: 422 },
+      )
     }
 
-    await db
-      .insert(channelMembers)
-      .values({ channelId, userId })
-      .onConflictDoNothing()
+    await db.insert(channelMembers).values({ channelId, userId }).onConflictDoNothing()
 
     // 参加時点を既読の起点にする。これがないと参加直後に過去メッセージ全件が未読として表示される
     await db
