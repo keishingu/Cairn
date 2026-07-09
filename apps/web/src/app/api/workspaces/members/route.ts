@@ -18,11 +18,12 @@ export interface WorkspaceMemberDto {
   projectCount: number
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
   try {
+    const activeOnly = new URL(req.url).searchParams.get('status') === 'active'
     const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
     const { profiles, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
@@ -87,8 +88,15 @@ export async function GET() {
       .leftJoin(projectCountSq, eq(projectCountSq.userId, workspaceMembers.userId))
       .where(
         isGuest
-          ? and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, visibleUserIds))
-          : eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          ? and(
+              eq(workspaceMembers.workspaceId, ctx.workspaceId),
+              inArray(workspaceMembers.userId, visibleUserIds),
+              ...(activeOnly ? [eq(workspaceMembers.membershipStatus, 'active')] : []),
+            )
+          : and(
+              eq(workspaceMembers.workspaceId, ctx.workspaceId),
+              ...(activeOnly ? [eq(workspaceMembers.membershipStatus, 'active')] : []),
+            ),
       )
       .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
 

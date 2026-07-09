@@ -44,6 +44,7 @@ vi.mock('@cairn/db', () => ({
     displayName: 'wm.displayName',
     avatarUrl: 'wm.avatarUrl',
     role: 'wm.role',
+    membershipStatus: 'wm.membershipStatus',
     joinedAt: 'wm.joinedAt',
   },
   projectMembers: { userId: 'pm.userId', projectId: 'pm.projectId' },
@@ -75,6 +76,8 @@ describe('GET /api/workspaces/members', () => {
     process.env['DATABASE_URL'] = 'postgresql://test'
   })
 
+  const request = (path = '/api/workspaces/members') => new Request(`http://localhost${path}`)
+
   afterEach(() => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
@@ -93,6 +96,7 @@ describe('GET /api/workspaces/members', () => {
         displayName: '山田 太郎',
         avatarUrl: null,
         role: 'member',
+        membershipStatus: 'active',
         joinedAt: new Date('2026-01-01T00:00:00.000Z'),
         projectCount: 3,
       }]))
@@ -103,7 +107,7 @@ describe('GET /api/workspaces/members', () => {
     })
 
     const { GET } = await import('./route')
-    const res = await GET()
+    const res = await GET(request())
 
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual([{
@@ -112,6 +116,7 @@ describe('GET /api/workspaces/members', () => {
       email: 'taro@example.com',
       avatarUrl: null,
       role: 'member',
+      membershipStatus: 'active',
       joinedAt: '2026-01-01',
       projectCount: 3,
     }])
@@ -127,6 +132,7 @@ describe('GET /api/workspaces/members', () => {
           displayName: '山田 太郎',
           avatarUrl: null,
           role: 'member',
+          membershipStatus: 'active',
           joinedAt: new Date('2026-01-01T00:00:00.000Z'),
           projectCount: 3,
         },
@@ -135,6 +141,7 @@ describe('GET /api/workspaces/members', () => {
           displayName: '佐藤 花子',
           avatarUrl: null,
           role: 'admin',
+          membershipStatus: 'active',
           joinedAt: new Date('2026-01-02T00:00:00.000Z'),
           projectCount: 5,
         },
@@ -151,7 +158,7 @@ describe('GET /api/workspaces/members', () => {
       })
 
     const { GET } = await import('./route')
-    const res = await GET()
+    const res = await GET(request())
 
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual([
@@ -161,6 +168,7 @@ describe('GET /api/workspaces/members', () => {
         email: 'taro@example.com',
         avatarUrl: null,
         role: 'member',
+        membershipStatus: 'active',
         joinedAt: '2026-01-01',
         projectCount: 3,
       },
@@ -170,6 +178,7 @@ describe('GET /api/workspaces/members', () => {
         email: 'hanako@example.com',
         avatarUrl: null,
         role: 'admin',
+        membershipStatus: 'active',
         joinedAt: '2026-01-02',
         projectCount: 5,
       },
@@ -187,6 +196,7 @@ describe('GET /api/workspaces/members', () => {
         displayName: '未登録 ユーザー',
         avatarUrl: null,
         role: 'guest',
+        membershipStatus: 'inactive',
         joinedAt: new Date('2026-01-03T00:00:00.000Z'),
         projectCount: 0,
       }]))
@@ -197,7 +207,7 @@ describe('GET /api/workspaces/members', () => {
     })
 
     const { GET } = await import('./route')
-    const res = await GET()
+    const res = await GET(request())
 
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual([{
@@ -206,6 +216,7 @@ describe('GET /api/workspaces/members', () => {
       email: null,
       avatarUrl: null,
       role: 'guest',
+      membershipStatus: 'inactive',
       joinedAt: '2026-01-03',
       projectCount: 0,
     }])
