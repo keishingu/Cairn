@@ -94,18 +94,17 @@ export async function PATCH(req: Request) {
     const { db, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    if (hasDisplayName || hasBio) {
-      const set: { bio?: string | null; updatedAt: Date } = { updatedAt: new Date() }
-      if (hasBio) set.bio = b.bio ?? null
-      if (hasBio) {
-        await db.update(profiles).set(set).where(eq(profiles.id, ctx.userId))
-      }
+    if (hasBio) {
+      await db
+        .update(profiles)
+        .set({ bio: b.bio ?? null, updatedAt: new Date() })
+        .where(eq(profiles.id, ctx.userId))
     }
 
-    if (hasDisplayName) {
+    if (b.displayName !== undefined) {
       await db
         .update(workspaceMembers)
-        .set({ displayName: b.displayName!.trim() })
+        .set({ displayName: b.displayName.trim() })
         .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
     }
 

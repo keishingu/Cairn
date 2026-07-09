@@ -26,9 +26,10 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId') ?? undefined
 
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
+
   try {
-    const { ctx, error } = await getAuthContext()
-    if (error) return error
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
@@ -93,6 +94,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
+
   let body: unknown
   try {
     body = await req.json()
@@ -106,9 +110,6 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { ctx, error } = await getAuthContext()
-    if (error) return error
-
     // ゲストは参加プロジェクトにのみタスクを作成できる
     const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, parsed.data.projectId)
     if (forbidden) return forbidden

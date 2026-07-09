@@ -90,24 +90,40 @@ export async function GET() {
     visibleProjectIds = rows.map(r => r.id)
     if (visibleProjectIds.length === 0) return NextResponse.json([])
 
-    const counts = await db
-      .select({ projectId: projectMembers.projectId, n: count() })
-      .from(projectMembers)
-      .where(inArray(projectMembers.projectId, visibleProjectIds))
-      .groupBy(projectMembers.projectId)
+    const [counts, memberRows, userMemberRows, taskRows] = await Promise.all([
+      db
+        .select({ projectId: projectMembers.projectId, n: count() })
+        .from(projectMembers)
+        .where(inArray(projectMembers.projectId, visibleProjectIds))
+        .groupBy(projectMembers.projectId),
+      db
+        .select({
+          projectId: projectMembers.projectId,
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+          avatarUrl: workspaceMembers.avatarUrl,
+        })
+        .from(projectMembers)
+        .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+        .where(inArray(projectMembers.projectId, visibleProjectIds))
+        .orderBy(projectMembers.createdAt),
+      db
+        .select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .where(eq(projectMembers.userId, ctx.userId)),
+      db
+        .select({
+          projectId: tasks.projectId,
+          total: count(),
+          completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
+        })
+        .from(tasks)
+        .where(inArray(tasks.projectId, visibleProjectIds))
+        .groupBy(tasks.projectId),
+    ])
+
     const countMap = new Map(counts.map(r => [r.projectId, Number(r.n)]))
 
-    const memberRows = await db
-      .select({
-        projectId: projectMembers.projectId,
-        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
-        avatarUrl: workspaceMembers.avatarUrl,
-      })
-      .from(projectMembers)
-      .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-      .where(inArray(projectMembers.projectId, visibleProjectIds))
-      .orderBy(projectMembers.createdAt)
     const memberNamesMap = new Map<string, string[]>()
     const memberAvatarUrlsMap = new Map<string, (string | null)[]>()
     for (const row of memberRows) {
@@ -121,21 +137,7 @@ export async function GET() {
       memberAvatarUrlsMap.set(row.projectId, avatarUrls)
     }
 
-    const userMemberRows = await db
-      .select({ projectId: projectMembers.projectId })
-      .from(projectMembers)
-      .where(eq(projectMembers.userId, ctx.userId))
     const userProjectIds = new Set(userMemberRows.map(r => r.projectId))
-
-    const taskRows = await db
-      .select({
-        projectId: tasks.projectId,
-        total: count(),
-        completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
-      })
-      .from(tasks)
-      .where(inArray(tasks.projectId, visibleProjectIds))
-      .groupBy(tasks.projectId)
     const taskMap = new Map(taskRows.map(r => [r.projectId, { total: Number(r.total), completed: Number(r.completed) }]))
 
     const result: ProjectDto[] = rows.map(r => ({
