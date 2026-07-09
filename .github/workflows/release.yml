@@ -1,11 +1,21 @@
 name: Release (develop → main)
 
-# develop の内容を main へリリースするための手動ワークフロー。
-# - develop → main の Release PR を作成 / 更新する（マージは手動）
-# - 同じ内容で Draft Release を作成する（タグ確定・公開は PR マージ後に手動）
+# develop の内容を main へリリースするワークフロー（週次自動 + 手動実行可）。
+# - 実行時点の develop を固定した release/YYYY-MM-DD ブランチを切り、main への Release PR を作成する
+#   （head を動く develop にしないのは、ソーク＝人間の拒否権ウィンドウを不動の内容に効かせるため。
+#     スナップショット後に develop へ入った変更は翌週のリリースに回る）
+# - 同じ内容で Draft Release を作成する
 # - 本文は OpenAI(gpt-4o) でコミットから生成する。OPENAI_API_KEY は必須
 #   （未設定・API 失敗時は誤った内容を出さないようエラーで中断し、フォールバックしない）
+# - open の Release PR が残っている間は新しい Release PR を作らない（リリーストレインを一列に保つ）
+#
+# ここではマージも Publish もしない。Release PR のマージと Draft の Publish は
+# autonomous-merge.yml が「24h のソーク + フル検証」を経て自動で行う
+# （止めたい場合は Release PR に needs-human ラベル）。手動でマージ・Publish してもよい。
+# 運用設計: docs/autonomous-operations.md
 on:
+  schedule:
+    - cron: "0 21 * * 0" # 月曜 6:00 JST（マージは 24h ソーク後 ≒ 火曜朝）
   workflow_dispatch:
     inputs:
       release_tag:
@@ -16,6 +26,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 concurrency:
   group: release-develop-to-main
@@ -35,8 +46,12 @@ jobs:
         id: commits
         run: |
           git fetch origin main develop --quiet
+          # リリース対象を「この時点の develop」に固定する（スナップショット）。
+          # 以降の判定・ノート生成・リリースブランチ作成はすべてこの SHA を基準にする。
+          SNAP_SHA=$(git rev-parse origin/develop)
+          echo "snap_sha=$SNAP_SHA" >> "$GITHUB_OUTPUT"
           # リリース実行の判定は「全差分」で行う（依存更新やメンテのみでも main へ promote するため）。
-          FULL_LOG=$(git log origin/main..origin/develop --no-merges --pretty=format:'- %s (%h)')
+          FULL_LOG=$(git log "origin/main..$SNAP_SHA" --no-merges --pretty=format:'- %s (%h)')
           if [ -z "$FULL_LOG" ]; then
             echo "develop は main より先行していません。リリース対象の差分がありません。"
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
@@ -48,7 +63,7 @@ jobs:
           # 除外: ドキュメント(docs/, *.md)・CI(.github/)・テスト(*.test.ts(x))・
           #       ビルド/ツール設定(packages/config/, *package.json, *tsconfig*.json, lockfile, turbo/vercel/eas)。
           # これらのパス「だけ」を触るコミットが対象外。コードと両方触るコミットは残る。
-          USER_LOG=$(git log origin/main..origin/develop --no-merges --pretty=format:'- %s (%h)' \
+          USER_LOG=$(git log "origin/main..$SNAP_SHA" --no-merges --pretty=format:'- %s (%h)' \
             -- \
             ':!docs/' ':!*.md' \
             ':!.github/' \
@@ -147,25 +162,39 @@ jobs:
             echo "__RELEASE_BODY__"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create or update Release PR (develop → main)
+      - name: Create Release PR (release branch → main)
+        id: create_pr
         if: steps.commits.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BODY: ${{ steps.notes.outputs.body }}
+          SNAP_SHA: ${{ steps.commits.outputs.snap_sha }}
         run: |
           set -euo pipefail
-          TITLE="Release: develop → main ($(date +%Y-%m-%d))"
-          EXISTING=$(gh pr list --base main --head develop --state open --json number --jq '.[0].number // empty')
+          # ソーク（人間の拒否権ウィンドウ）を「不動の内容」に対して効かせるため、
+          # 動く develop ではなくスナップショットの release/YYYY-MM-DD ブランチから PR を作る。
+          # スナップショット後に develop へ入った変更は翌週のリリースに回る。
+          EXISTING=$(gh pr list --base main --state open --json number,headRefName \
+            --jq '[.[] | select(.headRefName == "develop" or (.headRefName | startswith("release/")))][0].number // empty')
           if [ -n "$EXISTING" ]; then
-            gh pr edit "$EXISTING" --title "$TITLE" --body "$BODY"
-            echo "::notice::既存の Release PR #$EXISTING を更新しました。"
-          else
-            gh pr create --base main --head develop --title "$TITLE" --body "$BODY"
-            echo "::notice::Release PR を作成しました。"
+            echo "::notice::open の Release PR #$EXISTING が残っているため、今回は作成しません（マージ or クローズ後の次回実行で作成されます）。"
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          BRANCH="release/$(date +%Y-%m-%d)"
+          # 同日再実行に備えて force 更新（open PR が無いことは確認済みのため安全）
+          git push -f origin "$SNAP_SHA:refs/heads/$BRANCH"
+          TITLE="Release: develop → main ($(date +%Y-%m-%d))"
+          gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$BODY"
+          echo "::notice::Release PR を作成しました（$BRANCH @ $SNAP_SHA）。"
+          echo "created=true" >> "$GITHUB_OUTPUT"
 
       - name: Create Draft Release
-        if: steps.commits.outputs.has_changes == 'true'
+        # Release PR を実際に作成できた（= 新しいスナップショットの PR がある）ときのみ、
+        # 対応する Draft Release を作る。既存 PR が残っていて今回 PR を作らなかった場合に
+        # 作ると、後で古い PR がマージされた際 main の内容と一致しない Draft が Publish
+        # されてしまうため。
+        if: steps.create_pr.outputs.created == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BODY: ${{ steps.notes.outputs.body }}
@@ -194,4 +223,25 @@ jobs:
             --target main \
             --title "$TAG" \
             --notes "$RELEASE_NOTES"
-          echo "::notice::Draft Release $TAG を作成しました（公開は PR マージ後に手動で）。"
+          echo "::notice::Draft Release $TAG を作成しました（Publish は autonomous-merge が PR マージ後に自動実行。手動でも可）。"
+
+      - name: 失敗を ops issue として起票
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TITLE="🚨 リリースワークフロー（Release PR 作成）が失敗"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh label create "ready-for-ai" -c "1D76DB" -d "AI エージェントが着手してよい issue" -f
+          gh label create "source:ops"   -c "5319E7" -d "自動運用ワークフローが起票" -f
+          existing=$(gh issue list --state open --label "source:ops" \
+            --search "in:title \"$TITLE\"" --json number --jq '.[0].number // empty')
+          BODY="Release PR / Draft Release の作成が失敗しました（OPENAI_API_KEY 未設定・API エラーの可能性）。ログを確認し、修正してください。
+
+          実行ログ: ${RUN_URL}"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "再発しました: ${RUN_URL}"
+          else
+            gh issue create --title "$TITLE" --body "$BODY" --label "ready-for-ai" --label "source:ops"
+          fi

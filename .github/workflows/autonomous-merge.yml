@@ -1,0 +1,457 @@
+name: Autonomous Merge
+
+# 自律運用の中核スイーパー（毎時実行）。人間がリソースを割けなくても開発が前進するよう、
+# 1) develop 宛の open PR を soul.policy.yaml でリスク分類し、
+#    低リスク（forbidden_zones 非接触）かつ CI green の PR を自動マージする
+# 2) Release PR（release/* スナップショット → main）を min_age_hours のソーク後、
+#    この場でフル検証（typecheck / lint / test）を通してから自動マージし、
+#    Draft Release を自動 Publish する
+#    ※ GITHUB_TOKEN によるマージコミットでは CI ワークフローがトリガーされないため、
+#      push イベントの CI に頼らず必ずこのジョブ内で検証し直す
+#
+# 運用設計の全体像: docs/autonomous-operations.md
+#
+# 停止方法:
+# - PR 単位: needs-human ラベルを付ける（自動マージ対象から外れる）
+# - リリースのみ: release-blocked ラベルの open issue がある間は main へマージしない
+# - 全体: Actions タブからこのワークフローを Disable する
+
+on:
+  schedule:
+    - cron: "23 * * * *" # 毎時
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: autonomous-merge
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      release_pr: ${{ steps.sweep.outputs.release_pr }}
+      release_sha: ${{ steps.sweep.outputs.release_sha }}
+      merge_pr: ${{ steps.sweep.outputs.merge_pr }}
+      merge_sha: ${{ steps.sweep.outputs.merge_sha }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure labels
+        run: |
+          gh label create "risk:low"        -c "0E8A16" -d "forbidden_zones 非接触。自動マージ対象" -f
+          gh label create "risk:high"       -c "B60205" -d "forbidden_zones に接触。人間のマージが必要" -f
+          gh label create "needs-human"     -c "D93F0B" -d "自動マージ対象外。人間の判断待ち" -f
+          gh label create "has-conflict"    -c "FBCA04" -d "コンフリクトのため自動マージ不可" -f
+          gh label create "ready-for-ai"    -c "1D76DB" -d "AI エージェントが着手してよい issue" -f
+          gh label create "source:ops"      -c "5319E7" -d "自動運用ワークフローが起票" -f
+          gh label create "release-blocked" -c "B60205" -d "自動リリース停止中（この issue を close すると再開）" -f
+
+      - name: Sweep pull requests
+        id: sweep
+        run: |
+          set -euo pipefail
+          REPO="${GITHUB_REPOSITORY}"
+          NOW=$(date -u +%s)
+
+          # PyYAML は ubuntu-latest イメージに保証されているわけではないため明示的に用意する
+          python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
+          # soul.policy.yaml を JSON 化
+          python3 - <<'PY' > /tmp/policy.json
+          import yaml, json
+          print(json.dumps(yaml.safe_load(open("soul.policy.yaml"))))
+          PY
+
+          # forbidden_zones 照合スクリプト（stdin: 変更ファイル一覧 → stdout: 接触ファイル一覧）
+          cat > /tmp/risk.py <<'PY'
+          import json, sys, fnmatch
+          policy = json.load(open(sys.argv[1]))
+          zones = policy.get("forbidden_zones", [])
+          files = [l.strip() for l in sys.stdin if l.strip()]
+          hits = sorted({f for f in files for z in zones if fnmatch.fnmatch(f, z)})
+          print("\n".join(hits))
+          PY
+
+          DEV_MIN_AGE=$(jq -r '.automerge.develop.min_age_hours // 0' /tmp/policy.json)
+          MAIN_MIN_AGE=$(jq -r '.automerge.main.min_age_hours // 24' /tmp/policy.json)
+          jq -r '.automerge.allowed_authors[]' /tmp/policy.json > /tmp/allowed.txt
+          jq -r '.automerge.required_checks[]' /tmp/policy.json > /tmp/required_checks.txt
+
+          # bot 名の表記ゆれ（app/dependabot / dependabot[bot]）を正規化
+          norm_author() { local a="${1#app/}"; printf '%s\n' "${a%\[bot\]}"; }
+
+          # CI チェック判定: 失敗・実行中が無く、required_checks がすべて SUCCESS であること
+          is_green() {
+            local rollup bad pending name ok
+            rollup=$(gh pr view "$1" --json statusCheckRollup --jq '.statusCheckRollup // []')
+            bad=$(jq '[.[] | select(
+              ((.conclusion? // "") | IN("FAILURE","TIMED_OUT","CANCELLED","ACTION_REQUIRED")) or
+              ((.state? // "") | IN("FAILURE","ERROR"))
+            )] | length' <<<"$rollup")
+            [ "$bad" = "0" ] || return 1
+            pending=$(jq '[.[] | select(
+              ((.status? // "") | IN("IN_PROGRESS","QUEUED","PENDING","WAITING","REQUESTED")) or
+              ((.state? // "") == "PENDING")
+            )] | length' <<<"$rollup")
+            [ "$pending" = "0" ] || return 1
+            while IFS= read -r name; do
+              ok=$(jq --arg n "$name" '[.[] | select(.name? == $n and .conclusion? == "SUCCESS")] | length' <<<"$rollup")
+              [ "$ok" != "0" ] || return 1
+            done < /tmp/required_checks.txt
+          }
+
+          # ---- 1) develop 宛の open PR を巡回 ----
+          gh pr list --base develop --state open --limit 50 \
+            --json number,author,isDraft,labels,createdAt,mergeable,title,headRefOid > /tmp/prs.json
+
+          # 自動マージは 1 スイープにつき 1 件まで。ここでは候補の選定だけを行い、
+          # 実際のマージは後段の merge ジョブが「現在の develop との合成結果」を
+          # 検証してから実行する（PR の CI は push 時点の develop に対する結果であり、
+          # 他 PR のマージで develop が進むと合成結果は未検証になるため）
+          MERGE_PR=""
+          MERGE_SHA=""
+          while IFS= read -r pr; do
+            num=$(jq -r '.number' <<<"$pr")
+            author=$(norm_author "$(jq -r '.author.login' <<<"$pr")")
+            labels=$(jq -r '[.labels[].name] | join(",")' <<<"$pr")
+            created=$(jq -r '.createdAt' <<<"$pr")
+            mergeable=$(jq -r '.mergeable' <<<"$pr")
+            title=$(jq -r '.title' <<<"$pr")
+            head_sha=$(jq -r '.headRefOid' <<<"$pr")
+
+            [ "$(jq -r '.isDraft' <<<"$pr")" = "false" ] || { echo "PR #$num: draft のためスキップ"; continue; }
+            case ",$labels," in *,needs-human,*) echo "PR #$num: needs-human のためスキップ"; continue;; esac
+            grep -qx "$author" /tmp/allowed.txt || { echo "PR #$num: 作者 $author は allowed_authors 外のためスキップ"; continue; }
+
+            # dependabot のメジャー更新は自動マージしない（ランタイム互換が CI で担保できないため）
+            if [ "$author" = "dependabot" ] && python3 - "$title" <<'PY'
+          import re, sys
+          m = re.search(r"from (\d+)[^\s]* to (\d+)", sys.argv[1])
+          sys.exit(0 if m and m.group(1) != m.group(2) else 1)
+          PY
+            then
+              gh pr edit "$num" --add-label "needs-human"
+              gh pr comment "$num" --body "🛑 メジャーバージョン更新のため自動マージしません。人間または AI エージェントが動作確認のうえマージしてください。（autonomous-merge）"
+              continue
+            fi
+
+            # forbidden_zones 照合（base ブランチの soul.policy.yaml で判定。PR 側のコードは実行しない）
+            gh api "repos/$REPO/pulls/$num/files" --paginate --jq '.[].filename' > /tmp/files.txt
+            hits=$(python3 /tmp/risk.py /tmp/policy.json < /tmp/files.txt)
+            if [ -n "$hits" ]; then
+              gh pr edit "$num" --add-label "risk:high" --add-label "needs-human"
+              gh pr comment "$num" --body "$(printf '🛑 **soul.policy.yaml の forbidden_zones に接触しているため自動マージしません。** 人間のレビュー・マージが必要です。\n\n接触ファイル:\n```\n%s\n```\n（autonomous-merge）' "$hits")"
+              echo "PR #$num: forbidden_zones 接触 → needs-human"
+              continue
+            fi
+            gh pr edit "$num" --add-label "risk:low"
+
+            # コンフリクトは AI ループ（定期チェック）に解消を委ねる。ラベルで一度だけ通知する
+            if [ "$mergeable" = "CONFLICTING" ]; then
+              case ",$labels," in
+                *,has-conflict,*) ;;
+                *)
+                  gh pr edit "$num" --add-label "has-conflict"
+                  gh pr comment "$num" --body "⚠️ develop とコンフリクトしているため自動マージできません。rebase / merge で解消されると次回スイープで自動マージされます。（autonomous-merge）"
+                  ;;
+              esac
+              continue
+            fi
+            case ",$labels," in *,has-conflict,*) gh pr edit "$num" --remove-label "has-conflict";; esac
+
+            age_h=$(( (NOW - $(date -u -d "$created" +%s)) / 3600 ))
+            [ "$age_h" -ge "$DEV_MIN_AGE" ] || { echo "PR #$num: ソーク時間未達（${age_h}h < ${DEV_MIN_AGE}h）"; continue; }
+            is_green "$num" || { echo "PR #$num: CI が green でないためスキップ"; continue; }
+            [ "$mergeable" = "MERGEABLE" ] || { echo "PR #$num: mergeable=$mergeable のためスキップ"; continue; }
+            [ -z "$MERGE_PR" ] || { echo "PR #$num: 今回の候補は PR #$MERGE_PR のため見送り（次回スイープで再評価）"; continue; }
+
+            MERGE_PR="$num"
+            MERGE_SHA="$head_sha"
+            echo "PR #$num: 自動マージ候補に選定（head: $head_sha）。後段ジョブで develop との合成を検証してからマージする"
+          done < <(jq -c '.[]' /tmp/prs.json)
+          echo "merge_pr=$MERGE_PR" >> "$GITHUB_OUTPUT"
+          echo "merge_sha=$MERGE_SHA" >> "$GITHUB_OUTPUT"
+
+          # ---- 2) Release PR（release/* → main）のマージ可否を判定し、後段ジョブへ渡す ----
+          # Release PR の head は release.yml が切った不動のスナップショットブランチ。
+          # ソークは「PR 作成」と「head の最終コミット」の遅い方を起点にする
+          # （万一 release ブランチに後から push があった場合、ソークをやり直すため）
+          RELEASE_PR=""
+          RELEASE_SHA=""
+          rp=$(gh pr list --base main --state open --limit 10 \
+            --json number,labels,createdAt,mergeable,headRefName,headRefOid,isDraft \
+            --jq '[.[] | select((.headRefName | startswith("release/")) and .isDraft == false)][0] // empty')
+          if [ -n "$rp" ]; then
+            rnum=$(jq -r '.number' <<<"$rp")
+            rlabels=$(jq -r '[.labels[].name] | join(",")' <<<"$rp")
+            rcreated=$(jq -r '.createdAt' <<<"$rp")
+            rmergeable=$(jq -r '.mergeable' <<<"$rp")
+            rsha=$(jq -r '.headRefOid' <<<"$rp")
+            blocked=$(gh issue list --state open --label "release-blocked" --json number --jq 'length')
+            created_s=$(date -u -d "$rcreated" +%s)
+            head_s=$(date -u -d "$(gh api "repos/$REPO/commits/$rsha" --jq '.commit.committer.date')" +%s)
+            anchor_s=$(( created_s > head_s ? created_s : head_s ))
+            rage_h=$(( (NOW - anchor_s) / 3600 ))
+            case ",$rlabels," in
+              *,needs-human,*) echo "Release PR #$rnum: needs-human のため自動リリースしない";;
+              *)
+                if [ "$blocked" != "0" ]; then
+                  echo "Release PR #$rnum: release-blocked issue が open のため自動リリースしない"
+                elif [ "$rage_h" -lt "$MAIN_MIN_AGE" ]; then
+                  echo "Release PR #$rnum: ソーク時間未達（${rage_h}h < ${MAIN_MIN_AGE}h）"
+                elif [ "$rmergeable" = "CONFLICTING" ]; then
+                  echo "Release PR #$rnum: コンフリクトのためスキップ"
+                else
+                  RELEASE_PR="$rnum"
+                  RELEASE_SHA="$rsha"
+                fi
+                ;;
+            esac
+          fi
+          echo "release_pr=$RELEASE_PR" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: 失敗を ops issue として起票
+        if: failure()
+        run: |
+          set -euo pipefail
+          TITLE="🚨 autonomous-merge（sweep）が失敗"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          BODY="autonomous-merge の sweep ジョブが失敗しました。ログを確認し、原因を修正する PR を作成してください。
+
+          実行ログ: ${RUN_URL}"
+          existing=$(gh issue list --state open --label "source:ops" --search "in:title \"$TITLE\"" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "再発しました: ${RUN_URL}"
+          else
+            gh issue create --title "$TITLE" --body "$BODY" --label "ready-for-ai" --label "source:ops"
+          fi
+
+  # 低リスク PR の develop へのマージ。PR の CI 結果には依存せず、
+  # 「現在の develop に PR を合成した結果」をこの場で検証してからマージする。
+  merge:
+    needs: sweep
+    if: needs.sweep.outputs.merge_pr != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MERGE_PR: ${{ needs.sweep.outputs.merge_pr }}
+      MERGE_SHA: ${{ needs.sweep.outputs.merge_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0 # PR head との合成マージに履歴が必要
+
+      - name: PR を develop へローカル合成
+        id: prep
+        run: |
+          set -euo pipefail
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git fetch origin "refs/pull/${MERGE_PR}/head"
+          if [ "$(git rev-parse FETCH_HEAD)" != "$MERGE_SHA" ]; then
+            echo "::warning::PR #${MERGE_PR}: 判定後に head が進んだため今回は見送り（次回スイープで再評価）"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git -c user.name="autonomous-merge" -c user.email="actions@github.com" \
+              merge --no-ff --no-edit "$MERGE_SHA"; then
+            git merge --abort || true
+            echo "::warning::PR #${MERGE_PR}: develop と合成できないため見送り（次回スイープで再評価）"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: steps.prep.outputs.skip != 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.prep.outputs.skip != 'true'
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.prep.outputs.skip != 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        if: steps.prep.outputs.skip != 'true'
+        run: pnpm typecheck
+
+      - name: Lint
+        if: steps.prep.outputs.skip != 'true'
+        run: pnpm lint
+
+      - name: Test
+        if: steps.prep.outputs.skip != 'true'
+        run: pnpm test
+
+      - name: Merge PR
+        if: steps.prep.outputs.skip != 'true'
+        env:
+          BASE_SHA: ${{ steps.prep.outputs.base_sha }}
+        run: |
+          set -euo pipefail
+          # 検証中の人間の介入（needs-human 付与）を尊重して直前に再確認する
+          labels_now=$(gh pr view "$MERGE_PR" --json labels --jq '[.labels[].name] | join(",")')
+          case ",$labels_now," in
+            *,needs-human,*)
+              echo "::notice::PR #${MERGE_PR}: 検証中に needs-human が付いたためマージしません。"
+              exit 0
+              ;;
+          esac
+          # 検証した合成の前提（develop の位置）が変わっていないことを確認する
+          if [ "$(git ls-remote origin develop | cut -f1)" != "$BASE_SHA" ]; then
+            echo "::warning::PR #${MERGE_PR}: 検証中に develop が進んだため見送り（次回スイープで再評価）"
+            exit 0
+          fi
+          if ! gh pr merge "$MERGE_PR" --squash --delete-branch --match-head-commit "$MERGE_SHA"; then
+            current=$(gh pr view "$MERGE_PR" --json headRefOid --jq '.headRefOid')
+            if [ "$current" != "$MERGE_SHA" ]; then
+              echo "::warning::PR #${MERGE_PR}: 判定後に head が進んだためマージを見送り（次回スイープで再評価）"
+              exit 0
+            fi
+            echo "::error::PR #${MERGE_PR}: マージに失敗しました"
+            exit 1
+          fi
+          echo "PR #${MERGE_PR} を develop にマージしました（検証済み head: $MERGE_SHA）。"
+
+      - name: 失敗を ops issue として起票
+        if: failure()
+        run: |
+          set -euo pipefail
+          TITLE="🚨 autonomous-merge（合成検証）が失敗"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          BODY="PR #${MERGE_PR} を develop へ合成した状態での検証（install / typecheck / lint / test）が失敗しました。PR 単体の CI は green のため、develop 側との組み合わせで壊れている可能性があります。原因を調査し、修正 PR を作成してください。
+
+          実行ログ: ${RUN_URL}"
+          existing=$(gh issue list --state open --label "source:ops" --search "in:title \"$TITLE\"" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "再発しました（PR #${MERGE_PR}）: ${RUN_URL}"
+          else
+            gh issue create --title "$TITLE" --body "$BODY" --label "ready-for-ai" --label "source:ops"
+          fi
+
+  # Release PR（release/* スナップショット → main）のマージは、ソーク済みの
+  # スナップショット SHA をこの場で検証してから行う。
+  # （GITHUB_TOKEN が作った commit には push イベントの CI が走らないため、CI の結果には頼らない）
+  release:
+    needs: [sweep, merge]
+    if: >-
+      always() && needs.sweep.result == 'success' &&
+      needs.sweep.outputs.release_pr != '' &&
+      (needs.merge.result == 'success' || needs.merge.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # ソークを経たスナップショット SHA を固定で検証・マージする
+          ref: ${{ needs.sweep.outputs.release_sha }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Merge release PR and publish draft release
+        run: |
+          set -euo pipefail
+          REPO="${GITHUB_REPOSITORY}"
+          NUM="${{ needs.sweep.outputs.release_pr }}"
+
+          # 検証中（数分〜十数分）に人間が停止スイッチを入れた場合を尊重するため、
+          # スイープ時点の判定に頼らずマージ直前にブロッカーを再確認する
+          labels_now=$(gh pr view "$NUM" --json labels --jq '[.labels[].name] | join(",")')
+          case ",$labels_now," in
+            *,needs-human,*)
+              echo "::notice::Release PR #$NUM: 検証中に needs-human が付いたため自動リリースを中止します。"
+              exit 0
+              ;;
+          esac
+          blocked=$(gh issue list --state open --label "release-blocked" --json number --jq 'length')
+          if [ "$blocked" != "0" ]; then
+            echo "::notice::release-blocked issue が open のため自動リリースを中止します。"
+            exit 0
+          fi
+
+          # マージ対象を「このジョブで検証した SHA」に固定する。万一 release ブランチに
+          # 新しい push があった場合は未検証のためマージせず、次回スイープで再検証する
+          VERIFIED_SHA=$(git rev-parse HEAD)
+          if ! gh pr merge "$NUM" --merge --delete-branch --match-head-commit "$VERIFIED_SHA"; then
+            current=$(gh pr view "$NUM" --json headRefOid --jq '.headRefOid')
+            if [ "$current" != "$VERIFIED_SHA" ]; then
+              echo "::notice::検証中に release ブランチが動いたため、今回のリリースマージは見送ります（次回スイープで再検証）。"
+              exit 0
+            fi
+            echo "::error::Release PR #$NUM のマージに失敗しました。"
+            exit 1
+          fi
+          echo "Release PR #$NUM を main にマージしました（検証済み SHA: $VERIFIED_SHA）。"
+
+          # release.yml が用意した Draft Release（release-*）を Publish する。
+          # タグは Publish 時に main の HEAD（＝いまマージした内容）に作られる。
+          # 古い draft は最新に内容が包含されるため削除する。
+          drafts=$(gh api "repos/$REPO/releases?per_page=50" \
+            --jq '[.[] | select(.draft == true) | select(.tag_name | startswith("release-"))] | sort_by(.created_at)')
+          count=$(jq 'length' <<<"$drafts")
+          if [ "$count" = "0" ]; then
+            echo "::warning::Publish 対象の Draft Release（release-*）が見つかりませんでした。"
+            exit 0
+          fi
+          jq -r '.[0:-1][].id' <<<"$drafts" | while IFS= read -r id; do
+            [ -n "$id" ] && gh api -X DELETE "repos/$REPO/releases/$id"
+          done
+          latest_id=$(jq -r '.[-1].id' <<<"$drafts")
+          latest_tag=$(jq -r '.[-1].tag_name' <<<"$drafts")
+          # draft 本文の「マージ後に Publish せよ」警告行はもう不要なので除去して公開する
+          jq -r '.[-1].body // ""' <<<"$drafts" | sed '/^> ⚠️/d' | sed '/./,$!d' > /tmp/release-body.md
+          gh api -X PATCH "repos/$REPO/releases/$latest_id" \
+            -F draft=false -f body="$(cat /tmp/release-body.md)" > /dev/null
+          echo "Draft Release $latest_tag を Publish しました。"
+
+      - name: 失敗を ops issue として起票（自動リリース停止）
+        if: failure()
+        run: |
+          set -euo pipefail
+          TITLE="🚨 自動リリース（develop → main）が失敗"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          BODY="Release PR #${{ needs.sweep.outputs.release_pr }} の検証またはマージが失敗しました。
+          この issue が open の間、自動リリースは停止します（release-blocked）。
+          原因を修正する PR を作成し、修正が develop に入ったらこの issue を close してください。close すると次回スイープから自動リリースが再開します。
+
+          実行ログ: ${RUN_URL}"
+          existing=$(gh issue list --state open --label "release-blocked" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "再発しました: ${RUN_URL}"
+          else
+            gh issue create --title "$TITLE" --body "$BODY" \
+              --label "ready-for-ai" --label "source:ops" --label "release-blocked"
+          fi
