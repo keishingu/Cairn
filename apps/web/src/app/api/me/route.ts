@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { patchMeSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { USER_STATUSES, type UserStatus } from '@/lib/user-status'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import type { UserStatus } from '@/lib/user-status'
 
 export interface CurrentUserDto {
   id: string
@@ -81,47 +82,36 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const b = body as { displayName?: string; bio?: string | null; status?: UserStatus; statusMessage?: string | null }
-  const hasDisplayName = b.displayName !== undefined
-  const hasBio = 'bio' in (b as object)
-  const hasStatus = b.status !== undefined
-  const hasStatusMessage = 'statusMessage' in (b as object)
+  const parsed = patchMeSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
+  }
+  const b = parsed.data
 
-  if (!hasDisplayName && !hasBio && !hasStatus && !hasStatusMessage) {
-    return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
-  }
-  if (hasDisplayName && !b.displayName?.trim()) {
-    return NextResponse.json({ error: '表示名は必須です' }, { status: 422 })
-  }
-  if (hasStatus && !USER_STATUSES.includes(b.status!)) {
-    return NextResponse.json({ error: 'ステータスの値が不正です' }, { status: 422 })
-  }
-  if (hasStatusMessage && b.statusMessage != null && b.statusMessage.length > 100) {
-    return NextResponse.json({ error: 'ステータスメッセージは100文字以内で入力してください' }, { status: 422 })
-  }
+  const hasBio = 'bio' in b
+  const hasStatusMessage = 'statusMessage' in b
 
   try {
     const { db, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    if (hasDisplayName || hasBio) {
-      const set: { bio?: string | null; updatedAt: Date } = { updatedAt: new Date() }
-      if (hasBio) set.bio = b.bio ?? null
-      if (hasBio) {
-        await db.update(profiles).set(set).where(eq(profiles.id, ctx.userId))
-      }
+    if (hasBio) {
+      await db
+        .update(profiles)
+        .set({ bio: b.bio ?? null, updatedAt: new Date() })
+        .where(eq(profiles.id, ctx.userId))
     }
 
-    if (hasDisplayName) {
+    if (b.displayName !== undefined) {
       await db
         .update(workspaceMembers)
-        .set({ displayName: b.displayName!.trim() })
+        .set({ displayName: b.displayName.trim() })
         .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
     }
 
-    if (hasStatus || hasStatusMessage) {
+    if (b.status !== undefined || hasStatusMessage) {
       const set: { status?: UserStatus; statusMessage?: string | null } = {}
-      if (hasStatus) set.status = b.status!
+      if (b.status !== undefined) set.status = b.status
       if (hasStatusMessage) set.statusMessage = b.statusMessage?.trim() || null
       await db
         .update(workspaceMembers)
@@ -129,7 +119,7 @@ export async function PATCH(req: Request) {
         .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
     }
 
-    return NextResponse.json({ id: ctx.userId, ...b })
+    return NextResponse.json({ id: ctx.userId })
   } catch (err) {
     console.error('[PATCH /api/me]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
