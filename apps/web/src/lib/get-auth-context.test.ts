@@ -32,6 +32,7 @@ vi.mock('@cairn/db', () => ({
   workspaceMembers: {
     userId: 'wm.userId',
     workspaceId: 'wm.workspaceId',
+    role: 'wm.role',
   },
 }))
 
@@ -41,11 +42,13 @@ vi.mock('drizzle-orm', () => ({
 }))
 
 function selectChain(result: unknown[]) {
+  const whereResult = Promise.resolve(result) as Promise<unknown[]> & {
+    limit: ReturnType<typeof vi.fn>
+  }
+  whereResult.limit = vi.fn().mockResolvedValue(result)
   return {
     from: vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockResolvedValue(result),
-      }),
+      where: vi.fn().mockReturnValue(whereResult),
     }),
   }
 }
@@ -99,5 +102,34 @@ describe('get-auth-context', () => {
 
     expect(mockSupabase.auth.getUser).toHaveBeenCalledWith()
     expect(result).toEqual({ userId: 'user-1', error: null })
+  })
+
+  it('無効な workspace cookie からのフォールバック結果も scoped cache に保存する', async () => {
+    const firstHeaders = new Headers()
+    const secondHeaders = new Headers()
+
+    mockHeaders
+      .mockResolvedValueOnce(firstHeaders)
+      .mockResolvedValueOnce(secondHeaders)
+    mockCookies.mockResolvedValue({
+      get: vi.fn().mockReturnValue({ value: 'ws-missing' }),
+    })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'member' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+
+    const first = await getAuthContext()
+    const second = await getAuthContext()
+
+    expect(first).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1' },
+      error: null,
+    })
+    expect(second).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1' },
+      error: null,
+    })
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
   })
 })

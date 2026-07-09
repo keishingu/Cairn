@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { db, workspaceMembers, channels, channelMembers, projects, projectMembers, messages, messageAttachments } from '@cairn/db'
+import { db, channels, channelMembers, projects, projectMembers, messages, messageAttachments } from '@cairn/db'
 import { eq, and, sql, inArray } from 'drizzle-orm'
+import { getWorkspaceMembership } from './workspace-membership'
 
 async function getWorkspaceRole(workspaceId: string, userId: string) {
-  const [member] = await db
-    .select({ role: workspaceMembers.role })
-    .from(workspaceMembers)
-    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
-    .limit(1)
+  const member = await getWorkspaceMembership(workspaceId, userId)
   return member?.role ?? null
 }
 

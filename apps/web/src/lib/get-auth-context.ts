@@ -6,6 +6,7 @@ import { headers, cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import type { User } from '@supabase/supabase-js'
 import { WORKSPACE_COOKIE } from './workspace-cookie'
+import { listWorkspaceMemberships } from './workspace-membership'
 
 export { WORKSPACE_COOKIE } from './workspace-cookie'
 
@@ -79,17 +80,11 @@ export async function getAuthContext(): Promise<AuthResult> {
   }
 
   try {
-    const { db } = await import('@cairn/db')
-    const { workspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const memberships = await listWorkspaceMemberships(user.id)
 
     // クッキーで指定されたワークスペースがあればそちらを優先、ただしメンバーシップを確認
     if (preferredWorkspaceId) {
-      const [preferred] = await db
-        .select({ workspaceId: workspaceMembers.workspaceId })
-        .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, preferredWorkspaceId)))
-        .limit(1)
+      const preferred = memberships.find((membership) => membership.workspaceId === preferredWorkspaceId)
 
       if (preferred) {
         workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
@@ -98,17 +93,13 @@ export async function getAuthContext(): Promise<AuthResult> {
       // クッキーが無効（退出済み等）→ フォールバック
     }
 
-    const [member] = await db
-      .select({ workspaceId: workspaceMembers.workspaceId })
-      .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, user.id))
-      .limit(1)
+    const [member] = memberships
 
     if (!member) {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
-    workspaceCache.set(user.id, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+    workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)
