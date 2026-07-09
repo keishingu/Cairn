@@ -39,6 +39,7 @@ vi.mock('@/lib/access/lifecycle', () => ({
 vi.mock('@cairn/db', () => ({
   db: mockDb,
   workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role' },
+  activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', role: 'awm.role' },
 }))
 
 vi.mock('drizzle-orm', () => ({

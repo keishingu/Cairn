@@ -43,7 +43,7 @@ export async function PATCH(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceMembers } = await import('@cairn/db')
+    const { workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and, count } = await import('drizzle-orm')
 
     const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
@@ -95,8 +95,8 @@ export async function PATCH(
     if (currentRole === 'owner' && newRole !== 'owner') {
       const ownerCountRows = await db
         .select({ ownerCount: count() })
-        .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.role, 'owner')))
+        .from(activeWorkspaceMembers)
+        .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), eq(activeWorkspaceMembers.role, 'owner')))
       const ownerCount = Number(ownerCountRows[0]?.ownerCount ?? 0)
 
       if (ownerCount <= 1) {
