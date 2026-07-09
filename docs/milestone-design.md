@@ -52,6 +52,7 @@
 | `GET /api/projects/channels` | プロジェクト JOIN で全プロジェクトチャンネルを返す（1行=1プロジェクト前提の DTO） | マイルストーンチャンネルも行として返るが、`channelName` は `coalesce(name, 'general')`、区別情報（milestoneId）がない |
 | `chat-channel-list.tsx`（PC/モバイル Web のサイドバー） | 1プロジェクト=1行のフラット表示。ラベルは `projectTitle` | 複数チャンネルが同名の行として並んでしまう。階層表示（プロジェクト → General + マイルストーン）が必要 |
 | `apps/mobile/app/(app)/chats/index.tsx`（Expo ネイティブ） | 同じ API をフラット表示し、タップで `/projects/[id]` に遷移 | 同上 + 遷移先でどのスレッドを開くかの情報がない |
+| `PATCH /api/projects/[id]` のシステムメッセージ投稿（`route.ts:195-199`） | `where(projectId, type='project') limit 1` の first-row lookup でプロジェクト更新の system メッセージを投稿 | 複数チャンネル時は並び順が不定なため、プロジェクト名・期間・ステータス変更の通知が**任意のマイルストーンチャンネルに投稿されうる**。`milestone_id is null`（General）指定が必要 |
 
 ### 3.2 channel_type の扱い — `'milestone'` 新設ではなく `'project'` 流用とする
 
@@ -292,17 +293,18 @@ export interface ProjectChannelDto {
 - `completed: true` のスレッドは「アーカイブ済みプロジェクト」と同様に折りたたみ（`ChatSidebarCollapsibleSection` を流用）
 - モバイル Web シェルも同一コンポーネントのため同時に対応される
 
-### 6.3 チャンネル解決ヘルパー（`lib/chat/client.ts`）— Phase 1 で必須
+### 6.3 General チャンネル解決の修正 — Phase 1 で必須（クライアント・サーバー両方）
 
-- `findProjectChannelById()` を `milestoneId === null`（General）を明示的に選ぶ実装に修正
-- 全呼び出し箇所（プロジェクト詳細のチャットタブ等）を確認
+- クライアント: `findProjectChannelById()`（`lib/chat/client.ts`）を `milestoneId === null`（General）を明示的に選ぶ実装に修正。全呼び出し箇所（プロジェクト詳細のチャットタブ等）を確認
+- サーバー: `PATCH /api/projects/[id]` のシステムメッセージ投稿（`route.ts:195-199`）のチャンネル lookup に `isNull(channels.milestoneId)` を追加（§3.1 の表参照。このルートはクライアントヘルパーを経由しないため個別修正が必要）
+- 上記以外に「プロジェクトのチャンネルを1件取得する」箇所がないか、`channels.projectId` の参照を横串で確認する（なお `DELETE /api/projects/[id]` のファイル収集は全チャンネル横断が正しい挙動のため変更しない）
 
 ### 6.4 概要タブ（`detail-panel/tabs/overview-tab.tsx`）
 
 マイルストーンセクションを追加:
 
 - チェックボックス（completed 切替）+ タイトル + 期間（`formatChannelPeriod` を流用）
-- 行クリックで該当スレッドのチャットへ（チャットタブ切替 or `/chat?channel=` 遷移）
+- 行クリックで該当スレッドのチャットへ（チャットタブ切替 or `/chats/[channelId]` 遷移。チャット画面のルートは `/chats/[channelId]` 形式で、`PageChat` が pathname からチャンネル ID を読む。`?channel=` クエリ形式のルートは存在しない）
 - 追加ボタン（`member` 以上のみ表示。`useWorkspacePermissions()` でガード）
 - 遅延表示: `!completed && endDate < today` の行は期間を警告色にする（ステータスカラムは持たない、というドラフト方針の UI 解釈）
 
@@ -335,7 +337,7 @@ export interface ProjectChannelDto {
 2. migration: `can_access_channel()` のゲスト制限修正（§3.9。Drizzle 生成 SQL とは別に手書き migration を追加する）
 3. `packages/shared`: `createMilestoneSchema` / `patchMilestoneSchema` + テスト
 4. API: milestones CRUD（POST でチャンネル同時作成）+ `GET /api/projects/channels` 拡張 + `route.test.ts`（権限・ゲスト制限・プロジェクト越境を含む）
-5. `findProjectChannelById()` の General 明示化 + テスト
+5. General チャンネル解決の修正（クライアント `findProjectChannelById()` + サーバー `PATCH /api/projects/[id]` のシステムメッセージ投稿。§6.3）+ テスト
 6. チャットサイドバーの階層表示（PC / モバイル Web）
 7. Expo ネイティブチャット一覧に General のみ表示するフィルタを追加（§6.6。到達できないマイルストーン行を隠す暫定措置）
 
