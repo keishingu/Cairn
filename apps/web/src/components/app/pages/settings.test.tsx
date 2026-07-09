@@ -276,4 +276,22 @@ describe('SettingsSectionContent', () => {
 
     expect(await screen.findByText('次回実行: 無効')).toBeInTheDocument()
   })
+
+  it('定期ジョブの取得失敗を空状態にせず表示する', async () => {
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/scheduled-jobs' && !init) {
+        return {
+          ok: false,
+          json: async () => ({ error: 'forbidden' }),
+        }
+      }
+
+      throw new Error(`unexpected fetch: ${input}`)
+    })
+
+    renderSection('scheduled-jobs')
+
+    expect(await screen.findByText('読み込みに失敗しました: Failed to fetch scheduled jobs')).toBeInTheDocument()
+    expect(screen.queryByText('まだジョブはありません。')).not.toBeInTheDocument()
+  })
 })

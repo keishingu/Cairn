@@ -1202,7 +1202,7 @@ const SettingsIntegrations = () => {
 }
 
 const SettingsScheduledJobs = () => {
-  const { data: jobs = [], isLoading } = useScheduledJobs()
+  const { data: jobs, isLoading, error: jobsError } = useScheduledJobs()
   const createMutation = useCreateScheduledJob()
   const updateMutation = useUpdateScheduledJob()
   const deleteMutation = useDeleteScheduledJob()
@@ -1212,6 +1212,7 @@ const SettingsScheduledJobs = () => {
 
   const submitLabel = editingId ? '更新する' : '保存する'
   const isBusy = createMutation.isPending || updateMutation.isPending
+  const visibleJobs = jobs ?? []
 
   const save = async () => {
     if (!rawInstruction.trim()) return
@@ -1295,10 +1296,14 @@ const SettingsScheduledJobs = () => {
         <div style={{ fontSize: 13, fontWeight: 700 }}>登録済みジョブ</div>
         {isLoading ? (
           <div style={{ color: 'var(--text-3)', fontSize: 13 }}>読み込み中です...</div>
-        ) : jobs.length === 0 ? (
+        ) : jobsError ? (
+          <div style={{ color: '#b42318', fontSize: 13 }}>
+            読み込みに失敗しました: {jobsError instanceof Error ? jobsError.message : '不明なエラー'}
+          </div>
+        ) : visibleJobs.length === 0 ? (
           <div style={{ color: 'var(--text-3)', fontSize: 13 }}>まだジョブはありません。</div>
         ) : (
-          jobs.map(job => (
+          visibleJobs.map(job => (
             <article key={job.id} style={{ border: '1px solid var(--border)', borderRadius: 14, padding: 16, background: 'var(--card)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
                 <div style={{ display: 'grid', gap: 8 }}>

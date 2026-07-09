@@ -10,6 +10,7 @@ import {
   compileScheduledJobInstruction,
   ScheduledJobCompileError,
 } from '@/lib/scheduled-jobs/compile'
+import { computeNextRunAt } from '@/lib/scheduled-jobs/schedule'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 const createScheduledJobSchema = z.object({
@@ -264,12 +265,22 @@ export async function PUT(req: Request) {
         })
         .where(eq(scheduledJobs.id, parsed.id))
     } else if (typeof parsed.enabled === 'boolean') {
+      const now = new Date()
+      const nextRunAt = parsed.enabled
+        ? (
+            existing.nextRunAt instanceof Date && existing.nextRunAt.getTime() > now.getTime()
+              ? existing.nextRunAt
+              : computeNextRunAt(existing.schedule, now)
+          )
+        : existing.nextRunAt
+
       await db
         .update(scheduledJobs)
         .set({
           enabled: parsed.enabled,
+          nextRunAt,
           updatedBy: ctx.userId,
-          updatedAt: new Date(),
+          updatedAt: now,
         })
         .where(eq(scheduledJobs.id, parsed.id))
     }

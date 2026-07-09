@@ -7,6 +7,7 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const ACCESSIBLE_CHANNEL_ID = '20000000-0000-0000-0000-000000000001'
 const HIDDEN_CHANNEL_ID = '20000000-0000-0000-0000-000000000002'
+const VISIBLE_JOB_ID = '30000000-0000-0000-0000-000000000001'
 
 const {
   mockGetAuthContext,
@@ -14,6 +15,9 @@ const {
   mockRequireChannelAccess,
   mockCompileScheduledJobInstruction,
   mockInsertValues,
+  mockUpdateSet,
+  mockUpdateWhere,
+  mockLimit,
   mockOrderBy,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
@@ -21,6 +25,9 @@ const {
   mockRequireChannelAccess: vi.fn(),
   mockCompileScheduledJobInstruction: vi.fn(),
   mockInsertValues: vi.fn(),
+  mockUpdateSet: vi.fn(),
+  mockUpdateWhere: vi.fn(),
+  mockLimit: vi.fn(),
   mockOrderBy: vi.fn(),
 }))
 
@@ -76,6 +83,9 @@ vi.mock('@cairn/db', () => {
     insert: vi.fn(() => ({
       values: mockInsertValues,
     })),
+    update: vi.fn(() => ({
+      set: mockUpdateSet,
+    })),
     select: vi.fn(() => ({
       from: () => ({
         innerJoin: () => ({
@@ -85,6 +95,9 @@ vi.mock('@cairn/db', () => {
         }),
         leftJoin: () => ({
           where: async () => [],
+        }),
+        where: () => ({
+          limit: mockLimit,
         }),
       }),
     })),
@@ -101,6 +114,14 @@ function postRequest() {
       rawInstruction: '毎月15日 9:00 に #登山本部 で @山田 をメンションして投票を投稿',
       enabled: true,
     }),
+  })
+}
+
+function putRequest(body: Record<string, unknown>) {
+  return new Request('http://localhost/api/scheduled-jobs', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   })
 }
 
@@ -123,9 +144,12 @@ describe('POST /api/scheduled-jobs', () => {
       preview: 'preview',
     })
     mockInsertValues.mockResolvedValue(undefined)
+    mockUpdateWhere.mockResolvedValue(undefined)
+    mockUpdateSet.mockReturnValue({ where: mockUpdateWhere })
+    mockLimit.mockResolvedValue([])
     mockOrderBy.mockResolvedValue([
       {
-        id: 'job-visible',
+        id: VISIBLE_JOB_ID,
         rawInstruction: 'visible',
         enabled: true,
         timezone: 'Asia/Tokyo',
@@ -173,9 +197,36 @@ describe('POST /api/scheduled-jobs', () => {
     expect(res.status).toBe(201)
     expect(body).toHaveLength(1)
     expect(body[0]).toMatchObject({
-      id: 'job-visible',
+      id: VISIBLE_JOB_ID,
       channelId: ACCESSIBLE_CHANNEL_ID,
       channelName: '登山本部',
     })
+  })
+
+  it('無効化中に過去日付になったジョブを再有効化すると nextRunAt を未来へ進める', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-20T00:00:00.000Z'))
+    mockLimit.mockResolvedValue([
+      {
+        id: VISIBLE_JOB_ID,
+        workspaceId: DEV_WORKSPACE_ID,
+        channelId: ACCESSIBLE_CHANNEL_ID,
+        enabled: false,
+        schedule: { type: 'monthly', dayOfMonth: 15, hour: 9, minute: 0 },
+        nextRunAt: new Date('2026-07-15T00:00:00.000Z'),
+      },
+    ])
+
+    const { PUT } = await import('./route')
+
+    const res = await PUT(putRequest({ id: VISIBLE_JOB_ID, enabled: true }))
+
+    expect(res.status).toBe(200)
+    expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({
+      enabled: true,
+      nextRunAt: new Date('2026-08-15T00:00:00.000Z'),
+      updatedBy: DEV_USER_ID,
+    }))
+    vi.useRealTimers()
   })
 })
