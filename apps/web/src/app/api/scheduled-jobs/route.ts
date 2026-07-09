@@ -10,6 +10,7 @@ import {
   compileScheduledJobInstruction,
   ScheduledJobCompileError,
 } from '@/lib/scheduled-jobs/compile'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 const createScheduledJobSchema = z.object({
   rawInstruction: z.string().trim().min(1).max(1000),
@@ -43,8 +44,8 @@ export interface ScheduledJobDto {
   updatedAt: string
 }
 
-async function listCompileCandidates(workspaceId: string) {
-  const { db, channels, projects, workspaceMembers } = await import('@cairn/db')
+async function listCompileCandidates(workspaceId: string, userId: string) {
+  const { db, channels, profiles, projects, workspaceMembers } = await import('@cairn/db')
   const { eq, and, sql } = await import('drizzle-orm')
 
   const [channelRows, memberRows] = await Promise.all([
@@ -54,19 +55,41 @@ async function listCompileCandidates(workspaceId: string) {
       .leftJoin(projects, eq(channels.projectId, projects.id))
       .where(sql`coalesce(${channels.workspaceId}, ${projects.workspaceId}) = ${workspaceId}`),
     db
-      .select({ id: workspaceMembers.userId, displayName: workspaceMembers.displayName })
+      .select({
+        id: workspaceMembers.userId,
+        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+      })
       .from(workspaceMembers)
+      .leftJoin(profiles, eq(workspaceMembers.userId, profiles.id))
       .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.membershipStatus, 'active'))),
   ])
 
+  const accessibleChannelRows = (
+    await Promise.all(channelRows.map(async (row) => {
+      if (typeof row.name !== 'string' || row.name.length === 0) return null
+      const forbidden = await requireChannelAccess(workspaceId, userId, row.id)
+      return forbidden ? null : row
+    }))
+  ).filter((row): row is { id: string, name: string } => row !== null)
+
   return {
-    channelCandidates: channelRows
-      .filter((row): row is { id: string, name: string } => typeof row.name === 'string' && row.name.length > 0),
+    channelCandidates: accessibleChannelRows,
     memberCandidates: memberRows.map(row => ({
       id: row.id,
       displayName: row.displayName?.trim() || row.id,
     })),
   }
+}
+
+async function filterAccessibleJobs(
+  workspaceId: string,
+  userId: string,
+  jobs: ScheduledJobDto[],
+): Promise<ScheduledJobDto[]> {
+  const accessResults = await Promise.all(
+    jobs.map(job => requireChannelAccess(workspaceId, userId, job.channelId)),
+  )
+  return jobs.filter((_, index) => !accessResults[index])
 }
 
 async function serializeJobs(workspaceId: string): Promise<ScheduledJobDto[]> {
@@ -121,7 +144,8 @@ export async function GET() {
   if (forbidden) return forbidden
 
   try {
-    return NextResponse.json(await serializeJobs(ctx.workspaceId))
+    const jobs = await serializeJobs(ctx.workspaceId)
+    return NextResponse.json(await filterAccessibleJobs(ctx.workspaceId, ctx.userId, jobs))
   } catch (err) {
     console.error('[/api/scheduled-jobs] GET failed:', err)
     return NextResponse.json({ error: 'Failed to load scheduled jobs' }, { status: 500 })
@@ -145,7 +169,7 @@ export async function POST(req: Request) {
   try {
     const compiled = await compileScheduledJobInstruction(
       parsed.rawInstruction,
-      await listCompileCandidates(ctx.workspaceId),
+      await listCompileCandidates(ctx.workspaceId, ctx.userId),
     )
     const channelForbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, compiled.channelId)
     if (channelForbidden) return channelForbidden
@@ -206,14 +230,17 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Scheduled job not found' }, { status: 404 })
     }
 
+    const channelForbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, existing.channelId)
+    if (channelForbidden) return channelForbidden
+
     if (parsed.rawInstruction) {
       const nextEnabled = typeof parsed['enabled'] === 'boolean' ? parsed['enabled'] : existing.enabled
       const compiled = await compileScheduledJobInstruction(
         parsed.rawInstruction,
-        await listCompileCandidates(ctx.workspaceId),
+        await listCompileCandidates(ctx.workspaceId, ctx.userId),
       )
-      const channelForbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, compiled.channelId)
-      if (channelForbidden) return channelForbidden
+      const nextChannelForbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, compiled.channelId)
+      if (nextChannelForbidden) return nextChannelForbidden
 
       await db
         .update(scheduledJobs)
@@ -270,6 +297,18 @@ export async function DELETE(req: Request) {
   try {
     const { db, scheduledJobs } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
+    const [existing] = await db
+      .select({ channelId: scheduledJobs.channelId })
+      .from(scheduledJobs)
+      .where(and(eq(scheduledJobs.id, parsed.id), eq(scheduledJobs.workspaceId, ctx.workspaceId)))
+      .limit(1)
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Scheduled job not found' }, { status: 404 })
+    }
+
+    const channelForbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, existing.channelId)
+    if (channelForbidden) return channelForbidden
 
     await db
       .delete(scheduledJobs)
