@@ -222,10 +222,12 @@ export const patchMilestoneSchema = z.object({
 
 | メソッド / パス | 権限 | 動作 |
 |---|---|---|
-| `GET /api/projects/[id]/milestones` | `requireProjectAccess` | 一覧（`start_date asc nulls last, created_at asc`）。`channelId` を含む DTO を返す |
-| `POST /api/projects/[id]/milestones` | `requireWorkspaceMember` + `requireProjectAccess` | **トランザクションで** `milestones` INSERT + 対応 `channels` INSERT（`type='project'`, `project_id`, `milestone_id`, `workspace_id`） |
+| `GET /api/projects/[id]/milestones` | `requireProjectAccess` + ワークスペース所属検証（下記） | 一覧（`start_date asc nulls last, created_at asc`）。`channelId` を含む DTO を返す |
+| `POST /api/projects/[id]/milestones` | `requireWorkspaceMember` + ワークスペース所属検証 | **トランザクションで** `milestones` INSERT + 対応 `channels` INSERT（`type='project'`, `project_id`, `milestone_id`, `workspace_id`） |
 | `PATCH /api/projects/[id]/milestones/[milestoneId]` | 同上 | 部分更新 + `updated_at` 更新。`milestoneId` が当該プロジェクトに属することを検証 |
 | `DELETE /api/projects/[id]/milestones/[milestoneId]` | 同上 | 削除（チャンネル・メッセージは FK cascade） |
+
+**ワークスペース所属検証（必須）**: `requireProjectAccess()` は member 以上のロールに対しては `projects.workspaceId` を検証せず即座に許可する（越境チェックは guest 分岐にしかない）。そのため権限ヘルパーだけに頼らず、**各ルートで必ず `projects.workspaceId = ctx.workspaceId` を条件に含めてプロジェクトを取得・更新する**（既存の gallery / files ルートと同じパターン）。これを怠ると、別ワークスペースのプロジェクト ID を渡した member による越境作成・閲覧が通り、POST では `channels.workspace_id = ctx.workspaceId` と `projects.workspaceId` が食い違う不整合データが生まれる。`route.test.ts` に越境ケース（別ワークスペースの projectId で 403/404）を必ず含める。
 
 ```ts
 export interface MilestoneDto {
@@ -310,7 +312,10 @@ export interface ProjectChannelDto {
 
 ### 6.6 モバイル（Expo ネイティブ: `apps/mobile/app/(app)/chats/index.tsx`）
 
-拡張後の DTO で階層表示（またはマイルストーン行に `プロジェクト名 / マイルストーン名` 表記）。Phase 4 で対応（それまでもクラッシュはしない — 行が増えて表示されるだけ）。
+現状のネイティブチャット一覧は `/api/projects/channels` の全行を表示し、タップで `router.push('/projects/[id]')`（channelId 指定なし = General 固定）に遷移する。Phase 1 で API がマイルストーン行を返すようになると、**タップしても該当スレッドに到達できない行**が並んでしまう。
+
+- **Phase 1**: ネイティブ一覧では `milestoneId === null`（General）のみ表示するフィルタを入れる（到達できない行を見せない）
+- **Phase 4**: 階層表示 + マイルストーン行タップで該当スレッドを開く遷移（channelId をルートパラメータで引き渡す）を実装し、フィルタを外す
 
 ### 6.7 全体カレンダーへの重畳（`projects-calendar.tsx`）— Phase 3
 
@@ -332,6 +337,7 @@ export interface ProjectChannelDto {
 4. API: milestones CRUD（POST でチャンネル同時作成）+ `GET /api/projects/channels` 拡張 + `route.test.ts`（権限・ゲスト制限・プロジェクト越境を含む）
 5. `findProjectChannelById()` の General 明示化 + テスト
 6. チャットサイドバーの階層表示（PC / モバイル Web）
+7. Expo ネイティブチャット一覧に General のみ表示するフィルタを追加（§6.6。到達できないマイルストーン行を隠す暫定措置）
 
 ### Phase 2: マイルストーン管理 UI
 
