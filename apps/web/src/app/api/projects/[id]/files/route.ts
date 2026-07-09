@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireProjectAccess } from '@/lib/permissions'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ProjectFileDto {
   id: string
@@ -30,6 +30,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const { db, files, profiles, projects, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
     const { eq, and, isNull, desc, inArray } = await import('drizzle-orm')
     const { isIndexable } = await import('@/lib/ai/extract-text')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     // プロジェクトが同一ワークスペースに属することを確認
     const [project] = await db
@@ -53,7 +56,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         mimeType: files.mimeType,
         fileSize: files.fileSize,
         fileType: files.fileType,
-        uploaderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        uploaderName: displayNameExpr,
         createdAt: files.createdAt,
         metadata: files.metadata,
       })

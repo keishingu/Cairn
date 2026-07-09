@@ -35,6 +35,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 vi.mock('@/lib/workspace-member-display-name', () => ({
+  hasWorkspaceMemberDisplayNameColumn: vi.fn(async () => false),
   workspaceMemberDisplayName: vi.fn(() => 'workspaceMemberDisplayName'),
 }))
 
@@ -57,6 +58,7 @@ vi.mock('@cairn/db', () => ({
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   and: vi.fn(() => 'and'),
+  sql: vi.fn(() => 'sql'),
 }))
 
 function chain<T>(result: T) {
@@ -109,8 +111,10 @@ describe('/api/me', () => {
 
   it('PATCH は表示名と bio だけを更新する', async () => {
     const profileUpdate = updateChain()
-    const memberUpdate = updateChain()
-    mockDb.update.mockReturnValueOnce(profileUpdate).mockReturnValueOnce(memberUpdate)
+    const workspaceMemberUpdate = updateChain()
+    mockDb.update
+      .mockReturnValueOnce(profileUpdate)
+      .mockReturnValueOnce(workspaceMemberUpdate)
 
     const { PATCH } = await import('./route')
     const res = await PATCH(new Request('http://localhost/api/me', {
@@ -126,7 +130,7 @@ describe('/api/me', () => {
         bio: '相棒',
       }),
     )
-    expect(memberUpdate.set).toHaveBeenCalledWith(
+    expect(workspaceMemberUpdate.set).toHaveBeenCalledWith(
       expect.objectContaining({
         displayName: 'えびちゃん',
       }),

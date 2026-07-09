@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { patchMeSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface CurrentUserDto {
   id: string
@@ -30,11 +30,14 @@ export async function GET() {
 
     const { workspaceMembers } = await import('@cairn/db')
     const { and } = await import('drizzle-orm')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     const [row] = await db
       .select({
         id: profiles.id,
-        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        displayName: displayNameExpr,
         avatarUrl: workspaceMembers.avatarUrl,
         bio: profiles.bio,
         wsRole: workspaceMembers.role,
@@ -86,7 +89,6 @@ export async function PATCH(req: Request) {
   try {
     const { db, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
-
     if (hasBio) {
       await db
         .update(profiles)
@@ -101,7 +103,7 @@ export async function PATCH(req: Request) {
         .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
     }
 
-    return NextResponse.json({ id: ctx.userId })
+    return NextResponse.json({ id: ctx.userId, ...b })
   } catch (err) {
     console.error('[PATCH /api/me]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

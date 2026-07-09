@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasWorkspaceMemberDisplayNameColumn, workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { MessageDto } from '../route'
 
 type RouteContext = { params: Promise<{ channelId: string }> }
@@ -26,6 +26,9 @@ export async function GET(req: Request, { params }: RouteContext) {
     const { messages, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, ne, isNull, and, ilike, inArray } = await import('drizzle-orm')
     const { desc } = await import('drizzle-orm')
+    const displayNameExpr = (await hasWorkspaceMemberDisplayNameColumn(db))
+      ? workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName)
+      : profiles.displayName
 
     const rows = await db
       .select({
@@ -33,7 +36,7 @@ export async function GET(req: Request, { params }: RouteContext) {
         content: messages.content,
         messageType: messages.messageType,
         senderId: messages.senderId,
-        senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        senderName: displayNameExpr,
         senderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: messages.createdAt,
         updatedAt: messages.updatedAt,
@@ -58,7 +61,7 @@ export async function GET(req: Request, { params }: RouteContext) {
     const nameMap = new Map<string, string>()
     if (mentionIds.length > 0) {
       const profileRows = await db
-        .select({ id: profiles.id, displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
+        .select({ id: profiles.id, displayName: displayNameExpr })
         .from(profiles)
         .leftJoin(
           workspaceMembers,
