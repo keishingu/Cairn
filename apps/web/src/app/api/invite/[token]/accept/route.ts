@@ -37,45 +37,53 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid or expired invite' }, { status: 404 })
     }
 
-    // 既に active なメンバーはべき等に成功させる。inactive の復帰は max_uses の
-    // claim 後に行い、復帰後のロール・プロジェクトも招待リンクの内容に揃える。
-    const [existingMembership] = await db
-      .select({ membershipStatus: workspaceMembers.membershipStatus })
-      .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, invite.workspaceId), eq(workspaceMembers.userId, userId)))
-      .limit(1)
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`
+        select 1
+        from workspace_members
+        where workspace_id = ${invite.workspaceId}
+          and user_id = ${userId}
+        for update
+      `)
 
-    if (existingMembership?.membershipStatus === 'active') {
-      return NextResponse.json({ ok: true, workspaceId: invite.workspaceId })
-    }
+      // 既に active なメンバーはべき等に成功させ、use_count を増やさない。inactive の復帰は
+      // membership 行をロックして再確認した後に claim し、復帰後のロール・プロジェクトも招待リンクに揃える。
+      const [existingMembership] = await tx
+        .select({ membershipStatus: workspaceMembers.membershipStatus })
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.workspaceId, invite.workspaceId), eq(workspaceMembers.userId, userId)))
+        .limit(1)
 
-    // max_uses チェックとインクリメントをアトミックに実行し、
-    // 上限未満の場合のみ行が返る → 競合状態を防ぐ
-    const [claimed] = await db
-      .update(workspaceInvites)
-      .set({ useCount: sql`${workspaceInvites.useCount} + 1` })
-      .where(
-        and(
-          eq(workspaceInvites.id, invite.id),
-          or(isNull(workspaceInvites.expiresAt), gt(workspaceInvites.expiresAt, sql`now()`)),
-          or(
-            isNull(workspaceInvites.maxUses),
-            sql`${workspaceInvites.useCount} < ${workspaceInvites.maxUses}`,
-          ),
+      if (existingMembership?.membershipStatus === 'active') {
+        return { ok: true as const, workspaceId: invite.workspaceId, shouldIndexMember: false }
+      }
+
+      // max_uses チェックとインクリメントをアトミックに実行し、
+      // 上限未満の場合のみ行が返る → 競合状態を防ぐ
+      const [claimed] = await tx
+        .update(workspaceInvites)
+        .set({ useCount: sql`${workspaceInvites.useCount} + 1` })
+        .where(
+          and(
+            eq(workspaceInvites.id, invite.id),
+            or(isNull(workspaceInvites.expiresAt), gt(workspaceInvites.expiresAt, sql`now()`)),
+            or(
+              isNull(workspaceInvites.maxUses),
+              sql`${workspaceInvites.useCount} < ${workspaceInvites.maxUses}`,
+            ),
+          )
         )
-      )
-      .returning({
-        id: workspaceInvites.id,
-        workspaceId: workspaceInvites.workspaceId,
-        role: workspaceInvites.role,
-        projectId: workspaceInvites.projectId,
-      })
+        .returning({
+          id: workspaceInvites.id,
+          workspaceId: workspaceInvites.workspaceId,
+          role: workspaceInvites.role,
+          projectId: workspaceInvites.projectId,
+        })
 
-    if (!claimed) {
-      return NextResponse.json({ error: 'Invite link has reached its usage limit' }, { status: 410 })
-    }
+      if (!claimed) {
+        return { ok: false as const, status: 410, error: 'Invite link has reached its usage limit' }
+      }
 
-    await db.transaction(async (tx) => {
       if (existingMembership?.membershipStatus === 'inactive') {
         await tx
           .update(workspaceMembers)
@@ -128,16 +136,22 @@ export async function POST(
           })
           .onConflictDoNothing()
       }
+
+      return { ok: true as const, workspaceId: claimed.workspaceId, shouldIndexMember: true }
     })
 
-    if (inngest) {
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+
+    if (result.shouldIndexMember && inngest) {
       await inngest.send({
         name: 'member/upserted',
-        data: { userId: userId, workspaceId: claimed.workspaceId },
+        data: { userId: userId, workspaceId: result.workspaceId },
       }).catch(e => console.warn('[/api/invite/[token]/accept] Inngest event send failed:', e))
     }
 
-    return NextResponse.json({ ok: true, workspaceId: claimed.workspaceId })
+    return NextResponse.json({ ok: true, workspaceId: result.workspaceId })
   } catch (err) {
     console.error('[/api/invite/[token]/accept] POST failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -16,6 +16,7 @@ const { mockGetAuthUser, mockDb, mockGt, mockSql } = vi.hoisted(() => {
     insert: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    execute: vi.fn(),
     transaction: vi.fn(),
   }
   const mockGt = vi.fn(() => 'gt')
