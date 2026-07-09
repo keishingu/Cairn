@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  createMilestoneSchema,
   createProjectSchema,
   createTaskSchema,
+  patchMilestoneSchema,
   postMessageSchema,
   uploadGalleryItemSchema,
 } from './index'
@@ -86,6 +88,54 @@ describe('createTaskSchema', () => {
       title: 'テスト',
       priority: 'critical',
     })
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('createMilestoneSchema', () => {
+  it('有効なデータを受け入れる', () => {
+    const result = createMilestoneSchema.safeParse({
+      title: '高所順応',
+      description: '標高に慣れる期間',
+      startDate: '2026-08-01',
+      endDate: '2026-08-03',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('タイトルを trim して空ならエラーになる', () => {
+    const result = createMilestoneSchema.safeParse({
+      title: '   ',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('日付形式でない場合はエラーになる', () => {
+    const result = createMilestoneSchema.safeParse({
+      title: '高所順応',
+      startDate: '2026/08/01',
+    })
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('patchMilestoneSchema', () => {
+  it('completed だけの更新を受け入れる', () => {
+    const result = patchMilestoneSchema.safeParse({ completed: true })
+    expect(result.success).toBe(true)
+  })
+
+  it('nullable な日付と説明を受け入れる', () => {
+    const result = patchMilestoneSchema.safeParse({
+      description: null,
+      startDate: null,
+      endDate: null,
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('更新対象が空ならエラーになる', () => {
+    const result = patchMilestoneSchema.safeParse({})
     expect(result.success).toBe(false)
   })
 })

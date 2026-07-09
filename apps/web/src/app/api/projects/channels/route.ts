@@ -13,6 +13,8 @@ export interface ProjectChannelDto {
   archived: boolean
   unreadCount: number
   unreadMentionCount: number
+  milestoneId: string | null
+  milestoneCompleted: boolean | null
 }
 
 export async function GET() {
@@ -22,7 +24,7 @@ export async function GET() {
     if (error) return error
 
     const { db } = await import('@cairn/db')
-    const { channels, projects, projectMembers, workspaceMembers, channelReadStates, messages } = await import('@cairn/db')
+    const { channels, milestones, projects, projectMembers, workspaceMembers, channelReadStates, messages } = await import('@cairn/db')
     const { eq, and, isNull, gt, count, sql, inArray, ne } = await import('drizzle-orm')
 
     // ゲストは参加中のプロジェクトのチャンネルのみ参照可能
@@ -46,23 +48,32 @@ export async function GET() {
     const rows = await db
       .select({
         channelId: channels.id,
-        channelName: sql<string>`coalesce(${channels.name}, 'general')`,
+        channelName: sql<string>`coalesce(${milestones.title}, ${channels.name}, 'general')`,
         projectId: projects.id,
         projectTitle: projects.title,
-        startDate: projects.startDate,
-        endDate: projects.endDate,
+        startDate: sql<string | null>`coalesce(${milestones.startDate}, ${projects.startDate})`,
+        endDate: sql<string | null>`coalesce(${milestones.endDate}, ${projects.endDate})`,
         archived: projects.archived,
+        milestoneId: channels.milestoneId,
+        milestoneCompleted: milestones.completed,
       })
       .from(channels)
       .innerJoin(projects, eq(channels.projectId, projects.id))
+      .leftJoin(milestones, eq(channels.milestoneId, milestones.id))
       .where(
         and(
           eq(projects.workspaceId, ctx.workspaceId),
           guestProjectIds ? inArray(projects.id, guestProjectIds) : undefined,
         )
       )
-      // アーカイブ済みは末尾にまとめる（自動選択や折りたたみ表示の前提）
-      .orderBy(projects.archived, projects.createdAt)
+      // プロジェクト → General → マイルストーン（開始日順）。アーカイブ済みは末尾にまとめる。
+      .orderBy(
+        projects.archived,
+        projects.createdAt,
+        sql`case when ${channels.milestoneId} is null then 0 else 1 end`,
+        sql`${milestones.startDate} asc nulls last`,
+        milestones.createdAt,
+      )
 
     if (rows.length === 0) return NextResponse.json([])
 
