@@ -53,6 +53,7 @@
 | `chat-channel-list.tsx`（PC/モバイル Web のサイドバー） | 1プロジェクト=1行のフラット表示。ラベルは `projectTitle` | 複数チャンネルが同名の行として並んでしまう。階層表示（プロジェクト → General + マイルストーン）が必要 |
 | `apps/mobile/app/(app)/chats/index.tsx`（Expo ネイティブ） | 同じ API をフラット表示し、タップで `/projects/[id]` に遷移 | 同上 + 遷移先でどのスレッドを開くかの情報がない |
 | `PATCH /api/projects/[id]` のシステムメッセージ投稿（`route.ts:195-199`） | `where(projectId, type='project') limit 1` の first-row lookup でプロジェクト更新の system メッセージを投稿 | 複数チャンネル時は並び順が不定なため、プロジェクト名・期間・ステータス変更の通知が**任意のマイルストーンチャンネルに投稿されうる**。`milestone_id is null`（General）指定が必要 |
+| チャンネル表示名を `projects.title` から導出している参照箇所 | チャット画面ヘッダー（`chat.tsx:463` の `currentChannel?.projectTitle`）、メッセージ検索（`search/messages/route.ts:57`）とブックマーク（`me/bookmarks/route.ts:59`）の `coalesce(projects.title, channels.name, 'DM')` | マイルストーンスレッドの会話・検索結果・ブックマークがすべて**親プロジェクト名で表示**されてしまう。マイルストーンタイトルを優先する導出への修正が必要（§6.7） |
 
 ### 3.2 channel_type の扱い — `'milestone'` 新設ではなく `'project'` 流用とする
 
@@ -269,7 +270,7 @@ export interface ProjectChannelDto {
 
 ### 5.4 全体カレンダー用の一覧取得（Phase 3）
 
-カレンダー重畳（§6.7）用に、ワークスペース内の可視プロジェクト横断でマイルストーンを返すエンドポイントを追加する:
+カレンダー重畳（§6.8）用に、ワークスペース内の可視プロジェクト横断でマイルストーンを返すエンドポイントを追加する:
 
 | メソッド / パス | 権限 | 動作 |
 |---|---|---|
@@ -319,7 +320,15 @@ export interface ProjectChannelDto {
 - **Phase 1**: ネイティブ一覧では `milestoneId === null`（General）のみ表示するフィルタを入れる（到達できない行を見せない）
 - **Phase 4**: 階層表示 + マイルストーン行タップで該当スレッドを開く遷移（channelId をルートパラメータで引き渡す）を実装し、フィルタを外す
 
-### 6.7 全体カレンダーへの重畳（`projects-calendar.tsx`）— Phase 3
+### 6.7 チャンネル表示名の参照箇所の修正 — Phase 1 で必須
+
+チャンネルの表示名を `projects.title` から導出している箇所がサイドバー以外にもあり、放置するとマイルストーンスレッドの会話・検索結果・ブックマークが親プロジェクト名で表示される:
+
+- **チャット画面ヘッダー・入力プレースホルダ**（`pages/chat.tsx:463`）: `currentChannel?.projectTitle` を `currentChannel.milestoneId ? currentChannel.channelName : currentChannel.projectTitle` に変更（拡張後の DTO の `channelName` がマイルストーンタイトルを持つ。§5.3）。マイルストーンスレッドでは「プロジェクト名 / マイルストーン名」の併記も可
+- **メッセージ検索**（`api/search/messages/route.ts:57`）と**ブックマーク**（`api/me/bookmarks/route.ts:59`）: `coalesce(projects.title, channels.name, 'DM')` に `milestones` の leftJoin（`channels.milestone_id`）を追加し、`coalesce(milestones.title, projects.title, channels.name, 'DM')` にする
+- 上記以外に取りこぼしがないか、`projectTitle` / `projects.title` をチャンネル表示名として使う箇所を横串で確認する
+
+### 6.8 全体カレンダーへの重畳（`projects-calendar.tsx`）— Phase 3
 
 - データ取得は `GET /api/milestones`（§5.4）。Google Calendar イベント（`GcalEventDto`）と同様の追加レイヤーとして扱う
 - プロジェクトバーの直下に、そのプロジェクトのマイルストーンを**インデント付きの細いバー**で表示（`title` + 期間。`completed` はグレーアウト）
@@ -340,6 +349,7 @@ export interface ProjectChannelDto {
 5. General チャンネル解決の修正（クライアント `findProjectChannelById()` + サーバー `PATCH /api/projects/[id]` のシステムメッセージ投稿。§6.3）+ テスト
 6. チャットサイドバーの階層表示（PC / モバイル Web）
 7. Expo ネイティブチャット一覧に General のみ表示するフィルタを追加（§6.6。到達できないマイルストーン行を隠す暫定措置）
+8. チャンネル表示名の参照箇所の修正（§6.7。チャット画面ヘッダー・メッセージ検索・ブックマークの `projects.title` 優先の導出にマイルストーンタイトルを組み込む）
 
 ### Phase 2: マイルストーン管理 UI
 
@@ -350,7 +360,7 @@ export interface ProjectChannelDto {
 ### Phase 3: カレンダー重畳
 
 1. `GET /api/milestones`（ワークスペース横断一覧。§5.4）
-2. `projects-calendar.tsx` へのマイルストーンバー重畳 + 表示トグル（§6.7。PC / モバイル Web）
+2. `projects-calendar.tsx` へのマイルストーンバー重畳 + 表示トグル（§6.8。PC / モバイル Web）
 
 ### Phase 4: モバイル（Expo）
 
