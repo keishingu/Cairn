@@ -231,6 +231,27 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(mockDb.insert).toHaveBeenCalledTimes(1)
   })
 
+  it('非活性な owner が member/guest 招待で復帰しても role は owner のまま維持される', async () => {
+    const invite = { id: 'inv-admin', workspaceId: WORKSPACE_ID, role: 'member', projectId: null, expiresAt: null, maxUses: null, useCount: 0 }
+
+    mockDb.select
+      .mockReturnValueOnce(selectChain([invite]))
+      .mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'inactive' }]))
+    mockDb.update.mockReturnValueOnce(updateChain([{ id: 'inv-admin', workspaceId: WORKSPACE_ID, role: 'member', projectId: null }]))
+    const memberUpdateSet = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) })
+    mockDb.update.mockReturnValueOnce({ set: memberUpdateSet })
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/invite/${VALID_TOKEN}/accept`, { method: 'POST' }),
+      { params: Promise.resolve({ token: VALID_TOKEN }) },
+    )
+
+    expect(res.status).toBe(200)
+    // admin が発行した member 招待でも、既存 owner のロールは降格されない
+    expect(memberUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ role: 'owner' }))
+  })
+
   it('非活性メンバーでも max_uses に達していれば再活性化しない', async () => {
     const invite = { id: 'inv-01b', workspaceId: WORKSPACE_ID, role: 'member', projectId: null, expiresAt: null, maxUses: 1, useCount: 1 }
 

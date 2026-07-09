@@ -109,7 +109,8 @@ describe('access/lifecycle', () => {
       const { deactivateMembership } = await import('./lifecycle')
       const res = await deactivateMembership('ws', 'u', 'actor')
       expect(res).toEqual({ ok: true })
-      expect(mockDb.execute).toHaveBeenCalledTimes(2)
+      // 対象行 + active owner 集合を1クエリでまとめてロックする（デッドロック回避のため2クエリに分けない）
+      expect(mockDb.execute).toHaveBeenCalledTimes(1)
       expect(mockDb.execute).toHaveBeenCalledWith('sql')
       expect(mockDb.update).toHaveBeenCalledTimes(1)
     })

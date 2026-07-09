@@ -32,23 +32,20 @@ async function countActiveOwners(client: DbClient, workspaceId: string): Promise
   return Number(rows[0]?.n ?? 0)
 }
 
-async function lockActiveOwners(client: DbClient, workspaceId: string): Promise<void> {
+// 対象メンバー行 + 当該 WS の active owner 全行を、1クエリ・user_id 昇順の決定的な順序で
+// まとめてロックする。2 クエリ（対象行 → owner 集合）に分けると、同時に別々の owner を
+// archive する 2 トランザクションがお互いの行を逆順で要求し合ってデッドロックし得るため、
+// 常に同じ順序で lock を獲得する 1 クエリに統合している。
+async function lockMembershipAndActiveOwners(client: DbClient, workspaceId: string, userId: string): Promise<void> {
   await client.execute(sql`
     select 1
     from workspace_members
     where workspace_id = ${workspaceId}
-      and role = 'owner'
-      and membership_status = 'active'
-    for update
-  `)
-}
-
-async function lockMembership(client: DbClient, workspaceId: string, userId: string): Promise<void> {
-  await client.execute(sql`
-    select 1
-    from workspace_members
-    where workspace_id = ${workspaceId}
-      and user_id = ${userId}
+      and (
+        user_id = ${userId}
+        or (role = 'owner' and membership_status = 'active')
+      )
+    order by user_id
     for update
   `)
 }
@@ -71,7 +68,7 @@ export async function deactivateMembership(
   deactivatedBy: string,
 ): Promise<LifecycleResult> {
   return db.transaction(async (tx): Promise<LifecycleResult> => {
-    await lockMembership(tx, workspaceId, targetUserId)
+    await lockMembershipAndActiveOwners(tx, workspaceId, targetUserId)
     const target = await readMembership(tx, workspaceId, targetUserId)
     if (!target) return { ok: false, status: 404, error: 'Member not found' }
     if (target.membershipStatus === 'inactive') {
@@ -79,7 +76,6 @@ export async function deactivateMembership(
     }
 
     if (target.role === 'owner') {
-      await lockActiveOwners(tx, workspaceId)
       if ((await countActiveOwners(tx, workspaceId)) <= 1) {
         return { ok: false, status: 422, error: 'ワークスペースには最低1人の active な owner が必要です' }
       }

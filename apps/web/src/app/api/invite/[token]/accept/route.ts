@@ -49,7 +49,7 @@ export async function POST(
       // 既に active なメンバーはべき等に成功させ、use_count を増やさない。inactive の復帰は
       // membership 行をロックして再確認した後に claim し、復帰後のロール・プロジェクトも招待リンクに揃える。
       const [existingMembership] = await tx
-        .select({ membershipStatus: workspaceMembers.membershipStatus })
+        .select({ membershipStatus: workspaceMembers.membershipStatus, role: workspaceMembers.role })
         .from(workspaceMembers)
         .where(and(eq(workspaceMembers.workspaceId, invite.workspaceId), eq(workspaceMembers.userId, userId)))
         .limit(1)
@@ -85,14 +85,18 @@ export async function POST(
       }
 
       if (existingMembership?.membershipStatus === 'inactive') {
+        // owner の活性状態・ロールは owner のみが変更できる不変条件（PATCH /members/[userId] と同じ）。
+        // admin が発行した member/guest 招待で inactive owner が復帰すると、この招待リンクの
+        // ロールに降格されてしまうため、既存ロールが owner の場合は上書きしない。
+        const nextRole = existingMembership.role === 'owner' ? 'owner' : claimed.role
         await tx
           .update(workspaceMembers)
-          .set({ membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null, role: claimed.role })
+          .set({ membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null, role: nextRole })
           .where(and(eq(workspaceMembers.workspaceId, claimed.workspaceId), eq(workspaceMembers.userId, userId)))
 
         // guest 復帰では、履歴保持のために残っていた旧 project/channel 所属を
         // 認可に再利用させない。招待リンクが表す project scope だけを下で再付与する。
-        if (claimed.role === 'guest') {
+        if (claimed.role === 'guest' && nextRole === 'guest') {
           const scopedProjects = await tx
             .select({ id: projects.id })
             .from(projects)
