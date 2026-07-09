@@ -239,7 +239,6 @@ export async function PUT(req: Request) {
     if (channelForbidden) return channelForbidden
 
     if (parsed.rawInstruction) {
-      const nextEnabled = typeof parsed['enabled'] === 'boolean' ? parsed['enabled'] : existing.enabled
       const compiled = await compileScheduledJobInstruction(
         parsed.rawInstruction,
         await listCompileCandidates(ctx.workspaceId, ctx.userId),
@@ -247,22 +246,40 @@ export async function PUT(req: Request) {
       const nextChannelForbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, compiled.channelId)
       if (nextChannelForbidden) return nextChannelForbidden
 
+      const updatePayload: {
+        channelId: string
+        updatedBy: string
+        rawInstruction: string
+        schedule: typeof compiled.schedule
+        mentionUserIds: typeof compiled.mentionUserIds
+        mentions: typeof compiled.mentions
+        actionSpec: typeof compiled.actionSpec
+        nextRunAt: Date | null
+        lastCompiledAt: Date
+        lastCompilePreview: string | null
+        updatedAt: Date
+        enabled?: boolean
+      } = {
+        channelId: compiled.channelId,
+        updatedBy: ctx.userId,
+        rawInstruction: parsed.rawInstruction,
+        schedule: compiled.schedule,
+        mentionUserIds: compiled.mentionUserIds,
+        mentions: compiled.mentions,
+        actionSpec: compiled.actionSpec,
+        nextRunAt: compiled.nextRunAt,
+        lastCompiledAt: new Date(),
+        lastCompilePreview: compiled.preview,
+        updatedAt: new Date(),
+      }
+
+      if (typeof parsed.enabled === 'boolean') {
+        updatePayload.enabled = parsed.enabled
+      }
+
       await db
         .update(scheduledJobs)
-        .set({
-          channelId: compiled.channelId,
-          updatedBy: ctx.userId,
-          enabled: nextEnabled,
-          rawInstruction: parsed.rawInstruction,
-          schedule: compiled.schedule,
-          mentionUserIds: compiled.mentionUserIds,
-          mentions: compiled.mentions,
-          actionSpec: compiled.actionSpec,
-          nextRunAt: compiled.nextRunAt,
-          lastCompiledAt: new Date(),
-          lastCompilePreview: compiled.preview,
-          updatedAt: new Date(),
-        })
+        .set(updatePayload)
         .where(eq(scheduledJobs.id, parsed.id))
     } else if (typeof parsed.enabled === 'boolean') {
       const now = new Date()

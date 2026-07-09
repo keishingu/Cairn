@@ -229,4 +229,29 @@ describe('POST /api/scheduled-jobs', () => {
     }))
     vi.useRealTimers()
   })
+
+  it('rawInstruction の再コンパイルでは enabled を明示指定時だけ更新する', async () => {
+    mockLimit.mockResolvedValue([
+      {
+        id: VISIBLE_JOB_ID,
+        workspaceId: DEV_WORKSPACE_ID,
+        channelId: ACCESSIBLE_CHANNEL_ID,
+        enabled: false,
+        schedule: { type: 'monthly', dayOfMonth: 15, hour: 9, minute: 0 },
+        nextRunAt: new Date('2026-07-15T00:00:00.000Z'),
+      },
+    ])
+
+    const { PUT } = await import('./route')
+
+    const res = await PUT(putRequest({
+      id: VISIBLE_JOB_ID,
+      rawInstruction: '毎週月曜 9:00 に #登山本部 で投票を投稿',
+    }))
+
+    expect(res.status).toBe(200)
+    expect(mockUpdateSet).toHaveBeenCalledWith(expect.not.objectContaining({
+      enabled: expect.anything(),
+    }))
+  })
 })
