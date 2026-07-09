@@ -106,4 +106,19 @@ describe('PageTasks', () => {
     expect(mockFetchWithAuth).toHaveBeenNthCalledWith(1, '/api/tasks?limit=50', undefined)
     expect(mockFetchWithAuth).toHaveBeenNthCalledWith(2, '/api/tasks?limit=50&cursor=2026-07-09T08%3A00%3A00.000Z%3A%3At1', undefined)
   })
+
+  it('絞り込みで現ページが空でも後続ページを自動で取りに行ける', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    expect(await screen.findByText('最初のタスク')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '完了 (0)' }))
+    expect(screen.getByRole('button', { name: 'さらに読み込む' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'さらに読み込む' }))
+
+    expect(await screen.findByText('次のタスク')).toBeInTheDocument()
+    expect(screen.queryByText('まだ候補があります')).toBeNull()
+    expect(mockFetchWithAuth).toHaveBeenCalledTimes(2)
+  })
 })

@@ -87,7 +87,12 @@ export async function GET(req: Request) {
       ? allowedProjectIds.filter(id => id === projectId)
       : allowedProjectIds
 
-    if (projectIds.length === 0) return NextResponse.json([])
+    if (projectIds.length === 0) {
+      return NextResponse.json({
+        items: [],
+        nextCursor: null,
+      } satisfies TaskListResponse)
+    }
 
     const taskRows = await db
       .select({

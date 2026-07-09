@@ -12,14 +12,34 @@ export interface TaskDto {
   assigneeName: string | null
 }
 
+interface TaskListResponse {
+  items: TaskDto[]
+  nextCursor: string | null
+}
+
+const TASKS_PAGE_LIMIT = 200
+
+async function fetchAllTasks(): Promise<TaskDto[]> {
+  const items: TaskDto[] = []
+  let cursor: string | null = null
+
+  do {
+    const params = new URLSearchParams({ limit: String(TASKS_PAGE_LIMIT) })
+    if (cursor) params.set('cursor', cursor)
+    const res = await apiFetch(`/api/tasks?${params.toString()}`)
+    if (!res.ok) throw new Error(`タスクの取得に失敗しました (${res.status})`)
+    const page = await res.json() as TaskListResponse
+    items.push(...page.items)
+    cursor = page.nextCursor
+  } while (cursor)
+
+  return items
+}
+
 export function useTasks() {
   return useQuery<TaskDto[]>({
     queryKey: ['tasks'],
-    queryFn: async () => {
-      const res = await apiFetch('/api/tasks')
-      if (!res.ok) throw new Error(`タスクの取得に失敗しました (${res.status})`)
-      return res.json() as Promise<TaskDto[]>
-    },
+    queryFn: fetchAllTasks,
   })
 }
 

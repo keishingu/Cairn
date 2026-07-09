@@ -400,12 +400,25 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
         ) : filtered.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%', gap: 12, color: 'var(--text-3)' }}>
             <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)' }}>
-              <Icon name="check" size={22} />
+              <Icon name={hasNextPage ? 'search' : 'check'} size={22} />
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>タスクはありません</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{hasNextPage ? 'まだ候補があります' : 'タスクはありません'}</div>
             <div style={{ fontSize: 12.5 }}>
-              {filter === 'all' ? 'タスクを追加してみましょう' : `「${STATUS_LABEL[filter as TaskDto['status']]}」のタスクはありません`}
+              {hasNextPage
+                ? `「${STATUS_LABEL[filter as TaskDto['status']]}」は未読込のページにあるかもしれません`
+                : filter === 'all'
+                  ? 'タスクを追加してみましょう'
+                  : `「${STATUS_LABEL[filter as TaskDto['status']]}」のタスクはありません`}
             </div>
+            {hasNextPage && (
+              <button
+                className="btn"
+                onClick={() => void fetchNextPage()}
+                disabled={isFetchingNextPage}
+              >
+                {isFetchingNextPage ? '読み込み中…' : 'さらに読み込む'}
+              </button>
+            )}
           </div>
         ) : (
           <>

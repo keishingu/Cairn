@@ -219,4 +219,19 @@ describe('GET /api/tasks のページネーション', () => {
     const res = await GET(getRequest('?cursor=broken'))
     expect(res.status).toBe(400)
   })
+
+  it('閲覧可能な project がない場合も空のページング形式を返す', async () => {
+    mockDbSelectWhere.mockReset()
+    mockDbSelectLimit.mockReset()
+    mockDbSelectWhere.mockResolvedValue([])
+
+    const { GET } = await import('./route')
+    const res = await GET(getRequest())
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({
+      items: [],
+      nextCursor: null,
+    })
+  })
 })
