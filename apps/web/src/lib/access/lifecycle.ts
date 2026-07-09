@@ -43,6 +43,16 @@ async function lockActiveOwners(client: DbClient, workspaceId: string): Promise<
   `)
 }
 
+async function lockMembership(client: DbClient, workspaceId: string, userId: string): Promise<void> {
+  await client.execute(sql`
+    select 1
+    from workspace_members
+    where workspace_id = ${workspaceId}
+      and user_id = ${userId}
+    for update
+  `)
+}
+
 async function deleteMemberSearchChunks(client: DbClient, workspaceId: string, userId: string): Promise<void> {
   await client
     .delete(documentChunks)
@@ -61,6 +71,7 @@ export async function deactivateMembership(
   deactivatedBy: string,
 ): Promise<LifecycleResult> {
   return db.transaction(async (tx): Promise<LifecycleResult> => {
+    await lockMembership(tx, workspaceId, targetUserId)
     const target = await readMembership(tx, workspaceId, targetUserId)
     if (!target) return { ok: false, status: 404, error: 'Member not found' }
     if (target.membershipStatus === 'inactive') {

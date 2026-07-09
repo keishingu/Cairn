@@ -79,6 +79,7 @@ describe('access/lifecycle', () => {
       const { deactivateMembership } = await import('./lifecycle')
       const res = await deactivateMembership('ws', 'u', 'actor')
       expect(res).toEqual({ ok: false, status: 404, error: 'Member not found' })
+      expect(mockDb.execute).toHaveBeenCalledTimes(1)
     })
 
     it('既に非活性なら 422', async () => {
@@ -108,6 +109,7 @@ describe('access/lifecycle', () => {
       const { deactivateMembership } = await import('./lifecycle')
       const res = await deactivateMembership('ws', 'u', 'actor')
       expect(res).toEqual({ ok: true })
+      expect(mockDb.execute).toHaveBeenCalledTimes(2)
       expect(mockDb.execute).toHaveBeenCalledWith('sql')
       expect(mockDb.update).toHaveBeenCalledTimes(1)
     })
@@ -124,7 +126,7 @@ describe('access/lifecycle', () => {
       expect(setArg.deactivatedBy).toBe('actor-1')
       expect(mockDb.delete).toHaveBeenCalledTimes(1)
       expect(deleteSpies.where).toHaveBeenCalledWith(expect.objectContaining({ type: 'and' }))
-      expect(mockDb.execute).not.toHaveBeenCalled()
+      expect(mockDb.execute).toHaveBeenCalledTimes(1)
     })
   })
 
