@@ -1304,7 +1304,7 @@ const SettingsScheduledJobs = () => {
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>{job.rawInstruction}</div>
                   <div style={{ color: 'var(--text-3)', fontSize: 12 }}>{job.lastCompilePreview}</div>
-                  <div style={{ color: 'var(--text-3)', fontSize: 12 }}>次回実行: {job.nextRunAt ? new Date(job.nextRunAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : '無効'}</div>
+                  <div style={{ color: 'var(--text-3)', fontSize: 12 }}>次回実行: {job.enabled && job.nextRunAt ? new Date(job.nextRunAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : '無効'}</div>
                 </div>
                 <button
                   aria-label={`${job.rawInstruction}の有効切替`}

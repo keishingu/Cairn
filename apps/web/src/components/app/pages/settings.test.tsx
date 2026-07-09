@@ -244,4 +244,36 @@ describe('SettingsSectionContent', () => {
     expect(await screen.findAllByText(/#登山本部/)).toHaveLength(2)
     expect(screen.getByText(/次回実行:/)).toBeInTheDocument()
   })
+
+  it('無効化済みジョブは nextRunAt が残っていても無効表示にする', async () => {
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/scheduled-jobs' && !init) {
+        return {
+          ok: true,
+          json: async () => ([{
+            id: 'job-1',
+            rawInstruction: '毎月15日 9:00 に #登山本部 で @山田 をメンションして投票を投稿',
+            enabled: false,
+            timezone: 'Asia/Tokyo',
+            schedule: { type: 'monthly', dayOfMonth: 15, hour: 9, minute: 0 },
+            actionSpec: { type: 'poll', prompt: '来月の各週', choicesPrompt: '来月の各週', allowMultiple: false, anonymous: false },
+            mentionUserIds: ['user-1'],
+            mentions: [{ userId: 'user-1', displayName: '山田' }],
+            channelId: 'channel-1',
+            channelName: '登山本部',
+            nextRunAt: '2026-07-15T00:00:00.000Z',
+            lastCompilePreview: '次回 2026/07/15 09:00 (JST) に #登山本部 で @山田 をメンションし、「来月の各週」の投票を投稿します。',
+            createdAt: '2026-07-09T05:00:00.000Z',
+            updatedAt: '2026-07-09T05:00:00.000Z',
+          }]),
+        }
+      }
+
+      throw new Error(`unexpected fetch: ${input}`)
+    })
+
+    renderSection('scheduled-jobs')
+
+    expect(await screen.findByText('次回実行: 無効')).toBeInTheDocument()
+  })
 })

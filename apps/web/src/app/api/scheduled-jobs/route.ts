@@ -92,6 +92,11 @@ async function filterAccessibleJobs(
   return jobs.filter((_, index) => !accessResults[index])
 }
 
+async function serializeAccessibleJobs(workspaceId: string, userId: string): Promise<ScheduledJobDto[]> {
+  const jobs = await serializeJobs(workspaceId)
+  return filterAccessibleJobs(workspaceId, userId, jobs)
+}
+
 async function serializeJobs(workspaceId: string): Promise<ScheduledJobDto[]> {
   const { db, scheduledJobs, channels } = await import('@cairn/db')
   const { eq, desc } = await import('drizzle-orm')
@@ -144,8 +149,7 @@ export async function GET() {
   if (forbidden) return forbidden
 
   try {
-    const jobs = await serializeJobs(ctx.workspaceId)
-    return NextResponse.json(await filterAccessibleJobs(ctx.workspaceId, ctx.userId, jobs))
+    return NextResponse.json(await serializeAccessibleJobs(ctx.workspaceId, ctx.userId))
   } catch (err) {
     console.error('[/api/scheduled-jobs] GET failed:', err)
     return NextResponse.json({ error: 'Failed to load scheduled jobs' }, { status: 500 })
@@ -193,7 +197,7 @@ export async function POST(req: Request) {
       updatedAt: new Date(),
     })
 
-    return NextResponse.json(await serializeJobs(ctx.workspaceId), { status: 201 })
+    return NextResponse.json(await serializeAccessibleJobs(ctx.workspaceId, ctx.userId), { status: 201 })
   } catch (err) {
     if (err instanceof ScheduledJobCompileError) {
       return NextResponse.json({ error: err.message }, { status: 422 })
@@ -270,7 +274,7 @@ export async function PUT(req: Request) {
         .where(eq(scheduledJobs.id, parsed.id))
     }
 
-    return NextResponse.json(await serializeJobs(ctx.workspaceId))
+    return NextResponse.json(await serializeAccessibleJobs(ctx.workspaceId, ctx.userId))
   } catch (err) {
     if (err instanceof ScheduledJobCompileError) {
       return NextResponse.json({ error: err.message }, { status: 422 })
@@ -314,7 +318,7 @@ export async function DELETE(req: Request) {
       .delete(scheduledJobs)
       .where(and(eq(scheduledJobs.id, parsed.id), eq(scheduledJobs.workspaceId, ctx.workspaceId)))
 
-    return NextResponse.json(await serializeJobs(ctx.workspaceId))
+    return NextResponse.json(await serializeAccessibleJobs(ctx.workspaceId, ctx.userId))
   } catch (err) {
     console.error('[/api/scheduled-jobs] DELETE failed:', err)
     return NextResponse.json({ error: 'Failed to delete scheduled job' }, { status: 500 })
