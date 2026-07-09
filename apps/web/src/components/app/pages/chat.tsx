@@ -5,10 +5,6 @@ import { usePathname, useRouter } from 'next/navigation'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MobileHeader } from '../mobile/header'
 import { ChatThread } from '../chat-thread'
-import { useQuery } from '@tanstack/react-query'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
-import type { MessageSearchResultDto } from '@/app/api/search/messages/route'
 import type { BookmarkDto } from '@/app/api/me/bookmarks/route'
 import {
   useProjectChannels,
@@ -29,8 +25,6 @@ import { useDebounce } from '@/hooks/use-debounce'
 import { ChannelList } from './chat-channel-list'
 import { ChatDetailSidebar, ChatInfoDrawer, type ChatDetailMember } from './chat-detail-sidebar'
 import { useAppShell } from '../app-shell-context'
-import type { ProjectDto } from '@/app/api/projects/route'
-import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import { useCommand } from '@/lib/command-registry'
 import {
@@ -38,6 +32,12 @@ import {
   resolveInitialChatChannelId,
   setLastVisitedChatChannelId,
 } from '@/lib/chat-last-channel'
+import {
+  useChannelMessageSearch,
+  useGlobalMessageSearch,
+  useChatProjects,
+} from '@/hooks/use-chat-page'
+import { useProjectMembers } from '@/hooks/use-project-members'
 
 // ─── Message search ───────────────────────────────────────────────
 
@@ -77,11 +77,7 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
 
   React.useEffect(() => { inputRef.current?.focus() }, [])
 
-  const { data: results = [], isFetching } = useQuery<MessageDto[]>({
-    queryKey: ['message-search', channelId, debouncedQuery],
-    queryFn: () => fetchWithAuth(`/api/channels/${channelId}/messages/search?q=${encodeURIComponent(debouncedQuery)}`).then(r => r.json()),
-    enabled: debouncedQuery.length >= 1,
-  })
+  const { data: results = [], isFetching } = useChannelMessageSearch(channelId, debouncedQuery)
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -166,11 +162,7 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
 
   React.useEffect(() => { inputRef.current?.focus() }, [])
 
-  const { data: results = [], isFetching } = useQuery<MessageSearchResultDto[]>({
-    queryKey: ['global-message-search', debouncedQuery],
-    queryFn: () => fetchWithAuth(`/api/search/messages?q=${encodeURIComponent(debouncedQuery)}`).then(r => r.json()),
-    enabled: debouncedQuery.length >= 1,
-  })
+  const { data: results = [], isFetching } = useGlobalMessageSearch(debouncedQuery)
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -468,28 +460,14 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const { data: channelMemberIds = [] } = useChannelMembers(isPrivate ? channelId : null)
 
   // 紐づくプロジェクトの概要（説明・ステータス・タスク進捗・メンバー）をインフォメーション欄に出す
-  const { data: projects = [] } = useQuery<ProjectDto[]>({
-    queryKey: ['projects'],
-    queryFn: () => fetchWithAuth('/api/projects').then(r => {
-      if (!r.ok) throw new Error('fetch failed')
-      return r.json()
-    }),
-    enabled: isProject,
-  })
+  const { data: projects = [] } = useChatProjects(isProject)
   const linkedProject = isProject && currentChannel
     ? (projects.find(p => p.id === currentChannel.projectId) ?? null)
     : null
 
   // プロジェクト連動メンバー（ProjectDto.memberNames は最大4名のプレビューのため、
   // 全員＋userId を持つ専用エンドポイントから取得する）
-  const { data: projectMembers = [] } = useQuery<ProjectMemberDto[]>({
-    queryKey: ['project-members', currentChannel?.projectId],
-    queryFn: () => fetchWithAuth(`/api/projects/${currentChannel!.projectId}/members`).then(r => {
-      if (!r.ok) throw new Error('fetch failed')
-      return r.json()
-    }),
-    enabled: isProject && !!currentChannel,
-  })
+  const { data: projectMembers = [] } = useProjectMembers(currentChannel?.projectId ?? null)
 
   const channelMembers = React.useMemo<ChatDetailMember[]>(() => {
     if (isDm) {

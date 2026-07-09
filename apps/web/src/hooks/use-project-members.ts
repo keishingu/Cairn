@@ -6,7 +6,11 @@ import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 export function useProjectMembers(projectId: string | null) {
   return useQuery<ProjectMemberDto[]>({
     queryKey: ['project-members', projectId],
-    queryFn: () => fetchWithAuth(`/api/projects/${projectId!}/members`).then(r => r.json()),
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/projects/${projectId!}/members`)
+      if (!res.ok) throw new Error('fetch failed')
+      return res.json()
+    },
     enabled: !!projectId,
   })
 }
