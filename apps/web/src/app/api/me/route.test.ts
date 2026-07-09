@@ -40,6 +40,21 @@ vi.mock('@/lib/supabase/server', () => ({
   })),
 }))
 
+vi.mock('@cairn/shared', async () => {
+  const { z } = await import('zod')
+  return {
+    patchMeSchema: z.object({
+      displayName: z.string().trim().min(1).max(100).optional(),
+      bio: z.string().max(1000).nullable().optional(),
+      status: z.enum(['online', 'away', 'busy', 'offline']).optional(),
+      statusMessage: z.string().max(100).nullable().optional(),
+    }).refine(
+      data => Object.values(data).some(value => value !== undefined),
+      { message: 'At least one field is required' },
+    ),
+  }
+})
+
 vi.mock('@cairn/db', () => ({
   db: {
     select: mockDbSelect,
@@ -129,7 +144,7 @@ describe('/api/me', () => {
     }))
 
     expect(res.status).toBe(422)
-    await expect(res.json()).resolves.toEqual({ error: 'At least one field is required' })
+    await expect(res.json()).resolves.toEqual({ error: 'status/statusMessage は廃止されました' })
     expect(mockDbUpdate).not.toHaveBeenCalled()
   })
 
@@ -143,6 +158,24 @@ describe('/api/me', () => {
 
     expect(res.status).toBe(422)
     await expect(res.json()).resolves.toEqual({ error: 'status/statusMessage は廃止されました' })
+    expect(mockDbUpdate).not.toHaveBeenCalled()
+  })
+
+  it('PATCH は不正な JSON shape を 422 で拒否する', async () => {
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request('http://localhost/', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(null),
+    }))
+
+    expect(res.status).toBe(422)
+    await expect(res.json()).resolves.toEqual({
+      error: {
+        formErrors: ['Expected object, received null'],
+        fieldErrors: {},
+      },
+    })
     expect(mockDbUpdate).not.toHaveBeenCalled()
   })
 })
