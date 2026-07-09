@@ -54,7 +54,7 @@ const STUB_MEMBER: WorkspaceMemberDto = {
 
 function makeQC(members: WorkspaceMemberDto[] = [STUB_MEMBER]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  qc.setQueryData(['workspace-members'], members)
+  qc.setQueryData(['workspace-members', 'all'], members)
   return qc
 }
 
@@ -138,7 +138,7 @@ describe('PageMembers — アーカイブ導線（admin）', () => {
 
   function renderAsAdmin(members: WorkspaceMemberDto[]) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    qc.setQueryData(['workspace-members'], members)
+    qc.setQueryData(['workspace-members', 'all'], members)
     qc.setQueryData(['me'], { id: 'admin-1', wsRole: 'admin' })
     return render(
       <QueryClientProvider client={qc}>

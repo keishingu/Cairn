@@ -191,7 +191,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
   // ナビゲーション時の remount でパネルが一瞬消えないよう、キャッシュから初期値を復元する
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(() => {
     if (!initialUserId || isMobile) return null
-    const cached = queryClient.getQueryData<WorkspaceMemberDto[]>(['workspace-members'])
+    const cached = queryClient.getQueryData<WorkspaceMemberDto[]>(['workspace-members', 'all'])
     return cached?.find(m => m.userId === initialUserId) ?? null
   })
   const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
@@ -223,8 +223,8 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
   }
 
   const { data: members = [], isLoading } = useQuery<WorkspaceMemberDto[]>({
-    queryKey: ['workspace-members'],
-    queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
+    queryKey: ['workspace-members', 'all'],
+    queryFn: () => fetchWithAuth('/api/workspaces/members?status=all').then(r => r.json()),
   })
 
   // ⌥S（検索フォーカス）は TopBarSearch（route ラッパー）が担当

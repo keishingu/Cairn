@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole } from '@/lib/permissions'
+import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
 import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   if (error) return error
 
   try {
-    const activeOnly = new URL(req.url).searchParams.get('status') === 'active'
+    const statusParam = new URL(req.url).searchParams.get('status')
     const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
     const { profiles, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
@@ -34,6 +34,8 @@ export async function GET(req: Request) {
     // 参加していないプロジェクトの存在が漏れないようにする。
     const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
     const isGuest = callerRole === 'guest'
+    const includeInactive = statusParam === 'all' && isWorkspaceAdmin(callerRole)
+    const activeOnly = !includeInactive
 
     let guestProjectIds: string[] = []
     let visibleUserIds: string[] = []
