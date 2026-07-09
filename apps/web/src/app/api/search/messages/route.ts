@@ -22,7 +22,7 @@ export async function GET(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, messages, profiles, workspaceMembers, projects, projectMembers } = await import('@cairn/db')
+    const { channels, channelMembers, messages, profiles, workspaceMembers, projects, milestones, projectMembers } = await import('@cairn/db')
     const { eq, ne, isNull, and, ilike, or, exists, inArray } = await import('drizzle-orm')
     const { desc, sql } = await import('drizzle-orm')
 
@@ -54,7 +54,7 @@ export async function GET(req: Request) {
         createdAt: messages.createdAt,
         updatedAt: messages.updatedAt,
         channelId: channels.id,
-        channelName: sql<string>`coalesce(${projects.title}, ${channels.name}, 'DM')`,
+        channelName: sql<string>`coalesce(${milestones.title}, ${projects.title}, ${channels.name}, 'DM')`,
       })
       .from(messages)
       .innerJoin(channels, eq(messages.channelId, channels.id))
@@ -64,6 +64,7 @@ export async function GET(req: Request) {
         and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
       )
       .leftJoin(projects, eq(channels.projectId, projects.id))
+      .leftJoin(milestones, eq(channels.milestoneId, milestones.id))
       .where(and(
         eq(channels.workspaceId, ctx.workspaceId),
         isNull(messages.deletedAt),
