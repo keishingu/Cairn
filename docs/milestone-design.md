@@ -30,7 +30,7 @@
 |---|---|---|
 | チャンネル基盤 | `channels` は `project_id` + `name`（nullable）を持ち、スキーマ上は1プロジェクト複数チャンネルを既に許容 | マイルストーンチャンネル = `channels` の追加行として表現できる |
 | 未読管理 | `channel_read_states` はチャンネルID単位で汎用動作 | マイルストーンチャンネルも自動で未読・メンションバッジが機能する（[`07_notifications_and_unread.md`](./07_notifications_and_unread.md) でも明記済み） |
-| Realtime | topic は `channel:{id}`、認可は `can_access_channel()`（migration 0033/0034） | 新チャンネルのメッセージ配信・認可は既存トリガーがそのまま動く |
+| Realtime | topic は `channel:{id}`、認可は `can_access_channel()`（migration 0033/0034） | 新チャンネルのメッセージ配信は既存トリガーがそのまま動く（※認可関数にはゲスト制限の既存ギャップがあり Phase 1 で修正する。§3.9） |
 | メンション通知 | Inngest ジョブがチャンネル単位で受信者を解決（`mention-access.ts`） | `type='project'` チャンネルとして扱えば挙動は General と同一 |
 | タスク | `tasks.project_id` のみ（マイルストーン参照なし） | ドラフトの「Task belongs to Project」と完全一致。**変更ゼロ** |
 | ファイル・ギャラリー | `files.project_id` / `gallery_items` はプロジェクト直下 | 同上。**変更ゼロ** |
@@ -64,7 +64,7 @@
   - `permissions.ts` の `requireChannelAccess()` / `canAccessViaAnyChannel()`（ゲストのプロジェクトメンバーシップ判定）
   - `lib/chat/mention-access.ts`（メンション通知の受信者フィルタ）
   - `can_access_channel()` SQL 関数（migration 0033、RLS と Realtime 認可の両方が依存。enum 変更 + 関数更新の migration が必要になる）
-- `'project'` 流用なら **enum 変更も権限コードの変更も一切不要**で、ゲスト制限・メンション・Realtime 認可がそのまま正しく動く
+- `'project'` 流用なら **enum 変更も権限コードの変更も一切不要**で、API 側のゲスト制限・メンションフィルタがそのまま正しく動く（Realtime/RLS 側の `can_access_channel()` にはゲスト制限の既存ギャップがあり、type の選択にかかわらず修正が必要。§3.9）
 
 `07_notifications_and_unread.md` は設計時スナップショットであり、この点は本書の判断を正とする。同ドキュメント記載の `parent_channel_id` も追加しない（`project_id` で General と辿れるため冗長）。
 
@@ -111,6 +111,40 @@
 | 通知タイプ（`notification_type` enum） | `'milestone'` は追加しない。メンション・チャット通知は既存のチャンネル機構で自動的に機能する |
 | Inngest | マイルストーン専用ジョブは初期不要。AI インデックス（`project/upserted`）への組込みは将来検討 |
 | Realtime のマイルストーン一覧ライブ更新 | 初期スコープ外。作成・更新は mutation 後の invalidate で自ユーザーには即時反映される（ワークスペースチャンネル作成と同じ既存挙動） |
+
+### 3.9 Realtime/RLS 認可のゲスト制限ギャップ（既存バグ。Phase 1 で修正する）
+
+`can_access_channel()`（migration 0033。messages 等の RLS SELECT と Realtime の `channel:{id}` topic 認可の両方が依存）は、公開 `type='project'` チャンネルを**同一ワークスペースの全メンバーに許可しており、ゲストの `project_members` 制限を適用していない**。API 側の `requireChannelAccess()` は「ゲストは参加プロジェクトのみ」を強制するが、RLS/Realtime 側にはこの判定がなく、チャンネル ID を知っているゲストが参加外プロジェクトのチャンネルを Realtime 購読・RLS 経由で閲覧できる。
+
+これはマイルストーン以前からある既存ギャップだが、マイルストーンチャンネルの追加で「ゲストが ID を知りうるプロジェクトチャンネル」が増えるため、**Phase 1 の migration で `can_access_channel()` を修正して塞ぐ**。修正方針:
+
+```sql
+-- 公開チャンネルの分岐に、ゲストのプロジェクトメンバーシップ条件を追加する
+(
+  c.is_private = false
+  and c.type in ('workspace', 'project')
+  and exists (
+    select 1 from workspace_members wm
+    where wm.user_id = auth.uid()
+      and wm.workspace_id = coalesce(
+        c.workspace_id,
+        (select p.workspace_id from projects p where p.id = c.project_id)
+      )
+      -- guest は type='project' の場合のみ project_members を必須にする
+      -- （公開 workspace チャンネルへのゲストアクセスは requireChannelAccess と同様に許可）
+      and (
+        wm.role <> 'guest'
+        or c.type <> 'project'
+        or exists (
+          select 1 from project_members pm
+          where pm.project_id = c.project_id and pm.user_id = auth.uid()
+        )
+      )
+  )
+)
+```
+
+これにより RLS/Realtime の挙動が API 側の `requireChannelAccess()` / `canAccessViaAnyChannel()` と一致する。
 
 ---
 
@@ -277,7 +311,8 @@ export interface ProjectChannelDto {
 ### Phase 1: DB + API + チャット導線（同一 PR で行う — §3.1 の理由により分割不可）
 
 1. `packages/db`: `milestones` テーブル + `channels.milestone_id` + migration 生成
-2. `packages/shared`: `createMilestoneSchema` / `patchMilestoneSchema` + テスト
+2. migration: `can_access_channel()` のゲスト制限修正（§3.9。Drizzle 生成 SQL とは別に手書き migration を追加する）
+3. `packages/shared`: `createMilestoneSchema` / `patchMilestoneSchema` + テスト
 3. API: milestones CRUD（POST でチャンネル同時作成）+ `GET /api/projects/channels` 拡張 + `route.test.ts`（権限・ゲスト制限・プロジェクト越境を含む）
 4. `findProjectChannelById()` の General 明示化 + テスト
 5. チャットサイドバーの階層表示（PC / モバイル Web）
@@ -313,3 +348,4 @@ export interface ProjectChannelDto {
 | 削除 | チャンネル・メッセージごと cascade 削除。確認ダイアログで会話消失を明示 |
 | タスク・ファイル・ギャラリー | マイルストーンに紐付けない（ドラフトどおり。既存スキーマ変更ゼロ） |
 | カレンダー表示 | 初期スコープ外（Phase 4） |
+| Realtime/RLS 認可 | `can_access_channel()` のゲスト制限ギャップ（既存バグ）を Phase 1 の migration で修正し、API 側の挙動と一致させる（§3.9） |
