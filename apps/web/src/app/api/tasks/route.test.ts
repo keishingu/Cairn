@@ -7,12 +7,21 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const PROJECT_ID = '30000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockRequireProjectAccess, mockGetWorkspaceMemberRole, mockGetGuestVisibleProjectIds } =
+const {
+  mockGetAuthContext,
+  mockRequireProjectAccess,
+  mockGetWorkspaceMemberRole,
+  mockGetGuestVisibleProjectIds,
+  mockSafeParse,
+  mockDb,
+} =
   vi.hoisted(() => ({
     mockGetAuthContext: vi.fn(),
     mockRequireProjectAccess: vi.fn(),
     mockGetWorkspaceMemberRole: vi.fn(),
     mockGetGuestVisibleProjectIds: vi.fn(),
+    mockSafeParse: vi.fn(),
+    mockDb: { select: vi.fn(), insert: vi.fn() },
   }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -23,9 +32,38 @@ vi.mock('@/lib/permissions', () => ({
 }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
 vi.mock('@cairn/shared', () => ({
-  createTaskSchema: { safeParse: () => ({ success: true, data: { projectId: PROJECT_ID, title: 'task', priority: 'medium' } }) },
+  createTaskSchema: { safeParse: mockSafeParse },
 }))
-vi.mock('@cairn/db', () => ({ db: {} }))
+vi.mock('@cairn/db', () => ({
+  db: mockDb,
+  tasks: { id: 'tasks.id' },
+  projects: { id: 'projects.id', title: 'projects.title' },
+  profiles: { id: 'profiles.id' },
+  workspaceMembers: {
+    userId: 'workspaceMembers.userId',
+    workspaceId: 'workspaceMembers.workspaceId',
+    membershipStatus: 'workspaceMembers.membershipStatus',
+    displayName: 'workspaceMembers.displayName',
+    avatarUrl: 'workspaceMembers.avatarUrl',
+  },
+}))
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn(() => 'eq'),
+  and: vi.fn(() => 'and'),
+}))
+
+function chain(result: unknown[]) {
+  const p = Promise.resolve(result)
+  const c: Record<string, unknown> = {
+    then: p.then.bind(p),
+    catch: p.catch.bind(p),
+    finally: p.finally.bind(p),
+  }
+  for (const m of ['from', 'leftJoin', 'where']) {
+    c[m] = vi.fn().mockReturnValue(c)
+  }
+  return c
+}
 
 function postRequest() {
   return new Request('http://localhost/api/tasks', {
@@ -41,6 +79,10 @@ describe('POST /api/tasks のゲストアクセス制御', () => {
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
       error: null,
     })
+    mockSafeParse.mockReturnValue({
+      success: true,
+      data: { projectId: PROJECT_ID, title: 'task', priority: 'medium' },
+    })
   })
 
   afterEach(() => vi.clearAllMocks())
@@ -53,5 +95,28 @@ describe('POST /api/tasks のゲストアクセス制御', () => {
     const res = await POST(postRequest())
     expect(res.status).toBe(403)
     expect(mockRequireProjectAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, PROJECT_ID)
+  })
+
+  it('inactive assignee への割当は 422 で拒否される', async () => {
+    mockRequireProjectAccess.mockResolvedValue(null)
+    mockSafeParse.mockReturnValue({
+      success: true,
+      data: {
+        projectId: PROJECT_ID,
+        title: 'task',
+        priority: 'medium',
+        assigneeId: '40000000-0000-0000-0000-000000000001',
+      },
+    })
+    mockDb.select.mockReturnValueOnce(chain([]))
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest())
+
+    expect(res.status).toBe(422)
+    expect(await res.json()).toEqual({
+      error: '非アクティブなメンバーにはタスクを割り当てできません',
+    })
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 })
