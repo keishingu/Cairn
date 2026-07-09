@@ -7,6 +7,7 @@ import { createTaskSchema } from '@cairn/shared'
 import { getGuestVisibleProjectIds, getWorkspaceMemberRole, requireProjectAccess } from '@/lib/permissions'
 import { inngest } from '@/lib/inngest/client'
 import type { TaskAssignedEvent } from '@/lib/inngest/events'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface TaskDto {
   id: string
@@ -25,9 +26,10 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId') ?? undefined
 
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
+
   try {
-    const { ctx, error } = await getAuthContext()
-    if (error) return error
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
@@ -61,7 +63,7 @@ export async function GET(req: Request) {
         priority: tasks.priority,
         dueDate: tasks.dueDate,
         sourceMessageId: tasks.sourceMessageId,
-        assigneeName: profiles.displayName,
+        assigneeName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(tasks)
@@ -92,6 +94,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
+
   let body: unknown
   try {
     body = await req.json()
@@ -105,16 +110,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { ctx, error } = await getAuthContext()
-    if (error) return error
-
     // ゲストは参加プロジェクトにのみタスクを作成できる
     const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, parsed.data.projectId)
     if (forbidden) return forbidden
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { eq, and } = await import('drizzle-orm')
 
     const [inserted] = await db
       .insert(tasks)
@@ -138,9 +140,12 @@ export async function POST(req: Request) {
 
     const assigneeRow = inserted.assigneeId
       ? (await db
-          .select({ displayName: profiles.displayName, avatarUrl: workspaceMembers.avatarUrl })
+          .select({
+            displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+            avatarUrl: workspaceMembers.avatarUrl,
+          })
           .from(profiles)
-          .leftJoin(workspaceMembers, eq(workspaceMembers.userId, profiles.id))
+          .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
           .where(eq(profiles.id, inserted.assigneeId)))[0]
       : null
 
@@ -159,8 +164,9 @@ export async function POST(req: Request) {
 
     if (inserted.assigneeId && inserted.assigneeId !== ctx.userId) {
       const [assigner] = await db
-        .select({ displayName: profiles.displayName })
+        .select({ displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
         .from(profiles)
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
         .where(eq(profiles.id, ctx.userId))
 
       try {

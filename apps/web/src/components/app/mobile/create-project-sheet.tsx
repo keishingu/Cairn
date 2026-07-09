@@ -58,16 +58,18 @@ const inputErrorStyle: React.CSSProperties = {
 interface CreateProjectSheetProps {
   onClose: () => void
   onCreated: (project: ProjectDto) => void
+  initialStartDate?: string
+  initialEndDate?: string
 }
 
-export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetProps) {
+export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', initialEndDate = '' }: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
   const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members'], queryFn: fetchWorkspaceMembers })
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
-  const [startDate, setStartDate] = React.useState('')
-  const [endDate, setEndDate] = React.useState('')
+  const [startDate, setStartDate] = React.useState(initialStartDate)
+  const [endDate, setEndDate] = React.useState(initialEndDate)
   const [location, setLocation] = React.useState('')
   const [placeId, setPlaceId] = React.useState('')
   const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])

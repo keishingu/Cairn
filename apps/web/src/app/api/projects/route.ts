@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { createProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ProjectDto {
   id: string
@@ -89,24 +90,40 @@ export async function GET() {
     visibleProjectIds = rows.map(r => r.id)
     if (visibleProjectIds.length === 0) return NextResponse.json([])
 
-    const counts = await db
-      .select({ projectId: projectMembers.projectId, n: count() })
-      .from(projectMembers)
-      .where(inArray(projectMembers.projectId, visibleProjectIds))
-      .groupBy(projectMembers.projectId)
+    const [counts, memberRows, userMemberRows, taskRows] = await Promise.all([
+      db
+        .select({ projectId: projectMembers.projectId, n: count() })
+        .from(projectMembers)
+        .where(inArray(projectMembers.projectId, visibleProjectIds))
+        .groupBy(projectMembers.projectId),
+      db
+        .select({
+          projectId: projectMembers.projectId,
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+          avatarUrl: workspaceMembers.avatarUrl,
+        })
+        .from(projectMembers)
+        .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+        .where(inArray(projectMembers.projectId, visibleProjectIds))
+        .orderBy(projectMembers.createdAt),
+      db
+        .select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .where(eq(projectMembers.userId, ctx.userId)),
+      db
+        .select({
+          projectId: tasks.projectId,
+          total: count(),
+          completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
+        })
+        .from(tasks)
+        .where(inArray(tasks.projectId, visibleProjectIds))
+        .groupBy(tasks.projectId),
+    ])
+
     const countMap = new Map(counts.map(r => [r.projectId, Number(r.n)]))
 
-    const memberRows = await db
-      .select({
-        projectId: projectMembers.projectId,
-        displayName: profiles.displayName,
-        avatarUrl: workspaceMembers.avatarUrl,
-      })
-      .from(projectMembers)
-      .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-      .where(inArray(projectMembers.projectId, visibleProjectIds))
-      .orderBy(projectMembers.createdAt)
     const memberNamesMap = new Map<string, string[]>()
     const memberAvatarUrlsMap = new Map<string, (string | null)[]>()
     for (const row of memberRows) {
@@ -120,21 +137,7 @@ export async function GET() {
       memberAvatarUrlsMap.set(row.projectId, avatarUrls)
     }
 
-    const userMemberRows = await db
-      .select({ projectId: projectMembers.projectId })
-      .from(projectMembers)
-      .where(eq(projectMembers.userId, ctx.userId))
     const userProjectIds = new Set(userMemberRows.map(r => r.projectId))
-
-    const taskRows = await db
-      .select({
-        projectId: tasks.projectId,
-        total: count(),
-        completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
-      })
-      .from(tasks)
-      .where(inArray(tasks.projectId, visibleProjectIds))
-      .groupBy(tasks.projectId)
     const taskMap = new Map(taskRows.map(r => [r.projectId, { total: Number(r.total), completed: Number(r.completed) }]))
 
     const result: ProjectDto[] = rows.map(r => ({
@@ -205,38 +208,8 @@ export async function POST(req: Request) {
     let coverPhotoUrl = parsed.data.coverPhotoUrl ?? null
 
     if (parsed.data.placePhotoName && !coverPhotoUrl) {
-      const apiKey = process.env['GOOGLE_MAPS_API_KEY']
-      if (apiKey) {
-        try {
-          const mediaRes = await fetch(
-            `https://places.googleapis.com/v1/${parsed.data.placePhotoName}/media?maxWidthPx=1200&skipHttpRedirect=true&key=${apiKey}`,
-          )
-          if (mediaRes.ok) {
-            const media = await mediaRes.json() as { photoUri?: string }
-            if (media.photoUri) {
-              const imgRes = await fetch(media.photoUri)
-              if (imgRes.ok) {
-                const buffer = await imgRes.arrayBuffer()
-                const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
-                const ext = contentType.includes('png') ? 'png' : 'jpg'
-                const slug = parsed.data.placePhotoName.split('/').join('_')
-                const storagePath = `place-photos/${slug}.${ext}`
-                const { createServiceRoleClient } = await import('@/lib/supabase/service')
-                const supabase = createServiceRoleClient()
-                const { error: uploadError } = await supabase.storage
-                  .from('covers')
-                  .upload(storagePath, buffer, { contentType, upsert: false })
-                if (!uploadError || uploadError.message.toLowerCase().includes('already exist')) {
-                  const { data: { publicUrl } } = supabase.storage.from('covers').getPublicUrl(storagePath)
-                  coverPhotoUrl = publicUrl
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[/api/projects POST] place photo upload failed (skipped):', e)
-        }
-      }
+      const { fetchAndStoreCoverFromPlace } = await import('@/lib/cover-photo')
+      coverPhotoUrl = await fetchAndStoreCoverFromPlace(parsed.data.placePhotoName)
     }
 
     const [inserted] = await db
@@ -290,7 +263,7 @@ export async function POST(req: Request) {
       const memberRows = await db
         .select({
           userId: profiles.id,
-          displayName: profiles.displayName,
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
           avatarUrl: workspaceMembers.avatarUrl,
         })
         .from(profiles)

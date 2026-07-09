@@ -22,10 +22,20 @@ vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: mockGetAuthContext,
 }))
 
+vi.mock('@cairn/shared', () => ({
+  patchMeSchema: {
+    safeParse: vi.fn((value: unknown) => ({ success: true, data: value })),
+  },
+}))
+
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({
     auth: { getSession: mockGetSession },
   })),
+}))
+
+vi.mock('@/lib/workspace-member-display-name', () => ({
+  workspaceMemberDisplayName: vi.fn(() => 'workspaceMemberDisplayName'),
 }))
 
 vi.mock('@cairn/db', () => ({
@@ -38,6 +48,7 @@ vi.mock('@cairn/db', () => ({
   workspaceMembers: {
     userId: 'workspaceMembers.userId',
     workspaceId: 'workspaceMembers.workspaceId',
+    displayName: 'workspaceMembers.displayName',
     avatarUrl: 'workspaceMembers.avatarUrl',
     role: 'workspaceMembers.role',
   },
@@ -97,8 +108,9 @@ describe('/api/me', () => {
   })
 
   it('PATCH は表示名と bio だけを更新する', async () => {
-    const update = updateChain()
-    mockDb.update.mockReturnValueOnce(update)
+    const profileUpdate = updateChain()
+    const memberUpdate = updateChain()
+    mockDb.update.mockReturnValueOnce(profileUpdate).mockReturnValueOnce(memberUpdate)
 
     const { PATCH } = await import('./route')
     const res = await PATCH(new Request('http://localhost/api/me', {
@@ -108,11 +120,15 @@ describe('/api/me', () => {
     }))
 
     expect(res.status).toBe(200)
-    expect(mockDb.update).toHaveBeenCalledTimes(1)
-    expect(update.set).toHaveBeenCalledWith(
+    expect(mockDb.update).toHaveBeenCalledTimes(2)
+    expect(profileUpdate.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bio: '相棒',
+      }),
+    )
+    expect(memberUpdate.set).toHaveBeenCalledWith(
       expect.objectContaining({
         displayName: 'えびちゃん',
-        bio: '相棒',
       }),
     )
   })

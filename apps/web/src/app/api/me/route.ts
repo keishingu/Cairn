@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { patchMeSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface CurrentUserDto {
   id: string
@@ -32,7 +34,7 @@ export async function GET() {
     const [row] = await db
       .select({
         id: profiles.id,
-        displayName: profiles.displayName,
+        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         bio: profiles.bio,
         wsRole: workspaceMembers.role,
@@ -73,27 +75,33 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const b = body as { displayName?: string; bio?: string | null }
+  const parsed = patchMeSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
+  }
+  const b = parsed.data
   const hasDisplayName = b.displayName !== undefined
-  const hasBio = 'bio' in (b as object)
-
-  if (!hasDisplayName && !hasBio) {
-    return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
-  }
-  if (hasDisplayName && !b.displayName?.trim()) {
-    return NextResponse.json({ error: '表示名は必須です' }, { status: 422 })
-  }
+  const hasBio = 'bio' in b
 
   try {
-    const { db, profiles } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { db, profiles, workspaceMembers } = await import('@cairn/db')
+    const { eq, and } = await import('drizzle-orm')
 
-    const set: { displayName?: string; bio?: string | null; updatedAt: Date } = { updatedAt: new Date() }
-    if (hasDisplayName) set.displayName = b.displayName!.trim()
-    if (hasBio) set.bio = b.bio ?? null
-    await db.update(profiles).set(set).where(eq(profiles.id, ctx.userId))
+    if (hasBio) {
+      await db
+        .update(profiles)
+        .set({ bio: b.bio ?? null, updatedAt: new Date() })
+        .where(eq(profiles.id, ctx.userId))
+    }
 
-    return NextResponse.json({ id: ctx.userId, ...b })
+    if (hasDisplayName) {
+      await db
+        .update(workspaceMembers)
+        .set({ displayName: b.displayName!.trim() })
+        .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+    }
+
+    return NextResponse.json({ id: ctx.userId })
   } catch (err) {
     console.error('[PATCH /api/me]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
