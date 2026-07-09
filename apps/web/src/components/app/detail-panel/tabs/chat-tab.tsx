@@ -1,18 +1,33 @@
 'use client'
 
 import React from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
-import { findProjectChannelById, useProjectChannels } from '@/lib/chat/client'
+import { chatQueryKeys, findProjectChannelById, useProjectChannels } from '@/lib/chat/client'
 import { ChatThread } from '../../chat-thread'
 
 export const ChatTab = ({ project, isMobile, isActive = true }: { project: ProjectDto; isMobile?: boolean; isActive?: boolean }) => {
+  const queryClient = useQueryClient()
   const { data: projectChannels, isLoading, isError } = useProjectChannels()
 
   const activeChannel = React.useMemo(
     () => projectChannels ? findProjectChannelById(projectChannels, project.id) : undefined,
     [projectChannels, project.id],
   )
+  const wasActiveRef = React.useRef(isActive)
+
+  React.useEffect(() => {
+    if (!activeChannel?.channelId) {
+      wasActiveRef.current = isActive
+      return
+    }
+    if (isActive && !wasActiveRef.current) {
+      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(activeChannel.channelId) })
+      void queryClient.invalidateQueries({ queryKey: ['channel-files', activeChannel.channelId] })
+    }
+    wasActiveRef.current = isActive
+  }, [activeChannel?.channelId, isActive, queryClient])
 
   if (isLoading) {
     return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
