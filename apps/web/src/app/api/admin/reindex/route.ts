@@ -14,8 +14,8 @@ export async function POST() {
   if (forbidden) return forbidden
 
   try {
-    const { db, files, activeWorkspaceMembers, projects } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { db, files, activeWorkspaceMembers, projects, documentChunks } = await import('@cairn/db')
+    const { and, eq, inArray, notInArray } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client')
     const { isIndexable } = await import('@/lib/ai/extract-text')
 
@@ -33,6 +33,17 @@ export async function POST() {
     ])
 
     const indexableFiles = allFiles.filter(f => isIndexable(f.mimeType ?? ''))
+    const activeMemberIds = allMembers.map(m => m.userId)
+
+    // active member だけを再キューする前に、inactive 化で残った member chunk を消す。
+    // searchChunks は workspace_id 単位で全 chunk を見るため、ここで stale な RAG context を掃除する。
+    await db
+      .delete(documentChunks)
+      .where(and(
+        eq(documentChunks.workspaceId, ctx.workspaceId),
+        eq(documentChunks.sourceType, 'member'),
+        ...(activeMemberIds.length > 0 ? [notInArray(documentChunks.sourceId, activeMemberIds)] : []),
+      ))
 
     const events = [
       ...indexableFiles.map(f => ({
