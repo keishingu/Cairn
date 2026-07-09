@@ -689,8 +689,24 @@ export const indexMemberChunks = inngest.createFunction(
     const { userId, workspaceId } = event.data as { userId: string; workspaceId: string }
 
     await step.run('embed-and-save', async () => {
-      const { db, profiles, memberExperiences, documentChunks } = await import('@cairn/db')
+      const { db, profiles, memberExperiences, documentChunks, activeWorkspaceMembers } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
+
+      const deleteMemberChunks = () =>
+        db
+          .delete(documentChunks)
+          .where(and(eq(documentChunks.sourceType, 'member'), eq(documentChunks.sourceId, userId), eq(documentChunks.workspaceId, workspaceId)))
+
+      const [activeMembership] = await db
+        .select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
+        .where(and(eq(activeWorkspaceMembers.workspaceId, workspaceId), eq(activeWorkspaceMembers.userId, userId)))
+        .limit(1)
+
+      if (!activeMembership) {
+        await deleteMemberChunks()
+        return
+      }
 
       const [profile] = await db
         .select({ displayName: profiles.displayName, bio: profiles.bio })
@@ -734,9 +750,7 @@ export const indexMemberChunks = inngest.createFunction(
         value: content,
       })
 
-      await db
-        .delete(documentChunks)
-        .where(and(eq(documentChunks.sourceType, 'member'), eq(documentChunks.sourceId, userId), eq(documentChunks.workspaceId, workspaceId)))
+      await deleteMemberChunks()
 
       await db.insert(documentChunks).values({
         workspaceId,

@@ -7,7 +7,7 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const OTHER_USER_ID = '00000000-0000-0000-0000-000000000002'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, mockReactivate } = vi.hoisted(() => {
+const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, mockReactivate, mockInngestSend } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -15,11 +15,12 @@ const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, 
     },
     error: null,
   })
-  const mockDb = { select: vi.fn(), update: vi.fn() }
+  const mockDb = { select: vi.fn(), update: vi.fn(), execute: vi.fn(), transaction: vi.fn() }
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('admin')
   const mockDeactivate = vi.fn().mockResolvedValue({ ok: true })
   const mockReactivate = vi.fn().mockResolvedValue({ ok: true })
-  return { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, mockReactivate }
+  const mockInngestSend = vi.fn().mockResolvedValue(undefined)
+  return { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, mockReactivate, mockInngestSend }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -36,6 +37,10 @@ vi.mock('@/lib/access/lifecycle', () => ({
   reactivateMembership: mockReactivate,
 }))
 
+vi.mock('@/lib/inngest/client', () => ({
+  inngest: { send: mockInngestSend },
+}))
+
 vi.mock('@cairn/db', () => ({
   db: mockDb,
   workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role' },
@@ -46,6 +51,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   and: vi.fn(() => 'and'),
   count: vi.fn(() => 'count'),
+  sql: vi.fn(() => 'sql'),
 }))
 
 function selectChain(result: unknown[]) {
@@ -80,6 +86,8 @@ function patchRequest(targetUserId: string, role: string) {
 describe('PATCH /api/workspaces/members/[userId]', () => {
   beforeEach(() => {
     process.env['DATABASE_URL'] = 'postgresql://test'
+    mockDb.transaction.mockImplementation(async (cb: (tx: typeof mockDb) => unknown) => cb(mockDb))
+    mockDb.execute.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -90,6 +98,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
       error: null,
     })
     mockGetWorkspaceMemberRole.mockResolvedValue('admin')
+    mockInngestSend.mockResolvedValue(undefined)
   })
 
   it('未認証なら 401 を返す', async () => {
@@ -168,6 +177,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(200)
+    expect(mockDb.execute).toHaveBeenCalledWith('sql')
   })
 
   it('唯一の owner は降格できない（422）', async () => {
@@ -219,6 +229,8 @@ function statusRequest(targetUserId: string, status: string) {
 describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化）', () => {
   beforeEach(() => {
     process.env['DATABASE_URL'] = 'postgresql://test'
+    mockDb.transaction.mockImplementation(async (cb: (tx: typeof mockDb) => unknown) => cb(mockDb))
+    mockDb.execute.mockResolvedValue(undefined)
   })
   afterEach(() => {
     delete process.env['DATABASE_URL']
@@ -230,6 +242,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
     mockGetWorkspaceMemberRole.mockResolvedValue('admin')
     mockDeactivate.mockResolvedValue({ ok: true })
     mockReactivate.mockResolvedValue({ ok: true })
+    mockInngestSend.mockResolvedValue(undefined)
   })
 
   it('admin は通常メンバーを非活性化できる（lifecycle に委譲）', async () => {
@@ -289,6 +302,10 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
     const res = await PATCH(statusRequest(OTHER_USER_ID, 'active'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(200)
     expect(mockReactivate).toHaveBeenCalledWith(DEV_WORKSPACE_ID, OTHER_USER_ID)
+    expect(mockInngestSend).toHaveBeenCalledWith({
+      name: 'member/upserted',
+      data: { userId: OTHER_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+    })
   })
 
   it('無効な status 値は 422', async () => {
