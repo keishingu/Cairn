@@ -53,7 +53,7 @@ export async function PATCH(
 
     const response = await db.transaction(async (tx) => {
       const [target] = await tx
-        .select({ role: workspaceMembers.role })
+        .select({ role: workspaceMembers.role, membershipStatus: workspaceMembers.membershipStatus })
         .from(workspaceMembers)
         .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
         .limit(1)
@@ -93,7 +93,7 @@ export async function PATCH(
       }
 
       // owner を降格する場合、archive と同じ owner 行ロックに参加して active owner 不在を防ぐ。
-      if (currentRole === 'owner' && newRole !== 'owner') {
+      if (currentRole === 'owner' && target.membershipStatus === 'active' && newRole !== 'owner') {
         await tx.execute(sql`
           select 1
           from workspace_members
