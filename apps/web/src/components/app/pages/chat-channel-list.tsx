@@ -213,21 +213,38 @@ export const ChannelList = ({
   const activeProjectChannels = projectChannels.filter(c => !c.archived)
   const archivedProjectChannels = projectChannels.filter(c => c.archived)
 
+  const renderProjectChannels = (channels: ProjectChannelDto[]) => {
+    const projectMap = new Map<string, ProjectChannelDto[]>()
+    for (const c of channels) {
+      const list = projectMap.get(c.projectId) ?? []
+      list.push(c)
+      projectMap.set(c.projectId, list)
+    }
+    return Array.from(projectMap.entries()).map(([projectId, list]) => {
+      const general = list.find(c => c.milestoneId === null) ?? list[0]
+      if (!general) return null
+      const milestones = list.filter(c => c.milestoneId !== null)
+      const generalPeriod = formatChannelPeriod(general.startDate, general.endDate)
+      return (
+        <div key={projectId} style={{ marginBottom: 4 }}>
+          <ChatSidebarItem active={channelId === general.channelId} onClick={() => onSelectChannel(general.channelId)} prefix="#" label={general.projectTitle} {...(generalPeriod ? { dateMeta: generalPeriod } : {})} badge={general.unreadCount} mobile={isMobile}/>
+          {milestones.map(c => {
+            const milestonePeriod = formatChannelPeriod(c.startDate, c.endDate)
+            return <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="↳" label={c.channelName} {...(milestonePeriod ? { dateMeta: milestonePeriod } : {})} badge={c.unreadCount} mobile={isMobile}/>
+          })}
+        </div>
+      )
+    })
+  }
+
   return (
   <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
     <ChatSidebarSection title="プロジェクト">
-      {activeProjectChannels.map(c => {
-        const period = formatChannelPeriod(c.startDate, c.endDate)
-        return (
-          <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} {...(period ? { dateMeta: period } : {})} badge={c.unreadCount} mobile={isMobile}/>
-        )
-      })}
+      {renderProjectChannels(activeProjectChannels)}
     </ChatSidebarSection>
     {archivedProjectChannels.length > 0 && (
       <ChatSidebarCollapsibleSection title="アーカイブ済み" count={archivedProjectChannels.length}>
-        {archivedProjectChannels.map(c => (
-          <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
-        ))}
+        {renderProjectChannels(archivedProjectChannels)}
       </ChatSidebarCollapsibleSection>
     )}
     <ChatSidebarSection title="チャンネル" onAdd={onAddChannel}>

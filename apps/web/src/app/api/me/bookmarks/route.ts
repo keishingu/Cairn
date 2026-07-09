@@ -24,7 +24,7 @@ export async function GET(_req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messageBookmarks, messages, channels, channelMembers, profiles, workspaceMembers, projects, projectMembers } = await import('@cairn/db')
+    const { messageBookmarks, messages, channels, channelMembers, profiles, workspaceMembers, projects, milestones, projectMembers } = await import('@cairn/db')
     const { eq, isNull, and, or, exists, desc, sql } = await import('drizzle-orm')
 
     // プライベートチャンネル・DM は現在もメンバーである場合のみ表示する（アクセスを失った後のブックマーク内容漏洩を防ぐ）。
@@ -56,7 +56,7 @@ export async function GET(_req: Request) {
         senderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: messages.createdAt,
         channelId: channels.id,
-        channelName: sql<string>`coalesce(${projects.title}, ${channels.name}, 'DM')`,
+        channelName: sql<string>`coalesce(${milestones.title}, ${projects.title}, ${channels.name}, 'DM')`,
         bookmarkedAt: messageBookmarks.createdAt,
       })
       .from(messageBookmarks)
@@ -68,6 +68,7 @@ export async function GET(_req: Request) {
         and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
       )
       .leftJoin(projects, eq(channels.projectId, projects.id))
+      .leftJoin(milestones, eq(channels.milestoneId, milestones.id))
       .where(and(
         eq(messageBookmarks.userId, ctx.userId),
         eq(channels.workspaceId, ctx.workspaceId),

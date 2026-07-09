@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   createProjectSchema,
+  createMilestoneSchema,
+  patchMilestoneSchema,
   createTaskSchema,
   postMessageSchema,
   uploadGalleryItemSchema,
@@ -128,6 +130,30 @@ describe('uploadGalleryItemSchema', () => {
       fileId: '00000000-0000-0000-0000-000000000002',
       latitude: 999,
     })
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('createMilestoneSchema', () => {
+  it('タイトルと任意の日付を受け入れる', () => {
+    const result = createMilestoneSchema.safeParse({ title: '高所順応', startDate: '2026-08-01' })
+    expect(result.success).toBe(true)
+  })
+
+  it('空タイトルはエラーになる', () => {
+    const result = createMilestoneSchema.safeParse({ title: '   ' })
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('patchMilestoneSchema', () => {
+  it('完了状態だけの更新を受け入れる', () => {
+    const result = patchMilestoneSchema.safeParse({ completed: true })
+    expect(result.success).toBe(true)
+  })
+
+  it('空の更新はエラーになる', () => {
+    const result = patchMilestoneSchema.safeParse({})
     expect(result.success).toBe(false)
   })
 })

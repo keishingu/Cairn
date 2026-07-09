@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { sql } from 'drizzle-orm'
-import { boolean, index, integer, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, pgTable, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { channelTypeEnum, messageTypeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
 import { files } from './files'
+import { milestones } from './milestones'
 
 export const channels = pgTable(
   'channels',
@@ -14,6 +15,7 @@ export const channels = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    milestoneId: uuid('milestone_id').references(() => milestones.id, { onDelete: 'cascade' }),
     type: channelTypeEnum('type').notNull().default('project'),
     name: text('name'),
     isPrivate: boolean('is_private').notNull().default(false),
@@ -22,6 +24,7 @@ export const channels = pgTable(
   (t) => [
     index('idx_channels_workspace_type').on(t.workspaceId, t.type),
     index('idx_channels_project').on(t.projectId),
+    uniqueIndex('idx_channels_milestone_unique').on(t.milestoneId),
   ],
 )
 

@@ -35,7 +35,7 @@ export function findProjectChannelById(
   channels: ProjectChannelDto[],
   projectId: string,
 ): ProjectChannelDto | null {
-  return channels.find((channel) => channel.projectId === projectId) ?? null
+  return channels.find((channel) => channel.projectId === projectId && channel.milestoneId === null) ?? null
 }
 
 async function fetchProjectChannels(): Promise<ProjectChannelDto[]> {

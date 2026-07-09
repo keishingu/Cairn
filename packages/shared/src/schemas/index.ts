@@ -17,6 +17,25 @@ export const createProjectSchema = z.object({
   memberUserIds: z.array(z.string().uuid()).optional(),
 })
 
+
+export const createMilestoneSchema = z.object({
+  title: z.string().trim().min(1).max(100),
+  description: z.string().max(1000).optional(),
+  startDate: z.string().date().optional(),
+  endDate: z.string().date().optional(),
+})
+
+export const patchMilestoneSchema = z.object({
+  title: z.string().trim().min(1).max(100).optional(),
+  description: z.string().max(1000).nullable().optional(),
+  startDate: z.string().date().nullable().optional(),
+  endDate: z.string().date().nullable().optional(),
+  completed: z.boolean().optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
 export const updateProjectStatusSchema = z.object({
   projectId: z.string().uuid(),
   statusId: z.string().uuid(),
@@ -118,6 +137,8 @@ export const uploadGalleryItemSchema = z.object({
 })
 
 export type EditMessageInput = z.infer<typeof editMessageSchema>
+export type CreateMilestoneInput = z.infer<typeof createMilestoneSchema>
+export type PatchMilestoneInput = z.infer<typeof patchMilestoneSchema>
 export type CreateProjectInput = z.infer<typeof createProjectSchema>
 export type UpdateProjectStatusInput = z.infer<typeof updateProjectStatusSchema>
 export type PostMessageInput = z.infer<typeof postMessageSchema>
