@@ -122,7 +122,38 @@ describe('/api/messages/[messageId]/checkbox', () => {
     await expect(res.json()).resolves.toEqual({
       error: 'poll メッセージのチェック変更はできません',
     })
-    expect(mockRequireChannelAccess).not.toHaveBeenCalled()
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(WORKSPACE_ID, USER_ID, 'channel-1')
+    expect(mockToggleCheckboxAt).not.toHaveBeenCalled()
+    expect(mockDb.update).not.toHaveBeenCalled()
+  })
+
+  it('アクセス不可の poll メッセージは 403 を返す', async () => {
+    mockDb.select.mockReturnValueOnce(
+      selectChain([
+        {
+          content: '- [ ] 候補A',
+          channelId: 'channel-1',
+          messageType: 'poll',
+        },
+      ]),
+    )
+    mockRequireChannelAccess.mockResolvedValueOnce(
+      Response.json({ error: 'forbidden' }, { status: 403 }),
+    )
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(
+      new Request(`http://localhost/api/messages/${MESSAGE_ID}/checkbox`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index: 0, checked: true }),
+      }),
+      routeParams(),
+    )
+
+    expect(res.status).toBe(403)
+    await expect(res.json()).resolves.toEqual({ error: 'forbidden' })
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(WORKSPACE_ID, USER_ID, 'channel-1')
     expect(mockToggleCheckboxAt).not.toHaveBeenCalled()
     expect(mockDb.update).not.toHaveBeenCalled()
   })

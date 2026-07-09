@@ -51,16 +51,16 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     if (!target) {
       return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
     }
+    // チャンネルへのアクセス権を検証（越境アクセス防止・プライベート/DM/ゲストのプロジェクト所属）
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId)
+    if (forbidden) return forbidden
+
     if (target.messageType === 'poll') {
       return NextResponse.json(
         { error: 'poll メッセージのチェック変更はできません' },
         { status: 409 },
       )
     }
-
-    // チャンネルへのアクセス権を検証（越境アクセス防止・プライベート/DM/ゲストのプロジェクト所属）
-    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId)
-    if (forbidden) return forbidden
 
     const newContent = toggleCheckboxAt(target.content, index, checked)
     if (newContent === target.content) {
