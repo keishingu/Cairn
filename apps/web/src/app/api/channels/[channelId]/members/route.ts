@@ -24,12 +24,16 @@ export async function GET(
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { channelMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { eq, and } = await import('drizzle-orm')
 
     const rows = await db
       .select({ userId: channelMembers.userId, channelId: channelMembers.channelId })
       .from(channelMembers)
+      .innerJoin(activeWorkspaceMembers, and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, channelMembers.userId),
+      ))
       .where(eq(channelMembers.channelId, channelId))
 
     return NextResponse.json(rows satisfies ChannelMemberDto[])
