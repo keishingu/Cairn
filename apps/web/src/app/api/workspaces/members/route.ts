@@ -13,6 +13,7 @@ export interface WorkspaceMemberDto {
   email: string | null
   avatarUrl: string | null
   role: 'owner' | 'admin' | 'member' | 'guest'
+  status: 'active' | 'inactive'
   joinedAt: string
   projectCount: number
 }
@@ -77,6 +78,7 @@ export async function GET() {
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         role: workspaceMembers.role,
+        status: workspaceMembers.membershipStatus,
         joinedAt: workspaceMembers.joinedAt,
         projectCount: sql<number>`coalesce(${projectCountSq.n}, 0)`,
       })
@@ -98,6 +100,7 @@ export async function GET() {
       email: emails.get(r.userId) ?? null,
       avatarUrl: r.avatarUrl ?? null,
       role: r.role,
+      status: r.status,
       joinedAt: r.joinedAt.toISOString().slice(0, 10),
       projectCount: Number(r.projectCount),
     }))

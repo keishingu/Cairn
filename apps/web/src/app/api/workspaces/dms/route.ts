@@ -106,8 +106,21 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, channelReadStates } = await import('@cairn/db')
+    const { channels, channelMembers, channelReadStates, workspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray, sql } = await import('drizzle-orm')
+
+    const [targetMember] = await db
+      .select({ membershipStatus: workspaceMembers.membershipStatus })
+      .from(workspaceMembers)
+      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
+      .limit(1)
+
+    if (!targetMember) {
+      return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+    }
+    if (targetMember.membershipStatus !== 'active') {
+      return NextResponse.json({ error: 'Inactive members cannot receive new DMs' }, { status: 422 })
+    }
 
     // 既存の DM チャンネルを探す（両者が参加している）
     const myChannelIds = db

@@ -537,7 +537,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       projectChannels={projectChannels}
       workspaceChannels={workspaceChannels}
       dms={dms}
-      members={members}
+      members={members.filter(member => member.status === 'active')}
       isMobile={isMobile}
       onAddChannel={() => setShowCreateChannel(true)}
       onStartDm={handleStartDm}
