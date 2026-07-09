@@ -14,6 +14,7 @@ import {
   useWorkspaceChannels,
   useWorkspaceDms,
 } from '@/lib/chat/client'
+import { WORKSPACE_COOKIE } from '@/lib/workspace-cookie'
 import { RealtimeIndicator } from './realtime-indicator'
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected'
@@ -57,10 +58,20 @@ function tableOf(payload: unknown): string | undefined {
   return typeof table === 'string' ? table : undefined
 }
 
+function cookieValue(name: string): string | null {
+  const prefix = `${name}=`
+  for (const part of document.cookie.split(';')) {
+    const trimmed = part.trim()
+    if (trimmed.startsWith(prefix)) return trimmed.slice(prefix.length)
+  }
+  return null
+}
+
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const { data: currentUser } = useCurrentUser()
   const userId = currentUser?.id ?? null
+  const workspaceId = currentUser?.workspaceId ?? null
 
   const [status, setStatus] = React.useState<RealtimeStatus>('connecting')
   const [degraded, setDegraded] = React.useState(false)
@@ -99,10 +110,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   // ─── ユーザートピック（notifications / channel_read_states）────
   React.useEffect(() => {
-    if (!userId) return
+    if (!userId || !workspaceId) return
 
     const supabase = createClient()
     let cancelled = false
+    let revoked = false
     let userChannel: RealtimeChannel | null = null
     let retryTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -120,6 +132,18 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       await supabase.removeChannel(channel)
     }
 
+    const handleMembershipRevoked = async () => {
+      if (cancelled || revoked) return
+      revoked = true
+      clearRetryTimer()
+      setStatus('disconnected')
+      await supabase.removeAllChannels()
+      if (cookieValue(WORKSPACE_COOKIE) === workspaceId) {
+        document.cookie = `${WORKSPACE_COOKIE}=; path=/; SameSite=Lax; Max-Age=0`
+      }
+      window.location.reload()
+    }
+
     const connectUserChannel = async () => {
       const { data } = await supabase.auth.getSession()
       if (cancelled) return
@@ -129,7 +153,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       if (cancelled) return
 
       const currentChannel = supabase
-        .channel(`user:${userId}`, { config: { private: true } })
+        .channel(`user:${userId}:workspace:${workspaceId}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
           const table = tableOf((message as { payload?: unknown }).payload)
           if (table === 'notifications') {
@@ -141,6 +165,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             scheduleListInvalidate()
             void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           }
+        })
+        .on('broadcast', { event: 'membership-revoked' }, () => {
+          void handleMembershipRevoked()
         })
       userChannel = currentChannel
 
@@ -187,7 +214,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       authSub.subscription.unsubscribe()
       if (userChannel) void removeUserChannel(userChannel)
     }
-  }, [queryClient, userId, scheduleListInvalidate])
+  }, [queryClient, userId, workspaceId, scheduleListInvalidate])
 
   // ─── チャンネルトピック（messages / message_reactions）─────────
   // 一覧の変化に追従して join/leave を差分反映する

@@ -7,7 +7,22 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const OTHER_USER_ID = '00000000-0000-0000-0000-000000000002'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole } = vi.hoisted(() => {
+const {
+  mockChannelHttpSend,
+  mockCreateServiceRoleClient,
+  mockDb,
+  mockGetAuthContext,
+  mockGetWorkspaceMemberRole,
+  mockRemoveChannel,
+} = vi.hoisted(() => {
+  const mockChannelHttpSend = vi.fn().mockResolvedValue({ success: true })
+  const mockRemoveChannel = vi.fn().mockResolvedValue(undefined)
+  const mockCreateServiceRoleClient = vi.fn(() => ({
+    channel: vi.fn(() => ({
+      httpSend: mockChannelHttpSend,
+    })),
+    removeChannel: mockRemoveChannel,
+  }))
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -17,7 +32,14 @@ const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole } = vi.hoisted(()
   })
   const mockDb = { select: vi.fn(), update: vi.fn() }
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('admin')
-  return { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole }
+  return {
+    mockChannelHttpSend,
+    mockCreateServiceRoleClient,
+    mockDb,
+    mockGetAuthContext,
+    mockGetWorkspaceMemberRole,
+    mockRemoveChannel,
+  }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -29,9 +51,18 @@ vi.mock('@/lib/permissions', () => ({
   isWorkspaceAdmin: (role: string | null) => role === 'owner' || role === 'admin',
 }))
 
+vi.mock('@/lib/supabase/service', () => ({
+  createServiceRoleClient: mockCreateServiceRoleClient,
+}))
+
 vi.mock('@cairn/db', () => ({
   db: mockDb,
-  workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role' },
+  workspaceMembers: {
+    workspaceId: 'wm.workspaceId',
+    userId: 'wm.userId',
+    role: 'wm.role',
+    membershipStatus: 'wm.membershipStatus',
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -62,10 +93,14 @@ function updateChain() {
 }
 
 function patchRequest(targetUserId: string, role: string) {
+  return patchRequestWithBody(targetUserId, { role })
+}
+
+function patchRequestWithBody(targetUserId: string, body: Record<string, unknown>) {
   return new Request(`http://localhost/api/workspaces/members/${targetUserId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ role }),
+    body: JSON.stringify(body),
   })
 }
 
@@ -77,6 +112,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   afterEach(() => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
+    mockChannelHttpSend.mockResolvedValue({ success: true })
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
       error: null,
@@ -97,6 +133,20 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   it('無効なロール値は 422 を返す', async () => {
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'superadmin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    expect(res.status).toBe(422)
+  })
+
+  it('role と status の両方が無いと 422 を返す', async () => {
+    const { PATCH } = await import('./route')
+    const res = await PATCH(patchRequestWithBody(OTHER_USER_ID, {}), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    expect(res.status).toBe(422)
+  })
+
+  it('無効な status 値は 422 を返す', async () => {
+    const { PATCH } = await import('./route')
+    const res = await PATCH(patchRequestWithBody(OTHER_USER_ID, { status: 'paused' }), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
     expect(res.status).toBe(422)
   })
 
@@ -154,7 +204,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
 
   it('owner が複数いる場合、owner を降格できる', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 2 }]))
     mockDb.update.mockReturnValueOnce(updateChain())
     const { PATCH } = await import('./route')
@@ -164,7 +214,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
 
   it('唯一の owner は降格できない（422）', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 1 }]))
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
@@ -197,5 +247,144 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(404)
+  })
+
+  it('admin は member を inactive にできる', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
+    const update = updateChain()
+    mockDb.update.mockReturnValueOnce(update)
+    const { PATCH } = await import('./route')
+
+    const res = await PATCH(patchRequestWithBody(OTHER_USER_ID, { status: 'inactive' }), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(update.set).toHaveBeenCalledWith(expect.objectContaining({
+      membershipStatus: 'inactive',
+      deactivatedBy: DEV_USER_ID,
+      deactivatedAt: expect.any(Date),
+    }))
+    expect(mockCreateServiceRoleClient).toHaveBeenCalledTimes(1)
+    expect(mockChannelHttpSend).toHaveBeenCalledWith('membership-revoked', { reason: 'inactive-membership' })
+    expect(mockRemoveChannel).toHaveBeenCalledTimes(1)
+    await expect(res.json()).resolves.toMatchObject({
+      userId: OTHER_USER_ID,
+      role: 'member',
+      status: 'inactive',
+    })
+  })
+
+  it('admin は inactive な member を active に戻せる', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'inactive' }]))
+    const update = updateChain()
+    mockDb.update.mockReturnValueOnce(update)
+    const { PATCH } = await import('./route')
+
+    const res = await PATCH(patchRequestWithBody(OTHER_USER_ID, { status: 'active' }), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(update.set).toHaveBeenCalledWith(expect.objectContaining({
+      membershipStatus: 'active',
+      deactivatedAt: null,
+      deactivatedBy: null,
+    }))
+    expect(mockCreateServiceRoleClient).not.toHaveBeenCalled()
+    await expect(res.json()).resolves.toMatchObject({
+      userId: OTHER_USER_ID,
+      role: 'member',
+      status: 'active',
+    })
+  })
+
+  it('ロール変更だけでも更新は成功する', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    const { PATCH } = await import('./route')
+
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockCreateServiceRoleClient).not.toHaveBeenCalled()
+  })
+
+  it('唯一の active owner は非活性化できない（422）', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 1 }]))
+    const { PATCH } = await import('./route')
+
+    const res = await PATCH(patchRequestWithBody(OTHER_USER_ID, { status: 'inactive' }), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
+
+    expect(res.status).toBe(422)
+    const body = await res.json() as { error: string }
+    expect(body.error).toContain('active')
+  })
+
+  it('admin は owner の状態変更を行えない（403）', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
+    const { PATCH } = await import('./route')
+
+    const res = await PATCH(patchRequestWithBody(OTHER_USER_ID, { status: 'inactive' }), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
+
+    expect(res.status).toBe(403)
+  })
+
+  it('他に active owner がいれば owner は owner を非活性化できる', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 2 }]))
+    const update = updateChain()
+    mockDb.update.mockReturnValueOnce(update)
+    const { PATCH } = await import('./route')
+
+    const res = await PATCH(patchRequestWithBody(OTHER_USER_ID, { status: 'inactive' }), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(update.set).toHaveBeenCalledWith(expect.objectContaining({
+      membershipStatus: 'inactive',
+      deactivatedBy: DEV_USER_ID,
+    }))
+    expect(mockCreateServiceRoleClient).toHaveBeenCalledTimes(1)
+  })
+
+  it('inactive owner は active owner 数に影響せず降格できる', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'inactive' }]))
+    const update = updateChain()
+    mockDb.update.mockReturnValueOnce(update)
+    const { PATCH } = await import('./route')
+
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(update.set).toHaveBeenCalledWith(expect.objectContaining({ role: 'admin' }))
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
+  })
+
+  it('強制離脱シグナル送信に失敗したら 500 を返す', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockChannelHttpSend.mockResolvedValueOnce({ success: false, status: 500, error: 'boom' })
+    const { PATCH } = await import('./route')
+
+    const res = await PATCH(patchRequestWithBody(OTHER_USER_ID, { status: 'inactive' }), {
+      params: Promise.resolve({ userId: OTHER_USER_ID }),
+    })
+
+    expect(res.status).toBe(500)
   })
 })

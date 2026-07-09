@@ -9,10 +9,6 @@ import { WORKSPACE_COOKIE } from './workspace-cookie'
 
 export { WORKSPACE_COOKIE } from './workspace-cookie'
 
-// サーバーレス関数インスタンス内でワークスペース ID をキャッシュし、
-// warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
-const workspaceCache = new Map<string, { workspaceId: string; expiresAt: number }>()
-
 export interface AuthContext {
   userId: string
   workspaceId: string
@@ -72,12 +68,6 @@ export async function getAuthContext(): Promise<AuthResult> {
   const cookieStore = await cookies()
   const preferredWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
 
-  const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
-  const cached = workspaceCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) {
-    return { ctx: { userId: user.id, workspaceId: cached.workspaceId }, error: null }
-  }
-
   try {
     const { db } = await import('@cairn/db')
     const { workspaceMembers } = await import('@cairn/db')
@@ -88,11 +78,14 @@ export async function getAuthContext(): Promise<AuthResult> {
       const [preferred] = await db
         .select({ workspaceId: workspaceMembers.workspaceId })
         .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, preferredWorkspaceId)))
+        .where(and(
+          eq(workspaceMembers.userId, user.id),
+          eq(workspaceMembers.workspaceId, preferredWorkspaceId),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ))
         .limit(1)
 
       if (preferred) {
-        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
         return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
       }
       // クッキーが無効（退出済み等）→ フォールバック
@@ -101,14 +94,16 @@ export async function getAuthContext(): Promise<AuthResult> {
     const [member] = await db
       .select({ workspaceId: workspaceMembers.workspaceId })
       .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, user.id))
+      .where(and(
+        eq(workspaceMembers.userId, user.id),
+        eq(workspaceMembers.membershipStatus, 'active'),
+      ))
       .limit(1)
 
     if (!member) {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
-    workspaceCache.set(user.id, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)

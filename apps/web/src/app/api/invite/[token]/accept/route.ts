@@ -15,8 +15,8 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceInvites, workspaceMembers, projectMembers } = await import('@cairn/db')
-    const { eq, and, or, isNull, gt, sql } = await import('drizzle-orm')
+    const { workspaceInvites, workspaceMembers, projectMembers, projects, channelMembers, channels, notifications } = await import('@cairn/db')
+    const { eq, and, or, isNull, gt, sql, inArray } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client').catch(() => ({ inngest: null }))
 
     const now = new Date()
@@ -39,7 +39,12 @@ export async function POST(
 
     // 既にメンバーか確認
     const [existingMembership] = await db
-      .select({ id: workspaceMembers.id })
+      .select({
+        id: workspaceMembers.id,
+        membershipStatus: workspaceMembers.membershipStatus,
+        role: workspaceMembers.role,
+        deactivatedAt: workspaceMembers.deactivatedAt,
+      })
       .from(workspaceMembers)
       .where(
         and(
@@ -49,8 +54,28 @@ export async function POST(
       )
       .limit(1)
 
-    if (existingMembership) {
+    if (existingMembership?.membershipStatus === 'active') {
       return NextResponse.json({ ok: true, workspaceId: invite.workspaceId })
+    }
+
+    if (
+      existingMembership?.membershipStatus === 'inactive' &&
+      (!existingMembership.deactivatedAt || invite.createdAt <= existingMembership.deactivatedAt)
+    ) {
+      return NextResponse.json(
+        { error: '非活性化後に発行された招待リンクで招待し直してください' },
+        { status: 422 },
+      )
+    }
+
+    const isGuestTransition =
+      existingMembership &&
+      ((existingMembership.role === 'guest') !== (invite.role === 'guest'))
+    if (isGuestTransition) {
+      return NextResponse.json(
+        { error: 'ゲストと通常ロール間の再有効化はできません。招待し直してください' },
+        { status: 422 },
+      )
     }
 
     // max_uses チェックとインクリメントをアトミックに実行し、
@@ -79,11 +104,49 @@ export async function POST(
       return NextResponse.json({ error: 'Invite link has reached its usage limit' }, { status: 410 })
     }
 
-    await db.insert(workspaceMembers).values({
-      workspaceId: claimed.workspaceId,
-      userId: userId,
-      role: claimed.role,
-    })
+    if (existingMembership?.membershipStatus === 'inactive' && existingMembership.role === 'guest' && claimed.role === 'guest') {
+      const workspaceProjectRows = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.workspaceId, claimed.workspaceId))
+
+      const workspaceProjectIds = workspaceProjectRows.map((project) => project.id)
+      if (workspaceProjectIds.length > 0) {
+        await db
+          .delete(projectMembers)
+          .where(and(eq(projectMembers.userId, userId), inArray(projectMembers.projectId, workspaceProjectIds)))
+      }
+
+      const workspaceChannelRows = await db
+        .select({ id: channels.id })
+        .from(channels)
+        .leftJoin(projects, eq(channels.projectId, projects.id))
+        .where(sql`coalesce(${channels.workspaceId}, ${projects.workspaceId}) = ${claimed.workspaceId}`)
+
+      const workspaceChannelIds = workspaceChannelRows.map((channel) => channel.id)
+      if (workspaceChannelIds.length > 0) {
+        await db
+          .delete(channelMembers)
+          .where(and(eq(channelMembers.userId, userId), inArray(channelMembers.channelId, workspaceChannelIds)))
+      }
+
+      await db
+        .delete(notifications)
+        .where(and(eq(notifications.userId, userId), eq(notifications.workspaceId, claimed.workspaceId)))
+    }
+
+    if (existingMembership) {
+      await db
+        .update(workspaceMembers)
+        .set({ membershipStatus: 'active', role: claimed.role })
+        .where(eq(workspaceMembers.id, existingMembership.id))
+    } else {
+      await db.insert(workspaceMembers).values({
+        workspaceId: claimed.workspaceId,
+        userId: userId,
+        role: claimed.role,
+      })
+    }
 
     // ゲスト招待にプロジェクトが紐付いている場合、プロジェクトメンバーにも自動追加
     if (claimed.projectId) {

@@ -19,6 +19,49 @@ function nameResolver(members: { userId: string; displayName: string }[]): (id: 
   return id => map.get(id)
 }
 
+async function fetchActiveWorkspaceMemberIds(params: {
+  workspaceId: string
+  userIds: string[]
+}): Promise<Set<string>> {
+  if (params.userIds.length === 0) return new Set()
+
+  const { db, workspaceMembers } = await import('@cairn/db')
+  const { eq, and, inArray } = await import('drizzle-orm')
+
+  const rows = await db
+    .select({ userId: workspaceMembers.userId })
+    .from(workspaceMembers)
+    .where(and(
+      eq(workspaceMembers.workspaceId, params.workspaceId),
+      inArray(workspaceMembers.userId, params.userIds),
+      eq(workspaceMembers.membershipStatus, 'active'),
+    ))
+
+  return new Set(rows.map(row => row.userId))
+}
+
+async function isActiveWorkspaceMember(params: { workspaceId: string; userId: string }): Promise<boolean> {
+  const activeIds = await fetchActiveWorkspaceMemberIds({
+    workspaceId: params.workspaceId,
+    userIds: [params.userId],
+  })
+  return activeIds.has(params.userId)
+}
+
+async function filterActiveWorkspaceRecipients<T extends { userId: string }>(
+  workspaceId: string,
+  recipients: T[],
+): Promise<T[]> {
+  if (recipients.length === 0) return []
+
+  const activeIds = await fetchActiveWorkspaceMemberIds({
+    workspaceId,
+    userIds: recipients.map(recipient => recipient.userId),
+  })
+
+  return recipients.filter(recipient => activeIds.has(recipient.userId))
+}
+
 // 猶予期間中に対象メッセージを既読にした受信者を Push 対象から除外する
 async function filterUnreadRecipients<T extends { userId: string }>(
   messageId: string,
@@ -66,13 +109,20 @@ export const onMessageCreated = inngest.createFunction(
 
     // チャンネルメンバー（送信者を除く）を取得
     const members = await step.run('fetch-members', async () => {
-      const { db, channelMembers, profiles } = await import('@cairn/db')
-      const { eq } = await import('drizzle-orm')
+      const { db, channelMembers, profiles, workspaceMembers } = await import('@cairn/db')
+      const { eq, and } = await import('drizzle-orm')
       return db
         .select({ userId: channelMembers.userId, displayName: profiles.displayName })
         .from(channelMembers)
         .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
-        .where(eq(channelMembers.channelId, channelId))
+        .innerJoin(workspaceMembers, and(
+          eq(channelMembers.userId, workspaceMembers.userId),
+          eq(workspaceMembers.workspaceId, workspaceId),
+        ))
+        .where(and(
+          eq(channelMembers.channelId, channelId),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ))
         .then(rows => rows.filter(r => r.userId !== senderId))
     })
 
@@ -108,10 +158,12 @@ export const onMessageCreated = inngest.createFunction(
         await step.sleep('push-grace', PUSH_GRACE_PERIOD)
         const unreadMembers = await step.run('filter-dm-push-targets', () =>
           filterUnreadRecipients(messageId, channelId, members))
+        const activeUnreadMembers = await step.run('filter-dm-active-push-targets', () =>
+          filterActiveWorkspaceRecipients(workspaceId, unreadMembers))
 
         await step.run('send-dm-push', async () => {
           await Promise.allSettled(
-            unreadMembers.map(m => sendPushToUser(m.userId, {
+            activeUnreadMembers.map(m => sendPushToUser(m.userId, {
               title: senderName,
               body: dmBody.slice(0, 100),
               url: `/chats/${channelId}`,
@@ -137,6 +189,7 @@ export const onMessageCreated = inngest.createFunction(
             .where(and(
               eq(workspaceMembers.workspaceId, workspaceId),
               inArray(workspaceMembers.userId, mentionedIds),
+              eq(workspaceMembers.membershipStatus, 'active'),
               ne(workspaceMembers.userId, senderId),
             ))
         })
@@ -184,6 +237,7 @@ export const onMessageCreated = inngest.createFunction(
                     eq(workspaceMembers.workspaceId, workspaceId),
                     inArray(workspaceMembers.userId, ids),
                     eq(workspaceMembers.role, 'guest'),
+                    eq(workspaceMembers.membershipStatus, 'active'),
                   ))
                 ).map(r => r.userId),
               )
@@ -285,10 +339,12 @@ export const onMessageCreated = inngest.createFunction(
       await step.sleep('push-grace', PUSH_GRACE_PERIOD)
       const unreadMembers = await step.run('filter-mention-push-targets', () =>
         filterUnreadRecipients(messageId, channelId, notifyMentioned))
+      const activeUnreadMembers = await step.run('filter-mention-active-push-targets', () =>
+        filterActiveWorkspaceRecipients(workspaceId, unreadMembers))
 
       await step.run('send-mention-push', async () => {
         await Promise.allSettled(
-          unreadMembers.map(m =>
+          activeUnreadMembers.map(m =>
             sendPushToUser(m.userId, {
               title: `${senderName} があなたをメンションしました`,
               body: mentionBody.slice(0, 100),
@@ -309,6 +365,14 @@ export const onTaskAssigned = inngest.createFunction(
   async ({ event, step }) => {
     const { taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
       event.data as TaskAssignedEvent['data']
+    const { taskId, projectId } = event.data as TaskAssignedEvent['data']
+
+    const isActiveAssignee = await step.run('check-active-assignee', async () =>
+      isActiveWorkspaceMember({ workspaceId, userId: assigneeId }))
+
+    if (!isActiveAssignee) {
+      return { notified: null, skippedInactive: true }
+    }
 
     await step.run('create-task-notification', async () => {
       const { db, notifications } = await import('@cairn/db')
@@ -318,7 +382,7 @@ export const onTaskAssigned = inngest.createFunction(
         type: 'task' as const,
         title: `${assignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
-        data: { assignerName, projectTitle },
+        data: { assignerName, projectTitle, projectId, taskId },
       })
     })
 

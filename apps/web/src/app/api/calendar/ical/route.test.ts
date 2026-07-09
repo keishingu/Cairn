@@ -18,7 +18,12 @@ vi.mock('@cairn/db', () => ({
   profiles: { id: 'pr.id', icalToken: 'pr.icalToken' },
   projects: { id: 'p.id', workspaceId: 'p.workspaceId', title: 'p.title', startDate: 'p.startDate', endDate: 'p.endDate', archived: 'p.archived', createdBy: 'p.createdBy' },
   projectMembers: { projectId: 'pm.projectId', userId: 'pm.userId' },
-  workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role' },
+  workspaceMembers: {
+    workspaceId: 'wm.workspaceId',
+    userId: 'wm.userId',
+    role: 'wm.role',
+    membershipStatus: 'wm.membershipStatus',
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -129,5 +134,18 @@ describe('GET /api/calendar/ical', () => {
     expect(res.status).toBe(404)
     expect(await res.text()).toBe('No workspace found')
     expect(mockDb.select).toHaveBeenCalledTimes(2)
+  })
+
+  it('inactive なメンバーは iCal を取得できない', async () => {
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: USER_ID }]))
+      .mockReturnValueOnce(chain([]))
+
+    const { GET } = await import('./route')
+    const res = await GET(buildRequest('me'))
+
+    expect(res.status).toBe(404)
+    expect(await res.text()).toBe('No workspace found')
+    expect(mockDb.selectDistinct).not.toHaveBeenCalled()
   })
 })

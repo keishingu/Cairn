@@ -9,7 +9,11 @@ async function getWorkspaceRole(workspaceId: string, userId: string) {
   const [member] = await db
     .select({ role: workspaceMembers.role })
     .from(workspaceMembers)
-    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
+    .where(and(
+      eq(workspaceMembers.workspaceId, workspaceId),
+      eq(workspaceMembers.userId, userId),
+      eq(workspaceMembers.membershipStatus, 'active'),
+    ))
     .limit(1)
   return member?.role ?? null
 }
