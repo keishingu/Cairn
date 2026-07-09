@@ -82,12 +82,15 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
         {showCreate && (
           <CreateProjectSheet
             onClose={() => setShowCreate(false)}
-            onCreated={(project) => { handleCreated(project); openPanel(project) }}
+            onCreated={(project) => {
+              setShowCreate(false)
+              openPanel(project)
+            }}
           />
         )}
         <MobileHeader title="カンバン" />
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <KanbanBoard onCardClick={openPanel} isMobile statusFilter={statusFilter} projectFilter={projectFilter} />
+          <KanbanBoard onCardClick={openPanel} isMobile />
         </div>
         {canCreateProject && <Fab onClick={() => setShowCreate(true)} label={`新規${projectLabel}`}/>}
       </div>

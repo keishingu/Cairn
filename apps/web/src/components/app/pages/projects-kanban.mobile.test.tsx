@@ -9,12 +9,16 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PageKanban } from './projects-kanban'
 
+const mockKanbanBoard = vi.fn<(props: Record<string, unknown>) => React.JSX.Element>(
+  () => <div data-testid="kanban-board" />,
+)
+
 vi.mock('@/components/app/mobile/header', () => ({
   MobileHeader: ({ title }: { title: string }) => <div>{title}</div>,
 }))
 
 vi.mock('../kanban', () => ({
-  KanbanBoard: () => <div data-testid="kanban-board" />,
+  KanbanBoard: (props: unknown) => mockKanbanBoard(props),
 }))
 
 vi.mock('../mobile/create-project-sheet', () => ({
@@ -99,6 +103,7 @@ function renderPage(openPanel = vi.fn()) {
 describe('PageKanban (モバイル)', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    mockKanbanBoard.mockClear()
     mockFetchWithAuth.mockReset()
     mockUseWorkspacePermissions.mockReset()
     mockUseWorkspacePermissions.mockReturnValue({
@@ -149,5 +154,33 @@ describe('PageKanban (モバイル)', () => {
     })
 
     expect(screen.queryByRole('button', { name: '新規プロジェクト' })).toBeNull()
+  })
+
+  it('モバイルでは保存済みフィルタを KanbanBoard に渡さない', async () => {
+    window.localStorage.setItem('cairn:kanban_status_filter', JSON.stringify(['done']))
+    window.localStorage.setItem('cairn:kanban_member_filter', JSON.stringify(['Alice']))
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(mockFetchWithAuth).toHaveBeenCalledWith('/api/projects')
+    })
+
+    expect(mockKanbanBoard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        isMobile: true,
+        onCardClick: expect.any(Function),
+      }),
+    )
+    expect(mockKanbanBoard).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusFilter: expect.anything(),
+      }),
+    )
+    expect(mockKanbanBoard).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectFilter: expect.anything(),
+      }),
+    )
   })
 })

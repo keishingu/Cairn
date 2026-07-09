@@ -147,7 +147,7 @@ describe('GET /api/tasks のページネーション', () => {
         status: 'todo',
         priority: 'medium',
         dueDate: null,
-        createdAt: new Date('2026-07-09T09:00:00.000Z'),
+        createdAtMicros: '1752051600000000',
         sourceMessageId: null,
         assigneeName: null,
         assigneeAvatarUrl: null,
@@ -159,7 +159,7 @@ describe('GET /api/tasks のページネーション', () => {
         status: 'done',
         priority: 'low',
         dueDate: null,
-        createdAt: new Date('2026-07-09T08:00:00.000Z'),
+        createdAtMicros: '1752048000000000',
         sourceMessageId: null,
         assigneeName: 'Bob',
         assigneeAvatarUrl: null,
@@ -171,7 +171,7 @@ describe('GET /api/tasks のページネーション', () => {
         status: 'todo',
         priority: 'high',
         dueDate: null,
-        createdAt: new Date('2026-07-09T07:00:00.000Z'),
+        createdAtMicros: '1752044400000000',
         sourceMessageId: 'm1',
         assigneeName: null,
         assigneeAvatarUrl: null,
@@ -209,7 +209,7 @@ describe('GET /api/tasks のページネーション', () => {
           isLinkedToMessage: false,
         },
       ],
-      nextCursor: '2026-07-09T08:00:00.000Z::t2',
+      nextCursor: '1752048000000000::t2',
     })
     expect(mockDbSelectLimit).toHaveBeenCalledWith(3)
   })

@@ -8,6 +8,7 @@ import { getGuestVisibleProjectIds, getWorkspaceMemberRole, requireProjectAccess
 import { inngest } from '@/lib/inngest/client'
 import type { TaskAssignedEvent } from '@/lib/inngest/events'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { sql } from 'drizzle-orm'
 
 export interface TaskDto {
   id: string
@@ -37,18 +38,18 @@ function parseTaskPageLimit(rawLimit: string | null): number {
   return Math.min(parsed, MAX_TASK_PAGE_LIMIT)
 }
 
-function encodeTaskCursor(createdAt: Date, id: string): string {
-  return `${createdAt.toISOString()}::${id}`
+function encodeTaskCursor(createdAtMicros: string, id: string): string {
+  return `${createdAtMicros}::${id}`
 }
 
-function decodeTaskCursor(cursor: string | null): { createdAt: Date; id: string } | null {
+function decodeTaskCursor(cursor: string | null): { createdAtMicros: string; id: string } | null {
   if (!cursor) return null
   const separatorIndex = cursor.indexOf('::')
   if (separatorIndex <= 0) return null
-  const createdAt = new Date(cursor.slice(0, separatorIndex))
+  const createdAtMicros = cursor.slice(0, separatorIndex)
   const id = cursor.slice(separatorIndex + 2)
-  if (Number.isNaN(createdAt.getTime()) || !id) return null
-  return { createdAt, id }
+  if (!/^\d+$/.test(createdAtMicros) || !id) return null
+  return { createdAtMicros, id }
 }
 
 export async function GET(req: Request) {
@@ -68,7 +69,7 @@ export async function GET(req: Request) {
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, inArray, and, or, lt, desc } = await import('drizzle-orm')
+    const { eq, inArray, and, desc } = await import('drizzle-orm')
 
     const projectRows = await db
       .select({ id: projects.id, title: projects.title })
@@ -102,7 +103,7 @@ export async function GET(req: Request) {
         status: tasks.status,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
-        createdAt: tasks.createdAt,
+        createdAtMicros: sql<string>`(extract(epoch from ${tasks.createdAt}) * 1000000)::bigint::text`,
         sourceMessageId: tasks.sourceMessageId,
         assigneeName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
@@ -113,10 +114,13 @@ export async function GET(req: Request) {
       .where(and(
         inArray(tasks.projectId, projectIds),
         cursor
-          ? or(
-              lt(tasks.createdAt, cursor.createdAt),
-              and(eq(tasks.createdAt, cursor.createdAt), lt(tasks.id, cursor.id)),
-            )
+          ? sql`(
+              (extract(epoch from ${tasks.createdAt}) * 1000000)::bigint < ${cursor.createdAtMicros}::bigint
+              or (
+                (extract(epoch from ${tasks.createdAt}) * 1000000)::bigint = ${cursor.createdAtMicros}::bigint
+                and ${tasks.id} < ${cursor.id}
+              )
+            )`
           : undefined,
       ))
       .orderBy(desc(tasks.createdAt), desc(tasks.id))
@@ -142,7 +146,7 @@ export async function GET(req: Request) {
     const lastRow = pageRows.at(-1)
     return NextResponse.json({
       items: result,
-      nextCursor: hasNextPage && lastRow ? encodeTaskCursor(lastRow.createdAt, lastRow.id) : null,
+      nextCursor: hasNextPage && lastRow ? encodeTaskCursor(lastRow.createdAtMicros, lastRow.id) : null,
     } satisfies TaskListResponse)
   } catch (err) {
     console.error('[GET /api/tasks] DB query failed:', err)
