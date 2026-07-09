@@ -15,8 +15,8 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceInvites, workspaceMembers, projectMembers } = await import('@cairn/db')
-    const { eq, and, or, isNull, gt, sql } = await import('drizzle-orm')
+    const { workspaceInvites, workspaceMembers, projectMembers, channelMembers, channels, projects } = await import('@cairn/db')
+    const { eq, and, or, isNull, gt, sql, inArray } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client').catch(() => ({ inngest: null }))
 
     const now = new Date()
@@ -78,6 +78,33 @@ export async function POST(
     if (existingMembership?.membershipStatus === 'inactive') {
       const { reactivateViaInvite } = await import('@/lib/access/lifecycle')
       await reactivateViaInvite(claimed.workspaceId, userId, claimed.role)
+
+      // guest 復帰では、履歴保持のために残っていた旧 project/channel 所属を
+      // 認可に再利用させない。招待リンクが表す project scope だけを下で再付与する。
+      if (claimed.role === 'guest') {
+        const scopedProjects = await db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(eq(projects.workspaceId, claimed.workspaceId))
+        const projectIds = scopedProjects.map(p => p.id)
+        if (projectIds.length > 0) {
+          await db
+            .delete(projectMembers)
+            .where(and(eq(projectMembers.userId, userId), inArray(projectMembers.projectId, projectIds)))
+        }
+
+        const scopedChannels = await db
+          .select({ id: channels.id })
+          .from(channels)
+          .leftJoin(projects, eq(channels.projectId, projects.id))
+          .where(sql`coalesce(${channels.workspaceId}, ${projects.workspaceId}) = ${claimed.workspaceId}`)
+        const channelIds = scopedChannels.map(c => c.id)
+        if (channelIds.length > 0) {
+          await db
+            .delete(channelMembers)
+            .where(and(eq(channelMembers.userId, userId), inArray(channelMembers.channelId, channelIds)))
+        }
+      }
     } else {
       await db.insert(workspaceMembers).values({
         workspaceId: claimed.workspaceId,
