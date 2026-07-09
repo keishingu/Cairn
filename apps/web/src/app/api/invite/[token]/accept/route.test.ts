@@ -46,6 +46,7 @@ vi.mock('@cairn/db', () => ({
     workspaceId: 'wm.workspaceId',
     userId: 'wm.userId',
     role: 'wm.role',
+    membershipStatus: 'wm.membershipStatus',
   },
   projectMembers: {
     projectId: 'pm.projectId',
@@ -153,13 +154,15 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(mockDb.update).not.toHaveBeenCalled()
   })
 
-  it('非活性（卒業生）メンバーは招待受け入れで再活性化され、use_count は増やさない', async () => {
-    const invite = { id: 'inv-01', workspaceId: WORKSPACE_ID, role: 'member', expiresAt: null, maxUses: null, useCount: 0 }
+  it('非活性（卒業生）メンバーは claim 後に招待ロールで再活性化される', async () => {
+    const invite = { id: 'inv-01', workspaceId: WORKSPACE_ID, role: 'guest', projectId: null, expiresAt: null, maxUses: null, useCount: 0 }
 
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))                                          // 招待取得
       .mockReturnValueOnce(selectChain([{ role: 'guest', membershipStatus: 'inactive' }]))  // 既存 inactive メンバー
-    // reactivateViaInvite の membership 更新
+      .mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'inactive' }]))  // reactivateViaInvite 内の再確認
+    // claim → reactivateViaInvite の membership 更新
+    mockDb.update.mockReturnValueOnce(updateChain([{ id: 'inv-01', workspaceId: WORKSPACE_ID, role: 'guest', projectId: null }]))
     mockDb.update.mockReturnValueOnce({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) })
 
     const { POST } = await import('./route')
@@ -169,7 +172,25 @@ describe('POST /api/invite/[token]/accept', () => {
     )
 
     expect(res.status).toBe(200)
-    // membership の再活性化 update は 1 回、招待の useCount 更新（2 回目の update）は行われない
+    // 招待の useCount claim と membership 再活性化の 2 回
+    expect(mockDb.update).toHaveBeenCalledTimes(2)
+  })
+
+  it('非活性メンバーでも max_uses に達していれば再活性化しない', async () => {
+    const invite = { id: 'inv-01b', workspaceId: WORKSPACE_ID, role: 'member', projectId: null, expiresAt: null, maxUses: 1, useCount: 1 }
+
+    mockDb.select
+      .mockReturnValueOnce(selectChain([invite]))
+      .mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'inactive' }]))
+    mockDb.update.mockReturnValueOnce(updateChain([]))
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/invite/${VALID_TOKEN}/accept`, { method: 'POST' }),
+      { params: Promise.resolve({ token: VALID_TOKEN }) },
+    )
+
+    expect(res.status).toBe(410)
     expect(mockDb.update).toHaveBeenCalledTimes(1)
   })
 

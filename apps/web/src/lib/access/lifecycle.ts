@@ -80,6 +80,7 @@ export async function reactivateMembership(
 export async function reactivateViaInvite(
   workspaceId: string,
   userId: string,
+  role?: 'owner' | 'admin' | 'member' | 'guest',
 ): Promise<'reactivated' | 'already-active' | 'none'> {
   const existing = await readMembership(workspaceId, userId)
   if (!existing) return 'none'
@@ -87,7 +88,7 @@ export async function reactivateViaInvite(
 
   await db
     .update(workspaceMembers)
-    .set({ membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null })
+    .set({ membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null, ...(role ? { role } : {}) })
     .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
 
   return 'reactivated'

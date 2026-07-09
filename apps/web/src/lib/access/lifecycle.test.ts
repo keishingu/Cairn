@@ -133,12 +133,13 @@ describe('access/lifecycle', () => {
       expect(mockDb.update).not.toHaveBeenCalled()
     })
 
-    it('非活性なら reactivated（同一行を活性化）', async () => {
+    it('非活性なら reactivated（同一行を招待ロールで活性化）', async () => {
       mockDb.select.mockReturnValueOnce(selectChain([{ role: 'guest', membershipStatus: 'inactive' }]))
-      updateSpy()
+      const spies = updateSpy()
       const { reactivateViaInvite } = await import('./lifecycle')
-      await expect(reactivateViaInvite('ws', 'u')).resolves.toBe('reactivated')
+      await expect(reactivateViaInvite('ws', 'u', 'member')).resolves.toBe('reactivated')
       expect(mockDb.update).toHaveBeenCalledTimes(1)
+      expect(spies.set).toHaveBeenCalledWith(expect.objectContaining({ role: 'member', membershipStatus: 'active' }))
     })
   })
 })

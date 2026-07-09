@@ -37,11 +37,15 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid or expired invite' }, { status: 404 })
     }
 
-    // 既存メンバーか確認。非活性（卒業生）なら招待受け入れで再活性化し、同一性・履歴のまま復帰させる。
-    // 既に活性なら何もしない。いずれも招待の消費（useCount 加算）は行わない（復帰扱いのため）。
-    const { reactivateViaInvite } = await import('@/lib/access/lifecycle')
-    const membershipState = await reactivateViaInvite(invite.workspaceId, userId)
-    if (membershipState !== 'none') {
+    // 既に active なメンバーはべき等に成功させる。inactive の復帰は max_uses の
+    // claim 後に行い、復帰後のロール・プロジェクトも招待リンクの内容に揃える。
+    const [existingMembership] = await db
+      .select({ membershipStatus: workspaceMembers.membershipStatus })
+      .from(workspaceMembers)
+      .where(and(eq(workspaceMembers.workspaceId, invite.workspaceId), eq(workspaceMembers.userId, userId)))
+      .limit(1)
+
+    if (existingMembership?.membershipStatus === 'active') {
       return NextResponse.json({ ok: true, workspaceId: invite.workspaceId })
     }
 
@@ -71,11 +75,16 @@ export async function POST(
       return NextResponse.json({ error: 'Invite link has reached its usage limit' }, { status: 410 })
     }
 
-    await db.insert(workspaceMembers).values({
-      workspaceId: claimed.workspaceId,
-      userId: userId,
-      role: claimed.role,
-    })
+    if (existingMembership?.membershipStatus === 'inactive') {
+      const { reactivateViaInvite } = await import('@/lib/access/lifecycle')
+      await reactivateViaInvite(claimed.workspaceId, userId, claimed.role)
+    } else {
+      await db.insert(workspaceMembers).values({
+        workspaceId: claimed.workspaceId,
+        userId: userId,
+        role: claimed.role,
+      })
+    }
 
     // ゲスト招待にプロジェクトが紐付いている場合、プロジェクトメンバーにも自動追加
     if (claimed.projectId) {
