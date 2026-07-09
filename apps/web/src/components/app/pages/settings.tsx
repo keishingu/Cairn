@@ -10,6 +10,7 @@ import { RowActionMenu } from '../row-action-menu'
 import { TopBar } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
+import { useCreateScheduledJob, useDeleteScheduledJob, useScheduledJobs, useUpdateScheduledJob } from '@/lib/use-scheduled-jobs'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
@@ -1200,6 +1201,145 @@ const SettingsIntegrations = () => {
   )
 }
 
+const SettingsScheduledJobs = () => {
+  const { data: jobs = [], isLoading } = useScheduledJobs()
+  const createMutation = useCreateScheduledJob()
+  const updateMutation = useUpdateScheduledJob()
+  const deleteMutation = useDeleteScheduledJob()
+  const [rawInstruction, setRawInstruction] = React.useState('')
+  const [editingId, setEditingId] = React.useState<string | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+
+  const submitLabel = editingId ? '更新する' : '保存する'
+  const isBusy = createMutation.isPending || updateMutation.isPending
+
+  const save = async () => {
+    if (!rawInstruction.trim()) return
+    setError(null)
+    try {
+      if (editingId) {
+        await updateMutation.mutateAsync({ id: editingId, rawInstruction })
+      } else {
+        await createMutation.mutateAsync({ rawInstruction })
+      }
+      setRawInstruction('')
+      setEditingId(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存に失敗しました')
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 20, maxWidth: 840 }}>
+      <div>
+        <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>定期ジョブ</h1>
+        <p style={{ color: 'var(--text-3)', fontSize: 13, lineHeight: 1.6 }}>
+          保存時に自然言語を monthly cron へコンパイルし、次回実行プレビューを固定します。
+        </p>
+      </div>
+
+      <section style={{ border: '1px solid var(--border)', borderRadius: 14, padding: 16, background: 'var(--card)' }}>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <label htmlFor="scheduled-job-instruction" style={{ fontSize: 13, fontWeight: 600 }}>自然言語の指示</label>
+          <textarea
+            id="scheduled-job-instruction"
+            value={rawInstruction}
+            onChange={(e) => setRawInstruction(e.target.value)}
+            placeholder="毎月15日 9:00 に #登山本部 で @山田 @田中 をメンションして、来月の各週の投票を投稿"
+            rows={5}
+            style={{
+              width: '100%',
+              padding: '12px 14px',
+              borderRadius: 10,
+              border: '1px solid var(--border)',
+              background: 'var(--card-2)',
+              color: 'var(--text)',
+              font: 'inherit',
+              resize: 'vertical',
+            }}
+          />
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={() => void save()}
+              disabled={isBusy || !rawInstruction.trim()}
+              style={{
+                border: 'none',
+                borderRadius: 10,
+                background: 'var(--accent)',
+                color: 'var(--on-accent)',
+                padding: '10px 14px',
+                font: 'inherit',
+                fontWeight: 700,
+              }}
+            >
+              {submitLabel}
+            </button>
+            {editingId && (
+              <button
+                onClick={() => {
+                  setEditingId(null)
+                  setRawInstruction('')
+                  setError(null)
+                }}
+                style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'transparent', padding: '10px 14px', font: 'inherit' }}
+              >
+                キャンセル
+              </button>
+            )}
+          </div>
+          {error && <p style={{ margin: 0, fontSize: 12, color: '#b42318' }}>{error}</p>}
+        </div>
+      </section>
+
+      <section style={{ display: 'grid', gap: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>登録済みジョブ</div>
+        {isLoading ? (
+          <div style={{ color: 'var(--text-3)', fontSize: 13 }}>読み込み中です...</div>
+        ) : jobs.length === 0 ? (
+          <div style={{ color: 'var(--text-3)', fontSize: 13 }}>まだジョブはありません。</div>
+        ) : (
+          jobs.map(job => (
+            <article key={job.id} style={{ border: '1px solid var(--border)', borderRadius: 14, padding: 16, background: 'var(--card)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>{job.rawInstruction}</div>
+                  <div style={{ color: 'var(--text-3)', fontSize: 12 }}>{job.lastCompilePreview}</div>
+                  <div style={{ color: 'var(--text-3)', fontSize: 12 }}>次回実行: {job.nextRunAt ? new Date(job.nextRunAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : '無効'}</div>
+                </div>
+                <button
+                  aria-label={`${job.rawInstruction}の有効切替`}
+                  onClick={() => updateMutation.mutate({ id: job.id, enabled: !job.enabled })}
+                  style={{ border: 'none', background: 'transparent', padding: 0 }}
+                >
+                  <Toggle on={job.enabled} />
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+                <button
+                  onClick={() => {
+                    setEditingId(job.id)
+                    setRawInstruction(job.rawInstruction)
+                    setError(null)
+                  }}
+                  style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'transparent', padding: '8px 12px', font: 'inherit' }}
+                >
+                  編集
+                </button>
+                <button
+                  onClick={() => deleteMutation.mutate(job.id)}
+                  style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'transparent', padding: '8px 12px', font: 'inherit' }}
+                >
+                  削除
+                </button>
+              </div>
+            </article>
+          ))
+        )}
+      </section>
+    </div>
+  )
+}
+
 // ─── Developer ────────────────────────────────────────────────────
 
 import type { DevStatusDto, ServiceStatus } from '@/app/api/dev/status/route'
@@ -1360,6 +1500,7 @@ export function getSettingsNavGroups(isOwner: boolean): { label: string; items: 
       items: [
         { id: 'general', label: 'ワークスペース設定', icon: 'settings' },
         { id: 'workflow', label: 'ワークフロー', icon: 'flag' },
+        { id: 'scheduled-jobs', label: '定期ジョブ', icon: 'clock' },
         { id: 'ai', label: 'AIエージェント', icon: 'sparkles' },
         { id: 'members', label: 'メンバー', icon: 'users' },
         { id: 'integrations', label: '連携', icon: 'layers' },
@@ -1389,6 +1530,7 @@ const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   appearance:   SettingsAppearance,
   general:      SettingsWorkspaceGeneral,
   workflow:     SettingsWorkflow,
+  'scheduled-jobs': SettingsScheduledJobs,
   ai:           SettingsAI,
   integrations: SettingsIntegrations,
   developer:    SettingsDeveloper,
