@@ -94,6 +94,10 @@ export async function GET() {
       db
         .select({ projectId: projectMembers.projectId, n: count() })
         .from(projectMembers)
+        .innerJoin(activeWorkspaceMembers, and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, projectMembers.userId),
+        ))
         .where(inArray(projectMembers.projectId, visibleProjectIds))
         .groupBy(projectMembers.projectId),
       db
@@ -103,6 +107,10 @@ export async function GET() {
           avatarUrl: workspaceMembers.avatarUrl,
         })
         .from(projectMembers)
+        .innerJoin(activeWorkspaceMembers, and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, projectMembers.userId),
+        ))
         .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
         .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
         .where(inArray(projectMembers.projectId, visibleProjectIds))
