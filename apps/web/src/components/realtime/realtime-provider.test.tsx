@@ -54,8 +54,7 @@ function VisibleChannelProbe({ channelId, enabled = true }: { channelId: string 
   return null
 }
 
-function renderProvider(child?: React.ReactNode) {
-  const queryClient = new QueryClient()
+function renderProvider(child?: React.ReactNode, queryClient = new QueryClient()) {
   return render(
     <QueryClientProvider client={queryClient}>
       <RealtimeProvider>
@@ -174,5 +173,33 @@ describe('RealtimeProvider', () => {
     await waitFor(() => {
       expect(channels.map(channel => channel.topic)).toEqual(['user:user-1', 'channel:channel-shared'])
     })
+  })
+
+  it('同じ props の再 render では visible channel を再登録しない', async () => {
+    mockUsePathname.mockReturnValue('/projects')
+
+    const queryClient = new QueryClient()
+    const view = renderProvider(<VisibleChannelProbe channelId="channel-stable" />, queryClient)
+
+    await waitFor(() => {
+      expect(channels.map(channel => channel.topic)).toEqual(['user:user-1', 'channel:channel-stable'])
+    })
+
+    const baselineChannelCount = channels.length
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <RealtimeProvider>
+          <div>child</div>
+          <VisibleChannelProbe channelId="channel-stable" />
+        </RealtimeProvider>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(channels).toHaveLength(baselineChannelCount)
+    })
+    expect(removeChannel).not.toHaveBeenCalledWith(
+      expect.objectContaining({ topic: 'channel:channel-stable' }),
+    )
   })
 })

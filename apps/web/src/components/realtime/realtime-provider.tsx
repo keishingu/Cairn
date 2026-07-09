@@ -118,6 +118,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       })
     }
   }, [])
+  const visibleRealtimeChannelsValue = React.useMemo(
+    () => ({ registerVisibleChannel }),
+    [registerVisibleChannel],
+  )
 
   // status が disconnected に留まった時だけ degraded を立てる
   React.useEffect(() => {
@@ -300,7 +304,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <VisibleRealtimeChannelsContext.Provider value={{ registerVisibleChannel }}>
+    <VisibleRealtimeChannelsContext.Provider value={visibleRealtimeChannelsValue}>
       <RealtimeContext.Provider value={{ status, degraded }}>
         {children}
         <RealtimeIndicator />
