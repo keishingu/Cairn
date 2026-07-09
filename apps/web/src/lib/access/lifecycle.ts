@@ -6,15 +6,17 @@
 // ここで担保し、呼び出し側（API）は認可とディスパッチだけを行う。
 // 再活性化で profiles には触れないため、同一アイデンティティ・履歴のまま復帰できる。
 
-import { db, workspaceMembers, activeWorkspaceMembers } from '@cairn/db'
-import { and, count, eq } from 'drizzle-orm'
+import { db, workspaceMembers, activeWorkspaceMembers, documentChunks } from '@cairn/db'
+import { and, count, eq, sql } from 'drizzle-orm'
 
 export type LifecycleResult =
   | { ok: true }
   | { ok: false; status: number; error: string }
 
-async function readMembership(workspaceId: string, userId: string) {
-  const [row] = await db
+type DbClient = Pick<typeof db, 'select' | 'update' | 'delete' | 'execute'>
+
+async function readMembership(client: DbClient, workspaceId: string, userId: string) {
+  const [row] = await client
     .select({ role: workspaceMembers.role, membershipStatus: workspaceMembers.membershipStatus })
     .from(workspaceMembers)
     .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
@@ -22,12 +24,33 @@ async function readMembership(workspaceId: string, userId: string) {
   return row ?? null
 }
 
-async function countActiveOwners(workspaceId: string): Promise<number> {
-  const rows = await db
+async function countActiveOwners(client: DbClient, workspaceId: string): Promise<number> {
+  const rows = await client
     .select({ n: count() })
     .from(activeWorkspaceMembers)
     .where(and(eq(activeWorkspaceMembers.workspaceId, workspaceId), eq(activeWorkspaceMembers.role, 'owner')))
   return Number(rows[0]?.n ?? 0)
+}
+
+async function lockActiveOwners(client: DbClient, workspaceId: string): Promise<void> {
+  await client.execute(sql`
+    select 1
+    from workspace_members
+    where workspace_id = ${workspaceId}
+      and role = 'owner'
+      and membership_status = 'active'
+    for update
+  `)
+}
+
+async function deleteMemberSearchChunks(client: DbClient, workspaceId: string, userId: string): Promise<void> {
+  await client
+    .delete(documentChunks)
+    .where(and(
+      eq(documentChunks.workspaceId, workspaceId),
+      eq(documentChunks.sourceType, 'member'),
+      eq(documentChunks.sourceId, userId),
+    ))
 }
 
 // メンバーを非活性化する（卒業生化）。既に非活性なら 422。
@@ -37,22 +60,29 @@ export async function deactivateMembership(
   targetUserId: string,
   deactivatedBy: string,
 ): Promise<LifecycleResult> {
-  const target = await readMembership(workspaceId, targetUserId)
-  if (!target) return { ok: false, status: 404, error: 'Member not found' }
-  if (target.membershipStatus === 'inactive') {
-    return { ok: false, status: 422, error: 'このメンバーは既に非活性です' }
-  }
+  return db.transaction(async (tx): Promise<LifecycleResult> => {
+    const target = await readMembership(tx, workspaceId, targetUserId)
+    if (!target) return { ok: false, status: 404, error: 'Member not found' }
+    if (target.membershipStatus === 'inactive') {
+      return { ok: false, status: 422, error: 'このメンバーは既に非活性です' }
+    }
 
-  if (target.role === 'owner' && (await countActiveOwners(workspaceId)) <= 1) {
-    return { ok: false, status: 422, error: 'ワークスペースには最低1人の active な owner が必要です' }
-  }
+    if (target.role === 'owner') {
+      await lockActiveOwners(tx, workspaceId)
+      if ((await countActiveOwners(tx, workspaceId)) <= 1) {
+        return { ok: false, status: 422, error: 'ワークスペースには最低1人の active な owner が必要です' }
+      }
+    }
 
-  await db
-    .update(workspaceMembers)
-    .set({ membershipStatus: 'inactive', deactivatedAt: new Date(), deactivatedBy })
-    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, targetUserId)))
+    await tx
+      .update(workspaceMembers)
+      .set({ membershipStatus: 'inactive', deactivatedAt: new Date(), deactivatedBy })
+      .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, targetUserId)))
 
-  return { ok: true }
+    await deleteMemberSearchChunks(tx, workspaceId, targetUserId)
+
+    return { ok: true }
+  })
 }
 
 // 非活性メンバーを再活性化する（同一アイデンティティ・所属・履歴のまま復帰）。既に活性なら 422。
@@ -60,7 +90,7 @@ export async function reactivateMembership(
   workspaceId: string,
   targetUserId: string,
 ): Promise<LifecycleResult> {
-  const target = await readMembership(workspaceId, targetUserId)
+  const target = await readMembership(db, workspaceId, targetUserId)
   if (!target) return { ok: false, status: 404, error: 'Member not found' }
   if (target.membershipStatus === 'active') {
     return { ok: false, status: 422, error: 'このメンバーは既に活性です' }
@@ -82,7 +112,7 @@ export async function reactivateViaInvite(
   userId: string,
   role?: 'owner' | 'admin' | 'member' | 'guest',
 ): Promise<'reactivated' | 'already-active' | 'none'> {
-  const existing = await readMembership(workspaceId, userId)
+  const existing = await readMembership(db, workspaceId, userId)
   if (!existing) return 'none'
   if (existing.membershipStatus === 'active') return 'already-active'
 

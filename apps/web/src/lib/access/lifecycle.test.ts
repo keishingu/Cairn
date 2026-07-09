@@ -3,8 +3,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockDb, workspaceMembers, activeWorkspaceMembers } = vi.hoisted(() => {
-  const mockDb = { select: vi.fn(), update: vi.fn() }
+const { mockDb, workspaceMembers, activeWorkspaceMembers, documentChunks } = vi.hoisted(() => {
+  const mockDb = {
+    select: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    execute: vi.fn(),
+    transaction: vi.fn(),
+  }
   const workspaceMembers = {
     workspaceId: 'wm.workspaceId',
     userId: 'wm.userId',
@@ -12,19 +18,26 @@ const { mockDb, workspaceMembers, activeWorkspaceMembers } = vi.hoisted(() => {
     membershipStatus: 'wm.membershipStatus',
   }
   const activeWorkspaceMembers = { workspaceId: 'awm.workspaceId', role: 'awm.role' }
-  return { mockDb, workspaceMembers, activeWorkspaceMembers }
+  const documentChunks = {
+    workspaceId: 'dc.workspaceId',
+    sourceType: 'dc.sourceType',
+    sourceId: 'dc.sourceId',
+  }
+  return { mockDb, workspaceMembers, activeWorkspaceMembers, documentChunks }
 })
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
   workspaceMembers,
   activeWorkspaceMembers,
+  documentChunks,
 }))
 
 vi.mock('drizzle-orm', () => ({
   and: vi.fn((...args: unknown[]) => ({ type: 'and', args })),
   eq: vi.fn((...args: unknown[]) => ({ type: 'eq', args })),
   count: vi.fn(() => 'count'),
+  sql: vi.fn(() => 'sql'),
 }))
 
 // select().from().where().limit() / select().from().where() の両方を解決する
@@ -42,9 +55,18 @@ function updateSpy() {
   return { set, where }
 }
 
+function deleteSpy() {
+  const where = vi.fn().mockResolvedValue(undefined)
+  mockDb.delete.mockReturnValue({ where })
+  return { where }
+}
+
 describe('access/lifecycle', () => {
   beforeEach(() => {
+    mockDb.transaction.mockImplementation(async (cb: (tx: typeof mockDb) => unknown) => cb(mockDb))
+    mockDb.execute.mockResolvedValue(undefined)
     updateSpy()
+    deleteSpy()
   })
   afterEach(() => {
     vi.clearAllMocks()
@@ -76,27 +98,33 @@ describe('access/lifecycle', () => {
       expect(res.ok).toBe(false)
       expect((res as { status: number }).status).toBe(422)
       expect(mockDb.update).not.toHaveBeenCalled()
+      expect(mockDb.delete).not.toHaveBeenCalled()
     })
 
-    it('owner でも他に active owner がいれば非活性化できる', async () => {
+    it('owner でも他に active owner がいれば active owner 行をロックしてから非活性化できる', async () => {
       mockDb.select
         .mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
         .mockReturnValueOnce(selectChain([{ n: 2 }]))
       const { deactivateMembership } = await import('./lifecycle')
       const res = await deactivateMembership('ws', 'u', 'actor')
       expect(res).toEqual({ ok: true })
+      expect(mockDb.execute).toHaveBeenCalledWith('sql')
       expect(mockDb.update).toHaveBeenCalledTimes(1)
     })
 
-    it('通常メンバーは owner カウントを見ずに非活性化でき、deactivatedBy を記録する', async () => {
+    it('通常メンバーは owner カウントを見ずに非活性化でき、検索チャンクを削除して deactivatedBy を記録する', async () => {
       mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
       const spies = updateSpy()
+      const deleteSpies = deleteSpy()
       const { deactivateMembership } = await import('./lifecycle')
       const res = await deactivateMembership('ws', 'u', 'actor-1')
       expect(res).toEqual({ ok: true })
       const setArg = spies.set.mock.calls[0]![0] as { membershipStatus: string; deactivatedBy: string }
       expect(setArg.membershipStatus).toBe('inactive')
       expect(setArg.deactivatedBy).toBe('actor-1')
+      expect(mockDb.delete).toHaveBeenCalledTimes(1)
+      expect(deleteSpies.where).toHaveBeenCalledWith(expect.objectContaining({ type: 'and' }))
+      expect(mockDb.execute).not.toHaveBeenCalled()
     })
   })
 
