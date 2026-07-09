@@ -256,7 +256,7 @@ export async function PUT(req: Request) {
         actionSpec: typeof compiled.actionSpec
         nextRunAt: Date | null
         lastCompiledAt: Date
-        lastCompilePreview: string | null
+        lastCompilePreview: string
         updatedAt: Date
         enabled?: boolean
       } = {
