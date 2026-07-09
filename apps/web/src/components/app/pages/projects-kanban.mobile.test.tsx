@@ -18,7 +18,7 @@ vi.mock('@/components/app/mobile/header', () => ({
 }))
 
 vi.mock('../kanban', () => ({
-  KanbanBoard: (props: unknown) => mockKanbanBoard(props),
+  KanbanBoard: (props: Record<string, unknown>) => mockKanbanBoard(props),
 }))
 
 vi.mock('../mobile/create-project-sheet', () => ({
