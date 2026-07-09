@@ -9,6 +9,7 @@ import { getGuestVisibleProjectIds, getWorkspaceMemberRole } from '@/lib/permiss
 import { webSearchTool } from '@/lib/ai/web-search'
 import {
   MAX_HISTORY_MESSAGES,
+  MAX_REQUEST_BODY_BYTES,
   buildModelMessages,
   normalizeStoredConversationMessages,
   parseLatestUserInput,
@@ -95,30 +96,17 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: 'OPENAI_API_KEY が設定されていません' }, { status: 503 })
   }
 
-  let historyMessages: StoredConversationMessage[] = []
-  {
-    const { db, aiConversations, aiMessages } = await import('@cairn/db')
-    const { eq, and, asc, desc } = await import('drizzle-orm')
-    const [conv] = await db
-      .select({ id: aiConversations.id })
-      .from(aiConversations)
-      .where(and(eq(aiConversations.id, conversationId), eq(aiConversations.workspaceId, ctx.workspaceId)))
-      .limit(1)
-    if (!conv) return new NextResponse(null, { status: 404 })
-
-    const rows = await db
-      .select({ id: aiMessages.id, role: aiMessages.role, content: aiMessages.content, createdAt: aiMessages.createdAt })
-      .from(aiMessages)
-      .where(eq(aiMessages.conversationId, conversationId))
-      .orderBy(desc(aiMessages.createdAt), desc(aiMessages.id))
-      .limit(MAX_HISTORY_MESSAGES)
-
-    historyMessages = normalizeStoredConversationMessages<StoredMessageRow>(rows)
+  const rawBody = await req.text()
+  if (new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BODY_BYTES) {
+    return NextResponse.json(
+      { error: `リクエスト本文は ${MAX_REQUEST_BODY_BYTES} bytes 以内で指定してください` },
+      { status: 413 },
+    )
   }
 
   let requestBody: unknown
   try {
-    requestBody = await req.json()
+    requestBody = JSON.parse(rawBody) as unknown
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
@@ -134,6 +122,27 @@ export async function POST(req: Request, { params }: RouteContext) {
       { error: err instanceof Error ? err.message : 'Invalid messages payload' },
       { status: 422 },
     )
+  }
+
+  let historyMessages: StoredConversationMessage[] = []
+  {
+    const { db, aiConversations, aiMessages } = await import('@cairn/db')
+    const { eq, and, desc } = await import('drizzle-orm')
+    const [conv] = await db
+      .select({ id: aiConversations.id })
+      .from(aiConversations)
+      .where(and(eq(aiConversations.id, conversationId), eq(aiConversations.workspaceId, ctx.workspaceId)))
+      .limit(1)
+    if (!conv) return new NextResponse(null, { status: 404 })
+
+    const rows = await db
+      .select({ id: aiMessages.id, role: aiMessages.role, content: aiMessages.content, createdAt: aiMessages.createdAt })
+      .from(aiMessages)
+      .where(eq(aiMessages.conversationId, conversationId))
+      .orderBy(desc(aiMessages.createdAt), desc(aiMessages.id))
+      .limit(MAX_HISTORY_MESSAGES)
+
+    historyMessages = normalizeStoredConversationMessages<StoredMessageRow>(rows)
   }
 
   const messages = buildModelMessages(historyMessages, lastUserContent)
