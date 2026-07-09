@@ -24,7 +24,20 @@ const RealtimeContext = React.createContext<RealtimeContextValue>({
   degraded: false,
 })
 
+type VisibleRealtimeChannelsContextValue = {
+  registerVisibleChannel: (channelId: string) => () => void
+}
+
+const VisibleRealtimeChannelsContext = React.createContext<VisibleRealtimeChannelsContextValue | null>(null)
+
 export const useRealtime = () => React.useContext(RealtimeContext)
+export function useVisibleRealtimeChannel(channelId: string | null, enabled = true) {
+  const context = React.useContext(VisibleRealtimeChannelsContext)
+  React.useEffect(() => {
+    if (!context || !channelId || !enabled) return
+    return context.registerVisibleChannel(channelId)
+  }, [channelId, context, enabled])
+}
 
 // 切断インジケータを出すまでの猶予。瞬断でのちらつきを避ける
 const DEGRADED_DELAY_MS = 10_000
@@ -76,9 +89,35 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { data: currentUser } = useCurrentUser()
   const userId = currentUser?.id ?? null
   const activeChannelId = React.useMemo(() => activeChannelIdFromPathname(pathname), [pathname])
+  const [visibleChannelCounts, setVisibleChannelCounts] = React.useState<Record<string, number>>({})
+  const visibleChannelIds = React.useMemo(() => Object.keys(visibleChannelCounts), [visibleChannelCounts])
+  const activeChannelIds = React.useMemo(() => {
+    const ids = new Set<string>()
+    if (activeChannelId) ids.add(activeChannelId)
+    for (const id of visibleChannelIds) ids.add(id)
+    return [...ids]
+  }, [activeChannelId, visibleChannelIds])
+  const activeChannelIdsKey = activeChannelIds.slice().sort().join(',')
+  const activeChannelIdsRef = React.useRef<Set<string>>(new Set())
+  activeChannelIdsRef.current = new Set(activeChannelIds)
 
   const [status, setStatus] = React.useState<RealtimeStatus>('connecting')
   const [degraded, setDegraded] = React.useState(false)
+
+  const registerVisibleChannel = React.useCallback((channelId: string) => {
+    setVisibleChannelCounts((current) => ({
+      ...current,
+      [channelId]: (current[channelId] ?? 0) + 1,
+    }))
+    return () => {
+      setVisibleChannelCounts((current) => {
+        const nextCount = (current[channelId] ?? 0) - 1
+        if (nextCount > 0) return { ...current, [channelId]: nextCount }
+        const { [channelId]: _removed, ...rest } = current
+        return rest
+      })
+    }
+  }, [])
 
   // status が disconnected に留まった時だけ degraded を立てる
   React.useEffect(() => {
@@ -143,7 +182,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           } else if (table === 'messages') {
             scheduleListInvalidate()
             const channelId = channelIdOf(payload)
-            if (channelId && channelId === activeChannelId) {
+            if (channelId && activeChannelIdsRef.current.has(channelId)) {
               void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
               void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
             }
@@ -198,64 +237,74 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       authSub.subscription.unsubscribe()
       if (userChannel) void removeUserChannel(userChannel)
     }
-  }, [activeChannelId, queryClient, userId, scheduleListInvalidate])
+  }, [queryClient, userId, scheduleListInvalidate])
 
   // ─── アクティブチャンネルトピック（messages / message_reactions）────
-  // 本文・リアクションの即時反映は、現在開いているチャンネルだけに絞る
-  const activeTopicRef = React.useRef<RealtimeChannel | null>(null)
+  // 本文・リアクションの即時反映は、現在表示中のチャンネルだけに絞る
+  const activeTopicsRef = React.useRef<Map<string, RealtimeChannel>>(new Map())
 
   React.useEffect(() => {
     const supabase = createClient()
-    const current = activeTopicRef.current
-    if (current) {
-      activeTopicRef.current = null
-      void supabase.removeChannel(current)
+    const current = activeTopicsRef.current
+    const wanted = new Set(activeChannelIds)
+
+    for (const [id, channel] of [...current]) {
+      if (!wanted.has(id)) {
+        current.delete(id)
+        void supabase.removeChannel(channel)
+      }
     }
 
     // setAuth 完了前の join は認可で弾かれるため、ユーザートピック接続後にのみ join する
-    if (!userId || status !== 'connected' || !activeChannelId) return
+    if (!userId || status !== 'connected') return
 
-    const channelId = activeChannelId
-    const channel = supabase
-      .channel(`channel:${channelId}`, { config: { private: true } })
-      .on('broadcast', { event: '*' }, (message) => {
-        const table = tableOf((message as { payload?: unknown }).payload)
-        if (table === 'messages') {
-          void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
-          void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
-          scheduleListInvalidate()
-        } else if (table === 'message_reactions') {
-          void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
+    for (const channelId of activeChannelIds) {
+      if (current.has(channelId)) continue
+      const channel = supabase
+        .channel(`channel:${channelId}`, { config: { private: true } })
+        .on('broadcast', { event: '*' }, (message) => {
+          const table = tableOf((message as { payload?: unknown }).payload)
+          if (table === 'messages') {
+            void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
+            void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
+            scheduleListInvalidate()
+          } else if (table === 'message_reactions') {
+            void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
+          }
+        })
+
+      channel.subscribe((subStatus, err) => {
+        if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
+          console.error(`[Realtime] channel:${channelId} subscription failed:`, subStatus, err?.message ?? err)
         }
       })
-
-    channel.subscribe((subStatus, err) => {
-      if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
-        console.error(`[Realtime] channel:${channelId} subscription failed:`, subStatus, err?.message ?? err)
-      }
-    })
-    activeTopicRef.current = channel
+      current.set(channelId, channel)
+    }
 
     return () => {
-      if (activeTopicRef.current === channel) {
-        activeTopicRef.current = null
+      for (const channelId of activeChannelIds) {
+        const channel = current.get(channelId)
+        if (!channel) continue
+        current.delete(channelId)
+        void supabase.removeChannel(channel)
       }
-      void supabase.removeChannel(channel)
     }
-  }, [activeChannelId, userId, status, queryClient, scheduleListInvalidate])
+  }, [activeChannelIds, activeChannelIdsKey, userId, status, queryClient, scheduleListInvalidate])
 
   React.useEffect(() => () => {
     if (listTimerRef.current) clearTimeout(listTimerRef.current)
-    const channel = activeTopicRef.current
-    if (!channel) return
-    activeTopicRef.current = null
-    void createClient().removeChannel(channel)
+    const topics = activeTopicsRef.current
+    const supabase = createClient()
+    for (const channel of topics.values()) void supabase.removeChannel(channel)
+    topics.clear()
   }, [])
 
   return (
-    <RealtimeContext.Provider value={{ status, degraded }}>
-      {children}
-      <RealtimeIndicator />
-    </RealtimeContext.Provider>
+    <VisibleRealtimeChannelsContext.Provider value={{ registerVisibleChannel }}>
+      <RealtimeContext.Provider value={{ status, degraded }}>
+        {children}
+        <RealtimeIndicator />
+      </RealtimeContext.Provider>
+    </VisibleRealtimeChannelsContext.Provider>
   )
 }

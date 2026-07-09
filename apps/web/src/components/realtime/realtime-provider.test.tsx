@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   RealtimeProvider,
   activeChannelIdFromPathname,
+  useVisibleRealtimeChannel,
 } from './realtime-provider'
 
 const {
@@ -48,12 +49,18 @@ type ChannelRecord = {
   on: ReturnType<typeof vi.fn>
 }
 
-function renderProvider() {
+function VisibleChannelProbe({ channelId, enabled = true }: { channelId: string | null; enabled?: boolean }) {
+  useVisibleRealtimeChannel(channelId, enabled)
+  return null
+}
+
+function renderProvider(child?: React.ReactNode) {
   const queryClient = new QueryClient()
   return render(
     <QueryClientProvider client={queryClient}>
       <RealtimeProvider>
         <div>child</div>
+        {child}
       </RealtimeProvider>
     </QueryClientProvider>,
   )
@@ -131,6 +138,41 @@ describe('RealtimeProvider', () => {
 
     await waitFor(() => {
       expect(channels.map(channel => channel.topic)).toEqual(['user:user-1'])
+    })
+  })
+
+  it('pathname 外で表示中の ChatThread も購読する', async () => {
+    mockUsePathname.mockReturnValue('/projects')
+
+    renderProvider(<VisibleChannelProbe channelId="channel-project" />)
+
+    await waitFor(() => {
+      expect(channels.map(channel => channel.topic)).toEqual(['user:user-1', 'channel:channel-project'])
+    })
+  })
+
+  it('非表示扱いの ChatThread は購読しない', async () => {
+    mockUsePathname.mockReturnValue('/projects')
+
+    renderProvider(<VisibleChannelProbe channelId="channel-hidden" enabled={false} />)
+
+    await waitFor(() => {
+      expect(channels.map(channel => channel.topic)).toEqual(['user:user-1'])
+    })
+  })
+
+  it('同じ channel を複数箇所で表示しても購読は1本に保つ', async () => {
+    mockUsePathname.mockReturnValue('/projects')
+
+    renderProvider(
+      <>
+        <VisibleChannelProbe channelId="channel-shared" />
+        <VisibleChannelProbe channelId="channel-shared" />
+      </>,
+    )
+
+    await waitFor(() => {
+      expect(channels.map(channel => channel.topic)).toEqual(['user:user-1', 'channel:channel-shared'])
     })
   })
 })

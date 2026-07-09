@@ -6,7 +6,7 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import { findProjectChannelById, useProjectChannels } from '@/lib/chat/client'
 import { ChatThread } from '../../chat-thread'
 
-export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?: boolean }) => {
+export const ChatTab = ({ project, isMobile, isActive = true }: { project: ProjectDto; isMobile?: boolean; isActive?: boolean }) => {
   const { data: projectChannels, isLoading, isError } = useProjectChannels()
 
   const activeChannel = React.useMemo(
@@ -38,6 +38,7 @@ export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?:
         channelId={activeChannel.channelId}
         channelName={activeChannel.projectTitle}
         compact={true}
+        realtimeActive={isActive}
         {...(isMobile ? { isMobile: true } : {})}
       />
     </>
