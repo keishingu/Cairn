@@ -82,7 +82,7 @@
 
 現実装のカレンダービュー（`projects-calendar.tsx`）は**ワークスペース横断のプロジェクト一覧ビュー**（+ Google Calendar イベント）であり、プロジェクト内のタイムライン表示は存在しない。
 
-→ ドラフトの「カレンダー / タイムライン」表示は**初期スコープ外**とする（Phase 4）。初期は概要タブのマイルストーンリスト（期間表示付き）で代替する。将来は (a) 全体カレンダーへのマイルストーンバー重畳、(b) プロジェクト詳細内タイムラインの新設、の2案がある。
+→ **既存の全体カレンダー（`projects-calendar.tsx`）にマイルストーンバーを重畳する方式で初期スコープに含める**（ユーザー判断 2026-07-09。Phase 3）。プロジェクトバーの下に、そのプロジェクトのマイルストーンをインデント付きの細いバーで表示し、Google Calendar イベントと同様に表示トグルを設ける。プロジェクト詳細内のガントチャート風タイムライン新設は将来検討（Phase 5）。
 
 ### 3.6 権限（ドラフト未定義 → 本書で確定）
 
@@ -264,6 +264,14 @@ export interface ProjectChannelDto {
 
 未読・メンション集計クエリはチャンネルID単位のため**変更不要**（行が増えるだけ）。
 
+### 5.4 全体カレンダー用の一覧取得（Phase 3）
+
+カレンダー重畳（§6.7）用に、ワークスペース内の可視プロジェクト横断でマイルストーンを返すエンドポイントを追加する:
+
+| メソッド / パス | 権限 | 動作 |
+|---|---|---|
+| `GET /api/milestones` | 認証済み全員 | ワークスペース内の可視プロジェクト（ゲストは参加プロジェクトのみ）のマイルストーン一覧。`/api/projects` GET と同じゲストフィルタを適用し、`MilestoneDto + projectTitle` を返す |
+
 ---
 
 ## 6. UI 設計
@@ -302,7 +310,15 @@ export interface ProjectChannelDto {
 
 ### 6.6 モバイル（Expo ネイティブ: `apps/mobile/app/(app)/chats/index.tsx`）
 
-拡張後の DTO で階層表示（またはマイルストーン行に `プロジェクト名 / マイルストーン名` 表記）。Phase 3 で対応（それまでもクラッシュはしない — 行が増えて表示されるだけ）。
+拡張後の DTO で階層表示（またはマイルストーン行に `プロジェクト名 / マイルストーン名` 表記）。Phase 4 で対応（それまでもクラッシュはしない — 行が増えて表示されるだけ）。
+
+### 6.7 全体カレンダーへの重畳（`projects-calendar.tsx`）— Phase 3
+
+- データ取得は `GET /api/milestones`（§5.4）。Google Calendar イベント（`GcalEventDto`）と同様の追加レイヤーとして扱う
+- プロジェクトバーの直下に、そのプロジェクトのマイルストーンを**インデント付きの細いバー**で表示（`title` + 期間。`completed` はグレーアウト）
+- 日付なし（`start_date` / `end_date` とも null）のマイルストーンはカレンダーに表示しない
+- 表示密度対策として、Gcal イベントの表示トグルと同様に「マイルストーン表示」の ON/OFF トグルを設ける（設定は localStorage、`STORAGE_KEYS` に追加）
+- モバイルカレンダー（`projects-calendar.mobile` 系）も同一データで対応
 
 ---
 
@@ -313,9 +329,9 @@ export interface ProjectChannelDto {
 1. `packages/db`: `milestones` テーブル + `channels.milestone_id` + migration 生成
 2. migration: `can_access_channel()` のゲスト制限修正（§3.9。Drizzle 生成 SQL とは別に手書き migration を追加する）
 3. `packages/shared`: `createMilestoneSchema` / `patchMilestoneSchema` + テスト
-3. API: milestones CRUD（POST でチャンネル同時作成）+ `GET /api/projects/channels` 拡張 + `route.test.ts`（権限・ゲスト制限・プロジェクト越境を含む）
-4. `findProjectChannelById()` の General 明示化 + テスト
-5. チャットサイドバーの階層表示（PC / モバイル Web）
+4. API: milestones CRUD（POST でチャンネル同時作成）+ `GET /api/projects/channels` 拡張 + `route.test.ts`（権限・ゲスト制限・プロジェクト越境を含む）
+5. `findProjectChannelById()` の General 明示化 + テスト
+6. チャットサイドバーの階層表示（PC / モバイル Web）
 
 ### Phase 2: マイルストーン管理 UI
 
@@ -323,13 +339,18 @@ export interface ProjectChannelDto {
 2. 概要タブのマイルストーンセクション（一覧・作成・編集・完了切替・削除+確認ダイアログ）
 3. チャットタブのスレッド切替
 
-### Phase 3: モバイル（Expo）
+### Phase 3: カレンダー重畳
+
+1. `GET /api/milestones`（ワークスペース横断一覧。§5.4）
+2. `projects-calendar.tsx` へのマイルストーンバー重畳 + 表示トグル（§6.7。PC / モバイル Web）
+
+### Phase 4: モバイル（Expo）
 
 1. ネイティブチャット一覧の階層表示と遷移先スレッド指定
 
-### Phase 4（将来・スコープ外）
+### Phase 5（将来・スコープ外）
 
-- カレンダー / タイムライン表示（全体カレンダーへの重畳 or プロジェクト内タイムライン）
+- プロジェクト詳細内のガントチャート風タイムライン表示
 - タスクへの任意のマイルストーン関連付け（`tasks.milestone_id` nullable — ドラフトでも「将来的に考えられる」扱い）
 - マイルストーン単位の AI 要約ショートカット・AI インデックス
 - `notification_type: 'milestone'`（作成・完了の通知）
@@ -339,6 +360,8 @@ export interface ProjectChannelDto {
 
 ## 8. 確定した設計判断のまとめ
 
+以下の判断は 2026-07-09 にユーザー確認済み（channel_type / 削除時の扱い / カレンダー / UI 配置）。
+
 | 論点 | 判断 |
 |---|---|
 | チャンネル種別 | `type='project'` のまま `channels.milestone_id` で識別（`'milestone'` enum は新設しない）。`07_notifications_and_unread.md` の記載よりこちらを正とする |
@@ -347,5 +370,5 @@ export interface ProjectChannelDto {
 | 権限 | 作成・編集・削除は `member` 以上、閲覧はプロジェクトアクセス準拠（ゲストは参加プロジェクトのみ） |
 | 削除 | チャンネル・メッセージごと cascade 削除。確認ダイアログで会話消失を明示 |
 | タスク・ファイル・ギャラリー | マイルストーンに紐付けない（ドラフトどおり。既存スキーマ変更ゼロ） |
-| カレンダー表示 | 初期スコープ外（Phase 4） |
+| カレンダー表示 | 全体カレンダー（`projects-calendar.tsx`）へのマイルストーンバー重畳を初期スコープに含める（Phase 3。ユーザー判断 2026-07-09）。プロジェクト内タイムライン新設は将来 |
 | Realtime/RLS 認可 | `can_access_channel()` のゲスト制限ギャップ（既存バグ）を Phase 1 の migration で修正し、API 側の挙動と一致させる（§3.9） |
