@@ -22,9 +22,44 @@ export interface TaskDto {
   isLinkedToMessage: boolean
 }
 
+export interface TaskListResponse {
+  items: TaskDto[]
+  nextCursor: string | null
+}
+
+const DEFAULT_TASK_PAGE_LIMIT = 50
+const MAX_TASK_PAGE_LIMIT = 200
+
+function parseTaskPageLimit(rawLimit: string | null): number {
+  if (!rawLimit) return DEFAULT_TASK_PAGE_LIMIT
+  const parsed = Number.parseInt(rawLimit, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_TASK_PAGE_LIMIT
+  return Math.min(parsed, MAX_TASK_PAGE_LIMIT)
+}
+
+function encodeTaskCursor(createdAt: Date, id: string): string {
+  return `${createdAt.toISOString()}::${id}`
+}
+
+function decodeTaskCursor(cursor: string | null): { createdAt: Date; id: string } | null {
+  if (!cursor) return null
+  const separatorIndex = cursor.indexOf('::')
+  if (separatorIndex <= 0) return null
+  const createdAt = new Date(cursor.slice(0, separatorIndex))
+  const id = cursor.slice(separatorIndex + 2)
+  if (Number.isNaN(createdAt.getTime()) || !id) return null
+  return { createdAt, id }
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId') ?? undefined
+  const limit = parseTaskPageLimit(searchParams.get('limit'))
+  const cursor = decodeTaskCursor(searchParams.get('cursor'))
+
+  if (searchParams.get('cursor') && !cursor) {
+    return NextResponse.json({ error: 'Invalid cursor' }, { status: 400 })
+  }
 
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -33,7 +68,7 @@ export async function GET(req: Request) {
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, inArray, and } = await import('drizzle-orm')
+    const { eq, inArray, and, or, lt, desc } = await import('drizzle-orm')
 
     const projectRows = await db
       .select({ id: projects.id, title: projects.title })
@@ -62,6 +97,7 @@ export async function GET(req: Request) {
         status: tasks.status,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
+        createdAt: tasks.createdAt,
         sourceMessageId: tasks.sourceMessageId,
         assigneeName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
@@ -69,11 +105,23 @@ export async function GET(req: Request) {
       .from(tasks)
       .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, tasks.assigneeId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-      .where(inArray(tasks.projectId, projectIds))
+      .where(and(
+        inArray(tasks.projectId, projectIds),
+        cursor
+          ? or(
+              lt(tasks.createdAt, cursor.createdAt),
+              and(eq(tasks.createdAt, cursor.createdAt), lt(tasks.id, cursor.id)),
+            )
+          : undefined,
+      ))
+      .orderBy(desc(tasks.createdAt), desc(tasks.id))
+      .limit(limit + 1)
 
     const projectMap = new Map(projectRows.map(p => [p.id, p.title]))
+    const hasNextPage = taskRows.length > limit
+    const pageRows = hasNextPage ? taskRows.slice(0, limit) : taskRows
 
-    const result: TaskDto[] = taskRows.map(r => ({
+    const result: TaskDto[] = pageRows.map(r => ({
       id: r.id,
       projectId: r.projectId,
       projectTitle: projectMap.get(r.projectId) ?? '',
@@ -86,7 +134,11 @@ export async function GET(req: Request) {
       isLinkedToMessage: r.sourceMessageId != null,
     }))
 
-    return NextResponse.json(result)
+    const lastRow = pageRows.at(-1)
+    return NextResponse.json({
+      items: result,
+      nextCursor: hasNextPage && lastRow ? encodeTaskCursor(lastRow.createdAt, lastRow.id) : null,
+    } satisfies TaskListResponse)
   } catch (err) {
     console.error('[GET /api/tasks] DB query failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

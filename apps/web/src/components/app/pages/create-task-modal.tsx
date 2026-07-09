@@ -35,8 +35,11 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
       if (!res.ok) throw new Error('Failed to create task')
       return res.json() as Promise<TaskDto>
     },
-    onSuccess: (newTask) => {
-      queryClient.setQueryData<TaskDto[]>(['tasks'], old => old ? [newTask, ...old] : [newTask])
+    onSuccess: async (_newTask) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        projectId ? queryClient.invalidateQueries({ queryKey: ['tasks', projectId] }) : Promise.resolve(),
+      ])
       onClose()
     },
   })

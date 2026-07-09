@@ -1,9 +1,9 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { Icon, Avatar, Fab } from '../primitives'
-import type { TaskDto } from '@/app/api/tasks/route'
+import type { TaskDto, TaskListResponse } from '@/app/api/tasks/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { CreateTaskModal } from './create-task-modal'
 import { TaskEditDialog } from '../task-edit-dialog'
@@ -30,6 +30,16 @@ const PRIORITY_LABEL: Record<TaskDto['priority'], string> = {
   high: '高',
   medium: '中',
   low: '低',
+}
+
+const TASKS_PAGE_LIMIT = 50
+
+async function fetchTaskPage(cursor: string | null): Promise<TaskListResponse> {
+  const params = new URLSearchParams({ limit: String(TASKS_PAGE_LIMIT) })
+  if (cursor) params.set('cursor', cursor)
+  const res = await fetchWithAuth(`/api/tasks?${params.toString()}`)
+  if (!res.ok) throw new Error('fetch failed')
+  return res.json() as Promise<TaskListResponse>
 }
 
 function formatDueDate(dueDate: string | null): { label: string; overdue: boolean } | null {
@@ -210,10 +220,19 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   // ⌥N: 新規タスク
   useCommand('ctx.create', () => setShowAddModal(true))
 
-  const { data: tasks = [], isLoading } = useQuery<TaskDto[]>({
-    queryKey: ['tasks'],
-    queryFn: () => fetchWithAuth('/api/tasks').then(r => r.json()),
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery<TaskListResponse>({
+    queryKey: ['tasks', 'infinite'],
+    queryFn: ({ pageParam }) => fetchTaskPage(pageParam as string | null),
+    initialPageParam: null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   })
+  const tasks = React.useMemo(() => data?.pages.flatMap(page => page.items) ?? [], [data])
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, newStatus }: { id: string; newStatus: TaskDto['status'] }) => {
@@ -226,16 +245,22 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     },
     onMutate: async ({ id, newStatus }) => {
       setTogglingId(id)
-      await queryClient.cancelQueries({ queryKey: ['tasks'] })
-      const prev = queryClient.getQueryData<TaskDto[]>(['tasks'])
-      queryClient.setQueryData<TaskDto[]>(
-        ['tasks'],
-        old => old?.map(t => t.id === id ? { ...t, status: newStatus } : t) ?? [],
+      await queryClient.cancelQueries({ queryKey: ['tasks', 'infinite'] })
+      const prev = queryClient.getQueryData<InfiniteData<TaskListResponse>>(['tasks', 'infinite'])
+      queryClient.setQueryData<InfiniteData<TaskListResponse>>(
+        ['tasks', 'infinite'],
+        old => old ? ({
+          ...old,
+          pages: old.pages.map(page => ({
+            ...page,
+            items: page.items.map(t => t.id === id ? { ...t, status: newStatus } : t),
+          })),
+        }) : old,
       )
       return { prev }
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(['tasks'], ctx.prev)
+      if (ctx?.prev) queryClient.setQueryData(['tasks', 'infinite'], ctx.prev)
     },
     onSettled: () => {
       setTogglingId(null)
@@ -383,23 +408,36 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
             </div>
           </div>
         ) : (
-          <div style={{ margin: isMobile ? '12px' : '16px 20px', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
-            {grouped.map((g, idx) => (
-              <Section
-                key={g.key}
-                label={g.label}
-                count={g.tasks.length}
-                tasks={g.tasks}
-                onToggle={handleToggle}
-                onEdit={openEditor}
-                togglingId={togglingId}
-                open={isSectionOpen(g.key, idx)}
-                onToggleOpen={() => setSectionOverride(prev => ({ ...prev, [g.key]: !isSectionOpen(g.key, idx) }))}
-                selectedTaskId={selectedTaskId}
-                baseIndex={sectionBases[idx] ?? 0}
-              />
-            ))}
-          </div>
+          <>
+            <div style={{ margin: isMobile ? '12px' : '16px 20px', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+              {grouped.map((g, idx) => (
+                <Section
+                  key={g.key}
+                  label={g.label}
+                  count={g.tasks.length}
+                  tasks={g.tasks}
+                  onToggle={handleToggle}
+                  onEdit={openEditor}
+                  togglingId={togglingId}
+                  open={isSectionOpen(g.key, idx)}
+                  onToggleOpen={() => setSectionOverride(prev => ({ ...prev, [g.key]: !isSectionOpen(g.key, idx) }))}
+                  selectedTaskId={selectedTaskId}
+                  baseIndex={sectionBases[idx] ?? 0}
+                />
+              ))}
+            </div>
+            {hasNextPage && (
+              <div style={{ margin: isMobile ? '0 12px 12px' : '0 20px 20px', display: 'flex', justifyContent: 'center' }}>
+                <button
+                  className="btn"
+                  onClick={() => void fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? '読み込み中…' : 'さらに読み込む'}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 

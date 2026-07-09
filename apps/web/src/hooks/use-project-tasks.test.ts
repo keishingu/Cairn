@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { useProjectTasks, useCreateTask } from './use-project-tasks'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import type { TaskDto } from '@/app/api/tasks/route'
+import type { TaskDto, TaskListResponse } from '@/app/api/tasks/route'
 
 vi.mock('@/lib/fetch-with-auth')
 const mockFetch = vi.mocked(fetchWithAuth)
@@ -27,12 +27,13 @@ describe('useProjectTasks', () => {
   beforeEach(() => { mockFetch.mockClear() })
 
   it('/api/tasks?projectId=... からタスク一覧を取得する', async () => {
-    mockFetch.mockResolvedValue(new Response(JSON.stringify(STUB_TASKS), { status: 200 }))
+    const response: TaskListResponse = { items: STUB_TASKS, nextCursor: null }
+    mockFetch.mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }))
     const { wrapper } = makeWrapper()
     const { result } = renderHook(() => useProjectTasks('p1'), { wrapper })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toEqual(STUB_TASKS)
-    expect(mockFetch).toHaveBeenCalledWith('/api/tasks?projectId=p1')
+    expect(mockFetch).toHaveBeenCalledWith('/api/tasks?projectId=p1&limit=200')
   })
 
   it('toggleMutation がタスクを楽観的に更新してから PATCH を送る', async () => {

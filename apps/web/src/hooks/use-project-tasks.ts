@@ -1,13 +1,32 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import type { TaskDto } from '@/app/api/tasks/route'
+import type { TaskDto, TaskListResponse } from '@/app/api/tasks/route'
+
+const PROJECT_TASKS_PAGE_LIMIT = 200
+
+async function fetchAllProjectTasks(projectId: string): Promise<TaskDto[]> {
+  const items: TaskDto[] = []
+  let cursor: string | null = null
+
+  do {
+    const params = new URLSearchParams({ projectId, limit: String(PROJECT_TASKS_PAGE_LIMIT) })
+    if (cursor) params.set('cursor', cursor)
+    const res = await fetchWithAuth(`/api/tasks?${params.toString()}`)
+    if (!res.ok) throw new Error('fetch failed')
+    const page = await res.json() as TaskListResponse
+    items.push(...page.items)
+    cursor = page.nextCursor
+  } while (cursor)
+
+  return items
+}
 
 export function useProjectTasks(projectId: string) {
   const queryClient = useQueryClient()
 
   const query = useQuery<TaskDto[]>({
     queryKey: ['tasks', projectId],
-    queryFn: () => fetchWithAuth(`/api/tasks?projectId=${projectId}`).then(r => r.json()),
+    queryFn: () => fetchAllProjectTasks(projectId),
   })
 
   const toggleMutation = useMutation({
