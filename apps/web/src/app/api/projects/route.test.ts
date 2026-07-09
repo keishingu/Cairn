@@ -9,14 +9,15 @@ const PROJ_1  = 'proj-00000001'
 const PROJ_2  = 'proj-00000002'
 
 // --- vi.hoisted ---
-const { mockGetAuthContext, mockDb, selectChains } = vi.hoisted(() => {
+const { mockGetAuthContext, mockDb, selectChains, mockHasWorkspaceMemberDisplayNameColumn } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: { userId: '00000000-0000-0000-0000-000000000001', workspaceId: 'ws-00000001' },
     error: null,
   })
   const mockDb = { select: vi.fn() }
   const selectChains: Record<string, unknown>[] = []
-  return { mockGetAuthContext, mockDb, selectChains }
+  const mockHasWorkspaceMemberDisplayNameColumn = vi.fn().mockResolvedValue(true)
+  return { mockGetAuthContext, mockDb, selectChains, mockHasWorkspaceMemberDisplayNameColumn }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -37,6 +38,11 @@ vi.mock('drizzle-orm', () => ({
   count: vi.fn(() => 'count'),
   inArray: vi.fn(() => 'inArray'),
   sql: Object.assign(vi.fn(() => 'sql'), { raw: vi.fn() }),
+}))
+
+vi.mock('@/lib/workspace-member-display-name', () => ({
+  hasWorkspaceMemberDisplayNameColumn: mockHasWorkspaceMemberDisplayNameColumn,
+  workspaceMemberDisplayName: vi.fn(() => 'wm-display-name'),
 }))
 
 /** どんなチェーンでも await できる汎用モックチェーン */
@@ -63,6 +69,7 @@ describe('GET /api/projects', () => {
     vi.clearAllMocks()
     selectChains.length = 0
     mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID }, error: null })
+    mockHasWorkspaceMemberDisplayNameColumn.mockResolvedValue(true)
   })
 
   it('未認証なら認証エラーを返す', async () => {
@@ -149,5 +156,28 @@ describe('GET /api/projects', () => {
     expect(selectChains[2]?.['where']).toHaveBeenCalledTimes(1)
     expect(selectChains[3]?.['where']).toHaveBeenCalledTimes(1)
     expect(selectChains[5]?.['where']).toHaveBeenCalledTimes(1)
+  })
+
+  it('workspace_members.display_name が無い環境では profile の表示名へフォールバックする', async () => {
+    const project = { id: PROJ_1, title: 'テスト', description: null, startDate: null, endDate: null, archived: false, createdBy: USER_ID, coverPhotoUrl: null, location: null, placeId: null }
+    mockHasWorkspaceMemberDisplayNameColumn.mockResolvedValue(false)
+
+    mockDb.select
+      .mockReturnValueOnce(chain([{ role: 'member' }]))
+      .mockReturnValueOnce(chain([project]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+
+    const { GET } = await import('./route')
+    const res = await GET()
+
+    expect(res.status).toBe(200)
+    expect(mockDb.select).toHaveBeenNthCalledWith(4, {
+      projectId: 'pm.projectId',
+      displayName: 'pr.displayName',
+      avatarUrl: 'wm.avatarUrl',
+    })
   })
 })

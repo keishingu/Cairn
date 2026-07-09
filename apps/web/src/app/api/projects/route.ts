@@ -102,7 +102,7 @@ export async function GET() {
       db
         .select({
           projectId: projectMembers.projectId,
-          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+          displayName: displayNameExpr,
           avatarUrl: workspaceMembers.avatarUrl,
         })
         .from(projectMembers)
