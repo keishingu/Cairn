@@ -75,56 +75,60 @@ export async function POST(
       return NextResponse.json({ error: 'Invite link has reached its usage limit' }, { status: 410 })
     }
 
-    if (existingMembership?.membershipStatus === 'inactive') {
-      const { reactivateViaInvite } = await import('@/lib/access/lifecycle')
-      await reactivateViaInvite(claimed.workspaceId, userId, claimed.role)
+    await db.transaction(async (tx) => {
+      if (existingMembership?.membershipStatus === 'inactive') {
+        await tx
+          .update(workspaceMembers)
+          .set({ membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null, role: claimed.role })
+          .where(and(eq(workspaceMembers.workspaceId, claimed.workspaceId), eq(workspaceMembers.userId, userId)))
 
-      // guest 復帰では、履歴保持のために残っていた旧 project/channel 所属を
-      // 認可に再利用させない。招待リンクが表す project scope だけを下で再付与する。
-      if (claimed.role === 'guest') {
-        const scopedProjects = await db
-          .select({ id: projects.id })
-          .from(projects)
-          .where(eq(projects.workspaceId, claimed.workspaceId))
-        const projectIds = scopedProjects.map(p => p.id)
-        if (projectIds.length > 0) {
-          await db
-            .delete(projectMembers)
-            .where(and(eq(projectMembers.userId, userId), inArray(projectMembers.projectId, projectIds)))
+        // guest 復帰では、履歴保持のために残っていた旧 project/channel 所属を
+        // 認可に再利用させない。招待リンクが表す project scope だけを下で再付与する。
+        if (claimed.role === 'guest') {
+          const scopedProjects = await tx
+            .select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.workspaceId, claimed.workspaceId))
+          const projectIds = scopedProjects.map(p => p.id)
+          if (projectIds.length > 0) {
+            await tx
+              .delete(projectMembers)
+              .where(and(eq(projectMembers.userId, userId), inArray(projectMembers.projectId, projectIds)))
+          }
+
+          const scopedChannels = await tx
+            .select({ id: channels.id })
+            .from(channels)
+            .leftJoin(projects, eq(channels.projectId, projects.id))
+            .where(sql`coalesce(${channels.workspaceId}, ${projects.workspaceId}) = ${claimed.workspaceId}`)
+          const channelIds = scopedChannels.map(c => c.id)
+          if (channelIds.length > 0) {
+            await tx
+              .delete(channelMembers)
+              .where(and(eq(channelMembers.userId, userId), inArray(channelMembers.channelId, channelIds)))
+          }
         }
-
-        const scopedChannels = await db
-          .select({ id: channels.id })
-          .from(channels)
-          .leftJoin(projects, eq(channels.projectId, projects.id))
-          .where(sql`coalesce(${channels.workspaceId}, ${projects.workspaceId}) = ${claimed.workspaceId}`)
-        const channelIds = scopedChannels.map(c => c.id)
-        if (channelIds.length > 0) {
-          await db
-            .delete(channelMembers)
-            .where(and(eq(channelMembers.userId, userId), inArray(channelMembers.channelId, channelIds)))
-        }
-      }
-    } else {
-      await db.insert(workspaceMembers).values({
-        workspaceId: claimed.workspaceId,
-        userId: userId,
-        role: claimed.role,
-      })
-    }
-
-    // ゲスト招待にプロジェクトが紐付いている場合、プロジェクトメンバーにも自動追加
-    if (claimed.projectId) {
-      await db
-        .insert(projectMembers)
-        .values({
-          projectId: claimed.projectId,
-          userId,
-          role: 'member',
-          attendance: 'attending',
+      } else {
+        await tx.insert(workspaceMembers).values({
+          workspaceId: claimed.workspaceId,
+          userId: userId,
+          role: claimed.role,
         })
-        .onConflictDoNothing()
-    }
+      }
+
+      // ゲスト招待にプロジェクトが紐付いている場合、プロジェクトメンバーにも自動追加
+      if (claimed.projectId) {
+        await tx
+          .insert(projectMembers)
+          .values({
+            projectId: claimed.projectId,
+            userId,
+            role: 'member',
+            attendance: 'attending',
+          })
+          .onConflictDoNothing()
+      }
+    })
 
     if (inngest) {
       await inngest.send({

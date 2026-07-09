@@ -16,6 +16,7 @@ const { mockGetAuthUser, mockDb, mockGt, mockSql } = vi.hoisted(() => {
     insert: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    transaction: vi.fn(),
   }
   const mockGt = vi.fn(() => 'gt')
   const mockSql = vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({
@@ -48,6 +49,8 @@ vi.mock('@cairn/db', () => ({
     userId: 'wm.userId',
     role: 'wm.role',
     membershipStatus: 'wm.membershipStatus',
+    deactivatedAt: 'wm.deactivatedAt',
+    deactivatedBy: 'wm.deactivatedBy',
   },
   projectMembers: {
     projectId: 'pm.projectId',
@@ -122,6 +125,7 @@ function updateChain(result: unknown[]) {
 describe('POST /api/invite/[token]/accept', () => {
   beforeEach(() => {
     process.env['DATABASE_URL'] = 'postgresql://test'
+    mockDb.transaction.mockImplementation(async (cb: (tx: typeof mockDb) => unknown) => cb(mockDb))
   })
 
   afterEach(() => {
@@ -185,10 +189,9 @@ describe('POST /api/invite/[token]/accept', () => {
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))                                          // 招待取得
       .mockReturnValueOnce(selectChain([{ role: 'guest', membershipStatus: 'inactive' }]))  // 既存 inactive メンバー
-      .mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'inactive' }]))  // reactivateViaInvite 内の再確認
       .mockReturnValueOnce(selectChain([]))                                                 // 旧 project scope なし
       .mockReturnValueOnce(selectChain([]))                                                 // 旧 channel scope なし
-    // claim → reactivateViaInvite の membership 更新
+    // claim → transaction 内の membership 更新
     mockDb.update.mockReturnValueOnce(updateChain([{ id: 'inv-01', workspaceId: WORKSPACE_ID, role: 'guest', projectId: null }]))
     mockDb.update.mockReturnValueOnce({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) })
 
@@ -208,7 +211,6 @@ describe('POST /api/invite/[token]/accept', () => {
 
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))
-      .mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'inactive' }]))
       .mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'inactive' }]))
       .mockReturnValueOnce(selectChain([{ id: 'old-project' }, { id: 'project-invite' }]))
       .mockReturnValueOnce(selectChain([{ id: 'old-private-channel' }]))
