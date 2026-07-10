@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { resetRequestRateLimitForTest } from '@/lib/request-rate-limit'
 
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
@@ -36,6 +37,7 @@ describe('/api/attachments/upload-url', () => {
 
   afterEach(() => {
     vi.clearAllMocks()
+    resetRequestRateLimitForTest()
   })
 
   it('アクセス権の無いチャンネルへはアップロードURLを発行しない', async () => {
@@ -91,5 +93,18 @@ describe('/api/attachments/upload-url', () => {
     expect(body.mimeType).toBe('application/pdf')
     expect(body.storagePath.startsWith(`${DEV_WORKSPACE_ID}/${CHANNEL_ID}/`)).toBe(true)
     expect(body.storagePath.endsWith('.pdf')).toBe(true)
+  })
+
+  it('同じチャンネルへの短時間の連続発行は 429 で制限する', async () => {
+    const { POST } = await import('./route')
+
+    for (let i = 0; i < 20; i += 1) {
+      const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'data.csv', mimeType: 'text/csv', fileSize: 100 }))
+      expect(res.status).toBe(200)
+    }
+
+    const limited = await POST(post({ channelId: CHANNEL_ID, fileName: 'data.csv', mimeType: 'text/csv', fileSize: 100 }))
+    expect(limited.status).toBe(429)
+    expect(mockCreateSignedUploadUrl).toHaveBeenCalledTimes(20)
   })
 })

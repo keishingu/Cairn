@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { resetRequestRateLimitForTest } from '@/lib/request-rate-limit'
 
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
@@ -77,6 +78,7 @@ describe('POST /api/workspaces/invites', () => {
   afterEach(() => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
+    resetRequestRateLimitForTest()
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID }, error: null,
     })
@@ -187,6 +189,43 @@ describe('POST /api/workspaces/invites', () => {
     )
 
     expect(res.status).toBe(200)
+  })
+
+  it('短時間の招待リンク連続発行は 429 で制限する', async () => {
+    mockDb.select.mockReturnValue(selectChain([{ role: 'owner' }]))
+    mockDb.insert.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{
+          token: 'rate-limit-token',
+          expiresAt: null,
+          role: 'member',
+        }]),
+      }),
+    })
+
+    const { POST } = await import('./route')
+
+    for (let i = 0; i < 10; i += 1) {
+      const res = await POST(
+        new Request('http://localhost/api/workspaces/invites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expiresIn: 'never', role: 'member' }),
+        }),
+      )
+      expect(res.status).toBe(200)
+    }
+
+    const limited = await POST(
+      new Request('http://localhost/api/workspaces/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiresIn: 'never', role: 'member' }),
+      }),
+    )
+
+    expect(limited.status).toBe(429)
+    expect(mockDb.insert).toHaveBeenCalledTimes(10)
   })
 })
 

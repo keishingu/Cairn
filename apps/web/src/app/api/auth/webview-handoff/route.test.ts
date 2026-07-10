@@ -3,6 +3,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NextResponse } from 'next/server'
+import { resetRequestRateLimitForTest } from '@/lib/request-rate-limit'
 
 // --- vi.hoisted: vi.mock ファクトリから参照できるよう先に定義 ---
 const { mockGetAuthContext, mockGetUserById, mockGenerateLink } = vi.hoisted(() => {
@@ -37,6 +38,7 @@ function authed() {
 describe('POST /api/auth/webview-handoff', () => {
   afterEach(() => {
     vi.clearAllMocks()
+    resetRequestRateLimitForTest()
   })
 
   it('未認証なら 401 を返し、トークン発行を行わない', async () => {
@@ -97,5 +99,28 @@ describe('POST /api/auth/webview-handoff', () => {
     const res = await POST()
 
     expect(res.status).toBe(500)
+  })
+
+  it('短時間の連続発行は 429 で制限する', async () => {
+    authed()
+    mockGetUserById.mockResolvedValue({
+      data: { user: { id: 'user-1', email: 'me@example.com' } },
+      error: null,
+    })
+    mockGenerateLink.mockResolvedValue({
+      data: { properties: { hashed_token: 'hashed-abc' } },
+      error: null,
+    })
+
+    const { POST } = await import('./route')
+
+    for (let i = 0; i < 5; i += 1) {
+      const res = await POST()
+      expect(res.status).toBe(200)
+    }
+
+    const limited = await POST()
+    expect(limited.status).toBe(429)
+    expect(mockGenerateLink).toHaveBeenCalledTimes(5)
   })
 })

@@ -10,11 +10,19 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { enforceFixedWindowRateLimit } from '@/lib/request-rate-limit'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 export async function POST() {
   const { ctx, error } = await getAuthContext()
   if (error) return error // 未認証なら 401
+
+  const rateLimited = enforceFixedWindowRateLimit({
+    key: `webview-handoff:${ctx.userId}`,
+    limit: 5,
+    windowMs: 60 * 1000,
+  })
+  if (rateLimited) return rateLimited
 
   const admin = createServiceRoleClient()
 
