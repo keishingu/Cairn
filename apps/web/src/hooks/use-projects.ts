@@ -7,7 +7,7 @@ export const projectQueryKeys = {
   statuses: ['statuses'] as const,
 }
 
-export function useProjects() {
+export function useProjects(options?: { enabled?: boolean }) {
   return useQuery<ProjectDto[]>({
     queryKey: projectQueryKeys.all,
     queryFn: async () => {
@@ -15,5 +15,6 @@ export function useProjects() {
       if (!res.ok) throw new Error('fetch failed')
       return res.json() as Promise<ProjectDto[]>
     },
+    ...(options?.enabled !== undefined ? { enabled: options.enabled } : {}),
   })
 }
