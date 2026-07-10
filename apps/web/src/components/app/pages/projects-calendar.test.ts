@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, test, expect } from 'vitest'
-import { buildGcalEvents, buildGcalWeekEvents, buildGcalTimedEvents, buildMilestoneEvents, buildMilestoneWeekEvents } from './projects-calendar'
+import { buildGcalEvents, buildGcalWeekEvents, buildGcalTimedEvents, buildMilestoneEvents, buildMilestoneWeekEvents, formatMilestoneLabel } from './projects-calendar'
 import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
 import type { WorkspaceMilestoneDto } from '@/app/api/milestones/route'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -98,6 +98,16 @@ describe('buildMilestoneWeekEvents', () => {
 
     expect(result).toHaveLength(1)
     expect(result[0]).toMatchObject({ day: 2, span: 3, week: 0 })
+  })
+})
+
+describe('formatMilestoneLabel', () => {
+  test('プロジェクト名とマイルストーン名をスラッシュ区切りで表示する', () => {
+    expect(formatMilestoneLabel(makeMilestone({ projectTitle: '日本フルハーフ株式会社様', title: '訪問' }))).toBe('日本フルハーフ株式会社様 / 訪問')
+  })
+
+  test('開始時刻と終了時刻がある場合は時刻範囲も表示する', () => {
+    expect(formatMilestoneLabel(makeMilestone({ projectTitle: '日本フルハーフ株式会社様', title: '訪問', startTime: '12:00', endTime: '14:00' }))).toBe('日本フルハーフ株式会社様 / 訪問 12:00〜14:00')
   })
 })
 

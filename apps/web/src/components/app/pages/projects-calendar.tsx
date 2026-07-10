@@ -702,6 +702,8 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], milestoneEvents = 
               })}
               {milestoneEvents.filter(e => e.row < MAX_MILESTONE_ROWS).map((e, i) => {
                 const barColor = e.project?.statusColor ?? '#64748B'
+                const fgColor = e.milestone.completed ? 'var(--text-4)' : barColor
+                const label = formatMilestoneLabel(e.milestone)
                 const colW = 100 / 7
                 const left = `calc(${e.day * colW}% + 18px)`
                 const width = `calc(${e.span * colW}% - 22px)`
@@ -715,18 +717,20 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], milestoneEvents = 
                       position: 'absolute', left, top, width,
                       height: MILESTONE_H, borderRadius: 4,
                       background: e.milestone.completed ? 'var(--card-2)' : barColor + '12',
-                      color: e.milestone.completed ? 'var(--text-4)' : barColor,
-                      border: 'none', borderLeft: `2px solid ${e.milestone.completed ? 'var(--text-4)' : barColor}`,
+                      color: fgColor,
+                      border: 'none',
                       fontSize: 10, fontWeight: 600,
                       padding: '0 6px', textAlign: 'left',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
                       opacity: e.milestone.completed ? 0.65 : 1,
+                      display: 'flex', alignItems: 'center', gap: 4,
                     }}
                     onMouseDown={e2 => e2.stopPropagation()}
-                    title={`${e.milestone.projectTitle} / ${e.milestone.title}`}
+                    title={label}
                   >
-                    ┗ {e.milestone.title}
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: fgColor, flexShrink: 0 }} />
+                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
                   </button>
                 )
               })}
@@ -992,6 +996,8 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
                 })}
                 {milestoneEvents.map((e, i) => {
                   const barColor = e.project?.statusColor ?? '#64748B'
+                  const fgColor = e.milestone.completed ? 'var(--text-4)' : barColor
+                  const label = formatMilestoneLabel(e.milestone)
                   const colW = 100 / 7
                   const left = `calc(${e.day * colW}% + 18px)`
                   const width = `calc(${e.span * colW}% - 22px)`
@@ -1004,18 +1010,20 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
                         position: 'absolute', left, top, width,
                         height: MILESTONE_H, borderRadius: 4,
                         background: e.milestone.completed ? 'var(--card-2)' : barColor + '12',
-                        color: e.milestone.completed ? 'var(--text-4)' : barColor,
-                        border: 'none', borderLeft: `2px solid ${e.milestone.completed ? 'var(--text-4)' : barColor}`,
+                        color: fgColor,
+                        border: 'none',
                         fontSize: 10, fontWeight: 600,
                         padding: '0 6px', textAlign: 'left',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
                         opacity: e.milestone.completed ? 0.65 : 1,
+                        display: 'flex', alignItems: 'center', gap: 4,
                       }}
                       onMouseDown={e2 => e2.stopPropagation()}
-                      title={`${e.milestone.projectTitle} / ${e.milestone.title}`}
+                      title={label}
                     >
-                      ┗ {e.milestone.title}
+                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: fgColor, flexShrink: 0 }} />
+                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
                     </button>
                   )
                 })}
@@ -1163,6 +1171,19 @@ function formatMilestoneDateRange(milestone: WorkspaceMilestoneDto): string {
   return `${fmt(start!)}–${fmt(end!)}`
 }
 
+export function formatMilestoneTimeRange(milestone: Pick<WorkspaceMilestoneDto, 'startTime' | 'endTime'>): string {
+  if (milestone.startTime && milestone.endTime) return `${milestone.startTime}〜${milestone.endTime}`
+  if (milestone.startTime) return `${milestone.startTime}〜`
+  if (milestone.endTime) return `〜${milestone.endTime}`
+  return ''
+}
+
+export function formatMilestoneLabel(milestone: Pick<WorkspaceMilestoneDto, 'projectTitle' | 'title' | 'startTime' | 'endTime'>): string {
+  const base = `${milestone.projectTitle} / ${milestone.title}`
+  const timeRange = formatMilestoneTimeRange(milestone)
+  return timeRange ? `${base} ${timeRange}` : base
+}
+
 interface MobileCalendarGridProps {
   year: number
   month: number
@@ -1203,7 +1224,7 @@ const MobileCalendarGrid = ({ year, month, projects, milestones, projectMap, sel
             const dayMilestones = getDateMilestones(milestones, cell.fullDate)
             const chips = [
               ...dayProjects.map(project => ({ kind: 'project' as const, id: project.id, title: project.title, color: project.statusColor ?? '#9CA3AF', project })),
-              ...dayMilestones.map(milestone => ({ kind: 'milestone' as const, id: milestone.id, title: `┗ ${milestone.title}`, color: projectMap.get(milestone.projectId)?.statusColor ?? '#64748B', project: projectMap.get(milestone.projectId) ?? null, completed: milestone.completed })),
+              ...dayMilestones.map(milestone => ({ kind: 'milestone' as const, id: milestone.id, title: formatMilestoneLabel(milestone), color: projectMap.get(milestone.projectId)?.statusColor ?? '#64748B', project: projectMap.get(milestone.projectId) ?? null, completed: milestone.completed })),
             ]
             const visible = chips.slice(0, MOBILE_MAX_CHIPS)
             const overflow = chips.length - MOBILE_MAX_CHIPS
@@ -1257,15 +1278,16 @@ const MobileCalendarGrid = ({ year, month, projects, milestones, projectMap, sel
                         style={{
                           height: 13, borderRadius: 2,
                           background: cfg.bg,
-                          borderLeft: `2px solid ${cfg.bar}`,
                           fontSize: 9, fontWeight: 600, color: cfg.text,
                           paddingLeft: 2,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           lineHeight: '13px',
                           cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: 2,
                         }}
                       >
-                        {item.title}
+                        {item.kind === 'milestone' && <span style={{ width: 4, height: 4, borderRadius: '50%', background: cfg.bar, flexShrink: 0 }} />}
+                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</span>
                       </div>
                     )
                   })}
@@ -1379,6 +1401,7 @@ const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate,
             const _c = project?.statusColor ?? '#64748B'
             const cfg = { bg: m.completed ? 'var(--card-2)' : _c + '12', bar: m.completed ? 'var(--text-4)' : _c, text: m.completed ? 'var(--text-4)' : _c }
             const dateStr = formatMilestoneDateRange(m)
+            const label = formatMilestoneLabel(m)
             return (
               <button
                 key={m.id}
@@ -1391,12 +1414,12 @@ const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate,
                   opacity: m.completed ? 0.7 : 1,
                 }}
               >
-                <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.bar, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, color: cfg.text, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    ┗ {m.title}
+                    {label}
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{m.projectTitle}{dateStr ? ` · ${dateStr}` : ''}</div>
+                  {dateStr && <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>}
                 </div>
               </button>
             )
@@ -1556,10 +1579,14 @@ const MobileTimelineView = ({ year, month, projects, milestones, projectMap, onP
                 opacity: completed ? 0.7 : 1,
               }}
             >
-              <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: completed ? 'var(--text-4)' : cfg.bar, flexShrink: 0 }} />
+              {item.kind === 'milestone' ? (
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: completed ? 'var(--text-4)' : cfg.bar, flexShrink: 0 }} />
+              ) : (
+                <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
+              )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {item.kind === 'project' ? item.project.title : `┗ ${item.milestone.title}`}
+                  {item.kind === 'project' ? item.project.title : formatMilestoneLabel(item.milestone)}
                 </div>
                 {dateStr && (
                   <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
@@ -1722,6 +1749,7 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
                 const _c = project?.statusColor ?? '#64748B'
                 const cfg = { bg: m.completed ? 'var(--card-2)' : _c + '12', bar: m.completed ? 'var(--text-4)' : _c, text: m.completed ? 'var(--text-4)' : _c }
                 const dateStr = formatMilestoneDateRange(m)
+                const label = formatMilestoneLabel(m)
 
                 return (
                   <button
@@ -1739,12 +1767,12 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
                     onMouseEnter={e => { e.currentTarget.style.background = 'var(--card-hover)' }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                   >
-                    <div style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.bar, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13.5, fontWeight: 600, color: cfg.text, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        ┗ {m.title}
+                        {label}
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{m.projectTitle}{dateStr ? ` · ${dateStr}` : ''}</div>
+                      {dateStr && <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>}
                     </div>
                   </button>
                 )
