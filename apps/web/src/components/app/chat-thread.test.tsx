@@ -33,6 +33,27 @@ vi.mock('@/lib/toast', () => ({
   },
 }))
 
+vi.mock('@/hooks/use-poll', () => ({
+  usePoll: vi.fn(() => ({
+    data: {
+      id: 'poll-1',
+      channelId: 'channel-1',
+      messageId: 'message-3',
+      question: '投票テスト',
+      allowMultiple: false,
+      anonymous: false,
+      createdBy: 'user-1',
+      createdAt: '2026-07-10T00:00:00.000Z',
+      options: [
+        { id: 'option-1', text: '候補A', displayOrder: 0, voteCount: 0, voters: [] },
+        { id: 'option-2', text: '候補B', displayOrder: 1, voteCount: 0, voters: [] },
+      ],
+    },
+    isLoading: false,
+    isError: false,
+  })),
+}))
+
 describe('ChatMessage copy action', () => {
   beforeEach(() => {
     toastSuccess.mockReset()
@@ -138,8 +159,7 @@ describe('ChatMessage copy action', () => {
     expect(screen.getByRole('link', { name: '詳細' })).toHaveAttribute('href', 'https://example.com/guide')
   })
 
-  it('poll メッセージのチェックボックスは操作不可で callback を呼ばない', async () => {
-    const user = userEvent.setup()
+  it('poll メッセージでは Markdown のチェックボックスを描画しない', () => {
     const onCheckboxToggle = vi.fn()
 
     render(
@@ -168,11 +188,38 @@ describe('ChatMessage copy action', () => {
       />,
     )
 
-    const checkbox = screen.getByRole('checkbox')
-    expect(checkbox).toBeDisabled()
-
-    await user.click(checkbox)
-
+    expect(screen.queryByRole('checkbox')).toBeNull()
     expect(onCheckboxToggle).not.toHaveBeenCalled()
+  })
+
+  it('poll メッセージは PollCard で表示する', () => {
+    render(
+      <ChatMessage
+        messageId="message-4"
+        messageType="poll"
+        senderId="user-2"
+        currentUserId="user-1"
+        senderName="Alice"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="fallback question"
+        reactions={[]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('region', { name: '投票' })).toBeInTheDocument()
+    expect(screen.getByText('候補A')).toBeInTheDocument()
   })
 })
