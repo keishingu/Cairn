@@ -144,34 +144,17 @@ export async function POST(
   if (error) return error
 
   try {
-    const { db, documentChunks, profiles, workspaceMembers } = await import('@cairn/db')
-    const { and, count, eq, sql } = await import('drizzle-orm')
+    const { db, documentChunks, profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
+    const { and, count, eq, inArray, sql } = await import('drizzle-orm')
 
     const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
     if (!isWorkspaceAdmin(callerRole)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const prepared = await db.transaction(async (tx) => prepareAnonymization(
-      tx,
-      ctx.workspaceId,
-      targetUserId,
-      callerRole,
-      workspaceMembers,
-      sql,
-      and,
-      eq,
-      count,
-    ))
-    if (!prepared.ok) {
-      return NextResponse.json({ error: prepared.error }, { status: prepared.status })
-    }
-
-    await removeAvatarPaths(prepared.avatarPaths)
-
     const now = new Date()
-    await db.transaction(async (tx) => {
-      const confirmed = await prepareAnonymization(
+    const avatarPaths = await db.transaction(async (tx) => {
+      const prepared = await prepareAnonymization(
         tx,
         ctx.workspaceId,
         targetUserId,
@@ -182,11 +165,10 @@ export async function POST(
         eq,
         count,
       )
-      if (!confirmed.ok) {
-        throw confirmed
+      if (!prepared.ok) {
+        throw prepared
       }
-      const residualAvatarPaths = confirmed.avatarPaths.filter(path => !prepared.avatarPaths.includes(path))
-      await removeAvatarPaths(residualAvatarPaths)
+
       await tx
         .update(workspaceMembers)
         .set({
@@ -207,6 +189,23 @@ export async function POST(
           eq(documentChunks.sourceId, targetUserId),
         ))
 
+      const affectedProjectRows = await tx
+        .select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+        .where(and(eq(projectMembers.userId, targetUserId), eq(projects.workspaceId, ctx.workspaceId)))
+      const affectedProjectIds = affectedProjectRows.map(row => row.projectId)
+
+      if (affectedProjectIds.length > 0) {
+        await tx
+          .delete(documentChunks)
+          .where(and(
+            eq(documentChunks.workspaceId, ctx.workspaceId),
+            eq(documentChunks.sourceType, 'project'),
+            inArray(documentChunks.sourceId, affectedProjectIds),
+          ))
+      }
+
       const activeMembershipRows = await tx
         .select({ membershipCount: count() })
         .from(workspaceMembers)
@@ -224,7 +223,11 @@ export async function POST(
           })
           .where(eq(profiles.id, targetUserId))
       }
+
+      return prepared.avatarPaths
     })
+
+    await removeAvatarPaths(avatarPaths)
 
     clearWorkspaceCacheForUser(targetUserId)
 
