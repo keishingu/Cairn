@@ -3,6 +3,8 @@
 
 import { z } from 'zod'
 
+const timeStringSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+
 export const createProjectSchema = z.object({
   workspaceId: z.string().uuid(),
   title: z.string().min(1).max(100),
@@ -27,6 +29,8 @@ export const createMilestoneSchema = z.object({
   description: z.string().max(1000).optional(),
   startDate: z.string().date().optional(),
   endDate: z.string().date().optional(),
+  startTime: timeStringSchema.optional(),
+  endTime: timeStringSchema.optional(),
 })
 
 export const patchMilestoneSchema = z.object({
@@ -34,6 +38,8 @@ export const patchMilestoneSchema = z.object({
   description: z.string().max(1000).nullable().optional(),
   startDate: z.string().date().nullable().optional(),
   endDate: z.string().date().nullable().optional(),
+  startTime: timeStringSchema.nullable().optional(),
+  endTime: timeStringSchema.nullable().optional(),
   completed: z.boolean().optional(),
 }).refine(
   data => Object.values(data).some(value => value !== undefined),

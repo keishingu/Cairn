@@ -35,6 +35,8 @@ vi.mock('@cairn/db', () => ({
     description: 'milestones.description',
     startDate: 'milestones.startDate',
     endDate: 'milestones.endDate',
+    startTime: 'milestones.startTime',
+    endTime: 'milestones.endTime',
     completed: 'milestones.completed',
     createdAt: 'milestones.createdAt',
   },
@@ -127,6 +129,8 @@ describe('POST /api/projects/[id]/milestones', () => {
       description: null,
       startDate: '2026-08-01',
       endDate: null,
+      startTime: '09:30:00',
+      endTime: null,
       completed: false,
     }
     const tx = {
@@ -138,7 +142,7 @@ describe('POST /api/projects/[id]/milestones', () => {
 
     const { POST } = await import('./route')
     const res = await POST(
-      new Request('http://localhost', { method: 'POST', body: JSON.stringify({ title: '高所順応', startDate: '2026-08-01' }) }),
+      new Request('http://localhost', { method: 'POST', body: JSON.stringify({ title: '高所順応', startDate: '2026-08-01', startTime: '09:30' }) }),
       { params: Promise.resolve({ id: PROJECT_ID }) },
     )
 

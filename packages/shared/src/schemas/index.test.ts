@@ -99,6 +99,8 @@ describe('createMilestoneSchema', () => {
       description: '標高に慣れる期間',
       startDate: '2026-08-01',
       endDate: '2026-08-03',
+      startTime: '09:30',
+      endTime: '17:00',
     })
     expect(result.success).toBe(true)
   })
@@ -117,6 +119,14 @@ describe('createMilestoneSchema', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it('時刻形式でない場合はエラーになる', () => {
+    const result = createMilestoneSchema.safeParse({
+      title: '高所順応',
+      startTime: '25:00',
+    })
+    expect(result.success).toBe(false)
+  })
 })
 
 describe('patchMilestoneSchema', () => {
@@ -130,6 +140,8 @@ describe('patchMilestoneSchema', () => {
       description: null,
       startDate: null,
       endDate: null,
+      startTime: null,
+      endTime: null,
     })
     expect(result.success).toBe(true)
   })

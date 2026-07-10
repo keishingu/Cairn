@@ -30,6 +30,8 @@ vi.mock('@cairn/db', () => ({
     description: 'milestones.description',
     startDate: 'milestones.startDate',
     endDate: 'milestones.endDate',
+    startTime: 'milestones.startTime',
+    endTime: 'milestones.endTime',
     completed: 'milestones.completed',
   },
   projects: { id: 'projects.id', workspaceId: 'projects.workspaceId' },

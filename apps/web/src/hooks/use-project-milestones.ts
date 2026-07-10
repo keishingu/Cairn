@@ -8,6 +8,8 @@ export interface CreateMilestoneInput {
   description?: string
   startDate?: string
   endDate?: string
+  startTime?: string
+  endTime?: string
 }
 
 export interface PatchMilestoneInput {
@@ -15,6 +17,8 @@ export interface PatchMilestoneInput {
   description?: string | null
   startDate?: string | null
   endDate?: string | null
+  startTime?: string | null
+  endTime?: string | null
   completed?: boolean
 }
 

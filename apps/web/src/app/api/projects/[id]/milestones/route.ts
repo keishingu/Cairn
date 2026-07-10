@@ -13,6 +13,8 @@ export interface MilestoneDto {
   description: string | null
   startDate: string | null
   endDate: string | null
+  startTime: string | null
+  endTime: string | null
   completed: boolean
   channelId: string
 }
@@ -47,6 +49,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
         description: milestones.description,
         startDate: milestones.startDate,
         endDate: milestones.endDate,
+        startTime: milestones.startTime,
+        endTime: milestones.endTime,
         completed: milestones.completed,
         channelId: channels.id,
       })
@@ -103,6 +107,8 @@ export async function POST(req: Request, { params }: RouteContext) {
           description: parsed.data.description ?? null,
           startDate: parsed.data.startDate ?? null,
           endDate: parsed.data.endDate ?? null,
+          startTime: parsed.data.startTime ?? null,
+          endTime: parsed.data.endTime ?? null,
           createdBy: ctx.userId,
         })
         .returning()
@@ -133,6 +139,8 @@ export async function POST(req: Request, { params }: RouteContext) {
       description: inserted.milestone.description,
       startDate: inserted.milestone.startDate,
       endDate: inserted.milestone.endDate,
+      startTime: inserted.milestone.startTime,
+      endTime: inserted.milestone.endTime,
       completed: inserted.milestone.completed,
       channelId: inserted.channelId,
     }

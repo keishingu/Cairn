@@ -14,13 +14,19 @@ import { toast } from '@/lib/toast'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
 
 
-export function formatDateRange(start: string | null, end: string | null): string {
+const formatTime = (time: string | null) => time ? time.slice(0, 5) : null
+
+export function formatDateRange(start: string | null, end: string | null, startTime?: string | null, endTime?: string | null): string {
   if (!start) return '—'
   const fmt = (d: string) => {
     const [, m, day] = d.split('-')
     return `${Number(m)}/${Number(day)}`
   }
-  return end && end !== start ? `${fmt(start)} ~ ${fmt(end)}` : fmt(start)
+  const st = formatTime(startTime ?? null)
+  const et = formatTime(endTime ?? null)
+  const startLabel = `${fmt(start)}${st ? ` ${st}` : ''}`
+  if (!end || end === start) return et ? `${startLabel} ~ ${et}` : startLabel
+  return `${startLabel} ~ ${fmt(end)}${et ? ` ${et}` : ''}`
 }
 
 const cardLabelStyle: React.CSSProperties = {
@@ -97,31 +103,44 @@ const InlineText = ({
 }
 
 const InlineDatePair = ({
-  startDate, endDate, onSave, readOnly = false,
+  startDate, endDate, startTime = null, endTime = null, onSave, readOnly = false,
 }: {
   startDate: string | null
   endDate: string | null
-  onSave: (start: string | null, end: string | null) => void
+  startTime?: string | null
+  endTime?: string | null
+  onSave: (start: string | null, end: string | null, startTime: string | null, endTime: string | null) => void
   readOnly?: boolean
 }) => {
   const [editing, setEditing] = React.useState(false)
   const [start, setStart] = React.useState(startDate ?? '')
   const [end, setEnd]     = React.useState(endDate ?? '')
+  const [startClock, setStartClock] = React.useState(formatTime(startTime) ?? '')
+  const [endClock, setEndClock] = React.useState(formatTime(endTime) ?? '')
   const wrapRef = React.useRef<HTMLDivElement>(null)
 
-  React.useEffect(() => { setStart(startDate ?? ''); setEnd(endDate ?? '') }, [startDate, endDate])
+  React.useEffect(() => {
+    setStart(startDate ?? '')
+    setEnd(endDate ?? '')
+    setStartClock(formatTime(startTime) ?? '')
+    setEndClock(formatTime(endTime) ?? '')
+  }, [startDate, endDate, startTime, endTime])
 
   const commit = () => {
     setEditing(false)
     const ns = start || null
     const ne = end || null
-    if (ns !== startDate || ne !== endDate) onSave(ns, ne)
+    const nst = startClock || null
+    const net = endClock || null
+    if (ns !== startDate || ne !== endDate || nst !== formatTime(startTime) || net !== formatTime(endTime)) onSave(ns, ne, nst, net)
   }
 
   const cancel = () => {
     setEditing(false)
     setStart(startDate ?? '')
     setEnd(endDate ?? '')
+    setStartClock(formatTime(startTime) ?? '')
+    setEndClock(formatTime(endTime) ?? '')
   }
 
   // フォーカスがペア全体から外れた時だけ確定する（開始↔終了の移動では確定しない）
@@ -149,7 +168,7 @@ const InlineDatePair = ({
         title={readOnly ? undefined : 'クリックして編集'}
       >
         <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>
-          {formatDateRange(startDate, endDate)}
+          {formatDateRange(startDate, endDate, startTime, endTime)}
         </span>
         {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
       </button>
@@ -170,6 +189,13 @@ const InlineDatePair = ({
         onKeyDown={e => { if (e.key === 'Escape') cancel() }}
         style={inputStyle}
       />
+      <input
+        type="time"
+        value={startClock}
+        onChange={e => setStartClock(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
+        style={{ ...inputStyle, width: 104 }}
+      />
       <span style={{ color: 'var(--text-4)', fontSize: 12 }}>〜</span>
       <input
         type="date"
@@ -177,6 +203,13 @@ const InlineDatePair = ({
         onChange={e => setEnd(e.target.value)}
         onKeyDown={e => { if (e.key === 'Escape') cancel() }}
         style={inputStyle}
+      />
+      <input
+        type="time"
+        value={endClock}
+        onChange={e => setEndClock(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
+        style={{ ...inputStyle, width: 104 }}
       />
     </div>
   )
@@ -319,7 +352,7 @@ const isPastDue = (milestone: MilestoneDto) => {
 }
 
 const MilestoneCreateForm = ({ onCreate, disabled }: {
-  onCreate: (input: { title: string; description?: string; startDate?: string; endDate?: string }) => void
+  onCreate: (input: { title: string; description?: string; startDate?: string; endDate?: string; startTime?: string; endTime?: string }) => void
   disabled?: boolean
 }) => {
   const [open, setOpen] = React.useState(false)
@@ -327,12 +360,16 @@ const MilestoneCreateForm = ({ onCreate, disabled }: {
   const [description, setDescription] = React.useState('')
   const [startDate, setStartDate] = React.useState('')
   const [endDate, setEndDate] = React.useState('')
+  const [startTime, setStartTime] = React.useState('')
+  const [endTime, setEndTime] = React.useState('')
 
   const reset = () => {
     setTitle('')
     setDescription('')
     setStartDate('')
     setEndDate('')
+    setStartTime('')
+    setEndTime('')
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -344,6 +381,8 @@ const MilestoneCreateForm = ({ onCreate, disabled }: {
       ...(description.trim() ? { description: description.trim() } : {}),
       ...(startDate ? { startDate } : {}),
       ...(endDate ? { endDate } : {}),
+      ...(startTime ? { startTime } : {}),
+      ...(endTime ? { endTime } : {}),
     })
     reset()
     setOpen(false)
@@ -386,8 +425,12 @@ const MilestoneCreateForm = ({ onCreate, disabled }: {
         style={{ ...inputStyle, height: 'auto', resize: 'vertical', paddingTop: 8, lineHeight: 1.5 }}
       />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputStyle}/>
-        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inputStyle}/>
+        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} aria-label="開始日" style={inputStyle}/>
+        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} aria-label="終了日" style={inputStyle}/>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label="開始時刻" style={inputStyle}/>
+        <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-label="終了時刻" style={inputStyle}/>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button type="button" className="btn btn-ghost" onClick={() => { reset(); setOpen(false) }}>キャンセル</button>
@@ -400,7 +443,7 @@ const MilestoneCreateForm = ({ onCreate, disabled }: {
 const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
   milestone: MilestoneDto
   canEdit: boolean
-  onPatch: (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'completed'>>) => void
+  onPatch: (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => void
   onDelete: (milestone: MilestoneDto) => void
 }) => {
   const router = useRouter()
@@ -447,7 +490,9 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
             <InlineDatePair
               startDate={milestone.startDate}
               endDate={milestone.endDate}
-              onSave={(start, end) => onPatch(milestone.id, { startDate: start, endDate: end })}
+              startTime={milestone.startTime}
+              endTime={milestone.endTime}
+              onSave={(start, end, startTime, endTime) => onPatch(milestone.id, { startDate: start, endDate: end, startTime, endTime })}
               readOnly={!canEdit}
             />
           </span>
@@ -486,7 +531,7 @@ const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: 
   const milestones = useProjectMilestones(projectId)
   const [deleteTarget, setDeleteTarget] = React.useState<MilestoneDto | null>(null)
 
-  const handlePatch = (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'completed'>>) => {
+  const handlePatch = (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => {
     milestones.patchMutation.mutate(
       { id, input },
       { onError: () => toast.error('マイルストーンの更新に失敗しました') },

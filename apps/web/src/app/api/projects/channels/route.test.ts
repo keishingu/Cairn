@@ -25,7 +25,7 @@ vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext })
 vi.mock('@cairn/db', () => ({
   db: mockDb,
   channels:         { id: 'ch.id', name: 'ch.name', projectId: 'ch.projectId', milestoneId: 'ch.milestoneId' },
-  milestones:       { id: 'm.id', title: 'm.title', startDate: 'm.startDate', endDate: 'm.endDate', completed: 'm.completed', createdAt: 'm.createdAt' },
+  milestones:       { id: 'm.id', title: 'm.title', startDate: 'm.startDate', endDate: 'm.endDate', startTime: 'm.startTime', endTime: 'm.endTime', completed: 'm.completed', createdAt: 'm.createdAt' },
   projects:         { id: 'p.id', workspaceId: 'p.workspaceId', title: 'p.title', startDate: 'p.startDate', endDate: 'p.endDate', archived: 'p.archived', createdAt: 'p.createdAt' },
   projectMembers:   { projectId: 'pm.projectId', userId: 'pm.userId' },
   activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', userId: 'awm.userId', role: 'awm.role' },
@@ -76,7 +76,7 @@ describe('GET /api/projects/channels', () => {
   })
 
   it('ゲストは参加プロジェクトのチャンネルのみ取得できる', async () => {
-    const channelRow = { channelId: CH_1, channelName: 'general', projectId: PROJ_1, projectTitle: 'プロジェクト1', startDate: null, endDate: null, archived: false, milestoneId: null, milestoneCompleted: null }
+    const channelRow = { channelId: CH_1, channelName: 'general', projectId: PROJ_1, projectTitle: 'プロジェクト1', startDate: null, endDate: null, startTime: null, endTime: null, archived: false, milestoneId: null, milestoneCompleted: null }
 
     mockDb.select
       .mockReturnValueOnce(chain([{ role: 'guest' }]))       // 1. WSロール確認
@@ -108,8 +108,8 @@ describe('GET /api/projects/channels', () => {
   })
 
   it('通常メンバーはすべてのプロジェクトのチャンネルを取得できる', async () => {
-    const ch1 = { channelId: CH_1, channelName: 'general', projectId: PROJ_1, projectTitle: 'プロジェクト1', startDate: null, endDate: null, archived: false, milestoneId: null, milestoneCompleted: null }
-    const ch2 = { channelId: CH_2, channelName: 'general', projectId: PROJ_2, projectTitle: 'プロジェクト2', startDate: null, endDate: null, archived: false, milestoneId: null, milestoneCompleted: null }
+    const ch1 = { channelId: CH_1, channelName: 'general', projectId: PROJ_1, projectTitle: 'プロジェクト1', startDate: null, endDate: null, startTime: null, endTime: null, archived: false, milestoneId: null, milestoneCompleted: null }
+    const ch2 = { channelId: CH_2, channelName: 'general', projectId: PROJ_2, projectTitle: 'プロジェクト2', startDate: null, endDate: null, startTime: null, endTime: null, archived: false, milestoneId: null, milestoneCompleted: null }
 
     mockDb.select
       .mockReturnValueOnce(chain([{ role: 'member' }]))  // 1. WSロール確認

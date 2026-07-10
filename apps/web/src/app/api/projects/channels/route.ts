@@ -10,6 +10,8 @@ export interface ProjectChannelDto {
   projectTitle: string
   startDate: string | null
   endDate: string | null
+  startTime: string | null
+  endTime: string | null
   archived: boolean
   unreadCount: number
   unreadMentionCount: number
@@ -53,6 +55,8 @@ export async function GET() {
         projectTitle: projects.title,
         startDate: sql<string | null>`coalesce(${milestones.startDate}, ${projects.startDate})`,
         endDate: sql<string | null>`coalesce(${milestones.endDate}, ${projects.endDate})`,
+        startTime: milestones.startTime,
+        endTime: milestones.endTime,
         archived: projects.archived,
         milestoneId: channels.milestoneId,
         milestoneCompleted: milestones.completed,

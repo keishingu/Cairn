@@ -26,6 +26,8 @@ const STUB_MILESTONES: MilestoneDto[] = [
     description: null,
     startDate: '2026-08-01',
     endDate: '2026-08-03',
+    startTime: '09:30',
+    endTime: '17:00',
     completed: false,
     channelId: 'c1',
   },

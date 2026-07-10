@@ -46,6 +46,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       description?: string | null
       startDate?: string | null
       endDate?: string | null
+      startTime?: string | null
+      endTime?: string | null
       completed?: boolean
       updatedAt: Date
     } = { updatedAt: new Date() }
@@ -54,6 +56,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     if ('description' in parsed.data) set.description = parsed.data.description ?? null
     if ('startDate' in parsed.data) set.startDate = parsed.data.startDate ?? null
     if ('endDate' in parsed.data) set.endDate = parsed.data.endDate ?? null
+    if ('startTime' in parsed.data) set.startTime = parsed.data.startTime ?? null
+    if ('endTime' in parsed.data) set.endTime = parsed.data.endTime ?? null
     if (parsed.data.completed !== undefined) set.completed = parsed.data.completed
 
     const [updated] = await db
@@ -79,6 +83,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       description: updated.description,
       startDate: updated.startDate,
       endDate: updated.endDate,
+      startTime: updated.startTime,
+      endTime: updated.endTime,
       completed: updated.completed,
       channelId: channel.id,
     } satisfies MilestoneDto)

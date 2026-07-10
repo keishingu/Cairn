@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, date, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, date, index, pgTable, text, time, timestamp, uuid } from 'drizzle-orm/pg-core'
 import { profiles } from './workspaces'
 import { projects } from './projects'
 
@@ -16,6 +16,8 @@ export const milestones = pgTable(
     description: text('description'),
     startDate: date('start_date'),
     endDate: date('end_date'),
+    startTime: time('start_time'),
+    endTime: time('end_time'),
     completed: boolean('completed').notNull().default(false),
     createdBy: uuid('created_by')
       .notNull()
