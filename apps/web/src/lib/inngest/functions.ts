@@ -70,15 +70,22 @@ export const onMessageCreated = inngest.createFunction(
     // しないよう active_workspace_members に inner join して active のみに絞る
     // （deactivation は履歴のため channel_members 行を残すため、ここで除外しないと通知が飛ぶ）
     const members = await step.run('fetch-members', async () => {
-      const { db, channelMembers, profiles, activeWorkspaceMembers } = await import('@cairn/db')
+      const { db, channelMembers, profiles, activeWorkspaceMembers, workspaceMembers } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
       return db
-        .select({ userId: channelMembers.userId, displayName: profiles.displayName })
+        .select({
+          userId: channelMembers.userId,
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        })
         .from(channelMembers)
         .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
         .innerJoin(activeWorkspaceMembers, and(
           eq(activeWorkspaceMembers.userId, channelMembers.userId),
           eq(activeWorkspaceMembers.workspaceId, workspaceId),
+        ))
+        .innerJoin(workspaceMembers, and(
+          eq(workspaceMembers.userId, channelMembers.userId),
+          eq(workspaceMembers.workspaceId, workspaceId),
         ))
         .where(eq(channelMembers.channelId, channelId))
         .then(rows => rows.filter(r => r.userId !== senderId))
@@ -136,13 +143,20 @@ export const onMessageCreated = inngest.createFunction(
     if (members.length === 0 && mentionedIds.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
     const mentionedMembers = mentionedIds.length > 0
       ? await step.run('fetch-mentioned-members', async () => {
-          const { db, activeWorkspaceMembers, profiles } = await import('@cairn/db')
+          const { db, activeWorkspaceMembers, profiles, workspaceMembers } = await import('@cairn/db')
           const { eq, inArray, and, ne } = await import('drizzle-orm')
           // 非活性メンバーにはメンション通知を送らない（active membership のみ宛先にする）
           return db
-            .select({ userId: activeWorkspaceMembers.userId, displayName: profiles.displayName })
+            .select({
+              userId: activeWorkspaceMembers.userId,
+              displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+            })
             .from(activeWorkspaceMembers)
             .innerJoin(profiles, eq(activeWorkspaceMembers.userId, profiles.id))
+            .innerJoin(workspaceMembers, and(
+              eq(workspaceMembers.userId, activeWorkspaceMembers.userId),
+              eq(workspaceMembers.workspaceId, workspaceId),
+            ))
             .where(and(
               eq(activeWorkspaceMembers.workspaceId, workspaceId),
               inArray(activeWorkspaceMembers.userId, mentionedIds),
