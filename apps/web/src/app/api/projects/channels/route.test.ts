@@ -28,6 +28,7 @@ vi.mock('@cairn/db', () => ({
   projects:         { id: 'p.id', workspaceId: 'p.workspaceId', title: 'p.title', archived: 'p.archived', createdAt: 'p.createdAt' },
   projectMembers:   { projectId: 'pm.projectId', userId: 'pm.userId' },
   workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role' },
+  activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', userId: 'awm.userId', role: 'awm.role' },
   channelReadStates:{ channelId: 'crs.channelId', userId: 'crs.userId', lastReadAt: 'crs.lastReadAt', unreadMentionCount: 'crs.unreadMentionCount' },
   messages:         { channelId: 'msg.channelId', createdAt: 'msg.createdAt', deletedAt: 'msg.deletedAt' },
 }))

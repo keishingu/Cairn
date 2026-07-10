@@ -53,7 +53,11 @@ export function useProjectMembers(projectId: string | null) {
 }
 
 export function useWorkspaceMembersForInvite(enabled: boolean) {
-  return useWorkspaceMembers({ enabled })
+  return useQuery<WorkspaceMemberDto[]>({
+    queryKey: ['workspace-members', 'active'],
+    queryFn: () => fetchWithAuth('/api/workspaces/members?status=active').then(r => r.json()),
+    enabled,
+  })
 }
 
 export function useWorkspaceInvites(enabled = true) {
