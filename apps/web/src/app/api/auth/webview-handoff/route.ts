@@ -17,10 +17,11 @@ export async function POST() {
   const { ctx, error } = await getAuthContext()
   if (error) return error // 未認証なら 401
 
-  const rateLimited = enforceFixedWindowRateLimit({
+  const rateLimited = await enforceFixedWindowRateLimit({
     key: `webview-handoff:${ctx.userId}`,
     limit: 5,
     windowMs: 60 * 1000,
+    prefix: '@cairn/webview-handoff-route',
   })
   if (rateLimited) return rateLimited
 

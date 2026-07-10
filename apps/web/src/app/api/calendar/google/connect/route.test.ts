@@ -5,9 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextResponse } from 'next/server'
 import { resetRequestRateLimitForTest } from '@/lib/request-rate-limit'
 
-const { mockGetAuthContext, mockBuildOAuthUrl } = vi.hoisted(() => ({
+const { mockGetAuthContext, mockBuildOAuthUrl, limitMock, slidingWindowMock, redisCtorMock } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockBuildOAuthUrl: vi.fn(),
+  limitMock: vi.fn(),
+  slidingWindowMock: vi.fn(),
+  redisCtorMock: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -18,20 +21,49 @@ vi.mock('@/lib/google-calendar-api', () => ({
   buildOAuthUrl: mockBuildOAuthUrl,
 }))
 
+vi.mock('@upstash/ratelimit', () => ({
+  Ratelimit: class {
+    static slidingWindow = slidingWindowMock
+
+    constructor() {}
+
+    limit = limitMock
+  },
+}))
+
+vi.mock('@upstash/redis', () => ({
+  Redis: class {
+    constructor(config: unknown) {
+      redisCtorMock(config)
+    }
+  },
+}))
+
 describe('GET /api/calendar/google/connect', () => {
   beforeEach(() => {
     process.env['GOOGLE_CALENDAR_CLIENT_ID'] = 'client-id'
     process.env['GOOGLE_CALENDAR_REDIRECT_URI'] = 'http://localhost/callback'
+    process.env['UPSTASH_REDIS_REST_URL'] = 'https://redis.example.com'
+    process.env['UPSTASH_REDIS_REST_TOKEN'] = 'token'
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: 'user-1', workspaceId: 'ws-1' },
       error: null,
     })
     mockBuildOAuthUrl.mockReturnValue('https://accounts.google.com/o/oauth2/v2/auth')
+    limitMock.mockResolvedValue({
+      success: true,
+      limit: 10,
+      remaining: 9,
+      reset: Date.now() + 60_000,
+      pending: Promise.resolve(),
+    })
   })
 
   afterEach(() => {
     delete process.env['GOOGLE_CALENDAR_CLIENT_ID']
     delete process.env['GOOGLE_CALENDAR_REDIRECT_URI']
+    delete process.env['UPSTASH_REDIS_REST_URL']
+    delete process.env['UPSTASH_REDIS_REST_TOKEN']
     vi.clearAllMocks()
     resetRequestRateLimitForTest()
   })
@@ -59,6 +91,22 @@ describe('GET /api/calendar/google/connect', () => {
 
   it('短時間の連続接続開始は 429 で制限する', async () => {
     const { GET } = await import('./route')
+    for (let i = 0; i < 10; i += 1) {
+      limitMock.mockResolvedValueOnce({
+        success: true,
+        limit: 10,
+        remaining: 9 - i,
+        reset: Date.now() + 60_000,
+        pending: Promise.resolve(),
+      })
+    }
+    limitMock.mockResolvedValueOnce({
+      success: false,
+      limit: 10,
+      remaining: 0,
+      reset: Date.now() + 60_000,
+      pending: Promise.resolve(),
+    })
 
     for (let i = 0; i < 10; i += 1) {
       const res = await GET()

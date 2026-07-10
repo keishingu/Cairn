@@ -10,10 +10,11 @@ export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  const rateLimited = enforceFixedWindowRateLimit({
+  const rateLimited = await enforceFixedWindowRateLimit({
     key: `google-calendar-connect:${ctx.userId}`,
     limit: 10,
     windowMs: 10 * 60 * 1000,
+    prefix: '@cairn/google-calendar-connect',
   })
   if (rateLimited) return rateLimited
 

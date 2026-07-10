@@ -1,16 +1,26 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextResponse } from 'next/server'
 import { resetRequestRateLimitForTest } from '@/lib/request-rate-limit'
 
 // --- vi.hoisted: vi.mock ファクトリから参照できるよう先に定義 ---
-const { mockGetAuthContext, mockGetUserById, mockGenerateLink } = vi.hoisted(() => {
+const {
+  mockGetAuthContext,
+  mockGetUserById,
+  mockGenerateLink,
+  limitMock,
+  slidingWindowMock,
+  redisCtorMock,
+} = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn()
   const mockGetUserById = vi.fn()
   const mockGenerateLink = vi.fn()
-  return { mockGetAuthContext, mockGetUserById, mockGenerateLink }
+  const limitMock = vi.fn()
+  const slidingWindowMock = vi.fn()
+  const redisCtorMock = vi.fn()
+  return { mockGetAuthContext, mockGetUserById, mockGenerateLink, limitMock, slidingWindowMock, redisCtorMock }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -28,6 +38,24 @@ vi.mock('@/lib/supabase/service', () => ({
   })),
 }))
 
+vi.mock('@upstash/ratelimit', () => ({
+  Ratelimit: class {
+    static slidingWindow = slidingWindowMock
+
+    constructor() {}
+
+    limit = limitMock
+  },
+}))
+
+vi.mock('@upstash/redis', () => ({
+  Redis: class {
+    constructor(config: unknown) {
+      redisCtorMock(config)
+    }
+  },
+}))
+
 function authed() {
   mockGetAuthContext.mockResolvedValue({
     ctx: { userId: 'user-1', workspaceId: 'ws-1' },
@@ -36,7 +64,21 @@ function authed() {
 }
 
 describe('POST /api/auth/webview-handoff', () => {
+  beforeEach(() => {
+    process.env['UPSTASH_REDIS_REST_URL'] = 'https://redis.example.com'
+    process.env['UPSTASH_REDIS_REST_TOKEN'] = 'token'
+    limitMock.mockResolvedValue({
+      success: true,
+      limit: 5,
+      remaining: 4,
+      reset: Date.now() + 60_000,
+      pending: Promise.resolve(),
+    })
+  })
+
   afterEach(() => {
+    delete process.env['UPSTASH_REDIS_REST_URL']
+    delete process.env['UPSTASH_REDIS_REST_TOKEN']
     vi.clearAllMocks()
     resetRequestRateLimitForTest()
   })
@@ -113,6 +155,13 @@ describe('POST /api/auth/webview-handoff', () => {
     })
 
     const { POST } = await import('./route')
+    limitMock
+      .mockResolvedValueOnce({ success: true, limit: 5, remaining: 4, reset: Date.now() + 60_000, pending: Promise.resolve() })
+      .mockResolvedValueOnce({ success: true, limit: 5, remaining: 3, reset: Date.now() + 60_000, pending: Promise.resolve() })
+      .mockResolvedValueOnce({ success: true, limit: 5, remaining: 2, reset: Date.now() + 60_000, pending: Promise.resolve() })
+      .mockResolvedValueOnce({ success: true, limit: 5, remaining: 1, reset: Date.now() + 60_000, pending: Promise.resolve() })
+      .mockResolvedValueOnce({ success: true, limit: 5, remaining: 0, reset: Date.now() + 60_000, pending: Promise.resolve() })
+      .mockResolvedValueOnce({ success: false, limit: 5, remaining: 0, reset: Date.now() + 60_000, pending: Promise.resolve() })
 
     for (let i = 0; i < 5; i += 1) {
       const res = await POST()

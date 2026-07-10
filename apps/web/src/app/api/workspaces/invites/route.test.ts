@@ -8,7 +8,7 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
 // --- vi.hoisted ---
-const { mockGetAuthContext, mockDb } = vi.hoisted(() => {
+const { mockGetAuthContext, mockDb, limitMock, slidingWindowMock, redisCtorMock } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -20,7 +20,10 @@ const { mockGetAuthContext, mockDb } = vi.hoisted(() => {
     select: vi.fn(),
     insert: vi.fn(),
   }
-  return { mockGetAuthContext, mockDb }
+  const limitMock = vi.fn()
+  const slidingWindowMock = vi.fn()
+  const redisCtorMock = vi.fn()
+  return { mockGetAuthContext, mockDb, limitMock, slidingWindowMock, redisCtorMock }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -52,6 +55,24 @@ vi.mock('drizzle-orm', () => ({
   gt: vi.fn(() => 'gt'),
 }))
 
+vi.mock('@upstash/ratelimit', () => ({
+  Ratelimit: class {
+    static slidingWindow = slidingWindowMock
+
+    constructor() {}
+
+    limit = limitMock
+  },
+}))
+
+vi.mock('@upstash/redis', () => ({
+  Redis: class {
+    constructor(config: unknown) {
+      redisCtorMock(config)
+    }
+  },
+}))
+
 /** 単一結果を返す select チェーン */
 function selectChain(result: unknown[]) {
   return {
@@ -73,10 +94,21 @@ function selectChain(result: unknown[]) {
 describe('POST /api/workspaces/invites', () => {
   beforeEach(() => {
     process.env['DATABASE_URL'] = 'postgresql://test'
+    process.env['UPSTASH_REDIS_REST_URL'] = 'https://redis.example.com'
+    process.env['UPSTASH_REDIS_REST_TOKEN'] = 'token'
+    limitMock.mockResolvedValue({
+      success: true,
+      limit: 10,
+      remaining: 9,
+      reset: Date.now() + 60_000,
+      pending: Promise.resolve(),
+    })
   })
 
   afterEach(() => {
     delete process.env['DATABASE_URL']
+    delete process.env['UPSTASH_REDIS_REST_URL']
+    delete process.env['UPSTASH_REDIS_REST_TOKEN']
     vi.clearAllMocks()
     resetRequestRateLimitForTest()
     mockGetAuthContext.mockResolvedValue({
@@ -204,6 +236,22 @@ describe('POST /api/workspaces/invites', () => {
     })
 
     const { POST } = await import('./route')
+    for (let i = 0; i < 10; i += 1) {
+      limitMock.mockResolvedValueOnce({
+        success: true,
+        limit: 10,
+        remaining: 9 - i,
+        reset: Date.now() + 60_000,
+        pending: Promise.resolve(),
+      })
+    }
+    limitMock.mockResolvedValueOnce({
+      success: false,
+      limit: 10,
+      remaining: 0,
+      reset: Date.now() + 60_000,
+      pending: Promise.resolve(),
+    })
 
     for (let i = 0; i < 10; i += 1) {
       const res = await POST(

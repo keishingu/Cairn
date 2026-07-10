@@ -17,10 +17,11 @@ export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  const rateLimited = enforceFixedWindowRateLimit({
+  const rateLimited = await enforceFixedWindowRateLimit({
     key: `workspace-invites:${ctx.workspaceId}:${ctx.userId}`,
     limit: 10,
     windowMs: 10 * 60 * 1000,
+    prefix: '@cairn/workspace-invites-route',
   })
   if (rateLimited) return rateLimited
 

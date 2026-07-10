@@ -47,10 +47,11 @@ export async function POST(req: Request) {
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
   if (forbidden) return forbidden
 
-  const rateLimited = enforceFixedWindowRateLimit({
+  const rateLimited = await enforceFixedWindowRateLimit({
     key: `attachment-upload-url:${ctx.workspaceId}:${ctx.userId}:${channelId}`,
     limit: 20,
     windowMs: 60 * 1000,
+    prefix: '@cairn/attachment-upload-url',
   })
   if (rateLimited) return rateLimited
 
