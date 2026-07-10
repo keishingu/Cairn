@@ -101,7 +101,7 @@ export async function PATCH(
   try {
     const { db } = await import('@cairn/db')
     const { projects, projectStatuses } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, isNull } = await import('drizzle-orm')
 
     const [project] = await db
       .select({ id: projects.id })
@@ -195,7 +195,7 @@ export async function PATCH(
         const [channel] = await db
           .select({ id: channels.id })
           .from(channels)
-          .where(and(eq(channels.projectId, id), eq(channels.type, 'project')))
+          .where(and(eq(channels.projectId, id), eq(channels.type, 'project'), isNull(channels.milestoneId)))
           .limit(1)
         if (channel) {
           const [actor] = await db

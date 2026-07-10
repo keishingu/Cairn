@@ -27,6 +27,8 @@ export interface ProjectChannelDto {
   archived: boolean
   unreadCount: number
   unreadMentionCount: number
+  milestoneId: string | null
+  milestoneCompleted: boolean | null
 }
 
 export function useProjects() {
