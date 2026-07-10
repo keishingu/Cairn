@@ -34,8 +34,9 @@ function formatWindow(windowMs: number): `${number} ${'s' | 'm' | 'h'}` {
   return `${Math.ceil(windowMs / 1000)} s`
 }
 
-function getLimiter({ limit, windowMs, prefix = '@cairn/request-rate-limit' }: FixedWindowRateLimit) {
-  const cacheKey = `${prefix}:${limit}:${windowMs}`
+function getLimiter({ limit, windowMs, prefix }: FixedWindowRateLimit) {
+  const resolvedPrefix = prefix ?? '@cairn/request-rate-limit'
+  const cacheKey = `${resolvedPrefix}:${limit}:${windowMs}`
   const cached = ratelimiters.get(cacheKey)
   if (cached) return cached
 
@@ -43,7 +44,7 @@ function getLimiter({ limit, windowMs, prefix = '@cairn/request-rate-limit' }: F
     redis: getRedis(),
     limiter: Ratelimit.slidingWindow(limit, formatWindow(windowMs)),
     analytics: true,
-    prefix,
+    prefix: resolvedPrefix,
   })
   ratelimiters.set(cacheKey, limiter)
   return limiter
@@ -54,7 +55,10 @@ export async function enforceFixedWindowRateLimit(
 ): Promise<NextResponse | null> {
   let result: Awaited<ReturnType<InstanceType<typeof Ratelimit>['limit']>>
   try {
-    result = await getLimiter({ key, limit, windowMs, prefix }).limit(key)
+    const limiter = prefix
+      ? getLimiter({ key, limit, windowMs, prefix })
+      : getLimiter({ key, limit, windowMs })
+    result = await limiter.limit(key)
   } catch (error) {
     console.error('[request-rate-limit] shared limiter is unavailable:', error)
     return NextResponse.json({ error: 'Rate limit is unavailable' }, { status: 503 })
