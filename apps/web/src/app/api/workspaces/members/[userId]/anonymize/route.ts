@@ -57,6 +57,20 @@ async function lockMembershipAndActiveOwners(
   `)
 }
 
+async function lockAllMembershipsForUser(
+  tx: TxClient,
+  targetUserId: string,
+  sql: typeof import('drizzle-orm').sql,
+) {
+  await tx.execute(sql`
+    select 1
+    from workspace_members
+    where user_id = ${targetUserId}
+    order by workspace_id
+    for update
+  `)
+}
+
 async function prepareAnonymization(
   tx: TxClient,
   workspaceId: string,
@@ -68,6 +82,7 @@ async function prepareAnonymization(
   eq: typeof import('drizzle-orm').eq,
   count: typeof import('drizzle-orm').count,
 ) {
+  await lockAllMembershipsForUser(tx, targetUserId, sql)
   await lockMembershipAndActiveOwners(tx, workspaceId, targetUserId, sql)
 
   const [memberInWorkspace] = await tx

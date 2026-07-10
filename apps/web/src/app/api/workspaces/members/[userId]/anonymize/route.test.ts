@@ -280,7 +280,26 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
-    expect(mockDb.execute).toHaveBeenCalledTimes(1)
+    expect(mockDb.execute).toHaveBeenCalledTimes(2)
+  })
+
+  it('profile 匿名化前に対象 user の全 membership をロックする', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.delete.mockReturnValueOnce(deleteChain())
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ membershipCount: 0 }]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockDb.execute).toHaveBeenCalledTimes(2)
+    expect(mockDb.execute.mock.calls[0]?.[0]).toMatchObject({
+      values: [OTHER_USER_ID],
+    })
   })
 
   it('inactive owner の匿名化では active owner 数ガードを実行しない', async () => {
