@@ -13,8 +13,8 @@ export function useProjectMembers(projectId: string | null) {
 
 export function useWorkspaceMembersForInvite(enabled: boolean) {
   return useQuery<WorkspaceMemberDto[]>({
-    queryKey: ['workspace-members'],
-    queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
+    queryKey: ['workspace-members', 'active'],
+    queryFn: () => fetchWithAuth('/api/workspaces/members?status=active').then(r => r.json()),
     enabled,
   })
 }
