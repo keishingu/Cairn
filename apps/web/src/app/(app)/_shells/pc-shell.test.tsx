@@ -135,6 +135,12 @@ describe('PCShell — URL からパネル表示の導出', () => {
     const panel = screen.getByTestId('project-panel')
     expect(panel).toBeInTheDocument()
     expect(panel).toHaveAttribute('data-project-id', 'proj-abc')
+    expect(screen.getByTestId('project-panel-layer')).toHaveStyle({
+      position: 'absolute',
+      right: '0px',
+      width: '420px',
+      pointerEvents: 'none',
+    })
   })
 
   it('キャッシュに存在しない ID では ProjectPanel を表示しない', () => {

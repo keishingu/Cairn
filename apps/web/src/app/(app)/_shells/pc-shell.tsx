@@ -153,13 +153,28 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
                   onClose={closePanel}
                 />
               ) : panelProject ? (
-                <ProjectPanel
-                  project={panelProject}
-                  onClose={closePanel}
-                  onMemberClick={handleMemberClick}
-                  tab={panelTab}
-                  onTabChange={setPanelTab}
-                />
+                <div
+                  data-testid="project-panel-layer"
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    width: 420,
+                    maxWidth: 'min(420px, calc(100vw - 96px))',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <div style={{ width: '100%', height: '100%', pointerEvents: 'auto' }}>
+                    <ProjectPanel
+                      project={panelProject}
+                      onClose={closePanel}
+                      onMemberClick={handleMemberClick}
+                      tab={panelTab}
+                      onTabChange={setPanelTab}
+                    />
+                  </div>
+                </div>
               ) : null}
               {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)}/>}
             </div>
