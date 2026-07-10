@@ -75,58 +75,59 @@ export async function getAuthContext(): Promise<AuthResult> {
 
   const cookieStore = await cookies()
   const preferredWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
-
   const cacheKey = buildWorkspaceCacheKey(user.id, preferredWorkspaceId)
   const fallbackCacheKey = buildWorkspaceCacheKey(user.id, null)
   const cachedPreferred = workspaceCache.get(cacheKey)
-  if (cachedPreferred && cachedPreferred.expiresAt > Date.now()) {
-    return { ctx: { userId: user.id, workspaceId: cachedPreferred.workspaceId }, error: null }
-  }
+  const cachedFallback = workspaceCache.get(fallbackCacheKey)
+  const cachedPreferredWorkspaceId = cachedPreferred && cachedPreferred.expiresAt > Date.now()
+    ? cachedPreferred.workspaceId
+    : null
+  const cachedFallbackWorkspaceId = cachedFallback && cachedFallback.expiresAt > Date.now()
+    ? cachedFallback.workspaceId
+    : null
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceMembers } = await import('@cairn/db')
+    const { activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    // クッキーで指定されたワークスペースがあればそちらを優先、ただしメンバーシップを確認
-    if (preferredWorkspaceId) {
-      const [preferred] = await db
-        .select({ workspaceId: workspaceMembers.workspaceId })
-        .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, preferredWorkspaceId)))
+    const findActiveMembership = async (workspaceId?: string) => {
+      const conditions = [eq(activeWorkspaceMembers.userId, user.id)]
+      if (workspaceId) conditions.push(eq(activeWorkspaceMembers.workspaceId, workspaceId))
+      const [row] = await db
+        .select({ workspaceId: activeWorkspaceMembers.workspaceId })
+        .from(activeWorkspaceMembers)
+        .where(and(...conditions))
         .limit(1)
-
-      if (preferred) {
-        const cachedEntry = { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 }
-        workspaceCache.set(cacheKey, cachedEntry)
-        return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
-      }
-      const cachedFallback = workspaceCache.get(fallbackCacheKey)
-      if (cachedFallback && cachedFallback.expiresAt > Date.now()) {
-        return { ctx: { userId: user.id, workspaceId: cachedFallback.workspaceId }, error: null }
-      }
-      // クッキーが無効（退出済み等）→ フォールバック
+      return row ?? null
     }
 
-    if (!preferredWorkspaceId) {
-      const cachedFallback = workspaceCache.get(fallbackCacheKey)
-      if (cachedFallback && cachedFallback.expiresAt > Date.now()) {
-        return { ctx: { userId: user.id, workspaceId: cachedFallback.workspaceId }, error: null }
-      }
+    const candidateWorkspaceIds = [
+      preferredWorkspaceId,
+      cachedPreferredWorkspaceId,
+      cachedFallbackWorkspaceId,
+    ].filter((workspaceId, index, values): workspaceId is string => (
+      Boolean(workspaceId) && values.indexOf(workspaceId) === index
+    ))
+
+    for (const candidateWorkspaceId of candidateWorkspaceIds) {
+      const member = await findActiveMembership(candidateWorkspaceId)
+      if (!member) continue
+
+      const targetCacheKey = candidateWorkspaceId === preferredWorkspaceId ? cacheKey : fallbackCacheKey
+      workspaceCache.set(targetCacheKey, {
+        workspaceId: member.workspaceId,
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      })
+      return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
     }
 
-    const [member] = await db
-      .select({ workspaceId: workspaceMembers.workspaceId })
-      .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, user.id))
-      .limit(1)
-
+    const member = await findActiveMembership()
     if (!member) {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
-    const cachedEntry = { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 }
-    workspaceCache.set(fallbackCacheKey, cachedEntry)
+    workspaceCache.set(fallbackCacheKey, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)

@@ -2,21 +2,17 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, UnreadBadge } from './primitives'
 import { Avatar } from './primitives'
 import { useAppShell } from './app-shell-context'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { createClient } from '@/lib/supabase/client'
-import type { CurrentUserDto } from '@/app/api/me/route'
 import type { UserStatus } from '@/lib/user-status'
-import type { WorkspaceDto } from '@/app/api/workspaces/route'
-import type { WorkspaceListItemDto } from '@/app/api/workspaces/list/route'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
 import { useCommand } from '@/lib/command-registry'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
+import { useSidebarCurrentUser, useSidebarProjects, useSidebarWorkspace, useSidebarWorkspaceList } from '@/hooks/use-sidebar'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 export type PageId =
@@ -170,16 +166,8 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
     () => [...projectChannels.filter(c => !c.archived), ...workspaceChannels, ...dms].reduce((sum, c) => sum + (c.unreadCount ?? 0), 0),
     [projectChannels, workspaceChannels, dms],
   )
-  const { data: workspace } = useQuery<WorkspaceDto>({
-    queryKey: ['workspace'],
-    queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
-    staleTime: 60_000,
-  })
-  const { data: workspaceList = [] } = useQuery<WorkspaceListItemDto[]>({
-    queryKey: ['workspace-list'],
-    queryFn: () => fetchWithAuth('/api/workspaces/list').then(r => r.json()),
-    staleTime: 60_000,
-  })
+  const { data: workspace } = useSidebarWorkspace()
+  const { data: workspaceList = [] } = useSidebarWorkspaceList()
   const [switcherOpen, setSwitcherOpen] = React.useState(false)
 
   // ⌘⌥; : ワークスペース切替ポップオーバーをトグル
@@ -198,11 +186,7 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
   ]
   const { data: pinnedProjects = [] } = usePinnedProjects()
   const unpinProject = useUnpinProject()
-  const { data: allProjects = [] } = useQuery<ProjectDto[]>({
-    queryKey: ['projects'],
-    queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
-    staleTime: 30_000,
-  })
+  const { data: allProjects = [] } = useSidebarProjects()
 
   const logoEl = (
     <div style={{
@@ -556,55 +540,14 @@ const StatusDot = ({ status, size = 10 }: { status: UserStatus | undefined; size
 
 function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolean | undefined; onToggle?: (() => void) | undefined }) {
   const router = useRouter()
-  const queryClient = useQueryClient()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
 
   // ⌘⌥0: ユーザーメニューをトグル
   useCommand('app.userMenu', () => setMenuOpen(o => !o))
 
-  const { data: me } = useQuery<CurrentUserDto>({
-    queryKey: ['me'],
-    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
-    staleTime: 60_000,
-  })
+  const { data: me, statusMutation, statusMessageMutation } = useSidebarCurrentUser()
   const displayName = me?.displayName ?? '…'
-
-  const statusMutation = useMutation({
-    mutationFn: async (status: UserStatus) => {
-      const res = await fetchWithAuth('/api/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(d.error ?? 'ステータスの更新に失敗しました')
-      }
-      return status
-    },
-    onSuccess: (status) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status } : prev)
-    },
-  })
-
-  const statusMessageMutation = useMutation({
-    mutationFn: async (statusMessage: string | null) => {
-      const res = await fetchWithAuth('/api/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ statusMessage }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(d.error ?? 'ステータスメッセージの更新に失敗しました')
-      }
-      return statusMessage
-    },
-    onSuccess: (statusMessage) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, statusMessage } : prev)
-    },
-  })
 
   const [statusMessageDraft, setStatusMessageDraft] = React.useState('')
   React.useEffect(() => {
