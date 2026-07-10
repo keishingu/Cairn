@@ -29,10 +29,10 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
-  workspaceMembers: {
-    userId: 'wm.userId',
-    workspaceId: 'wm.workspaceId',
-    role: 'wm.role',
+  activeWorkspaceMembers: {
+    userId: 'awm.userId',
+    workspaceId: 'awm.workspaceId',
+    role: 'awm.role',
   },
 }))
 
@@ -104,6 +104,39 @@ describe('get-auth-context', () => {
     expect(result).toEqual({ userId: 'user-1', error: null })
   })
 
+  it('非活性な preferred workspace cookie は無視して active 所属へフォールバックする', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-inactive' }) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-active', role: 'member' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext()
+
+    expect(result).toEqual({ ctx: { userId: 'user-1', workspaceId: 'ws-active' }, error: null })
+  })
+
+  it('warm cache があっても active membership を毎回再照合し、非活性化を即時反映する', async () => {
+    mockHeaders
+      .mockResolvedValueOnce(new Headers())
+      .mockResolvedValueOnce(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+
+    const { getAuthContext } = await import('./get-auth-context')
+
+    // 1回目: active 所属あり → cache に載る
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'member' }]))
+    const first = await getAuthContext()
+    expect(first).toEqual({ ctx: { userId: 'user-1', workspaceId: 'ws-1' }, error: null })
+
+    // 2回目: 非活性化され active view から消えた → cached ws-1 の再照合もフォールバックも失敗 → 403
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    const second = await getAuthContext()
+    expect(second.ctx).toBeNull()
+    expect(second.error).not.toBeNull()
+  })
+
   it('無効な workspace cookie からのフォールバック結果も scoped cache に保存する', async () => {
     const firstHeaders = new Headers()
     const secondHeaders = new Headers()
@@ -115,7 +148,9 @@ describe('get-auth-context', () => {
       get: vi.fn().mockReturnValue({ value: 'ws-missing' }),
     })
     mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
-    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'member' }]))
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'member' }]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'member' }]))
 
     const { getAuthContext } = await import('./get-auth-context')
 
@@ -130,6 +165,6 @@ describe('get-auth-context', () => {
       ctx: { userId: 'user-1', workspaceId: 'ws-1' },
       error: null,
     })
-    expect(mockDb.select).toHaveBeenCalledTimes(1)
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
   })
 })

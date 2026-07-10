@@ -3,25 +3,32 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const { mockHeaders, mockDb } = vi.hoisted(() => {
+const { mockHeaders, mockDb, activeWorkspaceMembers } = vi.hoisted(() => {
   const mockHeaders = vi.fn()
   const mockDb = {
     select: vi.fn(),
   }
-  return { mockHeaders, mockDb }
+  const activeWorkspaceMembers = {
+    userId: 'awm.userId',
+    workspaceId: 'awm.workspaceId',
+    role: 'awm.role',
+  }
+  return { mockHeaders, mockDb, activeWorkspaceMembers }
 })
 
 vi.mock('next/headers', () => ({
   headers: mockHeaders,
 }))
 
+vi.mock('next/server', () => ({
+  NextResponse: {
+    json: (body: unknown, init?: { status?: number }) => ({ body, status: init?.status ?? 200 }),
+  },
+}))
+
 vi.mock('@cairn/db', () => ({
   db: mockDb,
-  workspaceMembers: {
-    userId: 'wm.userId',
-    workspaceId: 'wm.workspaceId',
-    role: 'wm.role',
-  },
+  activeWorkspaceMembers,
   channels: {},
   channelMembers: {},
   projects: {},

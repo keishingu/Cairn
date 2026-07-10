@@ -17,21 +17,22 @@ export async function GET() {
   if (error) return error
 
   try {
-    const { db, workspaces, workspaceMembers } = await import('@cairn/db')
+    const { db, workspaces, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
 
+    // 非活性化された WS は一覧に出さない（当該 WS を未所属として扱う）
     const rows = await db
       .select({
         id: workspaces.id,
         name: workspaces.name,
         slug: workspaces.slug,
         logoUrl: workspaces.logoUrl,
-        role: workspaceMembers.role,
+        role: activeWorkspaceMembers.role,
       })
-      .from(workspaceMembers)
-      .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
-      .where(eq(workspaceMembers.userId, userId))
-      .orderBy(workspaceMembers.joinedAt)
+      .from(activeWorkspaceMembers)
+      .innerJoin(workspaces, eq(activeWorkspaceMembers.workspaceId, workspaces.id))
+      .where(eq(activeWorkspaceMembers.userId, userId))
+      .orderBy(activeWorkspaceMembers.joinedAt)
 
     return NextResponse.json(rows satisfies WorkspaceListItemDto[])
   } catch (err) {

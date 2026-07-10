@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { db, workspaceMembers } from '@cairn/db'
+import { db, activeWorkspaceMembers } from '@cairn/db'
 import { eq } from 'drizzle-orm'
 import { getCachedForRequest } from './request-cache'
 
@@ -14,11 +14,11 @@ export async function listWorkspaceMemberships(userId: string): Promise<Workspac
   return getCachedForRequest(`workspace-memberships:${userId}`, async () => {
     return db
       .select({
-        workspaceId: workspaceMembers.workspaceId,
-        role: workspaceMembers.role,
+        workspaceId: activeWorkspaceMembers.workspaceId,
+        role: activeWorkspaceMembers.role,
       })
-      .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, userId))
+      .from(activeWorkspaceMembers)
+      .where(eq(activeWorkspaceMembers.userId, userId))
   })
 }
 
