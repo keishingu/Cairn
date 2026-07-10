@@ -10,6 +10,8 @@ import { sendPushToUser } from '@/lib/push/send'
 import { hasReadMessage } from '@/lib/push/suppress'
 import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
 
+const ANONYMIZED_MEMBER_DISPLAY_NAME = '退会したユーザー'
+
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
 const PUSH_GRACE_PERIOD = '10s'
@@ -697,7 +699,7 @@ export const indexMemberChunks = inngest.createFunction(
     const { userId, workspaceId } = event.data as { userId: string; workspaceId: string }
 
     await step.run('embed-and-save', async () => {
-      const { db, profiles, memberExperiences, documentChunks, activeWorkspaceMembers } = await import('@cairn/db')
+      const { db, profiles, memberExperiences, documentChunks, activeWorkspaceMembers, workspaceMembers } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
 
       const deleteMemberChunks = () =>
@@ -712,6 +714,17 @@ export const indexMemberChunks = inngest.createFunction(
         .limit(1)
 
       if (!activeMembership) {
+        await deleteMemberChunks()
+        return
+      }
+
+      const [workspaceMember] = await db
+        .select({ displayName: workspaceMembers.displayName })
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
+        .limit(1)
+
+      if (workspaceMember?.displayName === ANONYMIZED_MEMBER_DISPLAY_NAME) {
         await deleteMemberChunks()
         return
       }
