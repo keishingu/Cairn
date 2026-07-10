@@ -101,7 +101,7 @@ export function formatChannelPeriod(start: string | null, end: string | null, st
   if (start && end) {
     const startLabel = `${f(start)}${st ? ` ${st}` : ''}`
     const endLabel = `${end === start ? '' : f(end)}${et ? `${end === start ? '' : ' '}${et}` : ''}`
-    return endLabel ? `${startLabel}〜${endLabel}` : `${startLabel}〜`
+    return endLabel ? `${startLabel}〜${endLabel}` : startLabel
   }
   if (end) return `〜${f(end)}${et ? ` ${et}` : ''}`
   if (start) return `${f(start)}${st ? ` ${st}` : ''}〜`

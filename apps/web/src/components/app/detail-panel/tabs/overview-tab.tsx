@@ -17,13 +17,13 @@ import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
 const formatTime = (time: string | null) => time ? time.slice(0, 5) : null
 
 export function formatDateRange(start: string | null, end: string | null, startTime?: string | null, endTime?: string | null): string {
-  if (!start) return '—'
   const fmt = (d: string) => {
     const [, m, day] = d.split('-')
     return `${Number(m)}/${Number(day)}`
   }
   const st = formatTime(startTime ?? null)
   const et = formatTime(endTime ?? null)
+  if (!start) return end ? `~ ${fmt(end)}${et ? ` ${et}` : ''}` : '—'
   const startLabel = `${fmt(start)}${st ? ` ${st}` : ''}`
   if (!end || end === start) return et ? `${startLabel} ~ ${et}` : startLabel
   return `${startLabel} ~ ${fmt(end)}${et ? ` ${et}` : ''}`
