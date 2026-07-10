@@ -123,6 +123,18 @@ async function prepareAnonymization(
   return { ok: true as const, avatarPaths }
 }
 
+async function removeAvatarPaths(paths: string[]) {
+  if (paths.length === 0) return
+
+  const { createServiceRoleClient } = await import('@/lib/supabase/service')
+  const supabase = createServiceRoleClient()
+  const { error: storageError } = await supabase.storage.from(AVATAR_BUCKET).remove(paths)
+  if (storageError) {
+    console.error('[POST /api/workspaces/members/[userId]/anonymize] Storage remove failed:', storageError)
+    throw { status: 500, error: 'Avatar cleanup failed' }
+  }
+}
+
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ userId: string }> },
@@ -155,15 +167,7 @@ export async function POST(
       return NextResponse.json({ error: prepared.error }, { status: prepared.status })
     }
 
-    if (prepared.avatarPaths.length > 0) {
-      const { createServiceRoleClient } = await import('@/lib/supabase/service')
-      const supabase = createServiceRoleClient()
-      const { error: storageError } = await supabase.storage.from(AVATAR_BUCKET).remove(prepared.avatarPaths)
-      if (storageError) {
-        console.error('[POST /api/workspaces/members/[userId]/anonymize] Storage remove failed:', storageError)
-        return NextResponse.json({ error: 'Avatar cleanup failed' }, { status: 500 })
-      }
-    }
+    await removeAvatarPaths(prepared.avatarPaths)
 
     const now = new Date()
     await db.transaction(async (tx) => {
@@ -181,6 +185,8 @@ export async function POST(
       if (!confirmed.ok) {
         throw confirmed
       }
+      const residualAvatarPaths = confirmed.avatarPaths.filter(path => !prepared.avatarPaths.includes(path))
+      await removeAvatarPaths(residualAvatarPaths)
       await tx
         .update(workspaceMembers)
         .set({

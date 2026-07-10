@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 const createInviteSchema = z.object({
   expiresIn: z.enum(['1h', '30d', 'never']).default('1h'),
@@ -80,7 +81,7 @@ export async function GET(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceInvites, profiles } = await import('@cairn/db')
+    const { workspaceInvites, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and, or, isNull, gt } = await import('drizzle-orm')
 
     const now = new Date()
@@ -93,10 +94,17 @@ export async function GET(req: Request) {
         useCount: workspaceInvites.useCount,
         role: workspaceInvites.role,
         createdAt: workspaceInvites.createdAt,
-        createdByName: profiles.displayName,
+        createdByName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
       })
       .from(workspaceInvites)
       .innerJoin(profiles, eq(workspaceInvites.createdBy, profiles.id))
+      .innerJoin(
+        workspaceMembers,
+        and(
+          eq(workspaceMembers.workspaceId, workspaceInvites.workspaceId),
+          eq(workspaceMembers.userId, workspaceInvites.createdBy),
+        ),
+      )
       .where(
         and(
           eq(workspaceInvites.workspaceId, ctx.workspaceId),

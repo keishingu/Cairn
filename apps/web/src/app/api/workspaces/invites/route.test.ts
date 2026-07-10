@@ -39,7 +39,12 @@ vi.mock('@cairn/db', () => ({
     role: 'wi.role',
     createdAt: 'wi.createdAt',
   },
-  workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role' },
+  workspaceMembers: {
+    workspaceId: 'wm.workspaceId',
+    userId: 'wm.userId',
+    role: 'wm.role',
+    displayName: 'wm.displayName',
+  },
   activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', userId: 'awm.userId', role: 'awm.role' },
   profiles: { id: 'profiles.id', displayName: 'profiles.displayName' },
 }))
@@ -50,6 +55,7 @@ vi.mock('drizzle-orm', () => ({
   or: vi.fn(() => 'or'),
   isNull: vi.fn(() => 'isNull'),
   gt: vi.fn(() => 'gt'),
+  sql: vi.fn(() => 'sql'),
 }))
 
 /** 単一結果を返す select チェーン */
@@ -217,6 +223,31 @@ describe('GET /api/workspaces/invites', () => {
     )
 
     expect(res.status).toBe(200)
+  })
+
+  it('招待作成者名は workspace の表示名を優先する', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'admin' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      {
+        id: 'invite-1',
+        token: 'invite-token',
+        expiresAt: null,
+        maxUses: null,
+        useCount: 0,
+        role: 'member',
+        createdAt: new Date('2026-07-01T00:00:00Z'),
+        createdByName: '退会したユーザー',
+      },
+    ]))
+    const { GET } = await import('./route')
+
+    const res = await GET(
+      new Request('http://localhost/api/workspaces/invites'),
+    )
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { invites: Array<{ createdByName: string }> }
+    expect(body.invites[0]?.createdByName).toBe('退会したユーザー')
   })
 
   it('member は招待一覧を取得できない', async () => {

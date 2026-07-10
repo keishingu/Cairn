@@ -205,6 +205,28 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     expect(body.anonymized).toBe(true)
   })
 
+  it('最終ロック時に見えた新しい avatar path も削除する', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { avatarUrl: 'https://example.supabase.co/storage/v1/object/public/avatars/ws-1/user-2-old.png' },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { avatarUrl: 'https://example.supabase.co/storage/v1/object/public/avatars/ws-1/user-2-new.webp' },
+    ]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.delete.mockReturnValueOnce(deleteChain())
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockRemove).toHaveBeenNthCalledWith(1, ['ws-1/user-2-old.png'])
+    expect(mockRemove).toHaveBeenNthCalledWith(2, ['ws-1/user-2-new.webp'])
+  })
+
   it('アバター削除に失敗したら 500 を返し、DBは更新しない', async () => {
     mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([
