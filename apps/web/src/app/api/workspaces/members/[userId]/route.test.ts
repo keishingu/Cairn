@@ -3,28 +3,51 @@
 
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
-const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
-const OTHER_USER_ID = '00000000-0000-0000-0000-000000000002'
-const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
-
-const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, mockReactivate, mockInngestSend } = vi.hoisted(() => {
+const {
+  DEV_USER_ID,
+  OTHER_USER_ID,
+  DEV_WORKSPACE_ID,
+  mockGetAuthContext,
+  mockDb,
+  mockGetWorkspaceMemberRole,
+  mockInvalidateWorkspaceCacheForUser,
+  mockDeactivate,
+  mockReactivate,
+  mockInngestSend,
+} = vi.hoisted(() => {
+  const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
+  const OTHER_USER_ID = '00000000-0000-0000-0000-000000000002'
+  const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
-      userId: '00000000-0000-0000-0000-000000000001',
-      workspaceId: '10000000-0000-0000-0000-000000000001',
+      userId: DEV_USER_ID,
+      workspaceId: DEV_WORKSPACE_ID,
     },
     error: null,
   })
   const mockDb = { select: vi.fn(), update: vi.fn(), execute: vi.fn(), transaction: vi.fn() }
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('admin')
+  const mockInvalidateWorkspaceCacheForUser = vi.fn()
   const mockDeactivate = vi.fn().mockResolvedValue({ ok: true })
   const mockReactivate = vi.fn().mockResolvedValue({ ok: true })
   const mockInngestSend = vi.fn().mockResolvedValue(undefined)
-  return { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, mockReactivate, mockInngestSend }
+  return {
+    DEV_USER_ID,
+    OTHER_USER_ID,
+    DEV_WORKSPACE_ID,
+    mockGetAuthContext,
+    mockDb,
+    mockGetWorkspaceMemberRole,
+    mockInvalidateWorkspaceCacheForUser,
+    mockDeactivate,
+    mockReactivate,
+    mockInngestSend,
+  }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: mockGetAuthContext,
+  invalidateWorkspaceCacheForUser: mockInvalidateWorkspaceCacheForUser,
 }))
 
 vi.mock('@/lib/permissions', () => ({
@@ -43,7 +66,12 @@ vi.mock('@/lib/inngest/client', () => ({
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
-  workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role', membershipStatus: 'wm.membershipStatus' },
+  workspaceMembers: {
+    workspaceId: 'wm.workspaceId',
+    userId: 'wm.userId',
+    role: 'wm.role',
+    membershipStatus: 'wm.membershipStatus',
+  },
   activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', role: 'awm.role' },
 }))
 
@@ -55,7 +83,6 @@ vi.mock('drizzle-orm', () => ({
 }))
 
 function selectChain(result: unknown[]) {
-  // .where() は直接 await できつつ、.limit() も持つ thenable を返す
   const whereReturn = Object.assign(Promise.resolve(result), {
     limit: vi.fn().mockResolvedValue(result),
   })
@@ -98,6 +125,9 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
       error: null,
     })
     mockGetWorkspaceMemberRole.mockResolvedValue('admin')
+    mockInvalidateWorkspaceCacheForUser.mockReset()
+    mockDeactivate.mockResolvedValue({ ok: true })
+    mockReactivate.mockResolvedValue({ ok: true })
     mockInngestSend.mockResolvedValue(undefined)
   })
 
@@ -133,6 +163,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(res.status).toBe(200)
     const body = await res.json() as { role: string }
     expect(body.role).toBe('admin')
+    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID, DEV_WORKSPACE_ID)
   })
 
   it('admin は admin を member に降格できる', async () => {
@@ -215,6 +246,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(404)
+    expect(mockInvalidateWorkspaceCacheForUser).not.toHaveBeenCalled()
   })
 
   it('非活性 owner の降格では active owner 数ガードを実行しない', async () => {
@@ -243,6 +275,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
     mockDb.transaction.mockImplementation(async (cb: (tx: typeof mockDb) => unknown) => cb(mockDb))
     mockDb.execute.mockResolvedValue(undefined)
   })
+
   afterEach(() => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
@@ -251,6 +284,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
       error: null,
     })
     mockGetWorkspaceMemberRole.mockResolvedValue('admin')
+    mockInvalidateWorkspaceCacheForUser.mockReset()
     mockDeactivate.mockResolvedValue({ ok: true })
     mockReactivate.mockResolvedValue({ ok: true })
     mockInngestSend.mockResolvedValue(undefined)
@@ -262,6 +296,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
     const res = await PATCH(statusRequest(OTHER_USER_ID, 'inactive'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(200)
     expect(mockDeactivate).toHaveBeenCalledWith(DEV_WORKSPACE_ID, OTHER_USER_ID, DEV_USER_ID)
+    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID, DEV_WORKSPACE_ID)
   })
 
   it('member は非活性化できない（403）', async () => {
@@ -317,6 +352,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
       name: 'member/upserted',
       data: { userId: OTHER_USER_ID, workspaceId: DEV_WORKSPACE_ID },
     })
+    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID, DEV_WORKSPACE_ID)
   })
 
   it('無効な status 値は 422', async () => {

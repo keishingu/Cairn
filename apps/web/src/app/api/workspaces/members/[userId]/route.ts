@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { getAuthContext } from '@/lib/get-auth-context'
+import { getAuthContext, invalidateWorkspaceCacheForUser } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
 import { deactivateMembership, reactivateMembership } from '@/lib/access/lifecycle'
 
@@ -122,6 +122,7 @@ export async function PATCH(
         .set({ role: newRole as WorkspaceRole })
         .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
 
+      invalidateWorkspaceCacheForUser(targetUserId, ctx.workspaceId)
       return NextResponse.json({ userId: targetUserId, role: newRole })
     })
 
@@ -181,6 +182,7 @@ async function handleStatusChange(
       }
       const result = await deactivateMembership(workspaceId, targetUserId, callerUserId)
       if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+      invalidateWorkspaceCacheForUser(targetUserId, workspaceId)
       return NextResponse.json({ userId: targetUserId, status: 'inactive' })
     }
 
@@ -195,6 +197,7 @@ async function handleStatusChange(
     } catch (e) {
       console.warn('[PATCH /api/workspaces/members/[userId] status] Inngest event send failed:', e)
     }
+    invalidateWorkspaceCacheForUser(targetUserId, workspaceId)
     return NextResponse.json({ userId: targetUserId, status: 'active' })
   } catch (err) {
     console.error('[PATCH /api/workspaces/members/[userId] status]', err)
