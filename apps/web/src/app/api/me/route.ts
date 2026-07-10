@@ -5,7 +5,6 @@ import { NextResponse } from 'next/server'
 import { patchMeSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
-import type { UserStatus } from '@/lib/user-status'
 
 export interface CurrentUserDto {
   id: string
@@ -13,8 +12,6 @@ export interface CurrentUserDto {
   avatarUrl: string | null
   email: string | null
   bio: string | null
-  status: UserStatus
-  statusMessage: string | null
   wsRole: 'owner' | 'admin' | 'member' | 'guest'
 }
 
@@ -40,8 +37,6 @@ export async function GET() {
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         bio: profiles.bio,
-        status: workspaceMembers.status,
-        statusMessage: workspaceMembers.statusMessage,
         wsRole: workspaceMembers.role,
       })
       .from(profiles)
@@ -61,8 +56,6 @@ export async function GET() {
       avatarUrl: row.avatarUrl ?? null,
       email,
       bio: row.bio,
-      status: row.status ?? 'online',
-      statusMessage: row.statusMessage ?? null,
       wsRole: row.wsRole ?? 'member',
     } satisfies CurrentUserDto)
   } catch (err) {
@@ -89,7 +82,6 @@ export async function PATCH(req: Request) {
   const b = parsed.data
 
   const hasBio = 'bio' in b
-  const hasStatusMessage = 'statusMessage' in b
 
   try {
     const { db, profiles, workspaceMembers } = await import('@cairn/db')
@@ -106,16 +98,6 @@ export async function PATCH(req: Request) {
       await db
         .update(workspaceMembers)
         .set({ displayName: b.displayName.trim() })
-        .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-    }
-
-    if (b.status !== undefined || hasStatusMessage) {
-      const set: { status?: UserStatus; statusMessage?: string | null } = {}
-      if (b.status !== undefined) set.status = b.status
-      if (hasStatusMessage) set.statusMessage = b.statusMessage?.trim() || null
-      await db
-        .update(workspaceMembers)
-        .set(set)
         .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
     }
 

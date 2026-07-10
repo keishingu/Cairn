@@ -86,8 +86,6 @@ export const patchWorkspaceSchema = z.object({
 export const patchMeSchema = z.object({
   displayName: z.string().trim().min(1).max(100).optional(),
   bio: z.string().max(1000).nullable().optional(),
-  status: z.enum(['online', 'away', 'busy', 'offline']).optional(),
-  statusMessage: z.string().max(100).nullable().optional(),
 }).refine(
   data => Object.values(data).some(value => value !== undefined),
   { message: 'At least one field is required' },
