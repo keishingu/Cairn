@@ -15,10 +15,10 @@ export async function DELETE(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceInvites, workspaceMembers } = await import('@cairn/db')
+    const { workspaceInvites, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    // 招待の作成者 or owner/admin のみ削除可能
+    // 招待の作成者 or owner/admin のみ削除可能（caller のロールは active membership で判定）
     const [[invite], [caller]] = await Promise.all([
       db
         .select({ createdBy: workspaceInvites.createdBy })
@@ -26,9 +26,9 @@ export async function DELETE(
         .where(and(eq(workspaceInvites.token, token), eq(workspaceInvites.workspaceId, ctx.workspaceId)))
         .limit(1),
       db
-        .select({ role: workspaceMembers.role })
-        .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, ctx.userId)))
+        .select({ role: activeWorkspaceMembers.role })
+        .from(activeWorkspaceMembers)
+        .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), eq(activeWorkspaceMembers.userId, ctx.userId)))
         .limit(1),
     ])
 

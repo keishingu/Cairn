@@ -115,20 +115,21 @@ export async function POST(req: Request) {
     if (forbidden) return forbidden
 
     const { db } = await import('@cairn/db')
-    const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
+    const { tasks, projects, profiles, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    if (parsed.data.assigneeId) {
-      const [assigneeMembership] = await db
-        .select({ membershipStatus: workspaceMembers.membershipStatus })
-        .from(workspaceMembers)
+    const assigneeId = parsed.data.assigneeId ?? null
+    if (assigneeId) {
+      const [activeAssignee] = await db
+        .select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
         .where(and(
-          eq(workspaceMembers.workspaceId, ctx.workspaceId),
-          eq(workspaceMembers.userId, parsed.data.assigneeId),
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, assigneeId),
         ))
         .limit(1)
 
-      if (!assigneeMembership || assigneeMembership.membershipStatus !== 'active') {
+      if (!activeAssignee) {
         return NextResponse.json({ error: '非活性メンバーは担当者に設定できません' }, { status: 422 })
       }
     }
@@ -140,7 +141,7 @@ export async function POST(req: Request) {
         title: parsed.data.title,
         description: parsed.data.description ?? null,
         priority: parsed.data.priority,
-        assigneeId: parsed.data.assigneeId ?? null,
+        assigneeId,
         dueDate: parsed.data.dueDate ?? null,
         createdBy: ctx.userId,
       })

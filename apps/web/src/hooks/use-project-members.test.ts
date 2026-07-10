@@ -30,8 +30,8 @@ const STUB_MEMBERS: ProjectMemberDto[] = [
 ]
 
 const STUB_WS_MEMBERS: WorkspaceMemberDto[] = [
-  { userId: 'u1', displayName: 'Alice', email: 'alice@example.com', avatarUrl: null, role: 'owner', status: 'active', joinedAt: '2026-01-01', projectCount: 1 },
-  { userId: 'u3', displayName: 'Carol', email: 'carol@example.com', avatarUrl: null, role: 'member', status: 'active', joinedAt: '2026-01-03', projectCount: 0 },
+  { userId: 'u1', displayName: 'Alice', email: 'alice@example.com', avatarUrl: null, role: 'owner', membershipStatus: 'active', joinedAt: '2026-01-01', projectCount: 1 },
+  { userId: 'u3', displayName: 'Carol', email: 'carol@example.com', avatarUrl: null, role: 'member', membershipStatus: 'active', joinedAt: '2026-01-03', projectCount: 0 },
 ]
 
 describe('useProjectMembers', () => {
