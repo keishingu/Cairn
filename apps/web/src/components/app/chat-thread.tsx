@@ -1050,7 +1050,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     // プライベートチャンネル・DM はチャンネルメンバーのみを候補にする
     if (chMemberIds.length > 0) {
       const idSet = new Set(chMemberIds.map(m => m.userId))
-      return wsMembers.filter(m => idSet.has(m.userId) && m.status === 'active' && m.userId !== currentUser?.id)
+      return wsMembers.filter(m => idSet.has(m.userId) && m.membershipStatus === 'active' && m.userId !== currentUser?.id)
     }
     // プロジェクトチャンネルは、そのプロジェクトにアクセスできる人だけを候補にする。
     // member 以上は全プロジェクトチャンネルにアクセスできるため候補に残し、
@@ -1059,12 +1059,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     if (projectId) {
       const projectMemberIds = new Set(projectMembers.map(m => m.userId))
       return wsMembers.filter(m =>
-        m.status === 'active' &&
+        m.membershipStatus === 'active' &&
         m.userId !== currentUser?.id &&
         (m.role !== 'guest' || projectMemberIds.has(m.userId)),
       )
     }
-    return wsMembers.filter(m => m.status === 'active' && m.userId !== currentUser?.id)
+    return wsMembers.filter(m => m.membershipStatus === 'active' && m.userId !== currentUser?.id)
   }, [chMemberIds, wsMembers, currentUser?.id, projectId, projectMembers])
 
   // userId → 現在の表示名。メンションを描画時に最新名へ解決するため
