@@ -705,8 +705,8 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], milestoneEvents = 
                 const fgColor = e.milestone.completed ? 'var(--text-4)' : barColor
                 const label = formatMilestoneLabel(e.milestone)
                 const colW = 100 / 7
-                const left = `calc(${e.day * colW}% + 18px)`
-                const width = `calc(${e.span * colW}% - 22px)`
+                const left = `calc(${e.day * colW}% + 4px)`
+                const width = `calc(${e.span * colW}% - 8px)`
                 const topOffset = DATE_AREA + MAX_PROJECT_ROWS * (EVENT_H + EVENT_GAP) + e.row * (MILESTONE_H + EVENT_GAP)
                 const top = `calc(${e.week} / 6 * 100% + ${topOffset}px)`
                 return (
@@ -724,13 +724,11 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], milestoneEvents = 
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
                       opacity: e.milestone.completed ? 0.65 : 1,
-                      display: 'flex', alignItems: 'center', gap: 4,
                     }}
                     onMouseDown={e2 => e2.stopPropagation()}
                     title={label}
                   >
-                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: fgColor, flexShrink: 0 }} />
-                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+                    {label}
                   </button>
                 )
               })}
@@ -999,8 +997,8 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
                   const fgColor = e.milestone.completed ? 'var(--text-4)' : barColor
                   const label = formatMilestoneLabel(e.milestone)
                   const colW = 100 / 7
-                  const left = `calc(${e.day * colW}% + 18px)`
-                  const width = `calc(${e.span * colW}% - 22px)`
+                  const left = `calc(${e.day * colW}% + 4px)`
+                  const width = `calc(${e.span * colW}% - 8px)`
                   const top = DATE_AREA + (maxProjectRow + 1) * (EVENT_H + EVENT_GAP) + e.row * (MILESTONE_H + EVENT_GAP)
                   return (
                     <button
@@ -1017,13 +1015,11 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
                         opacity: e.milestone.completed ? 0.65 : 1,
-                        display: 'flex', alignItems: 'center', gap: 4,
                       }}
                       onMouseDown={e2 => e2.stopPropagation()}
                       title={label}
                     >
-                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: fgColor, flexShrink: 0 }} />
-                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+                      {label}
                     </button>
                   )
                 })}
@@ -1283,11 +1279,9 @@ const MobileCalendarGrid = ({ year, month, projects, milestones, projectMap, sel
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           lineHeight: '13px',
                           cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: 2,
                         }}
                       >
-                        {item.kind === 'milestone' && <span style={{ width: 4, height: 4, borderRadius: '50%', background: cfg.bar, flexShrink: 0 }} />}
-                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</span>
+                        {item.title}
                       </div>
                     )
                   })}
@@ -1408,13 +1402,12 @@ const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate,
                 onClick={() => { if (project) onProjectClick(project) }}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '10px 16px 10px 32px', border: 'none', background: 'transparent',
+                  padding: '10px 16px', border: 'none', background: 'transparent',
                   borderTop: dayProjects.length > 0 || i > 0 ? '1px solid var(--divider)' : 'none',
                   cursor: project ? 'pointer' : 'default', fontFamily: 'inherit', textAlign: 'left',
                   opacity: m.completed ? 0.7 : 1,
                 }}
               >
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.bar, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, color: cfg.text, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {label}
@@ -1574,14 +1567,12 @@ const MobileTimelineView = ({ year, month, projects, milestones, projectMap, onP
               }}
               style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                padding: item.kind === 'milestone' ? '10px 16px 10px 32px' : '10px 16px', border: 'none', background: 'transparent',
+                padding: '10px 16px', border: 'none', background: 'transparent',
                 borderTop: '1px solid var(--divider)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
                 opacity: completed ? 0.7 : 1,
               }}
             >
-              {item.kind === 'milestone' ? (
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: completed ? 'var(--text-4)' : cfg.bar, flexShrink: 0 }} />
-              ) : (
+              {item.kind === 'project' && (
                 <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -1757,7 +1748,7 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
                     onClick={() => { if (project) onProjectClick(project) }}
                     style={{
                       width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                      padding: '10px 16px 10px 32px', border: 'none', background: 'transparent',
+                      padding: '10px 16px', border: 'none', background: 'transparent',
                       borderTop: item.projects.length > 0 || i > 0 ? '1px solid var(--divider)' : 'none',
                       cursor: project ? 'pointer' : 'default', fontFamily: 'inherit', textAlign: 'left',
                       borderRadius: 6,
@@ -1767,7 +1758,6 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
                     onMouseEnter={e => { e.currentTarget.style.background = 'var(--card-hover)' }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                   >
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.bar, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13.5, fontWeight: 600, color: cfg.text, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {label}
