@@ -218,6 +218,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     (index: number, checked: boolean) => onCheckboxToggle(messageId, index, checked),
     [onCheckboxToggle, messageId],
   )
+  const checkboxToggleHandler = messageType === 'poll' ? undefined : handleCheckboxToggle
 
   // システムメッセージ（プロジェクトのステータス・日程・概要変更の通知）は中央寄せの控えめな1行で表示する
   if (messageType === 'system') {
@@ -328,7 +329,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   fontSize={compact ? 13 : 13.5}
                   lineHeight={1.6}
                   mentionNames={mentionNames}
-                  onCheckboxToggle={handleCheckboxToggle}
+                  onCheckboxToggle={checkboxToggleHandler}
                 />
               )}
             </div>

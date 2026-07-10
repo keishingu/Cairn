@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  createPollSchema,
   createMilestoneSchema,
   createProjectSchema,
   createTaskSchema,
@@ -46,8 +47,10 @@ describe('createProjectSchema', () => {
   })
 
   it('memberUserIds が 50 件を超えても受け入れる', () => {
-    const memberUserIds = Array.from({ length: 51 }, (_, index) =>
-      `00000000-0000-0000-0000-${String(index + 10).padStart(12, '0')}`,
+    const memberUserIds = Array.from(
+      { length: 51 },
+      (_, index) =>
+        `00000000-0000-0000-0000-${String(index + 10).padStart(12, '0')}`,
     )
     const result = createProjectSchema.safeParse({
       workspaceId: '00000000-0000-0000-0000-000000000001',
@@ -173,13 +176,42 @@ describe('postMessageSchema', () => {
   })
 })
 
+describe('createPollSchema', () => {
+  it('2件以上の選択肢を受け入れる', () => {
+    const result = createPollSchema.safeParse({
+      channelId: '00000000-0000-0000-0000-000000000001',
+      question: '来月の山行先は？',
+      options: ['燕岳', '赤岳'],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('空白だけの質問はエラーになる', () => {
+    const result = createPollSchema.safeParse({
+      channelId: '00000000-0000-0000-0000-000000000001',
+      question: '   ',
+      options: ['燕岳', '赤岳'],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('選択肢が1件だけだとエラーになる', () => {
+    const result = createPollSchema.safeParse({
+      channelId: '00000000-0000-0000-0000-000000000001',
+      question: '来月の山行先は？',
+      options: ['燕岳'],
+    })
+    expect(result.success).toBe(false)
+  })
+})
+
 describe('uploadGalleryItemSchema', () => {
   it('有効な座標を受け入れる', () => {
     const result = uploadGalleryItemSchema.safeParse({
       projectId: '00000000-0000-0000-0000-000000000001',
       fileId: '00000000-0000-0000-0000-000000000002',
       latitude: 36.2848,
-      longitude: 137.6490,
+      longitude: 137.649,
     })
     expect(result.success).toBe(true)
   })

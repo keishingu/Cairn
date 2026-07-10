@@ -137,4 +137,42 @@ describe('ChatMessage copy action', () => {
     expect(screen.getByRole('checkbox')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '詳細' })).toHaveAttribute('href', 'https://example.com/guide')
   })
+
+  it('poll メッセージのチェックボックスは操作不可で callback を呼ばない', async () => {
+    const user = userEvent.setup()
+    const onCheckboxToggle = vi.fn()
+
+    render(
+      <ChatMessage
+        messageId="message-3"
+        messageType="poll"
+        senderId="user-2"
+        currentUserId="user-1"
+        senderName="Alice"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content={'- [ ] 候補A'}
+        reactions={[]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={onCheckboxToggle}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+      />,
+    )
+
+    const checkbox = screen.getByRole('checkbox')
+    expect(checkbox).toBeDisabled()
+
+    await user.click(checkbox)
+
+    expect(onCheckboxToggle).not.toHaveBeenCalled()
+  })
 })

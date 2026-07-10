@@ -36,7 +36,11 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
     // 送信者・ワークスペース・削除済み除外をすべて確認してから更新
     const [target] = await db
-      .select({ id: messages.id, content: messages.content })
+      .select({
+        id: messages.id,
+        content: messages.content,
+        messageType: messages.messageType,
+      })
       .from(messages)
       .innerJoin(channels, eq(messages.channelId, channels.id))
       .where(and(
@@ -49,6 +53,12 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
     if (!target) {
       return NextResponse.json({ error: 'メッセージが見つからないか編集権限がありません' }, { status: 404 })
+    }
+    if (target.messageType === 'poll') {
+      return NextResponse.json(
+        { error: 'poll メッセージは編集できません' },
+        { status: 409 },
+      )
     }
 
     const [updated] = await db
@@ -139,7 +149,7 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
 
     // 送信者・ワークスペーススコープを確認してからソフトデリート
     const [target] = await db
-      .select({ id: messages.id })
+      .select({ id: messages.id, messageType: messages.messageType })
       .from(messages)
       .innerJoin(channels, eq(messages.channelId, channels.id))
       .where(and(
@@ -152,6 +162,12 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
 
     if (!target) {
       return NextResponse.json({ error: 'メッセージが見つからないか削除権限がありません' }, { status: 404 })
+    }
+    if (target.messageType === 'poll') {
+      return NextResponse.json(
+        { error: 'poll メッセージは削除できません' },
+        { status: 409 },
+      )
     }
 
     await db

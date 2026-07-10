@@ -59,6 +59,14 @@ export const postMessageSchema = z
     { message: 'テキストまたは添付ファイルが必要です' },
   )
 
+export const createPollSchema = z.object({
+  channelId: z.string().uuid(),
+  question: z.string().trim().min(1).max(500),
+  options: z.array(z.string().trim().min(1).max(200)).min(2).max(10),
+  allowMultiple: z.boolean().default(false),
+  anonymous: z.boolean().default(false),
+})
+
 export const editMessageSchema = z.object({
   content: z.string().min(1).max(10000),
 })
@@ -72,15 +80,16 @@ export const createTaskSchema = z.object({
   dueDate: z.string().date().optional(),
 })
 
-export const updateTaskSchema = z.object({
-  title: z.string().min(1).max(200).optional(),
-  priority: z.enum(['high', 'medium', 'low']).optional(),
-  dueDate: z.string().date().nullable().optional(),
-  status: z.enum(['todo', 'in_progress', 'done']).optional(),
-}).refine(
-  data => Object.values(data).some(value => value !== undefined),
-  { message: 'At least one field is required' },
-)
+export const updateTaskSchema = z
+  .object({
+    title: z.string().min(1).max(200).optional(),
+    priority: z.enum(['high', 'medium', 'low']).optional(),
+    dueDate: z.string().date().nullable().optional(),
+    status: z.enum(['todo', 'in_progress', 'done']).optional(),
+  })
+  .refine((data) => Object.values(data).some((value) => value !== undefined), {
+    message: 'At least one field is required',
+  })
 
 export const patchProjectSchema = z.object({
   title: z.string().min(1).max(100).optional(),
@@ -150,6 +159,7 @@ export type PostMessageInput = z.infer<typeof postMessageSchema>
 export type CreateTaskInput = z.infer<typeof createTaskSchema>
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>
 export type UploadGalleryItemInput = z.infer<typeof uploadGalleryItemSchema>
+export type CreatePollInput = z.infer<typeof createPollSchema>
 export type PatchProjectInput = z.infer<typeof patchProjectSchema>
 export type PatchWorkspaceInput = z.infer<typeof patchWorkspaceSchema>
 export type PatchMeInput = z.infer<typeof patchMeSchema>

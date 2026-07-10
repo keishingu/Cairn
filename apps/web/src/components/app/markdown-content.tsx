@@ -72,7 +72,7 @@ interface MarkdownContentProps {
   fontSize?: number
   lineHeight?: number
   mentionNames?: Map<string, string> | undefined
-  onCheckboxToggle?: (index: number, checked: boolean) => void
+  onCheckboxToggle?: ((index: number, checked: boolean) => void) | undefined
 }
 
 // メッセージ一覧では最大100件が同時に描画され、その各行で react-markdown（remark 一式）の
