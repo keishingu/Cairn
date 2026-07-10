@@ -454,7 +454,7 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
       role="button"
       tabIndex={0}
       onClick={() => router.push(`/chats/${milestone.channelId}`)}
-      onKeyDown={e => { if (e.key === 'Enter') router.push(`/chats/${milestone.channelId}`) }}
+      onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) router.push(`/chats/${milestone.channelId}`) }}
       style={{
         display: 'grid',
         gridTemplateColumns: 'auto 1fr auto',
