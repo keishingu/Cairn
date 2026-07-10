@@ -1,7 +1,8 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { boolean, integer, jsonb, pgTable, pgView, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { eq } from 'drizzle-orm'
 import { memberStatusEnum, userStatusEnum, workspaceRoleEnum } from './enums'
 
 export interface WorkspaceCoverPhoto {
@@ -60,6 +61,14 @@ export const workspaceMembers = pgTable(
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.workspaceId, t.userId)],
+)
+
+// active membership の唯一の定義。「非活性化されたメンバーは所属していない」という
+// 不変条件をここ 1 箇所に閉じ込め、認可・一覧・通知などの読み取りはこのビューを経由する。
+// 各クエリで `membership_status = 'active'` を手で足す必要（＝足し忘れ）が構造的に消える。
+// active の定義を変える場合（例: deactivated_at IS NULL も条件に足す）もこのビューだけを直せばよい。
+export const activeWorkspaceMembers = pgView('active_workspace_members').as((qb) =>
+  qb.select().from(workspaceMembers).where(eq(workspaceMembers.membershipStatus, 'active')),
 )
 
 export const tags = pgTable(
