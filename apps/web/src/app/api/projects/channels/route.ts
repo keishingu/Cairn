@@ -24,14 +24,14 @@ export async function GET() {
     if (error) return error
 
     const { db } = await import('@cairn/db')
-    const { channels, milestones, projects, projectMembers, workspaceMembers, channelReadStates, messages } = await import('@cairn/db')
+    const { channels, milestones, projects, projectMembers, activeWorkspaceMembers, channelReadStates, messages } = await import('@cairn/db')
     const { eq, and, isNull, gt, count, sql, inArray, ne } = await import('drizzle-orm')
 
-    // ゲストは参加中のプロジェクトのチャンネルのみ参照可能
+    // ゲストは参加中のプロジェクトのチャンネルのみ参照可能（active membership のロールで判定）
     const [wsMember] = await db
-      .select({ role: workspaceMembers.role })
-      .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, ctx.userId)))
+      .select({ role: activeWorkspaceMembers.role })
+      .from(activeWorkspaceMembers)
+      .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), eq(activeWorkspaceMembers.userId, ctx.userId)))
       .limit(1)
 
     const isGuest = wsMember?.role === 'guest'

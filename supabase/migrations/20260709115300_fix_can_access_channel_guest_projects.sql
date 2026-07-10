@@ -9,6 +9,23 @@ as $$
     select 1
     from channels c
     where c.id = p_channel_id
+      and exists (
+        select 1 from active_workspace_members wm
+        where wm.user_id = auth.uid()
+          and wm.workspace_id = coalesce(
+            c.workspace_id,
+            (select p.workspace_id from projects p where p.id = c.project_id)
+          )
+          and (
+            wm.role <> 'guest'
+            or c.type <> 'project'
+            or exists (
+              select 1 from project_members pm
+              where pm.project_id = c.project_id
+                and pm.user_id = auth.uid()
+            )
+          )
+      )
       and (
         (
           (c.is_private = true or c.type = 'dm')
@@ -21,23 +38,6 @@ as $$
         (
           c.is_private = false
           and c.type in ('workspace', 'project')
-          and exists (
-            select 1 from workspace_members wm
-            where wm.user_id = auth.uid()
-              and wm.workspace_id = coalesce(
-                c.workspace_id,
-                (select p.workspace_id from projects p where p.id = c.project_id)
-              )
-              and (
-                wm.role <> 'guest'
-                or c.type <> 'project'
-                or exists (
-                  select 1 from project_members pm
-                  where pm.project_id = c.project_id
-                    and pm.user_id = auth.uid()
-                )
-              )
-          )
         )
       )
   );

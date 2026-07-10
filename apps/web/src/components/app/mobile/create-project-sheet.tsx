@@ -36,7 +36,7 @@ async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
 }
 
 async function fetchWorkspaceMembers(): Promise<WorkspaceMemberDto[]> {
-  const res = await fetchWithAuth('/api/workspaces/members')
+  const res = await fetchWithAuth('/api/workspaces/members?status=active')
   if (!res.ok) throw new Error('fetch failed')
   return res.json() as Promise<WorkspaceMemberDto[]>
 }
@@ -64,7 +64,7 @@ interface CreateProjectSheetProps {
 
 export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', initialEndDate = '' }: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
-  const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members'], queryFn: fetchWorkspaceMembers })
+  const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members', 'active'], queryFn: fetchWorkspaceMembers })
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')

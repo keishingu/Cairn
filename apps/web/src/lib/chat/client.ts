@@ -14,7 +14,7 @@ import type { CurrentUserDto } from '@/app/api/me/route'
 export const chatQueryKeys = {
   projectChannels: ['project-channels'] as const,
   workspaceChannels: ['workspace-channels'] as const,
-  workspaceMembers: ['workspace-members'] as const,
+  workspaceMembers: ['workspace-members', 'active'] as const,
   dms: ['dms'] as const,
   messages: (channelId: string | null) => ['messages', channelId] as const,
   currentUser: ['current-user'] as const,
@@ -51,7 +51,7 @@ async function fetchWorkspaceChannels(): Promise<WorkspaceChannelDto[]> {
 }
 
 async function fetchWorkspaceMembers(): Promise<WorkspaceMemberDto[]> {
-  const res = await fetchWithAuth('/api/workspaces/members')
+  const res = await fetchWithAuth('/api/workspaces/members?status=active')
   if (!res.ok) throw new Error('メンバーの取得に失敗しました')
   return res.json()
 }

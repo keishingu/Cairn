@@ -28,7 +28,7 @@ vi.mock('@cairn/db', () => ({
   milestones:       { id: 'm.id', title: 'm.title', startDate: 'm.startDate', endDate: 'm.endDate', completed: 'm.completed', createdAt: 'm.createdAt' },
   projects:         { id: 'p.id', workspaceId: 'p.workspaceId', title: 'p.title', startDate: 'p.startDate', endDate: 'p.endDate', archived: 'p.archived', createdAt: 'p.createdAt' },
   projectMembers:   { projectId: 'pm.projectId', userId: 'pm.userId' },
-  workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role' },
+  activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', userId: 'awm.userId', role: 'awm.role' },
   channelReadStates:{ channelId: 'crs.channelId', userId: 'crs.userId', lastReadAt: 'crs.lastReadAt', unreadMentionCount: 'crs.unreadMentionCount' },
   messages:         { channelId: 'msg.channelId', senderId: 'msg.senderId', createdAt: 'msg.createdAt', deletedAt: 'msg.deletedAt' },
 }))
