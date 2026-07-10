@@ -14,6 +14,8 @@ import { EmojiPicker } from './emoji-picker'
 import { Icon } from './primitives'
 import { FileTypeIcon } from './file-type-icon'
 import { CreateTextFileDialog } from './create-text-file-dialog'
+import { CreatePollDialog } from './chat/create-poll-dialog'
+import { PollCard } from './chat/poll-card'
 import { MarkdownContent } from './markdown-content'
 import { ImageLightbox, type LightboxImage } from './image-lightbox'
 import {
@@ -161,6 +163,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const px = compact ? '8px 14px' : '6px 16px'
   const emojiOnly = isEmojiOnly(content)
   const isOwn = currentUserId === senderId
+  const canEditOwnMessage = isOwn && messageType !== 'poll'
   const canCopy = content.length > 0
 
   const startEdit = () => {
@@ -234,7 +237,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const menuActions = [
     { icon: 'link' as const, label: 'リンクをコピー', onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: 'コピー', onSelect: handleCopy }] : []),
-    ...(isOwn ? [
+    ...(canEditOwnMessage ? [
       { icon: 'edit' as const, label: '編集', onSelect: startEdit },
       { icon: 'trash' as const, label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
     ] : []),
@@ -321,7 +324,13 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             </div>
           </div>
         ) : (
-          content && (
+          messageType === 'poll' ? (
+            <PollCard
+              messageId={messageId}
+              fallbackQuestion={content}
+              {...(compact ? { compact: true } : {})}
+            />
+          ) : content && (
             <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6 }}>
               {emojiOnly ? content : (
                 <MarkdownContent
@@ -431,7 +440,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionNames, onMentionInserted, onCreateTextFile, onCreatePoll, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -451,6 +460,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   mentionNames?: Map<string, string>
   onMentionInserted?: (userId: string, displayName: string) => void
   onCreateTextFile: () => void
+  onCreatePoll: () => void
   replyTarget: ReplyToDto | null
   onCancelReply: () => void
 }) => {
@@ -787,6 +797,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
             <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
               <Icon name="file-text" size={15}/>
             </button>
+            <button onClick={onCreatePoll} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
+              <Icon name="list" size={15}/>
+            </button>
             <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
               <Icon name="smile" size={15}/>
             </button>
@@ -826,6 +839,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           </button>
           <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="file-text" size={13}/> テキストファイル
+          </button>
+          <button onClick={onCreatePoll} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="list" size={13}/> 投票
           </button>
           <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="smile" size={13}/> 絵文字
@@ -893,6 +909,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [pendingAttachments, setPendingAttachments] = React.useState<PendingAttachment[]>([])
   const [isUploading, setIsUploading] = React.useState(false)
   const [showTextFileDialog, setShowTextFileDialog] = React.useState(false)
+  const [showPollDialog, setShowPollDialog] = React.useState(false)
   const [replyTarget, setReplyTarget] = React.useState<ReplyToDto | null>(null)
   // ジャンプ/ハイライト対象（パーマリンク・検索・引用バークリックで設定される）
   const [highlightId, setHighlightId] = React.useState<string | null>(null)
@@ -1441,6 +1458,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
           onCreated={handleTextFileCreated}
         />
       )}
+      {showPollDialog && channelId && (
+        <CreatePollDialog
+          channelId={channelId}
+          onClose={() => setShowPollDialog(false)}
+        />
+      )}
       {isListDragOver && (
         <div style={{ position: 'absolute', inset: 8, zIndex: 50, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)' }}>ファイルをドロップしてアップロード</span>
@@ -1515,6 +1538,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         mentionNames={mentionNames}
         onMentionInserted={onMentionInserted}
         onCreateTextFile={() => setShowTextFileDialog(true)}
+        onCreatePoll={() => setShowPollDialog(true)}
         replyTarget={replyTarget}
         onCancelReply={() => setReplyTarget(null)}
         {...(compact ? { compact: true } : {})}
