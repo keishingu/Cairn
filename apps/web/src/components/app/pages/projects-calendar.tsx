@@ -530,6 +530,13 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], milestoneEvents = 
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const cells = buildCells(year, month)
   const flatCells = cells.flat()
+  const allDayRowsByWeek = Array.from({ length: 6 }, (_, week) => (
+    Math.max(
+      -1,
+      ...events.filter(e => e.week === week && e.row < MAX_PROJECT_ROWS).map(e => e.row),
+      ...gcalEvents.filter(e => e.week === week && e.row < MAX_PROJECT_ROWS).map(e => e.row),
+    ) + 1
+  ))
 
   const gridBodyRef = React.useRef<HTMLDivElement>(null)
   const isDragging = React.useRef(false)
@@ -707,7 +714,7 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], milestoneEvents = 
                 const colW = 100 / 7
                 const left = `calc(${e.day * colW}% + 4px)`
                 const width = `calc(${e.span * colW}% - 8px)`
-                const topOffset = DATE_AREA + MAX_PROJECT_ROWS * (EVENT_H + EVENT_GAP) + e.row * (MILESTONE_H + EVENT_GAP)
+                const topOffset = DATE_AREA + (allDayRowsByWeek[e.week] ?? 0) * (EVENT_H + EVENT_GAP) + e.row * (MILESTONE_H + EVENT_GAP)
                 const top = `calc(${e.week} / 6 * 100% + ${topOffset}px)`
                 return (
                   <button
@@ -895,7 +902,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
     return () => window.removeEventListener('mouseup', onWindowMouseUp)
   }, [dragStart, dragEnd]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const maxProjectRow = Math.max(0, ...events.map(e => e.row), ...gcalEvents.map(e => e.row))
+  const maxProjectRow = Math.max(-1, ...events.map(e => e.row), ...gcalEvents.map(e => e.row))
   const maxMilestoneRow = Math.max(-1, ...milestoneEvents.map(e => e.row))
   const bodyHeight = DATE_AREA + (maxProjectRow + 1) * (EVENT_H + EVENT_GAP) + (maxMilestoneRow + 1) * (MILESTONE_H + EVENT_GAP) + EVENT_GAP
 
