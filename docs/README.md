@@ -36,6 +36,7 @@
 | [`notification-ux-redesign.md`](./notification-ux-redesign.md) | 通知・未読・Push の再設計。**Phase 1〜3 実装済み**（現行 Realtime 方針 = Broadcast from Database はここの Phase 2）。Phase 4〜5 は構想 | 2026-07-03 |
 | [`mobile-webview-auth-handoff.md`](./mobile-webview-auth-handoff.md) | モバイル WebView 認証のワンタイムトークンハンドオフ（実装済み） | 2026-07-03 |
 | [`10_ai_member_design.md`](./10_ai_member_design.md) | AIメンバー設計（構想段階の現行合意。実装着手時に更新する） | 2026-06-11 |
+| [`11_per_channel_ai_consult_design.md`](./11_per_channel_ai_consult_design.md) | チャンネル単位・本人限定のAI相談パネル設計（Lab機能。構想段階） | 2026-07-01 |
 | [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) | 定期ジョブ（cron・自然言語で定義）+ アプリ内投票機能の設計（構想段階） | 2026-06-25 |
 | [`milestone-design.md`](./milestone-design.md) | マイルストーン機能の実装設計（現実装との差分分析・DB/API/UI 設計・フェーズ計画。実装未着手） | 2026-07-09 |
 | [`production-deployment.md`](./production-deployment.md) | 本番環境構成・残タスク・一般公開に向けた設定 | 2026-06-21 |
