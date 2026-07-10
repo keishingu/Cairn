@@ -32,7 +32,7 @@ export function isWorkspaceMember(role: string | null): boolean {
 // 書く必要はない（ビュー定義が保証する）。role 参照系（require* / requireProjectAccess /
 // requireChannelAccess / canAccessFile）はすべてこの関数を通るため、これ 1 箇所を
 // active 限定にするだけで非活性メンバーが横断的に 403 になる。
-export async function getWorkspaceRole(
+async function fetchWorkspaceRole(
   workspaceId: string,
   userId: string,
 ): Promise<WorkspaceRole | null> {
@@ -65,6 +65,30 @@ export async function getWorkspaceRole(
     return pending
   } catch {
     return fetchRole()
+  }
+}
+
+export async function getWorkspaceRole(
+  workspaceId: string,
+  userId: string,
+): Promise<WorkspaceRole | null> {
+  try {
+    const requestHeaders = await headers()
+    const cacheKey = `${workspaceId}:${userId}`
+    let roleCache = requestRoleCache.get(requestHeaders)
+    if (!roleCache) {
+      roleCache = new Map<string, Promise<WorkspaceRole | null>>()
+      requestRoleCache.set(requestHeaders, roleCache)
+    }
+    const cached = roleCache.get(cacheKey)
+    if (cached) {
+      return cached
+    }
+    const pending = fetchWorkspaceRole(workspaceId, userId)
+    roleCache.set(cacheKey, pending)
+    return pending
+  } catch {
+    return fetchWorkspaceRole(workspaceId, userId)
   }
 }
 
