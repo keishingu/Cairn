@@ -8,7 +8,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 const RATE_LIMIT_POLICIES = {
   '/api/auth/webview-handoff': {
     bucket: 'webview-handoff',
-    limit: 5,
+    limit: 30,
     window: '10 m',
   },
 } as const

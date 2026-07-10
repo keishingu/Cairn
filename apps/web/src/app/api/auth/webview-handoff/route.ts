@@ -15,10 +15,14 @@ import { enforceRateLimit } from '@/lib/rate-limit'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 export async function POST(request: NextRequest) {
+  const ipRateLimited = await enforceRateLimit(request)
+  if (ipRateLimited) {
+    return ipRateLimited
+  }
+
   const { ctx, error } = await getAuthContext()
   if (error) {
-    const ipRateLimited = await enforceRateLimit(request)
-    return ipRateLimited ?? error
+    return error
   }
 
   const rateLimited = await enforceFixedWindowRateLimit({
