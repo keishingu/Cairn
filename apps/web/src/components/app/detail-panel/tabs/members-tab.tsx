@@ -6,11 +6,12 @@ import { ConfirmDialog } from '../../confirm-dialog'
 import { RowActionMenu } from '../../row-action-menu'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import {
   useProjectMembers,
   useWorkspaceMembersForInvite,
+  useCreateProjectGuestInvite,
+  useRevokeWorkspaceInvite,
   useAddProjectMember,
   useRemoveProjectMember,
 } from '@/hooks/use-project-members'
@@ -273,25 +274,20 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
   const [url, setUrl] = React.useState<string | null>(null)
   const [token, setToken] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
-  const [isLoading, setIsLoading] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
-  const [revoking, setRevoking] = React.useState(false)
   const [revoked, setRevoked] = React.useState(false)
+  const createGuestInviteMutation = useCreateProjectGuestInvite(projectId)
+  const revokeInviteMutation = useRevokeWorkspaceInvite()
 
   React.useEffect(() => {
-    setIsLoading(true)
-    fetchWithAuth(`/api/projects/${projectId}/guest-invite`, { method: 'POST' })
-      .then(async (res) => {
-        const data = await res.json() as { url?: string; token?: string; error?: string }
-        if (!res.ok) {
-          setError(data.error ?? '招待リンクの生成に失敗しました')
-        } else {
-          setUrl(data.url ?? null)
-          setToken(data.token ?? null)
-        }
+    void createGuestInviteMutation.mutateAsync()
+      .then((data) => {
+        setUrl(data.url ?? null)
+        setToken(data.token ?? null)
       })
-      .catch(() => setError('招待リンクの生成に失敗しました'))
-      .finally(() => setIsLoading(false))
+      .catch((mutationError) => {
+        setError(mutationError instanceof Error ? mutationError.message : '招待リンクの生成に失敗しました')
+      })
   }, [projectId])
 
   const handleCopy = () => {
@@ -304,21 +300,13 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
 
   const handleRevoke = async () => {
     if (!token) return
-    setRevoking(true)
     try {
-      const res = await fetchWithAuth(`/api/workspaces/invites/${token}`, { method: 'DELETE' })
-      if (res.ok) {
-        setUrl(null)
-        setToken(null)
-        setRevoked(true)
-      } else {
-        const data = await res.json() as { error?: string }
-        setError(data.error ?? '無効化に失敗しました')
-      }
+      await revokeInviteMutation.mutateAsync(token)
+      setUrl(null)
+      setToken(null)
+      setRevoked(true)
     } catch {
       setError('無効化に失敗しました')
-    } finally {
-      setRevoking(false)
     }
   }
 
@@ -357,7 +345,7 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
           このリンクを共有すると、相手はゲストとしてワークスペースに参加し、このプロジェクトに自動で追加されます。
         </p>
 
-        {isLoading && (
+        {createGuestInviteMutation.isPending && (
           <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>
             リンクを生成中…
           </div>
@@ -409,18 +397,18 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
 
             <button
               onClick={() => { void handleRevoke() }}
-              disabled={revoking}
+              disabled={revokeInviteMutation.isPending}
               style={{
                 marginTop: 20, width: '100%', padding: '9px',
                 borderRadius: 8, border: '1px solid var(--red)',
                 background: 'transparent',
-                color: revoking ? 'var(--text-4)' : 'var(--red)',
+                color: revokeInviteMutation.isPending ? 'var(--text-4)' : 'var(--red)',
                 fontSize: 12.5, fontWeight: 600,
-                cursor: revoking ? 'not-allowed' : 'pointer',
+                cursor: revokeInviteMutation.isPending ? 'not-allowed' : 'pointer',
                 fontFamily: 'inherit',
               }}
             >
-              {revoking ? '無効化中…' : 'このリンクを無効化'}
+              {revokeInviteMutation.isPending ? '無効化中…' : 'このリンクを無効化'}
             </button>
           </>
         )}
