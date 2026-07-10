@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'next/navigation'
 import { chatQueryKeys } from '@/lib/chat/client'
 import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -17,6 +18,7 @@ import { FilterPopover } from './filter-popover'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
+import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 
 // ─── Main component ───────────────────────────────────────────────
 interface ProjectListViewProps {
@@ -46,11 +48,26 @@ async function fetchStatuses(): Promise<ProjectStatusDto[]> {
   return res.json() as Promise<ProjectStatusDto[]>
 }
 
+async function fetchMembers(): Promise<WorkspaceMemberDto[]> {
+  const res = await fetchWithAuth('/api/workspaces/members')
+  if (!res.ok) throw new Error('fetch failed')
+  return res.json() as Promise<WorkspaceMemberDto[]>
+}
+
 export const ProjectListView = ({ openPanel, isMobile, externalSearch }: ProjectListViewProps) => {
+  const searchParams = useSearchParams()
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
+  const openParam = searchParams.get('open') ?? ''
+  const detailProjectId = !isMobile && openParam.startsWith('project-') ? openParam.slice('project-'.length) : null
+  const detailMemberId = !isMobile && openParam.startsWith('member-') ? openParam.slice('member-'.length) : null
+  const { data: members = [] } = useQuery({
+    queryKey: ['workspace-members'],
+    queryFn: fetchMembers,
+    enabled: detailMemberId !== null,
+  })
   const [view, setView] = React.useState<'grid' | 'table'>(() => {
     if (typeof window === 'undefined') return 'grid'
     const saved = localStorage.getItem(STORAGE_KEYS.projects_list_view)
@@ -108,6 +125,10 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   const [search, setSearch] = React.useState('')
   const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false)
   const searchInputRef = React.useRef<HTMLInputElement>(null)
+  const detailPanelOpen =
+    (detailProjectId !== null && projects.some(project => project.id === detailProjectId)) ||
+    (detailMemberId !== null && members.some(member => member.userId === detailMemberId))
+  const showPanelSafeGrid = detailPanelOpen && view === 'table'
 
   // ⌥N 新規 / ⌥F フィルタ / ⌥G ⌥T ビュー切替（検索フォーカスは TopBarSearch が担当）
   useCommand('ctx.create', () => { if (canCreateProject) setShowCreate(true) })
@@ -193,6 +214,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       return dir === 'asc' ? cmp : -cmp
     })
   }, [filteredProjects, view, tableSort])
+  const renderedProjects = showPanelSafeGrid ? sortedProjects : filteredProjects
 
   // 矢印選択・Enter は実際に描画している並び（sortedProjects）を対象にする
   const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useListSelection({
@@ -336,7 +358,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>読み込み中…</div>
         ) : filteredProjects.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>プロジェクトが見つかりません</div>
-        ) : view === 'table' && !isMobile ? (
+        ) : view === 'table' && !isMobile && !showPanelSafeGrid ? (
           /* PC table view */
           <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
             <div style={{ minWidth: 796 }}>
@@ -407,13 +429,31 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
           </div>
         ) : (
           /* Grid (PC) / List with cover photos (mobile) */
-          <div style={{
-            display: isMobile ? 'flex' : 'grid',
-            flexDirection: 'column',
-            gridTemplateColumns: isMobile ? undefined : 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: isMobile ? 10 : 16,
-          }}>
-            {filteredProjects.map((p, i) => {
+          <>
+            {showPanelSafeGrid && (
+              <div
+                className="card"
+                style={{
+                  marginBottom: 12,
+                  padding: '10px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  color: 'var(--text-2)',
+                  fontSize: 12.5,
+                }}
+              >
+                <Icon name="panel-right" size={14}/>
+                詳細パネル表示中は、一覧の読みやすさを優先してカード表示に切り替えています。
+              </div>
+            )}
+            <div style={{
+              display: isMobile ? 'flex' : 'grid',
+              flexDirection: 'column',
+              gridTemplateColumns: isMobile ? undefined : 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: isMobile ? 10 : 16,
+            }}>
+            {renderedProjects.map((p, i) => {
               const accent = p.statusColor ?? 'var(--text-3)'
               const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
 
@@ -492,7 +532,8 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 </div>
               )
             })}
-          </div>
+            </div>
+          </>
         )}
       </div>
 
