@@ -24,7 +24,12 @@ const {
     },
     error: null,
   })
-  const mockDb = { select: vi.fn(), update: vi.fn() }
+  const mockDb = {
+    select: vi.fn(),
+    update: vi.fn(),
+    execute: vi.fn(),
+    transaction: vi.fn(async (callback: (tx: typeof mockDb) => Promise<unknown>) => callback(mockDb)),
+  }
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('admin')
   const mockRemove = vi.fn().mockResolvedValue({ error: null })
   const mockClearWorkspaceCacheForUser = vi.fn()
@@ -89,6 +94,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   and: vi.fn(() => 'and'),
   count: vi.fn(() => 'count'),
+  sql: vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values })),
 }))
 
 function selectChain(result: unknown[]) {
@@ -161,11 +167,12 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
   })
 
   it('アバターも含めて匿名化する', async () => {
-    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([
       { avatarUrl: 'https://example.supabase.co/storage/v1/object/public/avatars/ws-1/user-2.png' },
       { avatarUrl: null },
     ]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
     mockDb.update.mockReturnValueOnce(updateChain())
     mockDb.update.mockReturnValueOnce(updateChain())
     mockDb.select.mockReturnValueOnce(selectChain([]))
@@ -180,7 +187,7 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
   })
 
   it('アバター削除に失敗したら 500 を返し、DBは更新しない', async () => {
-    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([
       { avatarUrl: 'https://example.supabase.co/storage/v1/object/public/avatars/ws-1/user-2.png' },
     ]))
@@ -194,7 +201,7 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
   })
 
   it('admin は owner を匿名化できない', async () => {
-    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'owner' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'owner', membershipStatus: 'active' }]))
 
     const { POST } = await import('./route')
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
@@ -205,8 +212,9 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
 
   it('active membership が残る間は profile を匿名化しない', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
-    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
     const memberUpdate = updateChain()
     const profileUpdate = updateChain()
     mockDb.update
@@ -220,5 +228,55 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     expect(res.status).toBe(200)
     expect(mockDb.update).toHaveBeenCalledTimes(1)
     expect(profileUpdate.set).not.toHaveBeenCalled()
+  })
+
+  it('active owner の匿名化では owner 行をロックして数える', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'owner', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
+      .mockReturnValueOnce(selectChain([{ ownerCount: 2 }]))
+      .mockReturnValueOnce(selectChain([]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.update.mockReturnValueOnce(updateChain())
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockDb.execute).toHaveBeenCalledTimes(1)
+  })
+
+  it('inactive owner の匿名化では active owner 数ガードを実行しない', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'owner', membershipStatus: 'inactive' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'inactive' }]))
+      .mockReturnValueOnce(selectChain([]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.update.mockReturnValueOnce(updateChain())
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockDb.execute).not.toHaveBeenCalled()
+  })
+
+  it('最後の active owner は匿名化できない', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'owner', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
+      .mockReturnValueOnce(selectChain([{ ownerCount: 1 }]))
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(422)
+    expect(mockDb.update).not.toHaveBeenCalled()
   })
 })

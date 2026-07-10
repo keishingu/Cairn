@@ -41,7 +41,7 @@ export async function POST(
 
   try {
     const { db, profiles, workspaceMembers } = await import('@cairn/db')
-    const { and, count, eq } = await import('drizzle-orm')
+    const { and, count, eq, sql } = await import('drizzle-orm')
 
     const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
     if (!isWorkspaceAdmin(callerRole)) {
@@ -49,7 +49,11 @@ export async function POST(
     }
 
     const [memberInWorkspace] = await db
-      .select({ userId: workspaceMembers.userId, role: workspaceMembers.role })
+      .select({
+        userId: workspaceMembers.userId,
+        role: workspaceMembers.role,
+        membershipStatus: workspaceMembers.membershipStatus,
+      })
       .from(workspaceMembers)
       .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
       .limit(1)
@@ -62,22 +66,6 @@ export async function POST(
     if (targetRole === 'owner') {
       if (callerRole !== 'owner') {
         return NextResponse.json({ error: 'owner の匿名化は owner のみ実行できます' }, { status: 403 })
-      }
-
-      const ownerCountRows = await db
-        .select({ ownerCount: count() })
-        .from(workspaceMembers)
-        .where(and(
-          eq(workspaceMembers.workspaceId, ctx.workspaceId),
-          eq(workspaceMembers.role, 'owner'),
-          eq(workspaceMembers.membershipStatus, 'active'),
-        ))
-      const ownerCount = Number(ownerCountRows[0]?.ownerCount ?? 0)
-      if (ownerCount <= 1) {
-        return NextResponse.json(
-          { error: 'ワークスペースには最低1人の owner が必要です' },
-          { status: 422 },
-        )
       }
     }
 
@@ -104,18 +92,63 @@ export async function POST(
 
     const now = new Date()
 
-    await db
-      .update(workspaceMembers)
-      .set({
-        displayName: ANONYMIZED_DISPLAY_NAME,
-        avatarUrl: null,
-        membershipStatus: 'inactive',
-        deactivatedAt: now,
-        deactivatedBy: ctx.userId,
-        status: 'offline',
-        statusMessage: null,
-      })
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
+    const memberUpdateResult = await db.transaction(async (tx) => {
+      const [target] = await tx
+        .select({ role: workspaceMembers.role, membershipStatus: workspaceMembers.membershipStatus })
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
+        .limit(1)
+
+      if (!target) {
+        return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+      }
+
+      if (target.role === 'owner' && target.membershipStatus === 'active') {
+        await tx.execute(sql`
+          select 1
+          from workspace_members
+          where workspace_id = ${ctx.workspaceId}
+            and role = 'owner'
+            and membership_status = 'active'
+          for update
+        `)
+
+        const ownerCountRows = await tx
+          .select({ ownerCount: count() })
+          .from(workspaceMembers)
+          .where(and(
+            eq(workspaceMembers.workspaceId, ctx.workspaceId),
+            eq(workspaceMembers.role, 'owner'),
+            eq(workspaceMembers.membershipStatus, 'active'),
+          ))
+        const ownerCount = Number(ownerCountRows[0]?.ownerCount ?? 0)
+        if (ownerCount <= 1) {
+          return NextResponse.json(
+            { error: 'ワークスペースには最低1人の owner が必要です' },
+            { status: 422 },
+          )
+        }
+      }
+
+      await tx
+        .update(workspaceMembers)
+        .set({
+          displayName: ANONYMIZED_DISPLAY_NAME,
+          avatarUrl: null,
+          membershipStatus: 'inactive',
+          deactivatedAt: now,
+          deactivatedBy: ctx.userId,
+          status: 'offline',
+          statusMessage: null,
+        })
+        .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
+
+      return null
+    })
+
+    if (memberUpdateResult) {
+      return memberUpdateResult
+    }
 
     clearWorkspaceCacheForUser(targetUserId)
 
