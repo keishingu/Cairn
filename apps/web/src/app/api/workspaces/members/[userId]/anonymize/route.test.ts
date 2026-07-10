@@ -83,6 +83,10 @@ vi.mock('@cairn/db', () => ({
     id: 'projects.id',
     workspaceId: 'projects.workspaceId',
   },
+  tasks: {
+    id: 'tasks.id',
+    createdBy: 'tasks.createdBy',
+  },
   profiles: {
     id: 'profiles.id',
     displayName: 'profiles.displayName',
@@ -306,7 +310,7 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     })
   })
 
-  it('匿名化した送信者の stored message notifications も scrub する', async () => {
+  it('匿名化した送信者の通知と task 通知をまとめて scrub する', async () => {
     mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([]))
     mockDb.update.mockReturnValueOnce(updateChain())
@@ -322,9 +326,11 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     expect(mockDb.execute).toHaveBeenCalledTimes(2)
     expect(mockDb.execute.mock.calls[1]?.[0]?.strings.join('')).toContain('delete from notifications')
     expect(mockDb.execute.mock.calls[1]?.[0]?.strings.join('')).toContain("type in ('dm', 'mention', 'file')")
-    expect(mockDb.execute.mock.calls[1]?.[0]).toMatchObject({
-      values: [DEV_WORKSPACE_ID, OTHER_USER_ID],
-    })
+    expect(mockDb.execute.mock.calls[1]?.[0]?.strings.join('')).toContain("type = 'task'")
+    expect(mockDb.execute.mock.calls[1]?.[0]?.strings.join('')).toContain('from tasks')
+    expect(mockDb.execute.mock.calls[1]?.[0]?.values).toContain(DEV_WORKSPACE_ID)
+    expect(mockDb.execute.mock.calls[1]?.[0]?.values).toContain(OTHER_USER_ID)
+    expect(mockDb.execute.mock.calls[1]?.[0]?.values).toContain(`%<@${OTHER_USER_ID}>%`)
   })
 
   it('同一 workspace の owner 匿名化でも row lock 順が安定する', async () => {

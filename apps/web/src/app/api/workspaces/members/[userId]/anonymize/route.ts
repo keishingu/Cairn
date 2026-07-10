@@ -124,7 +124,7 @@ async function prepareAnonymization(
   return { ok: true as const, avatarPaths }
 }
 
-async function scrubStoredMessageNotifications(
+async function scrubStoredNotifications(
   tx: TxClient,
   workspaceId: string,
   targetUserId: string,
@@ -133,12 +133,29 @@ async function scrubStoredMessageNotifications(
   await tx.execute(sql`
     delete from notifications
     where workspace_id = ${workspaceId}
-      and type in ('dm', 'mention', 'file')
-      and exists (
-        select 1
-        from messages
-        where messages.id::text = notifications.data->>'messageId'
-          and messages.sender_id = ${targetUserId}
+      and (
+        (
+          type in ('dm', 'mention', 'file')
+          and exists (
+            select 1
+            from messages
+            where messages.id::text = notifications.data->>'messageId'
+              and (
+                messages.sender_id = ${targetUserId}
+                or messages.content like ${`%<@${targetUserId}>%`}
+                or messages.content like ${`%<@${targetUserId}|%`}
+              )
+          )
+        )
+        or (
+          type = 'task'
+          and exists (
+            select 1
+            from tasks
+            where tasks.id::text = notifications.data->>'taskId'
+              and tasks.created_by = ${targetUserId}
+          )
+        )
       )
   `)
 }
@@ -164,7 +181,7 @@ export async function POST(
   if (error) return error
 
   try {
-    const { db, documentChunks, profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
+    const { db, documentChunks, profiles, projectMembers, projects, tasks, workspaceMembers } = await import('@cairn/db')
     const { and, count, eq, inArray, sql } = await import('drizzle-orm')
 
     const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
@@ -208,7 +225,7 @@ export async function POST(
           eq(documentChunks.sourceType, 'member'),
           eq(documentChunks.sourceId, targetUserId),
         ))
-      await scrubStoredMessageNotifications(tx, ctx.workspaceId, targetUserId, sql)
+      await scrubStoredNotifications(tx, ctx.workspaceId, targetUserId, sql)
 
       const affectedProjectRows = await tx
         .select({ projectId: projectMembers.projectId })

@@ -66,6 +66,23 @@ export const onMessageCreated = inngest.createFunction(
     const { messageId, channelId, workspaceId, senderId, senderName, content, attachmentFileIds } =
       event.data as MessageCreatedEvent['data']
 
+    const currentSenderName = await step.run('fetch-sender-name', async () => {
+      const { db, profiles, workspaceMembers } = await import('@cairn/db')
+      const { and, eq } = await import('drizzle-orm')
+      const [sender] = await db
+        .select({
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        })
+        .from(profiles)
+        .leftJoin(workspaceMembers, and(
+          eq(workspaceMembers.userId, profiles.id),
+          eq(workspaceMembers.workspaceId, workspaceId),
+        ))
+        .where(eq(profiles.id, senderId))
+        .limit(1)
+      return sender?.displayName ?? senderName
+    })
+
     // チャンネルメンバー（送信者を除く）を取得。非活性メンバーは DM・ファイル通知の宛先に
     // しないよう active_workspace_members に inner join して active のみに絞る
     // （deactivation は履歴のため channel_members 行を残すため、ここで除外しないと通知が飛ぶ）
@@ -111,9 +128,9 @@ export const onMessageCreated = inngest.createFunction(
             userId: m.userId,
             workspaceId,
             type: 'dm' as const,
-            title: senderName,
+            title: currentSenderName,
             body: dmBody.slice(0, 200),
-            data: { messageId, channelId, senderName },
+            data: { messageId, channelId, senderName: currentSenderName },
           })),
         )
       })
@@ -127,7 +144,7 @@ export const onMessageCreated = inngest.createFunction(
         await step.run('send-dm-push', async () => {
           await Promise.allSettled(
             unreadMembers.map(m => sendPushToUser(m.userId, {
-              title: senderName,
+              title: currentSenderName,
               body: dmBody.slice(0, 100),
               url: `/chats/${channelId}`,
             })),
@@ -246,9 +263,9 @@ export const onMessageCreated = inngest.createFunction(
             userId: m.userId,
             workspaceId,
             type: 'mention' as const,
-            title: `${senderName} があなたをメンションしました`,
+            title: `${currentSenderName} があなたをメンションしました`,
             body: mentionBody.slice(0, 200),
-            data: { messageId, channelId, senderName },
+            data: { messageId, channelId, senderName: currentSenderName },
           })),
         )
 
@@ -294,9 +311,9 @@ export const onMessageCreated = inngest.createFunction(
             userId: m.userId,
             workspaceId,
             type: 'file' as const,
-            title: `${senderName} がファイルを共有しました`,
+            title: `${currentSenderName} がファイルを共有しました`,
             body,
-            data: { messageId, channelId, senderName },
+            data: { messageId, channelId, senderName: currentSenderName },
           })),
         )
       })
@@ -313,7 +330,7 @@ export const onMessageCreated = inngest.createFunction(
         await Promise.allSettled(
           unreadMembers.map(m =>
             sendPushToUser(m.userId, {
-              title: `${senderName} があなたをメンションしました`,
+              title: `${currentSenderName} があなたをメンションしました`,
               body: mentionBody.slice(0, 100),
               url: `/chats/${channelId}`,
             }),
@@ -330,7 +347,7 @@ export const onTaskAssigned = inngest.createFunction(
   { id: 'on-task-assigned' },
   { event: 'task/assigned' satisfies TaskAssignedEvent['name'] },
   async ({ event, step }) => {
-    const { taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
+    const { taskId, taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
       event.data as TaskAssignedEvent['data']
 
     await step.run('create-task-notification', async () => {
@@ -341,7 +358,7 @@ export const onTaskAssigned = inngest.createFunction(
         type: 'task' as const,
         title: `${assignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
-        data: { assignerName, projectTitle },
+        data: { assignerName, projectTitle, taskId },
       })
     })
 
