@@ -199,12 +199,12 @@ describe('get-auth-context', () => {
     expect(mockDb.select).toHaveBeenCalledTimes(2)
   })
 
-  it('default キャッシュが対象 workspace と一致するときだけ bare key も無効化する', async () => {
+  it('workspace 指定の無効化では bare key の workspace 選択を維持する', async () => {
     mockHeaders.mockResolvedValue(new Headers())
     mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
     mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1' }]))
-    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-2' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1' }]))
 
     const authModule = await import('./get-auth-context')
 
@@ -218,7 +218,7 @@ describe('get-auth-context', () => {
 
     const second = await authModule.getAuthContext()
     expect(second).toEqual({
-      ctx: { userId: 'user-1', workspaceId: 'ws-2' },
+      ctx: { userId: 'user-1', workspaceId: 'ws-1' },
       error: null,
     })
     expect(mockDb.select).toHaveBeenCalledTimes(2)

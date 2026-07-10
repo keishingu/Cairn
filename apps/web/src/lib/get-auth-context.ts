@@ -32,10 +32,6 @@ export function invalidateWorkspaceCacheForUser(userId: string, workspaceId?: st
     return
   }
 
-  const defaultCache = workspaceCache.get(userId)
-  if (defaultCache?.workspaceId === workspaceId) {
-    workspaceCache.delete(userId)
-  }
   workspaceCache.delete(`${userId}:${workspaceId}`)
 }
 
