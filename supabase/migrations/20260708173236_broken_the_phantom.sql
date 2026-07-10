@@ -60,8 +60,8 @@ AS $$
     SELECT 1
     FROM "channels"
     LEFT JOIN "projects" ON "projects"."id" = "channels"."project_id"
-    LEFT JOIN "workspace_members" ON "workspace_members"."user_id" = auth.uid()
-      AND "workspace_members"."workspace_id" = coalesce(
+    LEFT JOIN "active_workspace_members" ON "active_workspace_members"."user_id" = auth.uid()
+      AND "active_workspace_members"."workspace_id" = coalesce(
         "channels"."workspace_id",
         "projects"."workspace_id"
       )
@@ -75,11 +75,11 @@ AS $$
             WHERE "channel_members"."channel_id" = "channels"."id"
               AND "channel_members"."user_id" = auth.uid()
           )
-          AND "workspace_members"."user_id" IS NOT NULL
+          AND "active_workspace_members"."user_id" IS NOT NULL
           AND (
             "channels"."type" <> 'project'
             OR (
-              "workspace_members"."role" <> 'guest'
+              "active_workspace_members"."role" <> 'guest'
               OR EXISTS (
                 SELECT 1
                 FROM "project_members"
@@ -92,14 +92,14 @@ AS $$
         OR (
           "channels"."is_private" = false
           AND "channels"."type" = 'workspace'
-          AND "workspace_members"."user_id" IS NOT NULL
+          AND "active_workspace_members"."user_id" IS NOT NULL
         )
         OR (
           "channels"."is_private" = false
           AND "channels"."type" = 'project'
-          AND "workspace_members"."user_id" IS NOT NULL
+          AND "active_workspace_members"."user_id" IS NOT NULL
           AND (
-            "workspace_members"."role" <> 'guest'
+            "active_workspace_members"."role" <> 'guest'
             OR EXISTS (
               SELECT 1
               FROM "project_members"
