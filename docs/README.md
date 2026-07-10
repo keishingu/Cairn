@@ -65,6 +65,7 @@
 | ファイル | 内容 | 作成 |
 |---|---|---|
 | [`09_product_strategy_notes.md`](./09_product_strategy_notes.md) | 展開戦略・魅力向上の優先課題の議論記録 | 2026-06-11 |
+| [`zenn-pre-launch-checklist-review.md`](./zenn-pre-launch-checklist-review.md) | 「Webサービス公開前のチェックリスト」（catnose99）によるコードレビュー記録 | 2026-06-17 |
 
 ## アーカイブ
 
