@@ -162,7 +162,10 @@ URL 監視（`handleNavigationStateChange`）は、SPA 遷移で漏れる既知�
   抑えられる。Supabase ダッシュボードの Single session per user 制約は
   **有効化しない**こと（有効化するとネイティブと WebView が相互に蹴り合う）
 - **ローカル開発**: `SUPABASE_SERVICE_ROLE_KEY` は `supabase start` のデフォルトキーが
-  `.env.local.example` に入っており追加設定は不要
+  `.env.local.example` に入っており追加設定は不要。あわせて
+  `POST /api/auth/webview-handoff` と `POST /api/workspaces/invites` は
+  rate limit のため `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`
+  （または Vercel 自動注入の `KV_REST_API_URL` / `KV_REST_API_TOKEN`）が必要
 - **Inbucket 等のメール設定は不要**: `admin.generateLink` はメールを送信しない
 
 ## 実装順序

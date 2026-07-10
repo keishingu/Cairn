@@ -1,0 +1,190 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+import { Ratelimit } from '@upstash/ratelimit'
+import { Redis } from '@upstash/redis'
+import { type NextFetchEvent, type NextRequest, NextResponse } from 'next/server'
+
+const RATE_LIMIT_POLICIES = {
+  '/api/auth/webview-handoff': {
+    bucket: 'webview-handoff',
+    limit: 5,
+    window: '10 m',
+  },
+  '/api/workspaces/invites': {
+    bucket: 'workspace-invites',
+    limit: 10,
+    window: '1 h',
+  },
+  '/api/projects/[id]/guest-invite': {
+    bucket: 'workspace-invites',
+    limit: 10,
+    window: '1 h',
+  },
+} as const
+
+type RateLimitPath = keyof typeof RATE_LIMIT_POLICIES
+
+let ratelimiters:
+  | Partial<Record<RateLimitPath, InstanceType<typeof Ratelimit>>>
+  | null = null
+
+function getFirstConfiguredEnv(...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = process.env[key]?.trim()
+    if (value) return value
+  }
+
+  return null
+}
+
+function resolveClientIp(request: NextRequest): string | null {
+  const forwardedFor = request.headers.get('x-forwarded-for')
+  if (forwardedFor) {
+    const [firstIp] = forwardedFor.split(',')
+    const ip = firstIp?.trim()
+    if (ip) return ip
+  }
+
+  const realIp = request.headers.get('x-real-ip')?.trim()
+  return realIp || null
+}
+
+function resolveRedisCredentials() {
+  const upstashUrl = process.env['UPSTASH_REDIS_REST_URL']?.trim() || null
+  const upstashToken = process.env['UPSTASH_REDIS_REST_TOKEN']?.trim() || null
+  if (upstashUrl && upstashToken) {
+    return { url: upstashUrl, token: upstashToken }
+  }
+
+  const kvUrl = getFirstConfiguredEnv('KV_REST_API_URL')
+  const kvToken = getFirstConfiguredEnv('KV_REST_API_TOKEN')
+  if (kvUrl && kvToken) {
+    return { url: kvUrl, token: kvToken }
+  }
+
+  return null
+}
+
+function getRateLimiters() {
+  if (ratelimiters) return ratelimiters
+
+  const credentials = resolveRedisCredentials()
+  if (!credentials) {
+    throw new Error('UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are required')
+  }
+
+  const redis = new Redis(credentials)
+
+  ratelimiters = {
+    '/api/auth/webview-handoff': new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(
+        RATE_LIMIT_POLICIES['/api/auth/webview-handoff'].limit,
+        RATE_LIMIT_POLICIES['/api/auth/webview-handoff'].window,
+      ),
+      analytics: true,
+      prefix: '@cairn/webview-handoff',
+    }),
+    '/api/workspaces/invites': new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(
+        RATE_LIMIT_POLICIES['/api/workspaces/invites'].limit,
+        RATE_LIMIT_POLICIES['/api/workspaces/invites'].window,
+      ),
+      analytics: true,
+      prefix: '@cairn/workspace-invites',
+    }),
+    '/api/projects/[id]/guest-invite': new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(
+        RATE_LIMIT_POLICIES['/api/projects/[id]/guest-invite'].limit,
+        RATE_LIMIT_POLICIES['/api/projects/[id]/guest-invite'].window,
+      ),
+      analytics: true,
+      prefix: '@cairn/workspace-invites',
+    }),
+  }
+
+  return ratelimiters
+}
+
+function normalizeRateLimitedPath(pathname: string): RateLimitPath | null {
+  const normalizedPathname =
+    pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
+  if (normalizedPathname in RATE_LIMIT_POLICIES) {
+    return normalizedPathname as RateLimitPath
+  }
+
+  if (/^\/api\/projects\/[^/]+\/guest-invite$/.test(normalizedPathname)) {
+    return '/api/projects/[id]/guest-invite'
+  }
+
+  return null
+}
+
+export function isRateLimitedPath(pathname: string): pathname is RateLimitPath {
+  return normalizeRateLimitedPath(pathname) !== null
+}
+
+export async function enforceRateLimit(
+  request: NextRequest,
+  event?: Pick<NextFetchEvent, 'waitUntil'>,
+): Promise<NextResponse | null> {
+  const rateLimitPath = normalizeRateLimitedPath(request.nextUrl.pathname)
+  if (!rateLimitPath || request.method !== 'POST') return null
+
+  const policy = RATE_LIMIT_POLICIES[rateLimitPath]
+  const identifier = resolveClientIp(request)
+
+  if (!identifier) {
+    return NextResponse.json(
+      { error: 'Unable to determine client IP for rate limiting' },
+      { status: 400 },
+    )
+  }
+
+  let limiter: InstanceType<typeof Ratelimit>
+  try {
+    limiter = getRateLimiters()[rateLimitPath]!
+  } catch (error) {
+    console.error('[rate-limit] Redis configuration is missing:', error)
+    return NextResponse.json({ error: 'Rate limit is unavailable' }, { status: 503 })
+  }
+
+  let result: Awaited<ReturnType<InstanceType<typeof Ratelimit>['limit']>>
+  try {
+    result = await limiter.limit(`${policy.bucket}:${identifier}`)
+  } catch (error) {
+    console.error('[rate-limit] Redis request failed:', error)
+    return NextResponse.json({ error: 'Rate limit is unavailable' }, { status: 503 })
+  }
+
+  if (event) {
+    event.waitUntil(result.pending)
+  } else {
+    void result.pending
+  }
+
+  if (result.reason === 'timeout') {
+    console.error('[rate-limit] Redis request timed out')
+    return NextResponse.json({ error: 'Rate limit is unavailable' }, { status: 503 })
+  }
+
+  if (result.success) {
+    return null
+  }
+
+  return NextResponse.json(
+    { error: 'Too many requests' },
+    {
+      status: 429,
+      headers: {
+        'Retry-After': String(Math.max(0, Math.ceil((result.reset - Date.now()) / 1000))),
+        'X-RateLimit-Limit': String(result.limit),
+        'X-RateLimit-Remaining': String(result.remaining),
+        'X-RateLimit-Reset': String(result.reset),
+      },
+    },
+  )
+}
