@@ -699,7 +699,7 @@ export const indexMemberChunks = inngest.createFunction(
     const { userId, workspaceId } = event.data as { userId: string; workspaceId: string }
 
     await step.run('embed-and-save', async () => {
-      const { db, profiles, memberExperiences, documentChunks, activeWorkspaceMembers, workspaceMembers } = await import('@cairn/db')
+      const { db, documentChunks, activeWorkspaceMembers, workspaceMembers } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
 
       const deleteMemberChunks = () =>
@@ -719,46 +719,23 @@ export const indexMemberChunks = inngest.createFunction(
       }
 
       const [workspaceMember] = await db
-        .select({ displayName: workspaceMembers.displayName })
+        .select({
+          displayName: workspaceMembers.displayName,
+          statusMessage: workspaceMembers.statusMessage,
+        })
         .from(workspaceMembers)
         .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
         .limit(1)
 
-      if (workspaceMember?.displayName === ANONYMIZED_MEMBER_DISPLAY_NAME) {
+      const displayName = workspaceMember?.displayName?.trim() ?? ''
+      if (!displayName || displayName === ANONYMIZED_MEMBER_DISPLAY_NAME) {
         await deleteMemberChunks()
         return
       }
 
-      const [profile] = await db
-        .select({ displayName: profiles.displayName, bio: profiles.bio })
-        .from(profiles)
-        .where(eq(profiles.id, userId))
-        .limit(1)
-
-      if (!profile) return
-
-      const experiences = await db
-        .select({
-          category: memberExperiences.category,
-          title: memberExperiences.title,
-          level: memberExperiences.level,
-          notes: memberExperiences.notes,
-        })
-        .from(memberExperiences)
-        .where(eq(memberExperiences.userId, userId))
-
       const lines: string[] = [
-        `メンバー: ${profile.displayName}`,
-        ...(profile.bio ? [`自己紹介: ${profile.bio}`] : []),
-        ...(experiences.length > 0
-          ? [
-              '\nスキル・経験:',
-              ...experiences.map(
-                e =>
-                  `- ${e.category} (${e.title})${e.level ? `: ${e.level}` : ''}${e.notes ? `\n  ${e.notes}` : ''}`,
-              ),
-            ]
-          : []),
+        `メンバー: ${displayName}`,
+        ...(workspaceMember?.statusMessage ? [`ステータス: ${workspaceMember.statusMessage}`] : []),
       ]
 
       const content = lines.join('\n')
