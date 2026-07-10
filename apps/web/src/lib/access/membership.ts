@@ -40,6 +40,13 @@ export async function getWorkspaceRole(
     return cachedRole
   }
 
+  return loadWorkspaceRole(workspaceId, userId)
+}
+
+async function loadWorkspaceRole(
+  workspaceId: string,
+  userId: string,
+): Promise<WorkspaceRole | null> {
   const [member] = await db
     .select({ role: activeWorkspaceMembers.role })
     .from(activeWorkspaceMembers)
@@ -71,7 +78,8 @@ export async function requireActiveMember(
   userId: string,
   min: WorkspaceRole,
 ): Promise<NextResponse | null> {
-  const role = await getWorkspaceRole(workspaceId, userId)
+  // 権限ゲートは stale な seed/cached role を信用せず、その場で再照合する。
+  const role = await loadWorkspaceRole(workspaceId, userId)
   if (role === null || ROLE_RANK[role] < ROLE_RANK[min]) {
     return NextResponse.json({ error: ROLE_ERROR[min] }, { status: 403 })
   }

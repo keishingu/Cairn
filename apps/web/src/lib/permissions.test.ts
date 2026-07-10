@@ -128,12 +128,12 @@ describe('permissions', () => {
     await expect(outsiderDenied?.json()).resolves.toEqual({ error: 'ゲストはこの操作を実行できません' })
   })
 
-  it('同一 request 内では workspace role query を再利用する', async () => {
+  it('非権限ゲートの role 参照は同一 request 内で再利用する', async () => {
     pushResults([{ role: 'admin' }])
-    const { requireWorkspaceAdmin, requireWorkspaceMember } = await import('./permissions')
+    const { getWorkspaceMemberRole } = await import('./permissions')
 
-    await expect(requireWorkspaceAdmin('ws-1', 'user-1')).resolves.toBeNull()
-    await expect(requireWorkspaceMember('ws-1', 'user-1')).resolves.toBeNull()
+    await expect(getWorkspaceMemberRole('ws-1', 'user-1')).resolves.toBe('admin')
+    await expect(getWorkspaceMemberRole('ws-1', 'user-1')).resolves.toBe('admin')
 
     expect(mockDb.select).toHaveBeenCalledTimes(1)
   })
