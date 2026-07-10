@@ -3,11 +3,10 @@
 
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
-const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
-const OTHER_USER_ID = '00000000-0000-0000-0000-000000000002'
-const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
-
 const {
+  DEV_USER_ID,
+  OTHER_USER_ID,
+  DEV_WORKSPACE_ID,
   mockGetAuthContext,
   mockDb,
   mockGetWorkspaceMemberRole,
@@ -16,6 +15,9 @@ const {
   mockReactivate,
   mockInngestSend,
 } = vi.hoisted(() => {
+  const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
+  const OTHER_USER_ID = '00000000-0000-0000-0000-000000000002'
+  const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: DEV_USER_ID,
@@ -30,6 +32,9 @@ const {
   const mockReactivate = vi.fn().mockResolvedValue({ ok: true })
   const mockInngestSend = vi.fn().mockResolvedValue(undefined)
   return {
+    DEV_USER_ID,
+    OTHER_USER_ID,
+    DEV_WORKSPACE_ID,
     mockGetAuthContext,
     mockDb,
     mockGetWorkspaceMemberRole,
