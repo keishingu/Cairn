@@ -93,30 +93,61 @@ export async function PATCH(req: Request) {
 
   try {
     const { db, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, sql } = await import('drizzle-orm')
 
-    if (hasBio) {
-      await db
-        .update(profiles)
-        .set({ bio: b.bio ?? null, updatedAt: new Date() })
-        .where(eq(profiles.id, ctx.userId))
-    }
+    const updated = await db.transaction(async (tx) => {
+      await tx.execute(sql`
+        select 1
+        from workspace_members
+        where workspace_id = ${ctx.workspaceId}
+          and user_id = ${ctx.userId}
+          and membership_status = 'active'
+        for update
+      `)
 
-    if (b.displayName !== undefined) {
-      await db
-        .update(workspaceMembers)
-        .set({ displayName: b.displayName.trim() })
-        .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-    }
+      const [activeMember] = await tx
+        .select({ userId: workspaceMembers.userId })
+        .from(workspaceMembers)
+        .where(and(
+          eq(workspaceMembers.userId, ctx.userId),
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ))
+        .limit(1)
 
-    if (b.status !== undefined || hasStatusMessage) {
-      const set: { status?: UserStatus; statusMessage?: string | null } = {}
-      if (b.status !== undefined) set.status = b.status
-      if (hasStatusMessage) set.statusMessage = b.statusMessage?.trim() || null
-      await db
-        .update(workspaceMembers)
-        .set(set)
-        .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      if (!activeMember) {
+        return false
+      }
+
+      if (hasBio) {
+        await tx
+          .update(profiles)
+          .set({ bio: b.bio ?? null, updatedAt: new Date() })
+          .where(eq(profiles.id, ctx.userId))
+      }
+
+      if (b.displayName !== undefined) {
+        await tx
+          .update(workspaceMembers)
+          .set({ displayName: b.displayName.trim() })
+          .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      }
+
+      if (b.status !== undefined || hasStatusMessage) {
+        const set: { status?: UserStatus; statusMessage?: string | null } = {}
+        if (b.status !== undefined) set.status = b.status
+        if (hasStatusMessage) set.statusMessage = b.statusMessage?.trim() || null
+        await tx
+          .update(workspaceMembers)
+          .set(set)
+          .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      }
+
+      return true
+    })
+
+    if (!updated) {
+      return NextResponse.json({ error: '非アクティブなメンバーはプロフィールを更新できません' }, { status: 409 })
     }
 
     return NextResponse.json({ id: ctx.userId })
