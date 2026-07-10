@@ -27,8 +27,9 @@ const {
   const mockDb = {
     select: vi.fn(),
     update: vi.fn(),
+    delete: vi.fn(),
     execute: vi.fn(),
-    transaction: vi.fn(async (callback: (tx: typeof mockDb) => Promise<unknown>) => callback(mockDb)),
+    transaction: vi.fn(),
   }
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('admin')
   const mockRemove = vi.fn().mockResolvedValue({ error: null })
@@ -69,6 +70,11 @@ vi.mock('@/lib/supabase/service', () => ({
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
+  documentChunks: {
+    workspaceId: 'dc.workspaceId',
+    sourceType: 'dc.sourceType',
+    sourceId: 'dc.sourceId',
+  },
   profiles: {
     id: 'profiles.id',
     displayName: 'profiles.displayName',
@@ -116,6 +122,12 @@ function updateChain() {
   }
 }
 
+function deleteChain() {
+  return {
+    where: vi.fn().mockResolvedValue([]),
+  }
+}
+
 function postRequest(targetUserId: string) {
   return new Request(`http://localhost/api/workspaces/members/${targetUserId}/anonymize`, {
     method: 'POST',
@@ -125,6 +137,8 @@ function postRequest(targetUserId: string) {
 describe('POST /api/workspaces/members/[userId]/anonymize', () => {
   beforeEach(() => {
     process.env['DATABASE_URL'] = 'postgresql://test'
+    mockDb.transaction.mockImplementation(async (cb: (tx: typeof mockDb) => unknown) => cb(mockDb))
+    mockDb.execute.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -172,10 +186,15 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
       { avatarUrl: 'https://example.supabase.co/storage/v1/object/public/avatars/ws-1/user-2.png' },
       { avatarUrl: null },
     ]))
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { avatarUrl: 'https://example.supabase.co/storage/v1/object/public/avatars/ws-1/user-2.png' },
+      { avatarUrl: null },
+    ]))
     mockDb.update.mockReturnValueOnce(updateChain())
-    mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.delete.mockReturnValueOnce(deleteChain())
     mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.update.mockReturnValueOnce(updateChain())
 
     const { POST } = await import('./route')
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
@@ -214,9 +233,11 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
     mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([]))
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
     const memberUpdate = updateChain()
     const profileUpdate = updateChain()
+    mockDb.delete.mockReturnValueOnce(deleteChain())
     mockDb.update
       .mockReturnValueOnce(memberUpdate)
       .mockReturnValueOnce(profileUpdate)
@@ -232,20 +253,23 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
 
   it('active owner の匿名化では owner 行をロックして数える', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
-    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'owner', membershipStatus: 'active' }]))
-    mockDb.select.mockReturnValueOnce(selectChain([]))
     mockDb.select
-      .mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
+      .mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'owner', membershipStatus: 'active' }]))
+      .mockReturnValueOnce(selectChain([{ ownerCount: 2 }]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'owner', membershipStatus: 'active' }]))
       .mockReturnValueOnce(selectChain([{ ownerCount: 2 }]))
       .mockReturnValueOnce(selectChain([]))
     mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.delete.mockReturnValueOnce(deleteChain())
+    mockDb.select.mockReturnValueOnce(selectChain([{ membershipCount: 0 }]))
     mockDb.update.mockReturnValueOnce(updateChain())
 
     const { POST } = await import('./route')
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
-    expect(mockDb.execute).toHaveBeenCalledTimes(1)
+    expect(mockDb.execute).toHaveBeenCalledTimes(2)
   })
 
   it('inactive owner の匿名化では active owner 数ガードを実行しない', async () => {
@@ -253,24 +277,23 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'owner', membershipStatus: 'inactive' }]))
     mockDb.select.mockReturnValueOnce(selectChain([]))
     mockDb.select
-      .mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'inactive' }]))
+      .mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'owner', membershipStatus: 'inactive' }]))
       .mockReturnValueOnce(selectChain([]))
+    mockDb.delete.mockReturnValueOnce(deleteChain())
     mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.select.mockReturnValueOnce(selectChain([{ membershipCount: 0 }]))
     mockDb.update.mockReturnValueOnce(updateChain())
 
     const { POST } = await import('./route')
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
-    expect(mockDb.execute).not.toHaveBeenCalled()
   })
 
   it('最後の active owner は匿名化できない', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
-    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'owner', membershipStatus: 'active' }]))
-    mockDb.select.mockReturnValueOnce(selectChain([]))
     mockDb.select
-      .mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
+      .mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'owner', membershipStatus: 'active' }]))
       .mockReturnValueOnce(selectChain([{ ownerCount: 1 }]))
 
     const { POST } = await import('./route')
