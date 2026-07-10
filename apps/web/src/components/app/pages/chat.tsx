@@ -460,7 +460,11 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const isProject = !!currentChannel
   const isPrivate = !!(currentGeneral?.isPrivate)
   const isDm = !!currentDm
-  const channelName = currentChannel?.projectTitle ?? currentGeneral?.name ?? currentDm?.participantName ?? ''
+  const channelName = currentChannel
+    ? currentChannel.milestoneId
+      ? `${currentChannel.projectTitle} / ${currentChannel.channelName}`
+      : currentChannel.projectTitle
+    : currentGeneral?.name ?? currentDm?.participantName ?? ''
   const currentChannelMemberCount = currentGeneral?.memberCount
 
   const { data: currentUser } = useCurrentUser()

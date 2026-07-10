@@ -11,11 +11,10 @@ const { mockDb } = vi.hoisted(() => ({
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
-  workspaceMembers: {
-    workspaceId: 'wm.workspaceId',
-    userId: 'wm.userId',
-    role: 'wm.role',
-    membershipStatus: 'wm.membershipStatus',
+  activeWorkspaceMembers: {
+    workspaceId: 'awm.workspaceId',
+    userId: 'awm.userId',
+    role: 'awm.role',
   },
   channels: {},
   channelMembers: {},
@@ -28,6 +27,7 @@ vi.mock('@cairn/db', () => ({
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   and: vi.fn(() => 'and'),
+  inArray: vi.fn(() => 'inArray'),
   sql: vi.fn(),
 }))
 

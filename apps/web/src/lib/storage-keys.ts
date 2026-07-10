@@ -26,6 +26,7 @@ export const STORAGE_KEYS = {
   projects_list_view:        'cairn:projects_list_view',
   projects_table_sort:       'cairn:projects_table_sort',
   chat_archived_collapsed:   'cairn:chat_archived_collapsed',
+  chat_completed_milestones_collapsed: 'cairn:chat_completed_milestones_collapsed',
   chat_last_channel_id:      'cairn:chat_last_channel_id',
 } as const
 

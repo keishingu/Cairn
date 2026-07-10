@@ -26,9 +26,10 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId') ?? undefined
 
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
+
   try {
-    const { ctx, error } = await getAuthContext()
-    if (error) return error
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
@@ -93,6 +94,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
+
   let body: unknown
   try {
     body = await req.json()
@@ -106,16 +110,29 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { ctx, error } = await getAuthContext()
-    if (error) return error
-
     // ゲストは参加プロジェクトにのみタスクを作成できる
     const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, parsed.data.projectId)
     if (forbidden) return forbidden
 
     const { db } = await import('@cairn/db')
-    const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
+    const { tasks, projects, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
+
+    const assigneeId = parsed.data.assigneeId ?? null
+    if (assigneeId) {
+      const [activeAssignee] = await db
+        .select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
+        .where(and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, assigneeId),
+        ))
+        .limit(1)
+
+      if (!activeAssignee) {
+        return NextResponse.json({ error: '指定された担当者はワークスペースのメンバーではありません' }, { status: 422 })
+      }
+    }
 
     const [inserted] = await db
       .insert(tasks)
@@ -124,7 +141,7 @@ export async function POST(req: Request) {
         title: parsed.data.title,
         description: parsed.data.description ?? null,
         priority: parsed.data.priority,
-        assigneeId: parsed.data.assigneeId ?? null,
+        assigneeId,
         dueDate: parsed.data.dueDate ?? null,
         createdBy: ctx.userId,
       })
