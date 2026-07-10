@@ -4,6 +4,7 @@
 export * from './enums'
 export * from './workspaces'
 export * from './projects'
+export * from './milestones'
 export * from './channels'
 export * from './files'
 export * from './tasks'

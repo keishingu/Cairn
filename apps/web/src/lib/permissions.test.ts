@@ -3,24 +3,24 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const { mockDb, mockHeaders } = vi.hoisted(() => ({
-  mockDb: {
-    select: vi.fn(),
-  },
-  mockHeaders: vi.fn(),
+const { mockGetWorkspaceMemberRole, mockRequireWorkspaceAdmin } = vi.hoisted(() => ({
+  mockGetWorkspaceMemberRole: vi.fn(),
+  mockRequireWorkspaceAdmin: vi.fn(),
 }))
 
-vi.mock('next/headers', () => ({
-  headers: mockHeaders,
+vi.mock('./access/membership', () => ({
+  getWorkspaceRole: vi.fn(),
+  getWorkspaceMemberRole: mockGetWorkspaceMemberRole,
+  isWorkspaceOwner: vi.fn(),
+  isWorkspaceAdmin: vi.fn(),
+  isWorkspaceMember: vi.fn(),
+  requireWorkspaceOwner: vi.fn(),
+  requireWorkspaceAdmin: mockRequireWorkspaceAdmin,
+  requireWorkspaceMember: vi.fn(),
 }))
 
 vi.mock('@cairn/db', () => ({
-  db: mockDb,
-  workspaceMembers: {
-    role: 'wm.role',
-    workspaceId: 'wm.workspaceId',
-    userId: 'wm.userId',
-  },
+  db: { select: vi.fn() },
   channels: {},
   channelMembers: {},
   projects: {},
@@ -30,20 +30,11 @@ vi.mock('@cairn/db', () => ({
 }))
 
 vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => 'eq'),
-  and: vi.fn(() => 'and'),
-  sql: vi.fn(() => 'sql'),
+  eq: vi.fn(),
+  and: vi.fn(),
+  sql: vi.fn(),
+  inArray: vi.fn(),
 }))
-
-function selectChain(result: unknown[]) {
-  return {
-    from: vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockResolvedValue(result),
-      }),
-    }),
-  }
-}
 
 describe('permissions', () => {
   afterEach(() => {
@@ -51,15 +42,16 @@ describe('permissions', () => {
     vi.resetModules()
   })
 
-  it('同じ workspace/user のロール取得は 1 回だけ問い合わせる', async () => {
-    mockHeaders.mockResolvedValue(new Headers())
-    mockDb.select.mockReturnValue(selectChain([{ role: 'admin' }]))
+  it('membership helper をそのまま re-export する', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValue('admin')
+    mockRequireWorkspaceAdmin.mockResolvedValue(null)
 
     const { getWorkspaceMemberRole, requireWorkspaceAdmin } = await import('./permissions')
 
     await expect(getWorkspaceMemberRole('ws-1', 'user-1')).resolves.toBe('admin')
     await expect(requireWorkspaceAdmin('ws-1', 'user-1')).resolves.toBeNull()
 
-    expect(mockDb.select).toHaveBeenCalledTimes(1)
+    expect(mockGetWorkspaceMemberRole).toHaveBeenCalledWith('ws-1', 'user-1')
+    expect(mockRequireWorkspaceAdmin).toHaveBeenCalledWith('ws-1', 'user-1')
   })
 })

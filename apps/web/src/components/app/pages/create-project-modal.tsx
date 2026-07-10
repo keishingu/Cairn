@@ -289,7 +289,7 @@ async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
 }
 
 async function fetchWorkspaceMembers(): Promise<WorkspaceMemberDto[]> {
-  const res = await fetchWithAuth('/api/workspaces/members')
+  const res = await fetchWithAuth('/api/workspaces/members?status=active')
   if (!res.ok) throw new Error('fetch failed')
   return res.json() as Promise<WorkspaceMemberDto[]>
 }
@@ -317,7 +317,7 @@ interface FormState {
 
 export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initialEndDate }: CreateProjectModalProps) => {
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
-  const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members'], queryFn: fetchWorkspaceMembers })
+  const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members', 'active'], queryFn: fetchWorkspaceMembers })
   const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])
   const [photosLoading, setPhotosLoading] = React.useState(false)
 
