@@ -67,7 +67,7 @@ pnpm dev
   - 開発は expo-dev-client を使う。`pnpm ios` / `pnpm android` でローカルビルド（単体アプリとしてインストール）、2回目以降は `pnpm dev` で Metro 起動のみ
   - ネイティブ側の接続先 URL は `EXPO_PUBLIC_*` 未設定時に Metro の接続先ホストから自動導出する（`apps/mobile/lib/env.ts`）。シミュレータ・実機・Android エミュレータで IP の手動設定は不要
   - 実機で WebView 画面を使う場合のみ `pnpm setup:mobile-lan` で `apps/web/.env.local` の `NEXT_PUBLIC_SUPABASE_URL` を LAN IP に書き換える
-  - **Google ログインはネイティブ実装**: Web のリダイレクト方式は使えないため、`expo-web-browser` で認可コードを受け取り Supabase の PKCE フロー（`exchangeCodeForSession`）で交換する（`apps/mobile/lib/oauth.ts`）。redirect 先はアプリスキーム `cairn://auth/callback`。**Supabase の許可リストに登録が必要**（ローカルは `supabase/config.toml` の `additional_redirect_urls`、本番は Supabase ダッシュボードの Redirect URLs）。初回ログイン時も `/api/auth/setup` を呼んで profiles を作成する
+  - **Google ログインはネイティブ実装**: Web のリダイレクト方式は使えないため、`expo-web-browser` で認可コードを受け取り Supabase の PKCE フロー（`exchangeCodeForSession`）で交換する（`apps/mobile/lib/oauth.ts`）。redirect 先はアプリスキーム `<scheme>://auth/callback`（scheme は `APP_VARIANT` ごとに `cairn-dev` / `cairn-preview` / `cairn`。共存インストール時のコールバック誤配送防止）。**Supabase の許可リストに登録が必要**（ローカルは `supabase/config.toml` の `additional_redirect_urls`、本番は Supabase ダッシュボードの Redirect URLs）。初回ログイン時も `/api/auth/setup` を呼んで profiles を作成する
 - **UA ベースのデバイス出し分け**: middleware で `x-device` ヘッダーをセットし、`app/(app)/layout.tsx` で PC シェル / モバイルシェルを切り替える。レスポンシブ CSS は使わない
 - **プロジェクトビューは localStorage で管理**: 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクト済み。ビュー切替（一覧 / カレンダー / カンバン）はURLパラメータを使わず localStorage のみで永続化（`STORAGE_KEYS.projects_view_pc` / `STORAGE_KEYS.projects_view_mob`）。`/projects/[id]` はプロジェクト詳細（現在は `/projects?open={id}` にリダイレクト）
 - **設定セクションは URL 駆動**: 設定の各セクションは `/settings/[section]`（例 `/settings/account` `/settings/integrations`）に対応する。セクション定義（一覧・ラベル・アイコン）とメインカラム本体は `apps/web/src/components/app/pages/settings.tsx` に集約し、`SETTINGS_NAV_GROUPS` / `SettingsSectionContent` を PC とモバイルで共有する。PC はサイドバー + メインカラム、モバイルは設定一覧（`MobileSettings`）→ タップで `/settings/[section]` に遷移し同じメインカラムを全画面表示（`MobileSettingsDetail`）。`/settings` 単体は PC で `account`、モバイルで一覧を表示する。`?tab=` 形式は廃止
@@ -135,3 +135,4 @@ pnpm dev
 - [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md) — コンポーネント設計・Domain Hook パターン・UIディレクトリ構成
 - [`docs/api-conventions.md`](docs/api-conventions.md) — API ルート実装規約・認証・サインアップフロー
 - [`docs/notification-design.md`](docs/notification-design.md) — 通知設計（メンション・Push・アプリ内通知）
+- [`docs/mobile-native-completion.md`](docs/mobile-native-completion.md) — モバイルネイティブ化の完成定義・チェックリスト・バックログ（`apps/mobile` に触れるときは必読。自動改善ループは [`docs/prompts/mobile-loop/README.md`](docs/prompts/mobile-loop/README.md)）

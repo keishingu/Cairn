@@ -1,0 +1,101 @@
+name: Mobile Release
+
+# ストア向けリリースの自動化。手順・初回セットアップは docs/mobile-store-release.md を参照。
+# - build-and-submit: EAS で本番ビルドし、TestFlight / Google Play (internal) へ自動提出する。
+#   ビルド番号は EAS の autoIncrement で自動採番（人間のバージョン操作は不要）
+# - ota-update: ネイティブ変更を含まない JS のみの修正を、審査なしで配信中アプリに反映する
+#   （runtimeVersion が一致するビルドにのみ届く。version を上げた場合はネイティブビルドが必要）
+# 課金対象（EAS ビルド枠・ストア審査）に触れるため、自動トリガーにせず手動起動のみとする。
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "リリース種別"
+        type: choice
+        options: [build-and-submit, ota-update]
+        default: build-and-submit
+      platform:
+        description: "対象プラットフォーム（build-and-submit のみ有効）"
+        type: choice
+        options: [all, ios, android]
+        default: all
+      message:
+        description: "OTA 更新メッセージ（ota-update のみ有効。空ならコミット件名）"
+        required: false
+        default: ""
+
+concurrency:
+  group: mobile-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: ${{ github.event.inputs.mode }}
+    runs-on: ubuntu-latest
+    environment: Production
+    permissions:
+      contents: read
+    steps:
+      # 本番アプリは main（本番ブランチ）からのみリリースする
+      - name: Guard branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Mobile Release は main ブランチから実行してください（現在: ${{ github.ref }}）。"
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # ビルドは EAS のクラウドで走る（--no-wait で即戻る）。
+      # 完了後の提出まで EAS 側で自動実行される（--auto-submit）。
+      # 環境変数（EXPO_PUBLIC_SUPABASE_ANON_KEY 等）は EAS の production environment から注入される
+      - name: Build and submit to stores
+        if: github.event.inputs.mode == 'build-and-submit'
+        working-directory: apps/mobile
+        run: |
+          eas build \
+            --profile production \
+            --platform ${{ github.event.inputs.platform }} \
+            --non-interactive \
+            --no-wait \
+            --auto-submit
+          echo "::notice::EAS ビルドを開始しました。進捗: https://expo.dev/accounts/keishingu/projects/cairn/builds"
+
+      # eas update は eas.json の build プロファイルの env を読まない
+      # （https://docs.expo.dev/build/updates/#environment-variables-and-eas-update）ため、
+      # 公開値の EXPO_PUBLIC_* はここで明示的に注入する（eas.json の production と同値に保つ）。
+      # EXPO_PUBLIC_SUPABASE_ANON_KEY は --environment production で EAS 環境変数から取得される。
+      # message 入力はシェルとして再解釈されないよう env 経由で渡す
+      - name: Publish OTA update (production channel)
+        if: github.event.inputs.mode == 'ota-update'
+        working-directory: apps/mobile
+        env:
+          APP_VARIANT: production
+          MESSAGE_INPUT: ${{ github.event.inputs.message }}
+          EXPO_PUBLIC_API_BASE_URL: https://oss-cairn.com
+          EXPO_PUBLIC_SUPABASE_URL: https://bmhcgjqisqnyvbrrvqug.supabase.co
+          EXPO_PUBLIC_EAS_PROJECT_ID: 46195650-8dc8-4c73-9b32-c1b5134c0326
+        run: |
+          MESSAGE="$MESSAGE_INPUT"
+          if [ -z "$MESSAGE" ]; then
+            MESSAGE="$(git log -1 --pretty=%s)"
+          fi
+          eas update \
+            --channel production \
+            --environment production \
+            --message "$MESSAGE" \
+            --non-interactive

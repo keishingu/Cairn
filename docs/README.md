@@ -18,7 +18,7 @@
 | API ルートの追加・変更 | `api-conventions.md` | — |
 | フロントエンド・UI 実装 | `frontend-guidelines.md` | `ui-consistency-checklist.md`（統一の進捗） |
 | 通知・未読・Push・Realtime | `notification-design.md`（現行仕様） | `notification-ux-redesign.md`（Phase 設計・Realtime 方針の根拠）、`07_notifications_and_unread.md` |
-| モバイル（Expo） | CLAUDE.md「決定済みの技術判断」 | `08_expo_roadmap.md`、`mobile-webview-auth-handoff.md`（WebView 認証） |
+| モバイル（Expo） | `mobile-native-completion.md`（完成定義） + CLAUDE.md「決定済みの技術判断」 | `prompts/mobile-loop/README.md`（自動改善ループ）、`mobile-store-release.md`（ストア公開）、`08_expo_roadmap.md`、`mobile-webview-auth-handoff.md`（WebView 認証） |
 | キーボードショートカット | `keyboard-shortcuts.md` | — |
 | デプロイ・リリース・本番設定 | `production-deployment.md` | — |
 | 課金（未実装・設計のみ） | `pricing-plan-design.md`（何を売るか） | `billing-implementation-design.md`（どう実装するか） |
@@ -45,6 +45,9 @@
 | [`landing-page-routing-design.md`](./landing-page-routing-design.md) | ランディングページ導入とルーティング再構成（`/` を公開 LP 化。実装済み） | 2026-07-03 |
 | [`lp-content-redesign.md`](./lp-content-redesign.md) | LP コンテンツの利用者ファースト化（ペルソナ切替 `?p=`、誠実化、CTA/UTM 規約） | 2026-07-03 |
 | [`ui-consistency-checklist.md`](./ui-consistency-checklist.md) | UI 一貫性統一の進捗管理チェックリスト（方針本文は `frontend-guidelines.md`） | 2026-06 |
+| [`mobile-native-completion.md`](./mobile-native-completion.md) | モバイルネイティブ化の完成定義・受け入れチェックリスト・バックログ | 2026-07-05 |
+| [`prompts/mobile-loop/README.md`](./prompts/mobile-loop/README.md) | モバイルネイティブ化 自動改善ループ（QA=Codex Computer Use / Builder=日次ルーティン）の運用 | 2026-07-05 |
+| [`mobile-store-release.md`](./mobile-store-release.md) | App Store / Google Play リリース運用（初回セットアップ + ワンクリックリリース + OTA） | 2026-07-05 |
 
 ## 設計時スナップショット
 

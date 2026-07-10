@@ -2,6 +2,7 @@
 
 > **ステータス**: 設計時スナップショット（作成: 2026-05-27 / 最終更新: 2026-05-29）
 > 作成時点のロードマップ。一部は実施済み（`apps/mobile` の WebView ラッパー等、[`docs/archive/prompts/`](./archive/prompts/) の Phase 2-B 参照）。進捗はコードを正とする。
+> **現状の完成定義・残作業は [`mobile-native-completion.md`](./mobile-native-completion.md) を正とする**。
 
 ---
 
@@ -234,6 +235,8 @@ const { status } = await Notifications.requestPermissionsAsync()
 ---
 
 ## 7. 今後の課題: 環境定義の一元化（app.config.ts 化）
+
+> **2026-07-05 実施済み**: `app.config.ts` 化（APP_VARIANT 分岐）と EAS production プロファイルは導入済み。現行の運用は [`mobile-store-release.md`](./mobile-store-release.md) を正とする。
 
 現状の環境管理は以下の構成になっている:
 
