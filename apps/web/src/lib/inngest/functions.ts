@@ -314,7 +314,7 @@ export const onTaskAssigned = inngest.createFunction(
   { id: 'on-task-assigned' },
   { event: 'task/assigned' satisfies TaskAssignedEvent['name'] },
   async ({ event, step }) => {
-    const { taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
+    const { taskTitle, assigneeId, projectId, projectTitle, workspaceId, assignerName } =
       event.data as TaskAssignedEvent['data']
 
     await step.run('create-task-notification', async () => {
@@ -325,7 +325,7 @@ export const onTaskAssigned = inngest.createFunction(
         type: 'task' as const,
         title: `${assignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
-        data: { assignerName, projectTitle },
+        data: { assignerName, projectTitle, projectId },
       })
     })
 
