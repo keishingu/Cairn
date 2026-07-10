@@ -4,6 +4,7 @@
 import { inngest } from './client'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { isIndexable } from '@/lib/ai/extract-text'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
 import { hasReadMessage } from '@/lib/push/suppress'
@@ -507,7 +508,7 @@ export const indexProjectChunks = inngest.createFunction(
     const { projectId, workspaceId } = event.data as { projectId: string; workspaceId: string }
 
     await step.run('embed-and-save', async () => {
-      const { db, projects, projectStatuses, projectMembers, profiles, documentChunks } = await import('@cairn/db')
+      const { db, projects, projectStatuses, projectMembers, profiles, documentChunks, workspaceMembers } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
 
       const [row] = await db
@@ -526,9 +527,16 @@ export const indexProjectChunks = inngest.createFunction(
       if (!row) return
 
       const memberRows = await db
-        .select({ displayName: profiles.displayName })
+        .select({ displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
         .from(projectMembers)
         .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
+        .innerJoin(
+          workspaceMembers,
+          and(
+            eq(workspaceMembers.userId, projectMembers.userId),
+            eq(workspaceMembers.workspaceId, workspaceId),
+          ),
+        )
         .where(eq(projectMembers.projectId, projectId))
 
       const lines: string[] = [
