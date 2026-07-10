@@ -3,13 +3,15 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
-import { resetRequestRateLimitForTest } from '@/lib/request-rate-limit'
 
 // --- vi.hoisted: vi.mock ファクトリから参照できるよう先に定義 ---
 const {
   mockGetAuthContext,
   mockGetUserById,
   mockGenerateLink,
+  mockEnforceRateLimit,
+  mockEnforceFixedWindowRateLimit,
+  mockResetRequestRateLimitForTest,
   limitMock,
   slidingWindowMock,
   redisCtorMock,
@@ -19,6 +21,9 @@ const {
   const mockGetAuthContext = vi.fn()
   const mockGetUserById = vi.fn()
   const mockGenerateLink = vi.fn()
+  const mockEnforceRateLimit = vi.fn()
+  const mockEnforceFixedWindowRateLimit = vi.fn()
+  const mockResetRequestRateLimitForTest = vi.fn()
   const limitMock = vi.fn()
   const slidingWindowMock = vi.fn()
   const redisCtorMock = vi.fn()
@@ -28,6 +33,9 @@ const {
     mockGetAuthContext,
     mockGetUserById,
     mockGenerateLink,
+    mockEnforceRateLimit,
+    mockEnforceFixedWindowRateLimit,
+    mockResetRequestRateLimitForTest,
     limitMock,
     slidingWindowMock,
     redisCtorMock,
@@ -38,6 +46,15 @@ const {
 
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: mockGetAuthContext,
+}))
+
+vi.mock('@/lib/request-rate-limit', () => ({
+  enforceFixedWindowRateLimit: mockEnforceFixedWindowRateLimit,
+  resetRequestRateLimitForTest: mockResetRequestRateLimitForTest,
+}))
+
+vi.mock('@/lib/rate-limit', () => ({
+  enforceRateLimit: mockEnforceRateLimit,
 }))
 
 vi.mock('@/lib/supabase/service', () => ({
@@ -100,6 +117,8 @@ describe('POST /api/auth/webview-handoff', () => {
   beforeEach(() => {
     process.env['UPSTASH_REDIS_REST_URL'] = 'https://redis.example.com'
     process.env['UPSTASH_REDIS_REST_TOKEN'] = 'token'
+    mockEnforceRateLimit.mockResolvedValue(null)
+    mockEnforceFixedWindowRateLimit.mockResolvedValue(null)
     middlewareLimitMock.mockResolvedValue({
       success: true,
       limit: 5,
@@ -120,7 +139,7 @@ describe('POST /api/auth/webview-handoff', () => {
     delete process.env['UPSTASH_REDIS_REST_URL']
     delete process.env['UPSTASH_REDIS_REST_TOKEN']
     vi.clearAllMocks()
-    resetRequestRateLimitForTest()
+    mockResetRequestRateLimitForTest()
   })
 
   it('未認証なら 401 を返し、トークン発行を行わない', async () => {
@@ -195,13 +214,15 @@ describe('POST /api/auth/webview-handoff', () => {
     })
 
     const { POST } = await import('./route')
-    limitMock
-      .mockResolvedValueOnce({ success: true, limit: 5, remaining: 4, reset: Date.now() + 60_000, pending: Promise.resolve() })
-      .mockResolvedValueOnce({ success: true, limit: 5, remaining: 3, reset: Date.now() + 60_000, pending: Promise.resolve() })
-      .mockResolvedValueOnce({ success: true, limit: 5, remaining: 2, reset: Date.now() + 60_000, pending: Promise.resolve() })
-      .mockResolvedValueOnce({ success: true, limit: 5, remaining: 1, reset: Date.now() + 60_000, pending: Promise.resolve() })
-      .mockResolvedValueOnce({ success: true, limit: 5, remaining: 0, reset: Date.now() + 60_000, pending: Promise.resolve() })
-      .mockResolvedValueOnce({ success: false, limit: 5, remaining: 0, reset: Date.now() + 60_000, pending: Promise.resolve() })
+    mockEnforceFixedWindowRateLimit
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(
+        NextResponse.json({ error: 'Too many requests' }, { status: 429 }),
+      )
 
     for (let i = 0; i < 5; i += 1) {
       const res = await POST(makeRequest({ method: 'POST', headers: { 'x-forwarded-for': '203.0.113.10' } }))
@@ -214,13 +235,9 @@ describe('POST /api/auth/webview-handoff', () => {
   })
 
   it('未認証前に IP ベースの連投を 429 で制限する', async () => {
-    middlewareLimitMock.mockResolvedValue({
-      success: false,
-      limit: 5,
-      remaining: 0,
-      reset: Date.now() + 60_000,
-      pending: Promise.resolve(),
-    })
+    mockEnforceRateLimit.mockResolvedValueOnce(
+      NextResponse.json({ error: 'Too many requests' }, { status: 429 }),
+    )
 
     const { POST } = await import('./route')
     const res = await POST(makeRequest({ method: 'POST', headers: { 'x-forwarded-for': '203.0.113.10' } }))
@@ -229,12 +246,22 @@ describe('POST /api/auth/webview-handoff', () => {
     expect(mockGetAuthContext).not.toHaveBeenCalled()
   })
 
-  it('IP を解決できない場合は認証前に 400 を返す', async () => {
+  it('proxy IP header が無い direct request でも user bucket 側へ進める', async () => {
+    authed()
+    mockGetUserById.mockResolvedValue({
+      data: { user: { id: 'user-1', email: 'me@example.com' } },
+      error: null,
+    })
+    mockGenerateLink.mockResolvedValue({
+      data: { properties: { hashed_token: 'hashed-abc' } },
+      error: null,
+    })
+
     const { POST } = await import('./route')
     const res = await POST(makeRequest({ method: 'POST' }))
 
-    expect(res.status).toBe(400)
-    await expect(res.json()).resolves.toEqual({ error: 'Unable to determine client IP for rate limiting' })
-    expect(mockGetAuthContext).not.toHaveBeenCalled()
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ tokenHash: 'hashed-abc' })
+    expect(mockGetAuthContext).toHaveBeenCalled()
   })
 })

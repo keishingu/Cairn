@@ -70,10 +70,9 @@ export async function enforceRateLimit(request: NextRequest): Promise<NextRespon
   const identifier = resolveClientIp(request)
 
   if (!identifier) {
-    return NextResponse.json(
-      { error: 'Unable to determine client IP for rate limiting' },
-      { status: 400 },
-    )
+    // Expo local/dev の direct request には proxy IP header が載らないため、
+    // その場合は route 側の認証・user bucket に委ねる。
+    return null
   }
 
   let limiter: InstanceType<typeof Ratelimit>
