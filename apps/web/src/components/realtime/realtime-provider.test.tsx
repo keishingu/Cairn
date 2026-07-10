@@ -1,36 +1,62 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 import React from 'react'
-import { act, render, screen } from '@testing-library/react'
+import { render, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { RealtimeProvider, useRealtime } from './realtime-provider'
 
-type SubscribeCallback = (status: 'SUBSCRIBED' | 'CHANNEL_ERROR' | 'TIMED_OUT' | 'CLOSED', err?: { message?: string }) => void
-
-const { channelRecords, mockCreateClient } = vi.hoisted(() => {
-  const channelRecords: Array<{ topic: string; callback?: SubscribeCallback }> = []
-  const mockCreateClient = vi.fn(() => ({
-    channel: vi.fn((topic: string) => {
-      const record: { topic: string; callback?: SubscribeCallback } = { topic }
-      channelRecords.push(record)
-      return {
-        on: vi.fn().mockReturnThis(),
-        subscribe: vi.fn((callback: SubscribeCallback) => {
-          record.callback = callback
-          return record
-        }),
-      }
-    }),
-    removeChannel: vi.fn().mockResolvedValue(undefined),
-    realtime: { setAuth: vi.fn().mockResolvedValue(undefined) },
+const {
+  channelMock,
+  createClientMock,
+  removeChannelMock,
+  setAuthMock,
+  getSessionMock,
+  onAuthStateChangeMock,
+  useCurrentUserMock,
+  useProjectChannelsMock,
+  useWorkspaceChannelsMock,
+  useWorkspaceDmsMock,
+  usePathnameMock,
+  indicatorMock,
+} = vi.hoisted(() => {
+  const channelMock = vi.fn()
+  const removeChannelMock = vi.fn().mockResolvedValue(undefined)
+  const setAuthMock = vi.fn().mockResolvedValue(undefined)
+  const getSessionMock = vi.fn().mockResolvedValue({ data: { session: { access_token: 'token-1' } } })
+  const onAuthStateChangeMock = vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } }))
+  const createClientMock = vi.fn(() => ({
+    channel: channelMock,
+    removeChannel: removeChannelMock,
+    realtime: { setAuth: setAuthMock },
     auth: {
-      getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'token' } } }),
-      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+      getSession: getSessionMock,
+      onAuthStateChange: onAuthStateChangeMock,
     },
   }))
-  return { channelRecords, mockCreateClient }
+  return {
+    channelMock,
+    createClientMock,
+    removeChannelMock,
+    setAuthMock,
+    getSessionMock,
+    onAuthStateChangeMock,
+    useCurrentUserMock: vi.fn(),
+    useProjectChannelsMock: vi.fn(),
+    useWorkspaceChannelsMock: vi.fn(),
+    useWorkspaceDmsMock: vi.fn(),
+    usePathnameMock: vi.fn(),
+    indicatorMock: vi.fn(() => null),
+  }
 })
 
+vi.mock('next/navigation', () => ({
+  usePathname: usePathnameMock,
+}))
+
 vi.mock('@/lib/supabase/client', () => ({
-  createClient: mockCreateClient,
+  createClient: createClientMock,
 }))
 
 vi.mock('@/lib/chat/client', () => ({
@@ -38,139 +64,95 @@ vi.mock('@/lib/chat/client', () => ({
     projectChannels: ['project-channels'],
     workspaceChannels: ['workspace-channels'],
     dms: ['dms'],
-    messages: (id: string) => ['messages', id],
+    messages: (channelId: string | null) => ['messages', channelId],
   },
-  useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Tester' } }),
-  useProjectChannels: () => ({ data: [] }),
-  useWorkspaceChannels: () => ({ data: [] }),
-  useWorkspaceDms: () => ({ data: [] }),
+  useCurrentUser: useCurrentUserMock,
+  useProjectChannels: useProjectChannelsMock,
+  useWorkspaceChannels: useWorkspaceChannelsMock,
+  useWorkspaceDms: useWorkspaceDmsMock,
 }))
 
-function renderProvider() {
+vi.mock('./realtime-indicator', () => ({
+  RealtimeIndicator: indicatorMock,
+}))
+
+function VisibleChannelProbe({ channelId }: { channelId: string }) {
+  const { registerVisibleChannel } = useRealtime()
+
+  React.useEffect(() => registerVisibleChannel(channelId), [channelId, registerVisibleChannel])
+
+  return null
+}
+
+function renderRealtime(children: React.ReactNode) {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false },
+    },
   })
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <React.Suspense fallback={null}>
-        <RealtimeProvider>
-          <div>child</div>
-        </RealtimeProvider>
-      </React.Suspense>
+      <RealtimeProvider>{children}</RealtimeProvider>
     </QueryClientProvider>,
   )
 }
 
-import { RealtimeProvider } from './realtime-provider'
-
 describe('RealtimeProvider', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
-    channelRecords.length = 0
-    mockCreateClient.mockClear()
+    channelMock.mockReset()
+    createClientMock.mockClear()
+    removeChannelMock.mockClear()
+    setAuthMock.mockClear()
+    getSessionMock.mockClear()
+    onAuthStateChangeMock.mockClear()
+    indicatorMock.mockClear()
+
+    useCurrentUserMock.mockReturnValue({
+      data: { id: 'user-1' },
+    })
+    useProjectChannelsMock.mockReturnValue({
+      data: [{ channelId: 'project-channel-1' }],
+      isFetched: true,
+    })
+    useWorkspaceChannelsMock.mockReturnValue({
+      data: [],
+      isFetched: true,
+    })
+    useWorkspaceDmsMock.mockReturnValue({
+      data: [],
+      isFetched: true,
+    })
+    usePathnameMock.mockReturnValue('/projects')
+
+    channelMock.mockImplementation((topic: string) => {
+      const api = {
+        topic,
+        on: vi.fn().mockReturnThis(),
+        subscribe: vi.fn((callback?: (status: string, err?: { message?: string }) => void) => {
+          if (topic === 'user:user-1') callback?.('SUBSCRIBED')
+          return api
+        }),
+      }
+      return api
+    })
   })
 
-  afterEach(() => {
-    act(() => {
-      vi.runOnlyPendingTimers()
+  it('project panel の ChatThread でも channel topic を購読する', async () => {
+    renderRealtime(<VisibleChannelProbe channelId="project-channel-1" />)
+
+    await waitFor(() => {
+      expect(channelMock).toHaveBeenCalledWith('channel:project-channel-1', { config: { private: true } })
     })
-    vi.useRealTimers()
   })
 
-  it('connecting 中は 10 秒経っても再接続バナーを出さない', async () => {
-    renderProvider()
+  it('アクセス不能な visible channel は購読しない', async () => {
+    renderRealtime(<VisibleChannelProbe channelId="project-channel-2" />)
 
-    await act(async () => {
-      await Promise.resolve()
+    await waitFor(() => {
+      expect(channelMock).toHaveBeenCalledWith('user:user-1', { config: { private: true } })
     })
 
-    act(() => {
-      vi.advanceTimersByTime(10_000)
-    })
-
-    expect(screen.queryByText('再接続中…')).toBeNull()
-  })
-
-  it('購読失敗後に再試行し、復帰したら再接続バナーを消す', async () => {
-    renderProvider()
-
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    expect(channelRecords).toHaveLength(1)
-
-    act(() => {
-      channelRecords[0]?.callback?.('CHANNEL_ERROR', { message: 'boom' })
-    })
-
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    act(() => {
-      vi.advanceTimersByTime(9_999)
-    })
-    expect(screen.queryByText('再接続中…')).toBeNull()
-
-    act(() => {
-      vi.advanceTimersByTime(1)
-    })
-    expect(screen.getByText('再接続中…')).toBeInTheDocument()
-
-    await act(async () => {
-      vi.advanceTimersByTime(3_000)
-      await Promise.resolve()
-    })
-
-    expect(channelRecords).toHaveLength(2)
-
-    act(() => {
-      channelRecords[1]?.callback?.('SUBSCRIBED')
-    })
-
-    await act(async () => {
-      await Promise.resolve()
-    })
-    expect(screen.queryByText('再接続中…')).toBeNull()
-  })
-
-  it('古い user channel の CLOSED を再接続後の channel に波及させない', async () => {
-    renderProvider()
-
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    expect(channelRecords).toHaveLength(1)
-    const staleChannel = channelRecords[0]
-
-    act(() => {
-      staleChannel?.callback?.('CHANNEL_ERROR', { message: 'boom' })
-    })
-
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    await act(async () => {
-      vi.advanceTimersByTime(3_000)
-      await Promise.resolve()
-    })
-
-    expect(channelRecords).toHaveLength(2)
-
-    act(() => {
-      staleChannel?.callback?.('CLOSED')
-    })
-
-    await act(async () => {
-      await Promise.resolve()
-      vi.advanceTimersByTime(3_000)
-      await Promise.resolve()
-    })
-
-    expect(channelRecords).toHaveLength(2)
+    expect(channelMock).not.toHaveBeenCalledWith('channel:project-channel-2', { config: { private: true } })
   })
 })

@@ -4,6 +4,7 @@
 'use client'
 
 import React from 'react'
+import { usePathname } from 'next/navigation'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
@@ -22,11 +23,13 @@ interface RealtimeContextValue {
   status: RealtimeStatus
   // 一定時間（DEGRADED_DELAY_MS）復帰できない切断状態。UI で「再接続中…」表示に使う
   degraded: boolean
+  registerVisibleChannel: (channelId: string) => () => void
 }
 
 const RealtimeContext = React.createContext<RealtimeContextValue>({
   status: 'connecting',
   degraded: false,
+  registerVisibleChannel: () => () => {},
 })
 
 export const useRealtime = () => React.useContext(RealtimeContext)
@@ -57,25 +60,55 @@ function tableOf(payload: unknown): string | undefined {
   return typeof table === 'string' ? table : undefined
 }
 
+function activeChannelIdFromPath(pathname: string | null): string | null {
+  if (!pathname?.startsWith('/chats/')) return null
+  const channelId = pathname.slice('/chats/'.length).split('/')[0]
+  return channelId ? decodeURIComponent(channelId) : null
+}
+
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const { data: currentUser } = useCurrentUser()
+  const { data: projectChannels = [], isFetched: isProjectChannelsFetched } = useProjectChannels()
+  const { data: workspaceChannels = [], isFetched: isWorkspaceChannelsFetched } = useWorkspaceChannels()
+  const { data: dms = [], isFetched: isDmsFetched } = useWorkspaceDms()
   const userId = currentUser?.id ?? null
+  const pathname = usePathname()
+  const activeChannelId = React.useMemo(() => activeChannelIdFromPath(pathname), [pathname])
+  const isChannelListsFetched = isProjectChannelsFetched && isWorkspaceChannelsFetched && isDmsFetched
+  const accessibleChannelIds = React.useMemo(
+    () => new Set([
+      ...projectChannels.map(channel => channel.channelId),
+      ...workspaceChannels.map(channel => channel.id),
+      ...dms.map(channel => channel.id),
+    ]),
+    [projectChannels, workspaceChannels, dms],
+  )
+  const subscribedChannelId = React.useMemo(() => {
+    if (!activeChannelId || !isChannelListsFetched) return null
+    return accessibleChannelIds.has(activeChannelId) ? activeChannelId : null
+  }, [accessibleChannelIds, activeChannelId, isChannelListsFetched])
 
   const [status, setStatus] = React.useState<RealtimeStatus>('connecting')
   const [degraded, setDegraded] = React.useState(false)
+  const [visibleChannelIds, setVisibleChannelIds] = React.useState<string[]>([])
+  const visibleChannelEntriesRef = React.useRef(new Map<number, string>())
+  const visibleChannelEntryIdRef = React.useRef(0)
 
-  // 購読すべきチャンネルトピックの決定にチャンネル一覧を使う（サイドバーと同じクエリを共有）
-  const { data: projectChannels = [] } = useProjectChannels()
-  const { data: workspaceChannels = [] } = useWorkspaceChannels()
-  const { data: dms = [] } = useWorkspaceDms()
-  const channelIdsKey = React.useMemo(() => {
-    const ids = new Set<string>()
-    for (const c of projectChannels) ids.add(c.channelId)
-    for (const c of workspaceChannels) ids.add(c.id)
-    for (const d of dms) ids.add(d.id)
-    return [...ids].sort().join(',')
-  }, [projectChannels, workspaceChannels, dms])
+  const syncVisibleChannelIds = React.useCallback(() => {
+    setVisibleChannelIds([...new Set(visibleChannelEntriesRef.current.values())].sort())
+  }, [])
+
+  const registerVisibleChannel = React.useCallback((channelId: string) => {
+    const entryId = visibleChannelEntryIdRef.current
+    visibleChannelEntryIdRef.current += 1
+    visibleChannelEntriesRef.current.set(entryId, channelId)
+    syncVisibleChannelIds()
+    return () => {
+      if (!visibleChannelEntriesRef.current.delete(entryId)) return
+      syncVisibleChannelIds()
+    }
+  }, [syncVisibleChannelIds])
 
   // status が disconnected に留まった時だけ degraded を立てる
   React.useEffect(() => {
@@ -136,6 +169,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             void queryClient.invalidateQueries({ queryKey: ['notifications'] })
             // 新規DM・未参加チャンネルでの活動はチャンネル一覧の再取得で拾う
             scheduleListInvalidate()
+          } else if (table === 'messages') {
+            // 他チャンネルの未読数・最終メッセージは user topic 側で集約更新する
+            scheduleListInvalidate()
           } else if (table === 'channel_read_states') {
             // 他デバイスでの既読を即時反映（バッジ消去 + ベルの既読同期）
             scheduleListInvalidate()
@@ -190,7 +226,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   }, [queryClient, userId, scheduleListInvalidate])
 
   // ─── チャンネルトピック（messages / message_reactions）─────────
-  // 一覧の変化に追従して join/leave を差分反映する
+  // 一覧全件ではなく、現在表示中の 1 チャンネルだけを購読する
   const topicChannelsRef = React.useRef<Map<string, RealtimeChannel>>(new Map())
 
   React.useEffect(() => {
@@ -199,7 +235,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     const supabase = createClient()
     const current = topicChannelsRef.current
-    const wanted = new Set(channelIdsKey ? channelIdsKey.split(',') : [])
+    const wanted = new Set<string>(visibleChannelIds.filter(id => accessibleChannelIds.has(id)))
+    if (subscribedChannelId) wanted.add(subscribedChannelId)
 
     for (const [id, ch] of [...current]) {
       if (!wanted.has(id)) {
@@ -231,7 +268,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       })
       current.set(id, ch)
     }
-  }, [channelIdsKey, userId, status, queryClient, scheduleListInvalidate])
+  }, [accessibleChannelIds, subscribedChannelId, userId, status, queryClient, scheduleListInvalidate, visibleChannelIds])
 
   // アンマウント時に全チャンネルトピックを解放
   React.useEffect(() => {
@@ -245,7 +282,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <RealtimeContext.Provider value={{ status, degraded }}>
+    <RealtimeContext.Provider value={{ status, degraded, registerVisibleChannel }}>
       {children}
       <RealtimeIndicator />
     </RealtimeContext.Provider>
