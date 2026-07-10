@@ -21,13 +21,22 @@ function setWorkspaceCache(cacheKey: string, workspaceId: string) {
   })
 }
 
-export function invalidateWorkspaceCacheForUser(userId: string) {
-  workspaceCache.delete(userId)
-  for (const key of workspaceCache.keys()) {
-    if (key.startsWith(`${userId}:`)) {
-      workspaceCache.delete(key)
+export function invalidateWorkspaceCacheForUser(userId: string, workspaceId?: string) {
+  if (!workspaceId) {
+    workspaceCache.delete(userId)
+    for (const key of workspaceCache.keys()) {
+      if (key.startsWith(`${userId}:`)) {
+        workspaceCache.delete(key)
+      }
     }
+    return
   }
+
+  const defaultCache = workspaceCache.get(userId)
+  if (defaultCache?.workspaceId === workspaceId) {
+    workspaceCache.delete(userId)
+  }
+  workspaceCache.delete(`${userId}:${workspaceId}`)
 }
 
 export interface AuthContext {

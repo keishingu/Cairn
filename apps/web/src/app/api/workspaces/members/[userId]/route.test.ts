@@ -163,7 +163,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(res.status).toBe(200)
     const body = await res.json() as { role: string }
     expect(body.role).toBe('admin')
-    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID)
+    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID, DEV_WORKSPACE_ID)
   })
 
   it('admin は admin を member に降格できる', async () => {
@@ -296,7 +296,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
     const res = await PATCH(statusRequest(OTHER_USER_ID, 'inactive'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(200)
     expect(mockDeactivate).toHaveBeenCalledWith(DEV_WORKSPACE_ID, OTHER_USER_ID, DEV_USER_ID)
-    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID)
+    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID, DEV_WORKSPACE_ID)
   })
 
   it('member は非活性化できない（403）', async () => {
@@ -352,7 +352,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
       name: 'member/upserted',
       data: { userId: OTHER_USER_ID, workspaceId: DEV_WORKSPACE_ID },
     })
-    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID)
+    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID, DEV_WORKSPACE_ID)
   })
 
   it('無効な status 値は 422', async () => {

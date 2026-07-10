@@ -122,7 +122,7 @@ export async function PATCH(
         .set({ role: newRole as WorkspaceRole })
         .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
 
-      invalidateWorkspaceCacheForUser(targetUserId)
+      invalidateWorkspaceCacheForUser(targetUserId, ctx.workspaceId)
       return NextResponse.json({ userId: targetUserId, role: newRole })
     })
 
@@ -182,7 +182,7 @@ async function handleStatusChange(
       }
       const result = await deactivateMembership(workspaceId, targetUserId, callerUserId)
       if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
-      invalidateWorkspaceCacheForUser(targetUserId)
+      invalidateWorkspaceCacheForUser(targetUserId, workspaceId)
       return NextResponse.json({ userId: targetUserId, status: 'inactive' })
     }
 
@@ -197,7 +197,7 @@ async function handleStatusChange(
     } catch (e) {
       console.warn('[PATCH /api/workspaces/members/[userId] status] Inngest event send failed:', e)
     }
-    invalidateWorkspaceCacheForUser(targetUserId)
+    invalidateWorkspaceCacheForUser(targetUserId, workspaceId)
     return NextResponse.json({ userId: targetUserId, status: 'active' })
   } catch (err) {
     console.error('[PATCH /api/workspaces/members/[userId] status]', err)

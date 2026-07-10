@@ -105,29 +105,40 @@ describe('get-auth-context', () => {
     expect(result).toEqual({ userId: 'user-1', error: null })
   })
 
-  it('invalidateWorkspaceCacheForUser で user と workspace 指定キャッシュをまとめて無効化できる', async () => {
+  it('invalidateWorkspaceCacheForUser で対象 workspace のキャッシュだけを無効化できる', async () => {
     mockHeaders.mockResolvedValue(new Headers())
-    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    const cookieGet = vi.fn()
+    mockCookies.mockResolvedValue({ get: cookieGet })
     mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1' }]))
     mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-2' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1' }]))
 
     const authModule = await import('./get-auth-context')
 
+    cookieGet.mockReturnValueOnce(undefined)
     const first = await authModule.getAuthContext()
     expect(first).toEqual({
       ctx: { userId: 'user-1', workspaceId: 'ws-1' },
       error: null,
     })
 
-    authModule.invalidateWorkspaceCacheForUser('user-1')
-
+    cookieGet.mockReturnValueOnce({ value: 'ws-2' })
     const second = await authModule.getAuthContext()
     expect(second).toEqual({
       ctx: { userId: 'user-1', workspaceId: 'ws-2' },
       error: null,
     })
-    expect(mockDb.select).toHaveBeenCalledTimes(2)
+
+    authModule.invalidateWorkspaceCacheForUser('user-1', 'ws-2')
+
+    cookieGet.mockReturnValueOnce(undefined)
+    const third = await authModule.getAuthContext()
+    expect(third).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1' },
+      error: null,
+    })
+    expect(mockDb.select).toHaveBeenCalledTimes(3)
   })
 
   it('非活性な preferred workspace cookie は無視して active 所属へフォールバックする', async () => {
@@ -183,6 +194,31 @@ describe('get-auth-context', () => {
     const second = await authModule.getAuthContext()
     expect(second).toEqual({
       ctx: { userId: 'user-1', workspaceId: 'ws-preferred-2' },
+      error: null,
+    })
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
+  })
+
+  it('default キャッシュが対象 workspace と一致するときだけ bare key も無効化する', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-2' }]))
+
+    const authModule = await import('./get-auth-context')
+
+    const first = await authModule.getAuthContext()
+    expect(first).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1' },
+      error: null,
+    })
+
+    authModule.invalidateWorkspaceCacheForUser('user-1', 'ws-1')
+
+    const second = await authModule.getAuthContext()
+    expect(second).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-2' },
       error: null,
     })
     expect(mockDb.select).toHaveBeenCalledTimes(2)
