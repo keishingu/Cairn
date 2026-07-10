@@ -36,36 +36,15 @@ async function fetchWorkspaceRole(
   workspaceId: string,
   userId: string,
 ): Promise<WorkspaceRole | null> {
-  const fetchRole = async () => {
-    const [member] = await db
-      .select({ role: activeWorkspaceMembers.role })
-      .from(activeWorkspaceMembers)
-      .where(and(
-        eq(activeWorkspaceMembers.workspaceId, workspaceId),
-        eq(activeWorkspaceMembers.userId, userId),
-      ))
-      .limit(1)
-    return member?.role ?? null
-  }
-
-  try {
-    const requestHeaders = await headers()
-    const cacheKey = `${workspaceId}:${userId}`
-    let roleCache = requestRoleCache.get(requestHeaders)
-    if (!roleCache) {
-      roleCache = new Map<string, Promise<WorkspaceRole | null>>()
-      requestRoleCache.set(requestHeaders, roleCache)
-    }
-    const cached = roleCache.get(cacheKey)
-    if (cached) {
-      return cached
-    }
-    const pending = fetchRole()
-    roleCache.set(cacheKey, pending)
-    return pending
-  } catch {
-    return fetchRole()
-  }
+  const [member] = await db
+    .select({ role: activeWorkspaceMembers.role })
+    .from(activeWorkspaceMembers)
+    .where(and(
+      eq(activeWorkspaceMembers.workspaceId, workspaceId),
+      eq(activeWorkspaceMembers.userId, userId),
+    ))
+    .limit(1)
+  return member?.role ?? null
 }
 
 export async function getWorkspaceRole(
