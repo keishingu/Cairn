@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { ANONYMIZED_MEMBER_DISPLAY_NAME } from '@/lib/anonymized-member'
 import { clearWorkspaceCacheForUser, getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
 
-const ANONYMIZED_DISPLAY_NAME = '退会したユーザー'
 const AVATAR_BUCKET = 'avatars'
 const PUBLIC_BUCKET_SEGMENT = `/storage/v1/object/public/${AVATAR_BUCKET}/`
 
@@ -173,7 +173,7 @@ export async function POST(
       await tx
         .update(workspaceMembers)
         .set({
-          displayName: ANONYMIZED_DISPLAY_NAME,
+          displayName: ANONYMIZED_MEMBER_DISPLAY_NAME,
           avatarUrl: null,
           membershipStatus: 'inactive',
           deactivatedAt: now,
@@ -217,7 +217,7 @@ export async function POST(
         await tx
           .update(profiles)
           .set({
-            displayName: ANONYMIZED_DISPLAY_NAME,
+            displayName: ANONYMIZED_MEMBER_DISPLAY_NAME,
             bio: null,
             icalToken: null,
             updatedAt: now,

@@ -225,6 +225,41 @@ describe('GET /api/workspaces/members', () => {
     }])
   })
 
+  it('匿名化済みの inactive メンバーは email を返さない', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValue('admin')
+    mockDb.select
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([{
+        userId: USER_ID,
+        displayName: '退会したユーザー',
+        avatarUrl: null,
+        role: 'member',
+        membershipStatus: 'inactive',
+        joinedAt: new Date('2026-01-03T00:00:00.000Z'),
+        projectCount: 0,
+      }]))
+
+    mockGetUserById.mockResolvedValue({
+      data: { user: { email: 'secret@example.com' } },
+      error: null,
+    })
+
+    const { GET } = await import('./route')
+    const res = await GET(request('/api/workspaces/members?status=all'))
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([{
+      userId: USER_ID,
+      displayName: '退会したユーザー',
+      email: null,
+      avatarUrl: null,
+      role: 'member',
+      membershipStatus: 'inactive',
+      joinedAt: '2026-01-03',
+      projectCount: 0,
+    }])
+  })
+
   it('status 未指定では active メンバーに限定する', async () => {
     const { eq } = await import('drizzle-orm')
     mockDb.select
