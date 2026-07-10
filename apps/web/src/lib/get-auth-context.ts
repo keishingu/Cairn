@@ -10,8 +10,9 @@ import { WORKSPACE_COOKIE } from './workspace-cookie'
 export { WORKSPACE_COOKIE } from './workspace-cookie'
 
 // サーバーレス関数インスタンス内でワークスペース ID をキャッシュし、
-// warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
+// warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 1分）
 const workspaceCache = new Map<string, { workspaceId: string; expiresAt: number }>()
+const WORKSPACE_CACHE_TTL_MS = 60 * 1000
 
 export interface AuthContext {
   userId: string
@@ -25,6 +26,14 @@ type AuthResult =
 type UserResult =
   | { userId: string; error: null }
   | { userId: null; error: ReturnType<typeof NextResponse.json> }
+
+export function purgeWorkspaceAuthCache(userId: string) {
+  for (const key of workspaceCache.keys()) {
+    if (key === userId || key.startsWith(`${userId}:`)) {
+      workspaceCache.delete(key)
+    }
+  }
+}
 
 async function getAuthenticatedUser(
   authorization: string | null,
@@ -100,7 +109,7 @@ export async function getAuthContext(): Promise<AuthResult> {
     if (requestedWorkspaceId) {
       const preferred = await findActiveMembership(requestedWorkspaceId)
       if (preferred) {
-        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + WORKSPACE_CACHE_TTL_MS })
         return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
       }
       // 候補が無効（非活性化・退出済み等）→ active 所属へフォールバック
@@ -113,7 +122,7 @@ export async function getAuthContext(): Promise<AuthResult> {
 
     // cookie が無い bearer-only request が別 request の cookie 選択を継承しないよう、
     // cookie の有無で cache key を分けて書く
-    workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+    workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt: Date.now() + WORKSPACE_CACHE_TTL_MS })
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)

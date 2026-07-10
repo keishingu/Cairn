@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { getAuthContext } from '@/lib/get-auth-context'
+import { getAuthContext, purgeWorkspaceAuthCache } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
 import { deactivateMembership, reactivateMembership } from '@/lib/access/lifecycle'
 
@@ -122,6 +122,7 @@ export async function PATCH(
         .set({ role: newRole as WorkspaceRole })
         .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
 
+      purgeWorkspaceAuthCache(targetUserId)
       return NextResponse.json({ userId: targetUserId, role: newRole })
     })
 
@@ -181,11 +182,13 @@ async function handleStatusChange(
       }
       const result = await deactivateMembership(workspaceId, targetUserId, callerUserId)
       if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+      purgeWorkspaceAuthCache(targetUserId)
       return NextResponse.json({ userId: targetUserId, status: 'inactive' })
     }
 
     const result = await reactivateMembership(workspaceId, targetUserId)
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    purgeWorkspaceAuthCache(targetUserId)
     try {
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({
