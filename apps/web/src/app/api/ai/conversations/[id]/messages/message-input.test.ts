@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { buildModelMessages, normalizeStoredConversationMessages, parseLatestUserInput } from './message-input'
+import { MAX_REQUEST_BODY_BYTES, buildModelMessages, normalizeStoredConversationMessages, parseLatestUserInput } from './message-input'
 
 describe('parseLatestUserInput', () => {
   it('最後の user メッセージだけを受け取る', () => {
@@ -31,7 +31,16 @@ describe('parseLatestUserInput', () => {
       messages: [
         { role: 'user', content: [{ type: 'text', text: '質問' }] },
       ],
-    })).toThrow('最後のメッセージは user/assistant の文字列メッセージで指定してください')
+    })).toThrow('messages は user/assistant の文字列メッセージを 1〜50 件で指定してください')
+  })
+
+  it('途中に tool ロールが混ざる payload は弾く', () => {
+    expect(() => parseLatestUserInput({
+      messages: [
+        { role: 'tool', content: '検索結果' },
+        { role: 'user', content: '最新の質問' },
+      ],
+    })).toThrow('messages は user/assistant の文字列メッセージを 1〜50 件で指定してください')
   })
 
   it('途中の assistant が 4000 文字超でも最後の user だけを受け取る', () => {
@@ -56,6 +65,10 @@ describe('parseLatestUserInput', () => {
     expect(() => parseLatestUserInput({ messages })).toThrow(
       'messages は user/assistant の文字列メッセージを 1〜50 件で指定してください',
     )
+  })
+
+  it('リクエスト本文サイズ上限を公開する', () => {
+    expect(MAX_REQUEST_BODY_BYTES).toBe(64 * 1024)
   })
 })
 

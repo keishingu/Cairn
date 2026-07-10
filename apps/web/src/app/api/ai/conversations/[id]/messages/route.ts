@@ -9,13 +9,13 @@ import { getGuestVisibleProjectIds, getWorkspaceMemberRole } from '@/lib/permiss
 import { webSearchTool } from '@/lib/ai/web-search'
 import {
   MAX_HISTORY_MESSAGES,
+  MAX_REQUEST_BODY_BYTES,
   buildModelMessages,
   normalizeStoredConversationMessages,
   parseLatestUserInput,
   type StoredConversationMessage,
 } from './message-input'
 import {
-  AI_CHAT_RATE_LIMIT_MAX_REQUESTS,
   AI_CHAT_RATE_LIMIT_WINDOW_MS,
   createAiChatRateLimitErrorMessage,
   isAiChatRateLimited,
@@ -101,6 +101,34 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: 'OPENAI_API_KEY が設定されていません' }, { status: 503 })
   }
 
+  const rawBody = await req.text()
+  if (new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BODY_BYTES) {
+    return NextResponse.json(
+      { error: `リクエスト本文は ${MAX_REQUEST_BODY_BYTES} bytes 以内で指定してください` },
+      { status: 413 },
+    )
+  }
+
+  let requestBody: unknown
+  try {
+    requestBody = JSON.parse(rawBody) as unknown
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  let lastUserContent: string
+  let clientMessageCount: number
+  try {
+    const parsed = parseLatestUserInput(requestBody)
+    lastUserContent = parsed.lastUserContent
+    clientMessageCount = parsed.clientMessageCount
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Invalid messages payload' },
+      { status: 422 },
+    )
+  }
+
   let historyMessages: StoredConversationMessage[] = []
   {
     const { db, aiConversations, aiMessages } = await import('@cairn/db')
@@ -144,26 +172,6 @@ export async function POST(req: Request, { params }: RouteContext) {
         },
       )
     }
-  }
-
-  let requestBody: unknown
-  try {
-    requestBody = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
-
-  let lastUserContent: string
-  let clientMessageCount: number
-  try {
-    const parsed = parseLatestUserInput(requestBody)
-    lastUserContent = parsed.lastUserContent
-    clientMessageCount = parsed.clientMessageCount
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Invalid messages payload' },
-      { status: 422 },
-    )
   }
 
   const messages = buildModelMessages(historyMessages, lastUserContent)
