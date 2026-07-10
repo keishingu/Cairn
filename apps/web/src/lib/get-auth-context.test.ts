@@ -33,6 +33,10 @@ vi.mock('@cairn/db', () => ({
     userId: 'wm.userId',
     workspaceId: 'wm.workspaceId',
   },
+  activeWorkspaceMembers: {
+    userId: 'awm.userId',
+    workspaceId: 'awm.workspaceId',
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -124,6 +128,39 @@ describe('get-auth-context', () => {
       error: null,
     })
     expect(mockDb.select).toHaveBeenCalledTimes(2)
+  })
+
+  it('非活性な preferred workspace cookie は無視して active 所属へフォールバックする', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-inactive' }) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-active' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext()
+
+    expect(result).toEqual({ ctx: { userId: 'user-1', workspaceId: 'ws-active' }, error: null })
+  })
+
+  it('warm cache があっても active membership を毎回再照合し、非活性化を即時反映する', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+
+    const { getAuthContext } = await import('./get-auth-context')
+
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1' }]))
+    const first = await getAuthContext()
+    expect(first).toEqual({ ctx: { userId: 'user-1', workspaceId: 'ws-1' }, error: null })
+
+    mockDb.select
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+    const second = await getAuthContext()
+    expect(second.ctx).toBeNull()
+    expect(second.error).not.toBeNull()
   })
 
   it('preferredWorkspaceId 付きキャッシュも invalidateWorkspaceCacheForUser で消える', async () => {

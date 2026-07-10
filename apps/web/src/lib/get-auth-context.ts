@@ -10,9 +10,9 @@ import { WORKSPACE_COOKIE } from './workspace-cookie'
 export { WORKSPACE_COOKIE } from './workspace-cookie'
 
 // サーバーレス関数インスタンス内でワークスペース ID をキャッシュし、
-// warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 1分）
+// warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
 const workspaceCache = new Map<string, { workspaceId: string; expiresAt: number }>()
-const WORKSPACE_CACHE_TTL_MS = 60 * 1000
+const WORKSPACE_CACHE_TTL_MS = 5 * 60 * 1000
 
 function setWorkspaceCache(cacheKey: string, workspaceId: string) {
   workspaceCache.set(cacheKey, {
@@ -89,43 +89,48 @@ export async function getAuthContext(): Promise<AuthResult> {
   const cookieStore = await cookies()
   const preferredWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
 
-  const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
-  const cached = workspaceCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) {
-    return { ctx: { userId: user.id, workspaceId: cached.workspaceId }, error: null }
-  }
-
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceMembers } = await import('@cairn/db')
+    const { activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    // クッキーで指定されたワークスペースがあればそちらを優先、ただしメンバーシップを確認
-    if (preferredWorkspaceId) {
-      const [preferred] = await db
-        .select({ workspaceId: workspaceMembers.workspaceId })
-        .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.workspaceId, preferredWorkspaceId)))
-        .limit(1)
+    // cookie / cache はどの workspace を候補にするかのヒントに使うだけで、
+    // active membership の再照合は毎回行う。これがないと、非活性化された直後でも
+    // warm instance の cache が旧 workspace を返し続け、遮断が遅延する。
+    const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
+    const cached = workspaceCache.get(cacheKey)
+    const cachedWorkspaceId = cached && cached.expiresAt > Date.now() ? cached.workspaceId : null
 
+    const findActiveMembership = async (workspaceId?: string) => {
+      const conditions = [eq(activeWorkspaceMembers.userId, user.id)]
+      if (workspaceId) conditions.push(eq(activeWorkspaceMembers.workspaceId, workspaceId))
+      const [row] = await db
+        .select({ workspaceId: activeWorkspaceMembers.workspaceId })
+        .from(activeWorkspaceMembers)
+        .where(and(...conditions))
+        .limit(1)
+      return row ?? null
+    }
+
+    // cookie / cache の候補 workspace も active membership として毎回再照合する
+    const requestedWorkspaceId = preferredWorkspaceId ?? cachedWorkspaceId
+    if (requestedWorkspaceId) {
+      const preferred = await findActiveMembership(requestedWorkspaceId)
       if (preferred) {
         setWorkspaceCache(cacheKey, preferred.workspaceId)
         return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
       }
-      // クッキーが無効（退出済み等）→ フォールバック
+      // 候補が無効（非活性化・退出済み等）→ active 所属へフォールバック
     }
 
-    const [member] = await db
-      .select({ workspaceId: workspaceMembers.workspaceId })
-      .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, user.id))
-      .limit(1)
-
+    const member = await findActiveMembership()
     if (!member) {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
-    setWorkspaceCache(user.id, member.workspaceId)
+    // cookie が無い bearer-only request が別 request の cookie 選択を継承しないよう、
+    // cookie の有無で cache key を分けて書く
+    setWorkspaceCache(cacheKey, member.workspaceId)
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)
