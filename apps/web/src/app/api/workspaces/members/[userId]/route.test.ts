@@ -7,7 +7,15 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const OTHER_USER_ID = '00000000-0000-0000-0000-000000000002'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, mockReactivate, mockInngestSend } = vi.hoisted(() => {
+const {
+  mockGetAuthContext,
+  mockDb,
+  mockGetWorkspaceMemberRole,
+  mockInvalidateWorkspaceCacheForUser,
+  mockDeactivate,
+  mockReactivate,
+  mockInngestSend,
+} = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -17,14 +25,24 @@ const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, 
   })
   const mockDb = { select: vi.fn(), update: vi.fn(), execute: vi.fn(), transaction: vi.fn() }
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('admin')
+  const mockInvalidateWorkspaceCacheForUser = vi.fn()
   const mockDeactivate = vi.fn().mockResolvedValue({ ok: true })
   const mockReactivate = vi.fn().mockResolvedValue({ ok: true })
   const mockInngestSend = vi.fn().mockResolvedValue(undefined)
-  return { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, mockReactivate, mockInngestSend }
+  return {
+    mockGetAuthContext,
+    mockDb,
+    mockGetWorkspaceMemberRole,
+    mockInvalidateWorkspaceCacheForUser,
+    mockDeactivate,
+    mockReactivate,
+    mockInngestSend,
+  }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: mockGetAuthContext,
+  invalidateWorkspaceCacheForUser: mockInvalidateWorkspaceCacheForUser,
 }))
 
 vi.mock('@/lib/permissions', () => ({
@@ -131,6 +149,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(200)
+    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID)
     const body = await res.json() as { role: string }
     expect(body.role).toBe('admin')
   })
@@ -217,6 +236,18 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(res.status).toBe(404)
   })
 
+  it('更新失敗時は workspace cache を無効化しない', async () => {
+    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
+    mockDb.update.mockImplementationOnce(() => {
+      throw new Error('update failed')
+    })
+    const { PATCH } = await import('./route')
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    expect(res.status).toBe(500)
+    expect(mockInvalidateWorkspaceCacheForUser).not.toHaveBeenCalled()
+  })
+
   it('非活性 owner の降格では active owner 数ガードを実行しない', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'inactive' }]))
@@ -262,6 +293,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
     const res = await PATCH(statusRequest(OTHER_USER_ID, 'inactive'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(200)
     expect(mockDeactivate).toHaveBeenCalledWith(DEV_WORKSPACE_ID, OTHER_USER_ID, DEV_USER_ID)
+    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID)
   })
 
   it('member は非活性化できない（403）', async () => {
@@ -313,6 +345,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
     const res = await PATCH(statusRequest(OTHER_USER_ID, 'active'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(200)
     expect(mockReactivate).toHaveBeenCalledWith(DEV_WORKSPACE_ID, OTHER_USER_ID)
+    expect(mockInvalidateWorkspaceCacheForUser).toHaveBeenCalledWith(OTHER_USER_ID)
     expect(mockInngestSend).toHaveBeenCalledWith({
       name: 'member/upserted',
       data: { userId: OTHER_USER_ID, workspaceId: DEV_WORKSPACE_ID },

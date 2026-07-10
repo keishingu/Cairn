@@ -12,6 +12,15 @@ export { WORKSPACE_COOKIE } from './workspace-cookie'
 // サーバーレス関数インスタンス内でワークスペース ID をキャッシュし、
 // warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
 const workspaceCache = new Map<string, { workspaceId: string; expiresAt: number }>()
+const WORKSPACE_CACHE_TTL_MS = 5 * 60 * 1000
+
+export function invalidateWorkspaceCacheForUser(userId: string) {
+  for (const key of workspaceCache.keys()) {
+    if (key === userId || key.startsWith(`${userId}:`)) {
+      workspaceCache.delete(key)
+    }
+  }
+}
 
 export interface AuthContext {
   userId: string
@@ -76,6 +85,7 @@ export async function getAuthContext(): Promise<AuthResult> {
   // active membership の再照合は毎回行う。これがないと、非活性化された直後でも
   // warm instance の 5 分 cache が旧 workspace を返し続け、遮断が遅延する。
   const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
+  const fallbackCacheKey = user.id
   const cached = workspaceCache.get(cacheKey)
   const cachedWorkspaceId = cached && cached.expiresAt > Date.now() ? cached.workspaceId : null
 
@@ -100,7 +110,10 @@ export async function getAuthContext(): Promise<AuthResult> {
     if (requestedWorkspaceId) {
       const preferred = await findActiveMembership(requestedWorkspaceId)
       if (preferred) {
-        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+        workspaceCache.set(cacheKey, {
+          workspaceId: preferred.workspaceId,
+          expiresAt: Date.now() + WORKSPACE_CACHE_TTL_MS,
+        })
         return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
       }
       // 候補が無効（非活性化・退出済み等）→ active 所属へフォールバック
@@ -113,7 +126,10 @@ export async function getAuthContext(): Promise<AuthResult> {
 
     // cookie が無い bearer-only request が別 request の cookie 選択を継承しないよう、
     // cookie の有無で cache key を分けて書く
-    workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+    workspaceCache.set(cacheKey, {
+      workspaceId: member.workspaceId,
+      expiresAt: Date.now() + WORKSPACE_CACHE_TTL_MS,
+    })
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)
