@@ -38,7 +38,7 @@ function extractAvatarPath(avatarUrl: string | null): string | null {
   return null
 }
 
-async function lockMembershipAndActiveOwners(
+async function lockRelevantMemberships(
   tx: TxClient,
   workspaceId: string,
   targetUserId: string,
@@ -47,26 +47,13 @@ async function lockMembershipAndActiveOwners(
   await tx.execute(sql`
     select 1
     from workspace_members
-    where workspace_id = ${workspaceId}
-      and (
-        user_id = ${targetUserId}
-        or (role = 'owner' and membership_status = 'active')
-      )
-    order by user_id
-    for update
-  `)
-}
-
-async function lockAllMembershipsForUser(
-  tx: TxClient,
-  targetUserId: string,
-  sql: typeof import('drizzle-orm').sql,
-) {
-  await tx.execute(sql`
-    select 1
-    from workspace_members
     where user_id = ${targetUserId}
-    order by workspace_id
+       or (
+         workspace_id = ${workspaceId}
+         and role = 'owner'
+         and membership_status = 'active'
+       )
+    order by workspace_id, user_id
     for update
   `)
 }
@@ -82,8 +69,7 @@ async function prepareAnonymization(
   eq: typeof import('drizzle-orm').eq,
   count: typeof import('drizzle-orm').count,
 ) {
-  await lockAllMembershipsForUser(tx, targetUserId, sql)
-  await lockMembershipAndActiveOwners(tx, workspaceId, targetUserId, sql)
+  await lockRelevantMemberships(tx, workspaceId, targetUserId, sql)
 
   const [memberInWorkspace] = await tx
     .select({
