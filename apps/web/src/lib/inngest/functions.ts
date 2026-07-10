@@ -349,6 +349,24 @@ export const onTaskAssigned = inngest.createFunction(
   async ({ event, step }) => {
     const { taskId, taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
       event.data as TaskAssignedEvent['data']
+    const currentAssignerName = await step.run('resolve-task-assigner-name', async () => {
+      const { db, profiles, tasks, workspaceMembers } = await import('@cairn/db')
+      const { and, eq } = await import('drizzle-orm')
+      const [assigner] = await db
+        .select({
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        })
+        .from(tasks)
+        .innerJoin(profiles, eq(tasks.createdBy, profiles.id))
+        .leftJoin(workspaceMembers, and(
+          eq(workspaceMembers.userId, profiles.id),
+          eq(workspaceMembers.workspaceId, workspaceId),
+        ))
+        .where(eq(tasks.id, taskId))
+        .limit(1)
+
+      return assigner?.displayName ?? assignerName
+    })
 
     await step.run('create-task-notification', async () => {
       const { db, notifications } = await import('@cairn/db')
@@ -356,15 +374,15 @@ export const onTaskAssigned = inngest.createFunction(
         userId: assigneeId,
         workspaceId,
         type: 'task' as const,
-        title: `${assignerName} があなたにタスクを割り当てました`,
+        title: `${currentAssignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
-        data: { assignerName, projectTitle, taskId },
+        data: { assignerName: currentAssignerName, projectTitle, taskId },
       })
     })
 
     await step.run('send-task-push', async () => {
       await sendPushToUser(assigneeId, {
-        title: `${assignerName} があなたにタスクを割り当てました`,
+        title: `${currentAssignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
         url: '/tasks',
       })

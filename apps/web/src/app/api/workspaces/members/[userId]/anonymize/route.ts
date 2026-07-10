@@ -149,11 +149,31 @@ async function scrubStoredNotifications(
         )
         or (
           type = 'task'
-          and exists (
-            select 1
-            from tasks
-            where tasks.id::text = notifications.data->>'taskId'
-              and tasks.created_by = ${targetUserId}
+          and (
+            exists (
+              select 1
+              from tasks
+              where tasks.id::text = notifications.data->>'taskId'
+                and tasks.created_by = ${targetUserId}
+            )
+            or (
+              coalesce(notifications.data->>'taskId', '') = ''
+              and notifications.data->>'assignerName' in (
+                select legacy_names.display_name
+                from (
+                  select workspace_members.display_name
+                  from workspace_members
+                  where workspace_members.workspace_id = ${workspaceId}
+                    and workspace_members.user_id = ${targetUserId}
+                    and workspace_members.display_name is not null
+                  union
+                  select profiles.display_name
+                  from profiles
+                  where profiles.id = ${targetUserId}
+                    and profiles.display_name is not null
+                ) as legacy_names
+              )
+            )
           )
         )
       )
@@ -206,6 +226,8 @@ export async function POST(
         throw prepared
       }
 
+      await scrubStoredNotifications(tx, ctx.workspaceId, targetUserId, sql)
+
       await tx
         .update(workspaceMembers)
         .set({
@@ -225,7 +247,6 @@ export async function POST(
           eq(documentChunks.sourceType, 'member'),
           eq(documentChunks.sourceId, targetUserId),
         ))
-      await scrubStoredNotifications(tx, ctx.workspaceId, targetUserId, sql)
 
       const affectedProjectRows = await tx
         .select({ projectId: projectMembers.projectId })
