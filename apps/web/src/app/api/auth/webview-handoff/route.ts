@@ -8,12 +8,16 @@
 // ここでは認証済みユーザー自身の magiclink を発行し、使い捨ての
 // hashed_token だけを返す。WebView 側は verifyOtp で独立したセッションを確立する。
 
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { enforceFixedWindowRateLimit } from '@/lib/request-rate-limit'
+import { enforceRateLimit } from '@/lib/rate-limit'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const ipRateLimited = await enforceRateLimit(request)
+  if (ipRateLimited) return ipRateLimited
+
   const { ctx, error } = await getAuthContext()
   if (error) return error // 未認証なら 401
 

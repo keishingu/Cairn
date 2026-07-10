@@ -3,16 +3,12 @@
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { enforceRateLimit } from '@/lib/rate-limit'
 
 function detectMobile(ua: string): boolean {
   return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
 }
 
 export async function middleware(request: NextRequest) {
-  const rateLimited = await enforceRateLimit(request)
-  if (rateLimited) return rateLimited
-
   const ua = request.headers.get('user-agent') ?? ''
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-device', detectMobile(ua) ? 'mobile' : 'desktop')

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { resetRequestRateLimitForTest } from '@/lib/request-rate-limit'
 
 // --- vi.hoisted: vi.mock ファクトリから参照できるよう先に定義 ---
@@ -13,6 +13,8 @@ const {
   limitMock,
   slidingWindowMock,
   redisCtorMock,
+  middlewareLimitMock,
+  middlewareSlidingWindowMock,
 } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn()
   const mockGetUserById = vi.fn()
@@ -20,7 +22,18 @@ const {
   const limitMock = vi.fn()
   const slidingWindowMock = vi.fn()
   const redisCtorMock = vi.fn()
-  return { mockGetAuthContext, mockGetUserById, mockGenerateLink, limitMock, slidingWindowMock, redisCtorMock }
+  const middlewareLimitMock = vi.fn()
+  const middlewareSlidingWindowMock = vi.fn()
+  return {
+    mockGetAuthContext,
+    mockGetUserById,
+    mockGenerateLink,
+    limitMock,
+    slidingWindowMock,
+    redisCtorMock,
+    middlewareLimitMock,
+    middlewareSlidingWindowMock,
+  }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -40,11 +53,24 @@ vi.mock('@/lib/supabase/service', () => ({
 
 vi.mock('@upstash/ratelimit', () => ({
   Ratelimit: class {
-    static slidingWindow = slidingWindowMock
+    static slidingWindow(...args: unknown[]) {
+      const [, window] = args
+      if (window === '10 m') return middlewareSlidingWindowMock(...args)
+      return slidingWindowMock(...args)
+    }
 
-    constructor() {}
+    prefix: string
 
-    limit = limitMock
+    constructor(config: { prefix?: string }) {
+      this.prefix = config.prefix ?? ''
+    }
+
+    limit(...args: unknown[]) {
+      if (this.prefix === '@cairn/webview-handoff') {
+        return middlewareLimitMock(...args)
+      }
+      return limitMock(...args)
+    }
   },
 }))
 
@@ -63,10 +89,24 @@ function authed() {
   })
 }
 
+function makeRequest(init?: RequestInit): NextRequest {
+  return new NextRequest(
+    'http://localhost:3000/api/auth/webview-handoff',
+    init as ConstructorParameters<typeof NextRequest>[1],
+  )
+}
+
 describe('POST /api/auth/webview-handoff', () => {
   beforeEach(() => {
     process.env['UPSTASH_REDIS_REST_URL'] = 'https://redis.example.com'
     process.env['UPSTASH_REDIS_REST_TOKEN'] = 'token'
+    middlewareLimitMock.mockResolvedValue({
+      success: true,
+      limit: 5,
+      remaining: 4,
+      reset: Date.now() + 60_000,
+      pending: Promise.resolve(),
+    })
     limitMock.mockResolvedValue({
       success: true,
       limit: 5,
@@ -90,7 +130,7 @@ describe('POST /api/auth/webview-handoff', () => {
     })
 
     const { POST } = await import('./route')
-    const res = await POST()
+    const res = await POST(makeRequest({ method: 'POST', headers: { 'x-forwarded-for': '203.0.113.10' } }))
 
     expect(res.status).toBe(401)
     expect(mockGetUserById).not.toHaveBeenCalled()
@@ -109,7 +149,7 @@ describe('POST /api/auth/webview-handoff', () => {
     })
 
     const { POST } = await import('./route')
-    const res = await POST()
+    const res = await POST(makeRequest({ method: 'POST', headers: { 'x-forwarded-for': '203.0.113.10' } }))
 
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ tokenHash: 'hashed-abc' })
@@ -123,7 +163,7 @@ describe('POST /api/auth/webview-handoff', () => {
     mockGetUserById.mockResolvedValue({ data: { user: { id: 'user-1', email: null } }, error: null })
 
     const { POST } = await import('./route')
-    const res = await POST()
+    const res = await POST(makeRequest({ method: 'POST', headers: { 'x-forwarded-for': '203.0.113.10' } }))
 
     expect(res.status).toBe(500)
     expect(mockGenerateLink).not.toHaveBeenCalled()
@@ -138,7 +178,7 @@ describe('POST /api/auth/webview-handoff', () => {
     mockGenerateLink.mockResolvedValue({ data: null, error: { message: 'boom' } })
 
     const { POST } = await import('./route')
-    const res = await POST()
+    const res = await POST(makeRequest({ method: 'POST', headers: { 'x-forwarded-for': '203.0.113.10' } }))
 
     expect(res.status).toBe(500)
   })
@@ -164,12 +204,37 @@ describe('POST /api/auth/webview-handoff', () => {
       .mockResolvedValueOnce({ success: false, limit: 5, remaining: 0, reset: Date.now() + 60_000, pending: Promise.resolve() })
 
     for (let i = 0; i < 5; i += 1) {
-      const res = await POST()
+      const res = await POST(makeRequest({ method: 'POST', headers: { 'x-forwarded-for': '203.0.113.10' } }))
       expect(res.status).toBe(200)
     }
 
-    const limited = await POST()
+    const limited = await POST(makeRequest({ method: 'POST', headers: { 'x-forwarded-for': '203.0.113.10' } }))
     expect(limited.status).toBe(429)
     expect(mockGenerateLink).toHaveBeenCalledTimes(5)
+  })
+
+  it('未認証前に IP ベースの連投を 429 で制限する', async () => {
+    middlewareLimitMock.mockResolvedValue({
+      success: false,
+      limit: 5,
+      remaining: 0,
+      reset: Date.now() + 60_000,
+      pending: Promise.resolve(),
+    })
+
+    const { POST } = await import('./route')
+    const res = await POST(makeRequest({ method: 'POST', headers: { 'x-forwarded-for': '203.0.113.10' } }))
+
+    expect(res.status).toBe(429)
+    expect(mockGetAuthContext).not.toHaveBeenCalled()
+  })
+
+  it('IP を解決できない場合は認証前に 400 を返す', async () => {
+    const { POST } = await import('./route')
+    const res = await POST(makeRequest({ method: 'POST' }))
+
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Unable to determine client IP for rate limiting' })
+    expect(mockGetAuthContext).not.toHaveBeenCalled()
   })
 })
