@@ -192,6 +192,7 @@ export async function POST(req: Request) {
             taskId: inserted.id,
             taskTitle: inserted.title,
             assigneeId: inserted.assigneeId,
+            assignerId: ctx.userId,
             projectId: inserted.projectId,
             projectTitle: projectRow?.title ?? '',
             workspaceId: ctx.workspaceId,

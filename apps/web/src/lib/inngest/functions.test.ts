@@ -94,6 +94,7 @@ describe('onTaskAssigned', () => {
           taskId: 'task-1',
           taskTitle: 'やること',
           assigneeId: 'user-2',
+          assignerId: 'user-1',
           projectId: 'project-1',
           projectTitle: 'PJ',
           workspaceId: 'ws-1',
@@ -110,6 +111,7 @@ describe('onTaskAssigned', () => {
       title: '匿名化済みメンバー があなたにタスクを割り当てました',
       body: '「やること」- PJ',
       data: {
+        assignerId: 'user-1',
         assignerName: '匿名化済みメンバー',
         projectTitle: 'PJ',
         taskId: 'task-1',

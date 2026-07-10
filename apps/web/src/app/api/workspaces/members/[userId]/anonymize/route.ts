@@ -156,8 +156,9 @@ async function scrubStoredNotifications(
               where tasks.id::text = notifications.data->>'taskId'
                 and tasks.created_by = ${targetUserId}
             )
+            or notifications.data->>'assignerId' = ${targetUserId}
             or (
-              coalesce(notifications.data->>'taskId', '') = ''
+              coalesce(notifications.data->>'assignerId', '') = ''
               and notifications.data->>'assignerName' in (
                 select legacy_names.display_name
                 from (
@@ -284,6 +285,11 @@ export async function POST(
       }
 
       return prepared.avatarPaths
+    })
+
+    await db.transaction(async (tx) => {
+      await lockRelevantMemberships(tx, ctx.workspaceId, targetUserId, sql)
+      await scrubStoredNotifications(tx, ctx.workspaceId, targetUserId, sql)
     })
 
     await removeAvatarPaths(avatarPaths)

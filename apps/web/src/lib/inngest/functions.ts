@@ -347,7 +347,7 @@ export const onTaskAssigned = inngest.createFunction(
   { id: 'on-task-assigned' },
   { event: 'task/assigned' satisfies TaskAssignedEvent['name'] },
   async ({ event, step }) => {
-    const { taskId, taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
+    const { taskId, taskTitle, assigneeId, assignerId, projectTitle, workspaceId, assignerName } =
       event.data as TaskAssignedEvent['data']
     const currentAssignerName = await step.run('resolve-task-assigner-name', async () => {
       const { db, profiles, tasks, workspaceMembers } = await import('@cairn/db')
@@ -376,7 +376,7 @@ export const onTaskAssigned = inngest.createFunction(
         type: 'task' as const,
         title: `${currentAssignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
-        data: { assignerName: currentAssignerName, projectTitle, taskId },
+        data: { assignerId, assignerName: currentAssignerName, projectTitle, taskId },
       })
     })
 
