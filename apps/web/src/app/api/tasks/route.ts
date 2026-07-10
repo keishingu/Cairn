@@ -115,7 +115,7 @@ export async function POST(req: Request) {
     if (forbidden) return forbidden
 
     const { db } = await import('@cairn/db')
-    const { tasks, projects, profiles, activeWorkspaceMembers } = await import('@cairn/db')
+    const { tasks, projects, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
     const assigneeId = parsed.data.assigneeId ?? null

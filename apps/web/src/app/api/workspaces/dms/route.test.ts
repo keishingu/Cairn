@@ -19,6 +19,7 @@ vi.mock('@cairn/db', () => ({
   channelMembers: { channelId: 'cm.channelId', userId: 'cm.userId' },
   channelReadStates: { channelId: 'crs.channelId', userId: 'crs.userId', lastReadAt: 'crs.lastReadAt' },
   workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', membershipStatus: 'wm.membershipStatus' },
+  activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', userId: 'awm.userId' },
 }))
 vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
@@ -57,7 +58,7 @@ describe('POST /api/workspaces/dms', () => {
   afterEach(() => vi.clearAllMocks())
 
   it('非活性メンバーへの新規 DM を 422 で拒否する', async () => {
-    mockDb.select.mockReturnValueOnce(selectChain([{ membershipStatus: 'inactive' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
 
     const { POST } = await import('./route')
     const res = await POST(postRequest())

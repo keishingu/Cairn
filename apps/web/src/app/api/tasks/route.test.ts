@@ -39,6 +39,10 @@ vi.mock('@cairn/db', () => ({
     displayName: 'wm.displayName',
     avatarUrl: 'wm.avatarUrl',
   },
+  activeWorkspaceMembers: {
+    workspaceId: 'awm.workspaceId',
+    userId: 'awm.userId',
+  },
 }))
 
 function selectChain(result: unknown[]) {
@@ -82,7 +86,7 @@ describe('POST /api/tasks のゲストアクセス制御', () => {
 
   it('非活性メンバーを担当者に指定すると 422 を返す', async () => {
     mockRequireProjectAccess.mockResolvedValue(null)
-    mockDb.select.mockReturnValueOnce(selectChain([{ membershipStatus: 'inactive' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
 
     const { POST } = await import('./route')
     const res = await POST(postRequest({
