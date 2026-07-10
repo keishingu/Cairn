@@ -14,6 +14,7 @@ export const PollCard = ({
   const { data, isLoading, isError } = usePoll(messageId)
   const poll = data ?? null
   const title = poll?.question ?? fallbackQuestion
+  const totalVotes = poll?.options.reduce((sum, option) => sum + option.voteCount, 0) ?? 0
 
   return (
     <section
@@ -53,7 +54,7 @@ export const PollCard = ({
                   <span style={{ fontSize: 11.5, color: 'var(--text-4)', flexShrink: 0 }}>{option.voteCount}票</span>
                 </div>
                 <div style={{ marginTop: 8, height: 6, borderRadius: 999, background: 'var(--card-2)', overflow: 'hidden' }}>
-                  <div style={{ width: option.voteCount > 0 ? '100%' : '0%', height: '100%', background: 'var(--accent)' }} />
+                  <div style={{ width: totalVotes > 0 ? `${(option.voteCount / totalVotes) * 100}%` : '0%', height: '100%', background: 'var(--accent)' }} />
                 </div>
               </div>
             ))}

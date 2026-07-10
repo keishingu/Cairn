@@ -164,6 +164,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const emojiOnly = isEmojiOnly(content)
   const isOwn = currentUserId === senderId
   const canEditOwnMessage = isOwn && messageType !== 'poll'
+  const canDeleteOwnMessage = isOwn && messageType !== 'poll'
   const canCopy = content.length > 0
 
   const startEdit = () => {
@@ -180,9 +181,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
   // メッセージ選択中のキーボード操作（e=編集 / r=リアクション / d=削除）を受ける
   React.useEffect(() => {
-    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit() }
+    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && canEditOwnMessage) startEdit() }
     const onReactEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId) setShowPicker(true) }
-    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) setDeleteConfirm(true) }
+    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && canDeleteOwnMessage) setDeleteConfirm(true) }
     window.addEventListener('cairn:edit-message', onEditEvt)
     window.addEventListener('cairn:react-message', onReactEvt)
     window.addEventListener('cairn:delete-message', onDeleteEvt)
@@ -192,7 +193,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       window.removeEventListener('cairn:delete-message', onDeleteEvt)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messageId, isOwn, content])
+  }, [messageId, canEditOwnMessage, canDeleteOwnMessage, content])
 
   const submitEdit = () => {
     const trimmed = editDraft.trim()
@@ -239,6 +240,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     ...(canCopy ? [{ icon: 'copy' as const, label: 'コピー', onSelect: handleCopy }] : []),
     ...(canEditOwnMessage ? [
       { icon: 'edit' as const, label: '編集', onSelect: startEdit },
+    ] : []),
+    ...(canDeleteOwnMessage ? [
       { icon: 'trash' as const, label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
     ] : []),
   ]
@@ -1150,10 +1153,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       const msg = messages[focusedMsgIdx]
       if (!msg) return
       const isOwn = msg.senderId === currentUser?.id
+      const canEditFocusedMessage = isOwn && msg.messageType !== 'poll'
+      const canDeleteFocusedMessage = isOwn && msg.messageType !== 'poll'
       if (e.key === 'Escape') {
         e.preventDefault()
         setFocusedMsgIdx(-1)
-      } else if (e.key === 'e' && isOwn) {
+      } else if (e.key === 'e' && canEditFocusedMessage) {
         // 編集モードに入る（ChatMessage 側で editMode を起動）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:edit-message', { detail: msg.id }))
@@ -1161,7 +1166,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         // リアクション（絵文字ピッカーを開く）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:react-message', { detail: msg.id }))
-      } else if ((e.key === 'd' || e.key === 'Delete') && isOwn) {
+      } else if ((e.key === 'd' || e.key === 'Delete') && canDeleteFocusedMessage) {
         // 削除（確認ダイアログを開く・自分のメッセージのみ）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: msg.id }))
