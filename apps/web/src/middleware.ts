@@ -70,8 +70,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|sw.js|.*\\.webmanifest|api/).*)',
-    '/api/workspaces/invites',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|sw.js|.*\\.webmanifest|api/).*)'],
 }

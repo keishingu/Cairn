@@ -11,11 +11,6 @@ const RATE_LIMIT_POLICIES = {
     limit: 5,
     window: '10 m',
   },
-  '/api/workspaces/invites': {
-    bucket: 'workspace-invites',
-    limit: 10,
-    window: '1 h',
-  },
 } as const
 
 type RateLimitPath = keyof typeof RATE_LIMIT_POLICIES
@@ -57,15 +52,6 @@ function getRateLimiters() {
       ),
       analytics: true,
       prefix: '@cairn/webview-handoff',
-    }),
-    '/api/workspaces/invites': new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(
-        RATE_LIMIT_POLICIES['/api/workspaces/invites'].limit,
-        RATE_LIMIT_POLICIES['/api/workspaces/invites'].window,
-      ),
-      analytics: true,
-      prefix: '@cairn/workspace-invites',
     }),
   }
 

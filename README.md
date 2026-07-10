@@ -27,6 +27,10 @@ supabase start
 # 3. 環境変数をコピー（値はそのまま使える）
 cp apps/web/.env.local.example apps/web/.env.local
 
+# 3.5 レート制限で使う Upstash Redis を設定
+# apps/web/.env.local の UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN に投入する
+# 未設定のままだと webview handoff / 招待作成 / upload-url / Google Calendar 連携は 503 になる
+
 # 4. DB マイグレーションを適用
 cd packages/db && pnpm db:generate && cd ../..
 supabase db reset
@@ -42,7 +46,7 @@ pnpm dev
 ### Supabase ローカル環境の確認
 
 `supabase start` 後に表示されるキーは `.env.local.example` にあらかじめ設定済み。
-変更になった場合は `supabase status` で確認できる。
+変更になった場合は `supabase status` で確認できる。なお、レート制限対象 API をローカルで使う場合は別途 Upstash Redis の REST URL / token も必要。
 
 ```
 API URL:      http://127.0.0.1:54321

@@ -141,7 +141,7 @@ describe('middleware', () => {
 
     const { middleware } = await import('./middleware')
     const res = await middleware(
-      makeRequest('/api/workspaces/invites', {
+      makeRequest('/api/auth/webview-handoff', {
         method: 'POST',
         headers: { 'x-forwarded-for': '203.0.113.20' },
       }),
@@ -157,7 +157,7 @@ describe('middleware', () => {
 
     const { middleware } = await import('./middleware')
     const res = await middleware(
-      makeRequest('/api/workspaces/invites', {
+      makeRequest('/api/auth/webview-handoff', {
         method: 'POST',
       }),
     )
