@@ -209,6 +209,7 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
+    expect(mockDb.execute).toHaveBeenCalledTimes(2)
     expect(mockRemove).toHaveBeenCalledWith(['ws-1/user-2.png'])
     const body = await res.json() as { anonymized: boolean }
     expect(body.anonymized).toBe(true)
@@ -280,7 +281,7 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
-    expect(mockDb.execute).toHaveBeenCalledTimes(1)
+    expect(mockDb.execute).toHaveBeenCalled()
     expect(mockDb.execute.mock.calls[0]?.[0]).toMatchObject({
       values: [OTHER_USER_ID, DEV_WORKSPACE_ID],
     })
@@ -299,9 +300,30 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
-    expect(mockDb.execute).toHaveBeenCalledTimes(1)
+    expect(mockDb.execute).toHaveBeenCalled()
     expect(mockDb.execute.mock.calls[0]?.[0]).toMatchObject({
       values: [OTHER_USER_ID, DEV_WORKSPACE_ID],
+    })
+  })
+
+  it('匿名化した送信者の stored message notifications も scrub する', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.delete.mockReturnValueOnce(deleteChain())
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ membershipCount: 0 }]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockDb.execute).toHaveBeenCalledTimes(2)
+    expect(mockDb.execute.mock.calls[1]?.[0]?.strings.join('')).toContain('delete from notifications')
+    expect(mockDb.execute.mock.calls[1]?.[0]?.strings.join('')).toContain("type in ('dm', 'mention', 'file')")
+    expect(mockDb.execute.mock.calls[1]?.[0]).toMatchObject({
+      values: [DEV_WORKSPACE_ID, OTHER_USER_ID],
     })
   })
 

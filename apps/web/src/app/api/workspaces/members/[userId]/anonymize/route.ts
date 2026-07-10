@@ -124,6 +124,25 @@ async function prepareAnonymization(
   return { ok: true as const, avatarPaths }
 }
 
+async function scrubStoredMessageNotifications(
+  tx: TxClient,
+  workspaceId: string,
+  targetUserId: string,
+  sql: typeof import('drizzle-orm').sql,
+) {
+  await tx.execute(sql`
+    delete from notifications
+    where workspace_id = ${workspaceId}
+      and type in ('dm', 'mention', 'file')
+      and exists (
+        select 1
+        from messages
+        where messages.id::text = notifications.data->>'messageId'
+          and messages.sender_id = ${targetUserId}
+      )
+  `)
+}
+
 async function removeAvatarPaths(paths: string[]) {
   if (paths.length === 0) return
 
@@ -189,6 +208,7 @@ export async function POST(
           eq(documentChunks.sourceType, 'member'),
           eq(documentChunks.sourceId, targetUserId),
         ))
+      await scrubStoredMessageNotifications(tx, ctx.workspaceId, targetUserId, sql)
 
       const affectedProjectRows = await tx
         .select({ projectId: projectMembers.projectId })
