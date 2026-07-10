@@ -6,6 +6,7 @@ import { headers, cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import type { User } from '@supabase/supabase-js'
 import { WORKSPACE_COOKIE } from './workspace-cookie'
+import { setCachedWorkspaceRole } from './request-context'
 
 export { WORKSPACE_COOKIE } from './workspace-cookie'
 
@@ -88,7 +89,10 @@ export async function getAuthContext(): Promise<AuthResult> {
       const conditions = [eq(activeWorkspaceMembers.userId, user.id)]
       if (workspaceId) conditions.push(eq(activeWorkspaceMembers.workspaceId, workspaceId))
       const [row] = await db
-        .select({ workspaceId: activeWorkspaceMembers.workspaceId })
+        .select({
+          workspaceId: activeWorkspaceMembers.workspaceId,
+          role: activeWorkspaceMembers.role,
+        })
         .from(activeWorkspaceMembers)
         .where(and(...conditions))
         .limit(1)
@@ -100,6 +104,7 @@ export async function getAuthContext(): Promise<AuthResult> {
     if (requestedWorkspaceId) {
       const preferred = await findActiveMembership(requestedWorkspaceId)
       if (preferred) {
+        await setCachedWorkspaceRole(preferred.workspaceId, user.id, preferred.role)
         workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
         return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
       }
@@ -111,6 +116,7 @@ export async function getAuthContext(): Promise<AuthResult> {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
+    await setCachedWorkspaceRole(member.workspaceId, user.id, member.role)
     // cookie が無い bearer-only request が別 request の cookie 選択を継承しないよう、
     // cookie の有無で cache key を分けて書く
     workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })

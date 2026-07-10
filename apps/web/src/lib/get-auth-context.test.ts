@@ -140,4 +140,23 @@ describe('get-auth-context', () => {
     expect(second.ctx).toBeNull()
     expect(second.error).not.toBeNull()
   })
+
+  it('getAuthContext が解決した role を同一 request の権限判定へ引き継ぐ', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'admin' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const { requireWorkspaceAdmin } = await import('./permissions')
+
+    const result = await getAuthContext()
+    expect(result).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1' },
+      error: null,
+    })
+
+    await expect(requireWorkspaceAdmin('ws-1', 'user-1')).resolves.toBeNull()
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
+  })
 })

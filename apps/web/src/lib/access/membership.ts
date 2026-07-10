@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server'
 import { db, activeWorkspaceMembers } from '@cairn/db'
 import { and, eq, inArray } from 'drizzle-orm'
+import { getCachedWorkspaceRole, setCachedWorkspaceRole } from '../request-context'
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'guest'
 
@@ -34,6 +35,11 @@ export async function getWorkspaceRole(
   workspaceId: string,
   userId: string,
 ): Promise<WorkspaceRole | null> {
+  const cachedRole = await getCachedWorkspaceRole(workspaceId, userId)
+  if (cachedRole !== undefined) {
+    return cachedRole
+  }
+
   const [member] = await db
     .select({ role: activeWorkspaceMembers.role })
     .from(activeWorkspaceMembers)
@@ -42,7 +48,9 @@ export async function getWorkspaceRole(
       eq(activeWorkspaceMembers.userId, userId),
     ))
     .limit(1)
-  return member?.role ?? null
+  const role = member?.role ?? null
+  await setCachedWorkspaceRole(workspaceId, userId, role)
+  return role
 }
 
 // 既存 import 互換のエイリアス
