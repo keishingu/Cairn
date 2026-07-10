@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { patchProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceAdmin, requireWorkspaceMember } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export async function DELETE(
   _req: Request,
@@ -191,7 +192,7 @@ export async function PATCH(
       if (b.title !== undefined) changes.push(`プロジェクト名を「${b.title}」に変更しました`)
 
       if (changes.length > 0) {
-        const { channels, messages, profiles } = await import('@cairn/db')
+        const { channels, messages, profiles, workspaceMembers } = await import('@cairn/db')
         const [channel] = await db
           .select({ id: channels.id })
           .from(channels)
@@ -199,8 +200,20 @@ export async function PATCH(
           .limit(1)
         if (channel) {
           const [actor] = await db
-            .select({ displayName: profiles.displayName })
+            .select({
+              displayName: workspaceMemberDisplayName(
+                workspaceMembers.displayName,
+                profiles.displayName,
+              ),
+            })
             .from(profiles)
+            .leftJoin(
+              workspaceMembers,
+              and(
+                eq(workspaceMembers.userId, profiles.id),
+                eq(workspaceMembers.workspaceId, ctx.workspaceId),
+              ),
+            )
             .where(eq(profiles.id, ctx.userId))
           const actorName = actor?.displayName ?? '不明'
           await db.insert(messages).values({
