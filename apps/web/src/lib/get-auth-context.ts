@@ -13,6 +13,10 @@ export { WORKSPACE_COOKIE } from './workspace-cookie'
 // warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
 const workspaceCache = new Map<string, { workspaceId: string; expiresAt: number }>()
 
+function buildWorkspaceCacheKey(userId: string, preferredWorkspaceId: string | null): string {
+  return preferredWorkspaceId ? `${userId}:${preferredWorkspaceId}` : userId
+}
+
 export interface AuthContext {
   userId: string
   workspaceId: string
@@ -71,13 +75,16 @@ export async function getAuthContext(): Promise<AuthResult> {
 
   const cookieStore = await cookies()
   const preferredWorkspaceId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
-
-  // cookie / cache はどの workspace を候補にするかのヒントに使うだけで、
-  // active membership の再照合は毎回行う。これがないと、非活性化された直後でも
-  // warm instance の 5 分 cache が旧 workspace を返し続け、遮断が遅延する。
-  const cacheKey = preferredWorkspaceId ? `${user.id}:${preferredWorkspaceId}` : user.id
-  const cached = workspaceCache.get(cacheKey)
-  const cachedWorkspaceId = cached && cached.expiresAt > Date.now() ? cached.workspaceId : null
+  const cacheKey = buildWorkspaceCacheKey(user.id, preferredWorkspaceId)
+  const fallbackCacheKey = buildWorkspaceCacheKey(user.id, null)
+  const cachedPreferred = workspaceCache.get(cacheKey)
+  const cachedFallback = workspaceCache.get(fallbackCacheKey)
+  const cachedPreferredWorkspaceId = cachedPreferred && cachedPreferred.expiresAt > Date.now()
+    ? cachedPreferred.workspaceId
+    : null
+  const cachedFallbackWorkspaceId = cachedFallback && cachedFallback.expiresAt > Date.now()
+    ? cachedFallback.workspaceId
+    : null
 
   try {
     const { db } = await import('@cairn/db')
@@ -95,15 +102,24 @@ export async function getAuthContext(): Promise<AuthResult> {
       return row ?? null
     }
 
-    // cookie / cache の候補 workspace も active membership として毎回再照合する
-    const requestedWorkspaceId = preferredWorkspaceId ?? cachedWorkspaceId
-    if (requestedWorkspaceId) {
-      const preferred = await findActiveMembership(requestedWorkspaceId)
-      if (preferred) {
-        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
-        return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
-      }
-      // 候補が無効（非活性化・退出済み等）→ active 所属へフォールバック
+    const candidateWorkspaceIds = [
+      preferredWorkspaceId,
+      cachedPreferredWorkspaceId,
+      cachedFallbackWorkspaceId,
+    ].filter((workspaceId, index, values): workspaceId is string => (
+      Boolean(workspaceId) && values.indexOf(workspaceId) === index
+    ))
+
+    for (const candidateWorkspaceId of candidateWorkspaceIds) {
+      const member = await findActiveMembership(candidateWorkspaceId)
+      if (!member) continue
+
+      const targetCacheKey = candidateWorkspaceId === preferredWorkspaceId ? cacheKey : fallbackCacheKey
+      workspaceCache.set(targetCacheKey, {
+        workspaceId: member.workspaceId,
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      })
+      return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
     }
 
     const member = await findActiveMembership()
@@ -111,9 +127,7 @@ export async function getAuthContext(): Promise<AuthResult> {
       return { ctx: null, error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }) }
     }
 
-    // cookie が無い bearer-only request が別 request の cookie 選択を継承しないよう、
-    // cookie の有無で cache key を分けて書く
-    workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
+    workspaceCache.set(fallbackCacheKey, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)

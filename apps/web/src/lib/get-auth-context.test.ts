@@ -105,19 +105,58 @@ describe('get-auth-context', () => {
     expect(result).toEqual({ userId: 'user-1', error: null })
   })
 
-  it('非活性な preferred workspace cookie は無視して active 所属へフォールバックする', async () => {
+  it('無効な workspace cookie でもフォールバック結果は bare user key だけで再利用する', async () => {
+    const getCookie = vi.fn().mockReturnValue({ value: 'ws-missing' })
     mockHeaders.mockResolvedValue(new Headers())
-    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-inactive' }) })
+    mockCookies.mockResolvedValue({ get: getCookie })
     mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
-    // 1回目: preferred(ws-inactive) は active view に無い → []、2回目: フォールバックで active 所属
     mockDb.select
       .mockReturnValueOnce(selectChain([]))
-      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-active' }]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-fallback' }]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-fallback' }]))
 
     const { getAuthContext } = await import('./get-auth-context')
-    const result = await getAuthContext()
 
-    expect(result).toEqual({ ctx: { userId: 'user-1', workspaceId: 'ws-active' }, error: null })
+    const first = await getAuthContext()
+    const second = await getAuthContext()
+
+    expect(first).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-fallback' },
+      error: null,
+    })
+    expect(second).toEqual(first)
+    expect(mockDb.select).toHaveBeenCalledTimes(4)
+    expect(getCookie).toHaveBeenCalledTimes(2)
+  })
+
+  it('cookie で選んだ workspace を bare user key に共有しない', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-cookie' }]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-default' }]))
+
+    const { getAuthContext, WORKSPACE_COOKIE } = await import('./get-auth-context')
+
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({
+      get: vi.fn().mockImplementation((name: string) => (name === WORKSPACE_COOKIE ? { value: 'ws-cookie' } : undefined)),
+    })
+    const cookieScoped = await getAuthContext()
+
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    const bareRequest = await getAuthContext()
+
+    expect(cookieScoped).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-cookie' },
+      error: null,
+    })
+    expect(bareRequest).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-default' },
+      error: null,
+    })
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
   })
 
   it('warm cache があっても active membership を毎回再照合し、非活性化を即時反映する', async () => {

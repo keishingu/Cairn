@@ -7,12 +7,14 @@
 // 各所で書き忘れる余地を構造的に無くす。新しい read path を足すときは必ずここを通す。
 
 import { NextResponse } from 'next/server'
+import { headers } from 'next/headers'
 import { db, activeWorkspaceMembers } from '@cairn/db'
 import { and, eq, inArray } from 'drizzle-orm'
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'guest'
 
 const ROLE_RANK: Record<WorkspaceRole, number> = { guest: 0, member: 1, admin: 2, owner: 3 }
+const requestRoleCache = new WeakMap<object, Map<string, Promise<WorkspaceRole | null>>>()
 
 // 判定 helper は string | null 契約を維持する（呼び出し側の role 型ゆらぎを吸収）。
 export function isWorkspaceOwner(role: string | null): boolean {
@@ -30,7 +32,7 @@ export function isWorkspaceMember(role: string | null): boolean {
 // 書く必要はない（ビュー定義が保証する）。role 参照系（require* / requireProjectAccess /
 // requireChannelAccess / canAccessFile）はすべてこの関数を通るため、これ 1 箇所を
 // active 限定にするだけで非活性メンバーが横断的に 403 になる。
-export async function getWorkspaceRole(
+async function fetchWorkspaceRole(
   workspaceId: string,
   userId: string,
 ): Promise<WorkspaceRole | null> {
@@ -43,6 +45,30 @@ export async function getWorkspaceRole(
     ))
     .limit(1)
   return member?.role ?? null
+}
+
+export async function getWorkspaceRole(
+  workspaceId: string,
+  userId: string,
+): Promise<WorkspaceRole | null> {
+  try {
+    const requestHeaders = await headers()
+    const cacheKey = `${workspaceId}:${userId}`
+    let roleCache = requestRoleCache.get(requestHeaders)
+    if (!roleCache) {
+      roleCache = new Map<string, Promise<WorkspaceRole | null>>()
+      requestRoleCache.set(requestHeaders, roleCache)
+    }
+    const cached = roleCache.get(cacheKey)
+    if (cached) {
+      return cached
+    }
+    const pending = fetchWorkspaceRole(workspaceId, userId)
+    roleCache.set(cacheKey, pending)
+    return pending
+  } catch {
+    return fetchWorkspaceRole(workspaceId, userId)
+  }
 }
 
 // 既存 import 互換のエイリアス

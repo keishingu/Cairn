@@ -3,15 +3,20 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const { mockDb, activeWorkspaceMembers } = vi.hoisted(() => {
+const { mockDb, activeWorkspaceMembers, mockHeaders } = vi.hoisted(() => {
   const mockDb = { select: vi.fn() }
+  const mockHeaders = vi.fn()
   const activeWorkspaceMembers = {
     userId: 'awm.userId',
     workspaceId: 'awm.workspaceId',
     role: 'awm.role',
   }
-  return { mockDb, activeWorkspaceMembers }
+  return { mockDb, activeWorkspaceMembers, mockHeaders }
 })
+
+vi.mock('next/headers', () => ({
+  headers: mockHeaders,
+}))
 
 vi.mock('next/server', () => ({
   NextResponse: {
@@ -47,23 +52,38 @@ describe('access/membership', () => {
 
   describe('getWorkspaceRole', () => {
     it('active membership の row があればその role を返す', async () => {
+      mockHeaders.mockResolvedValue(new Headers())
       mockDb.select.mockReturnValueOnce(selectChain([{ role: 'admin' }]))
       const { getWorkspaceRole } = await import('./membership')
       await expect(getWorkspaceRole('ws-1', 'user-1')).resolves.toBe('admin')
     })
 
     it('active view に row が無い（非活性・非所属）なら null を返す', async () => {
+      mockHeaders.mockResolvedValue(new Headers())
       mockDb.select.mockReturnValueOnce(selectChain([]))
       const { getWorkspaceRole } = await import('./membership')
       await expect(getWorkspaceRole('ws-1', 'user-1')).resolves.toBeNull()
     })
 
     it('active_workspace_members ビューを参照する（membership_status 述語は書かない）', async () => {
+      mockHeaders.mockResolvedValue(new Headers())
       const chain = selectChain([])
       mockDb.select.mockReturnValueOnce(chain)
       const { getWorkspaceRole } = await import('./membership')
       await getWorkspaceRole('ws-1', 'user-1')
       expect(chain.from).toHaveBeenCalledWith(activeWorkspaceMembers)
+    })
+
+    it('同じ request 内の同一 workspace/user は 1 回だけ問い合わせる', async () => {
+      const requestHeaders = new Headers()
+      mockHeaders.mockResolvedValue(requestHeaders)
+      mockDb.select.mockReturnValue(selectChain([{ role: 'admin' }]))
+      const { getWorkspaceRole } = await import('./membership')
+
+      await expect(getWorkspaceRole('ws-1', 'user-1')).resolves.toBe('admin')
+      await expect(getWorkspaceRole('ws-1', 'user-1')).resolves.toBe('admin')
+
+      expect(mockDb.select).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -93,8 +113,10 @@ describe('access/membership', () => {
   describe('requireWorkspaceAdmin', () => {
     it('active な admin は許可、member は 403', async () => {
       const { requireWorkspaceAdmin } = await import('./membership')
+      mockHeaders.mockResolvedValueOnce(new Headers())
       mockDb.select.mockReturnValueOnce(selectChain([{ role: 'admin' }]))
       await expect(requireWorkspaceAdmin('ws-1', 'user-1')).resolves.toBeNull()
+      mockHeaders.mockResolvedValueOnce(new Headers())
       mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
       const denied = await requireWorkspaceAdmin('ws-1', 'user-1')
       expect(denied!.status).toBe(403)
@@ -109,7 +131,7 @@ describe('access/membership', () => {
     })
 
     it('active view に残っている id だけを返す', async () => {
-      const chain = { from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ userId: 'u1' }]) }) }
+      const chain = selectChain([{ userId: 'u1' }])
       mockDb.select.mockReturnValueOnce(chain)
       const { filterActiveMemberIds } = await import('./membership')
       const result = await filterActiveMemberIds('ws-1', ['u1', 'u2'])
