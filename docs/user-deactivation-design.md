@@ -1,10 +1,10 @@
 # ユーザー非活性化・退会設計（卒業生対応）
 
-- **ステータス**: 設計時スナップショット（§9 の #1「スキーマ + マイグレーション」のみ実装済み。サーバー側遮断・API・UI（#2〜5）は未着手）
-- **作成**: 2026-06-22
-- **関連**: [`CLAUDE.md`](../CLAUDE.md) の権限モデル、[`packages/db/src/schema/workspaces.ts`](../packages/db/src/schema/workspaces.ts)（`workspace_members`）
+- **ステータス**: 実装済み（§9 の #1〜#5 は [PR #328](https://github.com/keishingu/Cairn/pull/328) で develop にマージ済み。#6「匿名化による消去請求対応」は未着手）
+- **作成**: 2026-06-22 / **実装完了**: 2026-07-09（PR #328 マージ）
+- **関連**: [`CLAUDE.md`](../CLAUDE.md) の権限モデル、[`packages/db/src/schema/workspaces.ts`](../packages/db/src/schema/workspaces.ts)（`workspace_members`）、[`apps/web/src/lib/access/membership.ts`](../apps/web/src/lib/access/membership.ts)、[`apps/web/src/lib/access/lifecycle.ts`](../apps/web/src/lib/access/lifecycle.ts)
 
-> 大原則: ドキュメントと実装が矛盾する場合、コードと CLAUDE.md を正とする。本書は実装前の設計合意であり、着手時に更新する。
+> 大原則: ドキュメントと実装が矛盾する場合、コードと CLAUDE.md を正とする。本書は §1〜§9 が設計時の記録、§10 が実装後の差分メモ。§6 の「権限モデル」節は CLAUDE.md にも要約が転記済み。
 
 ## 1. 背景・課題
 
@@ -116,21 +116,21 @@ GDPR 消去請求等が来た場合の対応。非活性化（§3 の `status`�
 
 develop にマージする前に**それ単体で機能・検証できる**粒度で分解する。各単位は独立した子 issue とし、依存順に積む。
 
-| # | 単位 | 単体での検証可能性 | 依存 |
-|---|---|---|---|
-| 1 | **スキーマ + マイグレーション（timestamp 方式へ切替）** ✅ 実装済み | マイグレーション適用で `workspace_members.membership_status` 追加、既存行は `active` 既定で挙動不変。`prefix: 'timestamp'` で新規分が timestamp 形式になることを確認 | なし |
-| 2 | **サーバー側アクセス遮断** | `getWorkspaceRole` を active 限定化、`get-auth-context` で非活性除外。非活性メンバーシップが全 `require*` で 403 になることをテストで検証（実データはまだ無いが単体テストで確認可能） | #1 |
-| 3 | **非活性化 / 再活性化 API** | `admin` 以上が `status` を切替できる。#2 と合わせ、非活性化したユーザーが当該 WS で 403、再活性化で復帰することを実地検証。最後の active owner は非活性化不可 | #1, #2 |
-| 4 | **候補リスト・メンバー一覧の active 絞り込み** | メンバー一覧 API が `status` を返し、メンション/担当割当/DM 作成の候補が active のみになることを検証 | #1（実データは #3） |
-| 5 | **UI（現役 / 卒業生分離・非活性化/再活性化ボタン・確認ダイアログ）** | 画面から非活性化→卒業生セクションへ移動、再活性化→現役へ復帰。`isAdmin` での出し分け | #3, #4 |
-| 6 | **（フェーズ2）匿名化による消去請求対応** | §7。表示名置換・PII null 化・アバター削除で、非個人データを残しつつ再特定不可になることを検証。非活性化フェーズと独立 | #1（独立着手可） |
+| # | 単位 | 単体での検証可能性 | 依存 | 状態 |
+|---|---|---|---|---|
+| 1 | **スキーマ + マイグレーション（timestamp 方式へ切替）** | マイグレーション適用で `workspace_members.membership_status` 追加、既存行は `active` 既定で挙動不変 | なし | ✅ [#212](https://github.com/keishingu/Cairn/issues/212) |
+| 2 | **サーバー側アクセス遮断** | `getWorkspaceRole` を active 限定化、`get-auth-context` で非活性除外 | #1 | ✅ [#213](https://github.com/keishingu/Cairn/issues/213)（[PR #328](https://github.com/keishingu/Cairn/pull/328)） |
+| 3 | **非活性化 / 再活性化 API** | `admin` 以上が `status` を切替できる。最後の active owner は非活性化不可 | #1, #2 | ✅ [#214](https://github.com/keishingu/Cairn/issues/214)（PR #328） |
+| 4 | **候補リスト・メンバー一覧の active 絞り込み** | メンバー一覧 API が `status` を返し、メンション/担当割当/DM 作成の候補が active のみになる | #1（実データは #3） | ✅ [#215](https://github.com/keishingu/Cairn/issues/215)（PR #328） |
+| 5 | **UI（現役 / 卒業生分離・非活性化/再活性化ボタン・確認ダイアログ）** | 画面から非活性化→卒業生セクションへ移動、再活性化→現役へ復帰 | #3, #4 | ✅ [#216](https://github.com/keishingu/Cairn/issues/216)（PR #328） |
+| 6 | **（フェーズ2）匿名化による消去請求対応** | §7。表示名置換・PII null 化・アバター削除で、非個人データを残しつつ再特定不可になることを検証 | #1（独立着手可） | 未着手（[#211](https://github.com/keishingu/Cairn/issues/211) エピックに残存） |
 
-依存グラフ: `1 → 2 → 3 → {4 → 5}`、`6` は #1 の後に独立着手可。各 issue は親 issue（エピック）の子 issue として GitHub 上で依存を整理する。
+実装は #2〜#5 を分割 PR ではなく [PR #328](https://github.com/keishingu/Cairn/pull/328) 1 本にまとめ、§10 の Layer A/B/C 構成で行った。理由は §10 末尾「実装結果」を参照。
 
 ## 10. 実装からの学び — active membership の集約リファクタ（PR #245 を受けて）
 
-- **ステータス**: 設計提案（PR #245 の実装・レビューを受けた振り返り）
-- **関連**: [PR #245](https://github.com/keishingu/Cairn/pull/245)（fix/issue-213）
+- **ステータス**: 実装済み（[PR #328](https://github.com/keishingu/Cairn/pull/328) で develop にマージ）。以下は当時の設計提案。実装との差分は本節末尾「実装結果」を参照
+- **関連**: [PR #245](https://github.com/keishingu/Cairn/pull/245)（fix/issue-213、クローズ済み・未マージ）、[PR #328](https://github.com/keishingu/Cairn/pull/328)（本設計の実装、develop にマージ済み）
 
 §4 は「`getWorkspaceRole` を active 限定にすれば一点変更で広く効く」と見込んでいたが、PR #245 の実装では**ロール参照系を通らない read path が多数あった**ことが判明した。通知配信・ファイル一覧・カレンダー(iCal)・メンバー/DM 候補・Realtime RLS などが `workspace_members` を独自に join しており、それぞれに `membership_status = 'active'` を手で足す必要が生じた。結果、自動レビュー（Codex）が「ここでは active を絞っているが別の場所では絞っていない」という**同一クラスの指摘を約 40 箇所で繰り返す**状態になった。
 
@@ -233,3 +233,16 @@ export async function reactivateViaInvite(tx, ws: string, user: string, role: Wo
 - **ビュー**: 非活性化直後に各 read API（notifications / files / members / ical / dms）が即座に除外することを回帰化。Layer A で 1 ヘルパーに集約されるため、テストも集約できる。
 - **ライフサイクル**: deactivate → 派生行が消えない（§5 の単純復帰を保証）こと / 単純 reactivate → 元の project_members・channel_members・pin がそのまま参照できること / reactivateViaInvite(guest) → invite 対象 project だけ復活し、旧 private channel・pin・notification が復活しないこと。
 - **defense-in-depth**: 派生行を手で残した状態でも Layer A のビュー guard で read が漏れないこと。
+
+### 実装結果（PR #328 との差分）
+
+上記は設計時点のイメージであり、実装（[`apps/web/src/lib/access/membership.ts`](../apps/web/src/lib/access/membership.ts) / [`lifecycle.ts`](../apps/web/src/lib/access/lifecycle.ts)）は以下の点で異なる。コードと本節が矛盾する場合はコードを正とする。
+
+- **Layer A/B は 1 PR にまとめた**: 「①アクセス制御 ②Realtime ③無関係機能」に分割する案だったが、実際は #245 とは別ブランチ（`feat/active-membership-access-control`）を develop から新規に切り、Layer A・B・C をまとめて 1 PR（#328）にした。理由は、Codex レビューが「ここは直したがそこは直していない」という横断的な指摘を繰り返す性質のため、部分適用のまま分割すると同じ指摘が別 PR で再発するため。
+- **Layer B の関数一覧が縮小**: `canAccessChannel` / `canAccessProject` / `canAccessFile` は `access/membership.ts` に移設しなかった。既存の `requireChannelAccess` / `requireProjectAccess` / `canAccessFile`（`permissions.ts`）は `getWorkspaceRole` の active 限定化だけで間接的に非活性を弾けるため、そのまま残している。実際に追加したのは `getWorkspaceRole` / `requireActiveMember` / `requireWorkspaceOwner,Admin,Member` / `isActiveWorkspaceMember` / `listActiveMemberIds` / `filterActiveMemberIds` のみ。
+- **`/api/workspaces/members` は既定 active-only に変更**: 当初案（§6, §10 Layer B 適用対象外）は「常に `status` を返し UI 側で分離」だったが、レビューで「非 admin にも service-role 解決済みメールを含む inactive 行が見える」指摘を受け、`status` クエリパラメータ省略時は active のみ、`status=all`（inactive を含む）は admin/owner 限定に変更した。管理画面用の一覧取得と、候補リスト用の active-only 取得を同一エンドポイントの query param で使い分ける。
+- **Layer C は 3 関数に加えて不変条件のロックとチャンク整合性を持つ**:
+  - `deactivateMembership` は独自にトランザクションを張り、対象行 + active owner 集合を `user_id` 昇順の 1 クエリでロックしてから判定する（対象行とowner集合を別クエリでロックすると、同時に別ownerをarchiveする2トランザクションがデッドロックし得るため統合）。
+  - 非活性化と同時に `document_chunks`（AI 検索用チャンク、`source_type='member'`）を削除し、再活性化時は `member/upserted` イベントを再送して再インデックスする。これは設計時点になかった、AI 機能との整合性の指摘（Codex）を受けた追加。
+  - `reactivateViaInvite` は role の上書きのみを担当し、旧 `project_members` / `channel_members` の掃除は呼び出し元の `apps/web/src/app/api/invite/[token]/accept/route.ts` が自分のトランザクション内で行う（招待 claim の重複防止ロックと同じ境界に含める必要があったため）。設計時の想定より関数の責務分割が1段階広い。
+  - 既存 owner から新しい招待（admin 発行の member/guest 招待）で再活性化しても、既存ロールが `owner` の場合は上書きしない不変条件を追加（owner の活性状態・ロールは owner のみ変更できる、という既存ルールを招待経由でバイパスさせないため）。
