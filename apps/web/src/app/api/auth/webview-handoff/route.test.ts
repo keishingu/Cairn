@@ -235,7 +235,11 @@ describe('POST /api/auth/webview-handoff', () => {
     expect(mockGenerateLink).toHaveBeenCalledTimes(5)
   })
 
-  it('pre-auth の IP 制限に引っかかったら auth lookup より先に 429 を返す', async () => {
+  it('未認証の連投は auth 失敗後に IP ベースで 429 制限する', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: null,
+      error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    })
     mockEnforceRateLimit.mockResolvedValueOnce(
       NextResponse.json({ error: 'Too many requests' }, { status: 429 }),
     )
@@ -244,7 +248,7 @@ describe('POST /api/auth/webview-handoff', () => {
     const res = await POST(makeRequest({ method: 'POST', headers: { 'x-forwarded-for': '203.0.113.10' } }))
 
     expect(res.status).toBe(429)
-    expect(mockGetAuthContext).not.toHaveBeenCalled()
+    expect(mockGetAuthContext).toHaveBeenCalled()
   })
 
   it('proxy IP header が無い direct request でも user bucket 側へ進める', async () => {
@@ -264,6 +268,6 @@ describe('POST /api/auth/webview-handoff', () => {
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ tokenHash: 'hashed-abc' })
     expect(mockGetAuthContext).toHaveBeenCalled()
-    expect(mockEnforceRateLimit).toHaveBeenCalledTimes(1)
+    expect(mockEnforceRateLimit).not.toHaveBeenCalled()
   })
 })
