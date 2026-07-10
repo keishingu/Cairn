@@ -19,6 +19,7 @@ export const STORAGE_KEYS = {
   calendar_status_filter:    'cairn:calendar_status_filter',
   calendar_member_filter:    'cairn:calendar_member_filter',
   calendar_gcal_hidden:      'cairn:calendar_gcal_hidden',
+  calendar_milestones_visible: 'cairn:calendar_milestones_visible',
   kanban_status_filter:      'cairn:kanban_status_filter',
   kanban_member_filter:      'cairn:kanban_member_filter',
   kanban_scope:              'cairn:kanban_scope',
