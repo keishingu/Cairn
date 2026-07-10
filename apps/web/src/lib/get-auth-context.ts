@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { headers, cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import type { User } from '@supabase/supabase-js'
+import { setCachedWorkspaceRole } from './request-context'
 import { WORKSPACE_COOKIE } from './workspace-cookie'
 
 export { WORKSPACE_COOKIE } from './workspace-cookie'
@@ -103,6 +104,7 @@ export async function getAuthContext(): Promise<AuthResult> {
     if (requestedWorkspaceId) {
       const preferred = await findActiveMembership(requestedWorkspaceId)
       if (preferred) {
+        await setCachedWorkspaceRole(preferred.workspaceId, user.id, preferred.role)
         workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
         return { ctx: { userId: user.id, workspaceId: preferred.workspaceId }, error: null }
       }
@@ -116,6 +118,7 @@ export async function getAuthContext(): Promise<AuthResult> {
 
     // cookie が無い bearer-only request が別 request の cookie 選択を継承しないよう、
     // cookie の有無で cache key を分けて書く
+    await setCachedWorkspaceRole(member.workspaceId, user.id, member.role)
     workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
     return { ctx: { userId: user.id, workspaceId: member.workspaceId }, error: null }
   } catch (err) {
