@@ -3,288 +3,224 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mockJson = vi.fn((body: unknown, init?: ResponseInit) => ({ body, status: init?.status ?? 200 }))
-
 const {
+  queryResults,
   mockDb,
-  workspaceMembers,
-  channels,
-  channelMembers,
-  projects,
-  projectMembers,
-  messages,
-  messageAttachments,
 } = vi.hoisted(() => {
+  const queryResults: unknown[][] = []
+
+  function nextResult() {
+    return queryResults.shift() ?? []
+  }
+
+  function makeQuery(result: unknown[]) {
+    const promise = Promise.resolve(result)
+    return {
+      from: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
+      leftJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue(result),
+      then: promise.then.bind(promise),
+      catch: promise.catch.bind(promise),
+      finally: promise.finally.bind(promise),
+    }
+  }
+
   const mockDb = {
-    select: vi.fn(),
-    selectDistinct: vi.fn(),
+    select: vi.fn(() => makeQuery(nextResult())),
+    selectDistinct: vi.fn(() => makeQuery(nextResult())),
   }
 
-  return {
-    mockDb,
-    workspaceMembers: {
-      role: 'wm.role',
-      workspaceId: 'wm.workspaceId',
-      userId: 'wm.userId',
-    },
-    channels: {
-      id: 'c.id',
-      isPrivate: 'c.isPrivate',
-      type: 'c.type',
-      projectId: 'c.projectId',
-      workspaceId: 'c.workspaceId',
-    },
-    channelMembers: {
-      userId: 'cm.userId',
-      channelId: 'cm.channelId',
-    },
-    projects: {
-      id: 'p.id',
-      workspaceId: 'p.workspaceId',
-    },
-    projectMembers: {
-      id: 'pm.id',
-      userId: 'pm.userId',
-      projectId: 'pm.projectId',
-    },
-    messages: {
-      id: 'm.id',
-      channelId: 'm.channelId',
-    },
-    messageAttachments: {
-      fileId: 'ma.fileId',
-      messageId: 'ma.messageId',
-    },
-  }
+  return { queryResults, mockDb }
 })
-
-vi.mock('next/server', () => ({
-  NextResponse: {
-    json: mockJson,
-  },
-}))
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
-  workspaceMembers,
-  channels,
-  channelMembers,
-  projects,
-  projectMembers,
-  messages,
-  messageAttachments,
+  activeWorkspaceMembers: {
+    role: 'activeWorkspaceMembers.role',
+    userId: 'activeWorkspaceMembers.userId',
+    workspaceId: 'activeWorkspaceMembers.workspaceId',
+  },
+  channels: {
+    id: 'channels.id',
+    isPrivate: 'channels.isPrivate',
+    type: 'channels.type',
+    projectId: 'channels.projectId',
+    workspaceId: 'channels.workspaceId',
+  },
+  channelMembers: {
+    channelId: 'channelMembers.channelId',
+    userId: 'channelMembers.userId',
+  },
+  projects: {
+    id: 'projects.id',
+    workspaceId: 'projects.workspaceId',
+  },
+  projectMembers: {
+    id: 'projectMembers.id',
+    projectId: 'projectMembers.projectId',
+    userId: 'projectMembers.userId',
+  },
+  messages: {
+    channelId: 'messages.channelId',
+    id: 'messages.id',
+  },
+  messageAttachments: {
+    fileId: 'messageAttachments.fileId',
+    messageId: 'messageAttachments.messageId',
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({
-  eq: vi.fn((...args: unknown[]) => ({ type: 'eq', args })),
-  and: vi.fn((...args: unknown[]) => ({ type: 'and', args })),
+  and: vi.fn(() => 'and'),
+  eq: vi.fn(() => 'eq'),
+  inArray: vi.fn(() => 'inArray'),
   sql: vi.fn(() => 'sql'),
 }))
 
-function selectResult(result: unknown[]) {
-  const chain = {
-    from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockReturnThis(),
-    limit: vi.fn().mockResolvedValue(result),
-  }
-  Object.assign(chain, {
-    leftJoin: vi.fn().mockReturnValue(chain),
-    innerJoin: vi.fn().mockReturnValue(chain),
-  })
-  return chain
+function pushResults(...results: unknown[][]) {
+  queryResults.push(...results)
 }
 
-function selectDistinctResult(result: unknown[]) {
-  const chain = {
-    from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockResolvedValue(result),
-  }
-  Object.assign(chain, {
-    innerJoin: vi.fn().mockReturnValue(chain),
-  })
-  return chain
-}
-
-describe('権限制御', () => {
+describe('permissions', () => {
   beforeEach(() => {
-    vi.resetModules()
+    queryResults.length = 0
   })
 
   afterEach(() => {
     vi.clearAllMocks()
+    vi.resetModules()
   })
 
-  it('requireWorkspaceOwner は owner だけを許可する', async () => {
-    mockDb.select
-      .mockReturnValueOnce(selectResult([{ role: 'owner' }]))
-      .mockReturnValueOnce(selectResult([{ role: 'admin' }]))
-
+  it('requireWorkspaceOwner は owner のみ許可する', async () => {
+    pushResults([{ role: 'owner' }], [{ role: 'admin' }])
     const { requireWorkspaceOwner } = await import('./permissions')
 
-    await expect(requireWorkspaceOwner('ws-1', 'owner-1')).resolves.toBeNull()
-    await expect(requireWorkspaceOwner('ws-1', 'admin-1')).resolves.toEqual({
-      body: { error: 'この操作にはオーナー権限が必要です' },
-      status: 403,
-    })
+    await expect(requireWorkspaceOwner('ws-1', 'user-1')).resolves.toBeNull()
+
+    const denied = await requireWorkspaceOwner('ws-1', 'user-2')
+    expect(denied?.status).toBe(403)
+    await expect(denied?.json()).resolves.toEqual({ error: 'この操作にはオーナー権限が必要です' })
   })
 
-  it('requireWorkspaceAdmin は admin 以上を許可して guest を拒否する', async () => {
-    mockDb.select
-      .mockReturnValueOnce(selectResult([{ role: 'admin' }]))
-      .mockReturnValueOnce(selectResult([{ role: 'guest' }]))
+  it('requireWorkspaceAdmin は admin 以上、requireWorkspaceMember は member 以上を要求する', async () => {
+    pushResults([{ role: 'admin' }], [{ role: 'guest' }], [{ role: 'member' }], [])
+    const { requireWorkspaceAdmin, requireWorkspaceMember } = await import('./permissions')
 
-    const { requireWorkspaceAdmin } = await import('./permissions')
+    await expect(requireWorkspaceAdmin('ws-1', 'user-1')).resolves.toBeNull()
 
-    await expect(requireWorkspaceAdmin('ws-1', 'admin-1')).resolves.toBeNull()
-    await expect(requireWorkspaceAdmin('ws-1', 'guest-1')).resolves.toEqual({
-      body: { error: 'この操作には管理者以上の権限が必要です' },
-      status: 403,
-    })
+    const guestDenied = await requireWorkspaceAdmin('ws-1', 'user-2')
+    expect(guestDenied?.status).toBe(403)
+    await expect(guestDenied?.json()).resolves.toEqual({ error: 'この操作には管理者以上の権限が必要です' })
+
+    await expect(requireWorkspaceMember('ws-1', 'user-3')).resolves.toBeNull()
+
+    const outsiderDenied = await requireWorkspaceMember('ws-1', 'user-4')
+    expect(outsiderDenied?.status).toBe(403)
+    await expect(outsiderDenied?.json()).resolves.toEqual({ error: 'ゲストはこの操作を実行できません' })
   })
 
-  it('requireWorkspaceMember は guest を拒否する', async () => {
-    mockDb.select.mockReturnValueOnce(selectResult([{ role: 'guest' }]))
-
-    const { requireWorkspaceMember } = await import('./permissions')
-
-    await expect(requireWorkspaceMember('ws-1', 'guest-1')).resolves.toEqual({
-      body: { error: 'ゲストはこの操作を実行できません' },
-      status: 403,
-    })
-  })
-
-  it('requireProjectAccess は guest の越境アクセスを拒否する', async () => {
-    mockDb.select
-      .mockReturnValueOnce(selectResult([{ role: 'guest' }]))
-      .mockReturnValueOnce(selectResult([]))
-
+  it('requireProjectAccess は guest の参加外プロジェクトを 403 にする', async () => {
+    pushResults([{ role: 'guest' }], [])
     const { requireProjectAccess } = await import('./permissions')
 
-    await expect(requireProjectAccess('ws-1', 'guest-1', 'project-1')).resolves.toEqual({
-      body: { error: 'このプロジェクトにアクセスする権限がありません' },
-      status: 403,
-    })
+    const denied = await requireProjectAccess('ws-1', 'guest-1', 'project-1')
+
+    expect(denied?.status).toBe(403)
+    await expect(denied?.json()).resolves.toEqual({ error: 'このプロジェクトにアクセスする権限がありません' })
   })
 
-  it('requireProjectAccess は guest が参加中の project を許可する', async () => {
-    mockDb.select
-      .mockReturnValueOnce(selectResult([{ role: 'guest' }]))
-      .mockReturnValueOnce(selectResult([{ id: 'pm-1' }]))
-
-    const { requireProjectAccess } = await import('./permissions')
-
-    await expect(requireProjectAccess('ws-1', 'guest-1', 'project-1')).resolves.toBeNull()
-  })
-
-  it('requireChannelAccess は DM 参加者でない member を拒否する', async () => {
-    mockDb.select
-      .mockReturnValueOnce(selectResult([{
-        isPrivate: false,
-        type: 'dm',
-        projectId: null,
-        effectiveWorkspaceId: 'ws-1',
-      }]))
-      .mockReturnValueOnce(selectResult([]))
-
+  it('requireChannelAccess は別ワークスペースの channelId を 403 にする', async () => {
+    pushResults([{ isPrivate: false, type: 'channel', projectId: null, effectiveWorkspaceId: 'ws-2' }])
     const { requireChannelAccess } = await import('./permissions')
 
-    await expect(requireChannelAccess('ws-1', 'member-1', 'channel-1')).resolves.toEqual({
-      body: { error: 'このチャンネルにアクセスする権限がありません' },
-      status: 403,
-    })
+    const denied = await requireChannelAccess('ws-1', 'user-1', 'channel-1')
+
+    expect(denied?.status).toBe(403)
+    await expect(denied?.json()).resolves.toEqual({ error: 'このチャンネルにアクセスする権限がありません' })
   })
 
-  it('requireChannelAccess は project channel の guest を projectMembers で制限する', async () => {
-    mockDb.select
-      .mockReturnValueOnce(selectResult([{
-        isPrivate: false,
-        type: 'project',
-        projectId: 'project-1',
-        effectiveWorkspaceId: 'ws-1',
-      }]))
-      .mockReturnValueOnce(selectResult([{ role: 'guest' }]))
-      .mockReturnValueOnce(selectResult([]))
-
+  it('requireChannelAccess は DM の非メンバーを 403 にする', async () => {
+    pushResults([{ isPrivate: false, type: 'dm', projectId: null, effectiveWorkspaceId: 'ws-1' }], [])
     const { requireChannelAccess } = await import('./permissions')
 
-    await expect(requireChannelAccess('ws-1', 'guest-1', 'channel-1')).resolves.toEqual({
-      body: { error: 'このチャンネルにアクセスする権限がありません' },
-      status: 403,
-    })
+    const denied = await requireChannelAccess('ws-1', 'user-1', 'dm-1')
+
+    expect(denied?.status).toBe(403)
+    await expect(denied?.json()).resolves.toEqual({ error: 'このチャンネルにアクセスする権限がありません' })
   })
 
-  it('requireChannelAccess は別ワークスペースの channelId を拒否する', async () => {
-    mockDb.select.mockReturnValueOnce(selectResult([{
-      isPrivate: false,
-      type: 'public',
-      projectId: null,
-      effectiveWorkspaceId: 'ws-2',
-    }]))
-
+  it('requireChannelAccess は guest の参加外プロジェクトチャンネルを 403 にする', async () => {
+    pushResults(
+      [{ isPrivate: false, type: 'project', projectId: 'project-1', effectiveWorkspaceId: 'ws-1' }],
+      [{ role: 'guest' }],
+      [],
+    )
     const { requireChannelAccess } = await import('./permissions')
 
-    await expect(requireChannelAccess('ws-1', 'member-1', 'channel-1')).resolves.toEqual({
-      body: { error: 'このチャンネルにアクセスする権限がありません' },
-      status: 403,
-    })
+    const denied = await requireChannelAccess('ws-1', 'guest-1', 'channel-1')
+
+    expect(denied?.status).toBe(403)
+    await expect(denied?.json()).resolves.toEqual({ error: 'このチャンネルにアクセスする権限がありません' })
   })
 
   it('canAccessFile は別ワークスペースのファイルを拒否する', async () => {
     const { canAccessFile } = await import('./permissions')
 
-    await expect(canAccessFile('ws-1', 'user-1', {
-      id: 'file-1',
-      workspaceId: 'ws-2',
-      projectId: null,
-      uploadedBy: 'user-2',
-    })).resolves.toBe(false)
-  })
-
-  it('canAccessFile はアップロード者本人を許可する', async () => {
-    const { canAccessFile } = await import('./permissions')
-
-    await expect(canAccessFile('ws-1', 'user-1', {
-      id: 'file-1',
-      workspaceId: 'ws-1',
-      projectId: null,
-      uploadedBy: 'user-1',
-    })).resolves.toBe(true)
-  })
-
-  it('canAccessFile は project 未参加の guest を拒否する', async () => {
-    mockDb.select
-      .mockReturnValueOnce(selectResult([{ role: 'guest' }]))
-      .mockReturnValueOnce(selectResult([]))
-    mockDb.selectDistinct.mockReturnValueOnce(selectDistinctResult([]))
-
-    const { canAccessFile } = await import('./permissions')
-
-    await expect(canAccessFile('ws-1', 'guest-1', {
-      id: 'file-1',
-      workspaceId: 'ws-1',
-      projectId: 'project-1',
-      uploadedBy: 'owner-1',
-    })).resolves.toBe(false)
-  })
-
-  it('canAccessFile はアクセス可能な channel の message attachment を許可する', async () => {
-    mockDb.select
-      .mockReturnValueOnce(selectResult([{ role: 'member' }]))
-      .mockReturnValueOnce(selectResult([{
-        isPrivate: false,
-        type: 'public',
+    await expect(
+      canAccessFile('ws-1', 'user-1', {
+        id: 'file-1',
+        workspaceId: 'ws-2',
         projectId: null,
-        effectiveWorkspaceId: 'ws-1',
-      }]))
-    mockDb.selectDistinct.mockReturnValueOnce(selectDistinctResult([{ channelId: 'channel-1' }]))
+        uploadedBy: 'user-2',
+      }),
+    ).resolves.toBe(false)
+  })
 
+  it('canAccessFile はアップロード者本人を常に許可する', async () => {
     const { canAccessFile } = await import('./permissions')
 
-    await expect(canAccessFile('ws-1', 'member-1', {
-      id: 'file-1',
-      workspaceId: 'ws-1',
-      projectId: null,
-      uploadedBy: 'owner-1',
-    })).resolves.toBe(true)
+    await expect(
+      canAccessFile('ws-1', 'user-1', {
+        id: 'file-1',
+        workspaceId: 'ws-1',
+        projectId: 'project-1',
+        uploadedBy: 'user-1',
+      }),
+    ).resolves.toBe(true)
+  })
+
+  it('canAccessFile は guest が参加外プロジェクトのファイルへアクセスできない', async () => {
+    pushResults([{ role: 'guest' }], [], [])
+    const { canAccessFile } = await import('./permissions')
+
+    await expect(
+      canAccessFile('ws-1', 'guest-1', {
+        id: 'file-1',
+        workspaceId: 'ws-1',
+        projectId: 'project-1',
+        uploadedBy: 'user-2',
+      }),
+    ).resolves.toBe(false)
+  })
+
+  it('canAccessFile はアクセス可能なチャンネルの添付ファイルを許可する', async () => {
+    pushResults(
+      [{ role: 'member' }],
+      [{ channelId: 'private-1' }],
+      [{ id: 'private-1', isPrivate: true, type: 'channel', projectId: null, effectiveWorkspaceId: 'ws-1' }],
+      [{ channelId: 'private-1' }],
+    )
+    const { canAccessFile } = await import('./permissions')
+
+    await expect(
+      canAccessFile('ws-1', 'member-1', {
+        id: 'file-1',
+        workspaceId: 'ws-1',
+        projectId: null,
+        uploadedBy: 'user-2',
+      }),
+    ).resolves.toBe(true)
   })
 })
