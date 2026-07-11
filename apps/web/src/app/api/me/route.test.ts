@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ANONYMIZED_MEMBER_DISPLAY_NAME } from '@/lib/anonymized-member'
 
 const { DEV_USER_ID, DEV_WORKSPACE_ID, mockGetAuthContext, mockDb, workspaceMembers, profiles } = vi.hoisted(() => {
   const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
@@ -118,5 +119,16 @@ describe('PATCH /api/me', () => {
     }))
 
     expect(res.status).toBe(409)
+  })
+
+  it('予約済みの匿名化表示名は 422 を返す', async () => {
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request('http://localhost/api/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ displayName: ANONYMIZED_MEMBER_DISPLAY_NAME }),
+      headers: { 'content-type': 'application/json' },
+    }))
+
+    expect(res.status).toBe(422)
   })
 })

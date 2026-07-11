@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { patchMeSchema } from '@cairn/shared'
+import { ANONYMIZED_MEMBER_DISPLAY_NAME } from '@/lib/anonymized-member'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { UserStatus } from '@/lib/user-status'
@@ -87,6 +88,10 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
   const b = parsed.data
+
+  if (b.displayName !== undefined && b.displayName.trim() === ANONYMIZED_MEMBER_DISPLAY_NAME) {
+    return NextResponse.json({ error: '退会したユーザー は予約済みの表示名です' }, { status: 422 })
+  }
 
   const hasBio = 'bio' in b
   const hasStatusMessage = 'statusMessage' in b
