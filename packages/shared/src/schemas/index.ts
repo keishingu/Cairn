@@ -43,6 +43,13 @@ export const createPollSchema = z.object({
   anonymous: z.boolean().default(false),
 })
 
+export const votePollSchema = z.object({
+  optionIds: z.array(z.string().uuid()).max(10),
+}).refine(
+  data => new Set(data.optionIds).size === data.optionIds.length,
+  { message: '同じ選択肢を重複して送れません' },
+)
+
 export const editMessageSchema = z.object({
   content: z.string().min(1).max(10000),
 })
@@ -134,6 +141,7 @@ export type CreateTaskInput = z.infer<typeof createTaskSchema>
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>
 export type UploadGalleryItemInput = z.infer<typeof uploadGalleryItemSchema>
 export type CreatePollInput = z.infer<typeof createPollSchema>
+export type VotePollInput = z.infer<typeof votePollSchema>
 export type PatchProjectInput = z.infer<typeof patchProjectSchema>
 export type PatchWorkspaceInput = z.infer<typeof patchWorkspaceSchema>
 export type PatchMeInput = z.infer<typeof patchMeSchema>

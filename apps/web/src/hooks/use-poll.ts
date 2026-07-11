@@ -28,6 +28,20 @@ async function createPoll(input: CreatePollInput): Promise<PollCreateResponseDto
   return res.json()
 }
 
+async function votePoll(id: string, optionIds: string[]): Promise<{ id: string; optionIds: string[] }> {
+  const res = await fetchWithAuth(`/api/polls/${id}/vote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ optionIds }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string | { formErrors?: string[] } }
+    if (typeof data.error === 'string') throw new Error(data.error)
+    throw new Error('投票の更新に失敗しました')
+  }
+  return res.json()
+}
+
 export function usePoll(id: string | null) {
   return useQuery({
     queryKey: pollQueryKeys.detail(id),
@@ -54,12 +68,37 @@ export function useCreatePoll(channelId: string | null) {
         anonymous: created.anonymous,
         createdBy: '',
         createdAt: created.createdAt,
+        selectedOptionIds: [],
         options: created.options.map((option) => ({
           ...option,
           voteCount: 0,
           voters: [],
         })),
       })
+    },
+  })
+}
+
+export function useVotePoll(id: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (optionIds: string[]) => votePoll(id!, optionIds),
+    onSuccess: (updated) => {
+      const detailKeys = [pollQueryKeys.detail(id), pollQueryKeys.detail(updated.id)]
+      const seenIds = new Set<string>()
+
+      for (const queryKey of detailKeys) {
+        const cacheId = queryKey[1]
+        if (!cacheId || seenIds.has(cacheId)) continue
+        seenIds.add(cacheId)
+
+        queryClient.setQueryData<PollDetailDto>(
+          queryKey,
+          prev => prev ? { ...prev, selectedOptionIds: updated.optionIds } : prev,
+        )
+        void queryClient.invalidateQueries({ queryKey })
+      }
     },
   })
 }

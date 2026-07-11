@@ -4,15 +4,25 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 type SubscribeCallback = (status: 'SUBSCRIBED' | 'CHANNEL_ERROR' | 'TIMED_OUT' | 'CLOSED', err?: { message?: string }) => void
+type BroadcastHandler = (message: { payload?: unknown }) => void
 
 const { channelRecords, mockCreateClient } = vi.hoisted(() => {
-  const channelRecords: Array<{ topic: string; callback?: SubscribeCallback }> = []
+  const channelRecords: Array<{ topic: string; callback?: SubscribeCallback; broadcastHandler?: BroadcastHandler }> = []
   const mockCreateClient = vi.fn(() => ({
     channel: vi.fn((topic: string) => {
-      const record: { topic: string; callback?: SubscribeCallback } = { topic }
+      const record: { topic: string; callback?: SubscribeCallback; broadcastHandler?: BroadcastHandler } = { topic }
       channelRecords.push(record)
       return {
-        on: vi.fn().mockReturnThis(),
+        on: vi.fn((_type: string, _filter: unknown, handler: BroadcastHandler) => {
+          record.broadcastHandler = handler
+          return {
+            on: vi.fn().mockReturnThis(),
+            subscribe: vi.fn((callback: SubscribeCallback) => {
+              record.callback = callback
+              return record
+            }),
+          }
+        }),
         subscribe: vi.fn((callback: SubscribeCallback) => {
           record.callback = callback
           return record
@@ -41,7 +51,7 @@ vi.mock('@/lib/chat/client', () => ({
     messages: (id: string) => ['messages', id],
   },
   useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Tester' } }),
-  useProjectChannels: () => ({ data: [] }),
+  useProjectChannels: () => ({ data: [{ channelId: 'channel-1' }] }),
   useWorkspaceChannels: () => ({ data: [] }),
   useWorkspaceDms: () => ({ data: [] }),
 }))
@@ -51,7 +61,9 @@ function renderProvider() {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
 
-  return render(
+  return {
+    queryClient,
+    ...render(
     <QueryClientProvider client={queryClient}>
       <React.Suspense fallback={null}>
         <RealtimeProvider>
@@ -59,7 +71,8 @@ function renderProvider() {
         </RealtimeProvider>
       </React.Suspense>
     </QueryClientProvider>,
-  )
+    ),
+  }
 }
 
 import { RealtimeProvider } from './realtime-provider'
@@ -172,5 +185,27 @@ describe('RealtimeProvider', () => {
     })
 
     expect(channelRecords).toHaveLength(2)
+  })
+
+  it('poll_votes の broadcast を受けたら poll query を無効化する', async () => {
+    const { queryClient } = renderProvider()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(channelRecords).toHaveLength(2)
+    channelRecords[1]?.broadcastHandler?.({ payload: { table: 'poll_votes' } })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['poll'] })
   })
 })

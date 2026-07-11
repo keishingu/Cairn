@@ -171,6 +171,7 @@ describe('GET /api/polls/[id]', () => {
       anonymous: true,
       createdBy: USER_ID,
       createdAt: '2026-07-08T18:00:00.000Z',
+      selectedOptionIds: ['option-1'],
       options: [
         {
           id: 'option-1',
@@ -230,6 +231,7 @@ describe('GET /api/polls/[id]', () => {
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual(
       expect.objectContaining({
+        selectedOptionIds: ['option-1'],
         options: [
           {
             id: 'option-1',

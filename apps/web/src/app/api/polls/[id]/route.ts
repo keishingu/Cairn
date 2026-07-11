@@ -25,6 +25,7 @@ export interface PollDetailDto {
   anonymous: boolean
   createdBy: string
   createdAt: string
+  selectedOptionIds: string[]
   options: PollOptionDto[]
 }
 
@@ -116,6 +117,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
       anonymous: poll.anonymous,
       createdBy: poll.createdBy,
       createdAt: poll.createdAt.toISOString(),
+      selectedOptionIds: votes
+        .filter((vote) => vote.userId === ctx.userId)
+        .map((vote) => vote.optionId),
       options: options.map((option) => {
         const optionVotes = votes.filter((v) => v.optionId === option.id)
         return {
