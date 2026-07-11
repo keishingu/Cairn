@@ -111,6 +111,18 @@ vi.mock('@/lib/use-workspace-settings', () => ({
   useProjectLabel: () => '予定',
 }))
 
+const mockUseWorkspacePermissions = vi.fn(() => ({
+  wsRole: 'owner',
+  isOwner: true,
+  isAdmin: true,
+  isMember: true,
+  isGuest: false,
+}))
+
+vi.mock('@/hooks/use-current-user', () => ({
+  useWorkspacePermissions: () => mockUseWorkspacePermissions(),
+}))
+
 vi.mock('@/lib/command-registry', () => ({
   useCommand: vi.fn(),
 }))
@@ -132,6 +144,14 @@ function makeQueryClient() {
 describe('PageKanban (モバイル)', () => {
   beforeEach(() => {
     mockFetchWithAuth.mockReset()
+    mockUseWorkspacePermissions.mockReset()
+    mockUseWorkspacePermissions.mockReturnValue({
+      wsRole: 'owner',
+      isOwner: true,
+      isAdmin: true,
+      isMember: true,
+      isGuest: false,
+    })
     mockFetchWithAuth.mockImplementation(async (url: string) => {
       if (url === '/api/projects' || url === '/api/projects/statuses') {
         return new Response(JSON.stringify([]), { status: 200 })
@@ -164,6 +184,29 @@ describe('PageKanban (モバイル)', () => {
 
     expect(openPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'created-project' }))
     expect(queryClient.getQueryData<ProjectDto[]>(['projects'])).toHaveLength(1)
+  })
+
+  it('管理者以外には新規ボタンを表示しない', async () => {
+    mockUseWorkspacePermissions.mockReturnValue({
+      wsRole: 'member',
+      isOwner: false,
+      isAdmin: false,
+      isMember: true,
+      isGuest: false,
+    })
+
+    render(
+      <QueryClientProvider client={makeQueryClient()}>
+        <PageKanban isMobile openPanel={() => {}} />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(mockFetchWithAuth).toHaveBeenCalledWith('/api/projects')
+      expect(mockFetchWithAuth).toHaveBeenCalledWith('/api/projects/statuses')
+    })
+
+    expect(screen.queryByRole('button', { name: '新規予定' })).not.toBeInTheDocument()
   })
 })
 

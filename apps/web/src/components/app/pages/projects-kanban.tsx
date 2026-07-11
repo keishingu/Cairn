@@ -9,6 +9,7 @@ import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { PageToolbar } from './page-toolbar'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
@@ -24,10 +25,13 @@ interface PageKanbanProps {
 export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => {
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
+  const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const [showCreate, setShowCreate] = React.useState(false)
 
   // ⌥N: 新規プロジェクト / ⌥F: フィルタトグル
-  useCommand('ctx.create', () => setShowCreate(true))
+  useCommand('ctx.create', () => {
+    if (canCreateProject) setShowCreate(true)
+  })
   useCommand('ctx.filter', () => setFilterOpen(o => !o))
 
   const [filterOpen, setFilterOpen] = React.useState(false)
@@ -89,25 +93,27 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
         <MobileHeader
           title="カンバン"
           right={(
-            <button
-              type="button"
-              onClick={() => setShowCreate(true)}
-              aria-label={`新規${projectLabel}`}
-              style={{
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--accent)',
-                cursor: 'pointer',
-                padding: 4,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 8,
-                flexShrink: 0,
-              }}
-            >
-              <Icon name="plus" size={20} strokeWidth={2.4} />
-            </button>
+            canCreateProject ? (
+              <button
+                type="button"
+                onClick={() => setShowCreate(true)}
+                aria-label={`新規${projectLabel}`}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--accent)',
+                  cursor: 'pointer',
+                  padding: 4,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 8,
+                  flexShrink: 0,
+                }}
+              >
+                <Icon name="plus" size={20} strokeWidth={2.4} />
+              </button>
+            ) : undefined
           )}
         />
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
