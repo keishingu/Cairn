@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { PlacePhoto } from '@/app/api/places/photos/route'
+import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { LocationInput } from '../location-input'
@@ -12,6 +13,7 @@ import { LocationInput } from '../location-input'
 async function createProject(body: {
   title: string
   description?: string | undefined
+  statusId?: string | undefined
   startDate?: string | undefined
   endDate?: string | undefined
   coverPhotoUrl?: string | undefined
@@ -27,6 +29,12 @@ async function createProject(body: {
   })
   if (!res.ok) throw new Error('プロジェクトの作成に失敗しました')
   return res.json() as Promise<ProjectDto>
+}
+
+async function fetchStatuses(): Promise<ProjectStatusDto[]> {
+  const res = await fetchWithAuth('/api/projects/statuses')
+  if (!res.ok) throw new Error('ステータスの取得に失敗しました')
+  return res.json() as Promise<ProjectStatusDto[]>
 }
 
 async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
@@ -64,6 +72,7 @@ interface CreateProjectSheetProps {
 
 export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', initialEndDate = '' }: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
+  const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
   const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members', 'active'], queryFn: fetchWorkspaceMembers })
 
   const [title, setTitle] = React.useState('')
@@ -115,6 +124,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
     mutation.mutate({
       title: title.trim(),
       description: description.trim() || undefined,
+      statusId: statuses[0]?.id,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       location: location.trim() || undefined,

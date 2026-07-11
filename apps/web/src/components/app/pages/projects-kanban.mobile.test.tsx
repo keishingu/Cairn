@@ -4,7 +4,7 @@
 import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { PageKanban } from './projects-kanban'
@@ -28,36 +28,44 @@ vi.mock('../mobile/create-project-sheet', () => ({
   }: {
     onClose: () => void
     onCreated: (project: ProjectDto) => void
-  }) => (
-    <div data-testid="create-project-sheet">
-      <button
-        type="button"
-        onClick={() => onCreated({
-          id: 'created-project',
-          title: '新規予定',
-          description: null,
-          statusName: null,
-          statusColor: null,
-          startDate: null,
-          endDate: null,
-          memberCount: 0,
-          memberNames: [],
-          memberAvatarUrls: [],
-          taskCount: 0,
-          completedTaskCount: 0,
-          isOwner: true,
-          isMember: true,
-          archived: false,
-          coverPhotoIdx: 0,
-          coverPhotoUrl: null,
-          location: null,
-          placeId: null,
-        })}
-      >
-        作成完了
-      </button>
-    </div>
-  ),
+  }) => {
+    const queryClient = useQueryClient()
+    const project: ProjectDto = {
+      id: 'created-project',
+      title: '新規予定',
+      description: null,
+      statusName: 'Inbox',
+      statusColor: null,
+      startDate: null,
+      endDate: null,
+      memberCount: 0,
+      memberNames: [],
+      memberAvatarUrls: [],
+      taskCount: 0,
+      completedTaskCount: 0,
+      isOwner: true,
+      isMember: true,
+      archived: false,
+      coverPhotoIdx: 0,
+      coverPhotoUrl: null,
+      location: null,
+      placeId: null,
+    }
+
+    return (
+      <div data-testid="create-project-sheet">
+        <button
+          type="button"
+          onClick={() => {
+            queryClient.setQueryData<ProjectDto[]>(['projects'], old => [project, ...(old ?? [])])
+            onCreated(project)
+          }}
+        >
+          作成完了
+        </button>
+      </div>
+    )
+  },
 }))
 
 vi.mock('@/lib/use-workspace-settings', () => ({
@@ -116,5 +124,6 @@ describe('PageKanban (モバイル)', () => {
     await user.click(screen.getByRole('button', { name: '作成完了' }))
 
     expect(openPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'created-project' }))
+    expect(queryClient.getQueryData<ProjectDto[]>(['projects'])).toHaveLength(1)
   })
 })
