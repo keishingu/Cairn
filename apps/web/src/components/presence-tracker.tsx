@@ -15,6 +15,7 @@ const ACTIVITY_THROTTLE_MS = 5_000
 
 interface PresenceSession {
   lastActiveAt: number
+  lastSeenAt: number
 }
 
 type PresenceSessionMap = Record<string, PresenceSession>
@@ -36,7 +37,12 @@ export function parsePresenceSessions(raw: string | null): PresenceSessionMap {
         && typeof (value as PresenceSession).lastActiveAt === 'number'
         && Number.isFinite((value as PresenceSession).lastActiveAt)
       ) {
-        sessions[key] = { lastActiveAt: (value as PresenceSession).lastActiveAt }
+        const lastActiveAt = (value as PresenceSession).lastActiveAt
+        const lastSeenAt = typeof (value as PresenceSession).lastSeenAt === 'number'
+          && Number.isFinite((value as PresenceSession).lastSeenAt)
+          ? (value as PresenceSession).lastSeenAt
+          : lastActiveAt
+        sessions[key] = { lastActiveAt, lastSeenAt }
       }
     }
     return sessions
@@ -47,7 +53,7 @@ export function parsePresenceSessions(raw: string | null): PresenceSessionMap {
 
 export function prunePresenceSessions(sessions: PresenceSessionMap, now: number): PresenceSessionMap {
   return Object.fromEntries(
-    Object.entries(sessions).filter(([, session]) => now - session.lastActiveAt <= STALE_MS),
+    Object.entries(sessions).filter(([, session]) => now - session.lastSeenAt <= STALE_MS),
   )
 }
 
@@ -70,8 +76,10 @@ export function updatePresenceSessions(
   }
 
   const previousLastActiveAt = next[sessionId]?.lastActiveAt
+  const previousLastSeenAt = next[sessionId]?.lastSeenAt
   next[sessionId] = {
     lastActiveAt: options?.preserveActivity && previousLastActiveAt !== undefined ? previousLastActiveAt : now,
+    lastSeenAt: options?.preserveActivity && previousLastSeenAt !== undefined ? now : now,
   }
   return next
 }
@@ -168,7 +176,11 @@ export function PresenceTracker() {
       void flushStatus(derivePresenceStatus(readSessions(), Date.now()))
     }
 
-    void syncPresence({ hidden: document.hidden, keepalive: document.hidden })
+    void syncPresence({
+      hidden: document.hidden,
+      keepalive: document.hidden,
+      preserveActivity: !document.hidden,
+    })
 
     const heartbeat = window.setInterval(() => {
       void syncPresence({ hidden: document.hidden, preserveActivity: !document.hidden })

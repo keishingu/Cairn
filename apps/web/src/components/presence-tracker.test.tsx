@@ -24,11 +24,12 @@ const BASE_USER: CurrentUserDto = {
 function renderTracker(me: CurrentUserDto) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   queryClient.setQueryData(['me'], me)
-  return render(
+  const rendered = render(
     <QueryClientProvider client={queryClient}>
       <PresenceTracker />
     </QueryClientProvider>,
   )
+  return { ...rendered, queryClient }
 }
 
 function setDocumentHidden(hidden: boolean) {
@@ -48,20 +49,20 @@ describe('presence helpers', () => {
     const now = 120_000
     const sessions = prunePresenceSessions(
       {
-        active: { lastActiveAt: now - 5_000 },
-        idle: { lastActiveAt: now - 70_000 },
-        stale: { lastActiveAt: now - 80_000 },
+        active: { lastActiveAt: now - 5_000, lastSeenAt: now - 5_000 },
+        idle: { lastActiveAt: now - 70_000, lastSeenAt: now - 70_000 },
+        stale: { lastActiveAt: now - 80_000, lastSeenAt: now - 80_000 },
       },
       now,
     )
 
     expect(sessions).toEqual({
-      active: { lastActiveAt: now - 5_000 },
-      idle: { lastActiveAt: now - 70_000 },
+      active: { lastActiveAt: now - 5_000, lastSeenAt: now - 5_000 },
+      idle: { lastActiveAt: now - 70_000, lastSeenAt: now - 70_000 },
     })
     expect(derivePresenceStatus(sessions, now)).toBe('online')
-    expect(derivePresenceStatus({ idle: { lastActiveAt: now - 70_000 } }, now)).toBe('away')
-    expect(derivePresenceStatus({ stale: { lastActiveAt: now - 80_000 } }, now)).toBe('offline')
+    expect(derivePresenceStatus({ idle: { lastActiveAt: now - 70_000, lastSeenAt: now - 70_000 } }, now)).toBe('away')
+    expect(derivePresenceStatus({ stale: { lastActiveAt: now - 80_000, lastSeenAt: now - 80_000 } }, now)).toBe('offline')
   })
 
   it('heartbeat 中は最終活動時刻を維持して idle 遷移を邪魔しない', () => {
@@ -69,15 +70,32 @@ describe('presence helpers', () => {
     expect(
       updatePresenceSessions(
         {
-          self: { lastActiveAt: now - 70_000 },
+          self: { lastActiveAt: now - 70_000, lastSeenAt: now - 10_000 },
         },
         'self',
         now,
         { preserveActivity: true },
       ),
     ).toEqual({
-      self: { lastActiveAt: now - 70_000 },
+      self: { lastActiveAt: now - 70_000, lastSeenAt: now },
     })
+  })
+
+  it('heartbeat で lastSeenAt を更新して visible session を stale 扱いしない', () => {
+    const now = 120_000
+    const sessions = updatePresenceSessions(
+      {
+        self: { lastActiveAt: now - 70_000, lastSeenAt: now - 70_000 },
+      },
+      'self',
+      now,
+      { preserveActivity: true },
+    )
+
+    expect(prunePresenceSessions(sessions, now + 15_000)).toEqual({
+      self: { lastActiveAt: now - 70_000, lastSeenAt: now },
+    })
+    expect(derivePresenceStatus(sessions, now)).toBe('away')
   })
 })
 
@@ -91,6 +109,7 @@ describe('PresenceTracker', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it('表示中に offline から online へ更新する', async () => {
@@ -133,5 +152,42 @@ describe('PresenceTracker', () => {
     })
 
     expect(mockFetchWithAuth).not.toHaveBeenCalled()
+  })
+
+  it('status 更新で effect が再実行されても idle session を online に戻さない', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(80_000)
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue('test-session')
+    window.localStorage.setItem('cairn-presence-sessions', JSON.stringify({
+      'test-session': {
+        lastActiveAt: 10_000,
+        lastSeenAt: 80_000,
+      },
+    }))
+    renderTracker({ ...BASE_USER, status: 'online' })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(mockFetchWithAuth).toHaveBeenCalledTimes(1)
+    expect(mockFetchWithAuth).toHaveBeenCalledWith(
+      '/api/me',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'away' }),
+      }),
+    )
+
+    expect(mockFetchWithAuth).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(window.localStorage.getItem('cairn-presence-sessions') || '{}')).toMatchObject({
+      'test-session': {
+        lastActiveAt: 10_000,
+        lastSeenAt: expect.any(Number),
+      },
+    })
   })
 })
