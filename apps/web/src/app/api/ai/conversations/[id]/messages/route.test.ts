@@ -16,7 +16,7 @@ const { mockGetAuthContext } = vi.hoisted(() => ({
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/ai/chat-rate-limit', () => ({
-  enforceAiChatRateLimit: vi.fn(() => ({
+  enforceAiChatRateLimit: vi.fn(async () => ({
     allowed: true,
     limit: 12,
     remaining: 11,
@@ -84,7 +84,7 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
 
   it('rate limit 超過時は 429 を返す', async () => {
     const { enforceAiChatRateLimit } = await import('@/lib/ai/chat-rate-limit')
-    vi.mocked(enforceAiChatRateLimit).mockReturnValueOnce({
+    vi.mocked(enforceAiChatRateLimit).mockResolvedValueOnce({
       allowed: false,
       limit: 12,
       remaining: 0,

@@ -125,7 +125,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     )
   }
 
-  const rateLimitResult = enforceAiChatRateLimit(ctx.workspaceId, ctx.userId)
+  const rateLimitResult = await enforceAiChatRateLimit(ctx.workspaceId, ctx.userId)
   if (!rateLimitResult.allowed) {
     return NextResponse.json(
       { error: 'AIチャットの送信回数が上限に達しました。少し待ってから再試行してください。' },

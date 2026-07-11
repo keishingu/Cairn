@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { aiScopeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
@@ -52,3 +52,23 @@ export const aiMessages = pgTable('ai_messages', {
   toolInvocations: jsonb('tool_invocations').$type<unknown[]>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+export const aiChatRateLimits = pgTable(
+  'ai_chat_rate_limits',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    requestCount: integer('request_count').notNull().default(0),
+    windowStartedAt: timestamp('window_started_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.workspaceId, t.userId),
+    index('idx_ai_chat_rate_limits_updated_at').on(t.updatedAt),
+  ],
+)
