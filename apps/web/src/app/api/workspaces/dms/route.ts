@@ -23,7 +23,7 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { channels, channelMembers, profiles, workspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray, ne } = await import('drizzle-orm')
 
     // 自分が参加している DM チャンネル ID を取得
@@ -42,12 +42,11 @@ export async function GET() {
       })
       .from(channels)
       .innerJoin(channelMembers, eq(channelMembers.channelId, channels.id))
-      .innerJoin(activeWorkspaceMembers, and(
-        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
-        eq(activeWorkspaceMembers.userId, channelMembers.userId),
-      ))
       .innerJoin(profiles, eq(profiles.id, channelMembers.userId))
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .innerJoin(workspaceMembers, and(
+        eq(workspaceMembers.userId, profiles.id),
+        eq(workspaceMembers.workspaceId, ctx.workspaceId),
+      ))
       .where(
         and(
           eq(channels.workspaceId, ctx.workspaceId),

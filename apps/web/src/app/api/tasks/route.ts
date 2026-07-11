@@ -130,7 +130,7 @@ export async function POST(req: Request) {
         .limit(1)
 
       if (!activeAssignee) {
-        return NextResponse.json({ error: '指定された担当者はワークスペースのメンバーではありません' }, { status: 422 })
+        return NextResponse.json({ error: '非活性ユーザーにはタスクを割り当てできません' }, { status: 422 })
       }
     }
 
@@ -161,7 +161,10 @@ export async function POST(req: Request) {
             avatarUrl: workspaceMembers.avatarUrl,
           })
           .from(profiles)
-          .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+          .leftJoin(workspaceMembers, and(
+            eq(workspaceMembers.userId, profiles.id),
+            eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          ))
           .where(eq(profiles.id, inserted.assigneeId)))[0]
       : null
 

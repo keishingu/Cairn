@@ -317,6 +317,22 @@ export const onTaskAssigned = inngest.createFunction(
     const { taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
       event.data as TaskAssignedEvent['data']
 
+    const isActiveAssignee = await step.run('check-active-assignee', async () => {
+      const { db, activeWorkspaceMembers } = await import('@cairn/db')
+      const { and, eq } = await import('drizzle-orm')
+      const [membership] = await db
+        .select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
+        .where(and(
+          eq(activeWorkspaceMembers.workspaceId, workspaceId),
+          eq(activeWorkspaceMembers.userId, assigneeId),
+        ))
+        .limit(1)
+      return !!membership
+    })
+
+    if (!isActiveAssignee) return { notified: null, skipped: 'inactive-assignee' }
+
     await step.run('create-task-notification', async () => {
       const { db, notifications } = await import('@cairn/db')
       await db.insert(notifications).values({
