@@ -225,7 +225,7 @@ describe('GET /api/workspaces/members', () => {
     }])
   })
 
-  it('匿名化済みの inactive メンバーは email を返さない', async () => {
+  it('匿名化済みメンバーは active でも email を返さない', async () => {
     mockGetWorkspaceMemberRole.mockResolvedValue('admin')
     mockDb.select
       .mockReturnValueOnce(chain([]))
@@ -234,7 +234,7 @@ describe('GET /api/workspaces/members', () => {
         displayName: '退会したユーザー',
         avatarUrl: null,
         role: 'member',
-        membershipStatus: 'inactive',
+        membershipStatus: 'active',
         joinedAt: new Date('2026-01-03T00:00:00.000Z'),
         projectCount: 0,
       }]))
@@ -254,7 +254,7 @@ describe('GET /api/workspaces/members', () => {
       email: null,
       avatarUrl: null,
       role: 'member',
-      membershipStatus: 'inactive',
+      membershipStatus: 'active',
       joinedAt: '2026-01-03',
       projectCount: 0,
     }])

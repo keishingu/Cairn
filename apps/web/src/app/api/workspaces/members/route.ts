@@ -108,10 +108,7 @@ export async function GET(req: Request) {
     const result: WorkspaceMemberDto[] = rows.map(r => ({
       userId: r.userId,
       displayName: r.displayName,
-      email:
-        r.membershipStatus === 'inactive' && r.displayName === ANONYMIZED_MEMBER_DISPLAY_NAME
-          ? null
-          : (emails.get(r.userId) ?? null),
+      email: r.displayName === ANONYMIZED_MEMBER_DISPLAY_NAME ? null : (emails.get(r.userId) ?? null),
       avatarUrl: r.avatarUrl ?? null,
       role: r.role,
       membershipStatus: r.membershipStatus,
