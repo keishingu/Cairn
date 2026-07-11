@@ -19,6 +19,7 @@ export const STORAGE_KEYS = {
   calendar_status_filter:    'cairn:calendar_status_filter',
   calendar_member_filter:    'cairn:calendar_member_filter',
   calendar_gcal_hidden:      'cairn:calendar_gcal_hidden',
+  calendar_milestones_visible: 'cairn:calendar_milestones_visible',
   kanban_status_filter:      'cairn:kanban_status_filter',
   kanban_member_filter:      'cairn:kanban_member_filter',
   kanban_scope:              'cairn:kanban_scope',
@@ -26,6 +27,7 @@ export const STORAGE_KEYS = {
   projects_list_view:        'cairn:projects_list_view',
   projects_table_sort:       'cairn:projects_table_sort',
   chat_archived_collapsed:   'cairn:chat_archived_collapsed',
+  chat_completed_milestones_collapsed: 'cairn:chat_completed_milestones_collapsed',
   chat_last_channel_id:      'cairn:chat_last_channel_id',
 } as const
 

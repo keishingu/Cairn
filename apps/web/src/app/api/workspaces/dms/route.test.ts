@@ -35,6 +35,10 @@ vi.mock('@cairn/db', () => ({
     avatarUrl: 'workspaceMembers.avatarUrl',
     membershipStatus: 'workspaceMembers.membershipStatus',
   },
+  activeWorkspaceMembers: {
+    userId: 'activeWorkspaceMembers.userId',
+    workspaceId: 'activeWorkspaceMembers.workspaceId',
+  },
 }))
 vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),

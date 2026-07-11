@@ -45,6 +45,10 @@ vi.mock('@cairn/db', () => ({
     userId: 'wm.userId',
     role: 'wm.role',
   },
+  activeWorkspaceMembers: {
+    workspaceId: 'awm.workspaceId',
+    userId: 'awm.userId',
+  },
   channels: {
     workspaceId: 'ch.workspaceId',
     type: 'ch.type',

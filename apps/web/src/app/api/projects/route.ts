@@ -41,15 +41,15 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers, tasks, profiles, workspaceMembers } = await import('@cairn/db')
+    const { projects, projectStatuses, projectMembers, tasks, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, count, and, inArray } = await import('drizzle-orm')
     const { sql } = await import('drizzle-orm')
 
-    // ゲストは参加中のプロジェクトのみ参照可能
+    // ゲストは参加中のプロジェクトのみ参照可能（active membership のロールで判定）
     const [wsMember] = await db
-      .select({ role: workspaceMembers.role })
-      .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, ctx.userId)))
+      .select({ role: activeWorkspaceMembers.role })
+      .from(activeWorkspaceMembers)
+      .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), eq(activeWorkspaceMembers.userId, ctx.userId)))
       .limit(1)
 
     const isGuest = wsMember?.role === 'guest'
@@ -90,24 +90,48 @@ export async function GET() {
     visibleProjectIds = rows.map(r => r.id)
     if (visibleProjectIds.length === 0) return NextResponse.json([])
 
-    const counts = await db
-      .select({ projectId: projectMembers.projectId, n: count() })
-      .from(projectMembers)
-      .where(inArray(projectMembers.projectId, visibleProjectIds))
-      .groupBy(projectMembers.projectId)
+    const [counts, memberRows, userMemberRows, taskRows] = await Promise.all([
+      db
+        .select({ projectId: projectMembers.projectId, n: count() })
+        .from(projectMembers)
+        .innerJoin(activeWorkspaceMembers, and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, projectMembers.userId),
+        ))
+        .where(inArray(projectMembers.projectId, visibleProjectIds))
+        .groupBy(projectMembers.projectId),
+      db
+        .select({
+          projectId: projectMembers.projectId,
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+          avatarUrl: workspaceMembers.avatarUrl,
+        })
+        .from(projectMembers)
+        .innerJoin(activeWorkspaceMembers, and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, projectMembers.userId),
+        ))
+        .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+        .where(inArray(projectMembers.projectId, visibleProjectIds))
+        .orderBy(projectMembers.createdAt),
+      db
+        .select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .where(eq(projectMembers.userId, ctx.userId)),
+      db
+        .select({
+          projectId: tasks.projectId,
+          total: count(),
+          completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
+        })
+        .from(tasks)
+        .where(inArray(tasks.projectId, visibleProjectIds))
+        .groupBy(tasks.projectId),
+    ])
+
     const countMap = new Map(counts.map(r => [r.projectId, Number(r.n)]))
 
-    const memberRows = await db
-      .select({
-        projectId: projectMembers.projectId,
-        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
-        avatarUrl: workspaceMembers.avatarUrl,
-      })
-      .from(projectMembers)
-      .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-      .where(inArray(projectMembers.projectId, visibleProjectIds))
-      .orderBy(projectMembers.createdAt)
     const memberNamesMap = new Map<string, string[]>()
     const memberAvatarUrlsMap = new Map<string, (string | null)[]>()
     for (const row of memberRows) {
@@ -121,21 +145,7 @@ export async function GET() {
       memberAvatarUrlsMap.set(row.projectId, avatarUrls)
     }
 
-    const userMemberRows = await db
-      .select({ projectId: projectMembers.projectId })
-      .from(projectMembers)
-      .where(eq(projectMembers.userId, ctx.userId))
     const userProjectIds = new Set(userMemberRows.map(r => r.projectId))
-
-    const taskRows = await db
-      .select({
-        projectId: tasks.projectId,
-        total: count(),
-        completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
-      })
-      .from(tasks)
-      .where(inArray(tasks.projectId, visibleProjectIds))
-      .groupBy(tasks.projectId)
     const taskMap = new Map(taskRows.map(r => [r.projectId, { total: Number(r.total), completed: Number(r.completed) }]))
 
     const result: ProjectDto[] = rows.map(r => ({
@@ -188,15 +198,16 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, channels, projectStatuses, projectMembers, workspaceMembers, profiles } = await import('@cairn/db')
+    const { projects, channels, projectStatuses, projectMembers, workspaceMembers, activeWorkspaceMembers, profiles } = await import('@cairn/db')
     const { eq, and, inArray } = await import('drizzle-orm')
     const selectedMemberIds = [...new Set(parsed.data.memberUserIds ?? [])]
 
     if (selectedMemberIds.length > 0) {
+      // 新規プロジェクトに追加できるのは active メンバーのみ
       const wsRows = await db
-        .select({ userId: workspaceMembers.userId })
-        .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, selectedMemberIds)))
+        .select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
+        .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), inArray(activeWorkspaceMembers.userId, selectedMemberIds)))
 
       if (wsRows.length !== selectedMemberIds.length) {
         return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })
@@ -206,38 +217,8 @@ export async function POST(req: Request) {
     let coverPhotoUrl = parsed.data.coverPhotoUrl ?? null
 
     if (parsed.data.placePhotoName && !coverPhotoUrl) {
-      const apiKey = process.env['GOOGLE_MAPS_API_KEY']
-      if (apiKey) {
-        try {
-          const mediaRes = await fetch(
-            `https://places.googleapis.com/v1/${parsed.data.placePhotoName}/media?maxWidthPx=1200&skipHttpRedirect=true&key=${apiKey}`,
-          )
-          if (mediaRes.ok) {
-            const media = await mediaRes.json() as { photoUri?: string }
-            if (media.photoUri) {
-              const imgRes = await fetch(media.photoUri)
-              if (imgRes.ok) {
-                const buffer = await imgRes.arrayBuffer()
-                const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
-                const ext = contentType.includes('png') ? 'png' : 'jpg'
-                const slug = parsed.data.placePhotoName.split('/').join('_')
-                const storagePath = `place-photos/${slug}.${ext}`
-                const { createServiceRoleClient } = await import('@/lib/supabase/service')
-                const supabase = createServiceRoleClient()
-                const { error: uploadError } = await supabase.storage
-                  .from('covers')
-                  .upload(storagePath, buffer, { contentType, upsert: false })
-                if (!uploadError || uploadError.message.toLowerCase().includes('already exist')) {
-                  const { data: { publicUrl } } = supabase.storage.from('covers').getPublicUrl(storagePath)
-                  coverPhotoUrl = publicUrl
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[/api/projects POST] place photo upload failed (skipped):', e)
-        }
-      }
+      const { fetchAndStoreCoverFromPlace } = await import('@/lib/cover-photo')
+      coverPhotoUrl = await fetchAndStoreCoverFromPlace(parsed.data.placePhotoName)
     }
 
     const [inserted] = await db

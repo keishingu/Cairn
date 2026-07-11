@@ -1,15 +1,15 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar, Fab } from '../primitives'
 import type { TaskDto } from '@/app/api/tasks/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { CreateTaskModal } from './create-task-modal'
 import { TaskEditDialog } from '../task-edit-dialog'
 import { RowActionMenu } from '../row-action-menu'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
+import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
+import { useTasks, useToggleTaskStatus } from '@/hooks/use-tasks'
 
 type FilterKey = 'all' | 'todo' | 'in_progress' | 'done'
 
@@ -56,6 +56,7 @@ interface TaskRowProps {
 const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowProps) => {
   const due = formatDueDate(task.dueDate)
   const isDone = task.status === 'done'
+  const displayTitle = formatTaskTitleForDisplay(task.title)
 
   return (
     <div
@@ -90,7 +91,7 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
           color: isDone ? 'var(--text-3)' : 'var(--text)',
           textDecoration: isDone ? 'line-through' : 'none',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{task.title}</div>
+        }}>{displayTitle}</div>
         <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{task.projectTitle}</div>
       </div>
 
@@ -196,7 +197,6 @@ const Section = ({ label, count, tasks, onToggle, onEdit, togglingId, open, onTo
 // ─── PageTasks ────────────────────────────────────────────────────
 
 export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
-  const queryClient = useQueryClient()
   const [filter, setFilter] = React.useState<FilterKey>('all')
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
   const [showAddModal, setShowAddModal] = React.useState(false)
@@ -208,43 +208,18 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   // ⌥N: 新規タスク
   useCommand('ctx.create', () => setShowAddModal(true))
 
-  const { data: tasks = [], isLoading } = useQuery<TaskDto[]>({
-    queryKey: ['tasks'],
-    queryFn: () => fetchWithAuth('/api/tasks').then(r => r.json()),
-  })
-
-  const toggleMutation = useMutation({
-    mutationFn: async ({ id, newStatus }: { id: string; newStatus: TaskDto['status'] }) => {
-      const res = await fetchWithAuth(`/api/tasks/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      })
-      if (!res.ok) throw new Error('Failed to update task')
-    },
-    onMutate: async ({ id, newStatus }) => {
-      setTogglingId(id)
-      await queryClient.cancelQueries({ queryKey: ['tasks'] })
-      const prev = queryClient.getQueryData<TaskDto[]>(['tasks'])
-      queryClient.setQueryData<TaskDto[]>(
-        ['tasks'],
-        old => old?.map(t => t.id === id ? { ...t, status: newStatus } : t) ?? [],
-      )
-      return { prev }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(['tasks'], ctx.prev)
-    },
-    onSettled: () => {
-      setTogglingId(null)
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-    },
-  })
+  const { data: tasks = [], isLoading } = useTasks()
+  const toggleMutation = useToggleTaskStatus()
 
   const handleToggle = (id: string, current: TaskDto['status']) => {
     const newStatus: TaskDto['status'] = current === 'done' ? 'todo' : 'done'
+    setTogglingId(id)
     toggleMutation.mutate({ id, newStatus })
   }
+
+  React.useEffect(() => {
+    if (!toggleMutation.isPending) setTogglingId(null)
+  }, [toggleMutation.isPending])
 
   const openEditor = (task: TaskDto, mode: 'edit' | 'delete' = 'edit') => {
     setDialogMode(mode)

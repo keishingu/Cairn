@@ -6,6 +6,7 @@ import { ConfirmDialog } from './confirm-dialog'
 import { TaskDialog } from './task-dialog'
 import { TaskFormFields } from './task-form-fields'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import type { TaskDto } from '@/app/api/tasks/route'
 
 interface TaskEditDialogProps {
@@ -137,7 +138,7 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
       <ConfirmDialog
         open={confirmDelete}
         title="タスクを削除しますか？"
-        message={`「${task.title}」を削除します。この操作は元に戻せません。`}
+        message={`「${formatTaskTitleForDisplay(task.title)}」を削除します。この操作は元に戻せません。`}
         onClose={handleDeleteDialogClose}
         onConfirm={async () => { await deleteMutation.mutateAsync() }}
       />

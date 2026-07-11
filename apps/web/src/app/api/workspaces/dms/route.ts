@@ -43,7 +43,10 @@ export async function GET() {
       .from(channels)
       .innerJoin(channelMembers, eq(channelMembers.channelId, channels.id))
       .innerJoin(profiles, eq(profiles.id, channelMembers.userId))
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .innerJoin(workspaceMembers, and(
+        eq(workspaceMembers.userId, profiles.id),
+        eq(workspaceMembers.workspaceId, ctx.workspaceId),
+      ))
       .where(
         and(
           eq(channels.workspaceId, ctx.workspaceId),
@@ -106,21 +109,20 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, channelReadStates, workspaceMembers } = await import('@cairn/db')
+    const { channels, channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray, sql } = await import('drizzle-orm')
 
-    const [targetMembership] = await db
-      .select({ userId: workspaceMembers.userId })
-      .from(workspaceMembers)
+    const [targetMember] = await db
+      .select({ userId: activeWorkspaceMembers.userId })
+      .from(activeWorkspaceMembers)
       .where(and(
-        eq(workspaceMembers.workspaceId, ctx.workspaceId),
-        eq(workspaceMembers.userId, targetUserId),
-        eq(workspaceMembers.membershipStatus, 'active'),
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, targetUserId),
       ))
       .limit(1)
 
-    if (!targetMembership) {
-      return NextResponse.json({ error: '非活性ユーザーとは DM を開始できません' }, { status: 422 })
+    if (!targetMember) {
+      return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
     }
 
     // 既存の DM チャンネルを探す（両者が参加している）
