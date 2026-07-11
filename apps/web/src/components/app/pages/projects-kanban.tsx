@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import { KanbanBoard } from '../kanban'
 import { MobileHeader } from '@/components/app/mobile/header'
@@ -22,6 +22,7 @@ interface PageKanbanProps {
 }
 
 export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => {
+  const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const [showCreate, setShowCreate] = React.useState(false)
 
@@ -63,7 +64,8 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
     [projects],
   )
 
-  const handleCreated = () => {
+  const handleCreated = (project: ProjectDto) => {
+    queryClient.setQueryData<ProjectDto[]>(['projects'], prev => [project, ...(prev ?? [])])
     setShowCreate(false)
   }
 

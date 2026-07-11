@@ -74,6 +74,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
   const queryClient = useQueryClient()
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
   const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members', 'active'], queryFn: fetchWorkspaceMembers })
+  const defaultStatusId = statuses[0]?.id ?? null
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
@@ -119,12 +120,16 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
     } else {
       setEndDateError('')
     }
+    if (!defaultStatusId) {
+      setTitleError('ステータスの取得後に作成してください')
+      hasError = true
+    }
     if (hasError) return
 
     mutation.mutate({
       title: title.trim(),
       description: description.trim() || undefined,
-      statusId: statuses[0]?.id,
+      statusId: defaultStatusId,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       location: location.trim() || undefined,
@@ -440,14 +445,14 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
           </button>
           <button
             onClick={handleSubmit}
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || !defaultStatusId}
             style={{
               flex: 2, height: 46, borderRadius: 12,
               border: 'none',
-              background: mutation.isPending ? 'var(--card-2)' : 'var(--accent)',
-              color: mutation.isPending ? 'var(--text-4)' : 'var(--on-accent)',
+              background: (mutation.isPending || !defaultStatusId) ? 'var(--card-2)' : 'var(--accent)',
+              color: (mutation.isPending || !defaultStatusId) ? 'var(--text-4)' : 'var(--on-accent)',
               fontSize: 15, fontWeight: 700,
-              cursor: mutation.isPending ? 'not-allowed' : 'pointer',
+              cursor: (mutation.isPending || !defaultStatusId) ? 'not-allowed' : 'pointer',
               fontFamily: 'inherit', transition: 'background 0.15s',
             }}
           >

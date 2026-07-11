@@ -68,6 +68,45 @@ vi.mock('../mobile/create-project-sheet', () => ({
   },
 }))
 
+vi.mock('./create-project-modal', () => ({
+  CreateProjectModal: ({
+    onCreated,
+  }: {
+    onClose: () => void
+    onCreated: (project: ProjectDto) => void
+  }) => {
+    const project: ProjectDto = {
+      id: 'desktop-created-project',
+      title: 'デスクトップ予定',
+      description: null,
+      statusName: 'Inbox',
+      statusColor: null,
+      startDate: null,
+      endDate: null,
+      memberCount: 0,
+      memberNames: [],
+      memberAvatarUrls: [],
+      taskCount: 0,
+      completedTaskCount: 0,
+      isOwner: true,
+      isMember: true,
+      archived: false,
+      coverPhotoIdx: 0,
+      coverPhotoUrl: null,
+      location: null,
+      placeId: null,
+    }
+
+    return (
+      <div data-testid="create-project-modal">
+        <button type="button" onClick={() => onCreated(project)}>
+          デスクトップ作成完了
+        </button>
+      </div>
+    )
+  },
+}))
+
 vi.mock('@/lib/use-workspace-settings', () => ({
   useProjectLabel: () => '予定',
 }))
@@ -125,5 +164,42 @@ describe('PageKanban (モバイル)', () => {
 
     expect(openPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'created-project' }))
     expect(queryClient.getQueryData<ProjectDto[]>(['projects'])).toHaveLength(1)
+  })
+})
+
+describe('PageKanban (デスクトップ)', () => {
+  beforeEach(() => {
+    mockFetchWithAuth.mockReset()
+    mockFetchWithAuth.mockImplementation(async (url: string) => {
+      if (url === '/api/projects' || url === '/api/projects/statuses') {
+        return new Response(JSON.stringify([]), { status: 200 })
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+  })
+
+  it('モーダル作成後に projects キャッシュへ即時反映する', async () => {
+    const user = userEvent.setup()
+    const queryClient = makeQueryClient()
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PageKanban openPanel={() => {}} />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(mockFetchWithAuth).toHaveBeenCalledWith('/api/projects')
+      expect(mockFetchWithAuth).toHaveBeenCalledWith('/api/projects/statuses')
+    })
+
+    await user.click(screen.getByRole('button', { name: '新規予定' }))
+    expect(await screen.findByTestId('create-project-modal')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'デスクトップ作成完了' }))
+
+    expect(queryClient.getQueryData<ProjectDto[]>(['projects'])).toEqual([
+      expect.objectContaining({ id: 'desktop-created-project' }),
+    ])
   })
 })
