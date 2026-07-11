@@ -220,6 +220,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             // 新着メッセージのたびに無効化して他クライアントのアップロードも反映する
             void queryClient.invalidateQueries({ queryKey: ['channel-files', id] })
             scheduleListInvalidate()
+          } else if (table === 'poll_votes') {
+            void queryClient.invalidateQueries({ queryKey: ['poll'] })
           } else if (table === 'message_reactions') {
             void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
           }
