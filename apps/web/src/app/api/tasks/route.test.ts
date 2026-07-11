@@ -36,6 +36,7 @@ vi.mock('@cairn/db', () => ({
   projects: {},
   profiles: { id: 'profiles.id', kind: 'profiles.kind' },
   workspaceMembers: { userId: 'workspaceMembers.userId', workspaceId: 'workspaceMembers.workspaceId' },
+  activeWorkspaceMembers: {},
 }))
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
