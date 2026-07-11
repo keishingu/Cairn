@@ -92,11 +92,13 @@ export async function GET(req: Request) {
         isGuest
           ? and(
               eq(workspaceMembers.workspaceId, ctx.workspaceId),
+              eq(profiles.kind, 'human'),
               inArray(workspaceMembers.userId, visibleUserIds),
               ...(activeOnly ? [eq(workspaceMembers.membershipStatus, 'active')] : []),
             )
           : and(
               eq(workspaceMembers.workspaceId, ctx.workspaceId),
+              eq(profiles.kind, 'human'),
               ...(activeOnly ? [eq(workspaceMembers.membershipStatus, 'active')] : []),
             ),
       )
