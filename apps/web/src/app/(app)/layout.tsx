@@ -4,6 +4,7 @@
 import { headers } from 'next/headers'
 import { PCShell } from './_shells/pc-shell'
 import { MobileShell } from './_shells/mobile-shell'
+import { PresenceTracker } from '@/components/presence-tracker'
 import { RealtimeProvider } from '@/components/realtime/realtime-provider'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -12,6 +13,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <RealtimeProvider>
+      <PresenceTracker />
       {isMobile ? <MobileShell /> : <PCShell>{children}</PCShell>}
     </RealtimeProvider>
   )

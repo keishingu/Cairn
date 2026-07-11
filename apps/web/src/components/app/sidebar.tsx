@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Icon, UnreadBadge } from './primitives'
 import { Avatar } from './primitives'
 import { useAppShell } from './app-shell-context'
+import { sendPresenceStatusUpdate } from '@/components/presence-tracker'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { createClient } from '@/lib/supabase/client'
 import type { UserStatus } from '@/lib/user-status'
@@ -570,6 +571,11 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   }, [menuOpen])
 
   async function handleLogout() {
+    try {
+      await sendPresenceStatusUpdate('offline', { keepalive: true })
+    } catch (error) {
+      console.warn('[Sidebar] failed to flush offline presence before logout', error)
+    }
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/auth/login')
