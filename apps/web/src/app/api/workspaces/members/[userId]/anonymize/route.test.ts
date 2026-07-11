@@ -264,9 +264,10 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
-    expect(mockDb.execute).toHaveBeenCalledTimes(7)
+    expect(mockDb.execute).toHaveBeenCalledTimes(8)
     expect(mockDb.execute.mock.calls.some(call => call[0]?.strings.join('').includes('delete from ai_conversations'))).toBe(true)
     expect(mockDb.execute.mock.calls.some(call => call[0]?.strings.join('').includes('delete from ai_messages'))).toBe(true)
+    expect(mockDb.execute.mock.calls.some(call => call[0]?.strings.join('').includes('update ai_conversations'))).toBe(true)
     expect(mockRemove).toHaveBeenCalledWith(['ws-1/user-2.png'])
     const body = await res.json() as { anonymized: boolean }
     expect(body.anonymized).toBe(true)
@@ -454,7 +455,7 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
-    expect(mockDb.execute).toHaveBeenCalledTimes(7)
+    expect(mockDb.execute).toHaveBeenCalledTimes(8)
     expect(mockDb.execute.mock.calls[1]?.[0]?.strings.join('')).toContain('delete from notifications')
     expect(mockDb.execute.mock.calls[1]?.[0]?.strings.join('')).toContain("type in ('dm', 'mention', 'file')")
     expect(mockDb.execute.mock.calls[1]?.[0]?.strings.join('')).toContain("type = 'task'")
@@ -469,6 +470,7 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     expect(mockDb.execute.mock.calls.filter(call => call[0]?.strings.join('').includes('delete from notifications')).length).toBeGreaterThanOrEqual(2)
     expect(mockDb.execute.mock.calls.some(call => call[0]?.strings.join('').includes('delete from ai_conversations'))).toBe(true)
     expect(mockDb.execute.mock.calls.some(call => call[0]?.strings.join('').includes('delete from ai_messages'))).toBe(true)
+    expect(mockDb.execute.mock.calls.some(call => call[0]?.strings.join('').includes('update ai_conversations'))).toBe(true)
   })
 
   it('同一 workspace の owner 匿名化でも row lock 順が安定する', async () => {

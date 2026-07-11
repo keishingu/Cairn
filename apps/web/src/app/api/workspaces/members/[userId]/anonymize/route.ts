@@ -122,6 +122,7 @@ async function prepareAnonymization(
 
   const membershipRows = await tx
     .select({
+      workspaceId: workspaceMembers.workspaceId,
       avatarUrl: workspaceMembers.avatarUrl,
       displayName: workspaceMembers.displayName,
     })
@@ -137,6 +138,7 @@ async function prepareAnonymization(
   return {
     ok: true as const,
     avatarPaths,
+    membershipRows: membershipRows as MembershipSnapshot[],
     legacyDisplayNames: uniqueNonEmpty(membershipRows.map(row => row.displayName)),
   }
 }
@@ -225,6 +227,9 @@ async function scrubAiConversationArtifacts(
     or coalesce(ai_messages.annotations::text, '') like ${pattern} escape '\'
     or coalesce(ai_messages.tool_invocations::text, '') like ${pattern} escape '\'
   `)
+  const titlePatternClauses = patterns.map(pattern => sql`
+    coalesce(ai_conversations.title, '') like ${pattern} escape '\'
+  `)
 
   await tx.execute(sql`
     delete from ai_messages
@@ -232,6 +237,13 @@ async function scrubAiConversationArtifacts(
     where ai_messages.conversation_id = ai_conversations.id
       and ai_conversations.workspace_id in (${workspaceIdList})
       and (${sql.join(patternClauses, sql` or `)})
+  `)
+
+  await tx.execute(sql`
+    update ai_conversations
+    set title = null
+    where workspace_id in (${workspaceIdList})
+      and (${sql.join(titlePatternClauses, sql` or `)})
   `)
 }
 
@@ -333,6 +345,30 @@ async function removeAvatarPaths(paths: string[]) {
   }
 }
 
+async function restoreAvatarUrls(
+  targetUserId: string,
+  memberships: MembershipSnapshot[],
+  workspaceMembers: typeof import('@cairn/db').workspaceMembers,
+  and: typeof import('drizzle-orm').and,
+  eq: typeof import('drizzle-orm').eq,
+) {
+  const rowsToRestore = memberships.filter((membership): membership is MembershipSnapshot & { avatarUrl: string } => Boolean(membership.avatarUrl))
+  if (rowsToRestore.length === 0) return
+
+  const { db } = await import('@cairn/db')
+  await db.transaction(async (tx) => {
+    for (const membership of rowsToRestore) {
+      await tx
+        .update(workspaceMembers)
+        .set({ avatarUrl: membership.avatarUrl })
+        .where(and(
+          eq(workspaceMembers.workspaceId, membership.workspaceId),
+          eq(workspaceMembers.userId, targetUserId),
+        ))
+    }
+  })
+}
+
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ userId: string }> },
@@ -351,7 +387,7 @@ export async function POST(
     }
 
     const now = new Date()
-    const avatarPaths = await db.transaction(async (tx) => {
+    const { avatarPaths, avatarRestoreRows } = await db.transaction(async (tx) => {
       const prepared = await prepareAnonymization(
         tx,
         ctx.workspaceId,
@@ -452,10 +488,13 @@ export async function POST(
           { documentChunks, projectMembers, projects, profiles, workspaceMembers },
           { and, eq, inArray, sql },
         )
-        return allAvatarPaths
+        return { avatarPaths: allAvatarPaths, avatarRestoreRows: membershipRows }
       }
 
-      return prepared.avatarPaths
+      return {
+        avatarPaths: prepared.avatarPaths,
+        avatarRestoreRows: prepared.membershipRows,
+      }
     })
 
     await db.transaction(async (tx) => {
@@ -463,7 +502,12 @@ export async function POST(
       await scrubStoredNotifications(tx, ctx.workspaceId, targetUserId, sql)
     })
 
-    await removeAvatarPaths(avatarPaths)
+    try {
+      await removeAvatarPaths(avatarPaths)
+    } catch (removeError) {
+      await restoreAvatarUrls(targetUserId, avatarRestoreRows, workspaceMembers, and, eq)
+      throw removeError
+    }
 
     clearWorkspaceCacheForUser(targetUserId)
 
