@@ -72,9 +72,11 @@ interface CreateProjectSheetProps {
 
 export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', initialEndDate = '' }: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
-  const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
+  const statusesQuery = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
+  const statuses = statusesQuery.data ?? []
   const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members', 'active'], queryFn: fetchWorkspaceMembers })
   const defaultStatusId = statuses[0]?.id
+  const waitingForStatuses = statusesQuery.isPending
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
@@ -120,7 +122,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
     } else {
       setEndDateError('')
     }
-    if (!defaultStatusId) {
+    if (waitingForStatuses) {
       setTitleError('ステータスの取得後に作成してください')
       hasError = true
     }
@@ -445,14 +447,14 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
           </button>
           <button
             onClick={handleSubmit}
-            disabled={mutation.isPending || !defaultStatusId}
+            disabled={mutation.isPending || waitingForStatuses}
             style={{
               flex: 2, height: 46, borderRadius: 12,
               border: 'none',
-              background: (mutation.isPending || !defaultStatusId) ? 'var(--card-2)' : 'var(--accent)',
-              color: (mutation.isPending || !defaultStatusId) ? 'var(--text-4)' : 'var(--on-accent)',
+              background: (mutation.isPending || waitingForStatuses) ? 'var(--card-2)' : 'var(--accent)',
+              color: (mutation.isPending || waitingForStatuses) ? 'var(--text-4)' : 'var(--on-accent)',
               fontSize: 15, fontWeight: 700,
-              cursor: (mutation.isPending || !defaultStatusId) ? 'not-allowed' : 'pointer',
+              cursor: (mutation.isPending || waitingForStatuses) ? 'not-allowed' : 'pointer',
               fontFamily: 'inherit', transition: 'background 0.15s',
             }}
           >

@@ -152,4 +152,53 @@ describe('CreateProjectSheet', () => {
       expect(onCreated).toHaveBeenCalled()
     })
   })
+
+  it('ステータスが 0 件でも statusId なしで作成できる', async () => {
+    const user = userEvent.setup()
+    const queryClient = makeQueryClient()
+    const onCreated = vi.fn()
+
+    mockFetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/projects/statuses') {
+        return new Response(JSON.stringify([]), { status: 200 })
+      }
+
+      if (input === '/api/workspaces/members?status=active') {
+        return new Response(JSON.stringify([]), { status: 200 })
+      }
+
+      if (input === '/api/projects' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: 'project-1' }), { status: 200 })
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`)
+    })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <CreateProjectSheet onClose={() => {}} onCreated={onCreated} />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(mockFetchWithAuth).toHaveBeenCalledWith('/api/projects/statuses', undefined)
+    })
+
+    await user.type(screen.getByPlaceholderText('例: 新規顧客向け導入プロジェクト'), '新規予定')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '作成する' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: '作成する' }))
+
+    await waitFor(() => {
+      expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 'project-1' }))
+    })
+
+    const postCall = mockFetchWithAuth.mock.calls.find(([input, init]) => input === '/api/projects' && init?.method === 'POST')
+    expect(postCall).toBeTruthy()
+    expect(JSON.parse(String(postCall?.[1]?.body))).toEqual(
+      expect.objectContaining({ title: '新規予定' }),
+    )
+    expect(JSON.parse(String(postCall?.[1]?.body))).not.toHaveProperty('statusId')
+  })
 })
