@@ -144,6 +144,7 @@ export async function postMessage({ channelId, payload, userId, workspaceId }: P
       .select({
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
+        senderKind: profiles.kind,
       })
       .from(profiles)
       .leftJoin(
@@ -182,6 +183,7 @@ export async function postMessage({ channelId, payload, userId, workspaceId }: P
         senderId: inserted.senderId,
         senderName,
         senderAvatarUrl: profile?.avatarUrl ?? null,
+        senderKind: profile?.senderKind ?? 'human',
         createdAt: inserted.createdAt.toISOString(),
         isEdited: false,
         reactions: [],
