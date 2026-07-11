@@ -140,4 +140,12 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(res.headers.get('Content-Type')).toBe('text/plain; charset=utf-8')
     expect(await res.text()).toBe('line 1\nline 2')
   })
+
+  it('download=1 のときは attachment で返す', async () => {
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/attachments/file-1?download=1'), routeParams())
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Disposition')).toBe('attachment; filename="file.pdf"')
+  })
 })

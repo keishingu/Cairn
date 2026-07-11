@@ -29,9 +29,11 @@ export async function GET(req: Request, { params }: RouteContext) {
   if (error) return error
 
   const { fileId } = await params
+  const requestUrl = new URL(req.url)
 
   // 一覧アイコン・チャットのサムネは ?thumb=1 で縮小版を要求する
-  const wantThumb = new URL(req.url).searchParams.get('thumb') === '1'
+  const wantThumb = requestUrl.searchParams.get('thumb') === '1'
+  const forceDownload = requestUrl.searchParams.get('download') === '1'
 
   try {
     const { db, files } = await import('@cairn/db')
@@ -90,7 +92,7 @@ export async function GET(req: Request, { params }: RouteContext) {
     return new NextResponse(data, {
       headers: {
         'Content-Type': servedThumb ? 'image/jpeg' : resolveResponseContentType(file.fileName, file.mimeType),
-        'Content-Disposition': `inline; filename="${encodeURIComponent(file.fileName)}"`,
+        'Content-Disposition': `${forceDownload ? 'attachment' : 'inline'}; filename="${encodeURIComponent(file.fileName)}"`,
         'Cache-Control': 'private, max-age=3600',
       },
     })

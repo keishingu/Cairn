@@ -66,6 +66,10 @@ function getAttachmentHref(file: ProjectFileDto): string {
   return file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`
 }
 
+function getDownloadHref(file: ProjectFileDto): string {
+  return file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}?download=1`
+}
+
 export const FilesTab = ({ projectId, channelId }: { projectId: string; channelId: string | null }) => {
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
@@ -197,6 +201,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
         const isLink = f.fileType === 'link'
         const linkHref = getAttachmentHref(f)
+        const downloadHref = getDownloadHref(f)
         const isImage = isImageFile(f)
 
         return (
@@ -237,7 +242,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
                   : [{
                       icon: 'download',
                       label: 'ダウンロード',
-                      onSelect: () => window.open(linkHref, '_blank', 'noopener,noreferrer'),
+                      onSelect: () => window.open(downloadHref, '_blank', 'noopener,noreferrer'),
                     }]),
                 f.isLatest
                   ? { icon: 'star', label: '最新版を解除', onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }

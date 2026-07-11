@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
@@ -82,6 +82,7 @@ describe('ファイル一覧ページ', () => {
     })
 
     vi.stubGlobal('IntersectionObserver', createIntersectionObserverStub())
+    vi.stubGlobal('open', vi.fn())
   })
 
   it('txtファイルをプレーンテキストとしてプレビューする', async () => {
@@ -103,5 +104,21 @@ describe('ファイル一覧ページ', () => {
 
     expect(screen.getByRole('button', { name: 'プレビュー' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'ダウンロード' })).toBeInTheDocument()
+  })
+
+  it('ダウンロード操作は attachment モードのURLを開く', async () => {
+    renderPageFiles()
+
+    await screen.findByText('notes.txt')
+    await userEvent.click(screen.getByTitle('操作'))
+    await userEvent.click(screen.getByRole('button', { name: 'ダウンロード' }))
+
+    await waitFor(() => {
+      expect(window.open).toHaveBeenCalledWith(
+        '/api/attachments/file-1?download=1',
+        '_blank',
+        'noopener,noreferrer',
+      )
+    })
   })
 })

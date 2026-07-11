@@ -79,6 +79,10 @@ function getAttachmentHref(file: FileDto): string {
   return file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`
 }
 
+function getDownloadHref(file: FileDto): string {
+  return file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}?download=1`
+}
+
 function openFileFromMenu(
   file: FileDto,
   onImageClick: (id: string) => void,
@@ -131,6 +135,7 @@ const FileRow = ({
   const isImage = isImageFile(file)
   const isPreviewableText = isPreviewableTextFile(file)
   const fileHref = getAttachmentHref(file)
+  const downloadHref = getDownloadHref(file)
   const openActionLabel = file.fileType === 'link'
     ? 'リンクを開く'
     : isImage || isPreviewableText
@@ -229,7 +234,7 @@ const FileRow = ({
             ? [{
                 icon: 'download',
                 label: 'ダウンロード',
-                onSelect: () => window.open(fileHref, '_blank', 'noopener,noreferrer'),
+                onSelect: () => window.open(downloadHref, '_blank', 'noopener,noreferrer'),
               }]
             : []),
           ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
