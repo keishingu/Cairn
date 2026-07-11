@@ -1,6 +1,6 @@
 import React from 'react'
 import { Icon } from '../primitives'
-import { usePoll } from '@/hooks/use-poll'
+import { usePoll, useVotePoll } from '@/hooks/use-poll'
 
 export const PollCard = ({
   messageId,
@@ -12,9 +12,26 @@ export const PollCard = ({
   compact?: boolean
 }) => {
   const { data, isLoading, isError } = usePoll(messageId)
+  const voteMutation = useVotePoll(messageId)
   const poll = data ?? null
   const title = poll?.question ?? fallbackQuestion
   const totalVotes = poll?.options.reduce((sum, option) => sum + option.voteCount, 0) ?? 0
+  const selectedOptionIds = poll?.selectedOptionIds ?? []
+
+  const handleToggle = React.useCallback((optionId: string) => {
+    if (!poll || voteMutation.isPending) return
+
+    const alreadySelected = selectedOptionIds.includes(optionId)
+    const nextOptionIds = poll.allowMultiple
+      ? (
+          alreadySelected
+            ? selectedOptionIds.filter((id) => id !== optionId)
+            : [...selectedOptionIds, optionId]
+        )
+      : (alreadySelected ? [] : [optionId])
+
+    voteMutation.mutate(nextOptionIds)
+  }, [poll, selectedOptionIds, voteMutation])
 
   return (
     <section
@@ -36,7 +53,6 @@ export const PollCard = ({
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
             <PollChip label={poll?.allowMultiple ? '複数選択' : '単一選択'} />
             <PollChip label={poll?.anonymous ? '匿名' : '記名'} />
-            <PollChip label="投票UIは次スライス" subtle />
           </div>
         </div>
       </div>
@@ -48,17 +64,44 @@ export const PollCard = ({
         ) : (
           <div style={{ display: 'grid', gap: 8 }}>
             {poll.options.map((option) => (
-              <div key={option.id} style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'var(--card)', padding: '10px 12px' }}>
+              <button
+                key={option.id}
+                type="button"
+                aria-pressed={selectedOptionIds.includes(option.id)}
+                disabled={voteMutation.isPending}
+                onClick={() => handleToggle(option.id)}
+                style={{
+                  border: '1px solid',
+                  borderColor: selectedOptionIds.includes(option.id) ? 'var(--accent)' : 'var(--border)',
+                  borderRadius: 10,
+                  background: selectedOptionIds.includes(option.id) ? 'var(--accent-soft)' : 'var(--card)',
+                  padding: '10px 12px',
+                  textAlign: 'left',
+                  cursor: voteMutation.isPending ? 'progress' : 'pointer',
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{ fontSize: compact ? 12.5 : 13, color: 'var(--text-2)', fontWeight: 500 }}>{option.text}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <span style={{ width: 18, height: 18, borderRadius: 999, border: '1px solid var(--border)', background: selectedOptionIds.includes(option.id) ? 'var(--accent)' : 'transparent', color: selectedOptionIds.includes(option.id) ? '#fff' : 'var(--text-4)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {selectedOptionIds.includes(option.id) ? <Icon name="check" size={11} /> : null}
+                    </span>
+                    <span style={{ fontSize: compact ? 12.5 : 13, color: 'var(--text-2)', fontWeight: 500 }}>{option.text}</span>
+                  </span>
                   <span style={{ fontSize: 11.5, color: 'var(--text-4)', flexShrink: 0 }}>{option.voteCount}票</span>
                 </div>
                 <div style={{ marginTop: 8, height: 6, borderRadius: 999, background: 'var(--card-2)', overflow: 'hidden' }}>
                   <div style={{ width: totalVotes > 0 ? `${(option.voteCount / totalVotes) * 100}%` : '0%', height: '100%', background: 'var(--accent)' }} />
                 </div>
-              </div>
+                {!poll.anonymous && option.voters.length > 0 ? (
+                  <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--text-4)' }}>
+                    {option.voters.map((voter) => voter.displayName).join(' / ')}
+                  </div>
+                ) : null}
+              </button>
             ))}
-            <div style={{ fontSize: 11.5, color: 'var(--text-4)' }}>投票・取消は次のスライスで有効化されます。</div>
+            <div style={{ fontSize: 11.5, color: voteMutation.isError ? 'var(--red-text)' : 'var(--text-4)' }}>
+              {voteMutation.isError ? '投票の更新に失敗しました' : 'もう一度押すと投票を取り消せます。'}
+            </div>
           </div>
         )}
       </div>
