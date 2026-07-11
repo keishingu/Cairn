@@ -17,6 +17,7 @@ const {
   mockDbTransaction,
   mockEq,
   mockAnd,
+  mockOr,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -24,6 +25,7 @@ const {
   mockDbTransaction: vi.fn(),
   mockEq: vi.fn(() => Symbol('eq')),
   mockAnd: vi.fn(() => Symbol('and')),
+  mockOr: vi.fn(() => Symbol('or')),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -32,6 +34,14 @@ vi.mock('@/lib/get-auth-context', () => ({
 vi.mock('@/lib/permissions', () => ({
   requireChannelAccess: mockRequireChannelAccess,
 }))
+vi.mock('@cairn/shared', async () => {
+  const { z } = await import('zod')
+  return {
+    votePollSchema: z.object({
+      optionIds: z.array(z.string().uuid()),
+    }),
+  }
+})
 vi.mock('@cairn/db', () => ({
   db: {
     select: mockDbSelect,
@@ -41,6 +51,7 @@ vi.mock('@cairn/db', () => ({
     id: 'polls.id',
     channelId: 'polls.channelId',
     allowMultiple: 'polls.allowMultiple',
+    messageId: 'polls.messageId',
   },
   pollOptions: {
     id: 'pollOptions.id',
@@ -54,6 +65,7 @@ vi.mock('@cairn/db', () => ({
 vi.mock('drizzle-orm', () => ({
   eq: mockEq,
   and: mockAnd,
+  or: mockOr,
 }))
 
 function mockSelectResults(...results: unknown[]) {
@@ -103,7 +115,7 @@ describe('POST /api/polls/[id]/vote', () => {
 
   it('単一選択で複数 optionIds を送ると 422 を返す', async () => {
     mockSelectResults(
-      [{ id: 'poll-1', channelId: CHANNEL_ID, allowMultiple: false }],
+      [{ id: 'poll-1', channelId: CHANNEL_ID, allowMultiple: false, messageId: 'message-1' }],
     )
 
     const { POST } = await import('./route')
@@ -141,7 +153,7 @@ describe('POST /api/polls/[id]/vote', () => {
       return undefined
     })
     mockSelectResults(
-      [{ id: 'poll-1', channelId: CHANNEL_ID, allowMultiple: true }],
+      [{ id: 'poll-1', channelId: CHANNEL_ID, allowMultiple: true, messageId: 'message-1' }],
       [{ id: OPTION_ID_1 }, { id: OPTION_ID_2 }],
     )
 
@@ -165,7 +177,7 @@ describe('POST /api/polls/[id]/vote', () => {
 
   it('存在しない選択肢を含むと 422 を返す', async () => {
     mockSelectResults(
-      [{ id: 'poll-1', channelId: CHANNEL_ID, allowMultiple: true }],
+      [{ id: 'poll-1', channelId: CHANNEL_ID, allowMultiple: true, messageId: 'message-1' }],
       [{ id: OPTION_ID_1 }],
     )
 
@@ -179,5 +191,29 @@ describe('POST /api/polls/[id]/vote', () => {
     )
 
     expect(res.status).toBe(422)
+  })
+
+  it('messageId でも投票を更新できる', async () => {
+    mockSelectResults(
+      [{ id: 'poll-1', channelId: CHANNEL_ID, allowMultiple: true, messageId: 'message-1' }],
+      [{ id: OPTION_ID_1 }],
+    )
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('http://localhost/api/polls/message-1/vote', {
+        method: 'POST',
+        body: JSON.stringify({ optionIds: [OPTION_ID_1] }),
+      }),
+      routeParams('message-1'),
+    )
+
+    expect(res.status).toBe(200)
+    expect(mockEq).toHaveBeenCalledWith('polls.messageId', 'message-1')
+    expect(mockOr).toHaveBeenCalled()
+    await expect(res.json()).resolves.toEqual({
+      id: 'poll-1',
+      optionIds: [OPTION_ID_1],
+    })
   })
 })

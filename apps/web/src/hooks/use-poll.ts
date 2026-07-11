@@ -85,11 +85,20 @@ export function useVotePoll(id: string | null) {
   return useMutation({
     mutationFn: (optionIds: string[]) => votePoll(id!, optionIds),
     onSuccess: (updated) => {
-      queryClient.setQueryData<PollDetailDto>(
-        pollQueryKeys.detail(updated.id),
-        prev => prev ? { ...prev, selectedOptionIds: updated.optionIds } : prev,
-      )
-      void queryClient.invalidateQueries({ queryKey: pollQueryKeys.detail(updated.id) })
+      const detailKeys = [pollQueryKeys.detail(id), pollQueryKeys.detail(updated.id)]
+      const seenIds = new Set<string>()
+
+      for (const queryKey of detailKeys) {
+        const cacheId = queryKey[1]
+        if (!cacheId || seenIds.has(cacheId)) continue
+        seenIds.add(cacheId)
+
+        queryClient.setQueryData<PollDetailDto>(
+          queryKey,
+          prev => prev ? { ...prev, selectedOptionIds: updated.optionIds } : prev,
+        )
+        void queryClient.invalidateQueries({ queryKey })
+      }
     },
   })
 }

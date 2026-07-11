@@ -108,6 +108,18 @@ describe('useVotePoll', () => {
   it('投票更新後に selectedOptionIds を反映し、詳細を再取得する', async () => {
     const { wrapper, queryClient } = makeWrapper()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    queryClient.setQueryData(['poll', 'message-1'], {
+      id: 'poll-1',
+      channelId: 'channel-1',
+      messageId: 'message-1',
+      question: '来週どこ行く？',
+      allowMultiple: true,
+      anonymous: false,
+      createdBy: 'user-1',
+      createdAt: '2026-07-10T00:00:00.000Z',
+      selectedOptionIds: [],
+      options: [],
+    })
     queryClient.setQueryData(['poll', 'poll-1'], {
       id: 'poll-1',
       channelId: 'channel-1',
@@ -125,7 +137,7 @@ describe('useVotePoll', () => {
       optionIds: ['option-1', 'option-2'],
     }), { status: 200 }))
 
-    const { result } = renderHook(() => useVotePoll('poll-1'), { wrapper })
+    const { result } = renderHook(() => useVotePoll('message-1'), { wrapper })
 
     act(() => {
       result.current.mutate(['option-1', 'option-2'])
@@ -133,10 +145,12 @@ describe('useVotePoll', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/polls/poll-1/vote',
+      '/api/polls/message-1/vote',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ optionIds: ['option-1', 'option-2'] }) }),
     )
+    expect(queryClient.getQueryData<{ selectedOptionIds: string[] }>(['poll', 'message-1'])?.selectedOptionIds).toEqual(['option-1', 'option-2'])
     expect(queryClient.getQueryData<{ selectedOptionIds: string[] }>(['poll', 'poll-1'])?.selectedOptionIds).toEqual(['option-1', 'option-2'])
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['poll', 'message-1'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['poll', 'poll-1'] })
   })
 })

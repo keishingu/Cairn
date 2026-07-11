@@ -28,16 +28,17 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   try {
     const { db, pollOptions, polls, pollVotes } = await import('@cairn/db')
-    const { and, eq } = await import('drizzle-orm')
+    const { and, eq, or } = await import('drizzle-orm')
 
     const [poll] = await db
       .select({
         id: polls.id,
         channelId: polls.channelId,
         allowMultiple: polls.allowMultiple,
+        messageId: polls.messageId,
       })
       .from(polls)
-      .where(eq(polls.id, id))
+      .where(or(eq(polls.id, id), eq(polls.messageId, id)))
 
     if (!poll) {
       return NextResponse.json({ error: 'Poll not found' }, { status: 404 })
