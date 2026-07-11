@@ -16,6 +16,12 @@ type TxClient = {
   execute: typeof import('@cairn/db').db.execute
 }
 
+type MembershipSnapshot = {
+  workspaceId: string
+  avatarUrl: string | null
+  displayName: string | null
+}
+
 function extractAvatarPath(avatarUrl: string | null): string | null {
   if (!avatarUrl) return null
 
@@ -124,6 +130,10 @@ async function prepareAnonymization(
   return { ok: true as const, avatarPaths }
 }
 
+function uniqueNonEmpty(values: Array<string | null | undefined>) {
+  return [...new Set(values.map(value => value?.trim()).filter((value): value is string => Boolean(value)))]
+}
+
 async function scrubStoredNotifications(
   tx: TxClient,
   workspaceId: string,
@@ -179,6 +189,125 @@ async function scrubStoredNotifications(
         )
       )
   `)
+}
+
+async function scrubAiConversationArtifacts(
+  tx: TxClient,
+  workspaceIds: string[],
+  targetUserId: string,
+  patterns: string[],
+  sql: typeof import('drizzle-orm').sql,
+) {
+  if (workspaceIds.length === 0) return
+  const workspaceIdList = sql.join(workspaceIds.map(workspaceId => sql`${workspaceId}`), sql`, `)
+
+  await tx.execute(sql`
+    delete from ai_conversations
+    where workspace_id in (${workspaceIdList})
+      and created_by = ${targetUserId}
+  `)
+
+  if (patterns.length === 0) return
+
+  const patternClauses = patterns.map(pattern => sql`
+    ai_messages.content like ${pattern}
+    or coalesce(ai_messages.annotations::text, '') like ${pattern}
+    or coalesce(ai_messages.tool_invocations::text, '') like ${pattern}
+  `)
+
+  await tx.execute(sql`
+    delete from ai_messages
+    using ai_conversations
+    where ai_messages.conversation_id = ai_conversations.id
+      and ai_conversations.workspace_id in (${workspaceIdList})
+      and (${sql.join(patternClauses, sql` or `)})
+  `)
+}
+
+async function scrubAllWorkspaceArtifactsForFinalErasure(
+  tx: TxClient,
+  targetUserId: string,
+  workspaceIds: string[],
+  legacyDisplayNames: string[],
+  profileBio: string | null,
+  now: Date,
+  actorUserId: string,
+  tables: {
+    documentChunks: typeof import('@cairn/db').documentChunks
+    projectMembers: typeof import('@cairn/db').projectMembers
+    projects: typeof import('@cairn/db').projects
+    profiles: typeof import('@cairn/db').profiles
+    workspaceMembers: typeof import('@cairn/db').workspaceMembers
+  },
+  helpers: {
+    and: typeof import('drizzle-orm').and
+    eq: typeof import('drizzle-orm').eq
+    inArray: typeof import('drizzle-orm').inArray
+    sql: typeof import('drizzle-orm').sql
+  },
+) {
+  const { documentChunks, projectMembers, projects, profiles, workspaceMembers } = tables
+  const { and, eq, inArray, sql } = helpers
+
+  for (const workspaceId of workspaceIds) {
+    await scrubStoredNotifications(tx, workspaceId, targetUserId, sql)
+  }
+
+  await tx
+    .update(workspaceMembers)
+    .set({
+      displayName: ANONYMIZED_MEMBER_DISPLAY_NAME,
+      avatarUrl: null,
+      membershipStatus: 'inactive',
+      deactivatedAt: now,
+      deactivatedBy: actorUserId,
+      status: 'offline',
+      statusMessage: null,
+    })
+    .where(eq(workspaceMembers.userId, targetUserId))
+
+  await tx
+    .delete(documentChunks)
+    .where(and(
+      inArray(documentChunks.workspaceId, workspaceIds),
+      eq(documentChunks.sourceType, 'member'),
+      eq(documentChunks.sourceId, targetUserId),
+    ))
+
+  const affectedProjectRows = await tx
+    .select({ projectId: projectMembers.projectId })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(and(eq(projectMembers.userId, targetUserId), inArray(projects.workspaceId, workspaceIds)))
+  const affectedProjectIds = [...new Set(affectedProjectRows.map(row => row.projectId))]
+
+  if (affectedProjectIds.length > 0) {
+    await tx
+      .delete(documentChunks)
+      .where(and(
+        inArray(documentChunks.workspaceId, workspaceIds),
+        eq(documentChunks.sourceType, 'project'),
+        inArray(documentChunks.sourceId, affectedProjectIds),
+      ))
+  }
+
+  const aiPatterns = uniqueNonEmpty([
+    targetUserId,
+    profileBio,
+    ...legacyDisplayNames,
+  ]).map(value => `%${value}%`)
+
+  await scrubAiConversationArtifacts(tx, workspaceIds, targetUserId, aiPatterns, sql)
+
+  await tx
+    .update(profiles)
+    .set({
+      displayName: ANONYMIZED_MEMBER_DISPLAY_NAME,
+      bio: null,
+      icalToken: null,
+      updatedAt: now,
+    })
+    .where(eq(profiles.id, targetUserId))
 }
 
 async function removeAvatarPaths(paths: string[]) {
@@ -273,15 +402,46 @@ export async function POST(
       const activeMembershipCount = Number(activeMembershipRows[0]?.membershipCount ?? 0)
 
       if (activeMembershipCount === 0) {
-        await tx
-          .update(profiles)
-          .set({
-            displayName: ANONYMIZED_MEMBER_DISPLAY_NAME,
-            bio: null,
-            icalToken: null,
-            updatedAt: now,
+        const membershipRows = await tx
+          .select({
+            workspaceId: workspaceMembers.workspaceId,
+            avatarUrl: workspaceMembers.avatarUrl,
+            displayName: workspaceMembers.displayName,
           })
+          .from(workspaceMembers)
+          .where(eq(workspaceMembers.userId, targetUserId)) as MembershipSnapshot[]
+        const allWorkspaceIds = membershipRows.length > 0
+          ? [...new Set(membershipRows.map(row => row.workspaceId))]
+          : [ctx.workspaceId]
+        const allAvatarPaths = membershipRows.length > 0
+          ? [...new Set(
+              membershipRows
+                .map(row => extractAvatarPath(row.avatarUrl ?? null))
+                .filter((path): path is string => Boolean(path)),
+            )]
+          : prepared.avatarPaths
+        const [profileRow] = await tx
+          .select({ displayName: profiles.displayName, bio: profiles.bio })
+          .from(profiles)
           .where(eq(profiles.id, targetUserId))
+          .limit(1)
+        const legacyDisplayNames = uniqueNonEmpty([
+          profileRow?.displayName ?? null,
+          ...membershipRows.map(row => row.displayName),
+        ])
+
+        await scrubAllWorkspaceArtifactsForFinalErasure(
+          tx,
+          targetUserId,
+          allWorkspaceIds,
+          legacyDisplayNames,
+          profileRow?.bio ?? null,
+          now,
+          ctx.userId,
+          { documentChunks, projectMembers, projects, profiles, workspaceMembers },
+          { and, eq, inArray, sql },
+        )
+        return allAvatarPaths
       }
 
       return prepared.avatarPaths

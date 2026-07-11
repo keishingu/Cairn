@@ -113,7 +113,12 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
   inArray: vi.fn(() => 'inArray'),
   count: vi.fn(() => 'count'),
-  sql: vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values })),
+  sql: Object.assign(
+    vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values })),
+    {
+      join: (parts: unknown[], separator: unknown) => ({ parts, separator }),
+    },
+  ),
 }))
 
 function selectChain(result: unknown[]) {
@@ -156,6 +161,9 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     process.env['DATABASE_URL'] = 'postgresql://test'
     mockDb.transaction.mockImplementation(async (cb: (tx: typeof mockDb) => unknown) => cb(mockDb))
     mockDb.execute.mockResolvedValue(undefined)
+    mockDb.select.mockImplementation(() => selectChain([]))
+    mockDb.update.mockImplementation(() => updateChain())
+    mockDb.delete.mockImplementation(() => deleteChain())
   })
 
   afterEach(() => {
@@ -213,7 +221,9 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
-    expect(mockDb.execute).toHaveBeenCalledTimes(4)
+    expect(mockDb.execute).toHaveBeenCalledTimes(7)
+    expect(mockDb.execute.mock.calls.some(call => call[0]?.strings.join('').includes('delete from ai_conversations'))).toBe(true)
+    expect(mockDb.execute.mock.calls.some(call => call[0]?.strings.join('').includes('delete from ai_messages'))).toBe(true)
     expect(mockRemove).toHaveBeenCalledWith(['ws-1/user-2.png'])
     const body = await res.json() as { anonymized: boolean }
     expect(body.anonymized).toBe(true)
@@ -323,7 +333,7 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
-    expect(mockDb.execute).toHaveBeenCalledTimes(4)
+    expect(mockDb.execute).toHaveBeenCalledTimes(7)
     expect(mockDb.execute.mock.calls[1]?.[0]?.strings.join('')).toContain('delete from notifications')
     expect(mockDb.execute.mock.calls[1]?.[0]?.strings.join('')).toContain("type in ('dm', 'mention', 'file')")
     expect(mockDb.execute.mock.calls[1]?.[0]?.strings.join('')).toContain("type = 'task'")
@@ -335,7 +345,9 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     expect(mockDb.execute.mock.calls[1]?.[0]?.values).toContain(DEV_WORKSPACE_ID)
     expect(mockDb.execute.mock.calls[1]?.[0]?.values).toContain(OTHER_USER_ID)
     expect(mockDb.execute.mock.calls[1]?.[0]?.values).toContain(`%<@${OTHER_USER_ID}>%`)
-    expect(mockDb.execute.mock.calls[3]?.[0]?.strings.join('')).toContain('delete from notifications')
+    expect(mockDb.execute.mock.calls.filter(call => call[0]?.strings.join('').includes('delete from notifications')).length).toBeGreaterThanOrEqual(2)
+    expect(mockDb.execute.mock.calls.some(call => call[0]?.strings.join('').includes('delete from ai_conversations'))).toBe(true)
+    expect(mockDb.execute.mock.calls.some(call => call[0]?.strings.join('').includes('delete from ai_messages'))).toBe(true)
   })
 
   it('同一 workspace の owner 匿名化でも row lock 順が安定する', async () => {
@@ -391,7 +403,7 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
-    expect(mockDb.delete).toHaveBeenCalledTimes(2)
+    expect(mockDb.delete).toHaveBeenCalledTimes(3)
   })
 
   it('最後の active owner は匿名化できない', async () => {
