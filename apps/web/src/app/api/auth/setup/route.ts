@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { ANONYMIZED_MEMBER_DISPLAY_NAME } from '@/lib/anonymized-member'
 import { createClient } from '@/lib/supabase/server'
 
 const setupSchema = z.object({
@@ -22,6 +23,9 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
+  if (parsed.data.displayName?.trim() === ANONYMIZED_MEMBER_DISPLAY_NAME) {
+    return NextResponse.json({ error: `${ANONYMIZED_MEMBER_DISPLAY_NAME} は予約済みの表示名です` }, { status: 422 })
+  }
 
   const supabase = await createClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -40,11 +44,15 @@ export async function POST(req: Request) {
     ).limit(1)
 
     if (existing.length === 0) {
-      const displayName =
+      const displayNameCandidate =
         parsed.data.displayName ??
         (user.user_metadata?.['display_name'] as string | undefined) ??
         user.email ??
         'ユーザー'
+      const displayName =
+        displayNameCandidate.trim() === ANONYMIZED_MEMBER_DISPLAY_NAME
+          ? (user.email ?? 'ユーザー')
+          : displayNameCandidate
       await db.insert(profiles).values({ id: user.id, displayName })
     }
 

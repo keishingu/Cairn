@@ -8,6 +8,7 @@ import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
 
 const AVATAR_BUCKET = 'avatars'
 const PUBLIC_BUCKET_SEGMENT = `/storage/v1/object/public/${AVATAR_BUCKET}/`
+const AVATAR_VARIANT_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'] as const
 
 type TxClient = {
   select: typeof import('@cairn/db').db.select
@@ -46,6 +47,22 @@ function extractAvatarPath(avatarUrl: string | null): string | null {
   }
 
   return null
+}
+
+function expandAvatarVariantPaths(paths: string[]) {
+  const expanded = new Set<string>()
+
+  for (const path of paths) {
+    expanded.add(path)
+    const lastDotIndex = path.lastIndexOf('.')
+    if (lastDotIndex <= 0) continue
+    const base = path.slice(0, lastDotIndex)
+    for (const ext of AVATAR_VARIANT_EXTENSIONS) {
+      expanded.add(`${base}.${ext}`)
+    }
+  }
+
+  return [...expanded]
 }
 
 async function lockRelevantMemberships(
@@ -129,11 +146,13 @@ async function prepareAnonymization(
     .from(workspaceMembers)
     .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, targetUserId)))
 
-  const avatarPaths = [...new Set(
-    membershipRows
-      .map(row => extractAvatarPath(row.avatarUrl ?? null))
-      .filter((path): path is string => Boolean(path)),
-  )]
+  const avatarPaths = expandAvatarVariantPaths(
+    [...new Set(
+      membershipRows
+        .map(row => extractAvatarPath(row.avatarUrl ?? null))
+        .filter((path): path is string => Boolean(path)),
+    )],
+  )
 
   return {
     ok: true as const,

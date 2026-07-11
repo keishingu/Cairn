@@ -268,7 +268,13 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     expect(mockDb.execute.mock.calls.some(call => call[0]?.strings.join('').includes('delete from ai_conversations'))).toBe(true)
     expect(mockDb.execute.mock.calls.some(call => call[0]?.strings.join('').includes('delete from ai_messages'))).toBe(true)
     expect(mockDb.execute.mock.calls.some(call => call[0]?.strings.join('').includes('update ai_conversations'))).toBe(true)
-    expect(mockRemove).toHaveBeenCalledWith(['ws-1/user-2.png'])
+    expect(mockRemove).toHaveBeenCalledWith([
+      'ws-1/user-2.png',
+      'ws-1/user-2.jpg',
+      'ws-1/user-2.jpeg',
+      'ws-1/user-2.gif',
+      'ws-1/user-2.webp',
+    ])
     const body = await res.json() as { anonymized: boolean }
     expect(body.anonymized).toBe(true)
   })
@@ -294,7 +300,13 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
-    expect(mockRemove).toHaveBeenCalledWith(['ws-1/user-2.png'])
+    expect(mockRemove).toHaveBeenCalledWith([
+      'ws-1/user-2.png',
+      'ws-1/user-2.jpg',
+      'ws-1/user-2.jpeg',
+      'ws-1/user-2.gif',
+      'ws-1/user-2.webp',
+    ])
   })
 
   it('最終匿名化では上書き前の workspace displayName も AI scrub パターンに残す', async () => {

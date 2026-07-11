@@ -151,6 +151,20 @@ describe('POST /api/auth/setup', () => {
     await expect(res.json()).resolves.toEqual({ ok: true, needsWorkspace: false })
   })
 
+  it('予約済み表示名は 422 で弾く', async () => {
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('http://localhost/api/auth/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: '退会したユーザー' }),
+      }),
+    )
+
+    expect(res.status).toBe(422)
+    await expect(res.json()).resolves.toEqual({ error: '退会したユーザー は予約済みの表示名です' })
+  })
+
   it('workspaceName あり・既存メンバーシップがあっても新規ワークスペースを作成する', async () => {
     // プロフィール存在確認のみ（membership チェックは workspaceName 指定時はスキップ）
     mockDb.select.mockReturnValueOnce(selectChain([{ id: mockUser.id }]))

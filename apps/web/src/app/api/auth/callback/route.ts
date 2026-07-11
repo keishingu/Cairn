@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { ANONYMIZED_MEMBER_DISPLAY_NAME } from '@/lib/anonymized-member'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: Request) {
@@ -15,12 +16,16 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error && data.user) {
       const user = data.user
-      const displayName =
+      const displayNameCandidate =
         (user.user_metadata?.['display_name'] as string | undefined) ??
         (user.user_metadata?.['full_name'] as string | undefined) ??
         (user.user_metadata?.['name'] as string | undefined) ??
         user.email ??
         'ユーザー'
+      const displayName =
+        displayNameCandidate.trim() === ANONYMIZED_MEMBER_DISPLAY_NAME
+          ? (user.email ?? 'ユーザー')
+          : displayNameCandidate
 
       let isNewUser = true
 
