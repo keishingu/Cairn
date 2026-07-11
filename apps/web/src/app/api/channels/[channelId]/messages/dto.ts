@@ -24,6 +24,7 @@ export interface MessageDto {
   content: string
   messageType: MessageType
   senderId: string
+  senderKind: 'human' | 'bot'
   senderName: string
   senderAvatarUrl: string | null
   createdAt: string

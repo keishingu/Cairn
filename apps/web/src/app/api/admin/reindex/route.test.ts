@@ -7,16 +7,20 @@ const {
   mockGetAuthContext,
   mockRequireWorkspaceAdmin,
   mockDbSelect,
+  mockDbDelete,
   mockEq,
   mockAnd,
+  mockNotInArray,
   mockIsIndexable,
   mockInngestSend,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireWorkspaceAdmin: vi.fn(),
   mockDbSelect: vi.fn(),
+  mockDbDelete: vi.fn(),
   mockEq: vi.fn(() => Symbol('eq')),
   mockAnd: vi.fn(() => Symbol('and')),
+  mockNotInArray: vi.fn(() => Symbol('notInArray')),
   mockIsIndexable: vi.fn((mimeType: string) => mimeType === 'application/pdf'),
   mockInngestSend: vi.fn().mockResolvedValue(undefined),
 }))
@@ -26,15 +30,17 @@ vi.mock('@/lib/permissions', () => ({ requireWorkspaceAdmin: mockRequireWorkspac
 vi.mock('@/lib/ai/extract-text', () => ({ isIndexable: mockIsIndexable }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 vi.mock('@cairn/db', () => ({
-  db: { select: mockDbSelect },
+  db: { select: mockDbSelect, delete: mockDbDelete },
   files: { id: 'files.id', mimeType: 'files.mimeType', storagePath: 'files.storagePath', workspaceId: 'files.workspaceId' },
+  activeWorkspaceMembers: { userId: 'activeWorkspaceMembers.userId', workspaceId: 'activeWorkspaceMembers.workspaceId' },
   profiles: { id: 'profiles.id', kind: 'profiles.kind' },
-  workspaceMembers: { userId: 'workspaceMembers.userId', workspaceId: 'workspaceMembers.workspaceId' },
   projects: { id: 'projects.id', workspaceId: 'projects.workspaceId' },
+  documentChunks: { workspaceId: 'documentChunks.workspaceId', sourceType: 'documentChunks.sourceType', sourceId: 'documentChunks.sourceId' },
 }))
 vi.mock('drizzle-orm', () => ({
   and: mockAnd,
   eq: mockEq,
+  notInArray: mockNotInArray,
 }))
 
 function selectChain(result: unknown[]) {
@@ -68,6 +74,7 @@ describe('/api/admin/reindex', () => {
       .mockReturnValueOnce(selectChain([
         { id: 'project-1' },
       ]))
+    mockDbDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) })
   })
 
   afterEach(() => {
@@ -99,6 +106,7 @@ describe('/api/admin/reindex', () => {
         data: { projectId: 'project-1', workspaceId: 'ws-1' },
       },
     ])
-    expect(mockAnd).toHaveBeenCalledTimes(1)
+    expect(mockDbDelete).toHaveBeenCalled()
+    expect(mockAnd).toHaveBeenCalledTimes(2)
   })
 })

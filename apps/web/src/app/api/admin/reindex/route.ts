@@ -14,7 +14,7 @@ export async function POST() {
   if (forbidden) return forbidden
 
   try {
-    const { db, files, activeWorkspaceMembers, projects, documentChunks } = await import('@cairn/db')
+    const { db, files, activeWorkspaceMembers, profiles, projects, documentChunks } = await import('@cairn/db')
     const { and, eq, notInArray } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client')
     const { isIndexable } = await import('@/lib/ai/extract-text')
@@ -26,7 +26,11 @@ export async function POST() {
       // 再インデックスは active メンバーのみを対象にする
       db.select({ userId: activeWorkspaceMembers.userId })
         .from(activeWorkspaceMembers)
-        .where(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId)),
+        .innerJoin(profiles, eq(activeWorkspaceMembers.userId, profiles.id))
+        .where(and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(profiles.kind, 'human'),
+        )),
       db.select({ id: projects.id })
         .from(projects)
         .where(eq(projects.workspaceId, ctx.workspaceId)),
