@@ -413,13 +413,12 @@ export async function POST(
         const allWorkspaceIds = membershipRows.length > 0
           ? [...new Set(membershipRows.map(row => row.workspaceId))]
           : [ctx.workspaceId]
-        const allAvatarPaths = membershipRows.length > 0
-          ? [...new Set(
-              membershipRows
-                .map(row => extractAvatarPath(row.avatarUrl ?? null))
-                .filter((path): path is string => Boolean(path)),
-            )]
-          : prepared.avatarPaths
+        const allAvatarPaths = [...new Set([
+          ...prepared.avatarPaths,
+          ...membershipRows
+            .map(row => extractAvatarPath(row.avatarUrl ?? null))
+            .filter((path): path is string => Boolean(path)),
+        ])]
         const [profileRow] = await tx
           .select({ displayName: profiles.displayName, bio: profiles.bio })
           .from(profiles)

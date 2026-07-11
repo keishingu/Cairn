@@ -229,6 +229,30 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     expect(body.anonymized).toBe(true)
   })
 
+  it('最終匿名化では current workspace の avatar path も削除対象に残す', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { avatarUrl: 'https://example.supabase.co/storage/v1/object/public/avatars/ws-1/user-2.png' },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.delete.mockReturnValueOnce(deleteChain())
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { workspaceId: DEV_WORKSPACE_ID, avatarUrl: null, displayName: 'Anon User' },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { displayName: 'Anon User', bio: null },
+    ]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockRemove).toHaveBeenCalledWith(['ws-1/user-2.png'])
+  })
+
   it('アバター削除に失敗したら 500 を返す', async () => {
     mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([
