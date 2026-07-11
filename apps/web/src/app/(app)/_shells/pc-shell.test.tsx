@@ -139,6 +139,11 @@ describe('PCShell — URL からパネル表示の導出', () => {
     expect(slot).toHaveStyle({ position: 'absolute', top: '56px', right: '0px', width: 'min(420px, 100%)' })
   })
 
+  it('/files?open=project-{id} でも TopBar を覆わない位置に表示する', () => {
+    renderShell('/files', new URLSearchParams('open=project-proj-abc'))
+    expect(screen.getByTestId('desktop-detail-panel-slot')).toHaveStyle({ top: '56px' })
+  })
+
   it('キャッシュに存在しない ID では ProjectPanel を表示しない', () => {
     renderShell('/projects', new URLSearchParams('open=project-no-such-id'))
     expect(screen.queryByTestId('project-panel')).toBeNull()

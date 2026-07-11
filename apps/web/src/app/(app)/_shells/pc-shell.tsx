@@ -22,6 +22,8 @@ import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 const PC_STORAGE_KEY = STORAGE_KEYS.projects_view_pc
 const SIDEBAR_COLLAPSED_KEY = STORAGE_KEYS.sidebar_collapsed
+const TOP_BAR_HEIGHT = 56
+const TOP_BAR_ROUTE_SECTIONS = new Set(['ai', 'files', 'gallery', 'members', 'projects', 'settings', 'tasks'])
 type ProjectsView = 'list' | 'calendar' | 'kanban'
 
 const desktopPanelSlotStyleBase: React.CSSProperties = {
@@ -37,7 +39,7 @@ const desktopPanelSlotStyleBase: React.CSSProperties = {
 }
 
 function getDesktopPanelTopOffset(pathnameSection: string) {
-  return pathnameSection === 'projects' || pathnameSection === 'members' ? 56 : 0
+  return TOP_BAR_ROUTE_SECTIONS.has(pathnameSection) ? TOP_BAR_HEIGHT : 0
 }
 
 function isValidView(v: string | null | undefined): v is ProjectsView {
