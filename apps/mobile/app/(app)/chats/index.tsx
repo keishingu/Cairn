@@ -27,7 +27,7 @@ function ChannelItem({ channel }: { channel: ProjectChannelDto }) {
 export default function ChatsScreen() {
   const { data: channels, isLoading, error } = useProjectChannels()
   // アーカイブ済みプロジェクトはモバイルのチャット一覧には表示しない
-  const visibleChannels = channels?.filter(c => !c.archived)
+  const visibleChannels = channels?.filter(c => !c.archived && c.milestoneId === null)
 
   if (isLoading) {
     return <View style={styles.center}><ActivityIndicator size="large" /></View>
