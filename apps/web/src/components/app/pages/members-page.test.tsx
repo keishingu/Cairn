@@ -68,13 +68,14 @@ const STUB_MEMBER: WorkspaceMemberDto = {
   email: 'taro@example.com',
   avatarUrl: null,
   role: 'member',
+  membershipStatus: 'active',
   joinedAt: '2026-01-01',
   projectCount: 3,
 }
 
 function makeQC(members: WorkspaceMemberDto[] = [STUB_MEMBER]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  qc.setQueryData(['workspace-members'], members)
+  qc.setQueryData(['workspace-members', 'all'], members)
   return qc
 }
 
@@ -92,6 +93,42 @@ function renderDesktop() {
       <PageMembers />
     </QueryClientProvider>,
   )
+}
+
+function mockPageFetch(options?: {
+  members?: WorkspaceMemberDto[]
+  invites?: Array<Record<string, unknown>>
+  createInviteUrl?: string
+  pendingInvite?: Promise<{ ok: boolean; json: () => Promise<{ url: string }> }>
+}) {
+  const members = options?.members ?? [STUB_MEMBER]
+  const invites = options?.invites ?? []
+  const createInviteUrl = options?.createInviteUrl ?? 'https://example.com/invite/token'
+
+  mockFetchWithAuth.mockImplementation((input: string, init?: RequestInit) => {
+    if (input.startsWith('/api/workspaces/members')) {
+      return Promise.resolve({ ok: true, json: async () => members })
+    }
+    if (input === '/api/workspaces/invites' && init?.method === 'POST') {
+      if (options?.pendingInvite) return options.pendingInvite
+      return Promise.resolve({ ok: true, json: async () => ({ url: createInviteUrl }) })
+    }
+    if (input === '/api/workspaces/invites') {
+      return Promise.resolve({ ok: true, json: async () => ({ invites }) })
+    }
+    return Promise.resolve({ ok: true, json: async () => ({}) })
+  })
+}
+
+function expectInviteCreateCall(body: { expiresIn: '1h' | '30d' | 'never'; role: 'member' | 'guest' }) {
+  expect(mockFetchWithAuth.mock.calls).toContainEqual([
+    '/api/workspaces/invites',
+    expect.objectContaining({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  ])
 }
 
 // ─── テスト ────────────────────────────────────────────────────────
@@ -168,62 +205,33 @@ describe('InviteModal', () => {
   beforeEach(() => {
     mockPush.mockClear()
     mockFetchWithAuth.mockReset()
-    mockFetchWithAuth.mockResolvedValue({ json: async () => [STUB_MEMBER] })
   })
 
   it('招待リンク生成時に選択した role=guest を送る', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ invites: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ url: 'https://example.com/invite/guest-token' }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ invites: [{ token: 'guest-token', url: 'https://example.com/invite/guest-token', expiresAt: null, maxUses: null, useCount: 0, role: 'guest', id: '1', createdAt: '2026-01-01', createdByName: 'Admin' }] }),
-      })
-    vi.stubGlobal('fetch', fetchMock)
+    mockPageFetch({
+      invites: [{ token: 'guest-token', url: 'https://example.com/invite/guest-token', expiresAt: null, maxUses: null, useCount: 0, role: 'guest', id: '1', createdAt: '2026-01-01', createdByName: 'Admin' }],
+      createInviteUrl: 'https://example.com/invite/guest-token',
+    })
 
     renderDesktop()
     await userEvent.click(screen.getByRole('button', { name: 'メンバーを招待' }))
     await userEvent.click(screen.getByRole('button', { name: 'ゲスト 閲覧中心の外部参加向け' }))
     await userEvent.click(screen.getByRole('button', { name: '招待リンクを生成' }))
 
-    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/workspaces/invites', expect.objectContaining({
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ expiresIn: '1h', role: 'guest' }),
-    }))
+    expectInviteCreateCall({ expiresIn: '1h', role: 'guest' })
   })
 
   it('role を変更しなければ member のまま送る', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ invites: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ url: 'https://example.com/invite/member-token' }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ invites: [{ token: 'member-token', url: 'https://example.com/invite/member-token', expiresAt: null, maxUses: null, useCount: 0, role: 'member', id: '1', createdAt: '2026-01-01', createdByName: 'Admin' }] }),
-      })
-    vi.stubGlobal('fetch', fetchMock)
+    mockPageFetch({
+      invites: [{ token: 'member-token', url: 'https://example.com/invite/member-token', expiresAt: null, maxUses: null, useCount: 0, role: 'member', id: '1', createdAt: '2026-01-01', createdByName: 'Admin' }],
+      createInviteUrl: 'https://example.com/invite/member-token',
+    })
 
     renderDesktop()
     await userEvent.click(screen.getByRole('button', { name: 'メンバーを招待' }))
     await userEvent.click(screen.getByRole('button', { name: '招待リンクを生成' }))
 
-    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/workspaces/invites', expect.objectContaining({
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ expiresIn: '1h', role: 'member' }),
-    }))
+    expectInviteCreateCall({ expiresIn: '1h', role: 'member' })
   })
 
   it('生成中は role を切り替えられない', async () => {
@@ -231,17 +239,10 @@ describe('InviteModal', () => {
     const pendingInvite = new Promise<{ ok: boolean; json: () => Promise<{ url: string }> }>(resolve => {
       resolveInvite = resolve
     })
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ invites: [] }),
-      })
-      .mockReturnValueOnce(pendingInvite)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ invites: [{ token: 'member-token', url: 'https://example.com/invite/member-token', expiresAt: null, maxUses: null, useCount: 0, role: 'member', id: '1', createdAt: '2026-01-01', createdByName: 'Admin' }] }),
-      })
-    vi.stubGlobal('fetch', fetchMock)
+    mockPageFetch({
+      invites: [{ token: 'member-token', url: 'https://example.com/invite/member-token', expiresAt: null, maxUses: null, useCount: 0, role: 'member', id: '1', createdAt: '2026-01-01', createdByName: 'Admin' }],
+      pendingInvite,
+    })
 
     renderDesktop()
     await userEvent.click(screen.getByRole('button', { name: 'メンバーを招待' }))
@@ -255,9 +256,7 @@ describe('InviteModal', () => {
 
     await userEvent.click(guestButton)
 
-    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/workspaces/invites', expect.objectContaining({
-      body: JSON.stringify({ expiresIn: '1h', role: 'member' }),
-    }))
+    expectInviteCreateCall({ expiresIn: '1h', role: 'member' })
 
     resolveInvite({
       ok: true,
@@ -265,5 +264,51 @@ describe('InviteModal', () => {
     })
 
     expect(await screen.findByText('コピー')).toBeInTheDocument()
+  })
+})
+
+describe('PageMembers — アーカイブ導線（admin）', () => {
+  const ARCHIVED_MEMBER: WorkspaceMemberDto = {
+    userId: 'user-2',
+    displayName: '佐藤 花子',
+    email: 'hanako@example.com',
+    avatarUrl: null,
+    role: 'member',
+    membershipStatus: 'inactive',
+    joinedAt: '2025-04-01',
+    projectCount: 0,
+  }
+
+  function renderAsAdmin(members: WorkspaceMemberDto[]) {
+    mockFetchWithAuth.mockReset()
+    mockPageFetch({ members })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    qc.setQueryData(['workspace-members', 'all'], members)
+    qc.setQueryData(['me'], { id: 'admin-1', wsRole: 'admin' })
+    return render(
+      <QueryClientProvider client={qc}>
+        <PageMembers isMobile />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('admin には現役メンバーのカードに操作メニューが出る', () => {
+    renderAsAdmin([STUB_MEMBER])
+    expect(screen.getByLabelText('メンバー操作')).toBeInTheDocument()
+  })
+
+  it('非活性メンバーは既定で隠れ、「アーカイブ済み」トグルで表示される', async () => {
+    renderAsAdmin([STUB_MEMBER, ARCHIVED_MEMBER])
+    // 既定は現役のみ
+    expect(screen.queryByText('佐藤 花子')).toBeNull()
+    await userEvent.click(screen.getByText('アーカイブ済み (1)'))
+    expect(await screen.findByText('佐藤 花子')).toBeInTheDocument()
+  })
+
+  it('操作メニューを開くと非活性メンバーには「アーカイブを解除」が出る', async () => {
+    renderAsAdmin([ARCHIVED_MEMBER])
+    await userEvent.click(screen.getByText('アーカイブ済み (1)'))
+    await userEvent.click(screen.getByLabelText('メンバー操作'))
+    expect(screen.getByText('アーカイブを解除')).toBeInTheDocument()
   })
 })

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { patchProjectSchema } from '@cairn/shared'
+import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceAdmin, requireWorkspaceMember } from '@/lib/permissions'
 
 export async function DELETE(
@@ -10,14 +12,13 @@ export async function DELETE(
 ) {
   const { id: projectId } = await params
 
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
+
   try {
     const { db, projects, files, channels, messages, messageAttachments } = await import('@cairn/db')
     const { eq, and, or } = await import('drizzle-orm')
-    const { getAuthContext } = await import('@/lib/get-auth-context')
     const { inngest } = await import('@/lib/inngest/client')
-
-    const { ctx, error } = await getAuthContext()
-    if (error) return error
 
     const [project] = await db
       .select({ id: projects.id })
@@ -81,6 +82,9 @@ export async function PATCH(
 ) {
   const { id } = await params
 
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
+
   let body: unknown
   try {
     body = await req.json()
@@ -88,32 +92,16 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  type PatchBody = {
-    title?: string
-    description?: string | null
-    startDate?: string | null
-    endDate?: string | null
-    statusName?: string
-    archived?: boolean
-    coverPhotoUrl?: string | null
-    placePhotoName?: string
-    location?: string | null
-    placeId?: string | null
+  const parsed = patchProjectSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
-  const b = body as PatchBody
-  const keys = Object.keys(b as object)
-  if (keys.length === 0) {
-    return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
-  }
+  const b = parsed.data
 
   try {
     const { db } = await import('@cairn/db')
     const { projects, projectStatuses } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
-    const { getAuthContext } = await import('@/lib/get-auth-context')
-
-    const { ctx, error } = await getAuthContext()
-    if (error) return error
+    const { eq, and, isNull } = await import('drizzle-orm')
 
     const [project] = await db
       .select({ id: projects.id })
@@ -150,13 +138,13 @@ export async function PATCH(
     } = { updatedAt: new Date() }
 
     if (b.title !== undefined) set.title = b.title
-    if ('description' in (b as object)) set.description = b.description ?? null
-    if ('startDate' in (b as object)) set.startDate = b.startDate ?? null
-    if ('endDate' in (b as object)) set.endDate = b.endDate ?? null
+    if ('description' in b) set.description = b.description ?? null
+    if ('startDate' in b) set.startDate = b.startDate ?? null
+    if ('endDate' in b) set.endDate = b.endDate ?? null
     if (b.archived !== undefined) set.archived = b.archived
     if (resolvedCoverPhotoUrl !== undefined) set.coverPhotoUrl = resolvedCoverPhotoUrl
-    if ('location' in (b as object)) set.location = b.location ?? null
-    if ('placeId' in (b as object)) set.placeId = b.placeId ?? null
+    if ('location' in b) set.location = b.location ?? null
+    if ('placeId' in b) set.placeId = b.placeId ?? null
 
     if (b.statusName !== undefined) {
       const [status] = await db
@@ -187,7 +175,7 @@ export async function PATCH(
     // プロジェクトのステータス・日程・概要・名称の変更をプロジェクトチャンネルに system メッセージで通知する。
     // チーム共通の重要情報（決定事項）をチャットに残すための仕組み。失敗しても PATCH 自体は成功させる
     try {
-      const datesChanged = 'startDate' in (b as object) || 'endDate' in (b as object)
+      const datesChanged = 'startDate' in b || 'endDate' in b
       const changes: string[] = []
       if (b.statusName !== undefined) changes.push(`ステータスを「${b.statusName}」に変更しました`)
       if (datesChanged) {
@@ -199,7 +187,7 @@ export async function PATCH(
         const e = p?.endDate ?? '未設定'
         changes.push(`期間を ${s} 〜 ${e} に変更しました`)
       }
-      if ('description' in (b as object)) changes.push('概要を更新しました')
+      if ('description' in b) changes.push('概要を更新しました')
       if (b.title !== undefined) changes.push(`プロジェクト名を「${b.title}」に変更しました`)
 
       if (changes.length > 0) {
@@ -207,7 +195,7 @@ export async function PATCH(
         const [channel] = await db
           .select({ id: channels.id })
           .from(channels)
-          .where(and(eq(channels.projectId, id), eq(channels.type, 'project')))
+          .where(and(eq(channels.projectId, id), eq(channels.type, 'project'), isNull(channels.milestoneId)))
           .limit(1)
         if (channel) {
           const [actor] = await db
@@ -227,12 +215,9 @@ export async function PATCH(
       console.warn('[PATCH /api/projects/[id]] system message insert failed (skipped):', e)
     }
 
-    const { placePhotoName: _, ...rest } = b
-    return NextResponse.json({
-      id,
-      ...rest,
-      ...(resolvedCoverPhotoUrl !== undefined && { coverPhotoUrl: resolvedCoverPhotoUrl }),
-    })
+    const resp: { id: string; coverPhotoUrl?: string | null } = { id: updated.id }
+    if (resolvedCoverPhotoUrl !== undefined) resp.coverPhotoUrl = resolvedCoverPhotoUrl
+    return NextResponse.json(resp)
   } catch (err) {
     console.error('[PATCH /api/projects/[id]]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

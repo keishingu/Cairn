@@ -1,14 +1,12 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
 import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
-import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { PageToolbar, SegmentedControl } from './page-toolbar'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
@@ -16,6 +14,8 @@ import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useListSelection } from '@/hooks/use-list-selection'
+import { useProjects } from '@/hooks/use-projects'
+import { useProjectStatuses } from '@/hooks/use-project-statuses'
 import { useCommand } from '@/lib/command-registry'
 
 // ─── Main component ───────────────────────────────────────────────
@@ -34,23 +34,11 @@ function formatDates(start: string | null, end: string | null): string {
   return end && end !== start ? `${fmt(start)}–${fmt(end)}` : fmt(start)
 }
 
-async function fetchProjects(): Promise<ProjectDto[]> {
-  const res = await fetchWithAuth('/api/projects')
-  if (!res.ok) throw new Error('fetch failed')
-  return res.json() as Promise<ProjectDto[]>
-}
-
-async function fetchStatuses(): Promise<ProjectStatusDto[]> {
-  const res = await fetchWithAuth('/api/projects/statuses')
-  if (!res.ok) throw new Error('fetch failed')
-  return res.json() as Promise<ProjectStatusDto[]>
-}
-
 export const ProjectListView = ({ openPanel, isMobile, externalSearch }: ProjectListViewProps) => {
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const { isAdmin: canCreateProject } = useWorkspacePermissions()
-  const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
+  const { data: projects = [], isLoading } = useProjects()
   const [view, setView] = React.useState<'grid' | 'table'>(() => {
     if (typeof window === 'undefined') return 'grid'
     const saved = localStorage.getItem(STORAGE_KEYS.projects_list_view)
@@ -87,7 +75,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   }
   const [showCreate, setShowCreate] = React.useState(false)
   const [filterOpen, setFilterOpen] = React.useState(false)
-  const { data: allStatuses = [] } = useQuery({ queryKey: ['statuses'], queryFn: fetchStatuses })
+  const { data: allStatuses = [] } = useProjectStatuses()
   const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
     if (typeof window === 'undefined') return []
     try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.projects_status_filter) ?? '[]') } catch { return [] }
