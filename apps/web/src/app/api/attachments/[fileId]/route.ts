@@ -27,10 +27,10 @@ function resolveResponseContentType(fileName: string, mimeType: string | null) {
 function buildContentDisposition(dispositionType: 'attachment' | 'inline', fileName: string) {
   const fallbackFileName = fileName
     .normalize('NFKD')
-    .replaceAll(/[^\x20-\x7E]/g, '_')
-    .replaceAll(/["\\]/g, '_')
-  const escapedFileName = fallbackFileName.replaceAll(/["\\]/g, '\\$&')
-  const encodedFileName = encodeURIComponent(fileName).replaceAll(/[!'()*]/g, (char) =>
+    .replace(/[^\x20-\x7E]/g, '_')
+    .replace(/["\\]/g, '_')
+  const escapedFileName = fallbackFileName.replace(/["\\]/g, '\\$&')
+  const encodedFileName = encodeURIComponent(fileName).replace(/[!'()*]/g, (char) =>
     `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
   )
   return `${dispositionType}; filename="${escapedFileName}"; filename*=UTF-8''${encodedFileName}`
