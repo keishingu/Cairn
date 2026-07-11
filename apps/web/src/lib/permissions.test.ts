@@ -1,71 +1,46 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
-  mockSelectRoleResult,
-  mockSelectChannelResult,
-  mockSelectProjectMembershipResult,
+  queryResults,
   mockDb,
 } = vi.hoisted(() => {
-  const mockSelectRoleResult = vi.fn()
-  const mockSelectChannelResult = vi.fn()
-  const mockSelectProjectMembershipResult = vi.fn()
+  const queryResults: unknown[][] = []
+
+  function nextResult() {
+    return queryResults.shift() ?? []
+  }
+
+  function makeQuery(result: unknown[]) {
+    const promise = Promise.resolve(result)
+    return {
+      from: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
+      leftJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue(result),
+      then: promise.then.bind(promise),
+      catch: promise.catch.bind(promise),
+      finally: promise.finally.bind(promise),
+    }
+  }
+
   const mockDb = {
-    select: vi.fn((fields?: Record<string, unknown>) => {
-      if (fields?.['role']) {
-        return {
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn(() => Promise.resolve(mockSelectRoleResult())),
-            }),
-          }),
-        }
-      }
-
-      if (fields?.['effectiveWorkspaceId']) {
-        return {
-          from: vi.fn().mockReturnValue({
-            leftJoin: vi.fn().mockReturnValue({
-              where: vi.fn().mockReturnValue({
-                limit: vi.fn(() => Promise.resolve(mockSelectChannelResult())),
-              }),
-            }),
-          }),
-        }
-      }
-
-      return {
-        from: vi.fn().mockReturnValue({
-          innerJoin: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn(() => Promise.resolve(mockSelectProjectMembershipResult())),
-            }),
-          }),
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn(() => Promise.resolve(mockSelectProjectMembershipResult())),
-          }),
-        }),
-      }
-    }),
+    select: vi.fn(() => makeQuery(nextResult())),
+    selectDistinct: vi.fn(() => makeQuery(nextResult())),
   }
 
-  return {
-    mockSelectRoleResult,
-    mockSelectChannelResult,
-    mockSelectProjectMembershipResult,
-    mockDb,
-  }
+  return { queryResults, mockDb }
 })
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
-  workspaceMembers: {
-    role: 'workspaceMembers.role',
-    workspaceId: 'workspaceMembers.workspaceId',
-    userId: 'workspaceMembers.userId',
-    membershipStatus: 'workspaceMembers.membershipStatus',
+  activeWorkspaceMembers: {
+    role: 'activeWorkspaceMembers.role',
+    userId: 'activeWorkspaceMembers.userId',
+    workspaceId: 'activeWorkspaceMembers.workspaceId',
   },
   channels: {
     id: 'channels.id',
@@ -87,58 +62,165 @@ vi.mock('@cairn/db', () => ({
     projectId: 'projectMembers.projectId',
     userId: 'projectMembers.userId',
   },
-  messages: {},
-  messageAttachments: {},
+  messages: {
+    channelId: 'messages.channelId',
+    id: 'messages.id',
+  },
+  messageAttachments: {
+    fileId: 'messageAttachments.fileId',
+    messageId: 'messageAttachments.messageId',
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
   eq: vi.fn(() => 'eq'),
+  inArray: vi.fn(() => 'inArray'),
   sql: vi.fn(() => 'sql'),
 }))
 
+function pushResults(...results: unknown[][]) {
+  queryResults.push(...results)
+}
+
 describe('permissions', () => {
+  beforeEach(() => {
+    queryResults.length = 0
+  })
+
   afterEach(() => {
     vi.clearAllMocks()
     vi.resetModules()
-    mockSelectRoleResult.mockReset()
-    mockSelectChannelResult.mockReset()
-    mockSelectProjectMembershipResult.mockReset()
   })
 
-  it('getWorkspaceRole は inactive な所属を role なしとして扱う', async () => {
-    mockSelectRoleResult.mockReturnValue([])
+  it('requireWorkspaceOwner は owner のみ許可する', async () => {
+    pushResults([{ role: 'owner' }], [{ role: 'admin' }])
+    const { requireWorkspaceOwner } = await import('./permissions')
 
-    const { getWorkspaceRole } = await import('./permissions')
-    await expect(getWorkspaceRole('ws-1', 'user-1')).resolves.toBeNull()
+    await expect(requireWorkspaceOwner('ws-1', 'user-1')).resolves.toBeNull()
+
+    const denied = await requireWorkspaceOwner('ws-1', 'user-2')
+    expect(denied?.status).toBe(403)
+    await expect(denied?.json()).resolves.toEqual({ error: 'この操作にはオーナー権限が必要です' })
   })
 
-  it('inactive な所属は requireWorkspaceMember で 403 になる', async () => {
-    mockSelectRoleResult.mockReturnValue([])
+  it('requireWorkspaceAdmin は admin 以上、requireWorkspaceMember は member 以上を要求する', async () => {
+    pushResults([{ role: 'admin' }], [{ role: 'guest' }], [{ role: 'member' }], [])
+    const { requireWorkspaceAdmin, requireWorkspaceMember } = await import('./permissions')
 
-    const { requireWorkspaceMember } = await import('./permissions')
-    const result = await requireWorkspaceMember('ws-1', 'user-1')
+    await expect(requireWorkspaceAdmin('ws-1', 'user-1')).resolves.toBeNull()
 
-    expect(result?.status).toBe(403)
+    const guestDenied = await requireWorkspaceAdmin('ws-1', 'user-2')
+    expect(guestDenied?.status).toBe(403)
+    await expect(guestDenied?.json()).resolves.toEqual({ error: 'この操作には管理者以上の権限が必要です' })
+
+    await expect(requireWorkspaceMember('ws-1', 'user-3')).resolves.toBeNull()
+
+    const outsiderDenied = await requireWorkspaceMember('ws-1', 'user-4')
+    expect(outsiderDenied?.status).toBe(403)
+    await expect(outsiderDenied?.json()).resolves.toEqual({ error: 'ゲストはこの操作を実行できません' })
   })
 
-  it('inactive な所属は requireProjectAccess で 403 になる', async () => {
-    mockSelectRoleResult.mockReturnValue([])
-    mockSelectProjectMembershipResult.mockReturnValue([])
-
+  it('requireProjectAccess は guest の参加外プロジェクトを 403 にする', async () => {
+    pushResults([{ role: 'guest' }], [])
     const { requireProjectAccess } = await import('./permissions')
-    const result = await requireProjectAccess('ws-1', 'user-1', 'project-1')
 
-    expect(result?.status).toBe(403)
+    const denied = await requireProjectAccess('ws-1', 'guest-1', 'project-1')
+
+    expect(denied?.status).toBe(403)
+    await expect(denied?.json()).resolves.toEqual({ error: 'このプロジェクトにアクセスする権限がありません' })
   })
 
-  it('inactive な所属は public channel でも requireChannelAccess で 403 になる', async () => {
-    mockSelectRoleResult.mockReturnValue([])
-
+  it('requireChannelAccess は別ワークスペースの channelId を 403 にする', async () => {
+    pushResults([{ isPrivate: false, type: 'channel', projectId: null, effectiveWorkspaceId: 'ws-2' }])
     const { requireChannelAccess } = await import('./permissions')
-    const result = await requireChannelAccess('ws-1', 'user-1', 'channel-1')
 
-    expect(result?.status).toBe(403)
-    expect(mockSelectChannelResult).not.toHaveBeenCalled()
+    const denied = await requireChannelAccess('ws-1', 'user-1', 'channel-1')
+
+    expect(denied?.status).toBe(403)
+    await expect(denied?.json()).resolves.toEqual({ error: 'このチャンネルにアクセスする権限がありません' })
+  })
+
+  it('requireChannelAccess は DM の非メンバーを 403 にする', async () => {
+    pushResults([{ isPrivate: false, type: 'dm', projectId: null, effectiveWorkspaceId: 'ws-1' }], [])
+    const { requireChannelAccess } = await import('./permissions')
+
+    const denied = await requireChannelAccess('ws-1', 'user-1', 'dm-1')
+
+    expect(denied?.status).toBe(403)
+    await expect(denied?.json()).resolves.toEqual({ error: 'このチャンネルにアクセスする権限がありません' })
+  })
+
+  it('requireChannelAccess は guest の参加外プロジェクトチャンネルを 403 にする', async () => {
+    pushResults(
+      [{ isPrivate: false, type: 'project', projectId: 'project-1', effectiveWorkspaceId: 'ws-1' }],
+      [{ role: 'guest' }],
+      [],
+    )
+    const { requireChannelAccess } = await import('./permissions')
+
+    const denied = await requireChannelAccess('ws-1', 'guest-1', 'channel-1')
+
+    expect(denied?.status).toBe(403)
+    await expect(denied?.json()).resolves.toEqual({ error: 'このチャンネルにアクセスする権限がありません' })
+  })
+
+  it('canAccessFile は別ワークスペースのファイルを拒否する', async () => {
+    const { canAccessFile } = await import('./permissions')
+
+    await expect(
+      canAccessFile('ws-1', 'user-1', {
+        id: 'file-1',
+        workspaceId: 'ws-2',
+        projectId: null,
+        uploadedBy: 'user-2',
+      }),
+    ).resolves.toBe(false)
+  })
+
+  it('canAccessFile はアップロード者本人を常に許可する', async () => {
+    const { canAccessFile } = await import('./permissions')
+
+    await expect(
+      canAccessFile('ws-1', 'user-1', {
+        id: 'file-1',
+        workspaceId: 'ws-1',
+        projectId: 'project-1',
+        uploadedBy: 'user-1',
+      }),
+    ).resolves.toBe(true)
+  })
+
+  it('canAccessFile は guest が参加外プロジェクトのファイルへアクセスできない', async () => {
+    pushResults([{ role: 'guest' }], [], [])
+    const { canAccessFile } = await import('./permissions')
+
+    await expect(
+      canAccessFile('ws-1', 'guest-1', {
+        id: 'file-1',
+        workspaceId: 'ws-1',
+        projectId: 'project-1',
+        uploadedBy: 'user-2',
+      }),
+    ).resolves.toBe(false)
+  })
+
+  it('canAccessFile はアクセス可能なチャンネルの添付ファイルを許可する', async () => {
+    pushResults(
+      [{ role: 'member' }],
+      [{ channelId: 'private-1' }],
+      [{ id: 'private-1', isPrivate: true, type: 'channel', projectId: null, effectiveWorkspaceId: 'ws-1' }],
+      [{ channelId: 'private-1' }],
+    )
+    const { canAccessFile } = await import('./permissions')
+
+    await expect(
+      canAccessFile('ws-1', 'member-1', {
+        id: 'file-1',
+        workspaceId: 'ws-1',
+        projectId: null,
+        uploadedBy: 'user-2',
+      }),
+    ).resolves.toBe(true)
   })
 })

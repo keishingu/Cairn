@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, test, expect } from 'vitest'
-import { buildGcalEvents, buildGcalWeekEvents, buildGcalTimedEvents } from './projects-calendar'
+import { buildGcalEvents, buildGcalWeekEvents, buildGcalTimedEvents, buildMilestoneEvents, buildMilestoneWeekEvents, formatMilestoneLabel } from './projects-calendar'
 import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
+import type { WorkspaceMilestoneDto } from '@/app/api/milestones/route'
+import type { ProjectDto } from '@/app/api/projects/route'
 
 function makeEvent(overrides: Partial<GcalEventDto>): GcalEventDto {
   return {
@@ -24,6 +26,90 @@ function makeEvent(overrides: Partial<GcalEventDto>): GcalEventDto {
 // 2026年6月: カレンダー表示開始は5/31(日)、表示終了は7/11(土)
 const YEAR = 2026
 const MONTH = 5 // 0始まりなので6月
+
+const PROJECT: ProjectDto = {
+  id: 'project-1',
+  title: '北アルプス',
+  description: null,
+  statusName: null,
+  statusColor: '#2563EB',
+  startDate: '2026-06-01',
+  endDate: '2026-06-20',
+  memberCount: 0,
+  memberNames: [],
+  memberAvatarUrls: [],
+  taskCount: 0,
+  completedTaskCount: 0,
+  isOwner: true,
+  isMember: true,
+  archived: false,
+  coverPhotoIdx: 0,
+  coverPhotoUrl: null,
+  location: null,
+  placeId: null,
+}
+
+function makeMilestone(overrides: Partial<WorkspaceMilestoneDto>): WorkspaceMilestoneDto {
+  return {
+    id: 'milestone-1',
+    projectId: PROJECT.id,
+    projectTitle: PROJECT.title,
+    title: '訪問',
+    description: null,
+    startDate: '2026-06-10',
+    endDate: '2026-06-10',
+    startTime: null,
+    endTime: null,
+    completed: false,
+    channelId: 'channel-1',
+    ...overrides,
+  }
+}
+
+const PROJECT_MAP = new Map([[PROJECT.id, PROJECT]])
+
+describe('buildMilestoneEvents', () => {
+  test('日付のないマイルストーンは除外される', () => {
+    const result = buildMilestoneEvents([makeMilestone({ startDate: null, endDate: null })], PROJECT_MAP, YEAR, MONTH)
+
+    expect(result).toHaveLength(0)
+  })
+
+  test('終了日だけのマイルストーンは期日1日のバーになる', () => {
+    const result = buildMilestoneEvents([makeMilestone({ startDate: null, endDate: '2026-06-10' })], PROJECT_MAP, YEAR, MONTH)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ day: 3, span: 1, row: 0 })
+  })
+
+  test('週をまたぐマイルストーンは週ごとに分割される', () => {
+    const result = buildMilestoneEvents([makeMilestone({ startDate: '2026-06-10', endDate: '2026-06-16' })], PROJECT_MAP, YEAR, MONTH)
+
+    expect(result).toHaveLength(2)
+    expect(result.map(e => e.span).sort()).toEqual([3, 4])
+  })
+})
+
+describe('buildMilestoneWeekEvents', () => {
+  const WEEK_START = new Date(2026, 5, 7)
+
+  test('週内のマイルストーンを週表示用の day/span に変換する', () => {
+    const result = buildMilestoneWeekEvents([makeMilestone({ startDate: '2026-06-09', endDate: '2026-06-11' })], PROJECT_MAP, WEEK_START)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ day: 2, span: 3, week: 0 })
+  })
+})
+
+describe('formatMilestoneLabel', () => {
+  test('プロジェクト名とマイルストーン名をスラッシュ区切りで表示する', () => {
+    expect(formatMilestoneLabel(makeMilestone({ projectTitle: '日本フルハーフ株式会社様', title: '訪問' }))).toBe('日本フルハーフ株式会社様 / 訪問')
+  })
+
+  test('開始時刻と終了時刻がある場合は時刻範囲も表示する', () => {
+    expect(formatMilestoneLabel(makeMilestone({ projectTitle: '日本フルハーフ株式会社様', title: '訪問', startTime: '12:00', endTime: '14:00' }))).toBe('日本フルハーフ株式会社様 / 訪問 12:00〜14:00')
+  })
+})
 
 describe('buildGcalEvents', () => {
   test('1日のみのイベントは1セルに span=1 で配置される', () => {

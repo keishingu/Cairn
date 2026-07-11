@@ -15,6 +15,7 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
 import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
+import type { WorkspaceMilestoneDto } from '@/app/api/milestones/route'
 import { MobileHeader } from '@/components/app/mobile/header'
 import { chatQueryKeys } from '@/lib/chat/client'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -99,6 +100,15 @@ interface GcalDisplayEvent {
   title: string
   color: string
   htmlLink: string | null
+  week: number
+  day: number
+  span: number
+  row: number
+}
+
+interface MilestoneDisplayEvent {
+  milestone: WorkspaceMilestoneDto
+  project: ProjectDto | null
   week: number
   day: number
   span: number
@@ -195,6 +205,61 @@ function buildEvents(projects: ProjectDto[], year: number, month: number): CalEv
   return result
 }
 
+function getMilestoneRange(milestone: WorkspaceMilestoneDto): { start: Date; end: Date } | null {
+  if (!milestone.startDate && !milestone.endDate) return null
+  const start = parseLocalDate(milestone.startDate ?? milestone.endDate!)
+  const end = parseLocalDate(milestone.endDate ?? milestone.startDate!)
+  return start <= end ? { start, end } : { start: end, end: start }
+}
+
+export function buildMilestoneEvents(
+  milestones: WorkspaceMilestoneDto[],
+  projectMap: Map<string, ProjectDto>,
+  year: number,
+  month: number,
+): MilestoneDisplayEvent[] {
+  const calStart = getCalendarStart(year, month)
+  const calEnd = new Date(calStart)
+  calEnd.setDate(calEnd.getDate() + 41)
+
+  const raw: Omit<MilestoneDisplayEvent, 'row'>[] = []
+
+  for (const milestone of milestones) {
+    const range = getMilestoneRange(milestone)
+    if (!range) continue
+    if (range.end < calStart || range.start > calEnd) continue
+
+    const visStart = range.start < calStart ? new Date(calStart) : range.start
+    const visEnd = range.end > calEnd ? new Date(calEnd) : range.end
+
+    let cur = new Date(visStart)
+    while (cur <= visEnd) {
+      const week = Math.floor(daysBetween(calStart, cur) / 7)
+      const day = cur.getDay()
+      const weekEnd = new Date(cur)
+      weekEnd.setDate(weekEnd.getDate() + (6 - day))
+      const segEnd = weekEnd < visEnd ? weekEnd : visEnd
+      const span = daysBetween(cur, segEnd) + 1
+      raw.push({ milestone, project: projectMap.get(milestone.projectId) ?? null, week, day, span })
+      cur = new Date(segEnd)
+      cur.setDate(cur.getDate() + 1)
+    }
+  }
+
+  const result: MilestoneDisplayEvent[] = []
+  for (let w = 0; w < 6; w++) {
+    const weekEvents = raw.filter(e => e.week === w).sort((a, b) => a.day - b.day)
+    const occupiedUntil: number[] = []
+    for (const e of weekEvents) {
+      let row = 0
+      while ((occupiedUntil[row] ?? -1) >= e.day) row++
+      occupiedUntil[row] = e.day + e.span - 1
+      result.push({ ...e, row })
+    }
+  }
+  return result
+}
+
 function buildWeekEvents(projects: ProjectDto[], weekStart: Date): CalEvent[] {
   const weekEnd = new Date(weekStart)
   weekEnd.setDate(weekEnd.getDate() + 6)
@@ -255,6 +320,40 @@ export function buildGcalWeekEvents(events: GcalEventDto[], weekStart: Date): Gc
     while ((occupiedUntil[row] ?? -1) >= e.day) row++
     occupiedUntil[row] = e.day + e.span - 1
     result.push({ ...e, row })
+  }
+  return result
+}
+
+export function buildMilestoneWeekEvents(
+  milestones: WorkspaceMilestoneDto[],
+  projectMap: Map<string, ProjectDto>,
+  weekStart: Date,
+): MilestoneDisplayEvent[] {
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekEnd.getDate() + 6)
+
+  const raw: Omit<MilestoneDisplayEvent, 'row' | 'week'>[] = []
+
+  for (const milestone of milestones) {
+    const range = getMilestoneRange(milestone)
+    if (!range) continue
+    if (range.end < weekStart || range.start > weekEnd) continue
+
+    const visStart = range.start < weekStart ? new Date(weekStart) : range.start
+    const visEnd = range.end > weekEnd ? new Date(weekEnd) : range.end
+    const day = daysBetween(weekStart, visStart)
+    const span = daysBetween(visStart, visEnd) + 1
+    raw.push({ milestone, project: projectMap.get(milestone.projectId) ?? null, day, span })
+  }
+
+  const result: MilestoneDisplayEvent[] = []
+  const sorted = raw.sort((a, b) => a.day - b.day)
+  const occupiedUntil: number[] = []
+  for (const e of sorted) {
+    let row = 0
+    while ((occupiedUntil[row] ?? -1) >= e.day) row++
+    occupiedUntil[row] = e.day + e.span - 1
+    result.push({ ...e, week: 0, row })
   }
   return result
 }
@@ -331,19 +430,34 @@ function getDateProjects(projects: ProjectDto[], d: Date): ProjectDto[] {
   })
 }
 
+function getDateMilestones(milestones: WorkspaceMilestoneDto[], d: Date): WorkspaceMilestoneDto[] {
+  const ms = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())
+  return milestones.filter(m => {
+    const range = getMilestoneRange(m)
+    if (!range) return false
+    const sMs = Date.UTC(range.start.getFullYear(), range.start.getMonth(), range.start.getDate())
+    const eMs = Date.UTC(range.end.getFullYear(), range.end.getMonth(), range.end.getDate())
+    return ms >= sMs && ms <= eMs
+  })
+}
+
 // ─── PC Calendar grid ──────────────────────────────────────────────
 
 const DATE_AREA = 28
 const EVENT_H = 22
 const EVENT_GAP = 2
-const MAX_ROWS = 3
+const MILESTONE_H = 16
+const MAX_PROJECT_ROWS = 3
+const MAX_MILESTONE_ROWS = 2
 
 interface CalendarGridProps {
   year: number
   month: number
   events: CalEvent[]
   gcalEvents?: GcalDisplayEvent[]
+  milestoneEvents?: MilestoneDisplayEvent[]
   onEventClick: (project: ProjectDto) => void
+  onMilestoneClick: (milestone: WorkspaceMilestoneDto) => void
   onDateSelect: (start: string, end: string) => void
   isLoading: boolean
 }
@@ -412,10 +526,17 @@ const GcalCalendarPopover = ({ containerRef, calendars, hidden, onChange, onClos
   )
 }
 
-const CalendarGrid = ({ year, month, events, gcalEvents = [], onEventClick, onDateSelect, isLoading }: CalendarGridProps) => {
+const CalendarGrid = ({ year, month, events, gcalEvents = [], milestoneEvents = [], onEventClick, onMilestoneClick, onDateSelect, isLoading }: CalendarGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const cells = buildCells(year, month)
   const flatCells = cells.flat()
+  const allDayRowsByWeek = Array.from({ length: 6 }, (_, week) => (
+    Math.max(
+      -1,
+      ...events.filter(e => e.week === week && e.row < MAX_PROJECT_ROWS).map(e => e.row),
+      ...gcalEvents.filter(e => e.week === week && e.row < MAX_PROJECT_ROWS).map(e => e.row),
+    ) + 1
+  ))
 
   const gridBodyRef = React.useRef<HTMLDivElement>(null)
   const isDragging = React.useRef(false)
@@ -554,7 +675,7 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], onEventClick, onDa
             ))
           ) : (
             <>
-              {events.filter(e => e.row < MAX_ROWS).map((e, i) => {
+              {events.filter(e => e.row < MAX_PROJECT_ROWS).map((e, i) => {
                 const barColor = e.project.statusColor ?? '#9CA3AF'
                 const cfg = { bg: barColor + '18', bar: barColor, text: barColor }
                 const colW = 100 / 7
@@ -586,7 +707,39 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], onEventClick, onDa
                   </button>
                 )
               })}
-              {gcalEvents.filter(e => e.row < MAX_ROWS).map((e, i) => {
+              {milestoneEvents.filter(e => e.row < MAX_MILESTONE_ROWS).map((e, i) => {
+                const barColor = e.project?.statusColor ?? '#64748B'
+                const fgColor = e.milestone.completed ? 'var(--text-4)' : barColor
+                const label = formatMilestoneLabel(e.milestone)
+                const colW = 100 / 7
+                const left = `calc(${e.day * colW}% + 4px)`
+                const width = `calc(${e.span * colW}% - 8px)`
+                const topOffset = DATE_AREA + (allDayRowsByWeek[e.week] ?? 0) * (EVENT_H + EVENT_GAP) + e.row * (MILESTONE_H + EVENT_GAP)
+                const top = `calc(${e.week} / 6 * 100% + ${topOffset}px)`
+                return (
+                  <button
+                    key={`m-${i}`}
+                    onClick={() => onMilestoneClick(e.milestone)}
+                    style={{
+                      position: 'absolute', left, top, width,
+                      height: MILESTONE_H, borderRadius: 4,
+                      background: e.milestone.completed ? 'var(--card-2)' : barColor + '12',
+                      color: fgColor,
+                      border: 'none',
+                      fontSize: 10, fontWeight: 600,
+                      padding: '0 6px', textAlign: 'left',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
+                      opacity: e.milestone.completed ? 0.65 : 1,
+                    }}
+                    onMouseDown={e2 => e2.stopPropagation()}
+                    title={label}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+              {gcalEvents.filter(e => e.row < MAX_PROJECT_ROWS).map((e, i) => {
                 const colW = 100 / 7
                 const left = `calc(${e.day * colW}% + 4px)`
                 const width = `calc(${e.span * colW}% - 8px)`
@@ -658,13 +811,15 @@ interface CalendarWeekGridProps {
   weekStart: Date
   events: CalEvent[]
   gcalEvents?: GcalDisplayEvent[]
+  milestoneEvents?: MilestoneDisplayEvent[]
   timedEvents?: GcalTimedEvent[]
   onEventClick: (project: ProjectDto) => void
+  onMilestoneClick: (milestone: WorkspaceMilestoneDto) => void
   onDateSelect: (start: string, end: string) => void
   isLoading: boolean
 }
 
-const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], timedEvents = [], onEventClick, onDateSelect, isLoading }: CalendarWeekGridProps) => {
+const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents = [], timedEvents = [], onEventClick, onMilestoneClick, onDateSelect, isLoading }: CalendarWeekGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const today = new Date()
   const cells = Array.from({ length: 7 }, (_, day) => {
@@ -747,8 +902,9 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], timedEvents = []
     return () => window.removeEventListener('mouseup', onWindowMouseUp)
   }, [dragStart, dragEnd]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const maxRow = Math.max(0, ...events.map(e => e.row), ...gcalEvents.map(e => e.row))
-  const bodyHeight = DATE_AREA + (maxRow + 1) * (EVENT_H + EVENT_GAP) + EVENT_GAP
+  const maxProjectRow = Math.max(-1, ...events.map(e => e.row), ...gcalEvents.map(e => e.row))
+  const maxMilestoneRow = Math.max(-1, ...milestoneEvents.map(e => e.row))
+  const bodyHeight = DATE_AREA + (maxProjectRow + 1) * (EVENT_H + EVENT_GAP) + (maxMilestoneRow + 1) * (MILESTONE_H + EVENT_GAP) + EVENT_GAP
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -840,6 +996,37 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], timedEvents = []
                       title={e.project.title}
                     >
                       {e.project.title}
+                    </button>
+                  )
+                })}
+                {milestoneEvents.map((e, i) => {
+                  const barColor = e.project?.statusColor ?? '#64748B'
+                  const fgColor = e.milestone.completed ? 'var(--text-4)' : barColor
+                  const label = formatMilestoneLabel(e.milestone)
+                  const colW = 100 / 7
+                  const left = `calc(${e.day * colW}% + 4px)`
+                  const width = `calc(${e.span * colW}% - 8px)`
+                  const top = DATE_AREA + (maxProjectRow + 1) * (EVENT_H + EVENT_GAP) + e.row * (MILESTONE_H + EVENT_GAP)
+                  return (
+                    <button
+                      key={`m-${i}`}
+                      onClick={() => onMilestoneClick(e.milestone)}
+                      style={{
+                        position: 'absolute', left, top, width,
+                        height: MILESTONE_H, borderRadius: 4,
+                        background: e.milestone.completed ? 'var(--card-2)' : barColor + '12',
+                        color: fgColor,
+                        border: 'none',
+                        fontSize: 10, fontWeight: 600,
+                        padding: '0 6px', textAlign: 'left',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
+                        opacity: e.milestone.completed ? 0.65 : 1,
+                      }}
+                      onMouseDown={e2 => e2.stopPropagation()}
+                      title={label}
+                    >
+                      {label}
                     </button>
                   )
                 })}
@@ -974,10 +1161,38 @@ function formatDateRange(start: string | null, end: string | null): string {
   return `${fmt(start)}–${fmt(end)}`
 }
 
+function formatMilestoneDateRange(milestone: WorkspaceMilestoneDto): string {
+  const fmt = (s: string) => {
+    const d = parseLocalDate(s)
+    return `${d.getMonth() + 1}/${d.getDate()}`
+  }
+  const start = milestone.startDate
+  const end = milestone.endDate
+  if (!start && !end) return ''
+  if (!start && end) return `〜${fmt(end)}`
+  if (start && (!end || end === start)) return fmt(start)
+  return `${fmt(start!)}–${fmt(end!)}`
+}
+
+export function formatMilestoneTimeRange(milestone: Pick<WorkspaceMilestoneDto, 'startTime' | 'endTime'>): string {
+  if (milestone.startTime && milestone.endTime) return `${milestone.startTime}〜${milestone.endTime}`
+  if (milestone.startTime) return `${milestone.startTime}〜`
+  if (milestone.endTime) return `〜${milestone.endTime}`
+  return ''
+}
+
+export function formatMilestoneLabel(milestone: Pick<WorkspaceMilestoneDto, 'projectTitle' | 'title' | 'startTime' | 'endTime'>): string {
+  const base = `${milestone.projectTitle} / ${milestone.title}`
+  const timeRange = formatMilestoneTimeRange(milestone)
+  return timeRange ? `${base} ${timeRange}` : base
+}
+
 interface MobileCalendarGridProps {
   year: number
   month: number
   projects: ProjectDto[]
+  milestones: WorkspaceMilestoneDto[]
+  projectMap: Map<string, ProjectDto>
   selectedDate: Date
   onSelectDate: (d: Date) => void
   onCreateDate?: (d: Date) => void
@@ -986,7 +1201,7 @@ interface MobileCalendarGridProps {
 
 const MOBILE_MAX_CHIPS = 3
 
-const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate, onCreateDate, onProjectClick }: MobileCalendarGridProps) => {
+const MobileCalendarGrid = ({ year, month, projects, milestones, projectMap, selectedDate, onSelectDate, onCreateDate, onProjectClick }: MobileCalendarGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const cells = buildCells(year, month)
 
@@ -1009,8 +1224,13 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
           {row.map((cell, col) => {
             const isSelected = cell.fullDate.toDateString() === selectedDate.toDateString()
             const dayProjects = getDateProjects(projects, cell.fullDate)
-            const visible = dayProjects.slice(0, MOBILE_MAX_CHIPS)
-            const overflow = dayProjects.length - MOBILE_MAX_CHIPS
+            const dayMilestones = getDateMilestones(milestones, cell.fullDate)
+            const chips = [
+              ...dayProjects.map(project => ({ kind: 'project' as const, id: project.id, title: project.title, color: project.statusColor ?? '#9CA3AF', project })),
+              ...dayMilestones.map(milestone => ({ kind: 'milestone' as const, id: milestone.id, title: formatMilestoneLabel(milestone), color: projectMap.get(milestone.projectId)?.statusColor ?? '#64748B', project: projectMap.get(milestone.projectId) ?? null, completed: milestone.completed })),
+            ]
+            const visible = chips.slice(0, MOBILE_MAX_CHIPS)
+            const overflow = chips.length - MOBILE_MAX_CHIPS
 
             return (
               <button
@@ -1052,17 +1272,15 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
                   {cell.date}
                 </span>
                 <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {visible.map(p => {
-                    const _bar = p.statusColor ?? '#9CA3AF'
-                    const cfg = { bg: _bar + '18', bar: _bar, text: _bar }
+                  {visible.map(item => {
+                    const cfg = { bg: item.kind === 'milestone' && item.completed ? 'var(--card-2)' : item.color + '18', bar: item.kind === 'milestone' && item.completed ? 'var(--text-4)' : item.color, text: item.kind === 'milestone' && item.completed ? 'var(--text-4)' : item.color }
                     return (
                       <div
-                        key={p.id}
-                        onClick={(e) => { e.stopPropagation(); onProjectClick(p) }}
+                        key={`${item.kind}-${item.id}`}
+                        onClick={(e) => { e.stopPropagation(); if (item.project) onProjectClick(item.project) }}
                         style={{
                           height: 13, borderRadius: 2,
                           background: cfg.bg,
-                          borderLeft: `2px solid ${cfg.bar}`,
                           fontSize: 9, fontWeight: 600, color: cfg.text,
                           paddingLeft: 2,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -1070,7 +1288,7 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
                           cursor: 'pointer',
                         }}
                       >
-                        {p.title}
+                        {item.title}
                       </div>
                     )
                   })}
@@ -1093,13 +1311,16 @@ const MobileCalendarGrid = ({ year, month, projects, selectedDate, onSelectDate,
 interface MobileDayEventsProps {
   date: Date
   projects: ProjectDto[]
+  milestones: WorkspaceMilestoneDto[]
+  projectMap: Map<string, ProjectDto>
   onCreateDate?: (d: Date) => void
   onProjectClick: (project: ProjectDto) => void
   isLoading: boolean
 }
 
-const MobileDayEvents = ({ date, projects, onCreateDate, onProjectClick, isLoading }: MobileDayEventsProps) => {
+const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate, onProjectClick, isLoading }: MobileDayEventsProps) => {
   const dayProjects = getDateProjects(projects, date)
+  const dayMilestones = getDateMilestones(milestones, date)
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
@@ -1120,7 +1341,7 @@ const MobileDayEvents = ({ date, projects, onCreateDate, onProjectClick, isLoadi
         </div>
       ) : (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          {dayProjects.length === 0 ? (
+          {dayProjects.length === 0 && dayMilestones.length === 0 ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-4)', fontSize: 13, padding: '0 24px', textAlign: 'center' }}>
               <div>予定なし</div>
               {onCreateDate && (
@@ -1135,7 +1356,7 @@ const MobileDayEvents = ({ date, projects, onCreateDate, onProjectClick, isLoadi
               )}
             </div>
           ) : null}
-          {onCreateDate && dayProjects.length > 0 ? (
+          {onCreateDate && (dayProjects.length > 0 || dayMilestones.length > 0) ? (
             <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--divider)' }}>
               <button
                 className="btn btn-primary"
@@ -1176,6 +1397,33 @@ const MobileDayEvents = ({ date, projects, onCreateDate, onProjectClick, isLoadi
               </button>
             )
           })}
+          {dayMilestones.map((m, i) => {
+            const project = projectMap.get(m.projectId)
+            const _c = project?.statusColor ?? '#64748B'
+            const cfg = { bg: m.completed ? 'var(--card-2)' : _c + '12', bar: m.completed ? 'var(--text-4)' : _c, text: m.completed ? 'var(--text-4)' : _c }
+            const dateStr = formatMilestoneDateRange(m)
+            const label = formatMilestoneLabel(m)
+            return (
+              <button
+                key={m.id}
+                onClick={() => { if (project) onProjectClick(project) }}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 16px', border: 'none', background: 'transparent',
+                  borderTop: dayProjects.length > 0 || i > 0 ? '1px solid var(--divider)' : 'none',
+                  cursor: project ? 'pointer' : 'default', fontFamily: 'inherit', textAlign: 'left',
+                  opacity: m.completed ? 0.7 : 1,
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: cfg.text, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {label}
+                  </div>
+                  {dateStr && <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>}
+                </div>
+              </button>
+            )
+          })}
           </div>
         </div>
       )}
@@ -1188,11 +1436,13 @@ const MobileDayEvents = ({ date, projects, onCreateDate, onProjectClick, isLoadi
 interface MobileWeekStripProps {
   weekStart: Date
   projects: ProjectDto[]
+  milestones: WorkspaceMilestoneDto[]
+  projectMap: Map<string, ProjectDto>
   selectedDate: Date
   onSelectDate: (d: Date) => void
 }
 
-const MobileWeekStrip = ({ weekStart, projects, selectedDate, onSelectDate }: MobileWeekStripProps) => {
+const MobileWeekStrip = ({ weekStart, projects, milestones, projectMap, selectedDate, onSelectDate }: MobileWeekStripProps) => {
   const today = new Date()
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart)
@@ -1212,7 +1462,11 @@ const MobileWeekStrip = ({ weekStart, projects, selectedDate, onSelectDate }: Mo
           const isSelected = day.toDateString() === selectedDate.toDateString()
           const isToday = day.toDateString() === today.toDateString()
           const dayProjects = getDateProjects(projects, day)
-          const dots = dayProjects.slice(0, 3).map(p => p.statusColor ?? '#9CA3AF')
+          const dayMilestones = getDateMilestones(milestones, day)
+          const dots = [
+            ...dayProjects.map(p => p.statusColor ?? '#9CA3AF'),
+            ...dayMilestones.map(m => projectMap.get(m.projectId)?.statusColor ?? '#64748B'),
+          ].slice(0, 3)
           return (
             <button key={i} onClick={() => onSelectDate(day)} style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
@@ -1246,29 +1500,32 @@ interface MobileTimelineViewProps {
   year: number
   month: number
   projects: ProjectDto[]
+  milestones: WorkspaceMilestoneDto[]
+  projectMap: Map<string, ProjectDto>
   onProjectClick: (project: ProjectDto) => void
   isLoading: boolean
 }
 
-const MobileTimelineView = ({ year, month, projects, onProjectClick, isLoading }: MobileTimelineViewProps) => {
+const MobileTimelineView = ({ year, month, projects, milestones, projectMap, onProjectClick, isLoading }: MobileTimelineViewProps) => {
   const monthStart = new Date(year, month, 1)
   const monthEnd = new Date(year, month + 1, 0)
 
   const sorted = React.useMemo(() => {
-    return projects
-      .filter(p => {
-        if (!p.startDate) return false
-        const start = parseLocalDate(p.startDate)
-        const end = p.endDate ? parseLocalDate(p.endDate) : start
+    const projectItems = projects
+      .filter(project => {
+        if (!project.startDate) return false
+        const start = parseLocalDate(project.startDate)
+        const end = project.endDate ? parseLocalDate(project.endDate) : start
         return start <= monthEnd && end >= monthStart
       })
-      .sort((a, b) => {
-        const aMs = a.startDate ? parseLocalDate(a.startDate).getTime() : 0
-        const bMs = b.startDate ? parseLocalDate(b.startDate).getTime() : 0
-        return aMs - bMs
-      })
+      .map(project => ({ kind: 'project' as const, id: project.id, date: parseLocalDate(project.startDate!), project }))
+    const milestoneItems = milestones
+      .map(milestone => ({ milestone, range: getMilestoneRange(milestone) }))
+      .filter((item): item is { milestone: WorkspaceMilestoneDto; range: { start: Date; end: Date } } => item.range != null && item.range.start <= monthEnd && item.range.end >= monthStart)
+      .map(({ milestone, range }) => ({ kind: 'milestone' as const, id: milestone.id, date: range.start, milestone, project: projectMap.get(milestone.projectId) ?? null }))
+    return [...projectItems, ...milestoneItems].sort((a, b) => a.date.getTime() - b.date.getTime())
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, year, month])
+  }, [projects, milestones, projectMap, year, month])
 
   if (isLoading) {
     return (
@@ -1291,17 +1548,17 @@ const MobileTimelineView = ({ year, month, projects, onProjectClick, isLoading }
   let lastDateLabel = ''
   return (
     <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
-      {sorted.map((p) => {
-        const _c = p.statusColor ?? '#9CA3AF'
+      {sorted.map((item) => {
+        const _c = item.kind === 'project' ? item.project.statusColor ?? '#9CA3AF' : item.project?.statusColor ?? '#64748B'
+        const completed = item.kind === 'milestone' && item.milestone.completed
         const cfg = { bg: _c + '18', bar: _c, text: _c }
-        const dateStr = formatDateRange(p.startDate, p.endDate)
-        const startDate = p.startDate ? parseLocalDate(p.startDate) : null
-        const dateLabel = startDate ? formatDateLabel(startDate) : ''
+        const dateStr = item.kind === 'project' ? formatDateRange(item.project.startDate, item.project.endDate) : formatMilestoneDateRange(item.milestone)
+        const dateLabel = formatDateLabel(item.date)
         const showDateHeader = dateLabel !== lastDateLabel
         if (showDateHeader) lastDateLabel = dateLabel
 
         return (
-          <React.Fragment key={p.id}>
+          <React.Fragment key={`${item.kind}-${item.id}`}>
             {showDateHeader && dateLabel && (
               <div style={{
                 padding: '10px 16px 4px', fontSize: 12, fontWeight: 700,
@@ -1312,23 +1569,28 @@ const MobileTimelineView = ({ year, month, projects, onProjectClick, isLoading }
               </div>
             )}
             <button
-              onClick={() => onProjectClick(p)}
+              onClick={() => {
+                if (item.project) onProjectClick(item.project)
+              }}
               style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 12,
                 padding: '10px 16px', border: 'none', background: 'transparent',
                 borderTop: '1px solid var(--divider)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                opacity: completed ? 0.7 : 1,
               }}
             >
-              <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
+              {item.kind === 'project' && (
+                <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
+              )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {p.title}
+                  {item.kind === 'project' ? item.project.title : formatMilestoneLabel(item.milestone)}
                 </div>
                 {dateStr && (
                   <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
                 )}
               </div>
-              <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'} />
+              {item.kind === 'project' && <StatusChip name={item.project.statusName ?? ''} color={item.project.statusColor ?? '#9CA3AF'} />}
             </button>
           </React.Fragment>
         )
@@ -1343,18 +1605,20 @@ interface PCTimelineViewProps {
   year: number
   month: number
   projects: ProjectDto[]
+  milestones?: WorkspaceMilestoneDto[]
+  projectMap?: Map<string, ProjectDto>
   gcalEvents?: GcalEventDto[]
   onProjectClick: (project: ProjectDto) => void
   isLoading: boolean
 }
 
-const PCTimelineView = ({ year, month, projects, gcalEvents = [], onProjectClick, isLoading }: PCTimelineViewProps) => {
+const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = new Map(), gcalEvents = [], onProjectClick, isLoading }: PCTimelineViewProps) => {
   const today = new Date()
 
   const timelineItems = React.useMemo(() => {
     const monthStart = new Date(year, month, 1)
     const monthEnd = new Date(year, month + 1, 0)
-    const items: { date: Date; projects: ProjectDto[]; gcalEvents: GcalEventDto[] }[] = []
+    const items: { date: Date; projects: ProjectDto[]; milestones: WorkspaceMilestoneDto[]; gcalEvents: GcalEventDto[] }[] = []
 
     // 月の全日付を生成
     const currentDate = new Date(monthStart)
@@ -1373,11 +1637,13 @@ const PCTimelineView = ({ year, month, projects, gcalEvents = [], onProjectClick
         const current = new Date(currentDate)
         return current >= start && current <= end
       })
+      const dateMilestones = getDateMilestones(milestones, currentDate)
 
-      if (dateProjects.length > 0 || dateGcalEvents.length > 0) {
+      if (dateProjects.length > 0 || dateMilestones.length > 0 || dateGcalEvents.length > 0) {
         items.push({
           date: new Date(currentDate),
           projects: dateProjects,
+          milestones: dateMilestones,
           gcalEvents: dateGcalEvents,
         })
       }
@@ -1386,7 +1652,7 @@ const PCTimelineView = ({ year, month, projects, gcalEvents = [], onProjectClick
     }
 
     return items
-  }, [projects, gcalEvents, year, month])
+  }, [projects, milestones, gcalEvents, year, month])
 
   if (isLoading) {
     return (
@@ -1471,6 +1737,40 @@ const PCTimelineView = ({ year, month, projects, gcalEvents = [], onProjectClick
                       )}
                     </div>
                     <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'} />
+                  </button>
+                )
+              })}
+
+              {/* マイルストーン */}
+              {item.milestones.map((m, i) => {
+                const project = projectMap.get(m.projectId)
+                const _c = project?.statusColor ?? '#64748B'
+                const cfg = { bg: m.completed ? 'var(--card-2)' : _c + '12', bar: m.completed ? 'var(--text-4)' : _c, text: m.completed ? 'var(--text-4)' : _c }
+                const dateStr = formatMilestoneDateRange(m)
+                const label = formatMilestoneLabel(m)
+
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => { if (project) onProjectClick(project) }}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 16px', border: 'none', background: 'transparent',
+                      borderTop: item.projects.length > 0 || i > 0 ? '1px solid var(--divider)' : 'none',
+                      cursor: project ? 'pointer' : 'default', fontFamily: 'inherit', textAlign: 'left',
+                      borderRadius: 6,
+                      opacity: m.completed ? 0.7 : 1,
+                      transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--card-hover)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: cfg.text, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {label}
+                      </div>
+                      {dateStr && <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>}
+                    </div>
                   </button>
                 )
               })}
@@ -1599,6 +1899,14 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   }
   const [gcalFilterOpen, setGcalFilterOpen] = React.useState(false)
   const gcalFilterBtnRef = React.useRef<HTMLDivElement>(null)
+  const [showMilestones, setShowMilestones] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return true
+    return localStorage.getItem(STORAGE_KEYS.calendar_milestones_visible) !== 'false'
+  })
+  const setShowMilestonesPersisted = (v: boolean) => {
+    setShowMilestones(v)
+    localStorage.setItem(STORAGE_KEYS.calendar_milestones_visible, String(v))
+  }
 
   const { data: gcalEventsRaw = [], isError: gcalEventsError } = useQuery<GcalEventDto[]>({
     queryKey: ['gcal-events', year, month],
@@ -1609,6 +1917,15 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     },
     staleTime: 15 * 60 * 1000,
     enabled: gcalConnected,
+  })
+
+  const { data: milestonesRaw = [], isError: milestonesError } = useQuery<WorkspaceMilestoneDto[]>({
+    queryKey: ['milestones'],
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/milestones')
+      if (!res.ok) throw new Error('マイルストーンの取得に失敗しました')
+      return res.json()
+    },
   })
 
   const gcalCalendars = React.useMemo(() => {
@@ -1642,9 +1959,24 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     return result
   }, [projects, statusFilter, memberFilter])
 
+  const projectMap = React.useMemo(
+    () => new Map(visibleProjects.map(project => [project.id, project])),
+    [visibleProjects],
+  )
+
+  const visibleMilestones = React.useMemo(
+    () => showMilestones ? milestonesRaw.filter(m => projectMap.has(m.projectId)) : [],
+    [milestonesRaw, projectMap, showMilestones],
+  )
+
   const events = React.useMemo(
     () => buildEvents(visibleProjects, year, month),
     [visibleProjects, year, month],
+  )
+
+  const milestoneEvents = React.useMemo(
+    () => buildMilestoneEvents(visibleMilestones, projectMap, year, month),
+    [visibleMilestones, projectMap, year, month],
   )
 
   const weekStart = getWeekStart(selectedDate)
@@ -1653,6 +1985,16 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     () => buildWeekEvents(visibleProjects, weekStart),
     [visibleProjects, weekStart],
   )
+
+  const milestoneWeekEvents = React.useMemo(
+    () => buildMilestoneWeekEvents(visibleMilestones, projectMap, weekStart),
+    [visibleMilestones, projectMap, weekStart],
+  )
+
+  const openMilestoneProject = React.useCallback((milestone: WorkspaceMilestoneDto) => {
+    const project = projectMap.get(milestone.projectId)
+    if (project) openPanel(project)
+  }, [openPanel, projectMap])
 
   const gcalWeekDisplayEvents = React.useMemo(
     () => (gcalConnected ? buildGcalWeekEvents(visibleGcalEvents.filter(ev => ev.isAllDay), weekStart) : []),
@@ -1772,11 +2114,29 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             </button>
           ))}
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, padding: '6px 12px', background: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
+          <button
+            onClick={() => setShowMilestonesPersisted(!showMilestones)}
+            style={{
+              height: 26, borderRadius: 7, border: '1px solid var(--border)',
+              background: showMilestones ? 'var(--accent-soft)' : 'transparent',
+              color: showMilestones ? 'var(--accent-text)' : 'var(--text-3)',
+              fontSize: 12, fontWeight: 600, padding: '0 9px',
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            <Icon name={showMilestones ? 'eye' : 'eye-off'} size={12} />
+            マイルストーン
+          </button>
+        </div>
         {calView === 'month' && (
           <MobileCalendarGrid
             year={year}
             month={month}
             projects={visibleProjects}
+            milestones={visibleMilestones}
+            projectMap={projectMap}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             onProjectClick={openPanel}
@@ -1788,12 +2148,16 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             <MobileWeekStrip
               weekStart={weekStart}
               projects={visibleProjects}
+              milestones={visibleMilestones}
+              projectMap={projectMap}
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
             />
             <MobileDayEvents
               date={selectedDate}
               projects={visibleProjects}
+              milestones={visibleMilestones}
+              projectMap={projectMap}
               onProjectClick={openPanel}
               isLoading={isLoading}
               {...(canCreateProject ? { onCreateDate: openCreateForDate } : {})}
@@ -1805,6 +2169,8 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             year={year}
             month={month}
             projects={visibleProjects}
+            milestones={visibleMilestones}
+            projectMap={projectMap}
             onProjectClick={openPanel}
             isLoading={isLoading}
           />
@@ -1885,6 +2251,14 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
                 )}
               </div>
             )}
+            <button
+              className="btn"
+              onClick={() => setShowMilestonesPersisted(!showMilestones)}
+              title="マイルストーンの表示切り替え"
+              style={showMilestones ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : { opacity: 0.6 }}
+            >
+              <Icon name={showMilestones ? 'eye' : 'eye-off'} size={13} /> マイルストーン
+            </button>
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
               <button
                 className="btn"
@@ -1923,6 +2297,15 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           Googleカレンダーの予定の取得に失敗しました。時間をおいて再読み込みしてください。
         </div>
       )}
+      {milestonesError && (
+        <div style={{
+          marginBottom: 14, padding: '10px 14px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8,
+          color: 'var(--red-text)', fontSize: 13, border: '1px solid var(--red)', background: 'var(--red-soft)',
+        }}>
+          <Icon name="alertTriangle" size={15} />
+          マイルストーンの取得に失敗しました。時間をおいて再読み込みしてください。
+        </div>
+      )}
 
       {/* Calendar grid */}
       <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
@@ -1931,8 +2314,10 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             weekStart={weekStart}
             events={weekEvents}
             gcalEvents={gcalWeekDisplayEvents}
+            milestoneEvents={milestoneWeekEvents}
             timedEvents={gcalTimedEvents}
             onEventClick={openPanel}
+            onMilestoneClick={openMilestoneProject}
             onDateSelect={openCreate}
             isLoading={isLoading}
           />
@@ -1941,6 +2326,8 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             year={year}
             month={month}
             projects={visibleProjects}
+            milestones={visibleMilestones}
+            projectMap={projectMap}
             gcalEvents={visibleGcalEvents}
             onProjectClick={openPanel}
             isLoading={isLoading}
@@ -1951,7 +2338,9 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             month={month}
             events={events}
             gcalEvents={gcalDisplayEvents}
+            milestoneEvents={milestoneEvents}
             onEventClick={openPanel}
+            onMilestoneClick={openMilestoneProject}
             onDateSelect={openCreate}
             isLoading={isLoading}
           />
