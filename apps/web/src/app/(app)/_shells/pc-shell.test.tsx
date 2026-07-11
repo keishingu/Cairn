@@ -136,7 +136,7 @@ describe('PCShell — URL からパネル表示の導出', () => {
     expect(panel).toBeInTheDocument()
     expect(panel).toHaveAttribute('data-project-id', 'proj-abc')
     const slot = screen.getByTestId('desktop-detail-panel-slot')
-    expect(slot).toHaveStyle({ position: 'absolute', right: '0px', width: 'min(420px, 100%)' })
+    expect(slot).toHaveStyle({ position: 'absolute', top: '56px', right: '0px', width: 'min(420px, 100%)' })
   })
 
   it('キャッシュに存在しない ID では ProjectPanel を表示しない', () => {

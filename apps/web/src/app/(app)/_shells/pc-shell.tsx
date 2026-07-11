@@ -24,9 +24,8 @@ const PC_STORAGE_KEY = STORAGE_KEYS.projects_view_pc
 const SIDEBAR_COLLAPSED_KEY = STORAGE_KEYS.sidebar_collapsed
 type ProjectsView = 'list' | 'calendar' | 'kanban'
 
-const desktopPanelSlotStyle: React.CSSProperties = {
+const desktopPanelSlotStyleBase: React.CSSProperties = {
   position: 'absolute',
-  top: 0,
   right: 0,
   bottom: 0,
   width: 'min(420px, 100%)',
@@ -35,6 +34,10 @@ const desktopPanelSlotStyle: React.CSSProperties = {
   minHeight: 0,
   minWidth: 0,
   zIndex: 20,
+}
+
+function getDesktopPanelTopOffset(pathnameSection: string) {
+  return pathnameSection === 'projects' || pathnameSection === 'members' ? 56 : 0
 }
 
 function isValidView(v: string | null | undefined): v is ProjectsView {
@@ -98,6 +101,11 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
   }, [pathname, projectsView])
 
   const pathnameSection = pathname.split('/')[1] ?? ''
+  const desktopPanelSlotStyle = React.useMemo<React.CSSProperties>(() => ({
+    ...desktopPanelSlotStyleBase,
+    top: getDesktopPanelTopOffset(pathnameSection),
+  }), [pathnameSection])
+
   React.useEffect(() => {
     setNotifOpen(false)
   }, [pathnameSection])
