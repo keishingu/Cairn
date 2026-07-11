@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { profiles, projects, projectMembers, workspaceMembers } = await import('@cairn/db')
+    const { profiles, projects, projectMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and, or, isNotNull } = await import('drizzle-orm')
 
     const [profile] = await db
@@ -103,12 +103,13 @@ export async function GET(req: NextRequest) {
 
     const userId = profile.id
 
+    // active membership のみ iCal フィードを発行する（非活性メンバーは当該 WS 未所属扱い）
     const [membership] = await db
-      .select({ workspaceId: workspaceMembers.workspaceId, role: workspaceMembers.role })
-      .from(workspaceMembers)
+      .select({ workspaceId: activeWorkspaceMembers.workspaceId, role: activeWorkspaceMembers.role })
+      .from(activeWorkspaceMembers)
       .where(and(
-        eq(workspaceMembers.userId, userId),
-        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(activeWorkspaceMembers.userId, userId),
+        eq(activeWorkspaceMembers.workspaceId, workspaceId),
       ))
 
     if (!membership) {
