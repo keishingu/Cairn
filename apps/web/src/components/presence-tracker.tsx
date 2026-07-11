@@ -57,6 +57,25 @@ export function derivePresenceStatus(sessions: PresenceSessionMap, now: number):
   return activeSessions.some(session => now - session.lastActiveAt <= IDLE_MS) ? 'online' : 'away'
 }
 
+export function updatePresenceSessions(
+  sessions: PresenceSessionMap,
+  sessionId: string,
+  now: number,
+  options?: { hidden?: boolean; preserveActivity?: boolean },
+): PresenceSessionMap {
+  const next = prunePresenceSessions(sessions, now)
+  if (options?.hidden) {
+    delete next[sessionId]
+    return next
+  }
+
+  const previousLastActiveAt = next[sessionId]?.lastActiveAt
+  next[sessionId] = {
+    lastActiveAt: options?.preserveActivity && previousLastActiveAt !== undefined ? previousLastActiveAt : now,
+  }
+  return next
+}
+
 export function PresenceTracker() {
   const queryClient = useQueryClient()
   const { data: me } = useCurrentUser()
@@ -78,17 +97,21 @@ export function PresenceTracker() {
     }
 
     function removeSelf(now: number) {
-      const next = prunePresenceSessions(readSessions(), now)
-      delete next[sessionId]
+      const next = updatePresenceSessions(readSessions(), sessionId, now, { hidden: true })
       writeSessions(next)
       return next
     }
 
     function upsertSelf(now: number) {
-      const next = prunePresenceSessions(readSessions(), now)
-      next[sessionId] = { lastActiveAt: now }
+      const next = updatePresenceSessions(readSessions(), sessionId, now)
       writeSessions(next)
       lastActivityAtRef.current = now
+      return next
+    }
+
+    function refreshSelf(now: number) {
+      const next = updatePresenceSessions(readSessions(), sessionId, now, { preserveActivity: true })
+      writeSessions(next)
       return next
     }
 
@@ -118,9 +141,13 @@ export function PresenceTracker() {
       }
     }
 
-    async function syncPresence(options?: { hidden?: boolean; now?: number; keepalive?: boolean }) {
+    async function syncPresence(options?: { hidden?: boolean; now?: number; keepalive?: boolean; preserveActivity?: boolean }) {
       const now = options?.now ?? Date.now()
-      const sessions = options?.hidden ? removeSelf(now) : upsertSelf(now)
+      const sessions = options?.hidden
+        ? removeSelf(now)
+        : options?.preserveActivity
+          ? refreshSelf(now)
+          : upsertSelf(now)
       await flushStatus(derivePresenceStatus(sessions, now), options?.keepalive ?? false)
     }
 
@@ -144,7 +171,7 @@ export function PresenceTracker() {
     void syncPresence({ hidden: document.hidden, keepalive: document.hidden })
 
     const heartbeat = window.setInterval(() => {
-      void syncPresence({ hidden: document.hidden })
+      void syncPresence({ hidden: document.hidden, preserveActivity: !document.hidden })
     }, HEARTBEAT_MS)
 
     window.addEventListener('pointermove', onActivity, { passive: true })

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CurrentUserDto } from '@/app/api/me/route'
-import { PresenceTracker, derivePresenceStatus, parsePresenceSessions, prunePresenceSessions } from './presence-tracker'
+import { PresenceTracker, derivePresenceStatus, parsePresenceSessions, prunePresenceSessions, updatePresenceSessions } from './presence-tracker'
 
 const mockFetchWithAuth = vi.fn()
 
@@ -62,6 +62,22 @@ describe('presence helpers', () => {
     expect(derivePresenceStatus(sessions, now)).toBe('online')
     expect(derivePresenceStatus({ idle: { lastActiveAt: now - 70_000 } }, now)).toBe('away')
     expect(derivePresenceStatus({ stale: { lastActiveAt: now - 80_000 } }, now)).toBe('offline')
+  })
+
+  it('heartbeat 中は最終活動時刻を維持して idle 遷移を邪魔しない', () => {
+    const now = 120_000
+    expect(
+      updatePresenceSessions(
+        {
+          self: { lastActiveAt: now - 70_000 },
+        },
+        'self',
+        now,
+        { preserveActivity: true },
+      ),
+    ).toEqual({
+      self: { lastActiveAt: now - 70_000 },
+    })
   })
 })
 
