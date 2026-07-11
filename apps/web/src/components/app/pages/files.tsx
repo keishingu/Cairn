@@ -75,6 +75,26 @@ function isPreviewableTextFile(file: FileDto): boolean {
   return isMarkdownFile(file) || isPlainTextFile(file)
 }
 
+function getAttachmentHref(file: FileDto): string {
+  return file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`
+}
+
+function openFileFromMenu(
+  file: FileDto,
+  onImageClick: (id: string) => void,
+  onTextPreviewClick: (file: FileDto) => void,
+) {
+  if (isImageFile(file)) {
+    onImageClick(file.id)
+    return
+  }
+  if (isPreviewableTextFile(file)) {
+    onTextPreviewClick(file)
+    return
+  }
+  window.open(getAttachmentHref(file), '_blank', 'noopener,noreferrer')
+}
+
 function matchesFilter(file: FileDto, filter: FilterKey): boolean {
   if (filter === 'all') return true
   if (filter === 'pdf') return file.mimeType === 'application/pdf'
@@ -110,6 +130,12 @@ const FileRow = ({
   const metaParts = [projectLabel, sizeStr, dateStr].filter(Boolean).join(' · ')
   const isImage = isImageFile(file)
   const isPreviewableText = isPreviewableTextFile(file)
+  const fileHref = getAttachmentHref(file)
+  const openActionLabel = file.fileType === 'link'
+    ? 'リンクを開く'
+    : isImage || isPreviewableText
+      ? 'プレビュー'
+      : '別タブで開く'
 
   return (
     <div
@@ -130,7 +156,7 @@ const FileRow = ({
       }}
     >
       <a
-        href={file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`}
+        href={fileHref}
         target="_blank"
         rel="noopener noreferrer"
         onClick={
@@ -194,6 +220,18 @@ const FileRow = ({
       <Avatar name={file.uploaderName} url={file.uploaderAvatarUrl} size={22} />
       <RowActionMenu
         actions={[
+          {
+            icon: file.fileType === 'link' ? 'link' : 'file',
+            label: openActionLabel,
+            onSelect: () => openFileFromMenu(file, onImageClick, onTextPreviewClick),
+          },
+          ...(file.fileType !== 'link'
+            ? [{
+                icon: 'download',
+                label: 'ダウンロード',
+                onSelect: () => window.open(fileHref, '_blank', 'noopener,noreferrer'),
+              }]
+            : []),
           ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
             ? [{ icon: 'refresh', label: '再インデックス', onSelect: () => onReindex(file.id) }]
             : []),

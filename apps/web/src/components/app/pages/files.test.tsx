@@ -94,4 +94,14 @@ describe('ファイル一覧ページ', () => {
     expect(dialog.querySelector('pre')?.textContent).toBe('# 見出し\n- Markdownとしては解釈しない')
     expect(screen.queryByRole('heading', { name: '見出し' })).toBeNull()
   })
+
+  it('操作メニューにプレビューとダウンロードを表示する', async () => {
+    renderPageFiles()
+
+    await screen.findByText('notes.txt')
+    await userEvent.click(screen.getByTitle('操作'))
+
+    expect(screen.getByRole('button', { name: 'プレビュー' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ダウンロード' })).toBeInTheDocument()
+  })
 })

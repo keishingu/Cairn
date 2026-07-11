@@ -62,6 +62,10 @@ function isImageFile(file: ProjectFileDto): boolean {
   return file.fileType !== 'link' && (file.mimeType?.startsWith('image/') ?? false)
 }
 
+function getAttachmentHref(file: ProjectFileDto): string {
+  return file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`
+}
+
 export const FilesTab = ({ projectId, channelId }: { projectId: string; channelId: string | null }) => {
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
@@ -192,7 +196,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
         const meta = [sizeStr, dateStr].filter(Boolean).join(' · ')
 
         const isLink = f.fileType === 'link'
-        const linkHref = isLink ? f.externalUrl : `/api/attachments/${f.id}`
+        const linkHref = getAttachmentHref(f)
         const isImage = isImageFile(f)
 
         return (
@@ -223,6 +227,18 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
             <RowActionMenu
               actions={[
+                {
+                  icon: isLink ? 'link' : 'file',
+                  label: isLink ? 'リンクを開く' : '別タブで開く',
+                  onSelect: () => window.open(linkHref, '_blank', 'noopener,noreferrer'),
+                },
+                ...(isLink
+                  ? []
+                  : [{
+                      icon: 'download',
+                      label: 'ダウンロード',
+                      onSelect: () => window.open(linkHref, '_blank', 'noopener,noreferrer'),
+                    }]),
                 f.isLatest
                   ? { icon: 'star', label: '最新版を解除', onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
                   : { icon: 'star', label: '最新版にする', onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },
