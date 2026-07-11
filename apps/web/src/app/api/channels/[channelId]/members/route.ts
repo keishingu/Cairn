@@ -71,19 +71,23 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
+    const { channelMembers, channelReadStates, activeWorkspaceMembers, profiles } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    // 自ワークスペースの active メンバー以外を追加できないようにする（不正な channel_members 行や
-    // 非活性メンバーの追加を防ぐ）
+    // 自ワークスペースの active な人間メンバー以外は追加できないようにする。
     const [member] = await db
       .select({ userId: activeWorkspaceMembers.userId })
       .from(activeWorkspaceMembers)
-      .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), eq(activeWorkspaceMembers.userId, userId)))
+      .innerJoin(profiles, eq(profiles.id, activeWorkspaceMembers.userId))
+      .where(and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, userId),
+        eq(profiles.kind, 'human'),
+      ))
       .limit(1)
 
     if (!member) {
-      return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
+      return NextResponse.json({ error: '指定されたユーザーは人間メンバーではありません' }, { status: 422 })
     }
 
     await db

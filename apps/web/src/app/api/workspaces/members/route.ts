@@ -78,6 +78,7 @@ export async function GET(req: Request) {
     const rows = await db
       .select({
         userId: profiles.id,
+        kind: profiles.kind,
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         role: workspaceMembers.role,
@@ -102,9 +103,10 @@ export async function GET(req: Request) {
       )
       .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
 
-    const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
+    const humanRows = rows.filter((row) => row.kind === 'human')
+    const emails = await resolveEmailsByUserId(admin, humanRows.map(row => row.userId))
 
-    const result: WorkspaceMemberDto[] = rows.map(r => ({
+    const result: WorkspaceMemberDto[] = humanRows.map(r => ({
       userId: r.userId,
       displayName: r.displayName,
       email: emails.get(r.userId) ?? null,

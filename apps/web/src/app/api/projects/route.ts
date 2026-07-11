@@ -207,7 +207,12 @@ export async function POST(req: Request) {
       const wsRows = await db
         .select({ userId: activeWorkspaceMembers.userId })
         .from(activeWorkspaceMembers)
-        .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), inArray(activeWorkspaceMembers.userId, selectedMemberIds)))
+        .innerJoin(profiles, eq(profiles.id, activeWorkspaceMembers.userId))
+        .where(and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          inArray(activeWorkspaceMembers.userId, selectedMemberIds),
+          eq(profiles.kind, 'human'),
+        ))
 
       if (wsRows.length !== selectedMemberIds.length) {
         return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })

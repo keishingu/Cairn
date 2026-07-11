@@ -144,6 +144,7 @@ export const onMessageCreated = inngest.createFunction(
             .where(and(
               eq(activeWorkspaceMembers.workspaceId, workspaceId),
               inArray(activeWorkspaceMembers.userId, mentionedIds),
+              eq(profiles.kind, 'human'),
               ne(activeWorkspaceMembers.userId, senderId),
             ))
         })

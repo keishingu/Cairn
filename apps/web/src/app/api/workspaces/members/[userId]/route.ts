@@ -43,7 +43,7 @@ export async function PATCH(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and, count, sql } = await import('drizzle-orm')
 
     const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
@@ -53,13 +53,21 @@ export async function PATCH(
 
     const response = await db.transaction(async (tx) => {
       const [target] = await tx
-        .select({ role: workspaceMembers.role, membershipStatus: workspaceMembers.membershipStatus })
+        .select({
+          role: workspaceMembers.role,
+          membershipStatus: workspaceMembers.membershipStatus,
+          kind: profiles.kind,
+        })
         .from(workspaceMembers)
+        .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
         .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, targetUserId)))
         .limit(1)
 
       if (!target) {
         return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+      }
+      if (target.kind === 'bot') {
+        return NextResponse.json({ error: 'Bot member role cannot be changed' }, { status: 422 })
       }
 
       const currentRole = target.role
@@ -149,7 +157,7 @@ async function handleStatusChange(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceMembers } = await import('@cairn/db')
+    const { profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
     const callerRole = await getWorkspaceMemberRole(workspaceId, callerUserId)
@@ -158,13 +166,17 @@ async function handleStatusChange(
     }
 
     const [target] = await db
-      .select({ role: workspaceMembers.role })
+      .select({ role: workspaceMembers.role, kind: profiles.kind })
       .from(workspaceMembers)
+      .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
       .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, targetUserId)))
       .limit(1)
 
     if (!target) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+    }
+    if (target.kind === 'bot') {
+      return NextResponse.json({ error: 'Bot member role cannot be changed' }, { status: 422 })
     }
 
     // admin は owner の活性状態を変更できない（ロール変更と同じ非対称ルール）

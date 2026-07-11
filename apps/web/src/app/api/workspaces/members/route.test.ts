@@ -38,7 +38,7 @@ vi.mock('@/lib/supabase/service', async importOriginal => {
 })
 vi.mock('@cairn/db', () => ({
   db: mockDb,
-  profiles: { id: 'profiles.id', displayName: 'profiles.displayName' },
+  profiles: { id: 'profiles.id', kind: 'profiles.kind', displayName: 'profiles.displayName' },
   workspaceMembers: {
     workspaceId: 'wm.workspaceId',
     userId: 'wm.userId',
@@ -95,6 +95,7 @@ describe('GET /api/workspaces/members', () => {
       .mockReturnValueOnce(chain([]))
       .mockReturnValueOnce(chain([{
         userId: USER_ID,
+        kind: 'human',
         displayName: '山田 太郎',
         avatarUrl: null,
         role: 'member',
@@ -131,6 +132,7 @@ describe('GET /api/workspaces/members', () => {
       .mockReturnValueOnce(chain([
         {
           userId: USER_ID,
+          kind: 'human',
           displayName: '山田 太郎',
           avatarUrl: null,
           role: 'member',
@@ -140,6 +142,7 @@ describe('GET /api/workspaces/members', () => {
         },
         {
           userId: secondUserId,
+          kind: 'human',
           displayName: '佐藤 花子',
           avatarUrl: null,
           role: 'admin',
@@ -196,6 +199,7 @@ describe('GET /api/workspaces/members', () => {
       .mockReturnValueOnce(chain([]))
       .mockReturnValueOnce(chain([{
         userId: missingUserId,
+        kind: 'human',
         displayName: '未登録 ユーザー',
         avatarUrl: null,
         role: 'guest',
@@ -264,5 +268,53 @@ describe('GET /api/workspaces/members', () => {
 
     expect(res.status).toBe(200)
     expect(eq).toHaveBeenCalledWith('wm.membershipStatus', 'active')
+  })
+
+  it('bot profile は一覧レスポンスから除外する', async () => {
+    mockDb.select
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([
+        {
+          userId: USER_ID,
+          kind: 'human',
+          displayName: '山田 太郎',
+          avatarUrl: null,
+          role: 'member',
+          membershipStatus: 'active',
+          joinedAt: new Date('2026-01-01T00:00:00.000Z'),
+          projectCount: 3,
+        },
+        {
+          userId: 'bot-1',
+          kind: 'bot',
+          displayName: 'Cairn Bot',
+          avatarUrl: null,
+          role: 'member',
+          membershipStatus: 'active',
+          joinedAt: new Date('2026-01-02T00:00:00.000Z'),
+          projectCount: 0,
+        },
+      ]))
+
+    mockGetUserById.mockResolvedValue({
+      data: { user: { email: 'taro@example.com' } },
+      error: null,
+    })
+
+    const { GET } = await import('./route')
+    const res = await GET(request())
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([{
+      userId: USER_ID,
+      displayName: '山田 太郎',
+      email: 'taro@example.com',
+      avatarUrl: null,
+      role: 'member',
+      membershipStatus: 'active',
+      joinedAt: '2026-01-01',
+      projectCount: 3,
+    }])
+    expect(mockGetUserById).toHaveBeenCalledTimes(1)
   })
 })

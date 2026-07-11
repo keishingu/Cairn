@@ -55,6 +55,7 @@ describe('ChatMessage copy action', () => {
         messageId="message-1"
         messageType="text"
         senderId="user-2"
+        senderKind="human"
         currentUserId="user-1"
         senderName="Alice"
         createdAt="2026-06-25T12:00:00.000Z"
@@ -112,6 +113,7 @@ describe('ChatMessage copy action', () => {
         messageId="message-2"
         messageType="text"
         senderId="user-2"
+        senderKind="human"
         currentUserId="user-1"
         senderName="Alice"
         createdAt="2026-06-25T12:00:00.000Z"
@@ -136,5 +138,36 @@ describe('ChatMessage copy action', () => {
     expect(screen.getByText('重要').tagName).toBe('STRONG')
     expect(screen.getByRole('checkbox')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '詳細' })).toHaveAttribute('href', 'https://example.com/guide')
+  })
+
+  it('bot 投稿には Bot バッジを表示する', () => {
+    render(
+      <ChatMessage
+        messageId="message-3"
+        messageType="text"
+        senderId="bot-1"
+        senderKind="bot"
+        currentUserId="user-1"
+        senderName="Cairn Bot"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="定期連絡です"
+        reactions={[]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Bot')).toBeInTheDocument()
   })
 })

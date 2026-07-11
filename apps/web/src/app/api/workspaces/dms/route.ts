@@ -110,20 +110,22 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
+    const { channels, channelMembers, channelReadStates, activeWorkspaceMembers, profiles } = await import('@cairn/db')
     const { and, eq, inArray, sql } = await import('drizzle-orm')
 
     const [targetMember] = await db
       .select({ userId: activeWorkspaceMembers.userId })
       .from(activeWorkspaceMembers)
+      .innerJoin(profiles, eq(profiles.id, activeWorkspaceMembers.userId))
       .where(and(
         eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
         eq(activeWorkspaceMembers.userId, targetUserId),
+        eq(profiles.kind, 'human'),
       ))
       .limit(1)
 
     if (!targetMember) {
-      return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
+      return NextResponse.json({ error: 'targetUserId must be a human workspace member' }, { status: 422 })
     }
 
     // 既存の DM チャンネルを探す（両者が参加している）

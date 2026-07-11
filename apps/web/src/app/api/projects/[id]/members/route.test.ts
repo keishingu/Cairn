@@ -230,4 +230,24 @@ describe('POST /api/projects/[id]/members', () => {
     expect(mockDb.select).not.toHaveBeenCalled()
     expect(mockDb.insert).not.toHaveBeenCalled()
   })
+
+  it('bot profile が含まれる場合は 422 を返し、projectMembers に追加しない', async () => {
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: PROJECT_ID }]))
+      .mockReturnValueOnce(chain([{ userId: USER_A }]))
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/projects/${PROJECT_ID}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: [USER_A, USER_B], role: 'member' }),
+      }),
+      { params: Promise.resolve({ id: PROJECT_ID }) },
+    )
+
+    expect(res.status).toBe(422)
+    expect(await res.json()).toEqual({ error: 'User is not a human workspace member' })
+    expect(mockDb.insert).not.toHaveBeenCalled()
+  })
 })

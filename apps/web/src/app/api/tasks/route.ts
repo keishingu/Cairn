@@ -123,14 +123,16 @@ export async function POST(req: Request) {
       const [activeAssignee] = await db
         .select({ userId: activeWorkspaceMembers.userId })
         .from(activeWorkspaceMembers)
+        .innerJoin(profiles, eq(profiles.id, activeWorkspaceMembers.userId))
         .where(and(
           eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
           eq(activeWorkspaceMembers.userId, assigneeId),
+          eq(profiles.kind, 'human'),
         ))
         .limit(1)
 
       if (!activeAssignee) {
-        return NextResponse.json({ error: '指定された担当者はワークスペースのメンバーではありません' }, { status: 422 })
+        return NextResponse.json({ error: 'assigneeId must be a human workspace member' }, { status: 422 })
       }
     }
 

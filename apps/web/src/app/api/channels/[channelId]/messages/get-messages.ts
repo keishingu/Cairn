@@ -44,6 +44,7 @@ export async function getMessages({
       messageType: messages.messageType,
       parentMessageId: messages.parentMessageId,
       senderId: messages.senderId,
+      senderKind: profiles.kind,
       senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
       senderAvatarUrl: workspaceMembers.avatarUrl,
       createdAt: messages.createdAt,
@@ -56,6 +57,7 @@ export async function getMessages({
       messageType: MessageType
       parentMessageId: string | null
       senderId: string
+      senderKind: 'human' | 'bot'
       senderName: string
       senderAvatarUrl: string | null
       createdAt: Date
@@ -307,6 +309,7 @@ export async function getMessages({
       content: hydrateMentions(row.content, (id) => nameMap.get(id)),
       messageType: row.messageType,
       senderId: row.senderId,
+      senderKind: row.senderKind,
       senderName: row.senderName,
       senderAvatarUrl: row.senderAvatarUrl ?? null,
       createdAt: row.createdAt.toISOString(),
