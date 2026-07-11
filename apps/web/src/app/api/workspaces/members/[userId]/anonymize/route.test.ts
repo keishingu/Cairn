@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ANONYMIZED_MEMBER_DISPLAY_NAME } from '@/lib/anonymized-member'
 
 const {
   DEV_USER_ID,
@@ -333,6 +334,33 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     const aiMessageDeleteCall = mockDb.execute.mock.calls.find(call => call[0]?.strings.join('').includes('delete from ai_messages'))
     const flattened = flattenSqlChunk(aiMessageDeleteCall?.[0])
     expect(flattened.values).toContain('%Scoped Name%')
+  })
+
+  it('AI scrub パターンから匿名化 placeholder を除外する', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { avatarUrl: null, displayName: ANONYMIZED_MEMBER_DISPLAY_NAME },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.delete.mockReturnValueOnce(deleteChain())
+    mockDb.select.mockReturnValueOnce(selectChain([{ membershipCount: 0 }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { workspaceId: DEV_WORKSPACE_ID, avatarUrl: null, displayName: ANONYMIZED_MEMBER_DISPLAY_NAME },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { displayName: ANONYMIZED_MEMBER_DISPLAY_NAME, bio: null },
+    ]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    const aiMessageDeleteCall = mockDb.execute.mock.calls.find(call => call[0]?.strings.join('').includes('delete from ai_messages'))
+    const flattened = flattenSqlChunk(aiMessageDeleteCall?.[0])
+    expect(flattened.values).not.toContain(`%${ANONYMIZED_MEMBER_DISPLAY_NAME}%`)
+    expect(flattened.values).toContain(`%${OTHER_USER_ID}%`)
   })
 
   it('AI scrub の LIKE パターンはワイルドカード文字をエスケープする', async () => {
