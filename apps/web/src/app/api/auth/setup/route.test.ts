@@ -22,6 +22,11 @@ const { mockUser, mockSupabase, mockDb } = vi.hoisted(() => {
   return { mockUser, mockSupabase, mockDb }
 })
 
+const mockEnsureWorkspaceBotProfile = vi.fn().mockResolvedValue({
+  id: 'bot-1',
+  displayName: 'Cairn Bot',
+})
+
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn().mockResolvedValue(mockSupabase),
 }))
@@ -63,6 +68,9 @@ vi.mock('@cairn/db', () => ({
 }))
 
 vi.mock('drizzle-orm', () => ({ eq: vi.fn(() => 'eq-result') }))
+vi.mock('@/lib/bot-profile', () => ({
+  ensureWorkspaceBotProfile: mockEnsureWorkspaceBotProfile,
+}))
 
 vi.mock('@/lib/inngest/client', () => ({
   inngest: { send: vi.fn().mockResolvedValue(undefined) },
@@ -177,6 +185,7 @@ describe('POST /api/auth/setup', () => {
     expect(body.workspaceId).toBe('new-ws-id-999')
     // insert が4回呼ばれること（workspaces / channels / projectStatuses / workspaceMembers）
     expect(mockDb.insert).toHaveBeenCalledTimes(4)
+    expect(mockEnsureWorkspaceBotProfile).toHaveBeenCalledWith('new-ws-id-999')
   })
 
   it('workspaceName あり・プロフィール未作成 → プロフィールも同時に作成する', async () => {
@@ -201,5 +210,6 @@ describe('POST /api/auth/setup', () => {
     expect(res.status).toBe(200)
     // profiles も含めて insert が5回（profiles / workspaces / channels / projectStatuses / workspaceMembers）
     expect(mockDb.insert).toHaveBeenCalledTimes(5)
+    expect(mockEnsureWorkspaceBotProfile).toHaveBeenCalledWith('ws-new-777')
   })
 })

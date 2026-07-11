@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { ensureWorkspaceBotProfile } from '@/lib/bot-profile'
 import { createClient } from '@/lib/supabase/server'
 
 const setupSchema = z.object({
@@ -95,6 +96,8 @@ export async function POST(req: Request) {
       userId: user.id,
       role: 'owner',
     })
+
+    await ensureWorkspaceBotProfile(ws.id)
 
     try {
       const { inngest } = await import('@/lib/inngest/client')
