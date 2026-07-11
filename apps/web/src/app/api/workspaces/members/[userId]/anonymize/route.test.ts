@@ -156,6 +156,49 @@ function postRequest(targetUserId: string) {
   })
 }
 
+function flattenSqlChunk(chunk: unknown): { text: string; values: unknown[] } {
+  if (!chunk || typeof chunk !== 'object') {
+    return { text: '', values: chunk === undefined ? [] : [chunk] }
+  }
+
+  if ('strings' in chunk && 'values' in chunk) {
+    const sqlChunk = chunk as { strings: string[]; values: unknown[] }
+    const reduced = sqlChunk.values.reduce(
+      (acc, value, index) => {
+        const nested = flattenSqlChunk(value)
+        return {
+          text: `${acc.text}${sqlChunk.strings[index] ?? ''}${nested.text}`,
+          values: [...acc.values, ...nested.values],
+        }
+      },
+      { text: '', values: [] as unknown[] },
+    )
+    return {
+      text: `${reduced.text}${sqlChunk.strings[sqlChunk.strings.length - 1] ?? ''}`,
+      values: reduced.values,
+    }
+  }
+
+  if ('parts' in chunk) {
+    const joinChunk = chunk as { parts: unknown[]; separator?: unknown }
+    const separator = flattenSqlChunk(joinChunk.separator)
+    return joinChunk.parts.reduce(
+      (acc, part, index) => {
+        const nested = flattenSqlChunk(part)
+        const separatorText = index === 0 ? '' : separator.text
+        const separatorValues = index === 0 ? [] : separator.values
+        return {
+          text: `${acc.text}${separatorText}${nested.text}`,
+          values: [...acc.values, ...separatorValues, ...nested.values],
+        }
+      },
+      { text: '', values: [] as unknown[] },
+    )
+  }
+
+  return { text: '', values: [] }
+}
+
 describe('POST /api/workspaces/members/[userId]/anonymize', () => {
   beforeEach(() => {
     process.env['DATABASE_URL'] = 'postgresql://test'
@@ -251,6 +294,60 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
 
     expect(res.status).toBe(200)
     expect(mockRemove).toHaveBeenCalledWith(['ws-1/user-2.png'])
+  })
+
+  it('最終匿名化では上書き前の workspace displayName も AI scrub パターンに残す', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { avatarUrl: null, displayName: 'Scoped Name' },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.delete.mockReturnValueOnce(deleteChain())
+    mockDb.select.mockReturnValueOnce(selectChain([{ membershipCount: 0 }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { workspaceId: DEV_WORKSPACE_ID, avatarUrl: null, displayName: '退会したユーザー' },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { displayName: 'Global Name', bio: null },
+    ]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    const aiMessageDeleteCall = mockDb.execute.mock.calls.find(call => call[0]?.strings.join('').includes('delete from ai_messages'))
+    const flattened = flattenSqlChunk(aiMessageDeleteCall?.[0])
+    expect(flattened.values).toContain('%Scoped Name%')
+  })
+
+  it('AI scrub の LIKE パターンはワイルドカード文字をエスケープする', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { avatarUrl: null, displayName: null },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.delete.mockReturnValueOnce(deleteChain())
+    mockDb.select.mockReturnValueOnce(selectChain([{ membershipCount: 0 }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { workspaceId: DEV_WORKSPACE_ID, avatarUrl: null, displayName: '退会したユーザー' },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { displayName: '100%_real\\name', bio: 'bio%_' },
+    ]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    const aiMessageDeleteCall = mockDb.execute.mock.calls.find(call => call[0]?.strings.join('').includes('delete from ai_messages'))
+    const flattened = flattenSqlChunk(aiMessageDeleteCall?.[0])
+    expect(flattened.text).toContain('escape')
+    expect(flattened.values).toContain('%100\\%\\_real\\\\name%')
+    expect(flattened.values).toContain('%bio\\%\\_%')
   })
 
   it('アバター削除に失敗したら 500 を返す', async () => {

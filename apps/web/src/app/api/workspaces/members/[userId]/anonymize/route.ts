@@ -22,6 +22,10 @@ type MembershipSnapshot = {
   displayName: string | null
 }
 
+function escapeLikePattern(value: string) {
+  return value.replace(/[\\%_]/g, '\\$&')
+}
+
 function extractAvatarPath(avatarUrl: string | null): string | null {
   if (!avatarUrl) return null
 
@@ -116,18 +120,25 @@ async function prepareAnonymization(
     }
   }
 
-  const avatarRows = await tx
-    .select({ avatarUrl: workspaceMembers.avatarUrl })
+  const membershipRows = await tx
+    .select({
+      avatarUrl: workspaceMembers.avatarUrl,
+      displayName: workspaceMembers.displayName,
+    })
     .from(workspaceMembers)
     .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, targetUserId)))
 
   const avatarPaths = [...new Set(
-    avatarRows
+    membershipRows
       .map(row => extractAvatarPath(row.avatarUrl ?? null))
       .filter((path): path is string => Boolean(path)),
   )]
 
-  return { ok: true as const, avatarPaths }
+  return {
+    ok: true as const,
+    avatarPaths,
+    legacyDisplayNames: uniqueNonEmpty(membershipRows.map(row => row.displayName)),
+  }
 }
 
 function uniqueNonEmpty(values: Array<string | null | undefined>) {
@@ -210,9 +221,9 @@ async function scrubAiConversationArtifacts(
   if (patterns.length === 0) return
 
   const patternClauses = patterns.map(pattern => sql`
-    ai_messages.content like ${pattern}
-    or coalesce(ai_messages.annotations::text, '') like ${pattern}
-    or coalesce(ai_messages.tool_invocations::text, '') like ${pattern}
+    ai_messages.content like ${pattern} escape '\'
+    or coalesce(ai_messages.annotations::text, '') like ${pattern} escape '\'
+    or coalesce(ai_messages.tool_invocations::text, '') like ${pattern} escape '\'
   `)
 
   await tx.execute(sql`
@@ -295,7 +306,7 @@ async function scrubAllWorkspaceArtifactsForFinalErasure(
     targetUserId,
     profileBio,
     ...legacyDisplayNames,
-  ]).map(value => `%${value}%`)
+  ]).map(value => `%${escapeLikePattern(value)}%`)
 
   await scrubAiConversationArtifacts(tx, workspaceIds, targetUserId, aiPatterns, sql)
 
@@ -426,6 +437,7 @@ export async function POST(
           .limit(1)
         const legacyDisplayNames = uniqueNonEmpty([
           profileRow?.displayName ?? null,
+          ...prepared.legacyDisplayNames,
           ...membershipRows.map(row => row.displayName),
         ])
 
