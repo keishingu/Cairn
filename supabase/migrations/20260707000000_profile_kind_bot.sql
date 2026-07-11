@@ -3,7 +3,7 @@ BEGIN
   CREATE TYPE profile_kind AS ENUM ('human', 'bot');
 EXCEPTION
   WHEN duplicate_object THEN NULL;
-END
+END;
 $$;
 
 ALTER TABLE profiles
