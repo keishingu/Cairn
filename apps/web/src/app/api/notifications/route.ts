@@ -72,6 +72,7 @@ export async function GET(req: Request) {
           return scopedProjectId ? guestProjectIds.has(scopedProjectId) : true
         }
         if (projectId) return guestProjectIds.has(projectId)
+        if (r.type === 'task') return false
         return true
       })
     }

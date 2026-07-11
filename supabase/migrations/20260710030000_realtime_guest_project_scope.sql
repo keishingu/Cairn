@@ -32,6 +32,20 @@ as $$
             select 1 from channel_members cm
             where cm.channel_id = c.id and cm.user_id = auth.uid()
           )
+          and (
+            c.type <> 'project'
+            or c.project_id is null
+            or not exists (
+              select 1 from active_workspace_members wm
+              where wm.user_id = auth.uid()
+                and wm.workspace_id = coalesce(c.workspace_id, (select p.workspace_id from projects p where p.id = c.project_id))
+                and wm.role = 'guest'
+            )
+            or exists (
+              select 1 from project_members pm
+              where pm.project_id = c.project_id and pm.user_id = auth.uid()
+            )
+          )
         )
         or
         -- 公開ワークスペースチャンネル: 同一ワークスペースの active メンバー全員
