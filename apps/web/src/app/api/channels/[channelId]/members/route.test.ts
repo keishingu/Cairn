@@ -37,6 +37,7 @@ vi.mock('@cairn/db', () => ({
   channelMembers: { userId: 'channelMembers.userId', channelId: 'channelMembers.channelId' },
   channelReadStates: { userId: 'channelReadStates.userId', channelId: 'channelReadStates.channelId', lastReadAt: 'channelReadStates.lastReadAt' },
   workspaceMembers: { userId: 'workspaceMembers.userId', workspaceId: 'workspaceMembers.workspaceId' },
+  activeWorkspaceMembers: { userId: 'activeWorkspaceMembers.userId', workspaceId: 'activeWorkspaceMembers.workspaceId' },
 }))
 
 vi.mock('drizzle-orm', () => ({

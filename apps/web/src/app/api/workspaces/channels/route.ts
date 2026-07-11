@@ -23,7 +23,7 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, profiles } = await import('@cairn/db')
+    const { channels, channelMembers, profiles, activeWorkspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray } = await import('drizzle-orm')
 
     const allChannelRows = await db
@@ -59,6 +59,10 @@ export async function GET() {
         avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(channelMembers)
+      .innerJoin(activeWorkspaceMembers, and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, channelMembers.userId),
+      ))
       .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, channelMembers.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(inArray(channelMembers.channelId, channelRows.map(c => c.id)))
