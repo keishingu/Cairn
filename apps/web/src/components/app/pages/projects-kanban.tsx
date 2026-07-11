@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import { KanbanBoard } from '../kanban'
 import { MobileHeader } from '@/components/app/mobile/header'
+import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { PageToolbar } from './page-toolbar'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
@@ -76,7 +77,39 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-        <MobileHeader title="カンバン" />
+        {showCreate && (
+          <CreateProjectSheet
+            onClose={() => setShowCreate(false)}
+            onCreated={(project) => {
+              handleCreated(project)
+              openPanel(project)
+            }}
+          />
+        )}
+        <MobileHeader
+          title="カンバン"
+          right={(
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              aria-label={`新規${projectLabel}`}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--accent)',
+                cursor: 'pointer',
+                padding: 4,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 8,
+                flexShrink: 0,
+              }}
+            >
+              <Icon name="plus" size={20} strokeWidth={2.4} />
+            </button>
+          )}
+        />
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <KanbanBoard onCardClick={openPanel} isMobile />
         </div>
