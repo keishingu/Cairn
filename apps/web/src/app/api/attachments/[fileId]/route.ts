@@ -24,6 +24,18 @@ function resolveResponseContentType(fileName: string, mimeType: string | null) {
   return isText ? `${responseMimeType}; charset=utf-8` : responseMimeType
 }
 
+function buildContentDisposition(dispositionType: 'attachment' | 'inline', fileName: string) {
+  const fallbackFileName = fileName
+    .normalize('NFKD')
+    .replaceAll(/[^\x20-\x7E]/g, '_')
+    .replaceAll(/["\\]/g, '_')
+  const escapedFileName = fallbackFileName.replaceAll(/["\\]/g, '\\$&')
+  const encodedFileName = encodeURIComponent(fileName).replaceAll(/[!'()*]/g, (char) =>
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
+  return `${dispositionType}; filename="${escapedFileName}"; filename*=UTF-8''${encodedFileName}`
+}
+
 export async function GET(req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -92,7 +104,7 @@ export async function GET(req: Request, { params }: RouteContext) {
     return new NextResponse(data, {
       headers: {
         'Content-Type': servedThumb ? 'image/jpeg' : resolveResponseContentType(file.fileName, file.mimeType),
-        'Content-Disposition': `${forceDownload ? 'attachment' : 'inline'}; filename="${encodeURIComponent(file.fileName)}"`,
+        'Content-Disposition': buildContentDisposition(forceDownload ? 'attachment' : 'inline', file.fileName),
         'Cache-Control': 'private, max-age=3600',
       },
     })
