@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ANONYMIZED_MEMBER_DISPLAY_NAME } from '@/lib/anonymized-member'
 
 const PROJECT_ID = '00000000-0000-0000-0000-000000000099'
 const USER_A = '00000000-0000-0000-0000-000000000011'
@@ -9,6 +10,7 @@ const USER_B = '00000000-0000-0000-0000-000000000012'
 
 const {
   mockGetAuthContext,
+  mockRequireProjectAccess,
   mockRequireWorkspaceMember,
   mockDb,
   mockInngestSend,
@@ -22,6 +24,7 @@ const {
     },
     error: null,
   })
+  const mockRequireProjectAccess = vi.fn().mockResolvedValue(null)
   const mockRequireWorkspaceMember = vi.fn().mockResolvedValue(null)
   const mockDb = {
     select: vi.fn(),
@@ -38,6 +41,7 @@ const {
   }))
   return {
     mockGetAuthContext,
+    mockRequireProjectAccess,
     mockRequireWorkspaceMember,
     mockDb,
     mockInngestSend,
@@ -47,7 +51,10 @@ const {
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/permissions', () => ({ requireWorkspaceMember: mockRequireWorkspaceMember }))
+vi.mock('@/lib/permissions', () => ({
+  requireProjectAccess: mockRequireProjectAccess,
+  requireWorkspaceMember: mockRequireWorkspaceMember,
+}))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 vi.mock('@/lib/supabase/service', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/supabase/service')>()
@@ -146,6 +153,41 @@ describe('POST /api/projects/[id]/members', () => {
     })
   })
 
+  it('匿名化済み表示名のメンバーは追加レスポンスでも email を返さない', async () => {
+    mockGetUserById.mockResolvedValueOnce({ data: { user: { email: 'hidden@example.com' } }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: PROJECT_ID }]))
+      .mockReturnValueOnce(chain([{ userId: USER_A }]))
+      .mockReturnValueOnce(chain([{ userId: USER_A, displayName: ANONYMIZED_MEMBER_DISPLAY_NAME, avatarUrl: null }]))
+
+    mockDb.insert.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([
+            { userId: USER_A, role: 'member', attendance: 'attending', addedAt: new Date('2026-06-24T00:00:00Z') },
+          ]),
+        }),
+      }),
+    })
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/projects/${PROJECT_ID}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: USER_A, role: 'member' }),
+      }),
+      { params: Promise.resolve({ id: PROJECT_ID }) },
+    )
+
+    expect(res.status).toBe(201)
+    await expect(res.json()).resolves.toMatchObject({
+      userId: USER_A,
+      displayName: ANONYMIZED_MEMBER_DISPLAY_NAME,
+      email: null,
+    })
+  })
+
   it('単一 userId でも従来どおり追加できる', async () => {
     mockGetUserById.mockResolvedValueOnce({ data: { user: { email: 'alice@example.com' } }, error: null })
     mockDb.select
@@ -229,5 +271,47 @@ describe('POST /api/projects/[id]/members', () => {
     expect(await res.json()).toEqual({ error: 'userId and userIds must be UUIDs' })
     expect(mockDb.select).not.toHaveBeenCalled()
     expect(mockDb.insert).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /api/projects/[id]/members', () => {
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('匿名化済み表示名の active メンバーは email を返さない', async () => {
+    mockGetUserById.mockResolvedValueOnce({ data: { user: { email: 'hidden@example.com' } }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: PROJECT_ID }]))
+      .mockReturnValueOnce(chain([
+        {
+          userId: USER_A,
+          displayName: ANONYMIZED_MEMBER_DISPLAY_NAME,
+          avatarUrl: null,
+          role: 'member',
+          attendance: 'attending',
+          addedAt: new Date('2026-06-24T00:00:00Z'),
+        },
+      ]))
+
+    const { GET } = await import('./route')
+    const res = await GET(
+      new Request(`http://localhost/api/projects/${PROJECT_ID}/members`),
+      { params: Promise.resolve({ id: PROJECT_ID }) },
+    )
+
+    expect(mockRequireProjectAccess).toHaveBeenCalled()
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([
+      {
+        userId: USER_A,
+        displayName: ANONYMIZED_MEMBER_DISPLAY_NAME,
+        email: null,
+        avatarUrl: null,
+        role: 'member',
+        attendance: 'attending',
+        addedAt: '2026-06-24',
+      },
+    ])
   })
 })
