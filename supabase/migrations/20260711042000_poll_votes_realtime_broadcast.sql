@@ -22,8 +22,18 @@ begin
   v_old := old;
 
   if v_anonymous then
-    v_new := null;
-    v_old := null;
+    if v_new is not null then
+      v_new.id := null;
+      v_new.option_id := null;
+      v_new.user_id := null;
+      v_new.created_at := null;
+    end if;
+    if v_old is not null then
+      v_old.id := null;
+      v_old.option_id := null;
+      v_old.user_id := null;
+      v_old.created_at := null;
+    end if;
   end if;
 
   perform realtime.broadcast_changes(
