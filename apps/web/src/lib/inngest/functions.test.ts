@@ -84,11 +84,28 @@ describe('onTaskAssigned', () => {
     mockDb.select.mockReturnValueOnce(taskSelectChain([{ displayName: '匿名化済みメンバー' }]))
 
     const { onTaskAssigned } = await import('./functions')
+    const handler = onTaskAssigned as unknown as (args: {
+      event: {
+        data: {
+          taskId: string
+          taskTitle: string
+          assigneeId: string
+          assignerId: string
+          projectId: string
+          projectTitle: string
+          workspaceId: string
+          assignerName: string
+        }
+      }
+      step: {
+        run: (_name: string, fn: () => Promise<unknown>) => Promise<unknown>
+      }
+    }) => Promise<unknown>
     const step = {
       run: async (_name: string, fn: () => Promise<unknown>) => fn(),
     }
 
-    await onTaskAssigned({
+    await handler({
       event: {
         data: {
           taskId: 'task-1',
