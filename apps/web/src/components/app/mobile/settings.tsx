@@ -7,6 +7,7 @@ import React from 'react'
 import { useRouter } from 'next/navigation'
 import { MobileHeader } from './header'
 import { Icon, Avatar } from '../primitives'
+import { sendPresenceStatusUpdate } from '@/components/presence-tracker'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { createClient } from '@/lib/supabase/client'
 import type { CurrentUserDto } from '@/app/api/me/route'
@@ -31,6 +32,11 @@ export function MobileSettings() {
   const navGroups = getSettingsNavGroups(me?.wsRole === 'owner')
 
   async function handleLogout() {
+    try {
+      await sendPresenceStatusUpdate('offline', { keepalive: true })
+    } catch (error) {
+      console.warn('[MobileSettings] failed to flush offline presence before logout', error)
+    }
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/auth/login')

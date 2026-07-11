@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CurrentUserDto } from '@/app/api/me/route'
-import { PresenceTracker, derivePresenceStatus, parsePresenceSessions, prunePresenceSessions, updatePresenceSessions } from './presence-tracker'
+import { PresenceTracker, derivePresenceStatus, parsePresenceSessions, prunePresenceSessions, sendPresenceStatusUpdate, updatePresenceSessions } from './presence-tracker'
 
 const mockFetchWithAuth = vi.fn()
 
@@ -142,6 +142,19 @@ describe('PresenceTracker', () => {
     })
   })
 
+  it('sign out 用 helper は offline keepalive を送る', async () => {
+    await sendPresenceStatusUpdate('offline', { keepalive: true })
+
+    expect(mockFetchWithAuth).toHaveBeenCalledWith(
+      '/api/me',
+      expect.objectContaining({
+        method: 'PATCH',
+        keepalive: true,
+        body: JSON.stringify({ status: 'offline' }),
+      }),
+    )
+  })
+
   it('busy は自動更新しない', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-12T00:00:00Z'))
@@ -188,6 +201,45 @@ describe('PresenceTracker', () => {
         lastActiveAt: 10_000,
         lastSeenAt: expect.any(Number),
       },
+    })
+  })
+
+  it('pagehide の offline keepalive は進行中 PATCH があっても送る', async () => {
+    let resolveOnline: ((value: Response) => void) | null = null
+    const onlineRequest = new Promise<Response>((resolve) => {
+      resolveOnline = resolve
+    })
+    mockFetchWithAuth
+      .mockImplementationOnce(() => onlineRequest)
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+
+    renderTracker(BASE_USER)
+
+    await waitFor(() => {
+      expect(mockFetchWithAuth).toHaveBeenCalledTimes(1)
+    })
+
+    setDocumentHidden(true)
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await waitFor(() => {
+      expect(mockFetchWithAuth).toHaveBeenCalledTimes(2)
+    })
+    expect(mockFetchWithAuth).toHaveBeenNthCalledWith(
+      2,
+      '/api/me',
+      expect.objectContaining({
+        method: 'PATCH',
+        keepalive: true,
+        body: JSON.stringify({ status: 'offline' }),
+      }),
+    )
+
+    resolveOnline?.(new Response('{}', { status: 200 }))
+    await act(async () => {
+      await onlineRequest
     })
   })
 })

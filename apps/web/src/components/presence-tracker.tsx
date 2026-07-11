@@ -24,6 +24,19 @@ function isPresenceStatus(status: UserStatus): status is 'online' | 'away' | 'of
   return status === 'online' || status === 'away' || status === 'offline'
 }
 
+export async function sendPresenceStatusUpdate(
+  status: 'online' | 'away' | 'offline',
+  options?: { keepalive?: boolean },
+) {
+  const res = await fetchWithAuth('/api/me', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+    keepalive: options?.keepalive ?? false,
+  })
+  if (!res.ok) throw new Error(`presence update failed: ${res.status}`)
+}
+
 export function parsePresenceSessions(raw: string | null): PresenceSessionMap {
   if (!raw) return {}
   try {
@@ -89,7 +102,9 @@ export function PresenceTracker() {
   const { data: me } = useCurrentUser()
   const sessionId = useMemo(() => crypto.randomUUID(), [])
   const flushRef = useRef<Promise<void> | null>(null)
+  const keepaliveFlushRef = useRef<Promise<void> | null>(null)
   const lastSentStatusRef = useRef<UserStatus | null>(null)
+  const pendingStatusRef = useRef<UserStatus | null>(null)
   const lastActivityAtRef = useRef(0)
 
   useEffect(() => {
@@ -123,21 +138,44 @@ export function PresenceTracker() {
       return next
     }
 
+    async function applyStatus(status: 'online' | 'away' | 'offline', keepalive = false) {
+      pendingStatusRef.current = status
+      try {
+        await sendPresenceStatusUpdate(status, { keepalive })
+        queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status } : prev)
+        lastSentStatusRef.current = status
+      } finally {
+        pendingStatusRef.current = null
+      }
+    }
+
     async function flushStatus(status: 'online' | 'away' | 'offline', keepalive = false) {
       if (!isPresenceStatus(currentStatus)) return
-      if (status === currentStatus || status === lastSentStatusRef.current) return
+      if (status === lastSentStatusRef.current) return
+      if (status === currentStatus && pendingStatusRef.current !== null && pendingStatusRef.current !== status) {
+        // Allow an unload keepalive to supersede a different in-flight status update.
+      } else if (status === currentStatus) {
+        return
+      }
+      if (keepalive) {
+        if (keepaliveFlushRef.current) return
+        keepaliveFlushRef.current = (async () => {
+          await applyStatus(status, true)
+        })()
+
+        try {
+          await keepaliveFlushRef.current
+        } catch (error) {
+          console.warn('[PresenceTracker] failed to update status', error)
+        } finally {
+          keepaliveFlushRef.current = null
+        }
+        return
+      }
       if (flushRef.current) return
 
       flushRef.current = (async () => {
-        const res = await fetchWithAuth('/api/me', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status }),
-          keepalive,
-        })
-        if (!res.ok) throw new Error(`presence update failed: ${res.status}`)
-        queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status } : prev)
-        lastSentStatusRef.current = status
+        await applyStatus(status, false)
       })()
 
       try {
