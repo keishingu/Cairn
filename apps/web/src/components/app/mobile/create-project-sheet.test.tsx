@@ -138,7 +138,7 @@ describe('CreateProjectSheet', () => {
     await user.type(screen.getByPlaceholderText('例: 新規顧客向け導入プロジェクト'), '新規予定')
     expect(screen.getByRole('button', { name: '作成する' })).toBeDisabled()
 
-    resolveStatuses?.(new Response(JSON.stringify([
+    resolveStatuses!(new Response(JSON.stringify([
       { id: 'status-inbox', name: 'Inbox', color: '#111111' },
     ]), { status: 200 }))
 

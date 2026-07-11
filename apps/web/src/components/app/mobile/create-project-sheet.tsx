@@ -74,7 +74,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
   const queryClient = useQueryClient()
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
   const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members', 'active'], queryFn: fetchWorkspaceMembers })
-  const defaultStatusId = statuses[0]?.id ?? null
+  const defaultStatusId = statuses[0]?.id
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
@@ -129,7 +129,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
     mutation.mutate({
       title: title.trim(),
       description: description.trim() || undefined,
-      statusId: defaultStatusId,
+      statusId: defaultStatusId ?? undefined,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       location: location.trim() || undefined,
