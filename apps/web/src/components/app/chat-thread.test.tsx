@@ -52,6 +52,11 @@ vi.mock('@/hooks/use-poll', () => ({
     isLoading: false,
     isError: false,
   })),
+  useVotePoll: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+  })),
 }))
 
 describe('ChatMessage copy action', () => {
