@@ -318,15 +318,14 @@ export const onTaskAssigned = inngest.createFunction(
       event.data as TaskAssignedEvent['data']
 
     const isActiveAssignee = await step.run('check-active-assignee', async () => {
-      const { db, workspaceMembers } = await import('@cairn/db')
+      const { db, activeWorkspaceMembers } = await import('@cairn/db')
       const { and, eq } = await import('drizzle-orm')
       const [membership] = await db
-        .select({ userId: workspaceMembers.userId })
-        .from(workspaceMembers)
+        .select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
         .where(and(
-          eq(workspaceMembers.workspaceId, workspaceId),
-          eq(workspaceMembers.userId, assigneeId),
-          eq(workspaceMembers.membershipStatus, 'active'),
+          eq(activeWorkspaceMembers.workspaceId, workspaceId),
+          eq(activeWorkspaceMembers.userId, assigneeId),
         ))
         .limit(1)
       return !!membership
