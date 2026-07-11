@@ -71,10 +71,17 @@ vi.mock('@/lib/supabase/service', () => ({
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
+  connectedAccounts: {
+    userId: 'ca.userId',
+    provider: 'ca.provider',
+  },
   documentChunks: {
     workspaceId: 'dc.workspaceId',
     sourceType: 'dc.sourceType',
     sourceId: 'dc.sourceId',
+  },
+  googleCalendarEvents: {
+    userId: 'gcal.userId',
   },
   projectMembers: {
     projectId: 'pm.projectId',
@@ -566,7 +573,36 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
-    expect(mockDb.delete).toHaveBeenCalledTimes(3)
+    expect(mockDb.delete).toHaveBeenCalledTimes(5)
+  })
+
+  it('最終匿名化では Google Calendar 接続とイベントも削除する', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.delete
+      .mockReturnValueOnce(deleteChain())
+      .mockReturnValueOnce(deleteChain())
+      .mockReturnValueOnce(deleteChain())
+      .mockReturnValueOnce(deleteChain())
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ membershipCount: 0 }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { workspaceId: DEV_WORKSPACE_ID, avatarUrl: null, displayName: 'Anon User' },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { displayName: 'Anon User', bio: null },
+    ]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockDb.delete.mock.calls).toEqual(expect.arrayContaining([
+      [{ userId: 'gcal.userId' }],
+      [{ userId: 'ca.userId', provider: 'ca.provider' }],
+    ]))
   })
 
   it('最後の active owner は匿名化できない', async () => {

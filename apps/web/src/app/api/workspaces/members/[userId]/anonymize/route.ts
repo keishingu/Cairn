@@ -281,7 +281,9 @@ async function scrubAllWorkspaceArtifactsForFinalErasure(
   now: Date,
   actorUserId: string,
   tables: {
+    connectedAccounts: typeof import('@cairn/db').connectedAccounts
     documentChunks: typeof import('@cairn/db').documentChunks
+    googleCalendarEvents: typeof import('@cairn/db').googleCalendarEvents
     projectMembers: typeof import('@cairn/db').projectMembers
     projects: typeof import('@cairn/db').projects
     profiles: typeof import('@cairn/db').profiles
@@ -294,7 +296,7 @@ async function scrubAllWorkspaceArtifactsForFinalErasure(
     sql: typeof import('drizzle-orm').sql
   },
 ) {
-  const { documentChunks, projectMembers, projects, profiles, workspaceMembers } = tables
+  const { connectedAccounts, documentChunks, googleCalendarEvents, projectMembers, projects, profiles, workspaceMembers } = tables
   const { and, eq, inArray, sql } = helpers
 
   for (const workspaceId of workspaceIds) {
@@ -346,6 +348,17 @@ async function scrubAllWorkspaceArtifactsForFinalErasure(
   ])
 
   await scrubAiConversationArtifacts(tx, workspaceIds, targetUserId, aiPatterns, sql)
+
+  await tx
+    .delete(googleCalendarEvents)
+    .where(eq(googleCalendarEvents.userId, targetUserId))
+
+  await tx
+    .delete(connectedAccounts)
+    .where(and(
+      eq(connectedAccounts.userId, targetUserId),
+      eq(connectedAccounts.provider, 'google_calendar'),
+    ))
 
   await tx
     .update(profiles)
@@ -403,7 +416,7 @@ export async function POST(
   if (error) return error
 
   try {
-    const { db, documentChunks, profiles, projectMembers, projects, tasks, workspaceMembers } = await import('@cairn/db')
+    const { connectedAccounts, db, documentChunks, googleCalendarEvents, profiles, projectMembers, projects, tasks, workspaceMembers } = await import('@cairn/db')
     const { and, count, eq, inArray, sql } = await import('drizzle-orm')
 
     const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
@@ -510,7 +523,7 @@ export async function POST(
           profileRow?.bio ?? null,
           now,
           ctx.userId,
-          { documentChunks, projectMembers, projects, profiles, workspaceMembers },
+          { connectedAccounts, documentChunks, googleCalendarEvents, projectMembers, projects, profiles, workspaceMembers },
           { and, eq, inArray, sql },
         )
         return { avatarPaths: allAvatarPaths, avatarRestoreRows: membershipRows }
