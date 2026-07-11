@@ -47,7 +47,9 @@ vi.mock('@/lib/permissions', () => ({
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
 vi.mock('@/lib/chat/checkboxes', () => ({ parseCheckboxes: () => [] }))
 vi.mock('@cairn/shared', () => ({
-  postMessageSchema: { safeParse: () => ({ success: true, data: { content: 'hi', channelId: CHANNEL_ID } }) },
+  postMessageSchema: {
+    safeParse: () => ({ success: true, data: { content: 'hi', channelId: CHANNEL_ID } }),
+  },
 }))
 vi.mock('@cairn/db', () => ({
   db: { select: mockDbSelect },
@@ -85,7 +87,12 @@ vi.mock('@cairn/db', () => ({
     messageId: 'messageBookmarks.messageId',
     userId: 'messageBookmarks.userId',
   },
-  files: { id: 'files.id', fileName: 'files.fileName', mimeType: 'files.mimeType', fileSize: 'files.fileSize' },
+  files: {
+    id: 'files.id',
+    fileName: 'files.fileName',
+    mimeType: 'files.mimeType',
+    fileSize: 'files.fileSize',
+  },
 }))
 vi.mock('drizzle-orm', () => ({
   eq: mockEq,

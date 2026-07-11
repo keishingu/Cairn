@@ -63,6 +63,10 @@ vi.mock('@cairn/db', () => ({
     displayName: 'wm.displayName',
     avatarUrl: 'wm.avatarUrl',
   },
+  activeWorkspaceMembers: {
+    workspaceId: 'awm.workspaceId',
+    userId: 'awm.userId',
+  },
   profiles: {
     id: 'pr.id',
     displayName: 'pr.displayName',

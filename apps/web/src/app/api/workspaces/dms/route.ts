@@ -23,7 +23,7 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, profiles, workspaceMembers } = await import('@cairn/db')
+    const { channels, channelMembers, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray, ne } = await import('drizzle-orm')
 
     // 自分が参加している DM チャンネル ID を取得
@@ -42,6 +42,10 @@ export async function GET() {
       })
       .from(channels)
       .innerJoin(channelMembers, eq(channelMembers.channelId, channels.id))
+      .innerJoin(activeWorkspaceMembers, and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, channelMembers.userId),
+      ))
       .innerJoin(profiles, eq(profiles.id, channelMembers.userId))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(
@@ -106,16 +110,16 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, channelReadStates, profiles, workspaceMembers } = await import('@cairn/db')
+    const { channels, channelMembers, channelReadStates, activeWorkspaceMembers, profiles } = await import('@cairn/db')
     const { and, eq, inArray, sql } = await import('drizzle-orm')
 
     const [targetMember] = await db
-      .select({ userId: workspaceMembers.userId })
-      .from(workspaceMembers)
-      .innerJoin(profiles, eq(profiles.id, workspaceMembers.userId))
+      .select({ userId: activeWorkspaceMembers.userId })
+      .from(activeWorkspaceMembers)
+      .innerJoin(profiles, eq(profiles.id, activeWorkspaceMembers.userId))
       .where(and(
-        eq(workspaceMembers.workspaceId, ctx.workspaceId),
-        eq(workspaceMembers.userId, targetUserId),
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, targetUserId),
         eq(profiles.kind, 'human'),
       ))
       .limit(1)

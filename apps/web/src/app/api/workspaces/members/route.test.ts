@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const USER_ID = '00000000-0000-0000-0000-000000000001'
 const WS_ID = 'ws-00000001'
 
-const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockGetUserById } = vi.hoisted(() => {
+const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockIsWorkspaceAdmin, mockDb, mockGetUserById } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -15,13 +15,14 @@ const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockGetUserById 
     error: null,
   })
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('member')
+  const mockIsWorkspaceAdmin = vi.fn((role: string | null) => role === 'owner' || role === 'admin')
   const mockDb = { select: vi.fn() }
   const mockGetUserById = vi.fn()
-  return { mockGetAuthContext, mockGetWorkspaceMemberRole, mockDb, mockGetUserById }
+  return { mockGetAuthContext, mockGetWorkspaceMemberRole, mockIsWorkspaceAdmin, mockDb, mockGetUserById }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/permissions', () => ({ getWorkspaceMemberRole: mockGetWorkspaceMemberRole }))
+vi.mock('@/lib/permissions', () => ({ getWorkspaceMemberRole: mockGetWorkspaceMemberRole, isWorkspaceAdmin: mockIsWorkspaceAdmin }))
 vi.mock('@/lib/supabase/service', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/supabase/service')>()
   return {
@@ -44,6 +45,7 @@ vi.mock('@cairn/db', () => ({
     displayName: 'wm.displayName',
     avatarUrl: 'wm.avatarUrl',
     role: 'wm.role',
+    membershipStatus: 'wm.membershipStatus',
     joinedAt: 'wm.joinedAt',
   },
   projectMembers: { userId: 'pm.userId', projectId: 'pm.projectId' },
@@ -75,6 +77,8 @@ describe('GET /api/workspaces/members', () => {
     process.env['DATABASE_URL'] = 'postgresql://test'
   })
 
+  const request = (path = '/api/workspaces/members') => new Request(`http://localhost${path}`)
+
   afterEach(() => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
@@ -83,6 +87,7 @@ describe('GET /api/workspaces/members', () => {
       error: null,
     })
     mockGetWorkspaceMemberRole.mockResolvedValue('member')
+    mockIsWorkspaceAdmin.mockImplementation((role: string | null) => role === 'owner' || role === 'admin')
   })
 
   it('一覧レスポンスに email を含める', async () => {
@@ -94,6 +99,7 @@ describe('GET /api/workspaces/members', () => {
         displayName: '山田 太郎',
         avatarUrl: null,
         role: 'member',
+        membershipStatus: 'active',
         joinedAt: new Date('2026-01-01T00:00:00.000Z'),
         projectCount: 3,
       }]))
@@ -104,7 +110,7 @@ describe('GET /api/workspaces/members', () => {
     })
 
     const { GET } = await import('./route')
-    const res = await GET()
+    const res = await GET(request())
 
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual([{
@@ -113,6 +119,7 @@ describe('GET /api/workspaces/members', () => {
       email: 'taro@example.com',
       avatarUrl: null,
       role: 'member',
+      membershipStatus: 'active',
       joinedAt: '2026-01-01',
       projectCount: 3,
     }])
@@ -129,6 +136,7 @@ describe('GET /api/workspaces/members', () => {
           displayName: '山田 太郎',
           avatarUrl: null,
           role: 'member',
+          membershipStatus: 'active',
           joinedAt: new Date('2026-01-01T00:00:00.000Z'),
           projectCount: 3,
         },
@@ -138,6 +146,7 @@ describe('GET /api/workspaces/members', () => {
           displayName: '佐藤 花子',
           avatarUrl: null,
           role: 'admin',
+          membershipStatus: 'active',
           joinedAt: new Date('2026-01-02T00:00:00.000Z'),
           projectCount: 5,
         },
@@ -154,7 +163,7 @@ describe('GET /api/workspaces/members', () => {
       })
 
     const { GET } = await import('./route')
-    const res = await GET()
+    const res = await GET(request())
 
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual([
@@ -164,6 +173,7 @@ describe('GET /api/workspaces/members', () => {
         email: 'taro@example.com',
         avatarUrl: null,
         role: 'member',
+        membershipStatus: 'active',
         joinedAt: '2026-01-01',
         projectCount: 3,
       },
@@ -173,6 +183,7 @@ describe('GET /api/workspaces/members', () => {
         email: 'hanako@example.com',
         avatarUrl: null,
         role: 'admin',
+        membershipStatus: 'active',
         joinedAt: '2026-01-02',
         projectCount: 5,
       },
@@ -183,6 +194,7 @@ describe('GET /api/workspaces/members', () => {
 
   it('Auth 側に存在しないユーザーは email を null にする', async () => {
     const missingUserId = '00000000-0000-0000-0000-000000000099'
+    mockGetWorkspaceMemberRole.mockResolvedValue('admin')
     mockDb.select
       .mockReturnValueOnce(chain([]))
       .mockReturnValueOnce(chain([{
@@ -191,6 +203,7 @@ describe('GET /api/workspaces/members', () => {
         displayName: '未登録 ユーザー',
         avatarUrl: null,
         role: 'guest',
+        membershipStatus: 'inactive',
         joinedAt: new Date('2026-01-03T00:00:00.000Z'),
         projectCount: 0,
       }]))
@@ -201,7 +214,7 @@ describe('GET /api/workspaces/members', () => {
     })
 
     const { GET } = await import('./route')
-    const res = await GET()
+    const res = await GET(request('/api/workspaces/members?status=all'))
 
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual([{
@@ -210,9 +223,51 @@ describe('GET /api/workspaces/members', () => {
       email: null,
       avatarUrl: null,
       role: 'guest',
+      membershipStatus: 'inactive',
       joinedAt: '2026-01-03',
       projectCount: 0,
     }])
+  })
+
+  it('status 未指定では active メンバーに限定する', async () => {
+    const { eq } = await import('drizzle-orm')
+    mockDb.select
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+
+    const { GET } = await import('./route')
+    const res = await GET(request())
+
+    expect(res.status).toBe(200)
+    expect(eq).toHaveBeenCalledWith('wm.membershipStatus', 'active')
+  })
+
+  it('admin の status=all は非活性メンバーも取得対象にする', async () => {
+    const { eq } = await import('drizzle-orm')
+    mockGetWorkspaceMemberRole.mockResolvedValue('admin')
+    mockDb.select
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+
+    const { GET } = await import('./route')
+    const res = await GET(request('/api/workspaces/members?status=all'))
+
+    expect(res.status).toBe(200)
+    expect(eq).not.toHaveBeenCalledWith('wm.membershipStatus', 'active')
+  })
+
+  it('admin 以外の status=all は active メンバーに限定する', async () => {
+    const { eq } = await import('drizzle-orm')
+    mockGetWorkspaceMemberRole.mockResolvedValue('member')
+    mockDb.select
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+
+    const { GET } = await import('./route')
+    const res = await GET(request('/api/workspaces/members?status=all'))
+
+    expect(res.status).toBe(200)
+    expect(eq).toHaveBeenCalledWith('wm.membershipStatus', 'active')
   })
 
   it('bot profile は一覧レスポンスから除外する', async () => {
@@ -225,6 +280,7 @@ describe('GET /api/workspaces/members', () => {
           displayName: '山田 太郎',
           avatarUrl: null,
           role: 'member',
+          membershipStatus: 'active',
           joinedAt: new Date('2026-01-01T00:00:00.000Z'),
           projectCount: 3,
         },
@@ -234,6 +290,7 @@ describe('GET /api/workspaces/members', () => {
           displayName: 'Cairn Bot',
           avatarUrl: null,
           role: 'member',
+          membershipStatus: 'active',
           joinedAt: new Date('2026-01-02T00:00:00.000Z'),
           projectCount: 0,
         },
@@ -245,7 +302,7 @@ describe('GET /api/workspaces/members', () => {
     })
 
     const { GET } = await import('./route')
-    const res = await GET()
+    const res = await GET(request())
 
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual([{
@@ -254,6 +311,7 @@ describe('GET /api/workspaces/members', () => {
       email: 'taro@example.com',
       avatarUrl: null,
       role: 'member',
+      membershipStatus: 'active',
       joinedAt: '2026-01-01',
       projectCount: 3,
     }])

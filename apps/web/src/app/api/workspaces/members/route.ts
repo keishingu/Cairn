@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole } from '@/lib/permissions'
+import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
 import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
@@ -13,15 +13,17 @@ export interface WorkspaceMemberDto {
   email: string | null
   avatarUrl: string | null
   role: 'owner' | 'admin' | 'member' | 'guest'
+  membershipStatus: 'active' | 'inactive'
   joinedAt: string
   projectCount: number
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
   try {
+    const statusParam = new URL(req.url).searchParams.get('status')
     const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
     const { profiles, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
@@ -32,6 +34,8 @@ export async function GET() {
     // 参加していないプロジェクトの存在が漏れないようにする。
     const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
     const isGuest = callerRole === 'guest'
+    const includeInactive = statusParam === 'all' && isWorkspaceAdmin(callerRole)
+    const activeOnly = !includeInactive
 
     let guestProjectIds: string[] = []
     let visibleUserIds: string[] = []
@@ -78,6 +82,7 @@ export async function GET() {
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         role: workspaceMembers.role,
+        membershipStatus: workspaceMembers.membershipStatus,
         joinedAt: workspaceMembers.joinedAt,
         projectCount: sql<number>`coalesce(${projectCountSq.n}, 0)`,
       })
@@ -88,15 +93,17 @@ export async function GET() {
         isGuest
           ? and(
               eq(workspaceMembers.workspaceId, ctx.workspaceId),
-              eq(profiles.kind, 'human'),
               inArray(workspaceMembers.userId, visibleUserIds),
+              ...(activeOnly ? [eq(workspaceMembers.membershipStatus, 'active')] : []),
             )
-          : and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(profiles.kind, 'human')),
+          : and(
+              eq(workspaceMembers.workspaceId, ctx.workspaceId),
+              ...(activeOnly ? [eq(workspaceMembers.membershipStatus, 'active')] : []),
+            ),
       )
       .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
 
     const humanRows = rows.filter((row) => row.kind === 'human')
-
     const emails = await resolveEmailsByUserId(admin, humanRows.map(row => row.userId))
 
     const result: WorkspaceMemberDto[] = humanRows.map(r => ({
@@ -105,6 +112,7 @@ export async function GET() {
       email: emails.get(r.userId) ?? null,
       avatarUrl: r.avatarUrl ?? null,
       role: r.role,
+      membershipStatus: r.membershipStatus,
       joinedAt: r.joinedAt.toISOString().slice(0, 10),
       projectCount: Number(r.projectCount),
     }))

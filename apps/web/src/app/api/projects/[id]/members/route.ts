@@ -29,7 +29,7 @@ export async function GET(
   try {
     const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
-    const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
+    const { profiles, projectMembers, projects, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
     const [project] = await db
@@ -55,6 +55,10 @@ export async function GET(
         addedAt: projectMembers.createdAt,
       })
       .from(projectMembers)
+      .innerJoin(activeWorkspaceMembers, and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, projectMembers.userId),
+      ))
       .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(eq(projectMembers.projectId, projectId))
@@ -117,7 +121,7 @@ export async function POST(
   try {
     const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
-    const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
+    const { profiles, projectMembers, projects, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and, inArray } = await import('drizzle-orm')
 
     const [project] = await db
@@ -132,13 +136,14 @@ export async function POST(
     const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
     if (forbidden) return forbidden
 
+    // プロジェクトに追加できるのは active メンバーのみ（非活性メンバーは追加不可）
     const wsMembers = await db
-      .select({ userId: workspaceMembers.userId })
-      .from(workspaceMembers)
-      .innerJoin(profiles, eq(profiles.id, workspaceMembers.userId))
+      .select({ userId: activeWorkspaceMembers.userId })
+      .from(activeWorkspaceMembers)
+      .innerJoin(profiles, eq(profiles.id, activeWorkspaceMembers.userId))
       .where(and(
-        eq(workspaceMembers.workspaceId, ctx.workspaceId),
-        inArray(workspaceMembers.userId, normalizedUserIds),
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        inArray(activeWorkspaceMembers.userId, normalizedUserIds),
         eq(profiles.kind, 'human'),
       ))
 

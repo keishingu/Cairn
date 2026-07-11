@@ -24,12 +24,16 @@ export async function GET(
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { channelMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { eq, and } = await import('drizzle-orm')
 
     const rows = await db
       .select({ userId: channelMembers.userId, channelId: channelMembers.channelId })
       .from(channelMembers)
+      .innerJoin(activeWorkspaceMembers, and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, channelMembers.userId),
+      ))
       .where(eq(channelMembers.channelId, channelId))
 
     return NextResponse.json(rows satisfies ChannelMemberDto[])
@@ -67,17 +71,17 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers, channelReadStates, profiles, workspaceMembers } = await import('@cairn/db')
+    const { channelMembers, channelReadStates, activeWorkspaceMembers, profiles } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    // 人間ユーザーの workspace member だけを channel member に追加できるようにする。
+    // 自ワークスペースの active な人間メンバー以外は追加できないようにする。
     const [member] = await db
-      .select({ userId: workspaceMembers.userId })
-      .from(workspaceMembers)
-      .innerJoin(profiles, eq(profiles.id, workspaceMembers.userId))
+      .select({ userId: activeWorkspaceMembers.userId })
+      .from(activeWorkspaceMembers)
+      .innerJoin(profiles, eq(profiles.id, activeWorkspaceMembers.userId))
       .where(and(
-        eq(workspaceMembers.workspaceId, ctx.workspaceId),
-        eq(workspaceMembers.userId, userId),
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, userId),
         eq(profiles.kind, 'human'),
       ))
       .limit(1)
