@@ -41,6 +41,12 @@ importers:
       '@expo/vector-icons':
         specifier: ^15.0.0
         version: 15.1.1(expo-font@14.0.12(expo@54.0.35)(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0))(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
+      '@react-native-async-storage/async-storage':
+        specifier: 2.2.0
+        version: 2.2.0(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))
+      '@react-navigation/bottom-tabs':
+        specifier: ^7.4.0
+        version: 7.16.2(@react-navigation/native@7.2.5(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0))(react-native-screens@4.16.0(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0))(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
       '@supabase/supabase-js':
         specifier: 2.105.0
         version: 2.105.0
@@ -105,6 +111,9 @@ importers:
       typescript:
         specifier: ^5
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@20.19.41)(jsdom@26.1.0(canvas@3.2.3))(lightningcss@1.32.0)(terser@5.48.0)
 
   apps/web:
     dependencies:
@@ -2782,6 +2791,11 @@ packages:
       '@types/react':
         optional: true
 
+  '@react-native-async-storage/async-storage@2.2.0':
+    resolution: {integrity: sha512-gvRvjR5JAaUZF8tv2Kcq/Gbt3JHwbKFYfmb445rhOj6NUMx3qPLixmDx5pZAyb9at1bYvJ4/eTUipU5aki45xw==}
+    peerDependencies:
+      react-native: ^0.0.0-0 || >=0.65 <1.0
+
   '@react-native/assets-registry@0.81.4':
     resolution: {integrity: sha512-AMcDadefBIjD10BRqkWw+W/VdvXEomR6aEZ0fhQRAv7igrBzb4PTn4vHKYg+sUK0e3wa74kcMy2DLc/HtnGcMA==}
     engines: {node: '>= 20.19.4'}
@@ -5364,6 +5378,10 @@ packages:
     resolution: {integrity: sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==}
     engines: {node: '>=0.12.0'}
 
+  is-plain-obj@2.1.0:
+    resolution: {integrity: sha512-YWnfyRwxL/+SsrWYfOpUtz5b3YD+nyfkHvjbcanzk8zgyO4ASD67uVMRt8k5bM4lLMDnXfriRhOpemw+NfT1eA==}
+    engines: {node: '>=8'}
+
   is-plain-obj@4.1.0:
     resolution: {integrity: sha512-+Pgi+vMuUNkJyExiMBt5IlFoMyKnr5zhJ4Uspz58WOhBF5QoIZkFyNHIbBAtHwzVAgk5RtndVNsDRN61/mmDqg==}
     engines: {node: '>=12'}
@@ -5789,6 +5807,10 @@ packages:
 
   memoize-one@5.2.1:
     resolution: {integrity: sha512-zYiwtZUcYyXKo/np96AGZAckk+FWWsUdJ3cHGGmld7+AhvcWmQyGCYUh1hc4Q/pkOhb65dQR/pqCyK0cOaHz4Q==}
+
+  merge-options@3.0.4:
+    resolution: {integrity: sha512-2Sug1+knBjkaMsMgf1ctR1Ujx+Ayku4EdJN4Z+C2+JzoeF7A3OZ9KM2GY0CpQS51NR61LTurMJrRKPhSs3ZRTQ==}
+    engines: {node: '>=10'}
 
   merge-stream@2.0.0:
     resolution: {integrity: sha512-abv/qOcuPfk3URPfDzmZU1LKmuw8kT+0nIHvKrKgFrwifol/doWcdA4ZqsWQ8ENrFKkd67Mfpo/LovbIUsbt3w==}
@@ -10559,6 +10581,11 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.14
 
+  '@react-native-async-storage/async-storage@2.2.0(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0))':
+    dependencies:
+      merge-options: 3.0.4
+      react-native: 0.81.4(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.1.0)
+
   '@react-native/assets-registry@0.81.4': {}
 
   '@react-native/babel-plugin-codegen@0.81.5(@babel/core@7.29.0)':
@@ -11389,6 +11416,14 @@ snapshots:
       '@vitest/utils': 2.1.9
       chai: 5.3.3
       tinyrainbow: 1.2.0
+
+  '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@20.19.41)(lightningcss@1.32.0)(terser@5.48.0))':
+    dependencies:
+      '@vitest/spy': 2.1.9
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 5.4.21(@types/node@20.19.41)(lightningcss@1.32.0)(terser@5.48.0)
 
   '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@22.19.19)(lightningcss@1.32.0)(terser@5.48.0))':
     dependencies:
@@ -13512,6 +13547,8 @@ snapshots:
 
   is-number@7.0.0: {}
 
+  is-plain-obj@2.1.0: {}
+
   is-plain-obj@4.1.0: {}
 
   is-potential-custom-element-name@1.0.1: {}
@@ -14078,6 +14115,10 @@ snapshots:
       '@types/mdast': 4.0.4
 
   memoize-one@5.2.1: {}
+
+  merge-options@3.0.4:
+    dependencies:
+      is-plain-obj: 2.1.0
 
   merge-stream@2.0.0: {}
 
@@ -14737,7 +14778,7 @@ snapshots:
 
   node-abi@3.92.0:
     dependencies:
-      semver: 7.8.0
+      semver: 7.8.4
     optional: true
 
   node-addon-api@7.1.1:
@@ -16385,6 +16426,24 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
+  vite-node@2.1.9(@types/node@20.19.41)(lightningcss@1.32.0)(terser@5.48.0):
+    dependencies:
+      cac: 6.7.14
+      debug: 4.4.3
+      es-module-lexer: 1.7.0
+      pathe: 1.1.2
+      vite: 5.4.21(@types/node@20.19.41)(lightningcss@1.32.0)(terser@5.48.0)
+    transitivePeerDependencies:
+      - '@types/node'
+      - less
+      - lightningcss
+      - sass
+      - sass-embedded
+      - stylus
+      - sugarss
+      - supports-color
+      - terser
+
   vite-node@2.1.9(@types/node@22.19.19)(lightningcss@1.32.0)(terser@5.48.0):
     dependencies:
       cac: 6.7.14
@@ -16421,6 +16480,17 @@ snapshots:
       - supports-color
       - terser
 
+  vite@5.4.21(@types/node@20.19.41)(lightningcss@1.32.0)(terser@5.48.0):
+    dependencies:
+      esbuild: 0.21.5
+      postcss: 8.5.15
+      rollup: 4.60.4
+    optionalDependencies:
+      '@types/node': 20.19.41
+      fsevents: 2.3.3
+      lightningcss: 1.32.0
+      terser: 5.48.0
+
   vite@5.4.21(@types/node@22.19.19)(lightningcss@1.32.0)(terser@5.48.0):
     dependencies:
       esbuild: 0.21.5
@@ -16442,6 +16512,42 @@ snapshots:
       fsevents: 2.3.3
       lightningcss: 1.32.0
       terser: 5.48.0
+
+  vitest@2.1.9(@types/node@20.19.41)(jsdom@26.1.0(canvas@3.2.3))(lightningcss@1.32.0)(terser@5.48.0):
+    dependencies:
+      '@vitest/expect': 2.1.9
+      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@20.19.41)(lightningcss@1.32.0)(terser@5.48.0))
+      '@vitest/pretty-format': 2.1.9
+      '@vitest/runner': 2.1.9
+      '@vitest/snapshot': 2.1.9
+      '@vitest/spy': 2.1.9
+      '@vitest/utils': 2.1.9
+      chai: 5.3.3
+      debug: 4.4.3
+      expect-type: 1.3.0
+      magic-string: 0.30.21
+      pathe: 1.1.2
+      std-env: 3.10.0
+      tinybench: 2.9.0
+      tinyexec: 0.3.2
+      tinypool: 1.1.1
+      tinyrainbow: 1.2.0
+      vite: 5.4.21(@types/node@20.19.41)(lightningcss@1.32.0)(terser@5.48.0)
+      vite-node: 2.1.9(@types/node@20.19.41)(lightningcss@1.32.0)(terser@5.48.0)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@types/node': 20.19.41
+      jsdom: 26.1.0(canvas@3.2.3)
+    transitivePeerDependencies:
+      - less
+      - lightningcss
+      - msw
+      - sass
+      - sass-embedded
+      - stylus
+      - sugarss
+      - supports-color
+      - terser
 
   vitest@2.1.9(@types/node@22.19.19)(jsdom@26.1.0(canvas@3.2.3))(lightningcss@1.32.0)(terser@5.48.0):
     dependencies:

@@ -65,6 +65,7 @@ vi.mock('@cairn/db', () => ({
   },
   projects: { id: 'p.id', workspaceId: 'p.workspaceId' },
   workspaceMembers: { id: 'wm.id', userId: 'wm.userId', workspaceId: 'wm.workspaceId', displayName: 'wm.displayName', avatarUrl: 'wm.avatarUrl' },
+  activeWorkspaceMembers: { id: 'awm.id', userId: 'awm.userId', workspaceId: 'awm.workspaceId' },
 }))
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),

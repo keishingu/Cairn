@@ -14,7 +14,8 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set('x-device', detectMobile(ua) ? 'mobile' : 'desktop')
 
   const isWebView = request.nextUrl.searchParams.get('webview') === '1'
-  if (isWebView) requestHeaders.set('x-webview', '1')
+  const persistedWebView = request.cookies.get('cairn-webview')?.value === '1'
+  if (isWebView || persistedWebView) requestHeaders.set('x-webview', '1')
 
   let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
 
@@ -39,6 +40,8 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
   const isAuthRoute = pathname.startsWith('/auth')
+  const isMobileHandoffRoute = pathname === '/auth/mobile-handoff'
+  const isMobileSignoutRoute = pathname === '/auth/mobile-signout'
   // トップページは未ログインでも閲覧できる公開 LP
   const isLandingRoute = pathname === '/'
   const isLandingAsset =
@@ -58,8 +61,16 @@ export async function middleware(request: NextRequest) {
   if (user && isLandingRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))
   }
-  if (user && isAuthRoute && !isOnboardingRoute) {
+  if (user && isAuthRoute && !isOnboardingRoute && !isMobileHandoffRoute && !isMobileSignoutRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))
+  }
+
+  if (isWebView) {
+    supabaseResponse.cookies.set('cairn-webview', '1', {
+      sameSite: 'lax',
+      secure: request.nextUrl.protocol === 'https:',
+      path: '/',
+    })
   }
 
   return supabaseResponse

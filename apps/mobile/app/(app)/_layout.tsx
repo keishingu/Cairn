@@ -4,6 +4,8 @@ import { Tabs, useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
 import Constants from 'expo-constants'
 import { apiFetch } from '../../lib/api-fetch'
+import { MobileNav } from '../../components/mobile-nav'
+import { ProjectsViewProvider } from '../../components/projects-view-context'
 
 // Expo Go の Android は SDK 53 以降プッシュ通知非対応のためスキップ
 const isExpoGo = Constants.appOwnership === 'expo'
@@ -75,13 +77,21 @@ export default function AppLayout() {
   }, [router])
 
   return (
-    <Tabs screenOptions={{ headerShown: false, tabBarStyle: { display: 'none' } }}>
-      <Tabs.Screen name="projects" />
-      <Tabs.Screen name="chats" />
-      <Tabs.Screen name="tasks" />
-      <Tabs.Screen name="notifications" />
-      <Tabs.Screen name="ai" />
-      <Tabs.Screen name="menu" />
-    </Tabs>
+    <ProjectsViewProvider>
+      <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <MobileNav {...props} />}>
+        <Tabs.Screen name="projects/index" />
+        <Tabs.Screen name="chats/index" />
+        <Tabs.Screen name="tasks/index" />
+        <Tabs.Screen name="ai/index" />
+        <Tabs.Screen name="projects/[id]" options={{ href: null }} />
+        <Tabs.Screen name="notifications/index" options={{ href: null }} />
+        <Tabs.Screen name="files/index" options={{ href: null }} />
+        <Tabs.Screen name="gallery/index" options={{ href: null }} />
+        <Tabs.Screen name="members/index" options={{ href: null }} />
+        <Tabs.Screen name="settings/index" options={{ href: null }} />
+        <Tabs.Screen name="signout/index" options={{ href: null }} />
+        <Tabs.Screen name="menu/index" options={{ href: null }} />
+      </Tabs>
+    </ProjectsViewProvider>
   )
 }

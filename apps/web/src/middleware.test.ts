@@ -71,4 +71,33 @@ describe('middleware', () => {
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/auth/login')
   })
+
+  it('webview=1 で入った後は cairn-webview cookie で x-webview を維持する', async () => {
+    getUser.mockResolvedValue({ data: { user: { id: 'u1' } } })
+    const { middleware } = await import('./middleware')
+
+    const initial = await middleware(makeRequest('/projects?webview=1'))
+    expect(initial.cookies.get('cairn-webview')?.value).toBe('1')
+
+    const followup = makeRequest('/settings/account')
+    followup.cookies.set('cairn-webview', '1')
+    const res = await middleware(followup)
+
+    expect(res.headers.get('location')).toBeNull()
+    expect(res.headers.get('x-middleware-request-x-webview')).toBe('1')
+  })
+
+  it('認証済みでも /auth/mobile-handoff は /projects に潰さない', async () => {
+    getUser.mockResolvedValue({ data: { user: { id: 'u1' } } })
+    const { middleware } = await import('./middleware')
+    const res = await middleware(makeRequest('/auth/mobile-handoff?redirect=%2Fai%3Fwebview%3D1'))
+    expect(res.headers.get('location')).toBeNull()
+  })
+
+  it('認証済みでも /auth/mobile-signout は /projects に潰さない', async () => {
+    getUser.mockResolvedValue({ data: { user: { id: 'u1' } } })
+    const { middleware } = await import('./middleware')
+    const res = await middleware(makeRequest('/auth/mobile-signout?webview=1'))
+    expect(res.headers.get('location')).toBeNull()
+  })
 })

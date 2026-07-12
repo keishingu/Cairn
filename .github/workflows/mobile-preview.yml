@@ -19,6 +19,7 @@ jobs:
     environment: Preview
     permissions:
       contents: read
+      deployments: read
       pull-requests: write
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
@@ -39,6 +40,47 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
+      - name: Resolve Vercel Preview URL for this commit
+        id: vercel-preview
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = context.payload.pull_request.head.sha
+            const deadline = Date.now() + 5 * 60 * 1000
+
+            while (Date.now() < deadline) {
+              const { data: deployments } = await github.rest.repos.listDeployments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha,
+                per_page: 100,
+              })
+
+              for (const deployment of deployments) {
+                const { data: statuses } = await github.rest.repos.listDeploymentStatuses({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  deployment_id: deployment.id,
+                  per_page: 100,
+                })
+                const ready = statuses.find((status) =>
+                  status.state === 'success' && Boolean(status.environment_url),
+                )
+
+                if (ready?.environment_url) {
+                  const url = ready.environment_url.replace(/\/$/, '')
+                  core.setOutput('url', url)
+                  core.info(`Using Vercel Preview: ${url}`)
+                  return
+                }
+              }
+
+              core.info(`Waiting for Vercel Preview deployment of ${sha}…`)
+              await new Promise((resolve) => setTimeout(resolve, 10_000))
+            }
+
+            core.setFailed('Vercel Preview URL was not ready within 5 minutes')
+
       - name: Publish preview update and comment on PR
         uses: expo/expo-github-action/preview@v8
         with:
@@ -48,4 +90,4 @@ jobs:
           EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.MOBILE_PREVIEW_EAS_PROJECT_ID }}
           EXPO_PUBLIC_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
-          EXPO_PUBLIC_API_BASE_URL: ${{ vars.MOBILE_PREVIEW_API_BASE_URL }}
+          EXPO_PUBLIC_API_BASE_URL: ${{ steps.vercel-preview.outputs.url }}
