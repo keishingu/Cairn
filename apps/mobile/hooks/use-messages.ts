@@ -35,6 +35,13 @@ export class ChannelMessagesError extends Error {
   }
 }
 
+// 401/403 は生のステータスコードを出さず、意味の分かる文言に変換する
+function friendlyMessageErrorText(status: number, fallback: string): string {
+  if (status === 401) return 'セッションが切れました。再度ログインしてください。'
+  if (status === 403) return 'このチャンネルへの送信権限がありません。'
+  return `${fallback} (${status})`
+}
+
 export function useMessages(channelId: string | null) {
   return useQuery<MessageDto[]>({
     queryKey: ['messages', channelId],
@@ -62,7 +69,7 @@ export function useSendMessage(channelId: string) {
         method: 'POST',
         body: JSON.stringify({ content }),
       })
-      if (!res.ok) throw new Error(`メッセージの送信に失敗しました (${res.status})`)
+      if (!res.ok) throw new Error(friendlyMessageErrorText(res.status, 'メッセージの送信に失敗しました'))
       return res.json() as Promise<MessageDto>
     },
     onSuccess: async () => {

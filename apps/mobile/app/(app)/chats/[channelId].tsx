@@ -144,6 +144,9 @@ export default function ChatThreadScreen() {
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
   const messages = messagesQuery.data ?? []
+  // 送信失敗時の catch は非同期に発火するため、常に最新の channelId を参照できるようにする
+  const channelIdRef = React.useRef(channelId)
+  channelIdRef.current = channelId
 
   // chats/[channelId] は chats/index と同じ Tab Navigator 内の兄弟タブ（href: null）のため、
   // 他のタブへ切り替えても既定では画面がアンマウントされず、バックグラウンドでポーリングが続く。
@@ -195,11 +198,15 @@ export default function ChatThreadScreen() {
   async function handleSend() {
     const content = draft.trim()
     if (!content || sendMessage.isPending) return
+    const sendingChannelId = channelId
     setDraft('')
     setSendError(null)
     try {
       await sendMessage.mutateAsync(content)
     } catch (err) {
+      // 送信中に別チャンネルへ切り替えられていたら、この画面（隠しタブとして再利用される）の
+      // 状態を古い送信結果で上書きしない
+      if (channelIdRef.current !== sendingChannelId) return
       setDraft(content)
       setSendError(err instanceof Error ? err.message : 'メッセージの送信に失敗しました')
     }
