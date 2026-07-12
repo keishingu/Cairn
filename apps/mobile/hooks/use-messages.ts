@@ -1,22 +1,21 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AttachmentDto, MessageType } from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
 
 export interface MessageDto {
   id: string
   content: string
+  messageType: MessageType
   senderId: string
   senderName: string
   senderAvatarUrl: string | null
   createdAt: string
-  reactions: { emoji: string; count: number; mine: boolean }[]
-  attachments: {
-    id: string
-    fileId: string
-    fileName: string
-    mimeType: string | null
-    fileSize: number | null
-    displayOrder: number
-  }[]
+  isEdited: boolean
+  reactions: { emoji: string; count: number; mine: boolean; userNames: string[] }[]
+  attachments: AttachmentDto[]
+  parentMessageId: string | null
+  replyTo: { id: string; senderName: string; content: string; isDeleted: boolean } | null
+  bookmarked: boolean
 }
 
 // サーバーが read 時に `<@userId|表示名>` へ解決済みのため最新名を表示できる。
@@ -56,6 +55,8 @@ export function useSendMessage(channelId: string) {
       await qc.invalidateQueries({ queryKey: ['messages', channelId] })
       await apiFetch(`/api/channels/${channelId}/read`, { method: 'POST' })
       await qc.invalidateQueries({ queryKey: ['project-channels'] })
+      await qc.invalidateQueries({ queryKey: ['workspace-channels'] })
+      await qc.invalidateQueries({ queryKey: ['workspace-dms'] })
     },
   })
 }
@@ -68,6 +69,24 @@ export function useMarkChannelRead(channelId: string) {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['project-channels'] })
+      await qc.invalidateQueries({ queryKey: ['workspace-channels'] })
+      await qc.invalidateQueries({ queryKey: ['workspace-dms'] })
+    },
+  })
+}
+
+export function useToggleMessageReaction(channelId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ messageId, emoji }: { messageId: string; emoji: string }) => {
+      const res = await apiFetch(`/api/messages/${messageId}/reactions`, {
+        method: 'POST',
+        body: JSON.stringify({ emoji }),
+      })
+      if (!res.ok) throw new Error(`リアクションの更新に失敗しました (${res.status})`)
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['messages', channelId] })
     },
   })
 }
