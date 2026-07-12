@@ -65,7 +65,8 @@ export function useMarkChannelRead(channelId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      await apiFetch(`/api/channels/${channelId}/read`, { method: 'POST' })
+      const res = await apiFetch(`/api/channels/${channelId}/read`, { method: 'POST' })
+      if (!res.ok) throw new Error(`既読化に失敗しました (${res.status})`)
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['project-channels'] })

@@ -143,17 +143,26 @@ export default function ChatThreadScreen() {
   const [sendError, setSendError] = React.useState<string | null>(null)
   const messages = messagesQuery.data ?? []
 
-  // 画面に反映済みの最新メッセージだけを既読化する。キャッシュ中の古い一覧で先読み既読にしない。
+  // 表示中に届いたポーリング更新も既読化する（開いた瞬間だけだと、5秒ポーリング中の
+  // 新着がスレッド上には表示されるのに未読バッジへ残り続けてしまう）。
+  // /read はサーバー側の最新メッセージを既読化するため、取得中（キャッシュがまだ最新と
+  // 限らない状態）に呼ぶと、画面にまだ表示していない新着まで既読化されてしまう。
+  // そのため fetch 完了後（isFetching が false）かつ直近の取得が成功している場合のみ既読化する
   const markReadRef = React.useRef(markRead)
   markReadRef.current = markRead
   const lastReadMessageIdRef = React.useRef<string | null>(null)
   React.useEffect(() => {
-    if (!channelId || messagesQuery.isFetching || messages.length === 0) return
+    if (!channelId || messagesQuery.isFetching || messagesQuery.isError || messages.length === 0) return
+    if (markReadRef.current.isPending) return
     const lastId = messages[messages.length - 1]?.id
     if (!lastId || lastReadMessageIdRef.current === lastId) return
-    lastReadMessageIdRef.current = lastId
-    markReadRef.current.mutate()
-  }, [channelId, messages, messagesQuery.isFetching])
+    // 成功した場合のみ ref を進める。失敗時は次のポーリングで同じメッセージに対して再試行する
+    markReadRef.current.mutate(undefined, {
+      onSuccess: () => {
+        lastReadMessageIdRef.current = lastId
+      },
+    })
+  }, [channelId, messages, messagesQuery.isFetching, messagesQuery.isError])
 
   async function handleSend() {
     const content = draft.trim()
@@ -162,9 +171,9 @@ export default function ChatThreadScreen() {
     setSendError(null)
     try {
       await sendMessage.mutateAsync(content)
-    } catch {
+    } catch (err) {
       setDraft(content)
-      setSendError('メッセージを送信できませんでした')
+      setSendError(err instanceof Error ? err.message : 'メッセージの送信に失敗しました')
     }
   }
 
