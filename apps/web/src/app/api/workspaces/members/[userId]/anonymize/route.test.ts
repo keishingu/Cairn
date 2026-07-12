@@ -333,6 +333,43 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     ])
   })
 
+  it('最終匿名化では他 workspace の avatar variant も削除する', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { avatarUrl: 'https://example.supabase.co/storage/v1/object/public/avatars/ws-1/user-2.png' },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.delete.mockReturnValueOnce(deleteChain())
+    mockDb.select.mockReturnValueOnce(selectChain([{ membershipCount: 0 }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { workspaceId: DEV_WORKSPACE_ID, avatarUrl: null, displayName: '退会したユーザー' },
+      { workspaceId: 'ws-2', avatarUrl: 'https://example.supabase.co/storage/v1/object/public/avatars/ws-2/user-2.png', displayName: 'Other Workspace Name' },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { displayName: 'Global Name', bio: null },
+    ]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockRemove).toHaveBeenCalledWith([
+      'ws-1/user-2.png',
+      'ws-1/user-2.jpg',
+      'ws-1/user-2.jpeg',
+      'ws-1/user-2.gif',
+      'ws-1/user-2.webp',
+      'ws-2/user-2.png',
+      'ws-2/user-2.jpg',
+      'ws-2/user-2.jpeg',
+      'ws-2/user-2.gif',
+      'ws-2/user-2.webp',
+    ])
+  })
+
   it('最終匿名化では上書き前の workspace displayName も AI scrub パターンに残す', async () => {
     mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([

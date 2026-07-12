@@ -11,6 +11,15 @@ const setupSchema = z.object({
   workspaceName: z.string().min(1).max(100).optional(),
 })
 
+function firstNonEmptyString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value !== 'string') continue
+    const trimmed = value.trim()
+    if (trimmed) return trimmed
+  }
+  return undefined
+}
+
 export async function POST(req: Request) {
   let body: unknown
   try {
@@ -46,7 +55,11 @@ export async function POST(req: Request) {
     if (existing.length === 0) {
       const displayNameCandidate =
         parsed.data.displayName ??
-        (user.user_metadata?.['display_name'] as string | undefined) ??
+        firstNonEmptyString(
+          user.user_metadata?.['display_name'],
+          user.user_metadata?.['full_name'],
+          user.user_metadata?.['name'],
+        ) ??
         user.email ??
         'ユーザー'
       const displayName =

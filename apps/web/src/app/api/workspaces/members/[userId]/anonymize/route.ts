@@ -530,12 +530,14 @@ export async function POST(
         const allWorkspaceIds = membershipRows.length > 0
           ? [...new Set(membershipRows.map(row => row.workspaceId))]
           : [ctx.workspaceId]
-        const allAvatarPaths = [...new Set([
-          ...prepared.avatarPaths,
-          ...membershipRows
-            .map(row => extractAvatarPath(row.avatarUrl ?? null))
-            .filter((path): path is string => Boolean(path)),
-        ])]
+        const allAvatarPaths = expandAvatarVariantPaths(
+          [...new Set([
+            ...prepared.avatarPaths,
+            ...membershipRows
+              .map(row => extractAvatarPath(row.avatarUrl ?? null))
+              .filter((path): path is string => Boolean(path)),
+          ])],
+        )
         const allAffectedProjectRows = await tx
           .select({ projectId: projectMembers.projectId, workspaceId: projects.workspaceId })
           .from(projectMembers)
