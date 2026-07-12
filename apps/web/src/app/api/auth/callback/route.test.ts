@@ -68,4 +68,22 @@ describe('GET /api/auth/callback', () => {
       displayName: mockUser.email,
     })
   })
+
+  it('非文字列の OAuth metadata でも fallback email で profile を作る', async () => {
+    process.env['DATABASE_URL'] = 'postgresql://test'
+    mockUser.user_metadata = { display_name: { nested: true }, full_name: 42, name: null }
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    const insertValues = vi.fn().mockResolvedValue([])
+    mockDb.insert.mockReturnValueOnce({ values: insertValues })
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/auth/callback?code=test-code'))
+
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toBe('http://localhost/onboarding')
+    expect(insertValues).toHaveBeenCalledWith({
+      id: mockUser.id,
+      displayName: mockUser.email,
+    })
+  })
 })

@@ -747,7 +747,14 @@ export const indexMemberChunks = inngest.createFunction(
     const { userId, workspaceId } = event.data as { userId: string; workspaceId: string }
 
     await step.run('embed-and-save', async () => {
-      const { db, documentChunks, activeWorkspaceMembers, profiles, workspaceMembers } = await import('@cairn/db')
+      const {
+        db,
+        documentChunks,
+        activeWorkspaceMembers,
+        memberExperiences,
+        profiles,
+        workspaceMembers,
+      } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
 
       const deleteMemberChunks = () =>
@@ -770,6 +777,7 @@ export const indexMemberChunks = inngest.createFunction(
         .select({
           displayName: workspaceMembers.displayName,
           profileDisplayName: profiles.displayName,
+          bio: profiles.bio,
           statusMessage: workspaceMembers.statusMessage,
         })
         .from(workspaceMembers)
@@ -786,9 +794,29 @@ export const indexMemberChunks = inngest.createFunction(
         return
       }
 
+      const experiences = await db
+        .select({
+          category: memberExperiences.category,
+          title: memberExperiences.title,
+          level: memberExperiences.level,
+          notes: memberExperiences.notes,
+        })
+        .from(memberExperiences)
+        .where(eq(memberExperiences.userId, userId))
+
       const lines: string[] = [
         `メンバー: ${displayName}`,
         ...(workspaceMember?.statusMessage ? [`ステータス: ${workspaceMember.statusMessage}`] : []),
+        ...(workspaceMember?.bio ? [`自己紹介: ${workspaceMember.bio}`] : []),
+        ...experiences.map((experience) => {
+          const details = [
+            experience.category,
+            experience.title,
+            experience.level,
+            experience.notes,
+          ].filter(Boolean)
+          return `経験: ${details.join(' / ')}`
+        }),
       ]
 
       const content = lines.join('\n')

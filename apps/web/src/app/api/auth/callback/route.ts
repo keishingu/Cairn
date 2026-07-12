@@ -5,6 +5,15 @@ import { NextResponse } from 'next/server'
 import { ANONYMIZED_MEMBER_DISPLAY_NAME } from '@/lib/anonymized-member'
 import { createClient } from '@/lib/supabase/server'
 
+function firstNonEmptyString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value !== 'string') continue
+    const trimmed = value.trim()
+    if (trimmed) return trimmed
+  }
+  return undefined
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
@@ -17,13 +26,15 @@ export async function GET(request: Request) {
     if (!error && data.user) {
       const user = data.user
       const displayNameCandidate =
-        (user.user_metadata?.['display_name'] as string | undefined) ??
-        (user.user_metadata?.['full_name'] as string | undefined) ??
-        (user.user_metadata?.['name'] as string | undefined) ??
+        firstNonEmptyString(
+          user.user_metadata?.['display_name'],
+          user.user_metadata?.['full_name'],
+          user.user_metadata?.['name'],
+        ) ??
         user.email ??
         'ユーザー'
       const displayName =
-        displayNameCandidate.trim() === ANONYMIZED_MEMBER_DISPLAY_NAME
+        displayNameCandidate === ANONYMIZED_MEMBER_DISPLAY_NAME
           ? (user.email ?? 'ユーザー')
           : displayNameCandidate
 
