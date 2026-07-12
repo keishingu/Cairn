@@ -23,6 +23,11 @@ type MembershipSnapshot = {
   displayName: string | null
 }
 
+type ProjectReindexTarget = {
+  workspaceId: string
+  projectId: string
+}
+
 function escapeLikePattern(value: string) {
   return value.replace(/[\\%_]/g, '\\$&')
 }
@@ -287,6 +292,7 @@ async function scrubAllWorkspaceArtifactsForFinalErasure(
     projectMembers: typeof import('@cairn/db').projectMembers
     projects: typeof import('@cairn/db').projects
     profiles: typeof import('@cairn/db').profiles
+    pushSubscriptions: typeof import('@cairn/db').pushSubscriptions
     workspaceMembers: typeof import('@cairn/db').workspaceMembers
   },
   helpers: {
@@ -296,7 +302,7 @@ async function scrubAllWorkspaceArtifactsForFinalErasure(
     sql: typeof import('drizzle-orm').sql
   },
 ) {
-  const { connectedAccounts, documentChunks, googleCalendarEvents, projectMembers, projects, profiles, workspaceMembers } = tables
+  const { connectedAccounts, documentChunks, googleCalendarEvents, projectMembers, projects, profiles, pushSubscriptions, workspaceMembers } = tables
   const { and, eq, inArray, sql } = helpers
 
   for (const workspaceId of workspaceIds) {
@@ -361,6 +367,10 @@ async function scrubAllWorkspaceArtifactsForFinalErasure(
     ))
 
   await tx
+    .delete(pushSubscriptions)
+    .where(eq(pushSubscriptions.userId, targetUserId))
+
+  await tx
     .update(profiles)
     .set({
       displayName: ANONYMIZED_MEMBER_DISPLAY_NAME,
@@ -416,7 +426,7 @@ export async function POST(
   if (error) return error
 
   try {
-    const { connectedAccounts, db, documentChunks, googleCalendarEvents, profiles, projectMembers, projects, tasks, workspaceMembers } = await import('@cairn/db')
+    const { connectedAccounts, db, documentChunks, googleCalendarEvents, profiles, projectMembers, projects, pushSubscriptions, tasks, workspaceMembers } = await import('@cairn/db')
     const { and, count, eq, inArray, sql } = await import('drizzle-orm')
 
     const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
@@ -425,7 +435,7 @@ export async function POST(
     }
 
     const now = new Date()
-    const { avatarPaths, avatarRestoreRows } = await db.transaction(async (tx) => {
+    const { avatarPaths, avatarRestoreRows, projectReindexTargets } = await db.transaction(async (tx) => {
       const prepared = await prepareAnonymization(
         tx,
         ctx.workspaceId,
@@ -464,11 +474,15 @@ export async function POST(
         ))
 
       const affectedProjectRows = await tx
-        .select({ projectId: projectMembers.projectId })
+        .select({ projectId: projectMembers.projectId, workspaceId: projects.workspaceId })
         .from(projectMembers)
         .innerJoin(projects, eq(projectMembers.projectId, projects.id))
         .where(and(eq(projectMembers.userId, targetUserId), eq(projects.workspaceId, ctx.workspaceId)))
-      const affectedProjectIds = affectedProjectRows.map(row => row.projectId)
+      const affectedProjectIds = [...new Set(affectedProjectRows.map(row => row.projectId))]
+      const projectReindexTargets = affectedProjectRows.map(row => ({
+        workspaceId: row.workspaceId,
+        projectId: row.projectId,
+      }))
 
       if (affectedProjectIds.length > 0) {
         await tx
@@ -504,6 +518,11 @@ export async function POST(
             .map(row => extractAvatarPath(row.avatarUrl ?? null))
             .filter((path): path is string => Boolean(path)),
         ])]
+        const allAffectedProjectRows = await tx
+          .select({ projectId: projectMembers.projectId, workspaceId: projects.workspaceId })
+          .from(projectMembers)
+          .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+          .where(and(eq(projectMembers.userId, targetUserId), inArray(projects.workspaceId, allWorkspaceIds)))
         const [profileRow] = await tx
           .select({ displayName: profiles.displayName, bio: profiles.bio })
           .from(profiles)
@@ -523,15 +542,23 @@ export async function POST(
           profileRow?.bio ?? null,
           now,
           ctx.userId,
-          { connectedAccounts, documentChunks, googleCalendarEvents, projectMembers, projects, profiles, workspaceMembers },
+          { connectedAccounts, documentChunks, googleCalendarEvents, projectMembers, projects, profiles, pushSubscriptions, workspaceMembers },
           { and, eq, inArray, sql },
         )
-        return { avatarPaths: allAvatarPaths, avatarRestoreRows: membershipRows }
+        return {
+          avatarPaths: allAvatarPaths,
+          avatarRestoreRows: membershipRows,
+          projectReindexTargets: allAffectedProjectRows.map(row => ({
+            workspaceId: row.workspaceId,
+            projectId: row.projectId,
+          })),
+        }
       }
 
       return {
         avatarPaths: prepared.avatarPaths,
         avatarRestoreRows: prepared.membershipRows,
+        projectReindexTargets,
       }
     })
 
@@ -548,6 +575,18 @@ export async function POST(
     }
 
     clearWorkspaceCacheForUser(targetUserId)
+
+    if (projectReindexTargets.length > 0) {
+      try {
+        const { inngest } = await import('@/lib/inngest/client')
+        await inngest.send(projectReindexTargets.map(({ workspaceId, projectId }) => ({
+          name: 'project/upserted' as const,
+          data: { workspaceId, projectId },
+        })))
+      } catch (err) {
+        console.warn('[/api/workspaces/members/[userId]/anonymize] project reindex send failed:', err)
+      }
+    }
 
     return NextResponse.json({ userId: targetUserId, anonymized: true })
   } catch (err) {
