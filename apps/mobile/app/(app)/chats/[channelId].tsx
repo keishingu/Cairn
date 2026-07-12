@@ -66,20 +66,29 @@ export default function ChatThreadScreen() {
   const lastReadMessageIdRef = React.useRef<string | null>(null)
   React.useEffect(() => {
     if (!channelId || messagesQuery.isFetching || messages.length === 0) return
+    if (markReadRef.current.isPending) return
     const lastId = messages[messages.length - 1]?.id
     if (!lastId || lastReadMessageIdRef.current === lastId) return
-    lastReadMessageIdRef.current = lastId
-    markReadRef.current.mutate()
+    // 成功した場合のみ ref を進める。失敗時は次のポーリングで同じメッセージに対して再試行する
+    markReadRef.current.mutate(undefined, {
+      onSuccess: () => {
+        lastReadMessageIdRef.current = lastId
+      },
+    })
   }, [channelId, messages, messagesQuery.isFetching])
+
+  const [sendError, setSendError] = React.useState<string | null>(null)
 
   async function handleSend() {
     const content = draft.trim()
     if (!content || sendMessage.isPending) return
     setDraft('')
+    setSendError(null)
     try {
       await sendMessage.mutateAsync(content)
-    } catch {
+    } catch (err) {
       setDraft(content)
+      setSendError(err instanceof Error ? err.message : 'メッセージの送信に失敗しました')
     }
   }
 
@@ -118,6 +127,8 @@ export default function ChatThreadScreen() {
           ListEmptyComponent={<Text style={styles.empty}>メッセージがありません</Text>}
         />
       )}
+
+      {sendError && <Text style={styles.sendErrorText}>{sendError}</Text>}
 
       <View style={[styles.inputRow, { paddingBottom: insets.bottom || 12 }]}>
         <TextInput
@@ -177,6 +188,13 @@ const styles = StyleSheet.create({
   attachmentTextMine: { color: '#EFF6FF' },
   bubbleTime: { fontSize: 10, color: '#94A3B8', alignSelf: 'flex-end' },
   bubbleTimeMine: { color: '#DBEAFE' },
+  sendErrorText: {
+    color: '#b91c1c',
+    fontSize: 12,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    backgroundColor: '#FFFFFF',
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
