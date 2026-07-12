@@ -1,10 +1,11 @@
 import React from 'react'
 import { Platform } from 'react-native'
 import { Tabs, useRouter } from 'expo-router'
-import { Ionicons } from '@expo/vector-icons'
 import * as Notifications from 'expo-notifications'
 import Constants from 'expo-constants'
 import { apiFetch } from '../../lib/api-fetch'
+import { MobileNav } from '../../components/mobile-nav'
+import { ProjectsViewProvider } from '../../components/projects-view-context'
 
 // Expo Go の Android は SDK 53 以降プッシュ通知非対応のためスキップ
 const isExpoGo = Constants.appOwnership === 'expo'
@@ -76,72 +77,21 @@ export default function AppLayout() {
   }, [router])
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: '#2563EB',
-        tabBarInactiveTintColor: '#64748B',
-        tabBarHideOnKeyboard: true,
-        tabBarStyle: {
-          height: 64,
-          paddingTop: 6,
-          paddingBottom: 6,
-          backgroundColor: '#FFFFFF',
-          borderTopColor: '#E2E8F0',
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="projects"
-        options={{
-          title: 'プロジェクト',
-          tabBarIcon: ({ color, size }) => <Ionicons name="grid-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="chats"
-        options={{
-          title: 'チャット',
-          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubble-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="tasks"
-        options={{
-          title: 'タスク',
-          tabBarIcon: ({ color, size }) => <Ionicons name="checkmark-circle-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="notifications"
-        options={{
-          title: '通知',
-          tabBarIcon: ({ color, size }) => <Ionicons name="notifications-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="ai"
-        options={{
-          title: 'AI',
-          tabBarIcon: ({ color, size }) => <Ionicons name="sparkles-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="menu"
-        options={{
-          title: 'メニュー',
-          tabBarIcon: ({ color, size }) => <Ionicons name="list-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen name="files" options={{ href: null }} />
-      <Tabs.Screen name="gallery" options={{ href: null }} />
-      <Tabs.Screen name="members" options={{ href: null }} />
-      <Tabs.Screen name="settings" options={{ href: null }} />
-      <Tabs.Screen name="signout" options={{ href: null }} />
-    </Tabs>
+    <ProjectsViewProvider>
+      <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <MobileNav {...props} />}>
+        <Tabs.Screen name="projects/index" />
+        <Tabs.Screen name="chats/index" />
+        <Tabs.Screen name="tasks/index" />
+        <Tabs.Screen name="ai/index" />
+        <Tabs.Screen name="projects/[id]" options={{ href: null }} />
+        <Tabs.Screen name="notifications/index" options={{ href: null }} />
+        <Tabs.Screen name="files/index" options={{ href: null }} />
+        <Tabs.Screen name="gallery/index" options={{ href: null }} />
+        <Tabs.Screen name="members/index" options={{ href: null }} />
+        <Tabs.Screen name="settings/index" options={{ href: null }} />
+        <Tabs.Screen name="signout/index" options={{ href: null }} />
+        <Tabs.Screen name="menu/index" options={{ href: null }} />
+      </Tabs>
+    </ProjectsViewProvider>
   )
 }

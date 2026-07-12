@@ -13,15 +13,23 @@ import { webPath } from '../lib/webview-path'
 const BG_DARK = '#0B0F14'
 const BG_LIGHT = '#F8FAFC'
 
+export interface AppWebViewHandle {
+  injectJavaScript: (script: string) => void
+}
+
 interface Props {
   path: string
+  onLoadEnd?: () => void
 }
 
 export function webUrl(path: string): string {
   return `${WEB_BASE}${webPath(path)}`
 }
 
-export function AppWebView({ path }: Props) {
+export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function AppWebView(
+  { path, onLoadEnd },
+  ref,
+) {
   const webViewRef = React.useRef<WebView>(null)
   const [uri, setUri] = React.useState<string | null>(null)
   const [error, setError] = React.useState(false)
@@ -29,6 +37,14 @@ export function AppWebView({ path }: Props) {
   const colorScheme = useColorScheme()
   const bg = colorScheme === 'dark' ? BG_DARK : BG_LIGHT
   const router = useRouter()
+
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      injectJavaScript: (script) => webViewRef.current?.injectJavaScript(script),
+    }),
+    [],
+  )
 
   // 最新の path を参照するための ref（onLoadEnd など描画外コールバックから使う）
   const pathRef = React.useRef(path)
@@ -49,7 +65,9 @@ export function AppWebView({ path }: Props) {
     async (targetPath: string) => {
       setError(false)
 
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session) {
         // 通常は AuthGuard がセッションを保証するため到達しない
         router.replace('/(auth)/login')
@@ -60,7 +78,9 @@ export function AppWebView({ path }: Props) {
         // ネイティブの refresh_token を WebView に渡さず、使い捨ての hashed_token を発行する。
         // WebView 側は verifyOtp で独立したセッションを確立する
         // （docs/mobile-webview-auth-handoff.md）。
-        const res = await apiFetch('/api/auth/webview-handoff', { method: 'POST' })
+        const res = await apiFetch('/api/auth/webview-handoff', {
+          method: 'POST',
+        })
         if (!res.ok) throw new Error(`handoff failed: ${res.status}`)
         const data = (await res.json()) as { tokenHash?: string }
         if (!data.tokenHash) throw new Error('handoff response missing tokenHash')
@@ -100,6 +120,7 @@ export function AppWebView({ path }: Props) {
   }, [path, performHandoff, navigateTo])
 
   function handleLoadEnd() {
+    onLoadEnd?.()
     if (loadedRef.current) return
     loadedRef.current = true
     // ロード完了前に切り替えられていた場合は、最新の path へ追従する
@@ -140,6 +161,9 @@ export function AppWebView({ path }: Props) {
     if (msg?.type === 'HANDOFF_FAILED') {
       void recoverFromHandoffFailure()
     }
+    if (msg?.type === 'open-chats') {
+      router.push('/(app)/chats')
+    }
   }
 
   // Web 側でログアウトして /auth/login に遷移したらネイティブセッションも破棄する
@@ -153,11 +177,16 @@ export function AppWebView({ path }: Props) {
     }
   }
 
-  // 信頼済みオリジン以外へのナビゲーションをブロック（HTTPS のみ許可）
+  // WebView 内のチャット導線は、Web ではなくネイティブのチャットタブへ委譲する。
   function handleShouldStartLoadWithRequest(request: WebViewNavigation) {
     const url = request.url
     // about:blank など内部リソースは通す
     if (url === 'about:blank' || url.startsWith('about:')) return true
+    const chatsPath = `${trustedOrigin}/chats`
+    if (url === chatsPath || url.startsWith(`${chatsPath}/`) || url.startsWith(`${chatsPath}?`)) {
+      router.push('/(app)/chats')
+      return false
+    }
     // 信頼済みオリジンの HTTPS のみ許可
     return url.startsWith(`${trustedOrigin}/`) || url === trustedOrigin
   }
@@ -176,7 +205,7 @@ export function AppWebView({ path }: Props) {
   if (!uri) return <View style={[styles.fill, { backgroundColor: bg }]} />
 
   return (
-    <View style={[styles.fill, { backgroundColor: bg, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.fill, { backgroundColor: bg, paddingTop: insets.top }]}>
       <WebView
         ref={webViewRef}
         source={{ uri }}
@@ -193,13 +222,18 @@ export function AppWebView({ path }: Props) {
       />
     </View>
   )
-}
+})
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center', gap: 16 },
   webview: { flex: 1 },
   errorText: { fontSize: 15, color: '#94A3B8' },
-  retryButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, backgroundColor: '#2563EB' },
+  retryButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#2563EB',
+  },
   retryLabel: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
 })
