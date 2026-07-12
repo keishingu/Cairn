@@ -53,7 +53,13 @@ export function useSendMessage(channelId: string) {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['messages', channelId] })
-      await apiFetch(`/api/channels/${channelId}/read`, { method: 'POST' })
+      // メッセージ自体は送信済みのため、既読化の副作用が失敗しても送信失敗として扱わない
+      try {
+        const res = await apiFetch(`/api/channels/${channelId}/read`, { method: 'POST' })
+        if (!res.ok) throw new Error(`既読化に失敗しました (${res.status})`)
+      } catch (err) {
+        console.error('[useSendMessage] 送信後の既読化に失敗:', err)
+      }
       await qc.invalidateQueries({ queryKey: ['project-channels'] })
       await qc.invalidateQueries({ queryKey: ['workspace-channels'] })
       await qc.invalidateQueries({ queryKey: ['workspace-dms'] })

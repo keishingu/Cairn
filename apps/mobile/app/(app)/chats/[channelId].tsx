@@ -12,7 +12,7 @@ import {
   useColorScheme,
   View,
 } from 'react-native'
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
@@ -133,6 +133,7 @@ function ChatMessageRow({ message, palette, onToggleReaction }: {
 export default function ChatThreadScreen() {
   const { channelId, channelName } = useLocalSearchParams<{ channelId: string; channelName?: string }>()
   const router = useRouter()
+  const navigation = useNavigation()
   const insets = useSafeAreaInsets()
   const palette = THEME[useColorScheme() === 'dark' ? 'dark' : 'light']
   const messagesQuery = useMessages(channelId ?? null)
@@ -143,6 +144,19 @@ export default function ChatThreadScreen() {
   const [sendError, setSendError] = React.useState<string | null>(null)
   const messages = messagesQuery.data ?? []
 
+  // chats/[channelId] は chats/index と同じ Tab Navigator 内の兄弟タブ（href: null）のため、
+  // 他のタブへ切り替えても既定では画面がアンマウントされず、バックグラウンドでポーリングが続く。
+  // フォーカスが外れている間は既読化を止める
+  const [isFocused, setIsFocused] = React.useState(true)
+  React.useEffect(() => {
+    const unsubFocus = navigation.addListener('focus', () => setIsFocused(true))
+    const unsubBlur = navigation.addListener('blur', () => setIsFocused(false))
+    return () => {
+      unsubFocus()
+      unsubBlur()
+    }
+  }, [navigation])
+
   // 表示中に届いたポーリング更新も既読化する（開いた瞬間だけだと、5秒ポーリング中の
   // 新着がスレッド上には表示されるのに未読バッジへ残り続けてしまう）。
   // /read はサーバー側の最新メッセージを既読化するため、取得中（キャッシュがまだ最新と
@@ -152,7 +166,7 @@ export default function ChatThreadScreen() {
   markReadRef.current = markRead
   const lastReadMessageIdRef = React.useRef<string | null>(null)
   React.useEffect(() => {
-    if (!channelId || messagesQuery.isFetching || messagesQuery.isError || messages.length === 0) return
+    if (!channelId || !isFocused || messagesQuery.isFetching || messagesQuery.isError || messages.length === 0) return
     if (markReadRef.current.isPending) return
     const lastId = messages[messages.length - 1]?.id
     if (!lastId || lastReadMessageIdRef.current === lastId) return
@@ -162,7 +176,7 @@ export default function ChatThreadScreen() {
         lastReadMessageIdRef.current = lastId
       },
     })
-  }, [channelId, messages, messagesQuery.isFetching, messagesQuery.isError])
+  }, [channelId, messages, messagesQuery.isFetching, messagesQuery.isError, isFocused])
 
   async function handleSend() {
     const content = draft.trim()
