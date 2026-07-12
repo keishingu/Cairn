@@ -3,6 +3,7 @@
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { verifyAccessToken } from '@/lib/auth-jwt'
 
 function detectMobile(ua: string): boolean {
   return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
@@ -37,7 +38,9 @@ export async function middleware(request: NextRequest) {
     },
   })
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // getClaims で JWT をローカル検証する（非対称署名鍵なら Auth API 往復なし）。
+  // getSession 経由で期限切れセッションのリフレッシュ副作用（Cookie 再発行）も維持される。
+  const userId = await verifyAccessToken(supabase.auth)
   const { pathname } = request.nextUrl
   const isAuthRoute = pathname.startsWith('/auth')
   const isMobileHandoffRoute = pathname === '/auth/mobile-handoff'
@@ -55,13 +58,13 @@ export async function middleware(request: NextRequest) {
   // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
   const isOnboardingRoute = pathname.startsWith('/onboarding')
 
-  if (!user && !isAuthRoute && !isPublicRoute) {
+  if (!userId && !isAuthRoute && !isPublicRoute) {
     return NextResponse.redirect(new URL('/auth/login', request.url))
   }
-  if (user && isLandingRoute) {
+  if (userId && isLandingRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))
   }
-  if (user && isAuthRoute && !isOnboardingRoute && !isMobileHandoffRoute && !isMobileSignoutRoute) {
+  if (userId && isAuthRoute && !isOnboardingRoute && !isMobileHandoffRoute && !isMobileSignoutRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))
   }
 

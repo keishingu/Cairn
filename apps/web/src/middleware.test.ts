@@ -1,13 +1,21 @@
 import { NextRequest } from 'next/server'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const getUser = vi.fn()
+const getClaims = vi.fn()
 
 vi.mock('@supabase/ssr', () => ({
   createServerClient: () => ({
-    auth: { getUser },
+    auth: { getClaims },
   }),
 }))
+
+// 認証済み / 未認証を getClaims の返り値で表現する
+function authed(sub = 'u1') {
+  return { data: { claims: { sub } }, error: null }
+}
+function unauthed() {
+  return { data: null, error: null }
+}
 
 function makeRequest(pathname: string): NextRequest {
   return new NextRequest(new URL(pathname, 'http://localhost:3000'))
@@ -15,13 +23,20 @@ function makeRequest(pathname: string): NextRequest {
 
 describe('middleware', () => {
   beforeEach(() => {
-    getUser.mockReset()
+    getClaims.mockReset()
+    // JWKS 取得は対称鍵想定で空を返す（getClaims 側の検証に委ねる）。実ネットワークを叩かない
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ keys: [] }) }))
     process.env['NEXT_PUBLIC_SUPABASE_URL'] = 'http://localhost:54321'
     process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'] = 'dummy'
   })
 
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.resetModules()
+  })
+
   it('未認証で / にアクセスすると middleware は通過する', async () => {
-    getUser.mockResolvedValue({ data: { user: null } })
+    getClaims.mockResolvedValue(unauthed())
     const { middleware } = await import('./middleware')
     const res = await middleware(makeRequest('/'))
     expect(res.headers.get('x-middleware-rewrite')).toBeNull()
@@ -29,7 +44,7 @@ describe('middleware', () => {
   })
 
   it('認証済みで / にアクセスすると /projects にリダイレクトされる', async () => {
-    getUser.mockResolvedValue({ data: { user: { id: 'u1' } } })
+    getClaims.mockResolvedValue(authed())
     const { middleware } = await import('./middleware')
     const res = await middleware(makeRequest('/'))
     expect(res.status).toBe(307)
@@ -37,7 +52,7 @@ describe('middleware', () => {
   })
 
   it('未認証で旧 LP パスにアクセスすると /auth/login にリダイレクトされる', async () => {
-    getUser.mockResolvedValue({ data: { user: null } })
+    getClaims.mockResolvedValue(unauthed())
     const { middleware } = await import('./middleware')
 
     for (const legacyPath of ['/lp', '/lp/', '/lp/index.html', '/index.html', '/lp/cairn-lp.css']) {
@@ -48,14 +63,14 @@ describe('middleware', () => {
   })
 
   it('認証済みで旧 LP パスにアクセスしても / へリダイレクトしない', async () => {
-    getUser.mockResolvedValue({ data: { user: { id: 'u1' } } })
+    getClaims.mockResolvedValue(authed())
     const { middleware } = await import('./middleware')
     const res = await middleware(makeRequest('/lp'))
     expect(res.headers.get('location')).toBeNull()
   })
 
   it('未認証で直下の LP 静的アセットにアクセスすると middleware は通過する', async () => {
-    getUser.mockResolvedValue({ data: { user: null } })
+    getClaims.mockResolvedValue(unauthed())
     const { middleware } = await import('./middleware')
 
     for (const assetPath of ['/cairn-lp.css', '/cairn-lp.js', '/og-image.png', '/og-image.svg']) {
@@ -65,7 +80,7 @@ describe('middleware', () => {
   })
 
   it('未認証で保護ルートにアクセスすると /auth/login にリダイレクトされる', async () => {
-    getUser.mockResolvedValue({ data: { user: null } })
+    getClaims.mockResolvedValue(unauthed())
     const { middleware } = await import('./middleware')
     const res = await middleware(makeRequest('/projects'))
     expect(res.status).toBe(307)
@@ -73,7 +88,7 @@ describe('middleware', () => {
   })
 
   it('webview=1 で入った後は cairn-webview cookie で x-webview を維持する', async () => {
-    getUser.mockResolvedValue({ data: { user: { id: 'u1' } } })
+    getClaims.mockResolvedValue(authed())
     const { middleware } = await import('./middleware')
 
     const initial = await middleware(makeRequest('/projects?webview=1'))
@@ -88,14 +103,14 @@ describe('middleware', () => {
   })
 
   it('認証済みでも /auth/mobile-handoff は /projects に潰さない', async () => {
-    getUser.mockResolvedValue({ data: { user: { id: 'u1' } } })
+    getClaims.mockResolvedValue(authed())
     const { middleware } = await import('./middleware')
     const res = await middleware(makeRequest('/auth/mobile-handoff?redirect=%2Fai%3Fwebview%3D1'))
     expect(res.headers.get('location')).toBeNull()
   })
 
   it('認証済みでも /auth/mobile-signout は /projects に潰さない', async () => {
-    getUser.mockResolvedValue({ data: { user: { id: 'u1' } } })
+    getClaims.mockResolvedValue(authed())
     const { middleware } = await import('./middleware')
     const res = await middleware(makeRequest('/auth/mobile-signout?webview=1'))
     expect(res.headers.get('location')).toBeNull()
