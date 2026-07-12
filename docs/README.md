@@ -46,6 +46,7 @@
 | [`landing-page-routing-design.md`](./landing-page-routing-design.md) | ランディングページ導入とルーティング再構成（`/` を公開 LP 化。実装済み） | 2026-07-03 |
 | [`lp-content-redesign.md`](./lp-content-redesign.md) | LP コンテンツの利用者ファースト化（ペルソナ切替 `?p=`、誠実化、CTA/UTM 規約） | 2026-07-03 |
 | [`ui-consistency-checklist.md`](./ui-consistency-checklist.md) | UI 一貫性統一の進捗管理チェックリスト（方針本文は `frontend-guidelines.md`） | 2026-06 |
+| [`performance-improvement-plan.md`](./performance-improvement-plan.md) | フロントエンド体感速度の改善施策（認証往復・認可クエリ・API集約のボトルネック分析と実施計画。実装未着手） | 2026-07-12 |
 
 ## 設計時スナップショット
 
