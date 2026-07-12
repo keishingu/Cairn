@@ -177,17 +177,35 @@ export default function ChatThreadScreen() {
   // 常駐したまま queryKey だけが切り替わるこのケースでは staleTime 内のキャッシュが
   // そのまま既読化判定に使われてしまう。channelId 変更時は明示的に再取得する
   const previousChannelIdRef = React.useRef(channelId)
+  // 「今の channelId で取得が完了した」ことを明示的に確認できたチャンネルID。
+  // refetch() 呼び出しは非同期なので、呼び出した直後の同じレンダーでは
+  // messagesQuery.isFetching がまだ false（切替前のキャッシュ由来）のことがあり、
+  // isFetching だけを見ると未取得のキャッシュで既読化してしまう
+  const confirmedFetchedChannelIdRef = React.useRef<string | null>(null)
   React.useEffect(() => {
     if (previousChannelIdRef.current === channelId) return
     previousChannelIdRef.current = channelId
     setDraft('')
     setSendError(null)
     lastReadMessageIdRef.current = null
+    confirmedFetchedChannelIdRef.current = null
     void messagesQuery.refetch()
   }, [channelId])
 
+  const wasFetchingRef = React.useRef(false)
+  React.useEffect(() => {
+    if (messagesQuery.isFetching) {
+      wasFetchingRef.current = true
+      return
+    }
+    if (!wasFetchingRef.current) return
+    wasFetchingRef.current = false
+    if (!messagesQuery.isError) confirmedFetchedChannelIdRef.current = channelId
+  }, [channelId, messagesQuery.isFetching, messagesQuery.isError])
+
   React.useEffect(() => {
     if (!channelId || !isFocused || messagesQuery.isFetching || messagesQuery.isError || messages.length === 0) return
+    if (confirmedFetchedChannelIdRef.current !== channelId) return
     if (markReadRef.current.isPending) return
     const lastId = messages[messages.length - 1]?.id
     if (!lastId || lastReadMessageIdRef.current === lastId) return
@@ -217,7 +235,11 @@ export default function ChatThreadScreen() {
   }
 
   const handleToggleReaction = (messageId: string, emoji: string) => {
-    toggleReaction.mutate({ messageId, emoji })
+    toggleReaction.mutate({ messageId, emoji }, {
+      onError: (err) => {
+        setSendError(err instanceof Error ? err.message : 'リアクションの更新に失敗しました')
+      },
+    })
   }
 
   // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。

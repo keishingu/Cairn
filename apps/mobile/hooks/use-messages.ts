@@ -36,9 +36,9 @@ export class ChannelMessagesError extends Error {
 }
 
 // 401/403 は生のステータスコードを出さず、意味の分かる文言に変換する
-function friendlyMessageErrorText(status: number, fallback: string): string {
+function friendlyMessageErrorText(status: number, fallback: string, forbiddenText: string): string {
   if (status === 401) return 'セッションが切れました。再度ログインしてください。'
-  if (status === 403) return 'このチャンネルへの送信権限がありません。'
+  if (status === 403) return forbiddenText
   return `${fallback} (${status})`
 }
 
@@ -69,7 +69,7 @@ export function useSendMessage(channelId: string) {
         method: 'POST',
         body: JSON.stringify({ content }),
       })
-      if (!res.ok) throw new Error(friendlyMessageErrorText(res.status, 'メッセージの送信に失敗しました'))
+      if (!res.ok) throw new Error(friendlyMessageErrorText(res.status, 'メッセージの送信に失敗しました', 'このチャンネルへの送信権限がありません。'))
       return res.json() as Promise<MessageDto>
     },
     onSuccess: async () => {
@@ -111,7 +111,7 @@ export function useToggleMessageReaction(channelId: string) {
         method: 'POST',
         body: JSON.stringify({ emoji }),
       })
-      if (!res.ok) throw new Error(`リアクションの更新に失敗しました (${res.status})`)
+      if (!res.ok) throw new Error(friendlyMessageErrorText(res.status, 'リアクションの更新に失敗しました', 'このメッセージへの操作権限がありません。'))
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['messages', channelId] })
