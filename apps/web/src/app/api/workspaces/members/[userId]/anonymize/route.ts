@@ -171,6 +171,19 @@ function uniqueNonEmpty(values: Array<string | null | undefined>) {
   return [...new Set(values.map(value => value?.trim()).filter((value): value is string => Boolean(value)))]
 }
 
+function mergeMembershipSnapshots(...groups: MembershipSnapshot[][]): MembershipSnapshot[] {
+  const merged = new Map<string, MembershipSnapshot>()
+  for (const group of groups) {
+    for (const membership of group) {
+      const current = merged.get(membership.workspaceId)
+      if (!current || (!current.avatarUrl && membership.avatarUrl)) {
+        merged.set(membership.workspaceId, membership)
+      }
+    }
+  }
+  return [...merged.values()]
+}
+
 function buildAiScrubPatterns(values: Array<string | null | undefined>) {
   return uniqueNonEmpty(values)
     .filter(value => value !== ANONYMIZED_MEMBER_DISPLAY_NAME)
@@ -547,7 +560,7 @@ export async function POST(
         )
         return {
           avatarPaths: allAvatarPaths,
-          avatarRestoreRows: membershipRows,
+          avatarRestoreRows: mergeMembershipSnapshots(prepared.membershipRows, membershipRows),
           projectReindexTargets: allAffectedProjectRows.map(row => ({
             workspaceId: row.workspaceId,
             projectId: row.projectId,

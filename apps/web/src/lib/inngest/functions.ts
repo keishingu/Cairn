@@ -352,7 +352,7 @@ export const onTaskAssigned = inngest.createFunction(
     const currentAssignerName = await step.run('resolve-task-assigner-name', async () => {
       const { db, profiles, tasks, workspaceMembers } = await import('@cairn/db')
       const { and, eq } = await import('drizzle-orm')
-      const [assigner] = await db
+      const [taskAssigner] = await db
         .select({
           displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         })
@@ -365,8 +365,24 @@ export const onTaskAssigned = inngest.createFunction(
         .where(eq(tasks.id, taskId))
         .limit(1)
 
-      return assigner?.displayName ?? assignerName
+      if (taskAssigner?.displayName) return taskAssigner.displayName
+
+      const [assigner] = await db
+        .select({
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        })
+        .from(profiles)
+        .leftJoin(workspaceMembers, and(
+          eq(workspaceMembers.userId, profiles.id),
+          eq(workspaceMembers.workspaceId, workspaceId),
+        ))
+        .where(eq(profiles.id, assignerId))
+        .limit(1)
+
+      return assigner?.displayName ?? null
     })
+
+    if (!currentAssignerName) return
 
     await step.run('create-task-notification', async () => {
       const { db, notifications } = await import('@cairn/db')

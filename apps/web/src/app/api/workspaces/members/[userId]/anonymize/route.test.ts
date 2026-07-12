@@ -431,6 +431,33 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     expect(mockDb.update).toHaveBeenCalled()
   })
 
+  it('最終匿名化の avatar cleanup 失敗時は current workspace の avatarUrl も復元する', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { avatarUrl: 'https://example.supabase.co/storage/v1/object/public/avatars/ws-1/user-2.png', displayName: 'Scoped Name' },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    const updates = [updateChain(), updateChain(), updateChain(), updateChain()]
+    updates.forEach((chain) => mockDb.update.mockReturnValueOnce(chain))
+    mockDb.delete.mockReturnValueOnce(deleteChain())
+    mockDb.select.mockReturnValueOnce(selectChain([{ membershipCount: 0 }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { workspaceId: DEV_WORKSPACE_ID, avatarUrl: null, displayName: '退会したユーザー' },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { displayName: 'Global Name', bio: null },
+    ]))
+    mockRemove.mockResolvedValueOnce({ error: { message: 'boom' } })
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(500)
+    expect(updates.some(chain => chain.set.mock.calls.some(call =>
+      call[0]?.avatarUrl === 'https://example.supabase.co/storage/v1/object/public/avatars/ws-1/user-2.png',
+    ))).toBe(true)
+  })
+
   it('admin は owner を匿名化できない', async () => {
     mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'owner', membershipStatus: 'active' }]))
 

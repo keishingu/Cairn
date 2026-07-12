@@ -102,13 +102,17 @@ vi.mock('drizzle-orm', () => ({
 }))
 
 function taskSelectChain(result: unknown[]) {
+  const limitReturn = {
+    limit: vi.fn().mockResolvedValue(result),
+  }
   return {
     from: vi.fn().mockReturnValue({
+      leftJoin: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue(limitReturn),
+      }),
       innerJoin: vi.fn().mockReturnValue({
         leftJoin: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue(result),
-          }),
+          where: vi.fn().mockReturnValue(limitReturn),
         }),
       }),
     }),
@@ -193,6 +197,60 @@ describe('onTaskAssigned', () => {
       body: '「やること」- PJ',
       url: '/tasks',
     })
+  })
+
+  it('task が消えていても assignerId から現在名を引き直す', async () => {
+    mockDb.select
+      .mockReturnValueOnce(taskSelectChain([]))
+      .mockReturnValueOnce(taskSelectChain([{ displayName: '現在の表示名' }]))
+
+    const { onTaskAssigned } = await import('./functions')
+    const handler = onTaskAssigned as unknown as (args: {
+      event: {
+        data: {
+          taskId: string
+          taskTitle: string
+          assigneeId: string
+          assignerId: string
+          projectId: string
+          projectTitle: string
+          workspaceId: string
+          assignerName: string
+        }
+      }
+      step: {
+        run: (_name: string, fn: () => Promise<unknown>) => Promise<unknown>
+      }
+    }) => Promise<unknown>
+    const step = {
+      run: async (_name: string, fn: () => Promise<unknown>) => fn(),
+    }
+
+    await handler({
+      event: {
+        data: {
+          taskId: 'task-1',
+          taskTitle: 'やること',
+          assigneeId: 'user-2',
+          assignerId: 'user-1',
+          projectId: 'project-1',
+          projectTitle: 'PJ',
+          workspaceId: 'ws-1',
+          assignerName: '旧表示名',
+        },
+      },
+      step,
+    })
+
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      title: '現在の表示名 があなたにタスクを割り当てました',
+      data: expect.objectContaining({
+        assignerName: '現在の表示名',
+      }),
+    }))
+    expect(mockSendPushToUser).toHaveBeenCalledWith('user-2', expect.objectContaining({
+      title: '現在の表示名 があなたにタスクを割り当てました',
+    }))
   })
 })
 
