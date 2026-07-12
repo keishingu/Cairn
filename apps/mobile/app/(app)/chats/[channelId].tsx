@@ -191,6 +191,10 @@ export default function ChatThreadScreen() {
   // messagesQuery.isFetching がまだ false（切替前のキャッシュ由来）のことがあり、
   // isFetching だけを見ると未取得のキャッシュで既読化してしまう
   const confirmedFetchedChannelIdRef = React.useRef<string | null>(null)
+  // 直前のチャンネルの fetch が完了しないまま切り替えると、この ref に前チャンネルの
+  // 「取得中だった」痕跡が残り、新チャンネルの isFetching===false（切替直後のキャッシュ）を
+  // 誤って「取得完了」と判定してしまう。channelId 変更時は必ずリセットする
+  const wasFetchingRef = React.useRef(false)
   React.useEffect(() => {
     if (previousChannelIdRef.current === channelId) return
     previousChannelIdRef.current = channelId
@@ -198,10 +202,10 @@ export default function ChatThreadScreen() {
     setSendError(null)
     lastReadMessageIdRef.current = null
     confirmedFetchedChannelIdRef.current = null
+    wasFetchingRef.current = false
     void messagesQuery.refetch()
   }, [channelId])
 
-  const wasFetchingRef = React.useRef(false)
   React.useEffect(() => {
     if (messagesQuery.isFetching) {
       wasFetchingRef.current = true
