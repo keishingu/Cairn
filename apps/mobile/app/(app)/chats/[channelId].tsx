@@ -16,6 +16,7 @@ import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
+  ChannelMessagesError,
   parseMentions,
   useMarkChannelRead,
   useMessages,
@@ -165,6 +166,19 @@ export default function ChatThreadScreen() {
   const markReadRef = React.useRef(markRead)
   markReadRef.current = markRead
   const lastReadMessageIdRef = React.useRef<string | null>(null)
+
+  // chats/[channelId] は隠しタブとして常駐するため、一覧に戻って別チャンネルを開いても
+  // コンポーネントは再マウントされない。channelId が変わったら下書き・エラー・既読化の
+  // 状態を初期化しないと、A に入力した下書きが B に誤送信されてしまう
+  const previousChannelIdRef = React.useRef(channelId)
+  React.useEffect(() => {
+    if (previousChannelIdRef.current === channelId) return
+    previousChannelIdRef.current = channelId
+    setDraft('')
+    setSendError(null)
+    lastReadMessageIdRef.current = null
+  }, [channelId])
+
   React.useEffect(() => {
     if (!channelId || !isFocused || messagesQuery.isFetching || messagesQuery.isError || messages.length === 0) return
     if (markReadRef.current.isPending) return
@@ -195,6 +209,10 @@ export default function ChatThreadScreen() {
     toggleReaction.mutate({ messageId, emoji })
   }
 
+  // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。
+  // 生のエラーではなく「参加していない」ことを明示する案内を出す
+  const isAccessDenied = messagesQuery.error instanceof ChannelMessagesError && messagesQuery.error.status === 403
+
   // FlatList を inverted 表示するため新しい順に並べ替える。
   const reversedMessages = [...messages].reverse()
 
@@ -218,6 +236,14 @@ export default function ChatThreadScreen() {
 
       {messagesQuery.isLoading ? (
         <View style={styles.center}><ActivityIndicator size="large" color={palette.accent} /></View>
+      ) : isAccessDenied ? (
+        <View style={styles.center}>
+          <Ionicons name="lock-closed-outline" size={24} color={palette.text3} />
+          <Text style={[styles.errorTitle, { color: palette.text }]}>このチャンネルは表示できません</Text>
+          <Text style={[styles.errorBody, { color: palette.text3 }]}>
+            このプロジェクトに参加していないため、チャットを開けません。閲覧するにはワークスペースの管理者にプロジェクトへの招待を依頼してください。
+          </Text>
+        </View>
       ) : messagesQuery.error ? (
         <View style={styles.center}><Text style={[styles.errorText, { color: palette.redText }]}>{messagesQuery.error.message}</Text></View>
       ) : (
@@ -231,6 +257,7 @@ export default function ChatThreadScreen() {
         />
       )}
 
+      {!isAccessDenied && (
       <View style={[styles.composerArea, { backgroundColor: palette.card, borderTopColor: palette.border, paddingBottom: insets.bottom || 12 }]}>
         {sendError && <Text style={[styles.sendError, { color: palette.redText }]}>{sendError}</Text>}
         <View style={[styles.composer, { backgroundColor: palette.card2, borderColor: palette.border }]}>
@@ -260,6 +287,7 @@ export default function ChatThreadScreen() {
           </Pressable>
         </View>
       </View>
+      )}
     </KeyboardAvoidingView>
   )
 }
@@ -269,8 +297,10 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 51, paddingHorizontal: 12, borderBottomWidth: 1 },
   backButton: { padding: 5 },
   headerTitle: { flex: 1, fontSize: 15, fontWeight: '700' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8, paddingHorizontal: 24 },
   errorText: { fontSize: 14, textAlign: 'center', padding: 24 },
+  errorTitle: { fontSize: 14, fontWeight: '600', textAlign: 'center' },
+  errorBody: { fontSize: 13, lineHeight: 20, textAlign: 'center', maxWidth: 320 },
   list: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16, flexGrow: 1 },
   empty: { textAlign: 'center', marginTop: 48, paddingHorizontal: 20, transform: [{ scaleY: -1 }] },
   messageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 7 },

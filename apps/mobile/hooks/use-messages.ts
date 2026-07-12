@@ -24,12 +24,26 @@ export function parseMentions(content: string): string {
   return content.replace(/<@([^|>\s]+)(?:\|([^>\n]+))?>/g, (_full, _id, name) => name ? `@${name}` : '@メンバー')
 }
 
+// status を保持し、403（アクセス権なし）を通常の取得失敗と区別して
+// 専用の案内を出すために使う（CLAUDE.md: フロントは生の 401/403 を出さない）
+export class ChannelMessagesError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ChannelMessagesError'
+    this.status = status
+  }
+}
+
 export function useMessages(channelId: string | null) {
   return useQuery<MessageDto[]>({
     queryKey: ['messages', channelId],
     queryFn: async () => {
       const res = await apiFetch(`/api/channels/${channelId}/messages`)
-      if (!res.ok) throw new Error(`メッセージの取得に失敗しました (${res.status})`)
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        throw new ChannelMessagesError(data.error ?? `メッセージの取得に失敗しました (${res.status})`, res.status)
+      }
       return res.json() as Promise<MessageDto[]>
     },
     enabled: !!channelId,
