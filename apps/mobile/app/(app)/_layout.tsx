@@ -81,6 +81,7 @@ export default function AppLayout() {
       <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <MobileNav {...props} />}>
         <Tabs.Screen name="projects/index" />
         <Tabs.Screen name="chats/index" />
+        <Tabs.Screen name="chats/[channelId]" options={{ href: null }} />
         <Tabs.Screen name="tasks/index" />
         <Tabs.Screen name="ai/index" />
         <Tabs.Screen name="projects/[id]" options={{ href: null }} />

@@ -92,7 +92,7 @@ export default function ChatThreadScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => router.back()} hitSlop={8}>
+        <Pressable style={styles.backButton} onPress={() => router.replace('/(app)/chats')} hitSlop={8}>
           <Ionicons name="chevron-back" size={24} color="#0F172A" />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1}>
