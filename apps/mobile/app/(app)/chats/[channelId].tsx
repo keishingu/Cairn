@@ -1,6 +1,7 @@
 import React from 'react'
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -161,6 +162,14 @@ export default function ChatThreadScreen() {
     }
   }, [navigation])
 
+  // タブ内のフォーカスが保たれたままアプリがバックグラウンド・ロックされた場合も
+  // navigation の focus/blur は発火しない。AppState でアプリ自体の前面状態も見る
+  const [isAppActive, setIsAppActive] = React.useState(AppState.currentState === 'active')
+  React.useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => setIsAppActive(state === 'active'))
+    return () => sub.remove()
+  }, [])
+
   // 表示中に届いたポーリング更新も既読化する（開いた瞬間だけだと、5秒ポーリング中の
   // 新着がスレッド上には表示されるのに未読バッジへ残り続けてしまう）。
   // /read はサーバー側の最新メッセージを既読化するため、取得中（キャッシュがまだ最新と
@@ -204,7 +213,7 @@ export default function ChatThreadScreen() {
   }, [channelId, messagesQuery.isFetching, messagesQuery.isError])
 
   React.useEffect(() => {
-    if (!channelId || !isFocused || messagesQuery.isFetching || messagesQuery.isError || messages.length === 0) return
+    if (!channelId || !isFocused || !isAppActive || messagesQuery.isFetching || messagesQuery.isError || messages.length === 0) return
     if (confirmedFetchedChannelIdRef.current !== channelId) return
     if (markReadRef.current.isPending) return
     const lastId = messages[messages.length - 1]?.id
@@ -215,7 +224,7 @@ export default function ChatThreadScreen() {
         lastReadMessageIdRef.current = lastId
       },
     })
-  }, [channelId, messages, messagesQuery.isFetching, messagesQuery.isError, isFocused])
+  }, [channelId, messages, messagesQuery.isFetching, messagesQuery.isError, isFocused, isAppActive])
 
   async function handleSend() {
     const content = draft.trim()
