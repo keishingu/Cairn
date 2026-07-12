@@ -172,7 +172,10 @@ export default function ChatThreadScreen() {
 
   // chats/[channelId] は隠しタブとして常駐するため、一覧に戻って別チャンネルを開いても
   // コンポーネントは再マウントされない。channelId が変わったら下書き・エラー・既読化の
-  // 状態を初期化しないと、A に入力した下書きが B に誤送信されてしまう
+  // 状態を初期化しないと、A に入力した下書きが B に誤送信されてしまう。
+  // また refetchOnMount: 'always' はコンポーネント自体の再マウント時にしか働かないため、
+  // 常駐したまま queryKey だけが切り替わるこのケースでは staleTime 内のキャッシュが
+  // そのまま既読化判定に使われてしまう。channelId 変更時は明示的に再取得する
   const previousChannelIdRef = React.useRef(channelId)
   React.useEffect(() => {
     if (previousChannelIdRef.current === channelId) return
@@ -180,6 +183,7 @@ export default function ChatThreadScreen() {
     setDraft('')
     setSendError(null)
     lastReadMessageIdRef.current = null
+    void messagesQuery.refetch()
   }, [channelId])
 
   React.useEffect(() => {
@@ -219,6 +223,8 @@ export default function ChatThreadScreen() {
   // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。
   // 生のエラーではなく「参加していない」ことを明示する案内を出す
   const isAccessDenied = messagesQuery.error instanceof ChannelMessagesError && messagesQuery.error.status === 403
+  // セッション切れの 401 も「Unauthorized」等の生の文言を出さず、専用の案内にする
+  const isSessionExpired = messagesQuery.error instanceof ChannelMessagesError && messagesQuery.error.status === 401
 
   // FlatList を inverted 表示するため新しい順に並べ替える。
   const reversedMessages = [...messages].reverse()
@@ -251,6 +257,12 @@ export default function ChatThreadScreen() {
             このプロジェクトに参加していないため、チャットを開けません。閲覧するにはワークスペースの管理者にプロジェクトへの招待を依頼してください。
           </Text>
         </View>
+      ) : isSessionExpired ? (
+        <View style={styles.center}>
+          <Ionicons name="log-in-outline" size={24} color={palette.text3} />
+          <Text style={[styles.errorTitle, { color: palette.text }]}>セッションが切れました</Text>
+          <Text style={[styles.errorBody, { color: palette.text3 }]}>再度ログインしてください。</Text>
+        </View>
       ) : messagesQuery.error ? (
         <View style={styles.center}><Text style={[styles.errorText, { color: palette.redText }]}>{messagesQuery.error.message}</Text></View>
       ) : (
@@ -264,7 +276,7 @@ export default function ChatThreadScreen() {
         />
       )}
 
-      {!isAccessDenied && (
+      {!isAccessDenied && !isSessionExpired && (
       <View style={[styles.composerArea, { backgroundColor: palette.card, borderTopColor: palette.border, paddingBottom: insets.bottom || 12 }]}>
         {sendError && <Text style={[styles.sendError, { color: palette.redText }]}>{sendError}</Text>}
         <View style={[styles.composer, { backgroundColor: palette.card2, borderColor: palette.border }]}>
