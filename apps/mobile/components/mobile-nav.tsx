@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMe, useWorkspace } from '../hooks/use-account'
 import { useProjectChannels } from '../hooks/use-projects'
+import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channels'
 import { supabase } from '../lib/supabase'
 import { THEME } from '../lib/theme'
 import { type ProjectsView, useProjectsView } from './projects-view-context'
@@ -78,6 +79,8 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const palette = THEME[useColorScheme() === 'dark' ? 'dark' : 'light']
   const { view, setView } = useProjectsView()
   const { data: channels } = useProjectChannels()
+  const { data: workspaceChannels } = useWorkspaceChannels()
+  const { data: dms } = useWorkspaceDms()
   const { data: me } = useMe()
   const { data: workspace } = useWorkspace()
   const queryClient = useQueryClient()
@@ -88,7 +91,12 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const current = state.routes[state.index]?.name ?? 'projects/index'
   const projectsActive = current.startsWith('projects/')
   const chatsActive = current.startsWith('chats/')
-  const unreadCount = (channels ?? []).reduce((total, channel) => total + channel.unreadCount, 0)
+  // チャットタブのバッジは一覧画面（chats/index.tsx）が表示する3系統
+  // （プロジェクトチャンネル・ワークスペースチャンネル・DM）すべてを合算する
+  const unreadCount =
+    (channels ?? []).reduce((total, channel) => total + channel.unreadCount, 0) +
+    (workspaceChannels ?? []).reduce((total, channel) => total + channel.unreadCount, 0) +
+    (dms ?? []).reduce((total, dm) => total + dm.unreadCount, 0)
   const closeOverlays = () => {
     setMenuOpen(false)
     setPickerOpen(false)
