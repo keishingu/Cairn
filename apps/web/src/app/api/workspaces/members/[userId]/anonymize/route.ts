@@ -302,6 +302,7 @@ async function scrubAllWorkspaceArtifactsForFinalErasure(
     connectedAccounts: typeof import('@cairn/db').connectedAccounts
     documentChunks: typeof import('@cairn/db').documentChunks
     googleCalendarEvents: typeof import('@cairn/db').googleCalendarEvents
+    memberExperiences: typeof import('@cairn/db').memberExperiences
     projectMembers: typeof import('@cairn/db').projectMembers
     projects: typeof import('@cairn/db').projects
     profiles: typeof import('@cairn/db').profiles
@@ -315,7 +316,7 @@ async function scrubAllWorkspaceArtifactsForFinalErasure(
     sql: typeof import('drizzle-orm').sql
   },
 ) {
-  const { connectedAccounts, documentChunks, googleCalendarEvents, projectMembers, projects, profiles, pushSubscriptions, workspaceMembers } = tables
+  const { connectedAccounts, documentChunks, googleCalendarEvents, memberExperiences, projectMembers, projects, profiles, pushSubscriptions, workspaceMembers } = tables
   const { and, eq, inArray, sql } = helpers
 
   for (const workspaceId of workspaceIds) {
@@ -384,6 +385,10 @@ async function scrubAllWorkspaceArtifactsForFinalErasure(
     .where(eq(pushSubscriptions.userId, targetUserId))
 
   await tx
+    .delete(memberExperiences)
+    .where(eq(memberExperiences.userId, targetUserId))
+
+  await tx
     .update(profiles)
     .set({
       displayName: ANONYMIZED_MEMBER_DISPLAY_NAME,
@@ -439,7 +444,7 @@ export async function POST(
   if (error) return error
 
   try {
-    const { connectedAccounts, db, documentChunks, googleCalendarEvents, profiles, projectMembers, projects, pushSubscriptions, tasks, workspaceMembers } = await import('@cairn/db')
+    const { connectedAccounts, db, documentChunks, googleCalendarEvents, memberExperiences, profiles, projectMembers, projects, pushSubscriptions, tasks, workspaceMembers } = await import('@cairn/db')
     const { and, count, eq, inArray, sql } = await import('drizzle-orm')
 
     const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
@@ -555,7 +560,7 @@ export async function POST(
           profileRow?.bio ?? null,
           now,
           ctx.userId,
-          { connectedAccounts, documentChunks, googleCalendarEvents, projectMembers, projects, profiles, pushSubscriptions, workspaceMembers },
+          { connectedAccounts, documentChunks, googleCalendarEvents, memberExperiences, projectMembers, projects, profiles, pushSubscriptions, workspaceMembers },
           { and, eq, inArray, sql },
         )
         return {

@@ -92,6 +92,9 @@ vi.mock('@cairn/db', () => ({
   googleCalendarEvents: {
     userId: 'gcal.userId',
   },
+  memberExperiences: {
+    userId: 'memberExperiences.userId',
+  },
   projectMembers: {
     projectId: 'pm.projectId',
     userId: 'pm.userId',
@@ -614,7 +617,7 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
     const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
 
     expect(res.status).toBe(200)
-    expect(mockDb.delete).toHaveBeenCalledTimes(6)
+    expect(mockDb.delete).toHaveBeenCalledTimes(7)
   })
 
   it('最終匿名化では Google Calendar 接続とイベントも削除する', async () => {
@@ -682,6 +685,36 @@ describe('POST /api/workspaces/members/[userId]/anonymize', () => {
         data: { workspaceId: DEV_WORKSPACE_ID, projectId: 'project-1' },
       },
     ])
+  })
+
+  it('最終匿名化では member experience も削除する', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ userId: OTHER_USER_ID, role: 'member', membershipStatus: 'active' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ avatarUrl: null, displayName: 'Scoped Name' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+    mockDb.delete
+      .mockReturnValueOnce(deleteChain())
+      .mockReturnValueOnce(deleteChain())
+      .mockReturnValueOnce(deleteChain())
+      .mockReturnValueOnce(deleteChain())
+      .mockReturnValueOnce(deleteChain())
+    mockDb.select.mockReturnValueOnce(selectChain([{ membershipCount: 0 }]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { workspaceId: DEV_WORKSPACE_ID, avatarUrl: null, displayName: 'Scoped Name' },
+    ]))
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    mockDb.select.mockReturnValueOnce(selectChain([
+      { displayName: 'Global Name', bio: null },
+    ]))
+    mockDb.update.mockReturnValueOnce(updateChain())
+
+    const { POST } = await import('./route')
+    const res = await POST(postRequest(OTHER_USER_ID), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockDb.delete.mock.calls).toEqual(expect.arrayContaining([
+      [{ userId: 'memberExperiences.userId' }],
+    ]))
   })
 
   it('最後の active owner は匿名化できない', async () => {
