@@ -13,6 +13,14 @@ export { WORKSPACE_COOKIE } from './workspace-cookie'
 // warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
 const workspaceCache = new Map<string, { workspaceId: string; expiresAt: number }>()
 
+export function clearWorkspaceCacheForUser(userId: string) {
+  for (const key of workspaceCache.keys()) {
+    if (key === userId || key.startsWith(`${userId}:`)) {
+      workspaceCache.delete(key)
+    }
+  }
+}
+
 export interface AuthContext {
   userId: string
   workspaceId: string

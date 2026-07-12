@@ -15,26 +15,56 @@ export async function GET() {
   if (error) return error
 
   try {
-    const { db } = await import('@cairn/db')
-    const { profiles } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { db, profiles, workspaceMembers } = await import('@cairn/db')
+    const { eq, and, sql } = await import('drizzle-orm')
 
-    const [row] = await db
-      .select({ icalToken: profiles.icalToken })
-      .from(profiles)
-      .where(eq(profiles.id, ctx.userId))
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`
+        select 1
+        from workspace_members
+        where workspace_id = ${ctx.workspaceId}
+          and user_id = ${ctx.userId}
+          and membership_status = 'active'
+        for update
+      `)
 
-    if (row?.icalToken) {
-      return NextResponse.json({ token: row.icalToken })
+      const [activeMember] = await tx
+        .select({ userId: workspaceMembers.userId })
+        .from(workspaceMembers)
+        .where(and(
+          eq(workspaceMembers.userId, ctx.userId),
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ))
+        .limit(1)
+
+      if (!activeMember) {
+        return { ok: false as const }
+      }
+
+      const [row] = await tx
+        .select({ icalToken: profiles.icalToken })
+        .from(profiles)
+        .where(eq(profiles.id, ctx.userId))
+
+      if (row?.icalToken) {
+        return { ok: true as const, token: row.icalToken }
+      }
+
+      const token = generateToken()
+      await tx
+        .update(profiles)
+        .set({ icalToken: token })
+        .where(eq(profiles.id, ctx.userId))
+
+      return { ok: true as const, token }
+    })
+
+    if (!result.ok) {
+      return NextResponse.json({ error: '非アクティブなメンバーはカレンダートークンを取得できません' }, { status: 409 })
     }
 
-    const token = generateToken()
-    await db
-      .update(profiles)
-      .set({ icalToken: token })
-      .where(eq(profiles.id, ctx.userId))
-
-    return NextResponse.json({ token })
+    return NextResponse.json({ token: result.token })
   } catch (err) {
     console.error('[/api/calendar/token GET]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -46,17 +76,47 @@ export async function POST() {
   if (error) return error
 
   try {
-    const { db } = await import('@cairn/db')
-    const { profiles } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { db, profiles, workspaceMembers } = await import('@cairn/db')
+    const { eq, and, sql } = await import('drizzle-orm')
 
-    const token = generateToken()
-    await db
-      .update(profiles)
-      .set({ icalToken: token })
-      .where(eq(profiles.id, ctx.userId))
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`
+        select 1
+        from workspace_members
+        where workspace_id = ${ctx.workspaceId}
+          and user_id = ${ctx.userId}
+          and membership_status = 'active'
+        for update
+      `)
 
-    return NextResponse.json({ token })
+      const [activeMember] = await tx
+        .select({ userId: workspaceMembers.userId })
+        .from(workspaceMembers)
+        .where(and(
+          eq(workspaceMembers.userId, ctx.userId),
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          eq(workspaceMembers.membershipStatus, 'active'),
+        ))
+        .limit(1)
+
+      if (!activeMember) {
+        return { ok: false as const }
+      }
+
+      const token = generateToken()
+      await tx
+        .update(profiles)
+        .set({ icalToken: token })
+        .where(eq(profiles.id, ctx.userId))
+
+      return { ok: true as const, token }
+    })
+
+    if (!result.ok) {
+      return NextResponse.json({ error: '非アクティブなメンバーはカレンダートークンを更新できません' }, { status: 409 })
+    }
+
+    return NextResponse.json({ token: result.token })
   } catch (err) {
     console.error('[/api/calendar/token POST]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

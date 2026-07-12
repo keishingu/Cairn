@@ -52,10 +52,20 @@ export async function POST(req: Request) {
     const { db, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    await db
+    const updatedRows = await db
       .update(workspaceMembers)
       .set({ avatarUrl: publicUrl })
-      .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .where(and(
+        eq(workspaceMembers.userId, ctx.userId),
+        eq(workspaceMembers.workspaceId, ctx.workspaceId),
+        eq(workspaceMembers.membershipStatus, 'active'),
+      ))
+      .returning({ userId: workspaceMembers.userId })
+
+    if (updatedRows.length === 0) {
+      await supabase.storage.from(BUCKET).remove([storagePath])
+      return NextResponse.json({ error: '非アクティブなメンバーはアバターを更新できません' }, { status: 409 })
+    }
 
     return NextResponse.json({ avatarUrl: publicUrl })
   } catch (err) {

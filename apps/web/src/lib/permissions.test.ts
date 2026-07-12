@@ -87,10 +87,19 @@ describe('permissions', () => {
   beforeEach(() => {
     queryResults.length = 0
   })
-
   afterEach(() => {
     vi.clearAllMocks()
     vi.resetModules()
+  })
+
+  it('getWorkspaceMemberRole は inactive membership を権限として扱わない', async () => {
+    pushResults([])
+
+    const { getWorkspaceMemberRole } = await import('./permissions')
+    const role = await getWorkspaceMemberRole('ws-1', 'user-1')
+
+    expect(role).toBeNull()
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
   })
 
   it('requireWorkspaceOwner は owner のみ許可する', async () => {

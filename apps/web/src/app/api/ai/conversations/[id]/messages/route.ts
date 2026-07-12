@@ -7,6 +7,7 @@ import { openai, DEFAULT_MODEL } from '@/lib/ai/client'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getGuestVisibleProjectIds, getWorkspaceMemberRole } from '@/lib/permissions'
 import { webSearchTool } from '@/lib/ai/web-search'
+import { memberChunkDisplayName } from '@/lib/member-chunk-display-name'
 import {
   MAX_HISTORY_MESSAGES,
   MAX_REQUEST_BODY_BYTES,
@@ -179,19 +180,34 @@ export async function POST(req: Request, { params }: RouteContext) {
         const seen = new Set<string>()
         const unique = chunks.filter(c => { const k = `${c.sourceType}:${c.sourceId}`; if (seen.has(k)) return false; seen.add(k); return true })
         try {
-          const { db, files, projects, profiles } = await import('@cairn/db')
-          const { inArray } = await import('drizzle-orm')
+          const { db, files, projects, profiles, workspaceMembers } = await import('@cairn/db')
+          const { and, eq, inArray } = await import('drizzle-orm')
           const fileIds = unique.filter(c => c.sourceType === 'file').map(c => c.sourceId)
           const projectIds = unique.filter(c => c.sourceType === 'project').map(c => c.sourceId)
           const memberIds = unique.filter(c => c.sourceType === 'member').map(c => c.sourceId)
           const [fileRows, projectRows, memberRows] = await Promise.all([
             fileIds.length > 0 ? db.select({ id: files.id, fileName: files.fileName, fileType: files.fileType, metadata: files.metadata }).from(files).where(inArray(files.id, fileIds)) : [],
             projectIds.length > 0 ? db.select({ id: projects.id, title: projects.title }).from(projects).where(inArray(projects.id, projectIds)) : [],
-            memberIds.length > 0 ? db.select({ id: profiles.id, displayName: profiles.displayName }).from(profiles).where(inArray(profiles.id, memberIds)) : [],
+            memberIds.length > 0
+              ? db
+                  .select({
+                    id: workspaceMembers.userId,
+                    workspaceDisplayName: workspaceMembers.displayName,
+                    profileDisplayName: profiles.displayName,
+                  })
+                  .from(workspaceMembers)
+                  .innerJoin(profiles, eq(profiles.id, workspaceMembers.userId))
+                  .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, memberIds)))
+              : [],
           ])
           const fileMap = new Map(fileRows.map(r => [r.id, r]))
           const projectMap = new Map(projectRows.map(r => [r.id, r.title]))
-          const memberMap = new Map(memberRows.map(r => [r.id, r.displayName]))
+          const memberMap = new Map(
+            memberRows.map(r => [
+              r.id,
+              memberChunkDisplayName(r.workspaceDisplayName, r.profileDisplayName) || r.id,
+            ]),
+          )
           ragSources = unique.map(c => {
             if (c.sourceType === 'file') {
               const f = fileMap.get(c.sourceId)

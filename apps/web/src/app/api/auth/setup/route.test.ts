@@ -151,6 +151,20 @@ describe('POST /api/auth/setup', () => {
     await expect(res.json()).resolves.toEqual({ ok: true, needsWorkspace: false })
   })
 
+  it('予約済み表示名は 422 で弾く', async () => {
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('http://localhost/api/auth/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: '退会したユーザー' }),
+      }),
+    )
+
+    expect(res.status).toBe(422)
+    await expect(res.json()).resolves.toEqual({ error: '退会したユーザー は予約済みの表示名です' })
+  })
+
   it('workspaceName あり・既存メンバーシップがあっても新規ワークスペースを作成する', async () => {
     // プロフィール存在確認のみ（membership チェックは workspaceName 指定時はスキップ）
     mockDb.select.mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
@@ -201,5 +215,33 @@ describe('POST /api/auth/setup', () => {
     expect(res.status).toBe(200)
     // profiles も含めて insert が5回（profiles / workspaces / channels / projectStatuses / workspaceMembers）
     expect(mockDb.insert).toHaveBeenCalledTimes(5)
+  })
+
+  it('非文字列の user_metadata.display_name は email へフォールバックする', async () => {
+    mockUser.user_metadata = { display_name: { nested: true }, full_name: 42, name: null }
+    mockDb.select.mockReturnValueOnce(selectChain([]))
+    const profileInsert = insertChainPlain()
+
+    mockDb.insert
+      .mockReturnValueOnce(profileInsert)
+      .mockReturnValueOnce(insertChainReturning([{ id: 'ws-new-778' }]))
+      .mockReturnValueOnce(insertChainPlain())
+      .mockReturnValueOnce(insertChainPlain())
+      .mockReturnValueOnce(insertChainPlain())
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('http://localhost/api/auth/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceName: 'フォールバック確認' }),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(profileInsert.values).toHaveBeenCalledWith({
+      id: mockUser.id,
+      displayName: mockUser.email,
+    })
   })
 })

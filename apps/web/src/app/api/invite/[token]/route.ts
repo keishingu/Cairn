@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export async function GET(
   _req: Request,
@@ -11,7 +12,7 @@ export async function GET(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceInvites, workspaces, profiles, projects } = await import('@cairn/db')
+    const { workspaceInvites, workspaces, profiles, projects, workspaceMembers } = await import('@cairn/db')
     const { eq, and, or, isNull, gt } = await import('drizzle-orm')
 
     const now = new Date()
@@ -24,11 +25,18 @@ export async function GET(
         useCount: workspaceInvites.useCount,
         projectId: workspaceInvites.projectId,
         workspaceName: workspaces.name,
-        createdByName: profiles.displayName,
+        createdByName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
       })
       .from(workspaceInvites)
       .innerJoin(workspaces, eq(workspaceInvites.workspaceId, workspaces.id))
       .innerJoin(profiles, eq(workspaceInvites.createdBy, profiles.id))
+      .innerJoin(
+        workspaceMembers,
+        and(
+          eq(workspaceMembers.workspaceId, workspaceInvites.workspaceId),
+          eq(workspaceMembers.userId, workspaceInvites.createdBy),
+        ),
+      )
       .where(
         and(
           eq(workspaceInvites.token, token),

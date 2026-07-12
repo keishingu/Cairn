@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { ANONYMIZED_MEMBER_DISPLAY_NAME } from '@/lib/anonymized-member'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
 import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
@@ -107,7 +108,7 @@ export async function GET(req: Request) {
     const result: WorkspaceMemberDto[] = rows.map(r => ({
       userId: r.userId,
       displayName: r.displayName,
-      email: emails.get(r.userId) ?? null,
+      email: r.displayName === ANONYMIZED_MEMBER_DISPLAY_NAME ? null : (emails.get(r.userId) ?? null),
       avatarUrl: r.avatarUrl ?? null,
       role: r.role,
       membershipStatus: r.membershipStatus,

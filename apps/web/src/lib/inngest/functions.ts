@@ -4,6 +4,8 @@
 import { inngest } from './client'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { isIndexable } from '@/lib/ai/extract-text'
+import { memberChunkDisplayName } from '@/lib/member-chunk-display-name'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
 import { hasReadMessage } from '@/lib/push/suppress'
@@ -64,19 +66,43 @@ export const onMessageCreated = inngest.createFunction(
     const { messageId, channelId, workspaceId, senderId, senderName, content, attachmentFileIds } =
       event.data as MessageCreatedEvent['data']
 
+    const currentSenderName = await step.run('fetch-sender-name', async () => {
+      const { db, profiles, workspaceMembers } = await import('@cairn/db')
+      const { and, eq } = await import('drizzle-orm')
+      const [sender] = await db
+        .select({
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        })
+        .from(profiles)
+        .leftJoin(workspaceMembers, and(
+          eq(workspaceMembers.userId, profiles.id),
+          eq(workspaceMembers.workspaceId, workspaceId),
+        ))
+        .where(eq(profiles.id, senderId))
+        .limit(1)
+      return sender?.displayName ?? senderName
+    })
+
     // チャンネルメンバー（送信者を除く）を取得。非活性メンバーは DM・ファイル通知の宛先に
     // しないよう active_workspace_members に inner join して active のみに絞る
     // （deactivation は履歴のため channel_members 行を残すため、ここで除外しないと通知が飛ぶ）
     const members = await step.run('fetch-members', async () => {
-      const { db, channelMembers, profiles, activeWorkspaceMembers } = await import('@cairn/db')
+      const { db, channelMembers, profiles, activeWorkspaceMembers, workspaceMembers } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
       return db
-        .select({ userId: channelMembers.userId, displayName: profiles.displayName })
+        .select({
+          userId: channelMembers.userId,
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        })
         .from(channelMembers)
         .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
         .innerJoin(activeWorkspaceMembers, and(
           eq(activeWorkspaceMembers.userId, channelMembers.userId),
           eq(activeWorkspaceMembers.workspaceId, workspaceId),
+        ))
+        .innerJoin(workspaceMembers, and(
+          eq(workspaceMembers.userId, channelMembers.userId),
+          eq(workspaceMembers.workspaceId, workspaceId),
         ))
         .where(eq(channelMembers.channelId, channelId))
         .then(rows => rows.filter(r => r.userId !== senderId))
@@ -102,9 +128,9 @@ export const onMessageCreated = inngest.createFunction(
             userId: m.userId,
             workspaceId,
             type: 'dm' as const,
-            title: senderName,
+            title: currentSenderName,
             body: dmBody.slice(0, 200),
-            data: { messageId, channelId, senderName },
+            data: { messageId, channelId, senderName: currentSenderName },
           })),
         )
       })
@@ -118,7 +144,7 @@ export const onMessageCreated = inngest.createFunction(
         await step.run('send-dm-push', async () => {
           await Promise.allSettled(
             unreadMembers.map(m => sendPushToUser(m.userId, {
-              title: senderName,
+              title: currentSenderName,
               body: dmBody.slice(0, 100),
               url: `/chats/${channelId}`,
             })),
@@ -134,13 +160,20 @@ export const onMessageCreated = inngest.createFunction(
     if (members.length === 0 && mentionedIds.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
     const mentionedMembers = mentionedIds.length > 0
       ? await step.run('fetch-mentioned-members', async () => {
-          const { db, activeWorkspaceMembers, profiles } = await import('@cairn/db')
+          const { db, activeWorkspaceMembers, profiles, workspaceMembers } = await import('@cairn/db')
           const { eq, inArray, and, ne } = await import('drizzle-orm')
           // 非活性メンバーにはメンション通知を送らない（active membership のみ宛先にする）
           return db
-            .select({ userId: activeWorkspaceMembers.userId, displayName: profiles.displayName })
+            .select({
+              userId: activeWorkspaceMembers.userId,
+              displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+            })
             .from(activeWorkspaceMembers)
             .innerJoin(profiles, eq(activeWorkspaceMembers.userId, profiles.id))
+            .innerJoin(workspaceMembers, and(
+              eq(workspaceMembers.userId, activeWorkspaceMembers.userId),
+              eq(workspaceMembers.workspaceId, workspaceId),
+            ))
             .where(and(
               eq(activeWorkspaceMembers.workspaceId, workspaceId),
               inArray(activeWorkspaceMembers.userId, mentionedIds),
@@ -230,9 +263,9 @@ export const onMessageCreated = inngest.createFunction(
             userId: m.userId,
             workspaceId,
             type: 'mention' as const,
-            title: `${senderName} があなたをメンションしました`,
+            title: `${currentSenderName} があなたをメンションしました`,
             body: mentionBody.slice(0, 200),
-            data: { messageId, channelId, senderName },
+            data: { messageId, channelId, senderName: currentSenderName },
           })),
         )
 
@@ -278,9 +311,9 @@ export const onMessageCreated = inngest.createFunction(
             userId: m.userId,
             workspaceId,
             type: 'file' as const,
-            title: `${senderName} がファイルを共有しました`,
+            title: `${currentSenderName} がファイルを共有しました`,
             body,
-            data: { messageId, channelId, senderName },
+            data: { messageId, channelId, senderName: currentSenderName },
           })),
         )
       })
@@ -297,7 +330,7 @@ export const onMessageCreated = inngest.createFunction(
         await Promise.allSettled(
           unreadMembers.map(m =>
             sendPushToUser(m.userId, {
-              title: `${senderName} があなたをメンションしました`,
+              title: `${currentSenderName} があなたをメンションしました`,
               body: mentionBody.slice(0, 100),
               url: `/chats/${channelId}`,
             }),
@@ -314,8 +347,42 @@ export const onTaskAssigned = inngest.createFunction(
   { id: 'on-task-assigned' },
   { event: 'task/assigned' satisfies TaskAssignedEvent['name'] },
   async ({ event, step }) => {
-    const { taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
+    const { taskId, taskTitle, assigneeId, assignerId, projectTitle, workspaceId, assignerName } =
       event.data as TaskAssignedEvent['data']
+    const currentAssignerName = await step.run('resolve-task-assigner-name', async () => {
+      const { db, profiles, tasks, workspaceMembers } = await import('@cairn/db')
+      const { and, eq } = await import('drizzle-orm')
+      const [taskAssigner] = await db
+        .select({
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        })
+        .from(tasks)
+        .innerJoin(profiles, eq(tasks.createdBy, profiles.id))
+        .leftJoin(workspaceMembers, and(
+          eq(workspaceMembers.userId, profiles.id),
+          eq(workspaceMembers.workspaceId, workspaceId),
+        ))
+        .where(eq(tasks.id, taskId))
+        .limit(1)
+
+      if (taskAssigner?.displayName) return taskAssigner.displayName
+
+      const [assigner] = await db
+        .select({
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        })
+        .from(profiles)
+        .leftJoin(workspaceMembers, and(
+          eq(workspaceMembers.userId, profiles.id),
+          eq(workspaceMembers.workspaceId, workspaceId),
+        ))
+        .where(eq(profiles.id, assignerId))
+        .limit(1)
+
+      return assigner?.displayName ?? null
+    })
+
+    if (!currentAssignerName) return
 
     await step.run('create-task-notification', async () => {
       const { db, notifications } = await import('@cairn/db')
@@ -323,15 +390,15 @@ export const onTaskAssigned = inngest.createFunction(
         userId: assigneeId,
         workspaceId,
         type: 'task' as const,
-        title: `${assignerName} があなたにタスクを割り当てました`,
+        title: `${currentAssignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
-        data: { assignerName, projectTitle },
+        data: { assignerId, assignerName: currentAssignerName, projectTitle, taskId },
       })
     })
 
     await step.run('send-task-push', async () => {
       await sendPushToUser(assigneeId, {
-        title: `${assignerName} があなたにタスクを割り当てました`,
+        title: `${currentAssignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
         url: '/tasks',
       })
@@ -507,7 +574,7 @@ export const indexProjectChunks = inngest.createFunction(
     const { projectId, workspaceId } = event.data as { projectId: string; workspaceId: string }
 
     await step.run('embed-and-save', async () => {
-      const { db, projects, projectStatuses, projectMembers, profiles, documentChunks } = await import('@cairn/db')
+      const { db, projects, projectStatuses, projectMembers, profiles, documentChunks, workspaceMembers } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
 
       const [row] = await db
@@ -526,9 +593,16 @@ export const indexProjectChunks = inngest.createFunction(
       if (!row) return
 
       const memberRows = await db
-        .select({ displayName: profiles.displayName })
+        .select({ displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
         .from(projectMembers)
         .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
+        .innerJoin(
+          workspaceMembers,
+          and(
+            eq(workspaceMembers.userId, projectMembers.userId),
+            eq(workspaceMembers.workspaceId, workspaceId),
+          ),
+        )
         .where(eq(projectMembers.projectId, projectId))
 
       const lines: string[] = [
@@ -689,7 +763,14 @@ export const indexMemberChunks = inngest.createFunction(
     const { userId, workspaceId } = event.data as { userId: string; workspaceId: string }
 
     await step.run('embed-and-save', async () => {
-      const { db, profiles, memberExperiences, documentChunks, activeWorkspaceMembers } = await import('@cairn/db')
+      const {
+        db,
+        documentChunks,
+        activeWorkspaceMembers,
+        memberExperiences,
+        profiles,
+        workspaceMembers,
+      } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
 
       const deleteMemberChunks = () =>
@@ -708,13 +789,26 @@ export const indexMemberChunks = inngest.createFunction(
         return
       }
 
-      const [profile] = await db
-        .select({ displayName: profiles.displayName, bio: profiles.bio })
-        .from(profiles)
-        .where(eq(profiles.id, userId))
+      const [workspaceMember] = await db
+        .select({
+          displayName: workspaceMembers.displayName,
+          profileDisplayName: profiles.displayName,
+          bio: profiles.bio,
+          statusMessage: workspaceMembers.statusMessage,
+        })
+        .from(workspaceMembers)
+        .innerJoin(profiles, eq(profiles.id, workspaceMembers.userId))
+        .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
         .limit(1)
 
-      if (!profile) return
+      const displayName = memberChunkDisplayName(
+        workspaceMember?.displayName ?? null,
+        workspaceMember?.profileDisplayName ?? null,
+      )
+      if (!displayName) {
+        await deleteMemberChunks()
+        return
+      }
 
       const experiences = await db
         .select({
@@ -727,17 +821,18 @@ export const indexMemberChunks = inngest.createFunction(
         .where(eq(memberExperiences.userId, userId))
 
       const lines: string[] = [
-        `メンバー: ${profile.displayName}`,
-        ...(profile.bio ? [`自己紹介: ${profile.bio}`] : []),
-        ...(experiences.length > 0
-          ? [
-              '\nスキル・経験:',
-              ...experiences.map(
-                e =>
-                  `- ${e.category} (${e.title})${e.level ? `: ${e.level}` : ''}${e.notes ? `\n  ${e.notes}` : ''}`,
-              ),
-            ]
-          : []),
+        `メンバー: ${displayName}`,
+        ...(workspaceMember?.statusMessage ? [`ステータス: ${workspaceMember.statusMessage}`] : []),
+        ...(workspaceMember?.bio ? [`自己紹介: ${workspaceMember.bio}`] : []),
+        ...experiences.map((experience) => {
+          const details = [
+            experience.category,
+            experience.title,
+            experience.level,
+            experience.notes,
+          ].filter(Boolean)
+          return `経験: ${details.join(' / ')}`
+        }),
       ]
 
       const content = lines.join('\n')

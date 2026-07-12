@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { ANONYMIZED_MEMBER_DISPLAY_NAME } from '@/lib/anonymized-member'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
 import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
@@ -70,7 +71,10 @@ export async function GET(
       rows.map(r => ({
         userId: r.userId,
         displayName: r.displayName,
-        email: emails.get(r.userId) ?? null,
+        email:
+          r.displayName === ANONYMIZED_MEMBER_DISPLAY_NAME
+            ? null
+            : (emails.get(r.userId) ?? null),
         avatarUrl: r.avatarUrl ?? null,
         role: r.role,
         attendance: r.attendance,
@@ -186,7 +190,10 @@ export async function POST(
       return {
         userId: member.userId,
         displayName: profile?.displayName ?? '',
-        email: emails.get(member.userId) ?? null,
+        email:
+          profile?.displayName === ANONYMIZED_MEMBER_DISPLAY_NAME
+            ? null
+            : (emails.get(member.userId) ?? null),
         avatarUrl: profile?.avatarUrl ?? null,
         role: member.role,
         attendance: member.attendance,

@@ -32,6 +32,7 @@ vi.mock('@cairn/db', () => ({
   workspaceMembers: {
     userId: 'wm.userId',
     workspaceId: 'wm.workspaceId',
+    membershipStatus: 'wm.membershipStatus',
   },
   activeWorkspaceMembers: {
     userId: 'awm.userId',
