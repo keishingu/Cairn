@@ -19,7 +19,21 @@ export async function postBotMessage({
   messageType = 'text',
 }: PostBotMessageArgs): Promise<{ id: string; senderId: string; senderName: string }> {
   const { db } = await import('@cairn/db')
-  const { messages } = await import('@cairn/db')
+  const { channels, messages, projects } = await import('@cairn/db')
+  const { eq, sql } = await import('drizzle-orm')
+
+  const [channel] = await db
+    .select({
+      effectiveWorkspaceId: sql<string | null>`coalesce(${channels.workspaceId}, ${projects.workspaceId})`,
+    })
+    .from(channels)
+    .leftJoin(projects, eq(channels.projectId, projects.id))
+    .where(eq(channels.id, channelId))
+    .limit(1)
+
+  if (!channel || channel.effectiveWorkspaceId !== workspaceId) {
+    throw new Error('Bot message channel does not belong to workspace')
+  }
 
   const bot = await ensureWorkspaceBotProfile(workspaceId)
 
