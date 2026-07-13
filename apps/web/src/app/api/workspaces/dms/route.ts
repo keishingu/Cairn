@@ -123,7 +123,7 @@ export async function POST(req: Request) {
       .limit(1)
 
     if (!targetMember) {
-      return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
+      return NextResponse.json({ error: 'Inactive members cannot receive new DMs' }, { status: 422 })
     }
 
     // 既存の DM チャンネルを探す（両者が参加している）

@@ -130,7 +130,7 @@ export async function POST(req: Request) {
         .limit(1)
 
       if (!activeAssignee) {
-        return NextResponse.json({ error: '指定された担当者はワークスペースのメンバーではありません' }, { status: 422 })
+        return NextResponse.json({ error: '非活性メンバーは担当者に設定できません' }, { status: 422 })
       }
     }
 

@@ -67,7 +67,7 @@ export const onMessageCreated = inngest.createFunction(
     // チャンネルメンバー（送信者を除く）を取得。非活性メンバーは DM・ファイル通知の宛先に
     // しないよう active_workspace_members に inner join して active のみに絞る
     // （deactivation は履歴のため channel_members 行を残すため、ここで除外しないと通知が飛ぶ）
-    const members = await step.run('fetch-members', async () => {
+    const activeMembers = await step.run('fetch-members', async () => {
       const { db, channelMembers, profiles, activeWorkspaceMembers } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
       return db
@@ -90,15 +90,15 @@ export const onMessageCreated = inngest.createFunction(
       return ch?.type === 'dm'
     })
 
-    const dmBody = stripMentionsToText(content, nameResolver(members))
+    const dmBody = stripMentionsToText(content, nameResolver(activeMembers))
 
     if (isDm) {
       // DM はアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
       await step.run('create-dm-notifications', async () => {
-        if (members.length === 0) return
+        if (activeMembers.length === 0) return
         const { db, notifications } = await import('@cairn/db')
         await db.insert(notifications).values(
-          members.map(m => ({
+          activeMembers.map(m => ({
             userId: m.userId,
             workspaceId,
             type: 'dm' as const,
@@ -109,11 +109,11 @@ export const onMessageCreated = inngest.createFunction(
         )
       })
 
-      if (members.length > 0) {
+      if (activeMembers.length > 0) {
         // 閲覧中の相手に Push を出さないため、猶予後に既読を再確認してから送る
         await step.sleep('push-grace', PUSH_GRACE_PERIOD)
         const unreadMembers = await step.run('filter-dm-push-targets', () =>
-          filterUnreadRecipients(messageId, channelId, members))
+          filterUnreadRecipients(messageId, channelId, activeMembers))
 
         await step.run('send-dm-push', async () => {
           await Promise.allSettled(
@@ -131,7 +131,7 @@ export const onMessageCreated = inngest.createFunction(
     // @メンション通知（チャンネル未参加でもワークスペースメンバーなら通知）
     const mentionedIds = extractMentionIds(content)
 
-    if (members.length === 0 && mentionedIds.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
+    if (activeMembers.length === 0 && mentionedIds.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
     const mentionedMembers = mentionedIds.length > 0
       ? await step.run('fetch-mentioned-members', async () => {
           const { db, activeWorkspaceMembers, profiles } = await import('@cairn/db')
@@ -150,7 +150,7 @@ export const onMessageCreated = inngest.createFunction(
       : []
 
     // 本文プレビューのメンションは送信時点の最新名で解決する（メンバー名 + メンション対象名）
-    const mentionBody = stripMentionsToText(content, nameResolver([...members, ...mentionedMembers]))
+    const mentionBody = stripMentionsToText(content, nameResolver([...activeMembers, ...mentionedMembers]))
 
     // アクセスできないチャンネルへメンション通知が飛ぶのを防ぐ。
     // - プライベートチャンネル: チャンネルメンバーのみ
@@ -274,7 +274,7 @@ export const onMessageCreated = inngest.createFunction(
           : fileName
 
         await db.insert(notifications).values(
-          members.map(m => ({
+          activeMembers.map(m => ({
             userId: m.userId,
             workspaceId,
             type: 'file' as const,
@@ -284,7 +284,7 @@ export const onMessageCreated = inngest.createFunction(
           })),
         )
       })
-      fileNotifications = members.length
+      fileNotifications = activeMembers.length
     }
 
     // メンション Push は猶予後に既読を再確認してから送る（アプリ内通知・バッジは上で記録済み）
@@ -318,7 +318,16 @@ export const onTaskAssigned = inngest.createFunction(
       event.data as TaskAssignedEvent['data']
 
     await step.run('create-task-notification', async () => {
-      const { db, notifications } = await import('@cairn/db')
+      const { db, notifications, workspaceMembers } = await import('@cairn/db')
+      const { and, eq } = await import('drizzle-orm')
+      const [assigneeMembership] = await db
+        .select({ membershipStatus: workspaceMembers.membershipStatus })
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, assigneeId)))
+        .limit(1)
+
+      if (!assigneeMembership || assigneeMembership.membershipStatus !== 'active') return
+
       await db.insert(notifications).values({
         userId: assigneeId,
         workspaceId,
@@ -330,6 +339,16 @@ export const onTaskAssigned = inngest.createFunction(
     })
 
     await step.run('send-task-push', async () => {
+      const { db, workspaceMembers } = await import('@cairn/db')
+      const { and, eq } = await import('drizzle-orm')
+      const [assigneeMembership] = await db
+        .select({ membershipStatus: workspaceMembers.membershipStatus })
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, assigneeId)))
+        .limit(1)
+
+      if (!assigneeMembership || assigneeMembership.membershipStatus !== 'active') return
+
       await sendPushToUser(assigneeId, {
         title: `${assignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
