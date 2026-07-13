@@ -140,4 +140,44 @@ describe('get-auth-context', () => {
     expect(second.ctx).toBeNull()
     expect(second.error).not.toBeNull()
   })
+
+  it('getAuthContext 後の権限ゲートは role を fresh に再照合する', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'admin' }]))
+      .mockReturnValueOnce(selectChain([{ role: 'admin' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const { requireWorkspaceAdmin } = await import('./permissions')
+
+    const result = await getAuthContext()
+    expect(result).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1' },
+      error: null,
+    })
+
+    await expect(requireWorkspaceAdmin('ws-1', 'user-1')).resolves.toBeNull()
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
+  })
+
+  it('getAuthContext で読んだ role を同一 request の非権限参照へ seed する', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'admin' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const { getWorkspaceMemberRole } = await import('./permissions')
+
+    const result = await getAuthContext()
+    expect(result).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1' },
+      error: null,
+    })
+
+    await expect(getWorkspaceMemberRole('ws-1', 'user-1')).resolves.toBe('admin')
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
+  })
 })

@@ -6,8 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   queryResults,
   mockDb,
+  mockHeaders,
 } = vi.hoisted(() => {
   const queryResults: unknown[][] = []
+  const requestHeaders = new Headers()
+  const mockHeaders = vi.fn().mockResolvedValue(requestHeaders)
 
   function nextResult() {
     return queryResults.shift() ?? []
@@ -32,8 +35,12 @@ const {
     selectDistinct: vi.fn(() => makeQuery(nextResult())),
   }
 
-  return { queryResults, mockDb }
+  return { queryResults, mockDb, mockHeaders }
 })
+
+vi.mock('next/headers', () => ({
+  headers: mockHeaders,
+}))
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
@@ -119,6 +126,16 @@ describe('permissions', () => {
     const outsiderDenied = await requireWorkspaceMember('ws-1', 'user-4')
     expect(outsiderDenied?.status).toBe(403)
     await expect(outsiderDenied?.json()).resolves.toEqual({ error: 'ゲストはこの操作を実行できません' })
+  })
+
+  it('非権限ゲートの role 参照は同一 request 内で再利用する', async () => {
+    pushResults([{ role: 'admin' }])
+    const { getWorkspaceMemberRole } = await import('./permissions')
+
+    await expect(getWorkspaceMemberRole('ws-1', 'user-1')).resolves.toBe('admin')
+    await expect(getWorkspaceMemberRole('ws-1', 'user-1')).resolves.toBe('admin')
+
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
   })
 
   it('requireProjectAccess は guest の参加外プロジェクトを 403 にする', async () => {

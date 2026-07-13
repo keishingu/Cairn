@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server'
 import { db, activeWorkspaceMembers } from '@cairn/db'
 import { and, eq, inArray } from 'drizzle-orm'
+import { getCachedWorkspaceRole, setCachedWorkspaceRole } from '../request-context'
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'guest'
 
@@ -34,6 +35,18 @@ export async function getWorkspaceRole(
   workspaceId: string,
   userId: string,
 ): Promise<WorkspaceRole | null> {
+  const cachedRole = await getCachedWorkspaceRole(workspaceId, userId)
+  if (cachedRole !== undefined) {
+    return cachedRole
+  }
+
+  return loadWorkspaceRole(workspaceId, userId)
+}
+
+async function loadWorkspaceRole(
+  workspaceId: string,
+  userId: string,
+): Promise<WorkspaceRole | null> {
   const [member] = await db
     .select({ role: activeWorkspaceMembers.role })
     .from(activeWorkspaceMembers)
@@ -42,7 +55,9 @@ export async function getWorkspaceRole(
       eq(activeWorkspaceMembers.userId, userId),
     ))
     .limit(1)
-  return member?.role ?? null
+  const role = member?.role ?? null
+  await setCachedWorkspaceRole(workspaceId, userId, role)
+  return role
 }
 
 // 既存 import 互換のエイリアス
@@ -63,7 +78,8 @@ export async function requireActiveMember(
   userId: string,
   min: WorkspaceRole,
 ): Promise<NextResponse | null> {
-  const role = await getWorkspaceRole(workspaceId, userId)
+  // 権限ゲートは stale な seed/cached role を信用せず、その場で再照合する。
+  const role = await loadWorkspaceRole(workspaceId, userId)
   if (role === null || ROLE_RANK[role] < ROLE_RANK[min]) {
     return NextResponse.json({ error: ROLE_ERROR[min] }, { status: 403 })
   }
