@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createMilestoneSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
+import { requireProjectAccess, requireRole } from '@/lib/permissions'
 
 export interface MilestoneDto {
   id: string
@@ -38,7 +38,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
     if (!project) return new NextResponse(null, { status: 404 })
 
-    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
     if (forbidden) return forbidden
 
     const rows = await db
@@ -95,7 +95,7 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     if (!project) return new NextResponse(null, { status: 404 })
 
-    const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
+    const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
 
     const inserted = await db.transaction(async (tx) => {

@@ -7,24 +7,25 @@ const PROJECT_ID = '00000000-0000-0000-0000-000000000099'
 const MEMBER_A = '00000000-0000-0000-0000-000000000010'
 const MEMBER_B = '00000000-0000-0000-0000-000000000011'
 
-const { mockGetAuthContext, mockRequireWorkspaceAdmin, mockDb } = vi.hoisted(() => {
+const { mockGetAuthContext, mockRequireRole, mockDb } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
       workspaceId: '00000000-0000-0000-0000-000000000010',
+      role: 'admin',
     },
     error: null,
   })
-  const mockRequireWorkspaceAdmin = vi.fn().mockResolvedValue(null)
+  const mockRequireRole = vi.fn().mockReturnValue(null)
   const mockDb = {
     insert: vi.fn(),
     select: vi.fn(),
   }
-  return { mockGetAuthContext, mockRequireWorkspaceAdmin, mockDb }
+  return { mockGetAuthContext, mockRequireRole, mockDb }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/permissions', () => ({ requireWorkspaceAdmin: mockRequireWorkspaceAdmin }))
+vi.mock('@/lib/permissions', () => ({ requireRole: mockRequireRole }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn().mockResolvedValue(undefined) } }))
 vi.mock('@cairn/db', () => ({
   db: mockDb,

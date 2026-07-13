@@ -83,7 +83,7 @@ function postRequest(body: unknown) {
 describe('/api/channels/[channelId]/members のアクセス制御', () => {
   beforeEach(() => {
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
   })
@@ -100,7 +100,7 @@ describe('/api/channels/[channelId]/members のアクセス制御', () => {
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/'), ctxRouteParams())
     expect(res.status).toBe(403)
-    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID)
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID, 'member')
   })
 
   it('GET は DB エラー時にサイレントに空配列を返さず 500 を返す', async () => {

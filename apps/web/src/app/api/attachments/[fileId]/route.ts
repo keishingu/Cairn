@@ -43,7 +43,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       return new NextResponse(null, { status: 404 })
     }
 
-    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file)
+    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role)
     if (!canAccess) {
       return new NextResponse(null, { status: 403 })
     }
@@ -134,7 +134,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       .limit(1)
 
     if (!file) return new NextResponse(null, { status: 404 })
-    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file)
+    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role)
     if (!canAccess) return new NextResponse(null, { status: 403 })
 
     // 最新版ラベルは複数ファイルに同時付与できる（排他にしない）
@@ -178,7 +178,7 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       .limit(1)
 
     if (!file) return new NextResponse(null, { status: 404 })
-    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file)
+    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role)
     if (!canAccess) return new NextResponse(null, { status: 403 })
 
     // ベクトルデータを先に削除

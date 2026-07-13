@@ -47,7 +47,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
     }
 
-    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId)
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId, ctx.role)
     if (forbidden) return forbidden
 
     const [existing] = await db

@@ -8,17 +8,17 @@ const WS_ID = '00000000-0000-0000-0000-000000000010'
 const PROJECT_ID = '00000000-0000-0000-0000-000000000100'
 const MILESTONE_ID = '00000000-0000-0000-0000-000000000200'
 
-const { mockGetAuthContext, mockRequireWorkspaceMember, mockDb } = vi.hoisted(() => ({
+const { mockGetAuthContext, mockRequireRole, mockDb } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn().mockResolvedValue({
-    ctx: { userId: '00000000-0000-0000-0000-000000000001', workspaceId: '00000000-0000-0000-0000-000000000010' },
+    ctx: { userId: '00000000-0000-0000-0000-000000000001', workspaceId: '00000000-0000-0000-0000-000000000010', role: 'member' },
     error: null,
   }),
-  mockRequireWorkspaceMember: vi.fn().mockResolvedValue(null),
+  mockRequireRole: vi.fn().mockReturnValue(null),
   mockDb: { select: vi.fn(), update: vi.fn(), delete: vi.fn() },
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/permissions', () => ({ requireWorkspaceMember: mockRequireWorkspaceMember }))
+vi.mock('@/lib/permissions', () => ({ requireRole: mockRequireRole }))
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
@@ -64,8 +64,8 @@ function writeChain(result: unknown[]) {
 describe('PATCH /api/projects/[id]/milestones/[milestoneId]', () => {
   afterEach(() => {
     vi.clearAllMocks()
-    mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID }, error: null })
-    mockRequireWorkspaceMember.mockResolvedValue(null)
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID, role: 'member' }, error: null })
+    mockRequireRole.mockReturnValue(null)
   })
 
   it('別ワークスペースの projectId は見つからない扱いにする', async () => {
@@ -78,12 +78,12 @@ describe('PATCH /api/projects/[id]/milestones/[milestoneId]', () => {
     )
 
     expect(res.status).toBe(404)
-    expect(mockRequireWorkspaceMember).not.toHaveBeenCalled()
+    expect(mockRequireRole).not.toHaveBeenCalled()
   })
 
   it('member 未満なら更新できない', async () => {
     mockDb.select.mockReturnValueOnce(selectChain([{ id: PROJECT_ID }]))
-    mockRequireWorkspaceMember.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'guest' }), { status: 403 }))
+    mockRequireRole.mockReturnValueOnce(new Response(JSON.stringify({ error: 'guest' }), { status: 403 }))
 
     const { PATCH } = await import('./route')
     const res = await PATCH(
@@ -99,8 +99,8 @@ describe('PATCH /api/projects/[id]/milestones/[milestoneId]', () => {
 describe('DELETE /api/projects/[id]/milestones/[milestoneId]', () => {
   afterEach(() => {
     vi.clearAllMocks()
-    mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID }, error: null })
-    mockRequireWorkspaceMember.mockResolvedValue(null)
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID, role: 'member' }, error: null })
+    mockRequireRole.mockReturnValue(null)
   })
 
   it('対象 project の milestone だけを削除する', async () => {

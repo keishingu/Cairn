@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ProjectDto {
@@ -45,14 +45,8 @@ export async function GET() {
     const { eq, count, and, inArray } = await import('drizzle-orm')
     const { sql } = await import('drizzle-orm')
 
-    // ゲストは参加中のプロジェクトのみ参照可能（active membership のロールで判定）
-    const [wsMember] = await db
-      .select({ role: activeWorkspaceMembers.role })
-      .from(activeWorkspaceMembers)
-      .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), eq(activeWorkspaceMembers.userId, ctx.userId)))
-      .limit(1)
-
-    const isGuest = wsMember?.role === 'guest'
+    // ゲストは参加中のプロジェクトのみ参照可能（getAuthContext が再照合した ctx.role で判定）
+    const isGuest = ctx.role === 'guest'
     let visibleProjectIds: string[] | null = null
     if (isGuest) {
       const memberRows = await db
@@ -193,7 +187,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
 
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   try {

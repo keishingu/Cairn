@@ -16,7 +16,7 @@ export async function GET(req: Request, { params }: RouteContext) {
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   return getMessages({
@@ -32,7 +32,7 @@ export async function POST(req: Request, { params }: RouteContext) {
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   let body: unknown
@@ -52,5 +52,6 @@ export async function POST(req: Request, { params }: RouteContext) {
     payload: parsed.data,
     userId: ctx.userId,
     workspaceId: ctx.workspaceId,
+    role: ctx.role,
   })
 }

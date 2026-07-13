@@ -28,7 +28,7 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
     if (!project) return new NextResponse(null, { status: 404 })
 
     // ゲストは参加プロジェクトのギャラリーのみ削除できる
-    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
     if (forbidden) return forbidden
 
     const [item] = await db

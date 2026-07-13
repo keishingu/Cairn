@@ -131,7 +131,7 @@ function mockSelectResults(...results: unknown[]) {
 describe('/api/channels/[channelId]/messages のアクセス制御', () => {
   beforeEach(() => {
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
   })
@@ -148,7 +148,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/'), ctxRouteParams())
     expect(res.status).toBe(403)
-    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID)
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID, 'member')
   })
 
   it('アクセス権の無いチャンネルでは POST が 403 を返し、投稿できない', async () => {
@@ -163,7 +163,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     })
     const res = await POST(req, ctxRouteParams())
     expect(res.status).toBe(403)
-    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID)
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID, 'member')
   })
 
   it('GET はリアクションごとの参加者名を返す', async () => {

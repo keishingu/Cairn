@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { db, channels, channelMembers, projects, projectMembers, messages, messageAttachments } from '@cairn/db'
 import { eq, and, sql, inArray } from 'drizzle-orm'
-import { getWorkspaceRole, isWorkspaceMember } from './access/membership'
+import { getWorkspaceRole, isWorkspaceMember, type WorkspaceRole } from './access/membership'
 
 // role の解決・判定・active 要求は access/membership に一元化した（active_workspace_members
 // ビュー経由で非活性メンバーを構造的に除外し、role 参照系がすべて非活性を 403 で弾く）。
@@ -15,10 +15,12 @@ export {
   isWorkspaceOwner,
   isWorkspaceAdmin,
   isWorkspaceMember,
+  requireRole,
   requireWorkspaceOwner,
   requireWorkspaceAdmin,
   requireWorkspaceMember,
 } from './access/membership'
+export type { WorkspaceRole } from './access/membership'
 
 // ゲストがアクセス可能なプロジェクトID集合（project_members に行があるプロジェクト）を返す。
 // member 以上はワークスペース全体を参照できるため、この関数はゲストの可視範囲を絞る用途で使う。
@@ -42,8 +44,11 @@ export async function requireProjectAccess(
   workspaceId: string,
   userId: string,
   projectId: string,
+  // getAuthContext 取得済みの role（ctx.role）を渡すと、内部の getWorkspaceRole を省く。
+  // 未指定なら従来通り DB から解決する（後方互換）。
+  knownRole?: WorkspaceRole | null,
 ): Promise<NextResponse | null> {
-  const role = await getWorkspaceRole(workspaceId, userId)
+  const role = knownRole !== undefined ? knownRole : await getWorkspaceRole(workspaceId, userId)
   if (isWorkspaceMember(role)) return null
 
   const [membership] = await db
@@ -79,6 +84,8 @@ export async function requireChannelAccess(
   workspaceId: string,
   userId: string,
   channelId: string,
+  // ctx.role を渡すとゲスト判定時の getWorkspaceRole を省く（未指定なら DB 解決）
+  knownRole?: WorkspaceRole | null,
 ): Promise<NextResponse | null> {
   const [channel] = await db
     .select({
@@ -111,7 +118,7 @@ export async function requireChannelAccess(
 
   // プロジェクトチャンネルはゲストの場合、参加プロジェクトに限定する
   if (channel.type === 'project' && channel.projectId) {
-    const role = await getWorkspaceRole(workspaceId, userId)
+    const role = knownRole !== undefined ? knownRole : await getWorkspaceRole(workspaceId, userId)
     if (role === 'guest') {
       const [pm] = await db
         .select({ id: projectMembers.id })
@@ -147,11 +154,13 @@ export async function canAccessFile(
   workspaceId: string,
   userId: string,
   file: FileAccessRow,
+  // ctx.role を渡すと内部の getWorkspaceRole を省く（未指定なら DB 解決）
+  knownRole?: WorkspaceRole | null,
 ): Promise<boolean> {
   if (file.workspaceId !== workspaceId) return false
   if (file.uploadedBy === userId) return true
 
-  const role = await getWorkspaceRole(workspaceId, userId)
+  const role = knownRole !== undefined ? knownRole : await getWorkspaceRole(workspaceId, userId)
   // ワークスペース非所属（role なし）は不可
   if (!isWorkspaceMember(role) && role !== 'guest') return false
 

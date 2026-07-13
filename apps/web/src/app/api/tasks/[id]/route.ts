@@ -54,7 +54,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
-    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, taskRow.projectId)
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, taskRow.projectId, ctx.role)
     if (forbidden) return forbidden
 
     const updates: {
@@ -161,7 +161,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
-    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, taskRow.projectId)
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, taskRow.projectId, ctx.role)
     if (forbidden) return forbidden
 
     if (taskRow.sourceMessageId != null) {

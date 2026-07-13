@@ -52,11 +52,16 @@ Cairn は Vercel 東京リージョン（`vercel.json` の `hnd1`）+ Supabase �
 - **残作業（この効果を実際に得るための前提）**: Supabase ダッシュボードで JWT Signing Keys（非対称鍵）へ移行する。**移行するまでは `getUser` フォールバックのままで速度は変わらない**。ローカル検証が効いているかは、移行後に API の TTFB と Auth API へのアウトバウンド呼び出し数で確認する
 - 注意点: トークン失効の即時性が access token の TTL（`supabase/config.toml` の `jwt_expiry`、現状 3600 秒）に依存するようになる。非活性化の即時遮断は 2.2 の membership 再照合が引き続き担保するため権限面の後退はない（ログアウト・BAN の反映が最大 TTL 分遅れる点のみ許容判断が必要）
 
-### P2: `getAuthContext` の認可クエリ統合（効果: 大 / 変更範囲: 中）
+### P2: `getAuthContext` の認可クエリ統合（効果: 大 / 変更範囲: 中） — ✅ 実装済み
 
-- membership 再照合とロール取得を 1 クエリに統合し、`AuthContext` に `role` を含めて返す
-- 各ルートの `requireWorkspace*` / guest 判定による `active_workspace_members` の二重照会を `ctx.role` 参照に置き換える
-- 「毎回再照合する」というセキュリティ要件は維持したまま、直列 DB 往復を 2〜3 回 → 1 回に圧縮する
+- membership 再照合クエリで `role` も同時に取得し、`AuthContext` に `role` を含めて返すようにした（クエリ本数は増やさない）
+- 各ルートの二重照会を `ctx.role` 参照に置き換えた:
+  - `requireWorkspace{Owner,Admin,Member}(ctx.workspaceId, ctx.userId)`（DB 往復あり）→ `requireRole(ctx.role, min)`（メモリ内判定・DB 往復なし）
+  - `getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)` → `ctx.role`
+  - `/api/projects` の guest 判定インラインクエリ → `ctx.role === 'guest'`
+  - `requireProjectAccess` / `requireChannelAccess` / `canAccessFile` に任意引数 `knownRole` を追加し、呼び出し側が `ctx.role` を渡すと内部の `getWorkspaceRole` を省く（後方互換・未指定なら従来通り DB 解決）
+- **セキュリティ要件は維持**: `ctx.role` は毎リクエスト `active_workspace_members` を再照合した結果で、キャッシュされた role を認可に使わない（非活性化の即時遮断は不変）。role の出所は引き続き `active_workspace_members` ビューに限定
+- 残す二重照会: `PATCH /api/workspaces/members/[userId]` の**非活性化/再活性化**経路（`handleStatusChange`）だけは呼び出し元の role を別途引く。低頻度の管理操作でありホットパスではないため対象外とした
 
 ### P3: 画面初期データの bootstrap 集約（効果: 中 / 変更範囲: 中）
 
@@ -80,6 +85,6 @@ Cairn は Vercel 東京リージョン（`vercel.json` の `hnd1`）+ Supabase �
 
 ## 5. 実施順序
 
-1. Phase 1: P1（JWT ローカル検証）→ 計測
-2. Phase 2: P2（認可クエリ統合）→ 計測
+1. Phase 1: P1（JWT ローカル検証）→ 計測 … コード実装済み（署名鍵移行は未実施）
+2. Phase 2: P2（認可クエリ統合）→ 計測 … 実装済み
 3. Phase 3: 残る差分を見て P3 / P4 の要否を判断

@@ -5,17 +5,21 @@ import { NextResponse } from 'next/server'
 import { headers, cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { verifyAccessToken } from './auth-jwt'
+import type { WorkspaceRole } from './access/membership'
 import { WORKSPACE_COOKIE } from './workspace-cookie'
 
 export { WORKSPACE_COOKIE } from './workspace-cookie'
 
-// サーバーレス関数インスタンス内でワークスペース ID をキャッシュし、
+// サーバーレス関数インスタンス内でワークスペース ID + role をキャッシュし、
 // warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
-const workspaceCache = new Map<string, { workspaceId: string; expiresAt: number }>()
+const workspaceCache = new Map<string, { workspaceId: string; role: WorkspaceRole; expiresAt: number }>()
 
 export interface AuthContext {
   userId: string
   workspaceId: string
+  // 再照合した active membership のロール。ルート側はこれを使い、
+  // requireWorkspace* / getWorkspaceRole の二重照会を避ける（P2）。
+  role: WorkspaceRole
 }
 
 type AuthResult =
@@ -78,11 +82,12 @@ export async function getAuthContext(): Promise<AuthResult> {
     const { activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
+    // role も同じクエリで取得する（1 往復のまま。ルート側の二重照会を無くすため）
     const findActiveMembership = async (workspaceId?: string) => {
       const conditions = [eq(activeWorkspaceMembers.userId, userId)]
       if (workspaceId) conditions.push(eq(activeWorkspaceMembers.workspaceId, workspaceId))
       const [row] = await db
-        .select({ workspaceId: activeWorkspaceMembers.workspaceId })
+        .select({ workspaceId: activeWorkspaceMembers.workspaceId, role: activeWorkspaceMembers.role })
         .from(activeWorkspaceMembers)
         .where(and(...conditions))
         .limit(1)
@@ -94,8 +99,8 @@ export async function getAuthContext(): Promise<AuthResult> {
     if (requestedWorkspaceId) {
       const preferred = await findActiveMembership(requestedWorkspaceId)
       if (preferred) {
-        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
-        return { ctx: { userId, workspaceId: preferred.workspaceId }, error: null }
+        workspaceCache.set(cacheKey, { workspaceId: preferred.workspaceId, role: preferred.role, expiresAt: Date.now() + 5 * 60 * 1000 })
+        return { ctx: { userId, workspaceId: preferred.workspaceId, role: preferred.role }, error: null }
       }
       // 候補が無効（非活性化・退出済み等）→ active 所属へフォールバック
     }
@@ -107,8 +112,8 @@ export async function getAuthContext(): Promise<AuthResult> {
 
     // cookie が無い bearer-only request が別 request の cookie 選択を継承しないよう、
     // cookie の有無で cache key を分けて書く
-    workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, expiresAt: Date.now() + 5 * 60 * 1000 })
-    return { ctx: { userId, workspaceId: member.workspaceId }, error: null }
+    workspaceCache.set(cacheKey, { workspaceId: member.workspaceId, role: member.role, expiresAt: Date.now() + 5 * 60 * 1000 })
+    return { ctx: { userId, workspaceId: member.workspaceId, role: member.role }, error: null }
   } catch (err) {
     console.error('[getAuthContext] DB query failed:', err)
     return { ctx: null, error: NextResponse.json({ error: 'Internal server error' }, { status: 500 }) }

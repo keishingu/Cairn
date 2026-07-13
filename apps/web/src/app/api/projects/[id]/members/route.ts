@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
+import { requireProjectAccess, requireRole } from '@/lib/permissions'
 import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
@@ -42,7 +42,7 @@ export async function GET(
     }
 
     // ゲストは参加プロジェクトのメンバーのみ閲覧可
-    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
     if (forbidden) return forbidden
 
     const rows = await db
@@ -133,7 +133,7 @@ export async function POST(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
+    const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
 
     // プロジェクトに追加できるのは active メンバーのみ（非活性メンバーは追加不可）

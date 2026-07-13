@@ -19,7 +19,7 @@ export async function GET(
 
   const { channelId } = await params
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   try {
@@ -66,7 +66,7 @@ export async function POST(
     return NextResponse.json({ error: 'userIdが必要です' }, { status: 400 })
   }
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   try {

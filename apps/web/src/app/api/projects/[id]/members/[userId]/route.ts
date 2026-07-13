@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceMember } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 
 export async function DELETE(
   _req: Request,
@@ -29,7 +29,7 @@ export async function DELETE(
 
     // 自分自身の退出は常に許可、他メンバーの削除は project manager 以上が必要
     if (userId !== ctx.userId) {
-      const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
+      const forbidden = requireRole(ctx.role, 'member')
       if (forbidden) return forbidden
     }
 
