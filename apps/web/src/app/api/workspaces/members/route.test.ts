@@ -38,7 +38,7 @@ vi.mock('@/lib/supabase/service', async importOriginal => {
 })
 vi.mock('@cairn/db', () => ({
   db: mockDb,
-  profiles: { id: 'profiles.id', displayName: 'profiles.displayName' },
+  profiles: { id: 'profiles.id', kind: 'profiles.kind', displayName: 'profiles.displayName' },
   workspaceMembers: {
     workspaceId: 'wm.workspaceId',
     userId: 'wm.userId',
@@ -264,5 +264,18 @@ describe('GET /api/workspaces/members', () => {
 
     expect(res.status).toBe(200)
     expect(eq).toHaveBeenCalledWith('wm.membershipStatus', 'active')
+  })
+
+  it('bot profile は一覧対象から除外する', async () => {
+    const { eq } = await import('drizzle-orm')
+    mockDb.select
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+
+    const { GET } = await import('./route')
+    const res = await GET(request())
+
+    expect(res.status).toBe(200)
+    expect(eq).toHaveBeenCalledWith('profiles.kind', 'human')
   })
 })

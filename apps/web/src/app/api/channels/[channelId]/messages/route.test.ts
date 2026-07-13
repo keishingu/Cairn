@@ -174,6 +174,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
           id: 'msg-1',
           content: 'hello',
           senderId: 'user-2',
+          senderKind: 'bot',
           senderName: 'Sender',
           senderAvatarUrl: null,
           createdAt: new Date('2026-06-24T01:00:00.000Z'),
@@ -195,6 +196,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     await expect(res.json()).resolves.toEqual([
       expect.objectContaining({
         id: 'msg-1',
+        senderKind: 'bot',
         reactions: [
           {
             emoji: '👍',

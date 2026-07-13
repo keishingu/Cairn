@@ -329,6 +329,7 @@ export function useSendChannelMessage(
           content: input.content,
           messageType: 'text',
           senderId: currentUser.id,
+          senderKind: 'human',
           senderName: currentUser.displayName,
           senderAvatarUrl: currentUser.avatarUrl,
           createdAt: new Date().toISOString(),

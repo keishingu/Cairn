@@ -137,4 +137,35 @@ describe('ChatMessage copy action', () => {
     expect(screen.getByRole('checkbox')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '詳細' })).toHaveAttribute('href', 'https://example.com/guide')
   })
+
+  it('bot メッセージには BOT バッジを表示する', () => {
+    render(
+      <ChatMessage
+        messageId="message-3"
+        messageType="text"
+        senderId="bot-1"
+        senderKind="bot"
+        currentUserId="user-1"
+        senderName="Cairn Bot"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="bot says hi"
+        reactions={[]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('BOT')).toBeInTheDocument()
+  })
 })

@@ -19,6 +19,8 @@ export const userStatusEnum = pgEnum('user_status', [
   'offline',
 ])
 
+export const profileKindEnum = pgEnum('profile_kind', ['human', 'bot'])
+
 export const projectMemberRoleEnum = pgEnum('project_member_role', [
   'leader',
   'subleader',

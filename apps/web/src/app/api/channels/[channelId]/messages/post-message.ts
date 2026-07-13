@@ -142,6 +142,7 @@ export async function postMessage({ channelId, payload, userId, workspaceId }: P
 
     const [profile] = await db
       .select({
+        kind: profiles.kind,
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
       })
@@ -156,6 +157,7 @@ export async function postMessage({ channelId, payload, userId, workspaceId }: P
       .where(eq(profiles.id, inserted.senderId))
 
     const senderName = profile?.displayName ?? '不明'
+    const senderKind = profile?.kind ?? 'human'
 
     inngest
       .send({
@@ -180,6 +182,7 @@ export async function postMessage({ channelId, payload, userId, workspaceId }: P
         content: inserted.content,
         messageType: payload.messageType ?? 'text',
         senderId: inserted.senderId,
+        senderKind,
         senderName,
         senderAvatarUrl: profile?.avatarUrl ?? null,
         createdAt: inserted.createdAt.toISOString(),
