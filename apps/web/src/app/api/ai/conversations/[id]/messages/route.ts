@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createDataStreamResponse, streamText, type CoreMessage } from 'ai'
 import { openai, DEFAULT_MODEL } from '@/lib/ai/client'
+import { enforceAiChatRateLimit } from '@/lib/ai/chat-rate-limit'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getGuestVisibleProjectIds, getWorkspaceMemberRole } from '@/lib/permissions'
 import { webSearchTool } from '@/lib/ai/web-search'
@@ -121,6 +122,22 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Invalid messages payload' },
       { status: 422 },
+    )
+  }
+
+  const rateLimitResult = await enforceAiChatRateLimit(ctx.workspaceId, ctx.userId)
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: 'AIチャットの送信回数が上限に達しました。少し待ってから再試行してください。' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(rateLimitResult.retryAfterSeconds),
+          'X-RateLimit-Limit': String(rateLimitResult.limit),
+          'X-RateLimit-Remaining': String(rateLimitResult.remaining),
+          'X-RateLimit-Reset': String(Math.floor(rateLimitResult.resetAt / 1000)),
+        },
+      },
     )
   }
 
