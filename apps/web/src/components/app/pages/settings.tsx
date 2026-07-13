@@ -12,11 +12,12 @@ import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useAccountSettings, useUpdateAccountDisplayName, useUploadAccountAvatar } from '@/hooks/use-account-settings'
+import { useCreateProjectStatus, useDeleteProjectStatus, useUpdateProjectStatus } from '@/hooks/use-project-status-management'
+import { useProjectStatuses } from '@/hooks/use-project-statuses'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
-import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import { processImageForUpload } from '@/lib/process-image'
 import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 
@@ -69,89 +70,8 @@ const AvatarCircle = ({ url, name, size = 64 }: { url?: string | null; name: str
   </div>
 )
 
-function isGifImage(file: File): boolean {
-  return file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif')
-}
-
-function isPngImage(file: File): boolean {
-  return file.type === 'image/png' || file.name.toLowerCase().endsWith('.png')
-}
-
-function isWebpImage(file: File): boolean {
-  return file.type === 'image/webp' || file.name.toLowerCase().endsWith('.webp')
-}
-
-function hasPngSignature(bytes: Uint8Array): boolean {
-  return (
-    bytes.length >= 8
-    && bytes[0] === 0x89
-    && bytes[1] === 0x50
-    && bytes[2] === 0x4e
-    && bytes[3] === 0x47
-    && bytes[4] === 0x0d
-    && bytes[5] === 0x0a
-    && bytes[6] === 0x1a
-    && bytes[7] === 0x0a
-  )
-}
-
-function readAscii(bytes: Uint8Array, offset: number, length: number): string {
-  return String.fromCharCode(...bytes.slice(offset, offset + length))
-}
-
-async function isAnimatedPngImage(file: File): Promise<boolean> {
-  if (!isPngImage(file)) return false
-
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  if (!hasPngSignature(bytes)) return false
-
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  let offset = 8
-  while (offset + 8 <= bytes.length) {
-    const chunkLength = view.getUint32(offset)
-    const chunkType = readAscii(bytes, offset + 4, 4)
-    if (chunkType === 'acTL') return true
-    offset += 12 + chunkLength
-  }
-
-  return false
-}
-
-async function isAnimatedWebpImage(file: File): Promise<boolean> {
-  if (!isWebpImage(file)) return false
-
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  if (readAscii(bytes, 0, 4) !== 'RIFF' || readAscii(bytes, 8, 4) !== 'WEBP') return false
-
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  let offset = 12
-  while (offset + 8 <= bytes.length) {
-    const chunkType = readAscii(bytes, offset, 4)
-    const chunkLength = view.getUint32(offset + 4, true)
-    const chunkDataOffset = offset + 8
-
-    if (chunkType === 'ANIM') return true
-    if (chunkType === 'VP8X' && chunkLength >= 1 && chunkDataOffset < bytes.length) {
-      const featureFlags = bytes[chunkDataOffset] ?? 0
-      if ((featureFlags & 0x02) !== 0) return true
-    }
-
-    offset = chunkDataOffset + chunkLength + (chunkLength % 2)
-  }
-
-  return false
-}
-
-async function isAnimatedAvatarImage(file: File): Promise<boolean> {
-  return isGifImage(file) || await isAnimatedPngImage(file) || await isAnimatedWebpImage(file)
-}
-
 const SettingsAccount = () => {
-  const queryClient = useQueryClient()
-  const { data: user, isLoading } = useQuery<CurrentUserDto>({
-    queryKey: ['me'],
-    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
-  })
+  const { data: user, isLoading } = useAccountSettings()
 
   const [displayName, setDisplayName] = React.useState('')
   const [nameSaved, setNameSaved] = React.useState(false)
@@ -161,52 +81,15 @@ const SettingsAccount = () => {
     if (user?.displayName) setDisplayName(user.displayName)
   }, [user?.displayName])
 
-  const nameMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetchWithAuth('/api/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(d.error ?? '更新に失敗しました')
-      }
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['me'] })
-      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
-      setNameSaved(true)
-      setTimeout(() => setNameSaved(false), 2000)
-    },
-  })
+  const nameMutation = useUpdateAccountDisplayName()
+  const avatarMutation = useUploadAccountAvatar()
 
-  const avatarMutation = useMutation({
-    mutationFn: async (file: File) => {
-      if (await isAnimatedAvatarImage(file)) {
-        throw new Error('アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください')
-      }
-
-      let uploadFile = file
-      try {
-        uploadFile = (await processImageForUpload(file)).file
-      } catch {
-        throw new Error('画像の準備に失敗しました。別の写真でお試しください')
-      }
-
-      const fd = new FormData()
-      fd.append('file', uploadFile)
-      const res = await fetchWithAuth('/api/me/avatar', { method: 'POST', body: fd })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(d.error ?? 'アップロードに失敗しました')
-      }
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['me'] })
-      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
-    },
-  })
+  React.useEffect(() => {
+    if (!nameMutation.isSuccess) return
+    setNameSaved(true)
+    const timeoutId = window.setTimeout(() => setNameSaved(false), 2000)
+    return () => window.clearTimeout(timeoutId)
+  }, [nameMutation.isSuccess])
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -267,11 +150,11 @@ const SettingsAccount = () => {
               <input
                 value={displayName}
                 onChange={e => setDisplayName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && displayName.trim() && nameMutation.mutate()}
+                onKeyDown={e => e.key === 'Enter' && displayName.trim() && nameMutation.mutate(displayName)}
                 style={{ ...inputStyle, width: 180 }}
               />
               <button
-                onClick={() => nameMutation.mutate()}
+                onClick={() => nameMutation.mutate(displayName)}
                 disabled={nameMutation.isPending || !displayName.trim() || displayName === user?.displayName}
                 className="btn btn-primary"
                 style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0 }}
@@ -384,45 +267,31 @@ const COLOR_PRESETS = [
   '#06B6D4', '#84CC16', '#F97316', '#14B8A6',
 ]
 
-async function fetchStatuses(): Promise<ProjectStatusDto[]> {
-  const res = await fetchWithAuth('/api/projects/statuses')
-  if (!res.ok) throw new Error('fetch failed')
-  return res.json() as Promise<ProjectStatusDto[]>
-}
-
 const StatusRow = ({
   status,
-  onSaved,
-  onDeleted,
 }: {
   status: ProjectStatusDto
-  onSaved: () => void
-  onDeleted: () => void
 }) => {
   const [editing, setEditing] = React.useState(false)
   const [name, setName] = React.useState(status.name)
   const [color, setColor] = React.useState(status.color)
   const [confirmDel, setConfirmDel] = React.useState(false)
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetchWithAuth(`/api/projects/statuses/${status.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), color }),
-      })
-      if (!res.ok) throw new Error('更新に失敗しました')
-    },
-    onSuccess: () => { setEditing(false); onSaved() },
-  })
+  const saveMutation = useUpdateProjectStatus(status.id)
+  const deleteMutation = useDeleteProjectStatus(status.id)
 
-  const deleteMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetchWithAuth(`/api/projects/statuses/${status.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('削除に失敗しました')
-    },
-    onSuccess: onDeleted,
-  })
+  React.useEffect(() => {
+    setName(status.name)
+    setColor(status.color)
+  }, [status.color, status.name])
+
+  React.useEffect(() => {
+    if (saveMutation.isSuccess) setEditing(false)
+  }, [saveMutation.isSuccess])
+
+  React.useEffect(() => {
+    if (deleteMutation.isSuccess) setConfirmDel(false)
+  }, [deleteMutation.isSuccess])
 
   if (!editing) {
     return (
@@ -471,7 +340,7 @@ const StatusRow = ({
       <div style={{ display: 'flex', gap: 6 }}>
         <button className="btn btn-ghost" style={{ height: 28, fontSize: 12, padding: '0 10px' }} onClick={() => setEditing(false)}>キャンセル</button>
         <button
-          onClick={() => saveMutation.mutate()}
+          onClick={() => saveMutation.mutate({ name: name.trim(), color })}
           disabled={saveMutation.isPending || !name.trim()}
           className="btn btn-primary"
           style={{ height: 28, fontSize: 12, padding: '0 12px', opacity: (saveMutation.isPending || !name.trim()) ? 0.6 : 1 }}
@@ -484,33 +353,20 @@ const StatusRow = ({
 }
 
 const SettingsWorkflow = () => {
-  const queryClient = useQueryClient()
-  const { data: statuses = [], isLoading } = useQuery({
-    queryKey: ['statuses'],
-    queryFn: fetchStatuses,
-  })
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['statuses'] })
+  const { data: statuses = [], isLoading } = useProjectStatuses()
 
   const [showAdd, setShowAdd] = React.useState(false)
   const [newName, setNewName] = React.useState('')
   const [newColor, setNewColor] = React.useState('#3B82F6')
 
-  const addMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetchWithAuth('/api/projects/statuses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim(), color: newColor }),
-      })
-      if (!res.ok) throw new Error('追加に失敗しました')
-    },
-    onSuccess: () => {
-      setShowAdd(false)
-      setNewName('')
-      setNewColor('#3B82F6')
-      invalidate()
-    },
-  })
+  const addMutation = useCreateProjectStatus()
+
+  React.useEffect(() => {
+    if (!addMutation.isSuccess) return
+    setShowAdd(false)
+    setNewName('')
+    setNewColor('#3B82F6')
+  }, [addMutation.isSuccess])
 
   return (
     <div style={{ maxWidth: 780 }}>
@@ -525,7 +381,7 @@ const SettingsWorkflow = () => {
           ) : (
             statuses.map((s, i) => (
               <div key={s.id} style={{ borderBottom: i < statuses.length - 1 ? '1px solid var(--divider)' : 'none' }}>
-                <StatusRow status={s} onSaved={invalidate} onDeleted={invalidate}/>
+                <StatusRow status={s}/>
               </div>
             ))
           )}
@@ -537,7 +393,7 @@ const SettingsWorkflow = () => {
                 onChange={e => setNewName(e.target.value)}
                 placeholder="ステータス名を入力…"
                 autoFocus
-                onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) addMutation.mutate() }}
+                onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) addMutation.mutate({ name: newName.trim(), color: newColor }) }}
                 style={{ height: 32, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--card)', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', outline: 'none' }}
               />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -556,7 +412,7 @@ const SettingsWorkflow = () => {
               <div style={{ display: 'flex', gap: 6 }}>
                 <button className="btn btn-ghost" style={{ height: 28, fontSize: 12, padding: '0 10px' }} onClick={() => { setShowAdd(false); setNewName('') }}>キャンセル</button>
                 <button
-                  onClick={() => addMutation.mutate()}
+                  onClick={() => addMutation.mutate({ name: newName.trim(), color: newColor })}
                   disabled={addMutation.isPending || !newName.trim()}
                   className="btn btn-primary"
                   style={{ height: 28, fontSize: 12, padding: '0 12px', opacity: (addMutation.isPending || !newName.trim()) ? 0.6 : 1 }}
