@@ -9,12 +9,16 @@ vi.mock('@supabase/ssr', () => ({
   }),
 }))
 
-function makeRequest(pathname: string): NextRequest {
-  return new NextRequest(new URL(pathname, 'http://localhost:3000'))
+function makeRequest(pathname: string, init?: RequestInit): NextRequest {
+  return new NextRequest(
+    new URL(pathname, 'http://localhost:3000'),
+    init as ConstructorParameters<typeof NextRequest>[1],
+  )
 }
 
 describe('middleware', () => {
   beforeEach(() => {
+    vi.resetModules()
     getUser.mockReset()
     process.env['NEXT_PUBLIC_SUPABASE_URL'] = 'http://localhost:54321'
     process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'] = 'dummy'

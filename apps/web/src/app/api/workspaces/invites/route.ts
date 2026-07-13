@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { enforceFixedWindowRateLimit } from '@/lib/request-rate-limit'
 
 const createInviteSchema = z.object({
   expiresIn: z.enum(['1h', '30d', 'never']).default('1h'),
@@ -15,6 +16,14 @@ const createInviteSchema = z.object({
 export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
+
+  const rateLimited = await enforceFixedWindowRateLimit({
+    key: `workspace-invites:${ctx.workspaceId}:${ctx.userId}`,
+    limit: 10,
+    windowMs: 10 * 60 * 1000,
+    prefix: '@cairn/workspace-invites-route',
+  })
+  if (rateLimited) return rateLimited
 
   let body: unknown
   try {

@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE, normalizeMimeType, resolveStorageExtension } from '@/lib/attachments'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
+import { enforceFixedWindowRateLimit } from '@/lib/request-rate-limit'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 // ファイル本体を Vercel の Function 経由で受け取ると 4.5MB のリクエストボディ上限
@@ -45,6 +46,14 @@ export async function POST(req: Request) {
 
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
   if (forbidden) return forbidden
+
+  const rateLimited = await enforceFixedWindowRateLimit({
+    key: `attachment-upload-url:${ctx.workspaceId}:${ctx.userId}:${channelId}`,
+    limit: 20,
+    windowMs: 60 * 1000,
+    prefix: '@cairn/attachment-upload-url',
+  })
+  if (rateLimited) return rateLimited
 
   const ext = resolveStorageExtension(fileName, normalizedMime)
   const storagePath = `${ctx.workspaceId}/${channelId}/${crypto.randomUUID()}.${ext}`
