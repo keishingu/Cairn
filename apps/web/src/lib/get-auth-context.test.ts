@@ -140,4 +140,44 @@ describe('get-auth-context', () => {
     expect(second.ctx).toBeNull()
     expect(second.error).not.toBeNull()
   })
+
+  it('purgeWorkspaceAuthCache は対象ユーザーの bare/scoped cache だけ削除する', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    const { getAuthContext, purgeWorkspaceAuthCache } = await import('./get-auth-context')
+
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-1' }) })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1' }]))
+    await getAuthContext()
+
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-2' }]))
+    await getAuthContext()
+
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-other' }) })
+    mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-2' } }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-other' }]))
+    await getAuthContext()
+
+    purgeWorkspaceAuthCache('user-1')
+
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-1' }) })
+    mockDb.select
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-3' }]))
+    const purgedUser = await getAuthContext()
+
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: 'ws-other' }) })
+    mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-2' } }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-other' }]))
+    const untouchedOtherUser = await getAuthContext()
+
+    expect(purgedUser).toEqual({ ctx: { userId: 'user-1', workspaceId: 'ws-3' }, error: null })
+    expect(untouchedOtherUser).toEqual({ ctx: { userId: 'user-2', workspaceId: 'ws-other' }, error: null })
+  })
 })

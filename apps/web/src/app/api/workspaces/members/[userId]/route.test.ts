@@ -7,7 +7,7 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const OTHER_USER_ID = '00000000-0000-0000-0000-000000000002'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, mockReactivate, mockInngestSend } = vi.hoisted(() => {
+const { mockGetAuthContext, mockPurgeWorkspaceAuthCache, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, mockReactivate, mockInngestSend } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -15,16 +15,18 @@ const { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, 
     },
     error: null,
   })
+  const mockPurgeWorkspaceAuthCache = vi.fn()
   const mockDb = { select: vi.fn(), update: vi.fn(), execute: vi.fn(), transaction: vi.fn() }
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('admin')
   const mockDeactivate = vi.fn().mockResolvedValue({ ok: true })
   const mockReactivate = vi.fn().mockResolvedValue({ ok: true })
   const mockInngestSend = vi.fn().mockResolvedValue(undefined)
-  return { mockGetAuthContext, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, mockReactivate, mockInngestSend }
+  return { mockGetAuthContext, mockPurgeWorkspaceAuthCache, mockDb, mockGetWorkspaceMemberRole, mockDeactivate, mockReactivate, mockInngestSend }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: mockGetAuthContext,
+  purgeWorkspaceAuthCache: mockPurgeWorkspaceAuthCache,
 }))
 
 vi.mock('@/lib/permissions', () => ({
@@ -97,6 +99,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
       error: null,
     })
+    mockPurgeWorkspaceAuthCache.mockReset()
     mockGetWorkspaceMemberRole.mockResolvedValue('admin')
     mockInngestSend.mockResolvedValue(undefined)
   })
@@ -133,6 +136,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(res.status).toBe(200)
     const body = await res.json() as { role: string }
     expect(body.role).toBe('admin')
+    expect(mockPurgeWorkspaceAuthCache).toHaveBeenCalledWith(OTHER_USER_ID)
   })
 
   it('admin は admin を member に降格できる', async () => {
@@ -150,6 +154,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'owner'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(403)
+    expect(mockPurgeWorkspaceAuthCache).not.toHaveBeenCalled()
   })
 
   it('admin は owner のロールを変更できない（403）', async () => {
@@ -215,6 +220,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(404)
+    expect(mockPurgeWorkspaceAuthCache).not.toHaveBeenCalled()
   })
 
   it('非活性 owner の降格では active owner 数ガードを実行しない', async () => {
@@ -250,6 +256,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
       error: null,
     })
+    mockPurgeWorkspaceAuthCache.mockReset()
     mockGetWorkspaceMemberRole.mockResolvedValue('admin')
     mockDeactivate.mockResolvedValue({ ok: true })
     mockReactivate.mockResolvedValue({ ok: true })
@@ -262,6 +269,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
     const res = await PATCH(statusRequest(OTHER_USER_ID, 'inactive'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(200)
     expect(mockDeactivate).toHaveBeenCalledWith(DEV_WORKSPACE_ID, OTHER_USER_ID, DEV_USER_ID)
+    expect(mockPurgeWorkspaceAuthCache).toHaveBeenCalledWith(OTHER_USER_ID)
   })
 
   it('member は非活性化できない（403）', async () => {
@@ -305,6 +313,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
     const { PATCH } = await import('./route')
     const res = await PATCH(statusRequest(OTHER_USER_ID, 'inactive'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(422)
+    expect(mockPurgeWorkspaceAuthCache).not.toHaveBeenCalled()
   })
 
   it('admin は再活性化できる', async () => {
@@ -313,6 +322,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
     const res = await PATCH(statusRequest(OTHER_USER_ID, 'active'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(200)
     expect(mockReactivate).toHaveBeenCalledWith(DEV_WORKSPACE_ID, OTHER_USER_ID)
+    expect(mockPurgeWorkspaceAuthCache).toHaveBeenCalledWith(OTHER_USER_ID)
     expect(mockInngestSend).toHaveBeenCalledWith({
       name: 'member/upserted',
       data: { userId: OTHER_USER_ID, workspaceId: DEV_WORKSPACE_ID },
