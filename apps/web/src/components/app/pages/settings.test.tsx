@@ -30,7 +30,7 @@ vi.mock('@/lib/process-image', () => ({
   processImageForUpload,
 }))
 
-function renderAccountSection() {
+function renderSection(section: string) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -39,7 +39,7 @@ function renderAccountSection() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <SettingsSectionContent section="account" />
+      <SettingsSectionContent section={section} />
     </QueryClientProvider>,
   )
 }
@@ -90,7 +90,7 @@ describe('SettingsSectionContent', () => {
       longitude: null,
     })
 
-    const { container } = renderAccountSection()
+    const { container } = renderSection('account')
     await screen.findByText('山田 太郎')
 
     const input = container.querySelector('input[type="file"]')
@@ -121,7 +121,7 @@ describe('SettingsSectionContent', () => {
   it('GIF アバターはアップロード前に弾く', async () => {
     const originalFile = new File(['gif'], 'avatar.gif', { type: 'image/gif' })
 
-    const { container } = renderAccountSection()
+    const { container } = renderSection('account')
     await screen.findByText('山田 太郎')
 
     const input = container.querySelector('input[type="file"]')
@@ -157,7 +157,7 @@ describe('SettingsSectionContent', () => {
       webpBytes,
     )
 
-    const { container } = renderAccountSection()
+    const { container } = renderSection('account')
     await screen.findByText('山田 太郎')
 
     const input = container.querySelector('input[type="file"]')
@@ -191,7 +191,7 @@ describe('SettingsSectionContent', () => {
       apngBytes,
     )
 
-    const { container } = renderAccountSection()
+    const { container } = renderSection('account')
     await screen.findByText('山田 太郎')
 
     const input = container.querySelector('input[type="file"]')
@@ -209,5 +209,89 @@ describe('SettingsSectionContent', () => {
 
     expect(processImageForUpload).not.toHaveBeenCalled()
     expect(fetchWithAuth).not.toHaveBeenCalledWith('/api/me/avatar', expect.anything())
+  })
+
+  it('定期ジョブセクションで保存済み preview を表示する', async () => {
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/scheduled-jobs' && !init) {
+        return {
+          ok: true,
+          json: async () => ([{
+            id: 'job-1',
+            rawInstruction: '毎月15日 9:00 に #登山本部 で @山田 をメンションして投票を投稿',
+            enabled: true,
+            timezone: 'Asia/Tokyo',
+            schedule: { type: 'monthly', dayOfMonth: 15, hour: 9, minute: 0 },
+            actionSpec: { type: 'poll', prompt: '来月の各週', choicesPrompt: '来月の各週', allowMultiple: false, anonymous: false },
+            mentionUserIds: ['user-1'],
+            mentions: [{ userId: 'user-1', displayName: '山田' }],
+            channelId: 'channel-1',
+            channelName: '登山本部',
+            nextRunAt: '2026-07-15T00:00:00.000Z',
+            lastCompilePreview: '次回 2026/07/15 09:00 (JST) に #登山本部 で @山田 をメンションし、「来月の各週」の投票を投稿します。',
+            createdAt: '2026-07-09T05:00:00.000Z',
+            updatedAt: '2026-07-09T05:00:00.000Z',
+          }]),
+        }
+      }
+
+      throw new Error(`unexpected fetch: ${input}`)
+    })
+
+    renderSection('scheduled-jobs')
+
+    expect(await screen.findByText('定期ジョブ')).toBeInTheDocument()
+    expect(await screen.findAllByText(/#登山本部/)).toHaveLength(2)
+    expect(screen.getByText(/次回実行:/)).toBeInTheDocument()
+  })
+
+  it('無効化済みジョブは nextRunAt が残っていても無効表示にする', async () => {
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/scheduled-jobs' && !init) {
+        return {
+          ok: true,
+          json: async () => ([{
+            id: 'job-1',
+            rawInstruction: '毎月15日 9:00 に #登山本部 で @山田 をメンションして投票を投稿',
+            enabled: false,
+            timezone: 'Asia/Tokyo',
+            schedule: { type: 'monthly', dayOfMonth: 15, hour: 9, minute: 0 },
+            actionSpec: { type: 'poll', prompt: '来月の各週', choicesPrompt: '来月の各週', allowMultiple: false, anonymous: false },
+            mentionUserIds: ['user-1'],
+            mentions: [{ userId: 'user-1', displayName: '山田' }],
+            channelId: 'channel-1',
+            channelName: '登山本部',
+            nextRunAt: '2026-07-15T00:00:00.000Z',
+            lastCompilePreview: '次回 2026/07/15 09:00 (JST) に #登山本部 で @山田 をメンションし、「来月の各週」の投票を投稿します。',
+            createdAt: '2026-07-09T05:00:00.000Z',
+            updatedAt: '2026-07-09T05:00:00.000Z',
+          }]),
+        }
+      }
+
+      throw new Error(`unexpected fetch: ${input}`)
+    })
+
+    renderSection('scheduled-jobs')
+
+    expect(await screen.findByText('次回実行: 無効')).toBeInTheDocument()
+  })
+
+  it('定期ジョブの取得失敗を空状態にせず表示する', async () => {
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/scheduled-jobs' && !init) {
+        return {
+          ok: false,
+          json: async () => ({ error: 'forbidden' }),
+        }
+      }
+
+      throw new Error(`unexpected fetch: ${input}`)
+    })
+
+    renderSection('scheduled-jobs')
+
+    expect(await screen.findByText('読み込みに失敗しました: Failed to fetch scheduled jobs')).toBeInTheDocument()
+    expect(screen.queryByText('まだジョブはありません。')).not.toBeInTheDocument()
   })
 })
