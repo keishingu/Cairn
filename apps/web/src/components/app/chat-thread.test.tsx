@@ -14,6 +14,12 @@ const { toastSuccess, toastError } = vi.hoisted(() => ({
 let clipboardWriteText: ReturnType<typeof vi.fn>
 
 vi.mock('@/lib/chat/client', () => ({
+  chatQueryKeys: {
+    projectChannels: ['project-channels'],
+    workspaceChannels: ['workspace-channels'],
+    dms: ['dms'],
+    messages: (channelId: string | null) => ['messages', channelId],
+  },
   formatChatMessageTime: () => '12:34',
   useChannelMembers: vi.fn(),
   useChannelMessages: vi.fn(),

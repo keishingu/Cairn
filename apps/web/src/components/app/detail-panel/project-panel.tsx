@@ -128,7 +128,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
 
   const renderTabContent = (id: string): React.ReactNode => {
     switch (id) {
-      case 'chat':     return <ChatTab project={project} {...(isMobile ? { isMobile: true } : {})}/>
+      case 'chat':     return <ChatTab project={project} isActive={tab === 'chat'} {...(isMobile ? { isMobile: true } : {})}/>
       case 'overview': return <OverviewTab project={project} onDeleted={onClose}/>
       case 'files':    return <FilesTab projectId={project.id} channelId={projectChannelId ?? null}/>
       case 'tasks':    return <TasksTab project={project}/>

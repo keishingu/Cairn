@@ -41,6 +41,7 @@ import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
 import { GENERIC_MIME_TYPES, resolveAttachmentMimeType } from '@/lib/attachments'
+import { useVisibleRealtimeChannel } from '../realtime/realtime-provider'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 
@@ -878,13 +879,14 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
 
 // ─── ChatThread ───────────────────────────────────────────────────
 
-export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile, targetMessageId }: {
+export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile, targetMessageId, realtimeActive = true }: {
   channelId: string | null
   channelName?: string
   isPrivate?: boolean
   compact?: boolean
   isMobile?: boolean
   targetMessageId?: string | null
+  realtimeActive?: boolean
 }) => {
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
@@ -900,6 +902,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
+  useVisibleRealtimeChannel(channelId, realtimeActive)
   // displayName → userId map for structured mention serialization
   const mentionMapRef = React.useRef<Map<string, string>>(new Map())
   // Ref to latest draft state for cleanup-time saves (avoids stale closure)

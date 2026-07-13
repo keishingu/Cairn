@@ -1,12 +1,14 @@
 'use client'
 
 import React from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
-import { findProjectChannelById, useProjectChannels } from '@/lib/chat/client'
+import { chatQueryKeys, findProjectChannelById, useProjectChannels } from '@/lib/chat/client'
 import { ChatThread } from '../../chat-thread'
 
-export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?: boolean }) => {
+export const ChatTab = ({ project, isMobile, isActive = true }: { project: ProjectDto; isMobile?: boolean; isActive?: boolean }) => {
+  const queryClient = useQueryClient()
   const { data: projectChannels, isLoading, isError } = useProjectChannels()
   const [selectedChannelId, setSelectedChannelId] = React.useState<string | null>(null)
 
@@ -14,6 +16,19 @@ export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?:
     () => projectChannels?.filter(channel => channel.projectId === project.id) ?? [],
     [projectChannels, project.id],
   )
+  const wasActiveRef = React.useRef(isActive)
+
+  React.useEffect(() => {
+    if (!activeChannel?.channelId) {
+      wasActiveRef.current = isActive
+      return
+    }
+    if (isActive && !wasActiveRef.current) {
+      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(activeChannel.channelId) })
+      void queryClient.invalidateQueries({ queryKey: ['channel-files', activeChannel.channelId] })
+    }
+    wasActiveRef.current = isActive
+  }, [activeChannel?.channelId, isActive, queryClient])
 
   const generalChannel = React.useMemo(
     () => projectChannels ? findProjectChannelById(projectChannels, project.id) : null,
@@ -86,6 +101,7 @@ export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?:
         channelId={activeChannel.channelId}
         channelName={activeChannel.milestoneId ? activeChannel.channelName : activeChannel.projectTitle}
         compact={true}
+        realtimeActive={isActive}
         {...(isMobile ? { isMobile: true } : {})}
       />
     </>
