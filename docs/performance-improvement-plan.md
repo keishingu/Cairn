@@ -49,6 +49,7 @@ Cairn は Vercel 東京リージョン（`vercel.json` の `hnd1`）+ Supabase �
 - `auth.getUser()`（ネットワーク往復）を `auth.getClaims()` に置き換え、`apps/web/src/lib/auth-jwt.ts` の `verifyAccessToken()` に集約した。対象は `middleware.ts`（全ナビゲーション）と `get-auth-context.ts`（全 API リクエスト）
 - JWKS はモジュールレベルにキャッシュ（TTL 10 分）して `getClaims` に渡す。`getClaims` 内蔵の JWKS キャッシュはクライアントインスタンス単位で、リクエストごとに新クライアントを生成する本アプリでは跨がないため
 - **後方互換**: `getClaims` は対称鍵（HS256）・JWKS 未設定・WebCrypto 不在を検知して自動で `getUser`（Auth API 往復）にフォールバックする。したがって署名鍵移行前は現状と同挙動・後退なしで、移行後に自動でローカル検証へ切り替わる
+- **JWKS の事前取得は非対称鍵と判明した場合のみ行う**: 当初は `verifyAccessToken` が毎回無条件に JWKS 取得を試みていたため、署名鍵移行前（HS256運用中）は「無駄な JWKS 往復 + `getUser` フォールバック」で往復が 2 本に増え、P1 の趣旨（往復を増やさない）に反する状態だった。JWT の header だけをローカルでデコード（署名検証はしない、`alg`/`kid` の確認のみ）して非対称鍵と判明したときだけ JWKS を取得するよう修正し、対称鍵運用中は `getClaims` へのフォールバック 1 本のみに戻した（`decodeJwtHeader` / `needsJwks`、レビュー指摘により修正）
 - **残作業（この効果を実際に得るための前提）**: Supabase ダッシュボードで JWT Signing Keys（非対称鍵）へ移行する。**移行するまでは `getUser` フォールバックのままで速度は変わらない**。ローカル検証が効いているかは、移行後に API の TTFB と Auth API へのアウトバウンド呼び出し数で確認する
 - 注意点: トークン失効の即時性が access token の TTL（`supabase/config.toml` の `jwt_expiry`、現状 3600 秒）に依存するようになる。非活性化の即時遮断は 2.2 の membership 再照合が引き続き担保するため権限面の後退はない（ログアウト・BAN の反映が最大 TTL 分遅れる点のみ許容判断が必要）
 

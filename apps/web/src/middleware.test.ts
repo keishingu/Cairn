@@ -2,10 +2,11 @@ import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const getClaims = vi.fn()
+const getSession = vi.fn()
 
 vi.mock('@supabase/ssr', () => ({
   createServerClient: () => ({
-    auth: { getClaims },
+    auth: { getClaims, getSession },
   }),
 }))
 
@@ -24,7 +25,11 @@ function makeRequest(pathname: string): NextRequest {
 describe('middleware', () => {
   beforeEach(() => {
     getClaims.mockReset()
-    // JWKS 取得は対称鍵想定で空を返す（getClaims 側の検証に委ねる）。実ネットワークを叩かない
+    getSession.mockReset()
+    // verifyAccessToken は token 省略時にまず getSession でトークンを解決する
+    getSession.mockResolvedValue({ data: { session: { access_token: 'session-token' } }, error: null })
+    // このトークンは JWT 形状ではないため header デコードに失敗し、JWKS 取得は発生しない想定。
+    // 万一 fetch されても実ネットワークを叩かないようスタブしておく
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ keys: [] }) }))
     process.env['NEXT_PUBLIC_SUPABASE_URL'] = 'http://localhost:54321'
     process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'] = 'dummy'

@@ -9,6 +9,7 @@ const { mockHeaders, mockCookies, mockSupabase, mockDb } = vi.hoisted(() => {
   const mockSupabase = {
     auth: {
       getClaims: vi.fn(),
+      getSession: vi.fn(),
     },
   }
   const mockDb = {
@@ -20,6 +21,9 @@ const { mockHeaders, mockCookies, mockSupabase, mockDb } = vi.hoisted(() => {
 // verifyAccessToken 内の JWKS 取得は Cookie 認証の検証経路に影響しないよう、
 // NEXT_PUBLIC_SUPABASE_URL 未設定時は fetch せず getClaims に委ねる（本テストは URL 未設定）
 const okClaims = { data: { claims: { sub: 'user-1' } }, error: null }
+// Cookie 経路（token 省略時）は getSession でトークンを解決してから getClaims に渡す。
+// このトークンは JWT 形状ではないため header デコードに失敗し、JWKS 取得は発生しない
+const SESSION_TOKEN = 'session-access-token'
 
 vi.mock('next/headers', () => ({
   headers: mockHeaders,
@@ -61,6 +65,10 @@ describe('get-auth-context', () => {
   beforeEach(() => {
     // JWKS の実フェッチを避け、getClaims 経由の検証（Cookie/Bearer）だけを検証する
     delete process.env['NEXT_PUBLIC_SUPABASE_URL']
+    mockSupabase.auth.getSession.mockResolvedValue({
+      data: { session: { access_token: SESSION_TOKEN } },
+      error: null,
+    })
   })
 
   afterEach(() => {
@@ -77,8 +85,9 @@ describe('get-auth-context', () => {
     const { getAuthContext } = await import('./get-auth-context')
     const result = await getAuthContext()
 
-    // Cookie 経路は token なし（getClaims が getSession からセッションを取る）
-    expect(mockSupabase.auth.getClaims).toHaveBeenCalledWith(undefined, undefined)
+    // Cookie 経路は verifyAccessToken が getSession でトークンを解決してから getClaims に渡す
+    expect(mockSupabase.auth.getSession).toHaveBeenCalledTimes(1)
+    expect(mockSupabase.auth.getClaims).toHaveBeenCalledWith(SESSION_TOKEN, undefined)
     expect(mockSupabase.auth.getClaims).toHaveBeenCalledTimes(1)
     expect(result).toEqual({
       ctx: { userId: 'user-1', workspaceId: 'ws-1' },
@@ -123,7 +132,7 @@ describe('get-auth-context', () => {
     const { getAuthUser } = await import('./get-auth-context')
     const result = await getAuthUser()
 
-    expect(mockSupabase.auth.getClaims).toHaveBeenCalledWith(undefined, undefined)
+    expect(mockSupabase.auth.getClaims).toHaveBeenCalledWith(SESSION_TOKEN, undefined)
     expect(result).toEqual({ userId: 'user-1', error: null })
   })
 
