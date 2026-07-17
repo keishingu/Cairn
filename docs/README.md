@@ -24,7 +24,7 @@
 | 課金（未実装・設計のみ） | `pricing-plan-design.md`（何を売るか） | `billing-implementation-design.md`（どう実装するか） |
 | マイルストーン（未実装・設計のみ） | `milestone-design.md`（差分分析・実装計画） | `07_notifications_and_unread.md`（エンティティ=チャンネル思想） |
 | AI メンバー・定期ジョブ（未実装・設計のみ） | `10_ai_member_design.md` / `scheduled-jobs-design.md` | `ai-self-improvement-loop.md` |
-| AI常駐PMO・プライベートナッジ（未実装・設計のみ） | `ai-pmo-design.md` | `10_ai_member_design.md`（Stage 3 との関係） |
+| AI常駐PMO・プライベートナッジ（未実装・設計のみ） | `ai-pmo-design.md` | `ai-era-pm-strategy.md`（戦略背景）、`10_ai_member_design.md`（Stage 3 との関係） |
 | LP・マーケティング | `lp-content-redesign.md` | `landing-page-routing-design.md`、`lp-soul-page-copy.md` |
 
 ## 現行リファレンス
@@ -68,6 +68,7 @@
 | ファイル | 内容 | 作成 |
 |---|---|---|
 | [`09_product_strategy_notes.md`](./09_product_strategy_notes.md) | 展開戦略・魅力向上の優先課題の議論記録 | 2026-06-11 |
+| [`ai-era-pm-strategy.md`](./ai-era-pm-strategy.md) | AI時代のPM ツール戦略（3つの逆転）の合意記録: 会話ソース連携・カレンダー経由の紐付け・出席者承認・MCPサーバーとしての座取り・沈黙の設計 | 2026-07-17 |
 
 ## アーカイブ
 
