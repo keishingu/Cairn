@@ -233,7 +233,7 @@ ai_scan_states
 
 | 現在の行 | 条件が継続 | 条件が解消 |
 |---|---|---|
-| 行なし | `active` で INSERT（`ON CONFLICT DO NOTHING` は競合保険） | 何もしない |
+| 行なし | **横断クールダウンチェック**（下記）を経て `active` で INSERT（`ON CONFLICT DO NOTHING` は競合保険） | 何もしない |
 | `active` | そのまま（既に表示中。再通知しない） | `resolved` にする |
 | `dismissed` / `suppressed` かつ `remind_after` 到来 | `active` に戻す（= 再ナッジ。新規配信として扱い、日次上限を1消費し Realtime UPDATE を配信） | `resolved` にする |
 | `dismissed` / `suppressed` かつ `remind_after` 未到来 | そのまま抑止 | そのまま |
@@ -241,6 +241,8 @@ ai_scan_states
 
 - `remind_after` により再 active 化のタイミングを制御する。`dedupe_key` は変えない
 - 状況が本質的に変わる（期限変更・新しい停滞週）と §5.1 の設計どおり key 自体が変わり、別の関心事として新規行が立つ
+
+**横断クールダウンチェック**: `task_stalled` の dedupe_key は「ハートビート実行日の週」を含んで週ごとに回転する（§5.1）。ある週の行に `not_helpful`（`remind_after = now + 30日`）を付けても、翌週は別の `dedupe_key` を持つ新規行になるため、行単位の `remind_after` だけでは30日抑止をすり抜けてしまう。これを防ぐため、**「行なし」で新規 INSERT する前に、同一 `(user_id, detector, task_id)` の組で `status = 'suppressed'` かつ `remind_after > now()` の行が既に存在しないかを確認し、あれば INSERT をスキップする**（`dedupe_key` が変わっても `detector` と `task_id` は同一タスクを指し続けるため、この2列で対象を横断的に同定できる。新カラムは不要）。`task_due_soon` / `task_overdue`（key に日付を含むが週のように繰り返し回転はしない）や `unanswered_ask` / `llm_risk`（`message_id` で同定）にも同じ横断チェックを適用する
 
 ### 6.2 クールダウンとフィードバック学習
 
@@ -285,7 +287,8 @@ ai_scan_states
   - UPDATE も対象にするのは、ハートビートがタスク完了・期限変更を検知して `status: 'active' → 'resolved'` にする（§4.1）、フィードバックで `suppressed` にする、といった更新を開きっぱなしのチャット画面にも反映するため。INSERT のみだと、解消済みのナッジカードが無関係な再取得・再接続まで表示され続けてしまう
 - 実装時の注意: `RealtimeProvider`（`apps/web/src/components/realtime/realtime-provider.tsx`）のユーザートピック分岐は現状 `table === 'notifications'` / `table === 'channel_read_states'` のみを処理しており、`ai_nudges` は素通りする。`table === 'ai_nudges'` の分岐を追加してナッジ用クエリキーを invalidate しない限り、開きっぱなしのチャット画面に新規ナッジも状態変化も反映されない
 - アプリ内通知（ベル）には `notification_type = 'ai'`（enum 定義済み）で記録し、チャットを開いていなくても後から回収できるようにする
-  - **ベル通知はナッジと同じライフサイクルに従わせる**。`notifications` の一覧 API（`apps/web/src/app/api/notifications/route.ts`）は `user_id` / `workspace_id` でしかフィルタせず `body` をそのまま返すため、§7 のアクセス失効処理をナッジ側だけで行うと、ベルに複製された本文が失効後も読める迂回路になる。対策として `notifications.data` に `nudgeId` を持たせ、ナッジが `suppressed`（アクセス失効）になった時点で対応する通知行も削除する。読み取り時にチャンネル/プロジェクトアクセスを都度再評価する案もあるが、通知一覧は横断的で高頻度なため、失効イベント時のクリーンアップ方式を基本とする
+  - **ベル通知はナッジと同じライフサイクルに従わせる**。`notifications` の一覧 API（`apps/web/src/app/api/notifications/route.ts`）は `user_id` / `workspace_id` でしかフィルタせず `body` をそのまま返すため、§7 のアクセス失効処理をナッジ側だけで行うと、ベルに複製された本文が失効後も読める迂回路になる。対策として `notifications.data` に `nudgeId` を持たせ、**`ai_nudges.status` が `suppressed` に遷移した時点（理由を問わない）で対応する通知行も削除する**共通フックとして実装する。読み取り時にチャンネル/プロジェクトアクセスを都度再評価する案もあるが、通知一覧は横断的で高頻度なため、失効イベント時のクリーンアップ方式を基本とする
+  - この共通フックにより、アクセス失効（§7）だけでなくキルスイッチ ON（§8.3）も同じ経路でベル通知を消せる。両者を別々の削除ロジックとして実装しない
 - **Push は初期は送らない**。ナッジは「開いたときにそっと目に入る」のが適切な強度であり、Push で割り込む価値がある確証を得てから解放する
 
 ### 8.3 個人キルスイッチ（Phase 1 必須）
@@ -293,7 +296,8 @@ ai_scan_states
 ナッジ機能の全体テーゼが「うるさくない・監視しない（don't be evil）」である以上、**うるさいと感じた本人が自分で止められない状態で出荷してはならない**。よって最小のオフスイッチを Phase 1 の必須要件とする（F-11）。
 
 - **最小構成**: ユーザー単位の boolean 1つ。`profiles` に `ai_nudges_enabled boolean NOT NULL DEFAULT true` を1カラム追加する（専用のユーザー設定テーブルは現状無いため、プロフィール系カラムに揃える）
-- **サーバー側で尊重する**: ハートビートが**生成・配信の前に**このフラグを見て、OFF のユーザーはナッジ生成対象から外す（UI で隠すだけにしない）。既存の未応答ナッジも OFF 後は一覧・ベルに出さない
+- **サーバー側で尊重する**: ハートビートが**生成・配信の前に**このフラグを見て、OFF のユーザーはナッジ生成対象から外す（UI で隠すだけにしない）
+- **トグル OFF は即時遡及する**: `ai_nudges_enabled` を `false` に更新するトランザクションの中で、そのユーザーの `active` / `dismissed` 状態にある既存ナッジを全て `suppressed` に遷移させる。これにより §8.2 の共通フック（`suppressed` 遷移時の通知行削除）がそのまま働き、チャット欄・ベルの両方から既存の未応答ナッジが即座に消える。専用の削除処理を別途持たない
 - **UI**: 既存の設定・通知セクション（`apps/web/src/components/app/pages/settings.tsx`）に1トグルを追加する
 - **今回やらないカスタマイズ**（後続フェーズ）: 頻度上限・静寂時間帯・detector 別 ON/OFF・ワークスペース単位/プロジェクト単位の粒度。Phase 1 は「全部 ON か 全部 OFF か」の1段だけ
 
