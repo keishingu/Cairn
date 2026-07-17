@@ -154,6 +154,8 @@ ai_scan_states
 
 `sourceType` に `'message'` を追加し、チャットメッセージを埋め込み対象にする。巡回には必須ではなく（§5.2）、ナッジへの文脈付与・過去経緯の検索（F-10）で効く。粒度は1メッセージ単位ではなく「同一チャンネル・近接時間帯のまとまり」でチャンク化する（短文が多くベクトルが痩せるため）。
 
+**アクセス制御上の注意**: 既存の `document_chunks` にはチャンネル識別子がなく、`searchChunks` は `workspaceId` 単位でしか絞れない（ゲスト向けのフィルタも `project` / `file` チャンクの扱いしか知らない）。`message` チャンクを追加する際は `metadata` に `channelId`（+ プライベートチャンネルなら判定に必要な情報）を必ず埋め込み、`searchChunks` 側もプライベートチャンネル・プロジェクトチャンネルの guest 制限を `message` チャンクに対して適用するよう拡張する。これを怠ると、参加していないプライベートチャンネルの発言が `/api/ai/conversations` の RAG コンテキスト経由で他メンバーに漏れる。
+
 ---
 
 ## 5. 検知設計
@@ -164,10 +166,12 @@ ai_scan_states
 
 | detector | 条件（初期値） | 宛先 | dedupe_key |
 |---|---|---|---|
-| `task_due_soon` | `dueDate <= today + 3日` かつ `status = 'todo'` かつ `assigneeId IS NOT NULL` | 担当者 | `task_due_soon:{taskId}:{dueDate}` |
-| `task_overdue` | `dueDate < today` かつ `status != 'done'` | 担当者 | `task_overdue:{taskId}:{dueDate}` |
-| `task_stalled` | `status = 'in_progress'` かつ `updatedAt < now - 7日` | 担当者 | `task_stalled:{taskId}:{updatedAtの週}` |
+| `task_due_soon` | `today <= dueDate <= today + 3日` かつ `status = 'todo'` かつ `assigneeId IS NOT NULL` | 担当者 | `task_due_soon:{taskId}:{dueDate}` |
+| `task_overdue` | `dueDate < today` かつ `status != 'done'` かつ `assigneeId IS NOT NULL` | 担当者 | `task_overdue:{taskId}:{dueDate}` |
+| `task_stalled` | `status = 'in_progress'` かつ `updatedAt < now - 7日` かつ `assigneeId IS NOT NULL` | 担当者 | `task_stalled:{taskId}:{updatedAtの週}` |
 
+- 3検知器とも `assigneeId IS NOT NULL` を必須とする。`ai_nudges.user_id` は NOT NULL のため、担当者未設定のタスクは送り先が存在せず対象から除外する（未アサインタスクの停滞は別途「担当者を決めましょう」という文脈だが、初期スコープには含めない）
+- `task_due_soon` に `dueDate >= today` の下限を設け、`task_overdue` と排他にする。下限がないと期限超過タスクが両方の条件を満たし、dedupe_key が異なるため2件のナッジが飛んで1日3件の枠を無駄に消費する
 - dedupe_key に `dueDate` を含めるため、期限が変更されたら（=状況が変わったら）再度ナッジできる
 - ナッジの `channel_id` は対象タスクのプロジェクトチャンネル。ハートビートは 1日1回、各ワークスペースの朝（初期値 09:00 JST）に実行
 - 閾値（3日・7日）は将来ワークスペース設定化する。初期はコード定数でよい
@@ -256,6 +260,7 @@ ai_scan_states
 ### 8.2 Realtime・通知との関係
 
 - 配信は既存方式に従う: `ai_nudges` への INSERT に DB トリガーを張り、`realtime.broadcast_changes()` で**本人の user topic** に配信 → `RealtimeProvider` がナッジクエリを invalidate → REST 再取得。ポーリングは行わない
+- 実装時の注意: `RealtimeProvider`（`apps/web/src/components/realtime/realtime-provider.tsx`）のユーザートピック分岐は現状 `table === 'notifications'` / `table === 'channel_read_states'` のみを処理しており、`ai_nudges` は素通りする。`table === 'ai_nudges'` の分岐を追加してナッジ用クエリキーを invalidate しない限り、開きっぱなしのチャット画面に新規ナッジが即時反映されない
 - アプリ内通知（ベル）には `notification_type = 'ai'`（enum 定義済み）で記録し、チャットを開いていなくても後から回収できるようにする
 - **Push は初期は送らない**。ナッジは「開いたときにそっと目に入る」のが適切な強度であり、Push で割り込む価値がある確証を得てから解放する
 
