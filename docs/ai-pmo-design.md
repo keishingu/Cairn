@@ -269,6 +269,7 @@ ai_scan_states
   - UPDATE も対象にするのは、ハートビートがタスク完了・期限変更を検知して `status: 'active' → 'resolved'` にする（§4.1）、フィードバックで `suppressed` にする、といった更新を開きっぱなしのチャット画面にも反映するため。INSERT のみだと、解消済みのナッジカードが無関係な再取得・再接続まで表示され続けてしまう
 - 実装時の注意: `RealtimeProvider`（`apps/web/src/components/realtime/realtime-provider.tsx`）のユーザートピック分岐は現状 `table === 'notifications'` / `table === 'channel_read_states'` のみを処理しており、`ai_nudges` は素通りする。`table === 'ai_nudges'` の分岐を追加してナッジ用クエリキーを invalidate しない限り、開きっぱなしのチャット画面に新規ナッジも状態変化も反映されない
 - アプリ内通知（ベル）には `notification_type = 'ai'`（enum 定義済み）で記録し、チャットを開いていなくても後から回収できるようにする
+  - **ベル通知はナッジと同じライフサイクルに従わせる**。`notifications` の一覧 API（`apps/web/src/app/api/notifications/route.ts`）は `user_id` / `workspace_id` でしかフィルタせず `body` をそのまま返すため、§7 のアクセス失効処理をナッジ側だけで行うと、ベルに複製された本文が失効後も読める迂回路になる。対策として `notifications.data` に `nudgeId` を持たせ、ナッジが `suppressed`（アクセス失効）になった時点で対応する通知行も削除する。読み取り時にチャンネル/プロジェクトアクセスを都度再評価する案もあるが、通知一覧は横断的で高頻度なため、失効イベント時のクリーンアップ方式を基本とする
 - **Push は初期は送らない**。ナッジは「開いたときにそっと目に入る」のが適切な強度であり、Push で割り込む価値がある確証を得てから解放する
 
 ---
