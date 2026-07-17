@@ -116,10 +116,10 @@ ai_nudges
   id            uuid PK
   workspace_id  uuid NOT NULL → workspaces
   user_id       uuid NOT NULL → profiles        -- 宛先。本人のみ閲覧可（RLS / API 双方で強制）
-  channel_id    uuid → channels                 -- チャット欄のどこに出すか（プロジェクトチャンネル）
-  project_id    uuid → projects
-  task_id       uuid → tasks                    -- 対象タスク（ルール検知時）
-  message_id    uuid → messages                 -- 対象メッセージ（LLM検知時の根拠）
+  channel_id    uuid → channels    ON DELETE SET NULL  -- チャット欄のどこに出すか（プロジェクトチャンネル）
+  project_id    uuid → projects    ON DELETE SET NULL
+  task_id       uuid → tasks       ON DELETE SET NULL  -- 対象タスク（ルール検知時）
+  message_id    uuid → messages    ON DELETE SET NULL  -- 対象メッセージ（LLM検知時の根拠）
   detector      text NOT NULL                   -- 'task_due_soon' | 'task_overdue' | 'task_stalled' | 'unanswered_ask' | 'llm_risk'
   dedupe_key    text NOT NULL                   -- 再発防止キー（§6.1）
   title         text NOT NULL
@@ -137,6 +137,7 @@ ai_nudges
 
 - `status: 'resolved'` は対象の解消（タスク完了・期限変更）をハートビートが検知して立てる。ユーザー操作なしで消えるナッジは「AIがちゃんと見ている」体験になる
 - `feedback: 'not_helpful'` は同一 `detector × 対象` の長期クールダウンに使う（§6.2）
+- `task_id` / `message_id` / `channel_id` / `project_id` は全て `ON DELETE SET NULL` とする。デフォルトの `NO ACTION` のままだと、ナッジが1件でも紐づいたタスクは `DELETE FROM tasks` が失敗し（例: `apps/web/src/app/api/tasks/[id]/route.ts` のタスク削除エンドポイントが直接 `db.delete(tasks)` するため）、通常のタスク削除操作を壊してしまう。参照先が消えた古いナッジは表示上「対象は削除されました」等にフォールバックする
 
 ### 4.2 `ai_scan_states`（新規・Phase 2）
 
@@ -243,6 +244,7 @@ ai_scan_states
 - **非活性メンバーにはナッジを送らない**。宛先解決は `active_workspace_members` ビューを経由する（CLAUDE.md の認可規約に準拠）
 - **ゲスト**は参加プロジェクトのタスク・チャンネルに関するナッジのみ受け取る
 - `ai_nudges` の読み取りは `user_id = auth.uid()` 本人のみ（API層 + 将来のRLS双方で強制）。owner / admin にも例外を作らない
+- **`user_id = auth.uid()` だけでは不十分**。生成時のアクセス検証（本節冒頭）はナッジ作成時点のスナップショットに過ぎず、その後に宛先ユーザーが非活性化・ゲストプロジェクトから除外・プライベートチャンネルから削除された場合、`user_id` 一致のみのポリシーでは古いナッジの `body` / `reason` を読めてしまう。既存のチャンネル閲覧が `requireChannelAccess` / `can_access_channel` で毎回アクセスを再評価しているのと同様に、**ナッジの読み取り（一覧取得API・RLS）でも現在の active membership + channel/project アクセスを都度再チェックする**。アクセスを失ったユーザーに紐づくナッジは、読み取り時に除外するか、失効イベント発生時に `status: 'suppressed'` へ遷移させて即座に無効化する
 
 ---
 
