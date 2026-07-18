@@ -1,4 +1,4 @@
--- タスク完了・削除の入口に依存せず、対応するAIナッジとベル通知を即時解消する。
+-- タスクの条件変更・完了・削除の入口に依存せず、対応するAIナッジとベル通知を即時解消する。
 -- BEFORE DELETEで実行し、ai_nudges.task_idのON DELETE SET NULLより先に対象を特定する。
 CREATE OR REPLACE FUNCTION public.resolve_ai_nudges_on_task_lifecycle()
 RETURNS trigger
@@ -20,6 +20,16 @@ BEGIN
     SET status = 'resolved', remind_after = NULL
     WHERE task_id = NEW.id
       AND status = 'active';
+  ELSE
+    UPDATE public.ai_nudges
+    SET status = 'resolved', remind_after = NULL
+    WHERE task_id = NEW.id
+      AND status = 'active'
+      AND (
+        (detector IN ('task_due_soon', 'task_overdue') AND OLD.due_date IS DISTINCT FROM NEW.due_date)
+        OR (detector = 'task_due_soon' AND OLD.status IS DISTINCT FROM NEW.status)
+        OR (detector = 'task_stalled' AND OLD.updated_at IS DISTINCT FROM NEW.updated_at)
+      );
   END IF;
   RETURN NEW;
 END;
@@ -27,8 +37,9 @@ $$;--> statement-breakpoint
 REVOKE ALL ON FUNCTION public.resolve_ai_nudges_on_task_lifecycle() FROM PUBLIC;--> statement-breakpoint
 
 DROP TRIGGER IF EXISTS resolve_ai_nudges_before_task_done ON public.tasks;--> statement-breakpoint
-CREATE TRIGGER resolve_ai_nudges_before_task_done
-BEFORE UPDATE OF status ON public.tasks
+DROP TRIGGER IF EXISTS resolve_ai_nudges_before_task_change ON public.tasks;--> statement-breakpoint
+CREATE TRIGGER resolve_ai_nudges_before_task_change
+BEFORE UPDATE OF status, due_date, updated_at ON public.tasks
 FOR EACH ROW EXECUTE FUNCTION public.resolve_ai_nudges_on_task_lifecycle();--> statement-breakpoint
 
 DROP TRIGGER IF EXISTS resolve_ai_nudges_before_task_delete ON public.tasks;--> statement-breakpoint
