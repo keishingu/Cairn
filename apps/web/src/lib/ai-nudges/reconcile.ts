@@ -17,6 +17,7 @@ import {
   AI_NUDGE_DAILY_LIMIT,
   cooldownTargetKey,
   detectTaskNudges,
+  effectiveRecipientAccess,
   reconcileAction,
   startOfJstDay,
   type TaskNudgeCandidate,
@@ -153,7 +154,13 @@ export async function reconcilePhaseOneAiNudges(now = new Date()) {
 
     for (const row of existing) {
       const candidate = candidateByConcern.get(concernKey(row.userId, row.dedupeKey))
-      const recipientCanAccess = row.profileEnabled && row.recipientCanAccess
+      // candidateは現在アクセス可能なtask/project/channelからだけ生成されるため、
+      // 保存済みの古い導線より現在candidateの到達可能性を優先する。
+      const recipientCanAccess = effectiveRecipientAccess({
+        profileEnabled: row.profileEnabled,
+        storedRecipientCanAccess: row.recipientCanAccess,
+        currentCandidateAccessible: candidate !== undefined,
+      })
       const action = reconcileAction({
         status: row.status,
         remindAfter: row.remindAfter,
@@ -181,6 +188,9 @@ export async function reconcilePhaseOneAiNudges(now = new Date()) {
           .update(aiNudges)
           .set({
             status: 'active',
+            channelId: candidate.channelId,
+            projectId: candidate.projectId,
+            taskId: candidate.taskId,
             feedback: null,
             remindAfter: null,
             respondedAt: null,

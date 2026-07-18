@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import {
   cooldownTargetKey,
   detectTaskNudges,
+  effectiveRecipientAccess,
   heartbeatWeekKey,
   reconcileAction,
   type TaskRuleInput,
@@ -56,6 +57,23 @@ describe('Phase 1 AIナッジのルール検知', () => {
 })
 
 describe('AIナッジの状態リコンサイル', () => {
+  test('保存済み導線が失効していても現在candidateへ到達できればアクセス可能とする', () => {
+    expect(
+      effectiveRecipientAccess({
+        profileEnabled: true,
+        storedRecipientCanAccess: false,
+        currentCandidateAccessible: true,
+      }),
+    ).toBe(true)
+    expect(
+      effectiveRecipientAccess({
+        profileEnabled: false,
+        storedRecipientCanAccess: true,
+        currentCandidateAccessible: true,
+      }),
+    ).toBe(false)
+  })
+
   test('activeの条件が解消したらresolvedにする', () => {
     expect(
       reconcileAction({

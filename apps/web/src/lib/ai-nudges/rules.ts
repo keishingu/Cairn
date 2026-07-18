@@ -148,6 +148,14 @@ export function detectTaskNudges(task: TaskRuleInput, now: Date): TaskNudgeCandi
 
 export type ReconcileAction = 'keep' | 'resolve' | 'suppress' | 'reactivate'
 
+export function effectiveRecipientAccess(input: {
+  profileEnabled: boolean
+  storedRecipientCanAccess: boolean
+  currentCandidateAccessible: boolean
+}): boolean {
+  return input.profileEnabled && (input.currentCandidateAccessible || input.storedRecipientCanAccess)
+}
+
 export function reconcileAction(input: {
   status: AiNudgeStatus
   remindAfter: Date | null
