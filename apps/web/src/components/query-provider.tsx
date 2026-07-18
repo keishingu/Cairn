@@ -18,6 +18,8 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
             // staleTime が短いと、放置後にタブへ戻った瞬間アクティブなクエリが一斉に stale 化して
             // refetchOnWindowFocus が全クエリを同時再取得し、その帯域が初回クリックの遷移と競合して
             // 「放置後の初回遷移だけ遅い」体感になっていた。長時間放置の本当の catch-up は下記で担保する。
+            // メッセージ・通知など Realtime 取りこぼし時に focus refetch が唯一の catch-up 経路になる
+            // クエリは、この既定値より短い staleTime を個別指定している（useChannelMessages 等）。
             staleTime: 5 * 60 * 1000,
             // Realtime 切断中のスリープ/タブ復帰時に取りこぼしを回収する（ポーリング廃止に伴う catch-up）。
             // staleTime を超える離脱でのみ発火するため、短時間離脱ではバーストしない。

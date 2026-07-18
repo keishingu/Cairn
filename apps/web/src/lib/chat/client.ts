@@ -280,11 +280,14 @@ export function useCurrentUser() {
 
 export function useChannelMessages(channelId: string | null) {
   // 新着・編集・削除・リアクションは RealtimeProvider が messages / message_reactions の
-  // 購読で invalidate するためポーリングしない
+  // 購読で invalidate するためポーリングしない。
+  // ただし取りこぼし（放置中の broadcast 未達）時は focus 復帰時の refetch が唯一の catch-up
+  // 経路のため、staleTime はグローバル既定より短く保つ（query-provider.tsx 参照）
   return useQuery({
     queryKey: chatQueryKeys.messages(channelId),
     queryFn: () => fetchChannelMessages(channelId!),
     enabled: !!channelId,
+    staleTime: 60 * 1000,
   })
 }
 
