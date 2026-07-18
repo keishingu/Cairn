@@ -30,6 +30,11 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # 本番DBへの dry-run（SUPABASE_DB_URL_PRODUCTION）を行うため production
+    # Environment を参照する。workflow_dispatch は任意ブランチから実行できるため、
+    # Deployment branch policy（main / develop のみ許可）で他ブランチからの
+    # 実行に Secret が渡らないようにする。設定手順は docs/production-deployment.md
+    environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4

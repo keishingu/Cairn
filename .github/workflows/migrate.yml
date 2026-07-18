@@ -12,10 +12,21 @@ name: DB Migrate
 #   （カラム削除・リネーム等）は2段階リリースで行う。詳細は docs/production-deployment.md
 # - DB URL は Session Pooler（ポート5432、ユーザー postgres.<ref>）を使うこと。
 #   GitHub-hosted runner は IPv4 のみのため、Direct connection（IPv6専用）には繋がらない
+#
+# セキュリティ: SUPABASE_DB_URL_PRODUCTION / SUPABASE_DB_URL_PREVIEW はリポジトリ
+# Secret ではなく GitHub Environment（production / preview）の Secret として登録する
+# こと。workflow_dispatch は任意ブランチから実行でき、そのブランチ上で改変された
+# workflow ファイル（例: case文のガードを削除したもの）がそのまま動いてしまうため、
+# ジョブ内の if 文や case 文だけでは Secret 漏洩を防げない。Environment の
+# Deployment branch policy（このジョブが実際に実行されている GITHUB_REF を
+# GitHub 側で検証する。ワークフローファイルの内容では改変できない）で
+# main / develop 以外のブランチには Secret 自体が渡らないようにする。
+# 設定手順は docs/production-deployment.md を参照。
 on:
   push:
     branches: [main, develop]
-  # 初回セットアップ後の手動適用や、失敗後のリトライ用（main / develop でのみ実行可）
+  # 初回セットアップ後の手動適用や、失敗後のリトライ用（main / develop でのみ実行可。
+  # 他ブランチからの実行は Environment の Deployment branch policy でブロックされる）
   workflow_dispatch:
 
 permissions:
@@ -30,6 +41,11 @@ jobs:
   migrate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # main → production Environment（Secret: SUPABASE_DB_URL_PRODUCTION）
+    # develop → preview Environment（Secret: SUPABASE_DB_URL_PREVIEW）
+    # main / develop 以外のブランチでは、Deployment branch policy によりどちらの
+    # Environment にも入れずジョブが失敗する（＝ Secret が渡らない）
+    environment: ${{ github.ref_name == 'main' && 'production' || 'preview' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,7 +79,7 @@ jobs:
               ;;
           esac
           if [ -z "$DB_URL" ]; then
-            echo "::error::Secret $SECRET_NAME が未設定です。Settings → Secrets に Session Pooler の接続文字列（postgresql://postgres.<ref>:<password>@aws-X-ap-northeast-1.pooler.supabase.com:5432/postgres）を登録してください。"
+            echo "::error::Secret $SECRET_NAME が未設定です。対応する GitHub Environment（production / preview）に Session Pooler の接続文字列（postgresql://postgres.<ref>:<password>@aws-X-ap-northeast-1.pooler.supabase.com:5432/postgres）を登録してください。"
             exit 1
           fi
           echo "::notice::$TARGET へマイグレーションを適用します。"

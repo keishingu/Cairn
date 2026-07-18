@@ -32,7 +32,20 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
   2. リリースワークフロー（`release.yml`）は開始直後に、**develop 側の DB Migrate 実行結果**（GitHub Actions API で該当コミットの `migrate.yml` 実行を照会）を確認する。未完了・失敗ならリリースPRを作らず中断する（`dry-run` は SQL を実行しないため、実際に preview へ適用できたかはこの確認でのみ担保される）
   3. 続けて本番DBへ **dry-run** し、適用予定一覧を Release PR 本文に記載する。接続不可・履歴不整合なら PR を作らず中断する
   4. `main` 宛 PR では `.github/workflows/migration-dry-run.yml` が PR チェックとして dry-run を再実行する（リリースPRが open の間に develop が進んでも再検証される）。**このジョブは head branch が `develop` かつ同一リポジトリの場合のみ実行する**（`pull_request` イベントは同一リポジトリのブランチには secrets を渡すため、それ以外のブランチから `main` 宛に PR が作られても本番 Secret を使わせないためのガード）
-- **必要な Secrets**（Settings → Secrets and variables → Actions）: `SUPABASE_DB_URL_PRODUCTION` / `SUPABASE_DB_URL_PREVIEW`
+
+### Secret の管理（GitHub Environments 必須）
+
+`SUPABASE_DB_URL_PRODUCTION` / `SUPABASE_DB_URL_PREVIEW` は**リポジトリ Secret ではなく GitHub Environment の Secret として登録する**。理由: `migrate.yml` の `workflow_dispatch` はブランチを選んで任意のブランチ上のワークフロー内容で実行できてしまうため、そのブランチ上で改変されたスクリプト（例: ガード用の `case` 文を削除したもの）が動くと、ジョブ内のロジックだけでは Secret 漏洩を防げない。Environment の **Deployment branch policy** は、ワークフローファイルの内容にかかわらず GitHub 側が「実際にこのジョブがどの ref で実行されているか」を検証するため、対象ブランチ以外では Secret 自体が渡らない。
+
+**設定手順**（Settings → Environments）:
+1. Environment `production` を作成し、Secret `SUPABASE_DB_URL_PRODUCTION` を登録する。**Deployment branches and tags** を `Selected branches and tags` にし、`main` と `develop` を許可する（`develop` は `release.yml` の本番DB dry-run に必要）。
+2. Environment `preview` を作成し、Secret `SUPABASE_DB_URL_PREVIEW` を登録する。**Deployment branches and tags** は `develop` のみ許可する。
+3. 旧リポジトリ Secret（Settings → Secrets and variables → Actions）に同名のものが残っていれば削除する（残っていると Environment 未参照のジョブにも渡ってしまう）。
+4. `migrate.yml` は `environment: ${{ github.ref_name == 'main' && 'production' || 'preview' }}` で分岐、`release.yml` は `environment: production` を参照する。`main` / `develop` 以外のブランチでこれらのワークフローを動かそうとすると、Deployment branch policy 違反でジョブが失敗し Secret は渡らない。
+
+**`migration-dry-run.yml`（`pull_request` トリガー）には Environment の Deployment branch policy が使えない**: GitHub は `pull_request` 系イベントでは Environment のブランチポリシーを `refs/pull/<番号>/merge`（PR の head/base どちらでもない合成 ref）に対して評価するため、ブランチ名ベースのポリシーが機能しない（許可すれば全 PR が無条件通過、許可しなければ常にブロック）。そのため `migration-dry-run.yml` は Environment を使わず、前述の `github.head_ref == 'develop'` という `if` ガードのみで防御している。この `if` はワークフロー実行時の実際の PR メタデータを見ているため「develop 以外のブランチから何もしない PR を main に作る」ケースは防げるが、**同一リポジトリの書き込み権限を持つ人が、自分のブランチ上でこの `if` ガードごとワークフローファイルを改変した場合は防げない**（`pull_request` は fork でない限り secrets を渡すため）。これは GitHub Actions の `pull_request` イベント自体の制約であり、確実に防ぐには `pull_request_target`（常にデフォルトブランチのワークフロー定義で実行される）への変更や、書き込み権限を持つコラボレーターの信頼範囲の見直しが必要になる（未対応）。
+
+- **必要な Secrets**: `SUPABASE_DB_URL_PRODUCTION`（`production` Environment）/ `SUPABASE_DB_URL_PREVIEW`（`preview` Environment）
   - **Session Pooler（ポート 5432）** の接続文字列を使う: `postgresql://postgres.<ref>:<password>@aws-X-ap-northeast-1.pooler.supabase.com:5432/postgres`
   - GitHub-hosted runner は IPv4 のみのため、Direct connection（IPv6 専用）は使えない。Transaction pooler（6543）もマイグレーションには不可
   - パスワードに記号が含まれる場合は URL エンコードする
