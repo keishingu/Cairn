@@ -163,7 +163,9 @@ export function reconcileAction(input: {
   if (status === 'resolved') return 'keep'
   if (status === 'active') return conditionContinues ? 'keep' : 'resolve'
 
-  const cooldownReached = remindAfter !== null && remindAfter.getTime() <= now.getTime()
+  // remindAfter = null の suppressed はキルスイッチまたはアクセス失効による無期限抑止。
+  // recipientCanAccess が再び true になった時点で抑止理由が解消したため、次のheartbeatで戻す。
+  const cooldownReached = remindAfter === null || remindAfter.getTime() <= now.getTime()
   if (!cooldownReached) return 'keep'
   return conditionContinues ? 'reactivate' : 'resolve'
 }

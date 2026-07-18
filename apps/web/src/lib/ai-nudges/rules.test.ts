@@ -89,6 +89,18 @@ describe('AIナッジの状態リコンサイル', () => {
     ).toBe('reactivate')
   })
 
+  test('キルスイッチ再ON後は無期限抑止の条件が継続していれば再active化する', () => {
+    expect(
+      reconcileAction({
+        status: 'suppressed',
+        remindAfter: null,
+        conditionContinues: true,
+        recipientCanAccess: true,
+        now: NOW,
+      }),
+    ).toBe('reactivate')
+  })
+
   test('アクセスを失ったactiveまたはdismissedナッジはsuppressedにする', () => {
     expect(
       reconcileAction({

@@ -298,6 +298,7 @@ ai_scan_states
 - **最小構成**: ユーザー単位の boolean 1つ。`profiles` に `ai_nudges_enabled boolean NOT NULL DEFAULT true` を1カラム追加する（専用のユーザー設定テーブルは現状無いため、プロフィール系カラムに揃える）
 - **サーバー側で尊重する**: ハートビートが**生成・配信の前に**このフラグを見て、OFF のユーザーはナッジ生成対象から外す（UI で隠すだけにしない）
 - **トグル OFF は即時遡及する**: `ai_nudges_enabled` を `false` に更新するトランザクションの中で、そのユーザーの `active` / `dismissed` 状態にある既存ナッジを全て `suppressed` に遷移させる。これにより §8.2 の共通フック（`suppressed` 遷移時の通知行削除）がそのまま働き、チャット欄・ベルの両方から既存の未応答ナッジが即座に消える。専用の削除処理を別途持たない
+- **トグル再 ON で復帰可能にする**: キルスイッチによる `suppressed` は `remind_after = NULL` で区別し、再 ON 後のハートビートで条件が継続していれば同じ行を `active` に戻す。`not_helpful` の30日抑止（`remind_after` が未来）を早期解除してはならない
 - **UI**: 既存の設定・通知セクション（`apps/web/src/components/app/pages/settings.tsx`）に1トグルを追加する
 - **今回やらないカスタマイズ**（後続フェーズ）: 頻度上限・静寂時間帯・detector 別 ON/OFF・ワークスペース単位/プロジェクト単位の粒度。Phase 1 は「全部 ON か 全部 OFF か」の1段だけ
 
