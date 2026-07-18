@@ -14,6 +14,15 @@ name: Migration Dry-run
 # SUPABASE_DB_URL_PRODUCTION が渡ってしまう。head branch が develop かつ fork
 # ではない場合のみ実行するよう制限し、他ブランチから main への PR では
 # 本番 Secret が使われないようにする。
+#
+# SUPABASE_DB_URL_PRODUCTION は production Environment の Secret としてのみ
+# 存在する（リポジトリ Secret は削除済み想定）ため、このジョブも
+# environment: production を宣言する必要がある。ただし pull_request イベントの
+# Deployment branch policy は refs/pull/<番号>/merge に対して評価され、
+# ブランチ名では判定できないため、production Environment 側で
+# refs/pull/*/merge をブランチポリシーに追加しておくこと（詳細は
+# docs/production-deployment.md）。その場合このジョブに対する実質的な保護は
+# 上記の if（head branch == develop）のみになる点に注意。
 on:
   pull_request:
     branches: [main]
@@ -30,6 +39,7 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'develop'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
