@@ -106,7 +106,9 @@ function MobilePage({ page, projectsView, initialMemberId, settingsSection }: { 
   if (page === 'tasks') return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
       <MobileHeader title="マイタスク" />
-      <PageTasks isMobile />
+      <React.Suspense fallback={null}>
+        <PageTasks isMobile />
+      </React.Suspense>
     </div>
   )
   if (page === 'ai') return <PageAI isMobile />
