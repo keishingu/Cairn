@@ -6,6 +6,14 @@ name: Migration Dry-run
 # - リリースPRが open の間に develop へ push が積まれても、synchronize で再検証される
 # - SQL は実行しない（dry-run）。実適用時のエラーは develop 側の DB Migrate
 #   ワークフロー（preview DB への実適用）で先に検出される想定
+#
+# セキュリティ: pull_request イベントは同一リポジトリのブランチからの PR には
+# secrets を渡す（fork からの PR のみ渡されない）。main 宛 PR は develop→main の
+# リリースPRのみを想定しているが、それ以外の同一リポジトリブランチから main 宛に
+# PR を作られると、そのブランチの内容でこのワークフローが実行され
+# SUPABASE_DB_URL_PRODUCTION が渡ってしまう。head branch が develop かつ fork
+# ではない場合のみ実行するよう制限し、他ブランチから main への PR では
+# 本番 Secret が使われないようにする。
 on:
   pull_request:
     branches: [main]
@@ -19,6 +27,7 @@ concurrency:
 
 jobs:
   dry-run:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'develop'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

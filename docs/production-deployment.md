@@ -31,7 +31,7 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
   1. `develop` マージ時に preview DB へ**実適用**されるため、SQL の実行エラーは本番より先に検出される
   2. リリースワークフロー（`release.yml`）は開始直後に、**develop 側の DB Migrate 実行結果**（GitHub Actions API で該当コミットの `migrate.yml` 実行を照会）を確認する。未完了・失敗ならリリースPRを作らず中断する（`dry-run` は SQL を実行しないため、実際に preview へ適用できたかはこの確認でのみ担保される）
   3. 続けて本番DBへ **dry-run** し、適用予定一覧を Release PR 本文に記載する。接続不可・履歴不整合なら PR を作らず中断する
-  4. `main` 宛 PR では `.github/workflows/migration-dry-run.yml` が PR チェックとして dry-run を再実行する（リリースPRが open の間に develop が進んでも再検証される）
+  4. `main` 宛 PR では `.github/workflows/migration-dry-run.yml` が PR チェックとして dry-run を再実行する（リリースPRが open の間に develop が進んでも再検証される）。**このジョブは head branch が `develop` かつ同一リポジトリの場合のみ実行する**（`pull_request` イベントは同一リポジトリのブランチには secrets を渡すため、それ以外のブランチから `main` 宛に PR が作られても本番 Secret を使わせないためのガード）
 - **必要な Secrets**（Settings → Secrets and variables → Actions）: `SUPABASE_DB_URL_PRODUCTION` / `SUPABASE_DB_URL_PREVIEW`
   - **Session Pooler（ポート 5432）** の接続文字列を使う: `postgresql://postgres.<ref>:<password>@aws-X-ap-northeast-1.pooler.supabase.com:5432/postgres`
   - GitHub-hosted runner は IPv4 のみのため、Direct connection（IPv6 専用）は使えない。Transaction pooler（6543）もマイグレーションには不可

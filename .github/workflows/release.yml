@@ -85,6 +85,9 @@ jobs:
       # dry-run は SQL を実行しないため、実際に develop → preview へ適用できたかは
       # push 時の DB Migrate（migrate.yml）の結果でのみ分かる。ここが失敗・未完了のまま
       # リリースすると、本番で初めて同じ失敗が発覚することになるため事前に確認する。
+      # event を push に絞らないのは、push 実行が失敗した際に運用者が
+      # workflow_dispatch で手動リトライした場合も拾うため（一覧は作成日時の降順で
+      # 返るため、head_sha が一致する最新の実行＝リトライがあればそちらを見る）。
       - name: Check develop DB Migrate status
         if: steps.commits.outputs.has_changes == 'true'
         env:
@@ -93,7 +96,7 @@ jobs:
         run: |
           set -euo pipefail
           SHA=$(git rev-parse HEAD)
-          RUN_JSON=$(gh api "repos/${REPO}/actions/workflows/migrate.yml/runs?head_sha=${SHA}&branch=develop&event=push" --jq '.workflow_runs[0] // empty')
+          RUN_JSON=$(gh api "repos/${REPO}/actions/workflows/migrate.yml/runs?head_sha=${SHA}&branch=develop" --jq '.workflow_runs[0] // empty')
           if [ -z "$RUN_JSON" ]; then
             echo "::error::develop (${SHA}) に対する DB Migrate ワークフローの実行が見つかりません。push 直後で未起動の可能性があるため、数分待ってから再実行してください。"
             exit 1
