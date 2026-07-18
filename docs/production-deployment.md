@@ -31,7 +31,7 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
   1. `develop` マージ時に preview DB へ**実適用**されるため、SQL の実行エラーは本番より先に検出される
   2. リリースワークフロー（`release.yml`）は開始直後に、**develop 側の DB Migrate 実行結果**（GitHub Actions API で該当コミットの `migrate.yml` 実行を照会）を確認する。未完了・失敗ならリリースPRを作らず中断する（`dry-run` は SQL を実行しないため、実際に preview へ適用できたかはこの確認でのみ担保される）
   3. 続けて本番DBへ **dry-run** し、適用予定一覧を Release PR 本文に記載する。接続不可・履歴不整合なら PR を作らず中断する
-  4. `main` 宛 PR では `.github/workflows/migration-dry-run.yml` が PR チェックとして dry-run を再実行する（リリースPRが open の間に develop が進んでも再検証される）。**このジョブは head branch が `develop` かつ同一リポジトリの場合のみ実行する**（`pull_request` イベントは同一リポジトリのブランチには secrets を渡すため、それ以外のブランチから `main` 宛に PR が作られても本番 Secret を使わせないためのガード）
+  4. `main` 宛 PR では `.github/workflows/migration-dry-run.yml` が PR チェックとして 2. と 3. を再実行する（リリースPRが open の間に develop へ push が積まれ synchronize で再トリガーされても、その新しい develop HEAD について develop 側 DB Migrate の成功確認と本番DB dry-run の両方をやり直す）。**このジョブは head branch が `develop` かつ同一リポジトリの場合のみ実行する**（`pull_request` イベントは同一リポジトリのブランチには secrets を渡すため、それ以外のブランチから `main` 宛に PR が作られても本番 Secret を使わせないためのガード）
 
 ### Secret の管理（GitHub Environments 必須）
 

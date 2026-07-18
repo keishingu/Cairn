@@ -23,12 +23,19 @@ name: Migration Dry-run
 # refs/pull/*/merge をブランチポリシーに追加しておくこと（詳細は
 # docs/production-deployment.md）。その場合このジョブに対する実質的な保護は
 # 上記の if（head branch == develop）のみになる点に注意。
+#
+# リリースPRが open のまま develop に新しいコミットが積まれると、このワークフローは
+# synchronize で再実行される。dry-run は SQL を実行しないため、その新しい develop
+# HEAD で preview への実適用（migrate.yml）が本当に成功したかは別途確認する必要が
+# ある（release.yml の同名チェックは PR 作成時にしか走らないため、synchronize による
+# 再検証はここでカバーする）。
 on:
   pull_request:
     branches: [main]
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: migration-dry-run-${{ github.ref }}
@@ -43,6 +50,31 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Check develop DB Migrate status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          RUN_JSON=$(gh api "repos/${REPO}/actions/workflows/migrate.yml/runs?head_sha=${SHA}&branch=develop" --jq '.workflow_runs[0] // empty')
+          if [ -z "$RUN_JSON" ]; then
+            echo "::error::develop (${SHA}) に対する DB Migrate ワークフローの実行が見つかりません。push 直後で未起動の可能性があるため、数分待ってから再実行してください。"
+            exit 1
+          fi
+          STATUS=$(printf '%s' "$RUN_JSON" | jq -r '.status')
+          if [ "$STATUS" != "completed" ]; then
+            echo "::error::develop の DB Migrate ワークフローがまだ実行中です（status=${STATUS}）。完了を待ってから再実行してください。"
+            exit 1
+          fi
+          CONCLUSION=$(printf '%s' "$RUN_JSON" | jq -r '.conclusion')
+          if [ "$CONCLUSION" != "success" ]; then
+            HTML_URL=$(printf '%s' "$RUN_JSON" | jq -r '.html_url')
+            echo "::error::develop への DB Migrate が失敗しています（conclusion=${CONCLUSION}）。preview DB への適用に失敗した状態のままリリースすると本番でも同じ失敗が起きるため中断します。${HTML_URL} を確認して修正してください。"
+            exit 1
+          fi
+          echo "::notice::develop の DB Migrate 実行（${SHA}）は成功しています。"
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
