@@ -8,6 +8,7 @@ import { TaskFormFields } from '../task-form-fields'
 import type { TaskDto } from '@/app/api/tasks/route'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 
 interface CreateTaskModalProps {
   onClose: () => void
@@ -20,6 +21,9 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
   const [priority, setPriority] = React.useState<TaskDto['priority']>('medium')
   const [dueDate, setDueDate] = React.useState('')
   const [assigneeId, setAssigneeId] = React.useState<string | null>(null)
+  // ゲストは member 以上でないとプロジェクト未所属タスクを作成できない（サーバが 403）。
+  // そのためゲストにはプロジェクト選択を必須にし、「プロジェクトなし」を出さない。
+  const { isGuest } = useWorkspacePermissions()
 
   const { data: projects = [] } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
@@ -64,7 +68,7 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
       submitLabel="追加"
       submittingLabel="追加中..."
       isSubmitting={mutation.isPending}
-      submitDisabled={!title.trim()}
+      submitDisabled={!title.trim() || (isGuest && !projectId)}
       disableClose={mutation.isPending}
       {...(errorMessage ? { errorMessage } : {})}
     >
@@ -82,14 +86,19 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
         afterTitle={(
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
-              プロジェクト <span style={{ fontWeight: 500, color: 'var(--text-4)' }}>（任意）</span>
+              プロジェクト{' '}
+              {isGuest
+                ? <span style={{ color: 'var(--red)' }}>*</span>
+                : <span style={{ fontWeight: 500, color: 'var(--text-4)' }}>（任意）</span>}
             </label>
             <select
               value={projectId}
               onChange={e => setProjectId(e.target.value)}
+              required={isGuest}
               style={{ ...fieldInputStyle(false), color: projectId ? 'var(--text)' : 'var(--text-4)' }}
             >
-              <option value="">プロジェクトなし</option>
+              {/* ゲストはプロジェクト未所属タスクを作成できないため「プロジェクトなし」を出さない */}
+              <option value="" disabled={isGuest}>{isGuest ? 'プロジェクトを選択...' : 'プロジェクトなし'}</option>
               {projects.map(p => (
                 <option key={p.id} value={p.id}>{p.title}</option>
               ))}
