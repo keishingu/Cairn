@@ -29,6 +29,20 @@ describe('routeFromNotification', () => {
     expect(routeFromNotification(notification({ type: 'task' }))).toBe('/(app)/tasks')
   })
 
+  it('channelId 付きの AI 通知は chats へ送る', () => {
+    expect(routeFromNotification(notification({
+      type: 'ai',
+      data: { channelId: 'ch-1', taskId: 'task-1' },
+    }))).toBe('/(app)/chats')
+  })
+
+  it('channelId のない AI 通知は taskId があれば tasks へ送る', () => {
+    expect(routeFromNotification(notification({
+      type: 'ai',
+      data: { taskId: 'task-1' },
+    }))).toBe('/(app)/tasks')
+  })
+
   it('url があれば対応するトップレベル画面を優先する', () => {
     expect(routeFromNotification(notification({
       type: 'status',
