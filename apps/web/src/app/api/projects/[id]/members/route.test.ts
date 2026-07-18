@@ -9,7 +9,7 @@ const USER_B = '00000000-0000-0000-0000-000000000012'
 
 const {
   mockGetAuthContext,
-  mockRequireWorkspaceMember,
+  mockRequireRole,
   mockDb,
   mockInngestSend,
   mockCreateServiceRoleClient,
@@ -19,10 +19,11 @@ const {
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
       workspaceId: '00000000-0000-0000-0000-000000000010',
+      role: 'member',
     },
     error: null,
   })
-  const mockRequireWorkspaceMember = vi.fn().mockResolvedValue(null)
+  const mockRequireRole = vi.fn().mockReturnValue(null)
   const mockDb = {
     select: vi.fn(),
     insert: vi.fn(),
@@ -38,7 +39,7 @@ const {
   }))
   return {
     mockGetAuthContext,
-    mockRequireWorkspaceMember,
+    mockRequireRole,
     mockDb,
     mockInngestSend,
     mockCreateServiceRoleClient,
@@ -47,7 +48,7 @@ const {
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/permissions', () => ({ requireWorkspaceMember: mockRequireWorkspaceMember }))
+vi.mock('@/lib/permissions', () => ({ requireRole: mockRequireRole }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 vi.mock('@/lib/supabase/service', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/supabase/service')>()

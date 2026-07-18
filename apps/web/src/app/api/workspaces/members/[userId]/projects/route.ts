@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
+import { isWorkspaceAdmin } from '@/lib/permissions'
 
 export interface MemberProjectDto {
   projectId: string
@@ -52,7 +52,7 @@ export async function GET(
       return NextResponse.json({ error: 'Member not found' }, { status: 404 })
     }
 
-    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const callerRole = ctx.role
     if (wsMember.membershipStatus === 'inactive' && !isWorkspaceAdmin(callerRole)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }

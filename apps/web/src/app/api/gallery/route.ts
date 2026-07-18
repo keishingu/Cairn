@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getGuestVisibleProjectIds, getWorkspaceMemberRole } from '@/lib/permissions'
+import { getGuestVisibleProjectIds } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 const GALLERY_BUCKET = 'gallery'
@@ -27,7 +27,7 @@ export async function GET() {
     const { eq, and, isNotNull, inArray, sql } = await import('drizzle-orm')
 
     // ゲストは参加プロジェクトのギャラリーのみ閲覧可
-    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const role = ctx.role
     let guestProjectIds: string[] | null = null
     if (role === 'guest') {
       guestProjectIds = await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId)

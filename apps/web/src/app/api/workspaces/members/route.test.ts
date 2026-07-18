@@ -11,6 +11,7 @@ const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockIsWorkspaceAdmin, mo
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
       workspaceId: 'ws-00000001',
+      role: 'member',
     },
     error: null,
   })
@@ -83,7 +84,7 @@ describe('GET /api/workspaces/members', () => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: USER_ID, workspaceId: WS_ID },
+      ctx: { userId: USER_ID, workspaceId: WS_ID, role: 'member' },
       error: null,
     })
     mockGetWorkspaceMemberRole.mockResolvedValue('member')
@@ -191,7 +192,7 @@ describe('GET /api/workspaces/members', () => {
 
   it('Auth 側に存在しないユーザーは email を null にする', async () => {
     const missingUserId = '00000000-0000-0000-0000-000000000099'
-    mockGetWorkspaceMemberRole.mockResolvedValue('admin')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID, role: 'admin' }, error: null })
     mockDb.select
       .mockReturnValueOnce(chain([]))
       .mockReturnValueOnce(chain([{
@@ -240,7 +241,7 @@ describe('GET /api/workspaces/members', () => {
 
   it('admin の status=all は非活性メンバーも取得対象にする', async () => {
     const { eq } = await import('drizzle-orm')
-    mockGetWorkspaceMemberRole.mockResolvedValue('admin')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID, role: 'admin' }, error: null })
     mockDb.select
       .mockReturnValueOnce(chain([]))
       .mockReturnValueOnce(chain([]))

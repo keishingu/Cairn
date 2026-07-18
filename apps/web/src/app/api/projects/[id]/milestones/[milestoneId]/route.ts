@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { patchMilestoneSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceMember } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 import type { MilestoneDto } from '../route'
 
 type RouteContext = { params: Promise<{ id: string; milestoneId: string }> }
@@ -38,7 +38,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
     if (!project) return new NextResponse(null, { status: 404 })
 
-    const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
+    const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
 
     const set: {
@@ -111,7 +111,7 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
 
     if (!project) return new NextResponse(null, { status: 404 })
 
-    const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
+    const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
 
     const [deleted] = await db

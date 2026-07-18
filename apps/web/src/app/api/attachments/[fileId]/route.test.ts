@@ -57,7 +57,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       fileName: 'file.pdf',
     })
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
     mockCanAccessFile.mockResolvedValue(true)
@@ -80,6 +80,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       DEV_WORKSPACE_ID,
       DEV_USER_ID,
       expect.objectContaining({ id: FILE_ID }),
+      'member',
     )
     expect(mockDownload).not.toHaveBeenCalled()
   })

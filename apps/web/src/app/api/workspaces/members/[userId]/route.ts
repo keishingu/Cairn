@@ -46,7 +46,7 @@ export async function PATCH(
     const { workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and, count, sql } = await import('drizzle-orm')
 
-    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const callerRole = ctx.role
     if (!isWorkspaceAdmin(callerRole)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }

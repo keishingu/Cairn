@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
+import { isWorkspaceAdmin } from '@/lib/permissions'
 import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
@@ -32,7 +32,7 @@ export async function GET(req: Request) {
     // ゲストはワークスペース全体のメンバー一覧を見られない。
     // 参加プロジェクトの共同メンバーのみに絞り、projectCount も共有プロジェクト数に限定して、
     // 参加していないプロジェクトの存在が漏れないようにする。
-    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const callerRole = ctx.role
     const isGuest = callerRole === 'guest'
     const includeInactive = statusParam === 'all' && isWorkspaceAdmin(callerRole)
     const activeOnly = !includeInactive

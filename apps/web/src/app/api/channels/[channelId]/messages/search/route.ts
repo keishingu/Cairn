@@ -18,7 +18,7 @@ export async function GET(req: Request, { params }: RouteContext) {
   const q = new URL(req.url).searchParams.get('q')?.trim() ?? ''
   if (!q) return NextResponse.json([] satisfies MessageDto[])
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   try {

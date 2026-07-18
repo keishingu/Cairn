@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { createDataStreamResponse, streamText, type CoreMessage } from 'ai'
 import { openai, DEFAULT_MODEL } from '@/lib/ai/client'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getGuestVisibleProjectIds, getWorkspaceMemberRole } from '@/lib/permissions'
+import { getGuestVisibleProjectIds } from '@/lib/permissions'
 import { webSearchTool } from '@/lib/ai/web-search'
 import {
   MAX_HISTORY_MESSAGES,
@@ -166,7 +166,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     try {
       const { searchChunks } = await import('@/lib/ai/search-chunks')
       // ゲストは参加プロジェクトのチャンクのみ RAG 参照可。member 以上は制限なし。
-      const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+      const role = ctx.role
       const allowedProjectIds = role === 'guest'
         ? await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId)
         : null

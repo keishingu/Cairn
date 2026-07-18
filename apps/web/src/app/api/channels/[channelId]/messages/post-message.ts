@@ -6,7 +6,7 @@ import type { MessageCreatedEvent } from '@/lib/inngest/events'
 import { inngest } from '@/lib/inngest/client'
 import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
-import { canAccessFile } from '@/lib/permissions'
+import { canAccessFile, type WorkspaceRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { MessageDto } from './dto'
 
@@ -22,9 +22,10 @@ type PostMessageArgs = {
   payload: PostMessageInput
   userId: string
   workspaceId: string
+  role: WorkspaceRole
 }
 
-export async function postMessage({ channelId, payload, userId, workspaceId }: PostMessageArgs) {
+export async function postMessage({ channelId, payload, userId, workspaceId, role }: PostMessageArgs) {
   try {
     const { db } = await import('@cairn/db')
     const { messages, profiles, messageAttachments, files, channels, tasks, workspaceMembers } =
@@ -70,7 +71,7 @@ export async function postMessage({ channelId, payload, userId, workspaceId }: P
       }
 
       const accessResults = await Promise.all(
-        fileRows.map((file) => canAccessFile(workspaceId, userId, file)),
+        fileRows.map((file) => canAccessFile(workspaceId, userId, file, role)),
       )
       if (accessResults.some((canAccess) => !canAccess)) {
         return NextResponse.json(

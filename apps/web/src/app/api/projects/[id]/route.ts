@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { patchProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceAdmin, requireWorkspaceMember } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 
 export async function DELETE(
   _req: Request,
@@ -30,7 +30,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+    const forbidden = requireRole(ctx.role, 'admin')
     if (forbidden) return forbidden
 
     // CASCADE 前にストレージパスを収集する
@@ -113,7 +113,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
+    const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
 
     let resolvedCoverPhotoUrl: string | null | undefined = undefined

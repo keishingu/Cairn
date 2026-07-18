@@ -94,7 +94,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'admin' },
       error: null,
     })
     mockGetWorkspaceMemberRole.mockResolvedValue('admin')
@@ -118,14 +118,14 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   })
 
   it('member は変更できない（403）', async () => {
-    mockGetWorkspaceMemberRole.mockResolvedValueOnce('member')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' }, error: null })
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
     expect(res.status).toBe(403)
   })
 
   it('admin は member を admin に昇格できる', async () => {
-    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'admin' }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
     mockDb.update.mockReturnValueOnce(updateChain())
     const { PATCH } = await import('./route')
@@ -136,7 +136,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   })
 
   it('admin は admin を member に降格できる', async () => {
-    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'admin' }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'admin', membershipStatus: 'active' }]))
     mockDb.update.mockReturnValueOnce(updateChain())
     const { PATCH } = await import('./route')
@@ -145,7 +145,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   })
 
   it('admin は owner への昇格を行えない（403）', async () => {
-    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'admin' }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'owner'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
@@ -153,7 +153,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   })
 
   it('admin は owner のロールを変更できない（403）', async () => {
-    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'admin' }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
@@ -161,7 +161,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   })
 
   it('owner は member を owner に昇格できる', async () => {
-    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'owner' }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
     mockDb.update.mockReturnValueOnce(updateChain())
     const { PATCH } = await import('./route')
@@ -170,7 +170,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   })
 
   it('owner が複数いる場合、owner を降格できる', async () => {
-    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'owner' }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 2 }]))
     mockDb.update.mockReturnValueOnce(updateChain())
@@ -181,7 +181,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   })
 
   it('唯一の owner は降格できない（422）', async () => {
-    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'owner' }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
     mockDb.select.mockReturnValueOnce(selectChain([{ ownerCount: 1 }]))
     const { PATCH } = await import('./route')
@@ -192,7 +192,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   })
 
   it('ゲストを通常ロールへ昇格できない（422）', async () => {
-    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'admin' }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'guest', membershipStatus: 'active' }]))
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
@@ -202,7 +202,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   })
 
   it('通常ロールをゲストへ降格できない（422）', async () => {
-    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'owner' }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'guest'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
@@ -210,7 +210,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   })
 
   it('存在しないメンバーは 404 を返す', async () => {
-    mockGetWorkspaceMemberRole.mockResolvedValueOnce('admin')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'admin' }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([]))
     const { PATCH } = await import('./route')
     const res = await PATCH(patchRequest(OTHER_USER_ID, 'member'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
@@ -218,7 +218,7 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
   })
 
   it('非活性 owner の降格では active owner 数ガードを実行しない', async () => {
-    mockGetWorkspaceMemberRole.mockResolvedValueOnce('owner')
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'owner' }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'inactive' }]))
     mockDb.update.mockReturnValueOnce(updateChain())
     const { PATCH } = await import('./route')
@@ -247,7 +247,7 @@ describe('PATCH /api/workspaces/members/[userId]（非活性化 / 再活性化�
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'admin' },
       error: null,
     })
     mockGetWorkspaceMemberRole.mockResolvedValue('admin')

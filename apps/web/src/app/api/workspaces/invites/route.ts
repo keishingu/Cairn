@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 
 const createInviteSchema = z.object({
   expiresIn: z.enum(['1h', '30d', 'never']).default('1h'),
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+    const forbidden = requireRole(ctx.role, 'admin')
     if (forbidden) return forbidden
 
     const { db } = await import('@cairn/db')
@@ -75,7 +75,7 @@ export async function GET(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   try {

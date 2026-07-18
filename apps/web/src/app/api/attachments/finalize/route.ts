@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: '不正な storagePath です' }, { status: 400 })
   }
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   const supabase = createServiceRoleClient()

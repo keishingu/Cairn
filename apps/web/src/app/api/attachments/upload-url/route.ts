@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'ファイルサイズは 10MB 以下にしてください' }, { status: 400 })
   }
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   const ext = resolveStorageExtension(fileName, normalizedMime)

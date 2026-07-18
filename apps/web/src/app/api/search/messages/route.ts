@@ -3,7 +3,6 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole } from '@/lib/permissions'
 import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
@@ -34,7 +33,7 @@ export async function GET(req: Request) {
     // ゲストは参加プロジェクトのチャンネルと、自分が所属するチャンネル（DM等）のみ検索可。
     // member 以上は公開チャンネル全体＋所属チャンネルを検索できる。ただし DM は is_private=false でも
     // 参加者を channel_members で管理するため、公開条件から除外しメンバーのみに限定する。
-    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const role = ctx.role
     const guestProjectAccess = db
       .select({ one: sql<number>`1` })
       .from(projectMembers)

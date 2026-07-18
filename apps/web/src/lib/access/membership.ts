@@ -57,17 +57,23 @@ const ROLE_ERROR: Record<WorkspaceRole, string> = {
   guest: 'このワークスペースにアクセスする権限がありません',
 }
 
+// 既知の role が指定 role 以上かを判定し、満たさなければ 403 を返す（DB 往復なし）。
+// getAuthContext が membership 再照合時に取得済みの role（ctx.role）を使う経路向け。
+// role の出所は必ず active_workspace_members（getWorkspaceRole / getAuthContext）に限る。
+export function requireRole(role: WorkspaceRole | null, min: WorkspaceRole): NextResponse | null {
+  if (role === null || ROLE_RANK[role] < ROLE_RANK[min]) {
+    return NextResponse.json({ error: ROLE_ERROR[min] }, { status: 403 })
+  }
+  return null
+}
+
 // active membership かつ指定 role 以上を要求する。満たさなければ 403 を返す。
 export async function requireActiveMember(
   workspaceId: string,
   userId: string,
   min: WorkspaceRole,
 ): Promise<NextResponse | null> {
-  const role = await getWorkspaceRole(workspaceId, userId)
-  if (role === null || ROLE_RANK[role] < ROLE_RANK[min]) {
-    return NextResponse.json({ error: ROLE_ERROR[min] }, { status: 403 })
-  }
-  return null
+  return requireRole(await getWorkspaceRole(workspaceId, userId), min)
 }
 
 // workspace の owner のみ許可（WS名・ロゴ等の設定変更）
