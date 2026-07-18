@@ -18,6 +18,7 @@ interface TaskFormFieldsProps {
   assigneeId?: string | null
   onAssigneeChange?: (userId: string | null) => void
   assigneeProjectId?: string | null
+  currentAssignee?: { userId: string; displayName: string; avatarUrl: string | null } | null
   // タイトル欄の直下に出す注記（チャット由来タスクの逆同期警告など）
   titleNote?: React.ReactNode
 }
@@ -42,6 +43,7 @@ export const TaskFormFields = ({
   assigneeId,
   onAssigneeChange,
   assigneeProjectId,
+  currentAssignee,
   titleNote,
 }: TaskFormFieldsProps) => (
   <>
@@ -69,6 +71,7 @@ export const TaskFormFields = ({
         value={assigneeId ?? null}
         onChange={onAssigneeChange}
         projectId={assigneeProjectId ?? null}
+        currentAssignee={currentAssignee ?? null}
       />
     )}
 

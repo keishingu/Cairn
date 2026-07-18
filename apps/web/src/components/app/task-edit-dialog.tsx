@@ -156,6 +156,9 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
             assigneeId={assigneeId}
             onAssigneeChange={setAssigneeId}
             assigneeProjectId={task.projectId}
+            {...(task.assigneeId
+              ? { currentAssignee: { userId: task.assigneeId, displayName: task.assigneeName ?? '不明なメンバー', avatarUrl: task.assigneeAvatarUrl } }
+              : {})}
             {...(chatLinkedNote ? { titleNote: chatLinkedNote } : {})}
           />
         </TaskDialog>

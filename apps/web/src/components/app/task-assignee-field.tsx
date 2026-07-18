@@ -9,6 +9,9 @@ interface AssigneeCandidate {
   displayName: string
   avatarUrl: string | null
   inProject: boolean
+  // 担当者に設定可能か（サーバの isAssignableTaskMember と揃える）。
+  // member 以上は常に可、guest はプロジェクトタスクかつ当該プロジェクトのメンバーのみ可。
+  assignable: boolean
 }
 
 interface TaskAssigneeFieldProps {
@@ -16,6 +19,9 @@ interface TaskAssigneeFieldProps {
   onChange: (userId: string | null) => void
   // 選択中プロジェクト。指定するとそのプロジェクトのメンバーを候補上部に優先表示する。
   projectId?: string | null
+  // 現在の担当者表示。非活性化などで active メンバー一覧に出ない担当者でも
+  // 「担当者なし」に見えないようフォールバック表示する。
+  currentAssignee?: { userId: string; displayName: string; avatarUrl: string | null } | null
 }
 
 const labelStyle: React.CSSProperties = {
@@ -28,13 +34,14 @@ const labelStyle: React.CSSProperties = {
 
 // ワークスペース全体から担当者を検索・選択する。プロジェクト選択時はプロジェクト内メンバーを
 // 上部に優先表示し「プロジェクト内」ラベルを付ける。
-export const TaskAssigneeField = ({ value, onChange, projectId }: TaskAssigneeFieldProps) => {
+export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee }: TaskAssigneeFieldProps) => {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const containerRef = React.useRef<HTMLDivElement>(null)
 
   const { data: workspaceMembers = [] } = useWorkspaceMembers()
-  const { data: projectMembers = [] } = useProjectMembers(projectId ?? null)
+  const projectMembersQuery = useProjectMembers(projectId ?? null)
+  const projectMembers = projectMembersQuery.data ?? []
 
   const projectMemberIds = React.useMemo(
     () => new Set(projectMembers.map(m => m.userId)),
@@ -43,28 +50,56 @@ export const TaskAssigneeField = ({ value, onChange, projectId }: TaskAssigneeFi
 
   // プロジェクト内メンバーを先頭に、以降を名前順で並べる
   const candidates = React.useMemo<AssigneeCandidate[]>(() => {
-    const list = workspaceMembers.map(m => ({
-      userId: m.userId,
-      displayName: m.displayName,
-      avatarUrl: m.avatarUrl,
-      inProject: projectMemberIds.has(m.userId),
-    }))
+    const list = workspaceMembers.map(m => {
+      const inProject = projectMemberIds.has(m.userId)
+      // guest はプロジェクトタスクかつ当該プロジェクトのメンバーのときだけ担当者にできる
+      const assignable = m.role !== 'guest' || (projectId != null && projectId !== '' && inProject)
+      return {
+        userId: m.userId,
+        displayName: m.displayName,
+        avatarUrl: m.avatarUrl,
+        inProject,
+        assignable,
+      }
+    })
     return list.sort((a, b) => {
       if (a.inProject !== b.inProject) return a.inProject ? -1 : 1
       return a.displayName.localeCompare(b.displayName, 'ja')
     })
-  }, [workspaceMembers, projectMemberIds])
+  }, [workspaceMembers, projectMemberIds, projectId])
+
+  // 選択肢には担当者に設定できるメンバーのみを出す（不可なゲストは 422 になるため除外）
+  const assignableCandidates = React.useMemo(
+    () => candidates.filter(c => c.assignable),
+    [candidates],
+  )
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return candidates
-    return candidates.filter(c => c.displayName.toLowerCase().includes(q))
-  }, [candidates, query])
+    if (!q) return assignableCandidates
+    return assignableCandidates.filter(c => c.displayName.toLowerCase().includes(q))
+  }, [assignableCandidates, query])
 
-  const selected = React.useMemo(
-    () => candidates.find(c => c.userId === value) ?? null,
-    [candidates, value],
-  )
+  // 表示用の選択中担当者。active 一覧に居ればそれを、居なければフォールバック（非活性担当者等）を使う。
+  const selected = React.useMemo(() => {
+    if (value == null) return null
+    const inList = candidates.find(c => c.userId === value)
+    if (inList) return { displayName: inList.displayName, avatarUrl: inList.avatarUrl }
+    if (currentAssignee && currentAssignee.userId === value) {
+      return { displayName: currentAssignee.displayName, avatarUrl: currentAssignee.avatarUrl }
+    }
+    return null
+  }, [candidates, value, currentAssignee])
+
+  // プロジェクト変更などで選択中の担当者が「割り当て不可」に変わったら解除する（送信時の 422 を防ぐ）。
+  // 既存担当者（currentAssignee）はフォールバック表示のため保持し、取得中は判定しない。
+  React.useEffect(() => {
+    if (value == null) return
+    if (currentAssignee && currentAssignee.userId === value) return
+    if (projectMembersQuery.isFetching) return
+    const c = candidates.find(x => x.userId === value)
+    if (c && !c.assignable) onChange(null)
+  }, [value, candidates, currentAssignee, projectMembersQuery.isFetching, onChange])
 
   React.useEffect(() => {
     if (!open) return
