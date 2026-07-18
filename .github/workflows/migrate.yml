@@ -2,9 +2,12 @@ name: DB Migrate
 
 # develop / main への push 時に、未適用の Supabase マイグレーションを自動適用する。
 # - develop への push → cairn-preview / main への push → cairn-production
-# - main マージ時、db push（数秒）が Vercel の本番ビルド（数分）より先に完了するため、
-#   「新コードが旧スキーマに当たる」期間を実質なくすのが目的。
-#   逆に「旧コードが新スキーマに当たる」期間がビルド完了まで生じるため、
+# - このワークフローと Vercel の Git 連携デプロイは同じ push イベントに反応する
+#   独立したトリガーであり、こちらが先に完了する順序を仕組みとして保証してはいない
+#   （実運用では db push が数秒、Vercel ビルドが数分のため先に終わることが多いが、
+#   Actions のキュー詰まり等で崩れうる。厳密な保証には Vercel 自動デプロイを無効化し
+#   Deploy Hook 経由に変更する必要があり、未対応）。
+#   また旧コードが新スキーマに当たる期間がビルド完了まで生じるため、
 #   マイグレーションは後方互換（カラム追加等）を基本とする。破壊的変更
 #   （カラム削除・リネーム等）は2段階リリースで行う。詳細は docs/production-deployment.md
 # - DB URL は Session Pooler（ポート5432、ユーザー postgres.<ref>）を使うこと。

@@ -106,7 +106,7 @@ pnpm dev
 - `main` は本番ブランチ。`develop` → `main` の PR で本番へ反映する（`main`・`develop` に直接コミットしない）
 - ブランチ名は `feat/`, `fix/`, `refactor/` などのプレフィックスを付ける
 - デプロイは Vercel の Git 連携で自動。`develop` への merge で `develop.oss-cairn.com`（環境変数は Preview と共通）、`main` への merge で `oss-cairn.com`（本番）にリリースされる。詳細は [`docs/production-deployment.md`](docs/production-deployment.md)
-- **DBマイグレーションは merge 時に GitHub Actions（`migrate.yml`）が自動適用**する（`develop` → preview DB、`main` → 本番DB）。db push はVercelビルドより先に完了するため「新コード×旧スキーマ」期間は生じないが、逆に旧コードが数分間新スキーマで動くため、**マイグレーションは後方互換を基本**とし、破壊的変更（カラム削除・リネーム等）は2段階リリースで行う。リリースPR作成時・PR チェックで本番DBへの dry-run が走る
+- **DBマイグレーションは merge 時に GitHub Actions（`migrate.yml`）が自動適用**する（`develop` → preview DB、`main` → 本番DB）。ただし `migrate.yml` と Vercel の Git 連携デプロイは同じ push に反応する独立したトリガーであり、**Actions が先に完了する順序は保証されていない**（実運用では db push の方が速いことが多いが、キュー詰まり等で崩れうる。厳密な保証には Vercel 自動デプロイを無効化し Deploy Hook 経由に変更する必要があり、未対応）。旧コードが数分間新スキーマで動く前提もあるため、**マイグレーションは後方互換を基本**とし、破壊的変更（カラム削除・リネーム等）は2段階リリースで行う。リリースPR作成時・PR チェックで本番DBへの dry-run が走る
 
 
 ## コミットメッセージ

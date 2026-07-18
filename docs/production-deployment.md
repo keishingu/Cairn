@@ -25,7 +25,7 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
 
 `develop` / `main` への push 時に `.github/workflows/migrate.yml` が `supabase db push --include-all` を実行し、未適用マイグレーションを自動適用する（`develop` → `cairn-preview`、`main` → `cairn-production`）。手動でのローカルからの `db push` は不要。
 
-- **タイミング**: `main` マージ時、db push（数秒）が Vercel の本番ビルド（数分）より先に完了するため、「新コード × 旧スキーマ」で本番エラーになる期間は実質生じない。逆に「旧コード × 新スキーマ」の期間がビルド完了までの数分生じる。
+- **タイミング（順序は保証されない）**: `migrate.yml` と Vercel の Git 連携デプロイは、どちらも `main` への同じ push イベントに反応する**独立したトリガー**であり、Actions 側が先に完了することを仕組みとして保証してはいない。実運用では db push（数秒）が Vercel の本番ビルド（数分）より先に終わることが多く「新コード × 旧スキーマ」の期間は縮まるが、Actions のキュー詰まり・リトライ・失敗時にはこの前提が崩れうる。**厳密に順序を保証したい場合は、Vercel Production Branch の自動デプロイを無効化し、`migrate.yml` の成功後に Vercel Deploy Hook を叩いて本番デプロイを起動する構成に変更する必要がある**（未実施）。それまでは「旧コード × 新スキーマ」の期間（後方互換を前提にビルド完了まで数分）に加え、まれに「新コード × 旧スキーマ」の期間が残りうる点に注意する。
 - **後方互換が前提**: 上記の数分間も旧コードが動くため、マイグレーションは後方互換（テーブル追加・カラム追加・インデックス追加等）を基本とする。**破壊的変更（カラム削除・リネーム・NOT NULL 化等）は 2 段階リリース**で行う — まずコード側の参照をやめてリリースし、次のリリースでスキーマを落とす。
 - **事前検証（3段構え）**:
   1. `develop` マージ時に preview DB へ**実適用**されるため、SQL の実行エラーは本番より先に検出される
@@ -70,7 +70,7 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
    - 生成物: **Release PR（develop → main、本文は AI 生成ノート + マイグレーション一覧）** と **Draft Release（AI 生成ノートのみ。※この時点ではタグ未作成）**。
    - ノートは利用ユーザー向けに絞り込む（docs/CI/テスト/依存・設定のみのコミットは除外。全差分が除外パスのみなら汎用のメンテナンス文）。
 2. **Release PR を `main` にマージ**
-   - CI・**Migration Dry-run** チェックと Vercel プレビューを確認してマージ。`main` が `develop` の内容に更新され、**DB Migrate ワークフローが本番DBへマイグレーションを自動適用**し、Vercel が本番デプロイする（db push はビルドより先に完了する）。
+   - CI・**Migration Dry-run** チェックと Vercel プレビューを確認してマージ。`main` が `develop` の内容に更新されると、**DB Migrate ワークフローが本番DBへマイグレーションを自動適用**し、並行して Vercel が本番デプロイする。両者は同じ push イベントに反応する独立したトリガーで、順序は保証されない（詳細・注意点は前述の「タイミング」節を参照）。
    - マージ後は **Actions の DB Migrate が成功したことを確認**する。失敗していた場合は修正 or `workflow_dispatch` で再実行する。
 3. **Draft Release を Publish**（※必ずマージ後）
    - **Releases** ページ → Draft を **Edit** → **Target: main** を確認（Publish 時に `main` の HEAD からタグが作られる）。
