@@ -39,7 +39,7 @@ vi.mock('@cairn/db', () => {
   mockDbUpdateSet.mockImplementation(() => ({
     where: () => ({ returning: mockDbUpdateReturning }),
   }))
-  const db = {
+  const dbCore = {
     select: vi.fn(() => ({
       from: () => ({
         innerJoin: () => ({
@@ -57,6 +57,10 @@ vi.mock('@cairn/db', () => {
     update: vi.fn(() => ({
       set: mockDbUpdateSet,
     })),
+  }
+  const db = {
+    ...dbCore,
+    transaction: vi.fn(async (callback: (tx: typeof dbCore) => Promise<unknown>) => callback(dbCore)),
   }
   return {
     db,
@@ -103,11 +107,14 @@ describe('DELETE /api/tasks/[id]', () => {
     mockDbSelectLimit.mockResolvedValue([{ id: TASK_ID, projectId: 'project-1', sourceMessageId: null }])
     mockDbDeleteReturning.mockResolvedValue([{ id: TASK_ID }])
     const { DELETE } = await import('./route')
+    const { aiNudges, db } = await import('@cairn/db')
     const res = await DELETE(new Request(`http://localhost/api/tasks/${TASK_ID}`, { method: 'DELETE' }), {
       params: Promise.resolve({ id: TASK_ID }),
     })
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ id: TASK_ID })
+    expect(db.update).toHaveBeenCalledWith(aiNudges)
+    expect(mockDbUpdateSet).toHaveBeenCalledWith({ status: 'resolved', remindAfter: null })
   })
 
   it('参加外プロジェクトの手動タスク削除は 403 で拒否する', async () => {
