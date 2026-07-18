@@ -40,6 +40,21 @@ function loadStoredView(): ProjectsView {
   return isValidView(saved) ? saved : 'list'
 }
 
+function loadWebViewMode(): boolean {
+  if (typeof window === 'undefined') return false
+  if (new URLSearchParams(window.location.search).get('webview') === '1') {
+    sessionStorage.setItem(STORAGE_KEYS.webview_mode, '1')
+    return true
+  }
+  return sessionStorage.getItem(STORAGE_KEYS.webview_mode) === '1'
+}
+
+declare global {
+  interface Window {
+    ReactNativeWebView?: { postMessage: (message: string) => void }
+  }
+}
+
 function pageFromPathname(pathname: string): string {
   if (pathname.startsWith('/projects')) return 'projects'
   if (pathname.startsWith('/chats') || pathname.startsWith('/chat')) return 'chats'
@@ -54,6 +69,10 @@ function pageFromPathname(pathname: string): string {
 
 const MENU_PAGE_LABELS: Record<string, string> = {
   members: 'メンバー',
+}
+
+export function shouldRenderMobileNav(hideNav: boolean) {
+  return !hideNav
 }
 
 function MobilePlaceholder({ title }: { title: string }) {
@@ -113,14 +132,27 @@ function MobilePage({ page, projectsView, initialMemberId, settingsSection }: { 
   )
 }
 
-function MobileShellInner() {
+function MobileShellInner({ hideNav }: { hideNav: boolean }) {
   const pathname = usePathname()
   const router = useRouter()
   const page = pageFromPathname(pathname)
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const settingsSection = pathname.startsWith('/settings/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
+  const [isWebView] = React.useState(loadWebViewMode)
   const [notifOpen, setNotifOpen] = React.useState(false)
+
+  React.useEffect(() => {
+    const handleProjectsViewChange = () => setProjectsViewState(loadStoredView())
+    window.addEventListener('cairn:projects-view-changed', handleProjectsViewChange)
+    return () => window.removeEventListener('cairn:projects-view-changed', handleProjectsViewChange)
+  }, [])
+
+  React.useEffect(() => {
+    if (!isWebView || page !== 'chats') return
+    window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'open-chats' }))
+    router.back()
+  }, [isWebView, page, router])
 
   const { panelState, panelProject, panelMember, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
 
@@ -164,13 +196,15 @@ function MobileShellInner() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
             <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} settingsSection={settingsSection} />
           </div>
-          <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
+          {shouldRenderMobileNav(hideNav) && (
+            <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
+          )}
         </div>
       </div>
     </AppShellContext.Provider>
   )
 }
 
-export function MobileShell() {
-  return <MobileShellInner />
+export function MobileShell({ hideNav = false }: { hideNav?: boolean }) {
+  return <MobileShellInner hideNav={hideNav} />
 }

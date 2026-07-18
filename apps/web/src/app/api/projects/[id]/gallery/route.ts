@@ -41,7 +41,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     if (!project) return new NextResponse(null, { status: 404 })
 
     // ゲストは参加プロジェクトのギャラリーのみ閲覧可
-    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
     if (forbidden) return forbidden
 
     const rows = await db
@@ -120,7 +120,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     if (!project) return new NextResponse(null, { status: 404 })
 
     // ゲストは参加プロジェクトにのみアップロードできる
-    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
     if (forbidden) return forbidden
 
     const ext = file.name.split('.').pop() ?? 'jpg'

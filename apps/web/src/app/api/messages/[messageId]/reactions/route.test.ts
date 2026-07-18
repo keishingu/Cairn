@@ -86,7 +86,7 @@ function postRequest(body: unknown) {
 describe('/api/messages/[messageId]/reactions のアクセス制御', () => {
   beforeEach(() => {
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
   })
@@ -112,7 +112,7 @@ describe('/api/messages/[messageId]/reactions のアクセス制御', () => {
     const { POST } = await import('./route')
     const res = await POST(postRequest({ emoji: '👍' }), ctxRouteParams())
     expect(res.status).toBe(403)
-    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID)
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID, 'member')
     expect(mockDbInsert).not.toHaveBeenCalled()
   })
 

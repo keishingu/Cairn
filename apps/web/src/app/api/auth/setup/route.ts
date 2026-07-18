@@ -32,7 +32,7 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { profiles, workspaces, workspaceMembers, channels } = await import('@cairn/db')
+    const { profiles, workspaces, workspaceMembers, activeWorkspaceMembers, channels } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
 
     const existing = await db.select({ id: profiles.id }).from(profiles).where(
@@ -51,10 +51,12 @@ export async function POST(req: Request) {
     // workspaceName が指定されていれば必ず新規ワークスペースを作成（複数WS対応）
     // 指定がない場合のみ既存メンバーシップを確認してオンボーディング要否を返す
     if (!parsed.data.workspaceName) {
+      // active membership のみを所属とみなす。全 WS で非活性のユーザーは「未所属」として
+      // オンボーディングへ誘導する（get-auth-context が非活性を弾くため /projects だと 403 ループになる）
       const existingMembership = await db
-        .select({ workspaceId: workspaceMembers.workspaceId })
-        .from(workspaceMembers)
-        .where(eq(workspaceMembers.userId, user.id))
+        .select({ workspaceId: activeWorkspaceMembers.workspaceId })
+        .from(activeWorkspaceMembers)
+        .where(eq(activeWorkspaceMembers.userId, user.id))
         .limit(1)
 
       return NextResponse.json({

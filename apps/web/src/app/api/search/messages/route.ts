@@ -3,8 +3,8 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole } from '@/lib/permissions'
 import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 
 export interface MessageSearchResultDto extends MessageDto {
@@ -21,7 +21,7 @@ export async function GET(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, messages, profiles, workspaceMembers, projects, projectMembers } = await import('@cairn/db')
+    const { channels, channelMembers, messages, profiles, workspaceMembers, projects, projectMembers, milestones } = await import('@cairn/db')
     const { eq, ne, isNull, and, ilike, or, exists, inArray } = await import('drizzle-orm')
     const { desc, sql } = await import('drizzle-orm')
 
@@ -33,7 +33,7 @@ export async function GET(req: Request) {
     // ゲストは参加プロジェクトのチャンネルと、自分が所属するチャンネル（DM等）のみ検索可。
     // member 以上は公開チャンネル全体＋所属チャンネルを検索できる。ただし DM は is_private=false でも
     // 参加者を channel_members で管理するため、公開条件から除外しメンバーのみに限定する。
-    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const role = ctx.role
     const guestProjectAccess = db
       .select({ one: sql<number>`1` })
       .from(projectMembers)
@@ -48,12 +48,12 @@ export async function GET(req: Request) {
         content: messages.content,
         messageType: messages.messageType,
         senderId: messages.senderId,
-        senderName: profiles.displayName,
+        senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         senderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: messages.createdAt,
         updatedAt: messages.updatedAt,
         channelId: channels.id,
-        channelName: sql<string>`coalesce(${projects.title}, ${channels.name}, 'DM')`,
+        channelName: sql<string>`coalesce(${milestones.title}, ${projects.title}, ${channels.name}, 'DM')`,
       })
       .from(messages)
       .innerJoin(channels, eq(messages.channelId, channels.id))
@@ -63,6 +63,7 @@ export async function GET(req: Request) {
         and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
       )
       .leftJoin(projects, eq(channels.projectId, projects.id))
+      .leftJoin(milestones, eq(channels.milestoneId, milestones.id))
       .where(and(
         eq(channels.workspaceId, ctx.workspaceId),
         isNull(messages.deletedAt),
@@ -78,8 +79,12 @@ export async function GET(req: Request) {
     const nameMap = new Map<string, string>()
     if (mentionIds.length > 0) {
       const profileRows = await db
-        .select({ id: profiles.id, displayName: profiles.displayName })
+        .select({ id: profiles.id, displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
         .from(profiles)
+        .leftJoin(
+          workspaceMembers,
+          and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+        )
         .where(inArray(profiles.id, mentionIds))
       for (const p of profileRows) nameMap.set(p.id, p.displayName)
     }

@@ -1,14 +1,12 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
 import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
-import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { PageToolbar, SegmentedControl } from './page-toolbar'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
@@ -16,6 +14,8 @@ import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useListSelection } from '@/hooks/use-list-selection'
+import { useProjects } from '@/hooks/use-projects'
+import { useProjectStatuses } from '@/hooks/use-project-statuses'
 import { useCommand } from '@/lib/command-registry'
 
 // ─── Main component ───────────────────────────────────────────────
@@ -34,23 +34,11 @@ function formatDates(start: string | null, end: string | null): string {
   return end && end !== start ? `${fmt(start)}–${fmt(end)}` : fmt(start)
 }
 
-async function fetchProjects(): Promise<ProjectDto[]> {
-  const res = await fetchWithAuth('/api/projects')
-  if (!res.ok) throw new Error('fetch failed')
-  return res.json() as Promise<ProjectDto[]>
-}
-
-async function fetchStatuses(): Promise<ProjectStatusDto[]> {
-  const res = await fetchWithAuth('/api/projects/statuses')
-  if (!res.ok) throw new Error('fetch failed')
-  return res.json() as Promise<ProjectStatusDto[]>
-}
-
 export const ProjectListView = ({ openPanel, isMobile, externalSearch }: ProjectListViewProps) => {
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const { isAdmin: canCreateProject } = useWorkspacePermissions()
-  const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
+  const { data: projects = [], isLoading } = useProjects()
   const [view, setView] = React.useState<'grid' | 'table'>(() => {
     if (typeof window === 'undefined') return 'grid'
     const saved = localStorage.getItem(STORAGE_KEYS.projects_list_view)
@@ -87,7 +75,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   }
   const [showCreate, setShowCreate] = React.useState(false)
   const [filterOpen, setFilterOpen] = React.useState(false)
-  const { data: allStatuses = [] } = useQuery({ queryKey: ['statuses'], queryFn: fetchStatuses })
+  const { data: allStatuses = [] } = useProjectStatuses()
   const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
     if (typeof window === 'undefined') return []
     try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.projects_status_filter) ?? '[]') } catch { return [] }
@@ -338,8 +326,9 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>プロジェクトが見つかりません</div>
         ) : view === 'table' && !isMobile ? (
           /* PC table view */
-          <div className="card" style={{ padding: 0 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+          <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+            <div style={{ minWidth: 796 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
               <span/>
               {(['title','status','date'] as SortKey[]).map((col) => {
                 const labels: Record<SortKey, string> = { title: 'プロジェクト', status: 'ステータス', date: '日程', progress: '進捗' }
@@ -372,7 +361,6 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   </button>
                 )
               })()}
-              <span/>
             </div>
             {sortedProjects.map((p, i) => {
               const accent = p.statusColor ?? 'var(--text-3)'
@@ -380,7 +368,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               const selected = i === navIdx
               return (
                 <div key={p.id} data-list-index={i} onClick={() => openPanel?.(p)} style={{
-                  display: 'grid', gridTemplateColumns: '24px 1fr 120px 120px 120px 100px 32px',
+                  display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px',
                   gap: 16, padding: '12px 16px', borderBottom: i < sortedProjects.length - 1 ? '1px solid var(--divider)' : 'none',
                   alignItems: 'center', cursor: 'pointer',
                   opacity: p.archived ? ARCHIVED_OPACITY : 1,
@@ -390,7 +378,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = selected ? 'var(--accent-soft)' : 'transparent'}
                 >
                   <span style={{ width: 10, height: 10, borderRadius: 3, background: accent }}/>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                     <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
                     {isSearching && p.archived && <ArchivedBadge/>}
@@ -400,10 +388,10 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   <div style={{ height: 6, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${progress}%`, background: accent, borderRadius: 3 }}/>
                   </div>
-                  <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}><Icon name="more" size={14}/></button>
                 </div>
               )
             })}
+            </div>
           </div>
         ) : (
           /* Grid (PC) / List with cover photos (mobile) */

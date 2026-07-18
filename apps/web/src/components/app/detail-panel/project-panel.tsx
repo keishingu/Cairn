@@ -2,19 +2,17 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack, StatusChip, MountainPhoto, ArchivedBadge } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
-import type { PlacePhoto } from '@/app/api/places/photos/route'
 import { ChatTab } from './tabs/chat-tab'
 import { OverviewTab, formatDateRange } from './tabs/overview-tab'
 import { FilesTab } from './tabs/files-tab'
 import { TasksTab } from './tabs/tasks-tab'
 import { MembersTab } from './tabs/members-tab'
 import { GalleryTab } from './tabs/gallery-tab'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { usePinnedProjects, usePinProject, useUnpinProject } from '@/lib/use-pinned-projects'
 import { useProjectChannels } from '@/lib/chat/client'
+import { useApplyPlacePhoto, useClearProjectCoverPhoto, usePlacePhotos } from '@/hooks/use-project-cover-photo'
 
 
 
@@ -28,53 +26,10 @@ interface CoverPickerPanelProps {
 }
 
 const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onClose }: CoverPickerPanelProps) => {
-  const queryClient = useQueryClient()
-  const [saving, setSaving] = React.useState(false)
-
-  const { data: placePhotos = [], isLoading: photosLoading } = useQuery<PlacePhoto[]>({
-    queryKey: ['place-photos', placeId],
-    queryFn: () => fetchWithAuth(`/api/places/photos?placeId=${encodeURIComponent(placeId!)}`).then(r => r.json()),
-    enabled: !!placeId,
-  })
-
-  const applyUrl = async (url: string | null) => {
-    setSaving(true)
-    try {
-      const res = await fetchWithAuth(`/api/projects/${projectId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coverPhotoUrl: url }),
-      })
-      if (!res.ok) return
-      queryClient.setQueryData<ProjectDto[]>(['projects'], old =>
-        (old ?? []).map(p => p.id === projectId ? { ...p, coverPhotoUrl: url } : p),
-      )
-      onClose()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const applyPlacePhoto = async (photoName: string) => {
-    setSaving(true)
-    try {
-      const res = await fetchWithAuth(`/api/projects/${projectId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ placePhotoName: photoName }),
-      })
-      if (!res.ok) return
-      const data = await res.json() as { coverPhotoUrl?: string | null }
-      if (data.coverPhotoUrl) {
-        queryClient.setQueryData<ProjectDto[]>(['projects'], old =>
-          (old ?? []).map(p => p.id === projectId ? { ...p, coverPhotoUrl: data.coverPhotoUrl! } : p),
-        )
-      }
-      onClose()
-    } finally {
-      setSaving(false)
-    }
-  }
+  const { data: placePhotos = [], isLoading: photosLoading } = usePlacePhotos(placeId)
+  const clearCoverPhoto = useClearProjectCoverPhoto(projectId)
+  const applyPlacePhoto = useApplyPlacePhoto(projectId)
+  const saving = clearCoverPhoto.isPending || applyPlacePhoto.isPending
 
   const thumbStyle = (selected: boolean): React.CSSProperties => ({
     flexShrink: 0, width: 80, height: 54, padding: 0,
@@ -104,7 +59,13 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
           ) : placePhotos.length > 0 ? (
             <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, marginBottom: 6, scrollbarWidth: 'thin' }}>
               {placePhotos.map(photo => (
-                <button key={photo.photoName} type="button" style={thumbStyle(false)} onClick={() => { void applyPlacePhoto(photo.photoName) }} disabled={saving}>
+                <button
+                  key={photo.photoName}
+                  type="button"
+                  style={thumbStyle(false)}
+                  onClick={() => applyPlacePhoto.mutate(photo.photoName, { onSuccess: onClose })}
+                  disabled={saving}
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={photo.thumbnailUri} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
                 </button>
@@ -118,7 +79,12 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
 
       <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>デフォルト</div>
       <div>
-        <button type="button" style={thumbStyle(currentCoverUrl === null)} onClick={() => { void applyUrl(null) }} disabled={saving}>
+        <button
+          type="button"
+          style={thumbStyle(currentCoverUrl === null)}
+          onClick={() => clearCoverPhoto.mutate(undefined, { onSuccess: onClose })}
+          disabled={saving}
+        >
           <MountainPhoto idx={defaultIdx} height={50} flat radius={5}/>
           {currentCoverUrl === null && (
             <div style={{ position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: '50%', background: 'var(--accent)', color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -164,7 +130,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
     switch (id) {
       case 'chat':     return <ChatTab project={project} {...(isMobile ? { isMobile: true } : {})}/>
       case 'overview': return <OverviewTab project={project} onDeleted={onClose}/>
-      case 'files':    return <FilesTab projectId={project.id}/>
+      case 'files':    return <FilesTab projectId={project.id} channelId={projectChannelId ?? null}/>
       case 'tasks':    return <TasksTab project={project}/>
       case 'members':  return <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>
       case 'gallery':  return <GalleryTab projectId={project.id}/>

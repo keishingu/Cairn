@@ -3,7 +3,8 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole, requireWorkspaceAdmin } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface WorkspaceChannelDto {
   id: string
@@ -22,7 +23,7 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, profiles } = await import('@cairn/db')
+    const { channels, channelMembers, profiles, activeWorkspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray } = await import('drizzle-orm')
 
     const allChannelRows = await db
@@ -33,7 +34,7 @@ export async function GET() {
 
     // ワークスペースチャンネルはWS全体向け。ゲストには自分が参加しているチャンネルのみに絞り、
     // 参加していないチャンネルの存在やメンバー構成が漏れないようにする。
-    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const callerRole = ctx.role
     let channelRows = allChannelRows
     if (callerRole === 'guest') {
       if (allChannelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
@@ -52,8 +53,16 @@ export async function GET() {
 
     const { workspaceMembers } = await import('@cairn/db')
     const memberRows = await db
-      .select({ channelId: channelMembers.channelId, displayName: profiles.displayName, avatarUrl: workspaceMembers.avatarUrl })
+      .select({
+        channelId: channelMembers.channelId,
+        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        avatarUrl: workspaceMembers.avatarUrl,
+      })
       .from(channelMembers)
+      .innerJoin(activeWorkspaceMembers, and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, channelMembers.userId),
+      ))
       .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, channelMembers.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(inArray(channelMembers.channelId, channelRows.map(c => c.id)))
@@ -134,7 +143,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: '60文字以内で入力してください' }, { status: 400 })
   }
 
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   try {

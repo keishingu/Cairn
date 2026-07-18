@@ -3,19 +3,19 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 
 // ワークスペース内の全データを再インデックスする管理用エンドポイント
 export async function POST() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   try {
-    const { db, files, workspaceMembers, projects } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { db, files, activeWorkspaceMembers, projects, documentChunks } = await import('@cairn/db')
+    const { and, eq, inArray, notInArray } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client')
     const { isIndexable } = await import('@/lib/ai/extract-text')
 
@@ -23,15 +23,27 @@ export async function POST() {
       db.select({ id: files.id, mimeType: files.mimeType, storagePath: files.storagePath })
         .from(files)
         .where(eq(files.workspaceId, ctx.workspaceId)),
-      db.select({ userId: workspaceMembers.userId })
-        .from(workspaceMembers)
-        .where(eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+      // 再インデックスは active メンバーのみを対象にする
+      db.select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
+        .where(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId)),
       db.select({ id: projects.id })
         .from(projects)
         .where(eq(projects.workspaceId, ctx.workspaceId)),
     ])
 
     const indexableFiles = allFiles.filter(f => isIndexable(f.mimeType ?? ''))
+    const activeMemberIds = allMembers.map(m => m.userId)
+
+    // active member だけを再キューする前に、inactive 化で残った member chunk を消す。
+    // searchChunks は workspace_id 単位で全 chunk を見るため、ここで stale な RAG context を掃除する。
+    await db
+      .delete(documentChunks)
+      .where(and(
+        eq(documentChunks.workspaceId, ctx.workspaceId),
+        eq(documentChunks.sourceType, 'member'),
+        ...(activeMemberIds.length > 0 ? [notInArray(documentChunks.sourceId, activeMemberIds)] : []),
+      ))
 
     const events = [
       ...indexableFiles.map(f => ({

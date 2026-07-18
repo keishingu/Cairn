@@ -47,7 +47,9 @@ vi.mock('@/lib/permissions', () => ({
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
 vi.mock('@/lib/chat/checkboxes', () => ({ parseCheckboxes: () => [] }))
 vi.mock('@cairn/shared', () => ({
-  postMessageSchema: { safeParse: () => ({ success: true, data: { content: 'hi', channelId: CHANNEL_ID } }) },
+  postMessageSchema: {
+    safeParse: () => ({ success: true, data: { content: 'hi', channelId: CHANNEL_ID } }),
+  },
 }))
 vi.mock('@cairn/db', () => ({
   db: { select: mockDbSelect },
@@ -66,6 +68,7 @@ vi.mock('@cairn/db', () => ({
   workspaceMembers: {
     userId: 'workspaceMembers.userId',
     workspaceId: 'workspaceMembers.workspaceId',
+    displayName: 'workspaceMembers.displayName',
     avatarUrl: 'workspaceMembers.avatarUrl',
   },
   messageReactions: {
@@ -84,7 +87,12 @@ vi.mock('@cairn/db', () => ({
     messageId: 'messageBookmarks.messageId',
     userId: 'messageBookmarks.userId',
   },
-  files: { id: 'files.id', fileName: 'files.fileName', mimeType: 'files.mimeType', fileSize: 'files.fileSize' },
+  files: {
+    id: 'files.id',
+    fileName: 'files.fileName',
+    mimeType: 'files.mimeType',
+    fileSize: 'files.fileSize',
+  },
 }))
 vi.mock('drizzle-orm', () => ({
   eq: mockEq,
@@ -95,6 +103,7 @@ vi.mock('drizzle-orm', () => ({
   asc: mockAsc,
   lte: mockLte,
   gt: mockGt,
+  sql: vi.fn(() => 'sql'),
 }))
 
 function ctxRouteParams() {
@@ -122,7 +131,7 @@ function mockSelectResults(...results: unknown[]) {
 describe('/api/channels/[channelId]/messages のアクセス制御', () => {
   beforeEach(() => {
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
   })
@@ -139,7 +148,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/'), ctxRouteParams())
     expect(res.status).toBe(403)
-    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID)
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID, 'member')
   })
 
   it('アクセス権の無いチャンネルでは POST が 403 を返し、投稿できない', async () => {
@@ -154,7 +163,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     })
     const res = await POST(req, ctxRouteParams())
     expect(res.status).toBe(403)
-    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID)
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID, 'member')
   })
 
   it('GET はリアクションごとの参加者名を返す', async () => {

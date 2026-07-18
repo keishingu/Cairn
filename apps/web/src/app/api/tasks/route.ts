@@ -4,9 +4,10 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { createTaskSchema } from '@cairn/shared'
-import { getGuestVisibleProjectIds, getWorkspaceMemberRole, requireProjectAccess } from '@/lib/permissions'
+import { getGuestVisibleProjectIds, requireProjectAccess } from '@/lib/permissions'
 import { inngest } from '@/lib/inngest/client'
 import type { TaskAssignedEvent } from '@/lib/inngest/events'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface TaskDto {
   id: string
@@ -18,19 +19,21 @@ export interface TaskDto {
   dueDate: string | null
   assigneeName: string | null
   assigneeAvatarUrl: string | null
+  isLinkedToMessage: boolean
 }
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId') ?? undefined
 
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
+
   try {
-    const { ctx, error } = await getAuthContext()
-    if (error) return error
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, inArray } = await import('drizzle-orm')
+    const { eq, inArray, and } = await import('drizzle-orm')
 
     const projectRows = await db
       .select({ id: projects.id, title: projects.title })
@@ -38,7 +41,7 @@ export async function GET(req: Request) {
       .where(eq(projects.workspaceId, ctx.workspaceId))
 
     // ゲストは参加プロジェクトのタスクのみ閲覧可。projectId 指定があっても参加外なら除外する。
-    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const role = ctx.role
     let allowedProjectIds = projectRows.map(p => p.id)
     if (role === 'guest') {
       const guestProjectIds = new Set(await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId))
@@ -59,12 +62,13 @@ export async function GET(req: Request) {
         status: tasks.status,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
-        assigneeName: profiles.displayName,
+        sourceMessageId: tasks.sourceMessageId,
+        assigneeName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(tasks)
       .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
-      .leftJoin(workspaceMembers, eq(workspaceMembers.userId, tasks.assigneeId))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, tasks.assigneeId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(inArray(tasks.projectId, projectIds))
 
     const projectMap = new Map(projectRows.map(p => [p.id, p.title]))
@@ -79,6 +83,7 @@ export async function GET(req: Request) {
       dueDate: r.dueDate,
       assigneeName: r.assigneeName ?? null,
       assigneeAvatarUrl: r.assigneeAvatarUrl ?? null,
+      isLinkedToMessage: r.sourceMessageId != null,
     }))
 
     return NextResponse.json(result)
@@ -89,6 +94,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
+
   let body: unknown
   try {
     body = await req.json()
@@ -102,16 +110,29 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { ctx, error } = await getAuthContext()
-    if (error) return error
-
     // ゲストは参加プロジェクトにのみタスクを作成できる
-    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, parsed.data.projectId)
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, parsed.data.projectId, ctx.role)
     if (forbidden) return forbidden
 
     const { db } = await import('@cairn/db')
-    const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { tasks, projects, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { eq, and } = await import('drizzle-orm')
+
+    const assigneeId = parsed.data.assigneeId ?? null
+    if (assigneeId) {
+      const [activeAssignee] = await db
+        .select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
+        .where(and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, assigneeId),
+        ))
+        .limit(1)
+
+      if (!activeAssignee) {
+        return NextResponse.json({ error: '指定された担当者はワークスペースのメンバーではありません' }, { status: 422 })
+      }
+    }
 
     const [inserted] = await db
       .insert(tasks)
@@ -120,7 +141,7 @@ export async function POST(req: Request) {
         title: parsed.data.title,
         description: parsed.data.description ?? null,
         priority: parsed.data.priority,
-        assigneeId: parsed.data.assigneeId ?? null,
+        assigneeId,
         dueDate: parsed.data.dueDate ?? null,
         createdBy: ctx.userId,
       })
@@ -135,9 +156,12 @@ export async function POST(req: Request) {
 
     const assigneeRow = inserted.assigneeId
       ? (await db
-          .select({ displayName: profiles.displayName, avatarUrl: workspaceMembers.avatarUrl })
+          .select({
+            displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+            avatarUrl: workspaceMembers.avatarUrl,
+          })
           .from(profiles)
-          .leftJoin(workspaceMembers, eq(workspaceMembers.userId, profiles.id))
+          .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
           .where(eq(profiles.id, inserted.assigneeId)))[0]
       : null
 
@@ -151,26 +175,32 @@ export async function POST(req: Request) {
       dueDate: inserted.dueDate,
       assigneeName: assigneeRow?.displayName ?? null,
       assigneeAvatarUrl: assigneeRow?.avatarUrl ?? null,
+      isLinkedToMessage: false,
     }
 
     if (inserted.assigneeId && inserted.assigneeId !== ctx.userId) {
       const [assigner] = await db
-        .select({ displayName: profiles.displayName })
+        .select({ displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
         .from(profiles)
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
         .where(eq(profiles.id, ctx.userId))
 
-      await inngest.send({
-        name: 'task/assigned',
-        data: {
-          taskId: inserted.id,
-          taskTitle: inserted.title,
-          assigneeId: inserted.assigneeId,
-          projectId: inserted.projectId,
-          projectTitle: projectRow?.title ?? '',
-          workspaceId: ctx.workspaceId,
-          assignerName: assigner?.displayName ?? '不明',
-        },
-      } satisfies TaskAssignedEvent)
+      try {
+        await inngest.send({
+          name: 'task/assigned',
+          data: {
+            taskId: inserted.id,
+            taskTitle: inserted.title,
+            assigneeId: inserted.assigneeId,
+            projectId: inserted.projectId,
+            projectTitle: projectRow?.title ?? '',
+            workspaceId: ctx.workspaceId,
+            assignerName: assigner?.displayName ?? '不明',
+          },
+        } satisfies TaskAssignedEvent)
+      } catch (e) {
+        console.warn('[POST /api/tasks] Inngest event send failed (notification skipped):', e)
+      }
     }
 
     return NextResponse.json(result, { status: 201 })

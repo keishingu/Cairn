@@ -38,7 +38,7 @@ function postRequest() {
 describe('POST /api/tasks のゲストアクセス制御', () => {
   beforeEach(() => {
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'guest' },
       error: null,
     })
   })
@@ -52,6 +52,6 @@ describe('POST /api/tasks のゲストアクセス制御', () => {
     const { POST } = await import('./route')
     const res = await POST(postRequest())
     expect(res.status).toBe(403)
-    expect(mockRequireProjectAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, PROJECT_ID)
+    expect(mockRequireProjectAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, PROJECT_ID, 'guest')
   })
 })

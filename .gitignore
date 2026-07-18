@@ -32,6 +32,12 @@ pnpm-debug.log*
 # local env files
 .env*.local
 .env
+apps/mobile/.env.preview
+apps/web/.env.prod
+
+# local tool settings
+.opencode/
+.tool-versions
 
 # vercel
 .vercel

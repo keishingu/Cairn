@@ -57,7 +57,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       fileName: 'file.pdf',
     })
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
     mockCanAccessFile.mockResolvedValue(true)
@@ -80,6 +80,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       DEV_WORKSPACE_ID,
       DEV_USER_ID,
       expect.objectContaining({ id: FILE_ID }),
+      'member',
     )
     expect(mockDownload).not.toHaveBeenCalled()
   })
@@ -120,5 +121,24 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toBe('text/markdown; charset=utf-8')
     expect(await res.text()).toBe('# 見出し')
+  })
+
+  it('txtファイルは保存MIMEが汎用でもUTF-8つきtext/plainで返す', async () => {
+    Object.assign(fileRow, {
+      storagePath: 'workspace-1/channel-1/notes.txt',
+      fileName: 'notes.txt',
+      mimeType: 'application/octet-stream',
+    })
+    mockDownload.mockResolvedValue({
+      data: 'line 1\nline 2',
+      error: null,
+    })
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/attachments/file-1'), routeParams())
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toBe('text/plain; charset=utf-8')
+    expect(await res.text()).toBe('line 1\nline 2')
   })
 })

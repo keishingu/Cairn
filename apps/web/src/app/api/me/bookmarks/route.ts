@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface BookmarkDto {
   id: string
@@ -23,7 +23,7 @@ export async function GET(_req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messageBookmarks, messages, channels, channelMembers, profiles, workspaceMembers, projects, projectMembers } = await import('@cairn/db')
+    const { messageBookmarks, messages, channels, channelMembers, profiles, workspaceMembers, projects, projectMembers, milestones } = await import('@cairn/db')
     const { eq, isNull, and, or, exists, desc, sql } = await import('drizzle-orm')
 
     // プライベートチャンネル・DM は現在もメンバーである場合のみ表示する（アクセスを失った後のブックマーク内容漏洩を防ぐ）。
@@ -35,7 +35,7 @@ export async function GET(_req: Request) {
 
     // ゲストは参加プロジェクトのチャンネルのみ閲覧可能（requireChannelAccess と同じ制約）。
     // プロジェクトから外れた後もブックマーク経由でメッセージが見えてしまうのを防ぐ
-    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const role = ctx.role
     const projectMemberSubquery = db
       .select({ one: sql<number>`1` })
       .from(projectMembers)
@@ -51,11 +51,11 @@ export async function GET(_req: Request) {
       .select({
         id: messages.id,
         content: messages.content,
-        senderName: profiles.displayName,
+        senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         senderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: messages.createdAt,
         channelId: channels.id,
-        channelName: sql<string>`coalesce(${projects.title}, ${channels.name}, 'DM')`,
+        channelName: sql<string>`coalesce(${milestones.title}, ${projects.title}, ${channels.name}, 'DM')`,
         bookmarkedAt: messageBookmarks.createdAt,
       })
       .from(messageBookmarks)
@@ -67,6 +67,7 @@ export async function GET(_req: Request) {
         and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
       )
       .leftJoin(projects, eq(channels.projectId, projects.id))
+      .leftJoin(milestones, eq(channels.milestoneId, milestones.id))
       .where(and(
         eq(messageBookmarks.userId, ctx.userId),
         eq(channels.workspaceId, ctx.workspaceId),

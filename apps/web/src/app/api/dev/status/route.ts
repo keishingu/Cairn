@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceOwner } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 
 export type ServiceStatus = {
   status: 'ok' | 'error' | 'unconfigured'
@@ -157,7 +157,7 @@ function getStaticStatus(): DevStatusDto {
 async function authorizeOwner() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-  return requireWorkspaceOwner(ctx.workspaceId, ctx.userId)
+  return requireRole(ctx.role, 'owner')
 }
 
 export async function GET() {

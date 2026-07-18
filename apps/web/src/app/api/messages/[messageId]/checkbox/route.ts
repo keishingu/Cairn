@@ -49,7 +49,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     }
 
     // チャンネルへのアクセス権を検証（越境アクセス防止・プライベート/DM/ゲストのプロジェクト所属）
-    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId)
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId, ctx.role)
     if (forbidden) return forbidden
 
     const newContent = toggleCheckboxAt(target.content, index, checked)

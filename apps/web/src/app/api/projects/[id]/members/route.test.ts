@@ -9,7 +9,7 @@ const USER_B = '00000000-0000-0000-0000-000000000012'
 
 const {
   mockGetAuthContext,
-  mockRequireWorkspaceMember,
+  mockRequireRole,
   mockDb,
   mockInngestSend,
   mockCreateServiceRoleClient,
@@ -19,10 +19,11 @@ const {
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
       workspaceId: '00000000-0000-0000-0000-000000000010',
+      role: 'member',
     },
     error: null,
   })
-  const mockRequireWorkspaceMember = vi.fn().mockResolvedValue(null)
+  const mockRequireRole = vi.fn().mockReturnValue(null)
   const mockDb = {
     select: vi.fn(),
     insert: vi.fn(),
@@ -38,7 +39,7 @@ const {
   }))
   return {
     mockGetAuthContext,
-    mockRequireWorkspaceMember,
+    mockRequireRole,
     mockDb,
     mockInngestSend,
     mockCreateServiceRoleClient,
@@ -47,7 +48,7 @@ const {
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/permissions', () => ({ requireWorkspaceMember: mockRequireWorkspaceMember }))
+vi.mock('@/lib/permissions', () => ({ requireRole: mockRequireRole }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 vi.mock('@/lib/supabase/service', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/supabase/service')>()
@@ -64,12 +65,14 @@ vi.mock('@cairn/db', () => ({
     projectId: 'pm.projectId',
   },
   projects: { id: 'p.id', workspaceId: 'p.workspaceId' },
-  workspaceMembers: { id: 'wm.id', userId: 'wm.userId', workspaceId: 'wm.workspaceId', avatarUrl: 'wm.avatarUrl' },
+  workspaceMembers: { id: 'wm.id', userId: 'wm.userId', workspaceId: 'wm.workspaceId', displayName: 'wm.displayName', avatarUrl: 'wm.avatarUrl' },
+  activeWorkspaceMembers: { id: 'awm.id', userId: 'awm.userId', workspaceId: 'awm.workspaceId' },
 }))
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   and: vi.fn(() => 'and'),
   inArray: vi.fn(() => 'inArray'),
+  sql: vi.fn(() => 'sql'),
 }))
 
 function chain(result: unknown[]) {

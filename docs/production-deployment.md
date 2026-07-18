@@ -1,6 +1,6 @@
 # 本番デプロイ・運用リファレンス
 
-> ステータス: **現行リファレンス** ／ 最終更新: 2026-06-21
+> ステータス: **現行リファレンス** ／ 最終更新: 2026-07-01
 >
 > 本番環境（Vercel + Supabase）の構成・残タスク・将来の一般公開に向けた設定をまとめる。
 > 実装・設定が変わったら本ファイルを更新すること。
@@ -41,6 +41,24 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
 - **`SUPABASE_SERVICE_ROLE_KEY`**: **Legacy service_role JWT（`eyJ...`）** を使う。
   - 新形式 `sb_secret_...` は **Storage が JWT を要求するため `Invalid Compact JWS` で失敗**する。
 - **`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`**: 新形式 `sb_publishable_...`（Auth は新形式で動作）。
+
+## リリース手順（develop → main）
+
+`develop` の内容を本番（`main`）へリリースする手順。リリースノート生成・Release PR・Draft Release の作成は `.github/workflows/release.yml`（手動実行）が担う。**順序が重要**で、必ず「PR マージ → その後に Draft を Publish」で行う。
+
+1. **リリースワークフローを手動実行**
+   - GitHub の **Actions** タブ → **`Release (develop → main)`** → **Run workflow**。
+   - （任意）入力 `release_tag` にタグ名（例 `v1.1.0`）。空なら `release-YYYY-MM-DD` で自動採番。
+   - 生成物: **Release PR（develop → main、本文は AI 生成ノート）** と **Draft Release（同じ本文。※この時点ではタグ未作成）**。
+   - ノートは利用ユーザー向けに絞り込む（docs/CI/テスト/依存・設定のみのコミットは除外。全差分が除外パスのみなら汎用のメンテナンス文）。
+2. **Release PR を `main` にマージ**
+   - CI と Vercel プレビューを確認してマージ。`main` が `develop` の内容に更新され、Vercel が本番デプロイする。
+3. **Draft Release を Publish**（※必ずマージ後）
+   - **Releases** ページ → Draft を **Edit** → **Target: main** を確認（Publish 時に `main` の HEAD からタグが作られる）。
+   - 必要ならタグ名・タイトルを `v1.1.0` 等に調整して **Publish release**。
+
+- **順序が命**: マージ前に Publish すると promote 前のコミットにタグが付く（Draft 本文の先頭にも同じ警告が出る）。
+- Draft 段階ではタグ ref を持たないため、やり直したい場合は同名タグで再実行してよい。
 
 ## 完了済み（本番）
 

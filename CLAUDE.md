@@ -2,6 +2,7 @@
 
 - ユーザーの指示は曖昧なことがあるので、疑問点があれば質問すること
 - 開発手順・アーキテクチャ・技術判断に変更があった場合は、README.md と CLAUDE.md を適宜更新すること
+- **本リポジトリはパブリック**。非公開の他プロジェクト名・顧客名などの固有名詞を、コード・ドキュメント・コミットメッセージ・PR・issue に含めない。比較や経緯に触れる必要がある場合は「別プロジェクト」等に言い換える
 
 
 ## リポジトリ構成
@@ -81,6 +82,7 @@ pnpm dev
   - `guest`: 参加プロジェクトのみ参照・書き込み可。プロジェクト一覧・チャンネル一覧はメンバーのみの参加プロジェクトに制限
   - 権限ヘルパーは `apps/web/src/lib/permissions.ts` に集約（`requireWorkspaceOwner` / `requireWorkspaceAdmin` / `requireWorkspaceMember`）。403 時はロールを明示した日本語メッセージを返す（例「この操作には管理者以上の権限が必要です」）。フロントは生の 401/403 を出さない
   - UI 側は `apps/web/src/hooks/use-current-user.ts` の `useWorkspacePermissions()`（`isOwner` / `isAdmin` / `isMember` / `isGuest`）で操作ボタンを disable・非表示にし、権限不足を事前に示す。サーバー側チェックは常に必須（UI ガードは UX 上の補助に過ぎない）
+  - **非活性メンバー（membership_status = 'inactive'、卒業生等）は「未所属」と同等に扱う**。active membership の定義は `active_workspace_members` ビュー 1 箇所に閉じ込め、**認可目的で membership を読む処理は `apps/web/src/lib/access/membership.ts`（`getWorkspaceRole` / `require*` / `listActiveMemberIds` / `filterActiveMemberIds`）とこのビューを必ず経由する**（`permissions.ts` は同モジュールへ委譲）。`getWorkspaceRole` が active 限定のため role 参照系（`require*` / `requireProjectAccess` / `requireChannelAccess` / `canAccessFile`）は横断的に非活性を 403 で弾く。Storage RLS（chat-attachments）と Realtime の `can_access_channel` も同ビュー経由。**発言者・アップロード者・担当者など「履歴上の行為者」を表示する装飾 join だけは `workspace_members` を直接引き、非活性でも本人名義で残す**（§5: 履歴は変えない）。設計は [`docs/user-deactivation-design.md`](docs/user-deactivation-design.md)
 
 
 ## エラー表示

@@ -15,9 +15,9 @@ const ENV_KEYS_TO_RESTORE = [
   'NODE_ENV',
 ] as const
 
-const { mockGetAuthContext, mockRequireWorkspaceOwner } = vi.hoisted(() => ({
+const { mockGetAuthContext, mockRequireRole } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
-  mockRequireWorkspaceOwner: vi.fn(),
+  mockRequireRole: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -25,7 +25,7 @@ vi.mock('@/lib/get-auth-context', () => ({
 }))
 
 vi.mock('@/lib/permissions', () => ({
-  requireWorkspaceOwner: mockRequireWorkspaceOwner,
+  requireRole: mockRequireRole,
 }))
 
 describe('dev/status API の認可と手動診断', () => {
@@ -42,10 +42,10 @@ describe('dev/status API の認可と手動診断', () => {
     vi.clearAllMocks()
     clearDiagnosticEnv()
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: 'user-1', workspaceId: 'ws-1' },
+      ctx: { userId: 'user-1', workspaceId: 'ws-1', role: 'owner' },
       error: null,
     })
-    mockRequireWorkspaceOwner.mockResolvedValue(null)
+    mockRequireRole.mockReturnValue(null)
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -62,7 +62,7 @@ describe('dev/status API の認可と手動診断', () => {
   })
 
   it('owner 以外の GET は 403 を返す', async () => {
-    mockRequireWorkspaceOwner.mockResolvedValueOnce(
+    mockRequireRole.mockReturnValueOnce(
       Response.json({ error: 'この操作にはオーナー権限が必要です' }, { status: 403 }),
     )
     const { GET } = await import('./route')

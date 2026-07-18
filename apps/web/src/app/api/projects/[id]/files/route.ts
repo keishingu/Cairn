@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireProjectAccess } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ProjectFileDto {
   id: string
@@ -26,7 +27,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
   if (error) return error
 
   try {
-    const { db, files, profiles, projects, galleryItems, documentChunks } = await import('@cairn/db')
+    const { db, files, profiles, projects, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
     const { eq, and, isNull, desc, inArray } = await import('drizzle-orm')
     const { isIndexable } = await import('@/lib/ai/extract-text')
 
@@ -42,7 +43,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     }
 
     // ゲストは参加プロジェクトのファイルのみ閲覧可
-    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
     if (forbidden) return forbidden
 
     const rows = await db
@@ -52,12 +53,16 @@ export async function GET(_req: Request, { params }: RouteContext) {
         mimeType: files.mimeType,
         fileSize: files.fileSize,
         fileType: files.fileType,
-        uploaderName: profiles.displayName,
+        uploaderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         createdAt: files.createdAt,
         metadata: files.metadata,
       })
       .from(files)
       .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
+      .leftJoin(
+        workspaceMembers,
+        and(eq(workspaceMembers.userId, files.uploadedBy), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+      )
       .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
       .where(and(
         eq(files.projectId, projectId),

@@ -1,13 +1,15 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar, Fab } from '../primitives'
 import type { TaskDto } from '@/app/api/tasks/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { CreateTaskModal } from './create-task-modal'
+import { TaskEditDialog } from '../task-edit-dialog'
+import { RowActionMenu } from '../row-action-menu'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
+import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
+import { useTasks, useToggleTaskStatus } from '@/hooks/use-tasks'
 
 type FilterKey = 'all' | 'todo' | 'in_progress' | 'done'
 
@@ -45,14 +47,16 @@ function formatDueDate(dueDate: string | null): { label: string; overdue: boolea
 interface TaskRowProps {
   task: TaskDto
   onToggle: (id: string, current: TaskDto['status']) => void
+  onEdit: (task: TaskDto, mode?: 'edit' | 'delete') => void
   toggling: boolean
   selected?: boolean
   index?: number
 }
 
-const TaskRow = ({ task, onToggle, toggling, selected, index }: TaskRowProps) => {
+const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowProps) => {
   const due = formatDueDate(task.dueDate)
   const isDone = task.status === 'done'
+  const displayTitle = formatTaskTitleForDisplay(task.title)
 
   return (
     <div
@@ -87,7 +91,7 @@ const TaskRow = ({ task, onToggle, toggling, selected, index }: TaskRowProps) =>
           color: isDone ? 'var(--text-3)' : 'var(--text)',
           textDecoration: isDone ? 'line-through' : 'none',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{task.title}</div>
+        }}>{displayTitle}</div>
         <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{task.projectTitle}</div>
       </div>
 
@@ -121,6 +125,14 @@ const TaskRow = ({ task, onToggle, toggling, selected, index }: TaskRowProps) =>
           padding: '2px 7px', borderRadius: 4, flexShrink: 0,
         }}>進行中</span>
       )}
+
+      <RowActionMenu
+        actions={[
+          { icon: 'edit', label: '編集', onSelect: () => onEdit(task, 'edit') },
+          { icon: 'trash', label: '削除', danger: true, onSelect: () => onEdit(task, 'delete') },
+        ]}
+        triggerStyle={{ padding: '6px', borderRadius: 8 }}
+      />
     </div>
   )
 }
@@ -143,6 +155,7 @@ interface SectionProps {
   count: number
   tasks: TaskDto[]
   onToggle: (id: string, current: TaskDto['status']) => void
+  onEdit: (task: TaskDto, mode?: 'edit' | 'delete') => void
   togglingId: string | null
   open: boolean
   onToggleOpen: () => void
@@ -150,7 +163,7 @@ interface SectionProps {
   baseIndex?: number
 }
 
-const Section = ({ label, count, tasks, onToggle, togglingId, open, onToggleOpen, selectedTaskId, baseIndex = 0 }: SectionProps) => {
+const Section = ({ label, count, tasks, onToggle, onEdit, togglingId, open, onToggleOpen, selectedTaskId, baseIndex = 0 }: SectionProps) => {
   return (
     <div>
       <button
@@ -171,6 +184,7 @@ const Section = ({ label, count, tasks, onToggle, togglingId, open, onToggleOpen
           key={t.id}
           task={t}
           onToggle={onToggle}
+          onEdit={onEdit}
           toggling={togglingId === t.id}
           selected={t.id === selectedTaskId}
           index={baseIndex + i}
@@ -183,52 +197,33 @@ const Section = ({ label, count, tasks, onToggle, togglingId, open, onToggleOpen
 // ─── PageTasks ────────────────────────────────────────────────────
 
 export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
-  const queryClient = useQueryClient()
   const [filter, setFilter] = React.useState<FilterKey>('all')
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
   const [showAddModal, setShowAddModal] = React.useState(false)
+  const [editingTask, setEditingTask] = React.useState<TaskDto | null>(null)
+  const [dialogMode, setDialogMode] = React.useState<'edit' | 'delete'>('edit')
   // セクション（プロジェクト別）の開閉。明示トグルが無ければ先頭3つを開く
   const [sectionOverride, setSectionOverride] = React.useState<Record<string, boolean>>({})
 
   // ⌥N: 新規タスク
   useCommand('ctx.create', () => setShowAddModal(true))
 
-  const { data: tasks = [], isLoading } = useQuery<TaskDto[]>({
-    queryKey: ['tasks'],
-    queryFn: () => fetchWithAuth('/api/tasks').then(r => r.json()),
-  })
-
-  const toggleMutation = useMutation({
-    mutationFn: async ({ id, newStatus }: { id: string; newStatus: TaskDto['status'] }) => {
-      const res = await fetchWithAuth(`/api/tasks/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      })
-      if (!res.ok) throw new Error('Failed to update task')
-    },
-    onMutate: async ({ id, newStatus }) => {
-      setTogglingId(id)
-      await queryClient.cancelQueries({ queryKey: ['tasks'] })
-      const prev = queryClient.getQueryData<TaskDto[]>(['tasks'])
-      queryClient.setQueryData<TaskDto[]>(
-        ['tasks'],
-        old => old?.map(t => t.id === id ? { ...t, status: newStatus } : t) ?? [],
-      )
-      return { prev }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(['tasks'], ctx.prev)
-    },
-    onSettled: () => {
-      setTogglingId(null)
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-    },
-  })
+  const { data: tasks = [], isLoading } = useTasks()
+  const toggleMutation = useToggleTaskStatus()
 
   const handleToggle = (id: string, current: TaskDto['status']) => {
     const newStatus: TaskDto['status'] = current === 'done' ? 'todo' : 'done'
+    setTogglingId(id)
     toggleMutation.mutate({ id, newStatus })
+  }
+
+  React.useEffect(() => {
+    if (!toggleMutation.isPending) setTogglingId(null)
+  }, [toggleMutation.isPending])
+
+  const openEditor = (task: TaskDto, mode: 'edit' | 'delete' = 'edit') => {
+    setDialogMode(mode)
+    setEditingTask(task)
   }
 
   const filtered = React.useMemo(() => {
@@ -369,6 +364,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
                 count={g.tasks.length}
                 tasks={g.tasks}
                 onToggle={handleToggle}
+                onEdit={openEditor}
                 togglingId={togglingId}
                 open={isSectionOpen(g.key, idx)}
                 onToggleOpen={() => setSectionOverride(prev => ({ ...prev, [g.key]: !isSectionOpen(g.key, idx) }))}
@@ -382,6 +378,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
 
       {isMobile && <Fab onClick={() => setShowAddModal(true)} label="タスクを追加"/>}
       {showAddModal && <CreateTaskModal onClose={() => setShowAddModal(false)} />}
+      <TaskEditDialog open={editingTask != null} task={editingTask} initialMode={dialogMode} onClose={() => setEditingTask(null)} />
     </div>
   )
 }

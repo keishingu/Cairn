@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface DmChannelDto {
   id: string
@@ -22,7 +23,7 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, profiles, workspaceMembers } = await import('@cairn/db')
+    const { channels, channelMembers, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray, ne } = await import('drizzle-orm')
 
     // 自分が参加している DM チャンネル ID を取得
@@ -36,11 +37,15 @@ export async function GET() {
       .select({
         id: channels.id,
         participantId: profiles.id,
-        participantName: profiles.displayName,
+        participantName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         participantAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(channels)
       .innerJoin(channelMembers, eq(channelMembers.channelId, channels.id))
+      .innerJoin(activeWorkspaceMembers, and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, channelMembers.userId),
+      ))
       .innerJoin(profiles, eq(profiles.id, channelMembers.userId))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(
@@ -51,7 +56,7 @@ export async function GET() {
           inArray(channels.id, myChannelIds),
         ),
       )
-      .orderBy(profiles.displayName)
+      .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
 
     const channelIds = rows.map(r => r.id)
     if (channelIds.length > 0) {
@@ -105,8 +110,21 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, channelReadStates } = await import('@cairn/db')
+    const { channels, channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray, sql } = await import('drizzle-orm')
+
+    const [targetMember] = await db
+      .select({ userId: activeWorkspaceMembers.userId })
+      .from(activeWorkspaceMembers)
+      .where(and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, targetUserId),
+      ))
+      .limit(1)
+
+    if (!targetMember) {
+      return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
+    }
 
     // 既存の DM チャンネルを探す（両者が参加している）
     const myChannelIds = db

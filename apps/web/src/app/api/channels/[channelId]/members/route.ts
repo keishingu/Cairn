@@ -19,17 +19,21 @@ export async function GET(
 
   const { channelId } = await params
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { channelMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { eq, and } = await import('drizzle-orm')
 
     const rows = await db
       .select({ userId: channelMembers.userId, channelId: channelMembers.channelId })
       .from(channelMembers)
+      .innerJoin(activeWorkspaceMembers, and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, channelMembers.userId),
+      ))
       .where(eq(channelMembers.channelId, channelId))
 
     return NextResponse.json(rows satisfies ChannelMemberDto[])
@@ -47,26 +51,35 @@ export async function POST(
   if (error) return error
 
   const { channelId } = await params
-  const body = await req.json() as { userId?: unknown }
-  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+  const userId = typeof (body as { userId?: unknown }).userId === 'string'
+    ? ((body as { userId: string }).userId).trim()
+    : ''
 
   if (!userId) {
     return NextResponse.json({ error: 'userIdが必要です' }, { status: 400 })
   }
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers, channelReadStates, workspaceMembers } = await import('@cairn/db')
+    const { channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    // 自ワークスペースに属さない userId を追加できないようにする（不正な channel_members 行の作成防止）
+    // 自ワークスペースの active メンバー以外を追加できないようにする（不正な channel_members 行や
+    // 非活性メンバーの追加を防ぐ）
     const [member] = await db
-      .select({ userId: workspaceMembers.userId })
-      .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, userId)))
+      .select({ userId: activeWorkspaceMembers.userId })
+      .from(activeWorkspaceMembers)
+      .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), eq(activeWorkspaceMembers.userId, userId)))
       .limit(1)
 
     if (!member) {
