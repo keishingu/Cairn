@@ -73,8 +73,16 @@ Cairn は Vercel 東京リージョン（`vercel.json` の `hnd1`）+ Supabase �
 ### P4: 小粒の調整（効果: 小 / 随時）
 
 - `refetchOnWindowFocus` の対象を絞る、または `staleTime` との組み合わせを見直す
-- サイドバーのリンクに対する prefetch・hover 時の先読み
+- サイドバーのリンクに対する prefetch・hover 時の先読み — ✅ 実装済み（下記コールドスタート対策 A-1）
 - Realtime invalidate が短時間に連続したときの再取得バースト間引き
+
+#### コールドスタート対策（「放置後の初回遷移だけ遅い」への直接対処）— ✅ 実装済み
+
+タブを数分放置するとサーバーレス関数と DB 接続（§2.3）が冷え、復帰後の初回遷移だけが体感で遅くなる。往復数削減（P1〜P3）とは別軸で、ユーザーが操作する前にサーバー側を先行して温める 2 施策を入れた。
+
+- **A-1: hover 時のルート prefetch** — サイドバーの各ナビ項目 hover 時に `router.prefetch()` で遷移先ルートを先読みする（`pc-shell.tsx` の `prefetchPage` → `sidebar.tsx` の `onPrefetch`）。RSC ペイロードとサーバーレス関数を温め、クリック時の初回遷移を速くする。`router.prefetch` は同一ルートをデデュープするため hover 連打は無害。ナビは `next/link` ではなく `router.push` 方式のため自動 prefetch が効かず、手動配線が必要
+- **A-2: フォーカス復帰時のウォームアップ** — タブ復帰（`visibilitychange` / `focus`）を検知して軽量な `GET /api/warmup`（`select 1` のみ）を先行して1本投げ、サーバーレス関数と DB 接続を温める（`components/app/focus-warmup.tsx`、`(app)/layout.tsx` にマウント）。連続フォーカス往復で撃ちすぎないよう最小間隔 30 秒でスロットルする。`/api/warmup` は認証を要求しない（Auth 往復 §2.1 自体が温めたい固定費であり、認証を挟むと目的に反するため。副作用も持たない）
+- **見送った案（B: keep-warm ping）**: サーバーレスはリクエストごとに別インスタンスへ割れやすく、定期 ping 1 本では全インスタンスを温められずコスパが読みにくいため採用しない
 
 ## 4. 計測方法
 
