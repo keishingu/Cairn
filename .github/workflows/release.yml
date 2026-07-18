@@ -1,6 +1,8 @@
 name: Release (develop → main)
 
 # develop の内容を main へリリースするための手動ワークフロー。
+# - 本番DBへマイグレーションの dry-run を行い、失敗ならリリースPRを作らず中断する
+#   （適用予定の一覧は PR 本文に載る。実適用はマージ時の migrate.yml が行う）
 # - develop → main の Release PR を作成 / 更新する（マージは手動）
 # - 同じ内容で Draft Release を作成する（タグ確定・公開は PR マージ後に手動）
 # - 本文は OpenAI(gpt-4o) でコミットから生成する。OPENAI_API_KEY は必須
@@ -75,6 +77,56 @@ jobs:
         if: steps.commits.outputs.has_changes != 'true'
         run: |
           echo "::notice::リリース対象の差分が無いため終了します。"
+
+      - name: Setup Supabase CLI
+        if: steps.commits.outputs.has_changes == 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # 本番DBへ dry-run し、マージ時に適用されるマイグレーションを事前に確認する。
+      # 接続不可・履歴不整合ならリリースPRを作らずここで中断する（マージ後に
+      # 初めて migration 失敗が発覚し、新コード×旧スキーマで本番エラーになるのを防ぐ）
+      - name: Migration dry-run (production)
+        if: steps.commits.outputs.has_changes == 'true'
+        id: migrations
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::error::SUPABASE_DB_URL_PRODUCTION が未設定です。本番DBへの dry-run に必須のため中断します。Settings → Secrets に Session Pooler の接続文字列を登録してください。"
+            exit 1
+          fi
+          set +e
+          OUTPUT=$(supabase db push --include-all --dry-run --db-url "$DB_URL" 2>&1)
+          STATUS=$?
+          set -e
+          printf '%s\n' "$OUTPUT"
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error::本番DBへの migration dry-run に失敗しました。接続設定またはマイグレーション履歴の不整合を解消してから再実行してください。"
+            exit "$STATUS"
+          fi
+
+          # dry-run 出力から適用予定のマイグレーションファイル名を抽出する
+          PENDING=$(printf '%s\n' "$OUTPUT" | grep -oE '[0-9]+_[A-Za-z0-9_-]+\.sql' | sort -u || true)
+          if [ -n "$PENDING" ]; then
+            LIST=$(printf '%s\n' "$PENDING" | sed 's/^/- `/; s/$/`/')
+            SECTION=$(printf '%s\n\n%s\n\n%s\n' \
+              '## DBマイグレーション' \
+              "マージ時に [DB Migrate ワークフロー](https://github.com/${REPO}/actions/workflows/migrate.yml) が本番DBへ以下を自動適用します。適用が失敗した場合は Actions の通知を確認し、修正 or 手動適用すること。" \
+              "$LIST")
+          else
+            SECTION=$(printf '%s\n\n%s\n' \
+              '## DBマイグレーション' \
+              '適用予定のマイグレーションはありません（スキーマ変更を含まないリリース）。')
+          fi
+          {
+            echo "section<<__MIGRATIONS__"
+            echo "$SECTION"
+            echo "__MIGRATIONS__"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Generate release notes (AI summary or fallback)
         if: steps.commits.outputs.has_changes == 'true'
@@ -152,8 +204,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BODY: ${{ steps.notes.outputs.body }}
+          MIGRATIONS_SECTION: ${{ steps.migrations.outputs.section }}
         run: |
           set -euo pipefail
+          # マイグレーション情報は運用者向けなので PR 本文にのみ載せる（Draft Release には載せない）
+          BODY=$(printf '%s\n\n%s\n' "$BODY" "$MIGRATIONS_SECTION")
           TITLE="Release: develop → main ($(date +%Y-%m-%d))"
           EXISTING=$(gh pr list --base main --head develop --state open --json number --jq '.[0].number // empty')
           if [ -n "$EXISTING" ]; then

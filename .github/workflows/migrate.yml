@@ -1,0 +1,69 @@
+name: DB Migrate
+
+# develop / main への push 時に、未適用の Supabase マイグレーションを自動適用する。
+# - develop への push → cairn-preview / main への push → cairn-production
+# - main マージ時、db push（数秒）が Vercel の本番ビルド（数分）より先に完了するため、
+#   「新コードが旧スキーマに当たる」期間を実質なくすのが目的。
+#   逆に「旧コードが新スキーマに当たる」期間がビルド完了まで生じるため、
+#   マイグレーションは後方互換（カラム追加等）を基本とする。破壊的変更
+#   （カラム削除・リネーム等）は2段階リリースで行う。詳細は docs/production-deployment.md
+# - DB URL は Session Pooler（ポート5432、ユーザー postgres.<ref>）を使うこと。
+#   GitHub-hosted runner は IPv4 のみのため、Direct connection（IPv6専用）には繋がらない
+on:
+  push:
+    branches: [main, develop]
+  # 初回セットアップ後の手動適用や、失敗後のリトライ用（main / develop でのみ実行可）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同一ブランチへの連続 push で db push が並走しないよう直列化する
+concurrency:
+  group: migrate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Push migrations
+        env:
+          BRANCH: ${{ github.ref_name }}
+          DB_URL_PRODUCTION: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          DB_URL_PREVIEW: ${{ secrets.SUPABASE_DB_URL_PREVIEW }}
+        run: |
+          set -euo pipefail
+          case "$BRANCH" in
+            main)
+              DB_URL="${DB_URL_PRODUCTION:-}"
+              SECRET_NAME="SUPABASE_DB_URL_PRODUCTION"
+              TARGET="本番 (cairn-production)"
+              ;;
+            develop)
+              DB_URL="${DB_URL_PREVIEW:-}"
+              SECRET_NAME="SUPABASE_DB_URL_PREVIEW"
+              TARGET="検証 (cairn-preview)"
+              ;;
+            *)
+              echo "::error::このワークフローは main / develop でのみ実行できます（現在: $BRANCH）。"
+              exit 1
+              ;;
+          esac
+          if [ -z "$DB_URL" ]; then
+            echo "::error::Secret $SECRET_NAME が未設定です。Settings → Secrets に Session Pooler の接続文字列（postgresql://postgres.<ref>:<password>@aws-X-ap-northeast-1.pooler.supabase.com:5432/postgres）を登録してください。"
+            exit 1
+          fi
+          echo "::notice::$TARGET へマイグレーションを適用します。"
+          # --include-all: マージ順とタイムスタンプ順が前後しても、remote 履歴に無い
+          # マイグレーションをすべて適用する（適用済みは履歴テーブルで除外され再適用されない）
+          supabase db push --include-all --db-url "$DB_URL"

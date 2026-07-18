@@ -1,0 +1,57 @@
+name: Migration Dry-run
+
+# main 宛 PR（リリースPR）で、本番DBへのマイグレーション適用可否を事前検証する。
+# - 本番DBに接続して dry-run し、適用予定のマイグレーション一覧をジョブサマリーに出す
+# - 接続不可・マイグレーション履歴の不整合はここで検出され、PR チェックが fail する
+# - リリースPRが open の間に develop へ push が積まれても、synchronize で再検証される
+# - SQL は実行しない（dry-run）。実適用時のエラーは develop 側の DB Migrate
+#   ワークフロー（preview DB への実適用）で先に検出される想定
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-dry-run-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Dry-run against production
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::error::Secret SUPABASE_DB_URL_PRODUCTION が未設定です。Settings → Secrets に Session Pooler の接続文字列を登録してください。"
+            exit 1
+          fi
+          set +e
+          OUTPUT=$(supabase db push --include-all --dry-run --db-url "$DB_URL" 2>&1)
+          STATUS=$?
+          set -e
+          printf '%s\n' "$OUTPUT"
+          {
+            echo "## 本番DB マイグレーション dry-run"
+            echo ""
+            echo '```'
+            printf '%s\n' "$OUTPUT"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error::本番DBへの migration dry-run に失敗しました。接続設定またはマイグレーション履歴の不整合を確認してください。"
+            exit "$STATUS"
+          fi

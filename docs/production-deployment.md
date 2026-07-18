@@ -1,6 +1,6 @@
 # 本番デプロイ・運用リファレンス
 
-> ステータス: **現行リファレンス** ／ 最終更新: 2026-07-01
+> ステータス: **現行リファレンス** ／ 最終更新: 2026-07-18
 >
 > 本番環境（Vercel + Supabase）の構成・残タスク・将来の一般公開に向けた設定をまとめる。
 > 実装・設定が変わったら本ファイルを更新すること。
@@ -21,6 +21,23 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
 - **`develop` への merge → 検証デプロイ**: `develop` は Vercel の Preview デプロイ。**`develop.oss-cairn.com` を `develop` ブランチに割り当て**ており、**環境変数は Preview と共通**（PR プレビューと同じ `cairn-preview` を指す）。
 - **PR → プレビューデプロイ**: 各 PR は Vercel 自動採番の Preview URL にデプロイされる（環境変数は Preview）。
 
+### DBマイグレーションの自動適用（GitHub Actions）
+
+`develop` / `main` への push 時に `.github/workflows/migrate.yml` が `supabase db push --include-all` を実行し、未適用マイグレーションを自動適用する（`develop` → `cairn-preview`、`main` → `cairn-production`）。手動でのローカルからの `db push` は不要。
+
+- **タイミング**: `main` マージ時、db push（数秒）が Vercel の本番ビルド（数分）より先に完了するため、「新コード × 旧スキーマ」で本番エラーになる期間は実質生じない。逆に「旧コード × 新スキーマ」の期間がビルド完了までの数分生じる。
+- **後方互換が前提**: 上記の数分間も旧コードが動くため、マイグレーションは後方互換（テーブル追加・カラム追加・インデックス追加等）を基本とする。**破壊的変更（カラム削除・リネーム・NOT NULL 化等）は 2 段階リリース**で行う — まずコード側の参照をやめてリリースし、次のリリースでスキーマを落とす。
+- **事前検証（3段構え）**:
+  1. `develop` マージ時に preview DB へ**実適用**されるため、SQL の実行エラーは本番より先に検出される
+  2. リリースワークフロー（`release.yml`）が本番DBへ **dry-run** し、適用予定一覧を Release PR 本文に記載する。接続不可・履歴不整合なら PR を作らず中断する
+  3. `main` 宛 PR では `.github/workflows/migration-dry-run.yml` が PR チェックとして dry-run を再実行する（リリースPRが open の間に develop が進んでも再検証される）
+- **必要な Secrets**（Settings → Secrets and variables → Actions）: `SUPABASE_DB_URL_PRODUCTION` / `SUPABASE_DB_URL_PREVIEW`
+  - **Session Pooler（ポート 5432）** の接続文字列を使う: `postgresql://postgres.<ref>:<password>@aws-X-ap-northeast-1.pooler.supabase.com:5432/postgres`
+  - GitHub-hosted runner は IPv4 のみのため、Direct connection（IPv6 専用）は使えない。Transaction pooler（6543）もマイグレーションには不可
+  - パスワードに記号が含まれる場合は URL エンコードする
+- **初回導入時**: `supabase migration list --db-url <URL>` で remote のマイグレーション履歴が `supabase/migrations/` と整合しているか確認する（履歴に記録の無い適用済みマイグレーションがあると `db push` が再適用を試みて失敗する）
+- **適用失敗時**: Actions が fail する（Vercel のデプロイ自体は止まらない点に注意）。原因を修正して再 push するか、**DB Migrate** ワークフローを `workflow_dispatch` で手動再実行する。
+
 ### Vercel ダッシュボード設定（この振り分けの前提）
 
 リポジトリだけでは完結しないため、以下は Vercel ダッシュボードで設定する。
@@ -37,7 +54,7 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
 
 - **アプリ実行時 `DATABASE_URL`（Vercel）**: Transaction pooler の **Shared Pooler / IPv4**（ホスト `aws-X-ap-northeast-1.pooler.supabase.com:6543`、ユーザー `postgres.<ref>`）。
   - Direct connection（`db.<ref>.supabase.co`）は **IPv6 専用で Vercel(IPv4) から繋がらない**ため使わない。
-- **マイグレーション `supabase db push`**: ローカルから **Session/Direct（5432）** で実行（`--db-url` を明示し、CLI の link は preview のまま）。
+- **マイグレーション `supabase db push`**: GitHub Actions（`migrate.yml`）が **Session Pooler（5432）** 経由で自動適用する（前述）。手動で適用する場合も `--db-url` を明示して Session Pooler（IPv6 環境なら Direct も可）で実行する（CLI の link は preview のまま）。
 - **`SUPABASE_SERVICE_ROLE_KEY`**: **Legacy service_role JWT（`eyJ...`）** を使う。
   - 新形式 `sb_secret_...` は **Storage が JWT を要求するため `Invalid Compact JWS` で失敗**する。
 - **`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`**: 新形式 `sb_publishable_...`（Auth は新形式で動作）。
@@ -49,10 +66,12 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
 1. **リリースワークフローを手動実行**
    - GitHub の **Actions** タブ → **`Release (develop → main)`** → **Run workflow**。
    - （任意）入力 `release_tag` にタグ名（例 `v1.1.0`）。空なら `release-YYYY-MM-DD` で自動採番。
-   - 生成物: **Release PR（develop → main、本文は AI 生成ノート）** と **Draft Release（同じ本文。※この時点ではタグ未作成）**。
+   - 本番DBへマイグレーションの **dry-run** が走り、失敗するとリリースPRを作らず中断する。適用予定のマイグレーション一覧は PR 本文の「DBマイグレーション」欄に記載される。
+   - 生成物: **Release PR（develop → main、本文は AI 生成ノート + マイグレーション一覧）** と **Draft Release（AI 生成ノートのみ。※この時点ではタグ未作成）**。
    - ノートは利用ユーザー向けに絞り込む（docs/CI/テスト/依存・設定のみのコミットは除外。全差分が除外パスのみなら汎用のメンテナンス文）。
 2. **Release PR を `main` にマージ**
-   - CI と Vercel プレビューを確認してマージ。`main` が `develop` の内容に更新され、Vercel が本番デプロイする。
+   - CI・**Migration Dry-run** チェックと Vercel プレビューを確認してマージ。`main` が `develop` の内容に更新され、**DB Migrate ワークフローが本番DBへマイグレーションを自動適用**し、Vercel が本番デプロイする（db push はビルドより先に完了する）。
+   - マージ後は **Actions の DB Migrate が成功したことを確認**する。失敗していた場合は修正 or `workflow_dispatch` で再実行する。
 3. **Draft Release を Publish**（※必ずマージ後）
    - **Releases** ページ → Draft を **Edit** → **Target: main** を確認（Publish 時に `main` の HEAD からタグが作られる）。
    - 必要ならタグ名・タイトルを `v1.1.0` 等に調整して **Publish release**。
