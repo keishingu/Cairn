@@ -93,7 +93,7 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
           textDecoration: isDone ? 'line-through' : 'none',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{displayTitle}</div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{task.projectTitle}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{task.projectTitle ?? 'プロジェクトなし'}</div>
       </div>
 
       {task.priority && !isDone && (
@@ -130,7 +130,10 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
       <RowActionMenu
         actions={[
           { icon: 'edit', label: '編集', onSelect: () => onEdit(task, 'edit') },
-          { icon: 'trash', label: '削除', danger: true, onSelect: () => onEdit(task, 'delete') },
+          // チャット由来タスクは単体削除不可（元のチャットメッセージ側で削除する）
+          ...(task.isLinkedToMessage
+            ? []
+            : [{ icon: 'trash' as const, label: '削除', danger: true, onSelect: () => onEdit(task, 'delete') }]),
         ]}
         triggerStyle={{ padding: '6px', borderRadius: 8 }}
       />
@@ -200,7 +203,7 @@ const Section = ({ label, count, tasks, onToggle, onEdit, togglingId, open, onTo
 export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const searchParams = useSearchParams()
   const openedTaskIdRef = React.useRef<string | null>(null)
-  const [filter, setFilter] = React.useState<FilterKey>('all')
+  const [filter, setFilter] = React.useState<FilterKey>('todo')
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
   const [showAddModal, setShowAddModal] = React.useState(false)
   const [editingTask, setEditingTask] = React.useState<TaskDto | null>(null)
@@ -256,15 +259,17 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     const projectOrder: string[] = []
     const projectMap = new Map<string, TaskDto[]>()
     for (const t of filtered) {
-      if (!projectMap.has(t.projectId)) {
-        projectMap.set(t.projectId, [])
-        projectOrder.push(t.projectId)
+      // プロジェクト未所属タスクは 'none' キーでまとめる
+      const key = t.projectId ?? 'none'
+      if (!projectMap.has(key)) {
+        projectMap.set(key, [])
+        projectOrder.push(key)
       }
-      projectMap.get(t.projectId)!.push(t)
+      projectMap.get(key)!.push(t)
     }
     return projectOrder.map(pid => ({
       key: pid,
-      label: projectMap.get(pid)![0]!.projectTitle,
+      label: projectMap.get(pid)![0]!.projectTitle ?? 'プロジェクトなし',
       tasks: projectMap.get(pid)!,
     }))
   }, [filtered])
@@ -292,10 +297,10 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const selectedTaskId = navIdx >= 0 ? (visibleTasks[navIdx]?.id ?? null) : null
 
   const filters: { id: FilterKey; label: string }[] = [
-    { id: 'all',         label: `すべて (${counts.all})` },
     { id: 'todo',        label: `未着手 (${counts.todo})` },
     { id: 'in_progress', label: `進行中 (${counts.in_progress})` },
     { id: 'done',        label: `完了 (${counts.done})` },
+    { id: 'all',         label: `すべて (${counts.all})` },
   ]
 
   // ⌥[ / ⌥]: フィルタタブ切替

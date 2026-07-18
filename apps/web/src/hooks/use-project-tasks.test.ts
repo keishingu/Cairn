@@ -19,8 +19,8 @@ function makeWrapper() {
 }
 
 const STUB_TASKS: TaskDto[] = [
-  { id: 't1', projectId: 'p1', projectTitle: 'P', title: 'タスク1', status: 'todo', priority: 'medium', dueDate: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
-  { id: 't2', projectId: 'p1', projectTitle: 'P', title: 'タスク2', status: 'done', priority: 'low', dueDate: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
+  { id: 't1', projectId: 'p1', projectTitle: 'P', title: 'タスク1', status: 'todo', priority: 'medium', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
+  { id: 't2', projectId: 'p1', projectTitle: 'P', title: 'タスク2', status: 'done', priority: 'low', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
 ]
 
 describe('useProjectTasks', () => {
@@ -80,7 +80,7 @@ describe('useCreateTask', () => {
   beforeEach(() => { mockFetch.mockClear() })
 
   it('タスクを作成して onSuccess コールバックを呼ぶ', async () => {
-    const newTask: TaskDto = { id: 't3', projectId: 'p1', projectTitle: 'P', title: '新タスク', status: 'todo', priority: 'high', dueDate: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false }
+    const newTask: TaskDto = { id: 't3', projectId: 'p1', projectTitle: 'P', title: '新タスク', status: 'todo', priority: 'high', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false }
     mockFetch.mockResolvedValue(new Response(JSON.stringify(newTask), { status: 200 }))
     const onSuccess = vi.fn()
     const { wrapper } = makeWrapper()

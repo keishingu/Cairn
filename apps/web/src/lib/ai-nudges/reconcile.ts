@@ -49,7 +49,8 @@ export async function reconcilePhaseOneAiNudges(now = new Date()) {
       .select({
         id: tasks.id,
         workspaceId: projects.workspaceId,
-        projectId: tasks.projectId,
+        // projects との innerJoin により非nullが保証される（project 未所属タスクは対象外）
+        projectId: projects.id,
         channelId: sql<string | null>`(
           select c.id
           from channels c

@@ -19,8 +19,8 @@ function makeWrapper() {
 }
 
 const STUB_TASKS: TaskDto[] = [
-  { id: 't1', projectId: 'p1', projectTitle: 'P', title: 'タスク1', status: 'todo', priority: 'medium', dueDate: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
-  { id: 't2', projectId: 'p2', projectTitle: 'Q', title: 'タスク2', status: 'done', priority: 'low', dueDate: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
+  { id: 't1', projectId: 'p1', projectTitle: 'P', title: 'タスク1', status: 'todo', priority: 'medium', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
+  { id: 't2', projectId: 'p2', projectTitle: 'Q', title: 'タスク2', status: 'done', priority: 'low', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
 ]
 
 describe('useTasks', () => {

@@ -127,6 +127,7 @@ export async function postMessage({ channelId, payload, userId, workspaceId, rol
         const projectId = channel.projectId
         await tx.insert(tasks).values(
           checkboxes.map((checkbox) => ({
+            workspaceId,
             projectId,
             title: checkbox.text,
             status: (checkbox.checked ? 'done' : 'todo') as 'done' | 'todo',
