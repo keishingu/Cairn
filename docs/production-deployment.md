@@ -27,10 +27,11 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
 
 - **タイミング（順序は保証されない）**: `migrate.yml` と Vercel の Git 連携デプロイは、どちらも `main` への同じ push イベントに反応する**独立したトリガー**であり、Actions 側が先に完了することを仕組みとして保証してはいない。実運用では db push（数秒）が Vercel の本番ビルド（数分）より先に終わることが多く「新コード × 旧スキーマ」の期間は縮まるが、Actions のキュー詰まり・リトライ・失敗時にはこの前提が崩れうる。**厳密に順序を保証したい場合は、Vercel Production Branch の自動デプロイを無効化し、`migrate.yml` の成功後に Vercel Deploy Hook を叩いて本番デプロイを起動する構成に変更する必要がある**（未実施）。それまでは「旧コード × 新スキーマ」の期間（後方互換を前提にビルド完了まで数分）に加え、まれに「新コード × 旧スキーマ」の期間が残りうる点に注意する。
 - **後方互換が前提**: 上記の数分間も旧コードが動くため、マイグレーションは後方互換（テーブル追加・カラム追加・インデックス追加等）を基本とする。**破壊的変更（カラム削除・リネーム・NOT NULL 化等）は 2 段階リリース**で行う — まずコード側の参照をやめてリリースし、次のリリースでスキーマを落とす。
-- **事前検証（3段構え）**:
+- **事前検証（4段構え）**:
   1. `develop` マージ時に preview DB へ**実適用**されるため、SQL の実行エラーは本番より先に検出される
-  2. リリースワークフロー（`release.yml`）が本番DBへ **dry-run** し、適用予定一覧を Release PR 本文に記載する。接続不可・履歴不整合なら PR を作らず中断する
-  3. `main` 宛 PR では `.github/workflows/migration-dry-run.yml` が PR チェックとして dry-run を再実行する（リリースPRが open の間に develop が進んでも再検証される）
+  2. リリースワークフロー（`release.yml`）は開始直後に、**develop 側の DB Migrate 実行結果**（GitHub Actions API で該当コミットの `migrate.yml` 実行を照会）を確認する。未完了・失敗ならリリースPRを作らず中断する（`dry-run` は SQL を実行しないため、実際に preview へ適用できたかはこの確認でのみ担保される）
+  3. 続けて本番DBへ **dry-run** し、適用予定一覧を Release PR 本文に記載する。接続不可・履歴不整合なら PR を作らず中断する
+  4. `main` 宛 PR では `.github/workflows/migration-dry-run.yml` が PR チェックとして dry-run を再実行する（リリースPRが open の間に develop が進んでも再検証される）
 - **必要な Secrets**（Settings → Secrets and variables → Actions）: `SUPABASE_DB_URL_PRODUCTION` / `SUPABASE_DB_URL_PREVIEW`
   - **Session Pooler（ポート 5432）** の接続文字列を使う: `postgresql://postgres.<ref>:<password>@aws-X-ap-northeast-1.pooler.supabase.com:5432/postgres`
   - GitHub-hosted runner は IPv4 のみのため、Direct connection（IPv6 専用）は使えない。Transaction pooler（6543）もマイグレーションには不可

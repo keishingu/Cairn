@@ -1,6 +1,9 @@
 name: Release (develop → main)
 
 # develop の内容を main へリリースするための手動ワークフロー。
+# - develop 側の DB Migrate（push 時に実行される migrate.yml）が成功しているか確認し、
+#   失敗・未完了ならリリースPRを作らず中断する（dry-run は実行を伴わないチェックのため、
+#   実際に preview DB へ適用できたかはこの確認でのみ担保される）
 # - 本番DBへマイグレーションの dry-run を行い、失敗ならリリースPRを作らず中断する
 #   （適用予定の一覧は PR 本文に載る。実適用はマージ時の migrate.yml が行う）
 # - develop → main の Release PR を作成 / 更新する（マージは手動）
@@ -18,6 +21,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: read
 
 concurrency:
   group: release-develop-to-main
@@ -77,6 +81,35 @@ jobs:
         if: steps.commits.outputs.has_changes != 'true'
         run: |
           echo "::notice::リリース対象の差分が無いため終了します。"
+
+      # dry-run は SQL を実行しないため、実際に develop → preview へ適用できたかは
+      # push 時の DB Migrate（migrate.yml）の結果でのみ分かる。ここが失敗・未完了のまま
+      # リリースすると、本番で初めて同じ失敗が発覚することになるため事前に確認する。
+      - name: Check develop DB Migrate status
+        if: steps.commits.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          RUN_JSON=$(gh api "repos/${REPO}/actions/workflows/migrate.yml/runs?head_sha=${SHA}&branch=develop&event=push" --jq '.workflow_runs[0] // empty')
+          if [ -z "$RUN_JSON" ]; then
+            echo "::error::develop (${SHA}) に対する DB Migrate ワークフローの実行が見つかりません。push 直後で未起動の可能性があるため、数分待ってから再実行してください。"
+            exit 1
+          fi
+          STATUS=$(printf '%s' "$RUN_JSON" | jq -r '.status')
+          if [ "$STATUS" != "completed" ]; then
+            echo "::error::develop の DB Migrate ワークフローがまだ実行中です（status=${STATUS}）。完了を待ってから再実行してください。"
+            exit 1
+          fi
+          CONCLUSION=$(printf '%s' "$RUN_JSON" | jq -r '.conclusion')
+          if [ "$CONCLUSION" != "success" ]; then
+            HTML_URL=$(printf '%s' "$RUN_JSON" | jq -r '.html_url')
+            echo "::error::develop への DB Migrate が失敗しています（conclusion=${CONCLUSION}）。preview DB への適用に失敗した状態のままリリースすると本番でも同じ失敗が起きるため中断します。${HTML_URL} を確認して修正してください。"
+            exit 1
+          fi
+          echo "::notice::develop の DB Migrate 実行（${SHA}）は成功しています。"
 
       - name: Setup Supabase CLI
         if: steps.commits.outputs.has_changes == 'true'
