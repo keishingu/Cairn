@@ -16,6 +16,7 @@ export interface CurrentUserDto {
   status: UserStatus
   statusMessage: string | null
   wsRole: 'owner' | 'admin' | 'member' | 'guest'
+  aiNudgesEnabled: boolean
 }
 
 export async function GET() {
@@ -40,6 +41,7 @@ export async function GET() {
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         bio: profiles.bio,
+        aiNudgesEnabled: profiles.aiNudgesEnabled,
         status: workspaceMembers.status,
         statusMessage: workspaceMembers.statusMessage,
         wsRole: workspaceMembers.role,
@@ -64,6 +66,7 @@ export async function GET() {
       status: row.status ?? 'online',
       statusMessage: row.statusMessage ?? null,
       wsRole: row.wsRole ?? 'member',
+      aiNudgesEnabled: row.aiNudgesEnabled,
     } satisfies CurrentUserDto)
   } catch (err) {
     console.error('[/api/me] DB query failed:', err)
@@ -92,14 +95,34 @@ export async function PATCH(req: Request) {
   const hasStatusMessage = 'statusMessage' in b
 
   try {
-    const { db, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { db, aiNudges, profiles, workspaceMembers } = await import('@cairn/db')
+    const { eq, and, inArray } = await import('drizzle-orm')
 
-    if (hasBio) {
-      await db
-        .update(profiles)
-        .set({ bio: b.bio ?? null, updatedAt: new Date() })
-        .where(eq(profiles.id, ctx.userId))
+    if (hasBio || b.aiNudgesEnabled !== undefined) {
+      await db.transaction(async (tx) => {
+        const profileUpdate: { bio?: string | null; aiNudgesEnabled?: boolean; updatedAt: Date } = {
+          updatedAt: new Date(),
+        }
+        if (hasBio) profileUpdate.bio = b.bio ?? null
+        if (b.aiNudgesEnabled !== undefined) profileUpdate.aiNudgesEnabled = b.aiNudgesEnabled
+
+        await tx
+          .update(profiles)
+          .set(profileUpdate)
+          .where(eq(profiles.id, ctx.userId))
+
+        // キルスイッチ OFF はサーバー側で即時遡及させる。同じ suppressed 遷移を
+        // フィードバック・アクセス失効と共有することで、DB trigger がベル通知も消す。
+        if (b.aiNudgesEnabled === false) {
+          await tx
+            .update(aiNudges)
+            .set({ status: 'suppressed', remindAfter: null })
+            .where(and(
+              eq(aiNudges.userId, ctx.userId),
+              inArray(aiNudges.status, ['active', 'dismissed']),
+            ))
+        }
+      })
     }
 
     if (b.displayName !== undefined) {

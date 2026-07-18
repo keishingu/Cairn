@@ -6,6 +6,7 @@
 import React from 'react'
 import type { AttachmentDto, MessageType } from '@cairn/shared'
 import type { ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
 import { Avatar } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
@@ -41,6 +42,7 @@ import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
 import { GENERIC_MIME_TYPES, resolveAttachmentMimeType } from '@/lib/attachments'
+import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
 
 const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
 
@@ -876,6 +878,63 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   )
 }
 
+// ─── Private AI nudge ─────────────────────────────────────────────
+
+const AiNudgeCard = ({
+  nudge,
+  feedbackPending,
+  completing,
+  onFeedback,
+  onComplete,
+}: {
+  nudge: AiNudgeDto
+  feedbackPending: boolean
+  completing: boolean
+  onFeedback: (feedback: 'later' | 'not_helpful') => void
+  onComplete: () => void
+}) => (
+  <article
+    data-nudge-id={nudge.id}
+    style={{ margin: '10px 16px', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--accent-border)', background: 'var(--accent-soft)' }}
+  >
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+      <div style={{ width: 26, height: 26, borderRadius: 8, background: 'var(--accent)', color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon name="sparkles" size={14}/>
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>AI PMO · {nudge.title}</div>
+        <div style={{ fontSize: 10.5, color: 'var(--accent-text)', marginTop: 1 }}>このメッセージはあなただけに見えています</div>
+      </div>
+      <time style={{ marginLeft: 'auto', alignSelf: 'flex-start', fontSize: 10.5, color: 'var(--text-4)', whiteSpace: 'nowrap' }}>
+        {formatChatMessageTime(nudge.createdAt)}
+      </time>
+    </div>
+    <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{nudge.body}</div>
+    <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+      {nudge.taskId && (
+        <a
+          href={`/tasks?taskId=${encodeURIComponent(nudge.taskId)}`}
+          className="btn btn-ghost"
+          style={{ height: 28, padding: '0 9px', fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}
+        >
+          <Icon name="external-link" size={11}/> タスクを開く
+        </a>
+      )}
+      {nudge.taskId && (
+        <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 11.5 }} onClick={onComplete} disabled={completing || feedbackPending}>
+          {completing ? '更新中…' : '完了にする'}
+        </button>
+      )}
+      <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 11.5 }} onClick={() => onFeedback('later')} disabled={feedbackPending || completing}>
+        あとで
+      </button>
+      <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 11.5 }} onClick={() => onFeedback('not_helpful')} disabled={feedbackPending || completing}>
+        これは問題ない
+      </button>
+    </div>
+  </article>
+)
+
 // ─── ChatThread ───────────────────────────────────────────────────
 
 export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile, targetMessageId }: {
@@ -897,6 +956,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [highlightId, setHighlightId] = React.useState<string | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const [focusedMsgIdx, setFocusedMsgIdx] = React.useState(-1)
+  const [completingNudgeId, setCompletingNudgeId] = React.useState<string | null>(null)
+  const [nudgeActionError, setNudgeActionError] = React.useState<string | null>(null)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -977,6 +1038,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
 
   const { data: currentUser } = useCurrentUser()
   const { data: messages = [], isLoading, isError, error: messagesError } = useChannelMessages(channelId)
+  const { data: nudges = [], isError: nudgesError } = useAiNudges(channelId)
+  const nudgeFeedback = useAiNudgeFeedback(channelId)
   // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。
   // 生のエラーではなく「参加していない」ことを明示する案内を出す。
   const isAccessDenied = messagesError instanceof ChannelMessagesError && messagesError.status === 403
@@ -998,6 +1061,45 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const markChannelReadFn = markChannelRead.mutate
   const lastReadMessageIdRef = React.useRef<string | null>(null)
   const ensureMessageLoaded = useEnsureMessageLoaded(channelId)
+
+  const timeline = React.useMemo(() => [
+    ...messages.map((message, index) => ({ kind: 'message' as const, createdAt: message.createdAt, message, messageIndex: index })),
+    ...nudges.map(nudge => ({ kind: 'nudge' as const, createdAt: nudge.createdAt, nudge })),
+  ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()), [messages, nudges])
+
+  const handleNudgeFeedback = React.useCallback((id: string, feedback: 'later' | 'not_helpful') => {
+    setNudgeActionError(null)
+    nudgeFeedback.mutate({ id, feedback }, {
+      onError: error => setNudgeActionError((error as Error).message),
+    })
+  }, [nudgeFeedback])
+
+  const handleCompleteNudgeTask = React.useCallback(async (nudge: AiNudgeDto) => {
+    if (!nudge.taskId) return
+    setCompletingNudgeId(nudge.id)
+    setNudgeActionError(null)
+    try {
+      const res = await fetchWithAuth(`/api/tasks/${nudge.taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'done' }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(data.error ?? 'タスクの更新に失敗しました')
+      }
+      // DB 上の resolved 化は次のハートビートが担う。操作直後は完了したカードだけを
+      // ローカルから除き、同じ画面で解消済みの催促を残さない。
+      queryClient.setQueryData<AiNudgeDto[]>(aiNudgeQueryKey(channelId), current =>
+        current?.filter(item => item.id !== nudge.id) ?? [])
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    } catch (error) {
+      setNudgeActionError((error as Error).message)
+    } finally {
+      setCompletingNudgeId(null)
+    }
+  }, [channelId, queryClient])
 
   // 表示中チャンネルに新着が届いたら自動で既読化する。
   // 開いて読んでいるのにバッジが増え続ける問題への対処。タブ非表示時は既読にしない
@@ -1091,7 +1193,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
 
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [messages.length])
+  }, [messages.length, nudges.length])
 
   // チャンネル切替時にフォーカスをリセット
   React.useEffect(() => { setFocusedMsgIdx(-1) }, [channelId])
@@ -1458,26 +1560,35 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
           </div>
         ) : isError ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--red-text)', fontSize: 13 }}>メッセージの取得に失敗しました</div>
-        ) : messages.length === 0 ? (
+        ) : timeline.length === 0 ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>まだメッセージはありません。最初のメッセージを送ってみましょう！</div>
         ) : (
-          messages.map((m, i) => (
+          timeline.map(item => item.kind === 'nudge' ? (
+            <AiNudgeCard
+              key={`nudge:${item.nudge.id}`}
+              nudge={item.nudge}
+              feedbackPending={nudgeFeedback.isPending}
+              completing={completingNudgeId === item.nudge.id}
+              onFeedback={feedback => handleNudgeFeedback(item.nudge.id, feedback)}
+              onComplete={() => void handleCompleteNudgeTask(item.nudge)}
+            />
+          ) : (
             <ChatMessage
-              key={m.id}
-              messageId={m.id}
-              messageType={m.messageType}
-              senderId={m.senderId}
+              key={item.message.id}
+              messageId={item.message.id}
+              messageType={item.message.messageType}
+              senderId={item.message.senderId}
               currentUserId={currentUser?.id}
-              senderName={m.senderName}
-              senderAvatarUrl={m.senderAvatarUrl}
-              senderEmail={emailByUserId.get(m.senderId) ?? null}
-              createdAt={m.createdAt}
-              isEdited={m.isEdited}
-              content={m.content}
-              reactions={m.reactions}
-              attachments={m.attachments}
-              replyTo={m.replyTo}
-              bookmarked={m.bookmarked}
+              senderName={item.message.senderName}
+              senderAvatarUrl={item.message.senderAvatarUrl}
+              senderEmail={emailByUserId.get(item.message.senderId) ?? null}
+              createdAt={item.message.createdAt}
+              isEdited={item.message.isEdited}
+              content={item.message.content}
+              reactions={item.message.reactions}
+              attachments={item.message.attachments}
+              replyTo={item.message.replyTo}
+              bookmarked={item.message.bookmarked}
               onReact={handleReact}
               onEdit={handleEdit}
               onDelete={handleDelete}
@@ -1487,12 +1598,17 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               onJumpToMessage={jumpToMessage}
               onCopyLink={handleCopyLink}
               onImageClick={openLightbox}
-              focused={i === focusedMsgIdx}
+              focused={item.messageIndex === focusedMsgIdx}
               mentionNames={mentionNames}
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}
             />
           ))
+        )}
+        {(nudgesError || nudgeActionError) && (
+          <div role="alert" style={{ margin: '8px 16px', color: 'var(--red-text)', fontSize: 12 }}>
+            {nudgeActionError ?? 'ナッジの取得に失敗しました'}
+          </div>
         )}
       </div>
       {!isAccessDenied && (
