@@ -5,6 +5,7 @@ import { headers } from 'next/headers'
 import { PCShell } from './_shells/pc-shell'
 import { MobileShell } from './_shells/mobile-shell'
 import { RealtimeProvider } from '@/components/realtime/realtime-provider'
+import { FocusWarmup } from '@/components/app/focus-warmup'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const headersList = await headers()
@@ -13,6 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <RealtimeProvider>
+      <FocusWarmup />
       {isMobile ? <MobileShell hideNav={isWebView} /> : <PCShell>{children}</PCShell>}
     </RealtimeProvider>
   )
