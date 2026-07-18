@@ -208,6 +208,28 @@ const SettingsAccount = () => {
     },
   })
 
+  const aiNudgesMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await fetchWithAuth('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aiNudgesEnabled: enabled }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(d.error ?? '更新に失敗しました')
+      }
+      return enabled
+    },
+    onSuccess: (enabled) => {
+      queryClient.setQueryData<CurrentUserDto>(['me'], current => current
+        ? { ...current, aiNudgesEnabled: enabled }
+        : current)
+      void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    },
+  })
+
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) avatarMutation.mutate(file)
@@ -299,6 +321,36 @@ const SettingsAccount = () => {
             </div>
             <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{user?.email ?? '—'}</span>
           </div>
+        </div>
+      </section>
+
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>通知</h2>
+        <div className="card" style={{ padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>AI PMO ナッジ</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}>
+                期限や停滞について、あなただけに見えるリマインドをチャットに表示します
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={user?.aiNudgesEnabled ?? true}
+              aria-label="AI PMO ナッジ"
+              disabled={aiNudgesMutation.isPending}
+              onClick={() => aiNudgesMutation.mutate(!(user?.aiNudgesEnabled ?? true))}
+              style={{ border: 'none', background: 'transparent', padding: 0, flexShrink: 0 }}
+            >
+              <Toggle on={user?.aiNudgesEnabled ?? true}/>
+            </button>
+          </div>
+          {aiNudgesMutation.isError && (
+            <div style={{ padding: '0 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
+              ⚠ {(aiNudgesMutation.error as Error).message}
+            </div>
+          )}
         </div>
       </section>
     </div>

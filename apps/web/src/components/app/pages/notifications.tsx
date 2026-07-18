@@ -36,7 +36,7 @@ const FILTERS = [
 ]
 
 // 通知の遷移先を決める。チャンネル系は data.channelId のスレッドへ、タスクはマイタスクへ
-function notificationHref(n: NotificationDto): string | null {
+export function notificationHref(n: NotificationDto): string | null {
   const channelId = n.data?.['channelId']
   switch (n.type) {
     case 'mention':
@@ -46,6 +46,11 @@ function notificationHref(n: NotificationDto): string | null {
       return channelId ? `/chats/${channelId}` : null
     case 'task':
       return '/tasks'
+    case 'ai': {
+      if (channelId) return `/chats/${channelId}`
+      const taskId = n.data?.['taskId']
+      return taskId ? `/tasks?taskId=${encodeURIComponent(taskId)}` : null
+    }
     default:
       return null
   }

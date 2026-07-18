@@ -765,3 +765,14 @@ export const indexMemberChunks = inngest.createFunction(
     return { indexed: 1 }
   },
 )
+
+// Phase 1 の AI PMO ハートビート。JST 09:00 に構造化タスクだけを再評価し、
+// LLM・メッセージ巡回・埋め込みは一切行わない。
+export const reconcileAiNudgesHeartbeat = inngest.createFunction(
+  { id: 'reconcile-ai-nudges-heartbeat-phase1' },
+  { cron: 'TZ=Asia/Tokyo 0 9 * * *' },
+  async ({ step }) => step.run('reconcile-task-nudges', async () => {
+    const { reconcilePhaseOneAiNudges } = await import('@/lib/ai-nudges/reconcile')
+    return reconcilePhaseOneAiNudges()
+  }),
+)
