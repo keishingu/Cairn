@@ -14,17 +14,30 @@ const {
   mockDbDeleteReturning,
   mockDbUpdateReturning,
   mockRequireProjectAccess,
+  mockRequireRole,
+  mockIsActiveWorkspaceMember,
+  mockNotifyTaskAssigned,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockDbSelectLimit: vi.fn(),
   mockDbDeleteReturning: vi.fn(),
   mockDbUpdateReturning: vi.fn(),
   mockRequireProjectAccess: vi.fn(),
+  mockRequireRole: vi.fn(),
+  mockIsActiveWorkspaceMember: vi.fn(),
+  mockNotifyTaskAssigned: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/chat/checkboxes', () => ({ toggleCheckboxAt: vi.fn() }))
-vi.mock('@/lib/permissions', () => ({ requireProjectAccess: mockRequireProjectAccess }))
+vi.mock('@/lib/chat/checkboxes', () => ({ toggleCheckboxAt: vi.fn(), replaceCheckboxLabelAt: vi.fn() }))
+vi.mock('@/lib/permissions', () => ({
+  requireProjectAccess: mockRequireProjectAccess,
+  requireRole: mockRequireRole,
+}))
+vi.mock('@/lib/tasks/assignment-notification', () => ({
+  isActiveWorkspaceMember: mockIsActiveWorkspaceMember,
+  notifyTaskAssigned: mockNotifyTaskAssigned,
+}))
 vi.mock('@cairn/shared', async () => {
   const actual = await vi.importActual<typeof import('@cairn/shared')>('@cairn/shared')
   return actual
@@ -34,16 +47,16 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
 }))
 vi.mock('@cairn/db', () => {
+  // from/leftJoin/innerJoin/where をすべて自身に返し、limit で結果を解決する簡易チェーン
+  const selectChain = {
+    from: () => selectChain,
+    leftJoin: () => selectChain,
+    innerJoin: () => selectChain,
+    where: () => selectChain,
+    limit: mockDbSelectLimit,
+  }
   const db = {
-    select: vi.fn(() => ({
-      from: () => ({
-        innerJoin: () => ({
-          where: () => ({
-            limit: mockDbSelectLimit,
-          }),
-        }),
-      }),
-    })),
+    select: vi.fn(() => selectChain),
     delete: vi.fn(() => ({
       where: () => ({
         returning: mockDbDeleteReturning,
@@ -61,25 +74,31 @@ vi.mock('@cairn/db', () => {
     db,
     tasks: {
       id: 'tasks.id',
+      workspaceId: 'tasks.workspaceId',
       projectId: 'tasks.projectId',
       title: 'tasks.title',
       priority: 'tasks.priority',
       dueDate: 'tasks.dueDate',
       status: 'tasks.status',
+      assigneeId: 'tasks.assigneeId',
       sourceMessageId: 'tasks.sourceMessageId',
       sourceCheckboxIndex: 'tasks.sourceCheckboxIndex',
     },
-    projects: { id: 'projects.id', workspaceId: 'projects.workspaceId' },
+    projects: { id: 'projects.id', title: 'projects.title', workspaceId: 'projects.workspaceId' },
+    messages: { id: 'messages.id', content: 'messages.content', channelId: 'messages.channelId' },
+    channels: { id: 'channels.id', workspaceId: 'channels.workspaceId', isPrivate: 'channels.isPrivate' },
+    channelMembers: { channelId: 'channelMembers.channelId', userId: 'channelMembers.userId' },
   }
 })
 
 describe('DELETE /api/tasks/[id]', () => {
   beforeEach(() => {
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
     mockRequireProjectAccess.mockResolvedValue(null)
+    mockRequireRole.mockReturnValue(null)
   })
 
   afterEach(() => vi.clearAllMocks())
@@ -104,6 +123,17 @@ describe('DELETE /api/tasks/[id]', () => {
     await expect(res.json()).resolves.toEqual({ id: TASK_ID })
   })
 
+  it('プロジェクト未所属の手動タスクも member なら削除できる', async () => {
+    mockDbSelectLimit.mockResolvedValue([{ id: TASK_ID, projectId: null, sourceMessageId: null }])
+    mockDbDeleteReturning.mockResolvedValue([{ id: TASK_ID }])
+    const { DELETE } = await import('./route')
+    const res = await DELETE(new Request(`http://localhost/api/tasks/${TASK_ID}`, { method: 'DELETE' }), {
+      params: Promise.resolve({ id: TASK_ID }),
+    })
+    expect(res.status).toBe(200)
+    expect(mockRequireRole).toHaveBeenCalled()
+  })
+
   it('参加外プロジェクトの手動タスク削除は 403 で拒否する', async () => {
     mockDbSelectLimit.mockResolvedValue([{ id: TASK_ID, projectId: 'project-2', sourceMessageId: null }])
     mockRequireProjectAccess.mockResolvedValue(
@@ -122,10 +152,12 @@ describe('DELETE /api/tasks/[id]', () => {
 describe('PATCH /api/tasks/[id]', () => {
   beforeEach(() => {
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
     mockRequireProjectAccess.mockResolvedValue(null)
+    mockRequireRole.mockReturnValue(null)
+    mockIsActiveWorkspaceMember.mockResolvedValue(true)
   })
 
   afterEach(() => vi.clearAllMocks())
@@ -134,10 +166,12 @@ describe('PATCH /api/tasks/[id]', () => {
     mockDbSelectLimit.mockResolvedValue([{
       id: TASK_ID,
       projectId: 'project-2',
+      projectTitle: 'proj',
       title: 'title',
       priority: 'medium',
       dueDate: null,
       status: 'todo',
+      assigneeId: null,
       sourceMessageId: null,
       sourceCheckboxIndex: null,
     }])
@@ -156,5 +190,45 @@ describe('PATCH /api/tasks/[id]', () => {
 
     expect(res.status).toBe(403)
     expect(mockDbUpdateReturning).not.toHaveBeenCalled()
+  })
+
+  it('チャット由来タスクのタイトル変更も許可される', async () => {
+    mockDbSelectLimit
+      .mockResolvedValueOnce([{
+        id: TASK_ID,
+        projectId: 'project-1',
+        projectTitle: 'proj',
+        title: '古いタイトル',
+        priority: 'medium',
+        dueDate: null,
+        status: 'todo',
+        assigneeId: null,
+        sourceMessageId: 'm1',
+        sourceCheckboxIndex: 0,
+      }])
+      // メッセージ逆同期用の select（プライベート判定）
+      .mockResolvedValueOnce([{ content: '- [ ] 古いタイトル', channelId: 'c1', isPrivate: false }])
+    mockDbUpdateReturning.mockResolvedValue([{
+      id: TASK_ID,
+      title: '新しいタイトル',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId: null,
+      sourceMessageId: 'm1',
+      sourceCheckboxIndex: 0,
+    }])
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: '新しいタイトル' }),
+      headers: { 'content-type': 'application/json' },
+    }), {
+      params: Promise.resolve({ id: TASK_ID }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(mockDbUpdateReturning).toHaveBeenCalled()
   })
 })

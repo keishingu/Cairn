@@ -21,6 +21,7 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
   const [title, setTitle] = React.useState('')
   const [priority, setPriority] = React.useState<TaskDto['priority']>('medium')
   const [dueDate, setDueDate] = React.useState('')
+  const [assigneeId, setAssigneeId] = React.useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = React.useState(false)
 
   React.useEffect(() => {
@@ -28,6 +29,7 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
     setTitle(task.title)
     setPriority(task.priority)
     setDueDate(task.dueDate ?? '')
+    setAssigneeId(task.assigneeId ?? null)
   }, [open, task])
 
   React.useEffect(() => {
@@ -36,7 +38,7 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
   }, [initialMode, open, task])
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { title: string; priority: TaskDto['priority']; dueDate: string | null }) => {
+    mutationFn: async (payload: { title: string; priority: TaskDto['priority']; dueDate: string | null; assigneeId: string | null }) => {
       if (!task) throw new Error('Task not found')
       const res = await fetchWithAuth(`/api/tasks/${task.id}`, {
         method: 'PATCH',
@@ -95,8 +97,23 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
       title: title.trim(),
       priority,
       dueDate: dueDate || null,
+      assigneeId,
     })
   }
+
+  const titleChanged = task.title !== title.trim()
+  const chatLinkedNote = task.isLinkedToMessage ? (
+    <div style={{
+      marginTop: 6,
+      fontSize: 11.5,
+      lineHeight: 1.5,
+      color: titleChanged ? 'var(--amber-text)' : 'var(--text-3)',
+    }}>
+      {titleChanged
+        ? 'このタスクはチャットメッセージから作成されています。タイトルを変更すると、元のチャットのチェックボックスも同じ文言に書き換わります。'
+        : 'このタスクはチャットメッセージと紐付いています。タイトルを変更すると元のチャットのチェックボックスも書き換わります。'}
+    </div>
+  ) : null
 
   const errorMessage = updateMutation.isError
     ? updateMutation.error instanceof Error
@@ -109,19 +126,23 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
       {showEditDialog && (
         <TaskDialog
           title="タスクを編集"
-          subtitle={task.projectTitle}
+          subtitle={task.projectTitle ?? 'プロジェクトなし'}
           onClose={onClose}
           onSubmit={handleSubmit}
           submitLabel="保存"
           submittingLabel="保存中..."
           isSubmitting={updateMutation.isPending}
           submitDisabled={!title.trim() || deleteMutation.isPending}
-          leadingAction={{
-            label: '削除',
-            className: 'btn btn-danger',
-            onClick: () => setConfirmDelete(true),
-            disabled: updateMutation.isPending || deleteMutation.isPending,
-          }}
+          {...(task.isLinkedToMessage
+            ? {}
+            : {
+                leadingAction: {
+                  label: '削除',
+                  className: 'btn btn-danger',
+                  onClick: () => setConfirmDelete(true),
+                  disabled: updateMutation.isPending || deleteMutation.isPending,
+                },
+              })}
           disableClose={updateMutation.isPending || deleteMutation.isPending}
           {...(errorMessage ? { errorMessage } : {})}
         >
@@ -132,6 +153,10 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
             onPriorityChange={setPriority}
             dueDate={dueDate}
             onDueDateChange={setDueDate}
+            assigneeId={assigneeId}
+            onAssigneeChange={setAssigneeId}
+            assigneeProjectId={task.projectId}
+            {...(chatLinkedNote ? { titleNote: chatLinkedNote } : {})}
           />
         </TaskDialog>
       )}

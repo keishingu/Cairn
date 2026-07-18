@@ -89,6 +89,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         if (newToInsert.length > 0) {
           await db.insert(tasks).values(
             newToInsert.map(nb => ({
+              workspaceId: ctx.workspaceId,
               projectId,
               title: nb.text,
               status: (nb.checked ? 'done' : 'todo') as 'done' | 'todo',
@@ -134,7 +135,7 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages, channels } = await import('@cairn/db')
+    const { messages, channels, tasks } = await import('@cairn/db')
     const { eq, and, isNull } = await import('drizzle-orm')
 
     // 送信者・ワークスペーススコープを確認してからソフトデリート
@@ -158,6 +159,10 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       .update(messages)
       .set({ deletedAt: new Date() })
       .where(eq(messages.id, messageId))
+
+    // このメッセージのチェックボックス由来タスクも併せて削除する
+    // （チャット由来タスクは単体削除不可のため、元メッセージ削除時にここで消す）
+    await db.delete(tasks).where(eq(tasks.sourceMessageId, messageId))
 
     return new NextResponse(null, { status: 204 })
   } catch (err) {

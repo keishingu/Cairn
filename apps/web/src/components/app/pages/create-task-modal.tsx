@@ -19,6 +19,7 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
   const [projectId, setProjectId] = React.useState('')
   const [priority, setPriority] = React.useState<TaskDto['priority']>('medium')
   const [dueDate, setDueDate] = React.useState('')
+  const [assigneeId, setAssigneeId] = React.useState<string | null>(null)
 
   const { data: projects = [] } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
@@ -26,7 +27,7 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
   })
 
   const mutation = useMutation({
-    mutationFn: async (data: { title: string; projectId: string; priority: string; dueDate?: string }) => {
+    mutationFn: async (data: { title: string; projectId?: string; priority: string; dueDate?: string; assigneeId?: string }) => {
       const res = await fetchWithAuth('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -43,12 +44,13 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!title.trim() || !projectId) return
+    if (!title.trim()) return
     mutation.mutate({
       title: title.trim(),
-      projectId,
+      ...(projectId ? { projectId } : {}),
       priority,
       ...(dueDate ? { dueDate } : {}),
+      ...(assigneeId ? { assigneeId } : {}),
     })
   }
 
@@ -62,7 +64,7 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
       submitLabel="追加"
       submittingLabel="追加中..."
       isSubmitting={mutation.isPending}
-      submitDisabled={!title.trim() || !projectId}
+      submitDisabled={!title.trim()}
       disableClose={mutation.isPending}
       {...(errorMessage ? { errorMessage } : {})}
     >
@@ -73,19 +75,21 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
         onPriorityChange={setPriority}
         dueDate={dueDate}
         onDueDateChange={setDueDate}
+        assigneeId={assigneeId}
+        onAssigneeChange={setAssigneeId}
+        assigneeProjectId={projectId || null}
         titlePlaceholder="タスク名を入力..."
         afterTitle={(
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
-              プロジェクト <span style={{ color: 'var(--red)' }}>*</span>
+              プロジェクト <span style={{ fontWeight: 500, color: 'var(--text-4)' }}>（任意）</span>
             </label>
             <select
               value={projectId}
               onChange={e => setProjectId(e.target.value)}
-              required
               style={{ ...fieldInputStyle(false), color: projectId ? 'var(--text)' : 'var(--text-4)' }}
             >
-              <option value="" disabled>プロジェクトを選択...</option>
+              <option value="">プロジェクトなし</option>
               {projects.map(p => (
                 <option key={p.id} value={p.id}>{p.title}</option>
               ))}

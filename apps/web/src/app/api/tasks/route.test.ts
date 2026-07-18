@@ -18,8 +18,13 @@ const { mockGetAuthContext, mockRequireProjectAccess, mockGetWorkspaceMemberRole
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({
   requireProjectAccess: mockRequireProjectAccess,
+  requireRole: vi.fn(() => null),
   getWorkspaceMemberRole: mockGetWorkspaceMemberRole,
   getGuestVisibleProjectIds: mockGetGuestVisibleProjectIds,
+}))
+vi.mock('@/lib/tasks/assignment-notification', () => ({
+  isActiveWorkspaceMember: vi.fn(async () => true),
+  notifyTaskAssigned: vi.fn(async () => undefined),
 }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
 vi.mock('@cairn/shared', () => ({

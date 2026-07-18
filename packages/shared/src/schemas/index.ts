@@ -64,7 +64,7 @@ export const editMessageSchema = z.object({
 })
 
 export const createTaskSchema = z.object({
-  projectId: z.string().uuid(),
+  projectId: z.string().uuid().optional(),
   title: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
   priority: z.enum(['high', 'medium', 'low']).default('medium'),
@@ -75,6 +75,7 @@ export const createTaskSchema = z.object({
 export const updateTaskSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   priority: z.enum(['high', 'medium', 'low']).optional(),
+  assigneeId: z.string().uuid().nullable().optional(),
   dueDate: z.string().date().nullable().optional(),
   status: z.enum(['todo', 'in_progress', 'done']).optional(),
 }).refine(

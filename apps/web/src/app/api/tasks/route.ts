@@ -4,19 +4,19 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { createTaskSchema } from '@cairn/shared'
-import { getGuestVisibleProjectIds, requireProjectAccess } from '@/lib/permissions'
-import { inngest } from '@/lib/inngest/client'
-import type { TaskAssignedEvent } from '@/lib/inngest/events'
+import { getGuestVisibleProjectIds, requireProjectAccess, requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { isActiveWorkspaceMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
 
 export interface TaskDto {
   id: string
-  projectId: string
-  projectTitle: string
+  projectId: string | null
+  projectTitle: string | null
   title: string
   status: 'todo' | 'in_progress' | 'done'
   priority: 'high' | 'medium' | 'low'
   dueDate: string | null
+  assigneeId: string | null
   assigneeName: string | null
   assigneeAvatarUrl: string | null
   isLinkedToMessage: boolean
@@ -30,57 +30,50 @@ export async function GET(req: Request) {
   if (error) return error
 
   try {
-
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, inArray, and } = await import('drizzle-orm')
+    const { eq, and } = await import('drizzle-orm')
 
-    const projectRows = await db
-      .select({ id: projects.id, title: projects.title })
-      .from(projects)
-      .where(eq(projects.workspaceId, ctx.workspaceId))
-
-    // ゲストは参加プロジェクトのタスクのみ閲覧可。projectId 指定があっても参加外なら除外する。
-    const role = ctx.role
-    let allowedProjectIds = projectRows.map(p => p.id)
-    if (role === 'guest') {
-      const guestProjectIds = new Set(await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId))
-      allowedProjectIds = allowedProjectIds.filter(id => guestProjectIds.has(id))
-    }
-
-    const projectIds = projectId
-      ? allowedProjectIds.filter(id => id === projectId)
-      : allowedProjectIds
-
-    if (projectIds.length === 0) return NextResponse.json([])
+    // ゲストは参加プロジェクトのタスクのみ閲覧可。プロジェクト未所属タスクは見せない。
+    const guestProjectIds = ctx.role === 'guest'
+      ? new Set(await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId))
+      : null
 
     const taskRows = await db
       .select({
         id: tasks.id,
         projectId: tasks.projectId,
+        projectTitle: projects.title,
         title: tasks.title,
         status: tasks.status,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
+        assigneeId: tasks.assigneeId,
         sourceMessageId: tasks.sourceMessageId,
         assigneeName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(tasks)
+      .leftJoin(projects, eq(tasks.projectId, projects.id))
       .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, tasks.assigneeId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-      .where(inArray(tasks.projectId, projectIds))
+      .where(eq(tasks.workspaceId, ctx.workspaceId))
 
-    const projectMap = new Map(projectRows.map(p => [p.id, p.title]))
+    const filtered = taskRows.filter(r => {
+      if (projectId && r.projectId !== projectId) return false
+      if (guestProjectIds && (r.projectId == null || !guestProjectIds.has(r.projectId))) return false
+      return true
+    })
 
-    const result: TaskDto[] = taskRows.map(r => ({
+    const result: TaskDto[] = filtered.map(r => ({
       id: r.id,
       projectId: r.projectId,
-      projectTitle: projectMap.get(r.projectId) ?? '',
+      projectTitle: r.projectTitle ?? null,
       title: r.title,
       status: r.status,
       priority: r.priority,
       dueDate: r.dueDate,
+      assigneeId: r.assigneeId,
       assigneeName: r.assigneeName ?? null,
       assigneeAvatarUrl: r.assigneeAvatarUrl ?? null,
       isLinkedToMessage: r.sourceMessageId != null,
@@ -110,34 +103,31 @@ export async function POST(req: Request) {
   }
 
   try {
-    // ゲストは参加プロジェクトにのみタスクを作成できる
-    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, parsed.data.projectId, ctx.role)
-    if (forbidden) return forbidden
+    const projectId = parsed.data.projectId ?? null
+    if (projectId) {
+      // ゲストは参加プロジェクトにのみタスクを作成できる
+      const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
+      if (forbidden) return forbidden
+    } else {
+      // プロジェクト未所属タスクは member 以上のみ作成可（ゲストはプロジェクト必須）
+      const forbidden = requireRole(ctx.role, 'member')
+      if (forbidden) return forbidden
+    }
 
     const { db } = await import('@cairn/db')
-    const { tasks, projects, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
     const assigneeId = parsed.data.assigneeId ?? null
-    if (assigneeId) {
-      const [activeAssignee] = await db
-        .select({ userId: activeWorkspaceMembers.userId })
-        .from(activeWorkspaceMembers)
-        .where(and(
-          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
-          eq(activeWorkspaceMembers.userId, assigneeId),
-        ))
-        .limit(1)
-
-      if (!activeAssignee) {
-        return NextResponse.json({ error: '指定された担当者はワークスペースのメンバーではありません' }, { status: 422 })
-      }
+    if (assigneeId && !(await isActiveWorkspaceMember(ctx.workspaceId, assigneeId))) {
+      return NextResponse.json({ error: '指定された担当者はワークスペースのメンバーではありません' }, { status: 422 })
     }
 
     const [inserted] = await db
       .insert(tasks)
       .values({
-        projectId: parsed.data.projectId,
+        workspaceId: ctx.workspaceId,
+        projectId,
         title: parsed.data.title,
         description: parsed.data.description ?? null,
         priority: parsed.data.priority,
@@ -149,10 +139,12 @@ export async function POST(req: Request) {
 
     if (!inserted) throw new Error('Insert returned no rows')
 
-    const [projectRow] = await db
-      .select({ title: projects.title })
-      .from(projects)
-      .where(eq(projects.id, inserted.projectId))
+    const projectRow = inserted.projectId
+      ? (await db
+          .select({ title: projects.title })
+          .from(projects)
+          .where(eq(projects.id, inserted.projectId)))[0]
+      : null
 
     const assigneeRow = inserted.assigneeId
       ? (await db
@@ -168,39 +160,27 @@ export async function POST(req: Request) {
     const result: TaskDto = {
       id: inserted.id,
       projectId: inserted.projectId,
-      projectTitle: projectRow?.title ?? '',
+      projectTitle: projectRow?.title ?? null,
       title: inserted.title,
       status: inserted.status,
       priority: inserted.priority,
       dueDate: inserted.dueDate,
+      assigneeId: inserted.assigneeId,
       assigneeName: assigneeRow?.displayName ?? null,
       assigneeAvatarUrl: assigneeRow?.avatarUrl ?? null,
       isLinkedToMessage: false,
     }
 
-    if (inserted.assigneeId && inserted.assigneeId !== ctx.userId) {
-      const [assigner] = await db
-        .select({ displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
-        .from(profiles)
-        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-        .where(eq(profiles.id, ctx.userId))
-
-      try {
-        await inngest.send({
-          name: 'task/assigned',
-          data: {
-            taskId: inserted.id,
-            taskTitle: inserted.title,
-            assigneeId: inserted.assigneeId,
-            projectId: inserted.projectId,
-            projectTitle: projectRow?.title ?? '',
-            workspaceId: ctx.workspaceId,
-            assignerName: assigner?.displayName ?? '不明',
-          },
-        } satisfies TaskAssignedEvent)
-      } catch (e) {
-        console.warn('[POST /api/tasks] Inngest event send failed (notification skipped):', e)
-      }
+    if (inserted.assigneeId) {
+      await notifyTaskAssigned({
+        workspaceId: ctx.workspaceId,
+        assignerId: ctx.userId,
+        assigneeId: inserted.assigneeId,
+        taskId: inserted.id,
+        taskTitle: inserted.title,
+        projectId: inserted.projectId,
+        projectTitle: projectRow?.title ?? '',
+      })
     }
 
     return NextResponse.json(result, { status: 201 })

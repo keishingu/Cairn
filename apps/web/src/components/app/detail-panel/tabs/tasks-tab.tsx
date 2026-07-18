@@ -7,6 +7,7 @@ import type { TaskDto } from '@/app/api/tasks/route'
 import { useProjectTasks, useCreateTask } from '@/hooks/use-project-tasks'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import { TaskEditDialog } from '../../task-edit-dialog'
+import { TaskAssigneeField } from '../../task-assignee-field'
 import { RowActionMenu } from '../../row-action-menu'
 
 // ─── AddTaskModal ─────────────────────────────────────────────────
@@ -20,6 +21,7 @@ const AddTaskModal = ({ project, onClose }: AddTaskModalProps) => {
   const [title, setTitle] = React.useState('')
   const [priority, setPriority] = React.useState<TaskDto['priority']>('medium')
   const [dueDate, setDueDate] = React.useState('')
+  const [assigneeId, setAssigneeId] = React.useState<string | null>(null)
 
   const mutation = useCreateTask(project.id, onClose)
 
@@ -30,6 +32,7 @@ const AddTaskModal = ({ project, onClose }: AddTaskModalProps) => {
       title: title.trim(),
       priority,
       ...(dueDate ? { dueDate } : {}),
+      ...(assigneeId ? { assigneeId } : {}),
     })
   }
 
@@ -130,6 +133,8 @@ const AddTaskModal = ({ project, onClose }: AddTaskModalProps) => {
               />
             </div>
           </div>
+
+          <TaskAssigneeField value={assigneeId} onChange={setAssigneeId} projectId={project.id} />
 
           {mutation.isError && (
             <div style={{
@@ -250,7 +255,10 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                   <RowActionMenu
                     actions={[
                       { icon: 'edit', label: '編集', onSelect: () => openEditor(t, 'edit') },
-                      { icon: 'trash', label: '削除', danger: true, onSelect: () => openEditor(t, 'delete') },
+                      // チャット由来タスクは単体削除不可（元のチャットメッセージ側で削除する）
+                      ...(t.isLinkedToMessage
+                        ? []
+                        : [{ icon: 'trash', label: '削除', danger: true, onSelect: () => openEditor(t, 'delete') }]),
                     ]}
                     triggerStyle={{ padding: '6px', borderRadius: 8 }}
                   />
@@ -287,7 +295,10 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                   <RowActionMenu
                     actions={[
                       { icon: 'edit', label: '編集', onSelect: () => openEditor(t, 'edit') },
-                      { icon: 'trash', label: '削除', danger: true, onSelect: () => openEditor(t, 'delete') },
+                      // チャット由来タスクは単体削除不可（元のチャットメッセージ側で削除する）
+                      ...(t.isLinkedToMessage
+                        ? []
+                        : [{ icon: 'trash', label: '削除', danger: true, onSelect: () => openEditor(t, 'delete') }]),
                     ]}
                     triggerStyle={{ padding: '6px', borderRadius: 8 }}
                   />

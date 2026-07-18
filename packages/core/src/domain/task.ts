@@ -5,7 +5,8 @@ import type { TaskPriority, TaskStatus } from '@cairn/shared'
 
 export type Task = {
   id: string
-  projectId: string
+  workspaceId: string
+  projectId: string | null
   title: string
   description: string | null
   status: TaskStatus
