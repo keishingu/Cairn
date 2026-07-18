@@ -32,12 +32,22 @@ export async function GET(req: Request) {
   try {
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, inArray } = await import('drizzle-orm')
 
     // ゲストは参加プロジェクトのタスクのみ閲覧可。プロジェクト未所属タスクは見せない。
     const guestProjectIds = ctx.role === 'guest'
-      ? new Set(await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId))
+      ? await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId)
       : null
+    // ゲストで可視プロジェクトが無ければ SQL を実行せず空を返す（inArray の空配列を避ける）
+    if (guestProjectIds && guestProjectIds.length === 0) {
+      return NextResponse.json([])
+    }
+
+    // 絞り込みは SQL 側で行う（タスク数の多いワークスペースで単一プロジェクト表示が
+    // 全件スキャンにならないように、また guest が見えないタスクを読まないようにする）
+    const conditions = [eq(tasks.workspaceId, ctx.workspaceId)]
+    if (projectId) conditions.push(eq(tasks.projectId, projectId))
+    if (guestProjectIds) conditions.push(inArray(tasks.projectId, guestProjectIds))
 
     const taskRows = await db
       .select({
@@ -57,15 +67,9 @@ export async function GET(req: Request) {
       .leftJoin(projects, eq(tasks.projectId, projects.id))
       .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, tasks.assigneeId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-      .where(eq(tasks.workspaceId, ctx.workspaceId))
+      .where(and(...conditions))
 
-    const filtered = taskRows.filter(r => {
-      if (projectId && r.projectId !== projectId) return false
-      if (guestProjectIds && (r.projectId == null || !guestProjectIds.has(r.projectId))) return false
-      return true
-    })
-
-    const result: TaskDto[] = filtered.map(r => ({
+    const result: TaskDto[] = taskRows.map(r => ({
       id: r.id,
       projectId: r.projectId,
       projectTitle: r.projectTitle ?? null,

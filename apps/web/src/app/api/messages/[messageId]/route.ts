@@ -155,14 +155,17 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'メッセージが見つからないか削除権限がありません' }, { status: 404 })
     }
 
-    await db
-      .update(messages)
-      .set({ deletedAt: new Date() })
-      .where(eq(messages.id, messageId))
+    // メッセージのソフトデリートと、そのチェックボックス由来タスクの削除を1トランザクションにする。
+    // 片方だけ成功すると、メッセージは非表示なのにチャット由来タスク（単体削除不可）が
+    // 消せないまま残る不整合になるため、両方まとめて成功/失敗させる。
+    await db.transaction(async (tx) => {
+      await tx
+        .update(messages)
+        .set({ deletedAt: new Date() })
+        .where(eq(messages.id, messageId))
 
-    // このメッセージのチェックボックス由来タスクも併せて削除する
-    // （チャット由来タスクは単体削除不可のため、元メッセージ削除時にここで消す）
-    await db.delete(tasks).where(eq(tasks.sourceMessageId, messageId))
+      await tx.delete(tasks).where(eq(tasks.sourceMessageId, messageId))
+    })
 
     return new NextResponse(null, { status: 204 })
   } catch (err) {
