@@ -26,7 +26,7 @@ export async function PATCH(
 
   try {
     const { db } = await import('@cairn/db')
-    const { tasks, projects } = await import('@cairn/db')
+    const { aiNudges, tasks, projects } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
     const { getAuthContext } = await import('@/lib/get-auth-context')
 
@@ -90,6 +90,19 @@ export async function PATCH(
 
     if (!updated) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+    }
+
+    // 完了経路（タスク一覧・チャットのcheckbox・AIカード）を問わず、そのタスクの
+    // activeナッジを即時解消する。status更新triggerが対応するベル通知も削除する。
+    if (updated.status === 'done') {
+      await db
+        .update(aiNudges)
+        .set({ status: 'resolved', remindAfter: null })
+        .where(and(
+          eq(aiNudges.workspaceId, ctx.workspaceId),
+          eq(aiNudges.taskId, id),
+          eq(aiNudges.status, 'active'),
+        ))
     }
 
     // チャットメッセージのチェックボックスに逆同期

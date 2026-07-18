@@ -13,12 +13,14 @@ const {
   mockDbSelectLimit,
   mockDbDeleteReturning,
   mockDbUpdateReturning,
+  mockDbUpdateSet,
   mockRequireProjectAccess,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockDbSelectLimit: vi.fn(),
   mockDbDeleteReturning: vi.fn(),
   mockDbUpdateReturning: vi.fn(),
+  mockDbUpdateSet: vi.fn(),
   mockRequireProjectAccess: vi.fn(),
 }))
 
@@ -34,6 +36,9 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
 }))
 vi.mock('@cairn/db', () => {
+  mockDbUpdateSet.mockImplementation(() => ({
+    where: () => ({ returning: mockDbUpdateReturning }),
+  }))
   const db = {
     select: vi.fn(() => ({
       from: () => ({
@@ -50,11 +55,7 @@ vi.mock('@cairn/db', () => {
       }),
     })),
     update: vi.fn(() => ({
-      set: () => ({
-        where: () => ({
-          returning: mockDbUpdateReturning,
-        }),
-      }),
+      set: mockDbUpdateSet,
     })),
   }
   return {
@@ -70,6 +71,11 @@ vi.mock('@cairn/db', () => {
       sourceCheckboxIndex: 'tasks.sourceCheckboxIndex',
     },
     projects: { id: 'projects.id', workspaceId: 'projects.workspaceId' },
+    aiNudges: {
+      workspaceId: 'aiNudges.workspaceId',
+      taskId: 'aiNudges.taskId',
+      status: 'aiNudges.status',
+    },
   }
 })
 
@@ -156,5 +162,39 @@ describe('PATCH /api/tasks/[id]', () => {
 
     expect(res.status).toBe(403)
     expect(mockDbUpdateReturning).not.toHaveBeenCalled()
+  })
+
+  it('タスク完了時は全操作経路で紐づくactiveナッジをresolvedにする', async () => {
+    mockDbSelectLimit.mockResolvedValueOnce([{
+      id: TASK_ID,
+      projectId: 'project-1',
+      title: 'title',
+      priority: 'medium',
+      dueDate: null,
+      status: 'in_progress',
+      sourceMessageId: null,
+      sourceCheckboxIndex: null,
+    }])
+    mockDbUpdateReturning.mockResolvedValueOnce([{
+      id: TASK_ID,
+      title: 'title',
+      priority: 'medium',
+      dueDate: null,
+      status: 'done',
+      sourceMessageId: null,
+      sourceCheckboxIndex: null,
+    }])
+
+    const { PATCH } = await import('./route')
+    const { aiNudges, db } = await import('@cairn/db')
+    const response = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    }), { params: Promise.resolve({ id: TASK_ID }) })
+
+    expect(response.status).toBe(200)
+    expect(db.update).toHaveBeenCalledWith(aiNudges)
+    expect(mockDbUpdateSet).toHaveBeenCalledWith({ status: 'resolved', remindAfter: null })
   })
 })

@@ -1088,15 +1088,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         const data = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(data.error ?? 'タスクの更新に失敗しました')
       }
-      const resolveRes = await fetchWithAuth(`/api/ai/nudges/${nudge.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'resolve_completed_task' }),
-      })
-      if (!resolveRes.ok) {
-        const data = await resolveRes.json().catch(() => ({})) as { error?: string }
-        throw new Error(data.error ?? 'ナッジの解消に失敗しました')
-      }
+      // 共通タスクAPIが紐づくactiveナッジもresolvedにし、ベル通知を削除する。
       queryClient.setQueryData<AiNudgeDto[]>(aiNudgeQueryKey(channelId), current =>
         current?.filter(item => item.id !== nudge.id) ?? [])
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
