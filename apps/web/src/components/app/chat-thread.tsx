@@ -1088,12 +1088,20 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         const data = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(data.error ?? 'タスクの更新に失敗しました')
       }
-      // DB 上の resolved 化は次のハートビートが担う。操作直後は完了したカードだけを
-      // ローカルから除き、同じ画面で解消済みの催促を残さない。
+      const resolveRes = await fetchWithAuth(`/api/ai/nudges/${nudge.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resolve_completed_task' }),
+      })
+      if (!resolveRes.ok) {
+        const data = await resolveRes.json().catch(() => ({})) as { error?: string }
+        throw new Error(data.error ?? 'ナッジの解消に失敗しました')
+      }
       queryClient.setQueryData<AiNudgeDto[]>(aiNudgeQueryKey(channelId), current =>
         current?.filter(item => item.id !== nudge.id) ?? [])
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] })
     } catch (error) {
       setNudgeActionError((error as Error).message)
     } finally {

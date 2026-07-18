@@ -6,9 +6,10 @@ import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess, requireProjectAccess } from '@/lib/permissions'
 
-const feedbackSchema = z.object({
-  feedback: z.enum(['later', 'not_helpful']),
-})
+const patchSchema = z.union([
+  z.object({ feedback: z.enum(['later', 'not_helpful']) }),
+  z.object({ action: z.literal('resolve_completed_task') }),
+])
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { ctx, error } = await getAuthContext()
@@ -21,19 +22,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
-  const parsed = feedbackSchema.safeParse(body)
+  const parsed = patchSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
 
   try {
-    const { aiNudges, db } = await import('@cairn/db')
+    const { aiNudges, db, tasks } = await import('@cairn/db')
     const { and, eq } = await import('drizzle-orm')
     const [nudge] = await db
       .select({
         id: aiNudges.id,
         channelId: aiNudges.channelId,
         projectId: aiNudges.projectId,
+        taskId: aiNudges.taskId,
       })
       .from(aiNudges)
       .where(
@@ -57,10 +59,35 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     const now = new Date()
+    if ('action' in parsed.data) {
+      if (!nudge.taskId) {
+        return NextResponse.json({ error: '対象タスクが見つかりません' }, { status: 409 })
+      }
+      const [task] = await db
+        .select({ status: tasks.status })
+        .from(tasks)
+        .where(eq(tasks.id, nudge.taskId))
+        .limit(1)
+      if (task?.status !== 'done') {
+        return NextResponse.json({ error: 'タスクが完了していません' }, { status: 409 })
+      }
+
+      const updated = await db
+        .update(aiNudges)
+        .set({ status: 'resolved', remindAfter: null, respondedAt: now })
+        .where(
+          and(eq(aiNudges.id, id), eq(aiNudges.userId, ctx.userId), eq(aiNudges.status, 'active')),
+        )
+        .returning({ id: aiNudges.id })
+      if (updated.length === 0) {
+        return NextResponse.json({ error: 'ナッジはすでに更新されています' }, { status: 409 })
+      }
+      return NextResponse.json({ id, status: 'resolved', remindAfter: null })
+    }
+
     const cooldownDays = parsed.data.feedback === 'later' ? 2 : 30
     const remindAfter = new Date(now.getTime() + cooldownDays * 86_400_000)
-    const status =
-      parsed.data.feedback === 'later' ? ('dismissed' as const) : ('suppressed' as const)
+    const status = parsed.data.feedback === 'later' ? ('dismissed' as const) : ('suppressed' as const)
     const updated = await db
       .update(aiNudges)
       .set({
@@ -80,6 +107,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ id, status, remindAfter: remindAfter.toISOString() })
   } catch (err) {
     console.error('[PATCH /api/ai/nudges/:id]', err)
-    return NextResponse.json({ error: 'フィードバックの保存に失敗しました' }, { status: 500 })
+    return NextResponse.json({ error: 'ナッジの更新に失敗しました' }, { status: 500 })
   }
 }
