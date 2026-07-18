@@ -60,3 +60,12 @@ export async function isActiveWorkspaceMember(workspaceId: string, userId: strin
     .limit(1)
   return !!row
 }
+
+// プロジェクト未所属タスクの担当者に設定できるかを検証する。
+// 未所属タスクは guest には閲覧も操作もできない（GET は guest に null プロジェクトを見せず、
+// 編集・削除も member 以上を要求する）ため、guest への割り当ては拒否する。active な member 以上のみ true。
+export async function isAssignableToProjectlessTask(workspaceId: string, userId: string): Promise<boolean> {
+  const { getWorkspaceRole, isWorkspaceMember } = await import('@/lib/access/membership')
+  const role = await getWorkspaceRole(workspaceId, userId)
+  return isWorkspaceMember(role)
+}

@@ -38,6 +38,7 @@ vi.mock('@/lib/permissions', () => ({
 }))
 vi.mock('@/lib/tasks/assignment-notification', () => ({
   isActiveWorkspaceMember: mockIsActiveWorkspaceMember,
+  isAssignableToProjectlessTask: vi.fn(async () => true),
   notifyTaskAssigned: mockNotifyTaskAssigned,
 }))
 vi.mock('@cairn/shared', async () => {

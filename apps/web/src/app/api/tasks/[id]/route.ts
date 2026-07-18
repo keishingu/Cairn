@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { updateTaskSchema } from '@cairn/shared'
 import { replaceCheckboxLabelAt, toggleCheckboxAt } from '@/lib/chat/checkboxes'
 import { requireProjectAccess, requireRole } from '@/lib/permissions'
-import { isActiveWorkspaceMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
+import { isActiveWorkspaceMember, isAssignableToProjectlessTask, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
 
 export async function PATCH(
   req: Request,
@@ -66,9 +66,22 @@ export async function PATCH(
       if (forbidden) return forbidden
     }
 
-    // 担当者は active メンバーのみ設定可（null は担当者解除なので検証不要）
-    if (parsed.data.assigneeId != null && !(await isActiveWorkspaceMember(ctx.workspaceId, parsed.data.assigneeId))) {
-      return NextResponse.json({ error: '指定された担当者はワークスペースのメンバーではありません' }, { status: 422 })
+    // 担当者は active メンバーのみ設定可（null は担当者解除なので検証不要）。
+    // プロジェクト未所属タスクは guest に割り当てない（guest は閲覧も操作もできないため）。
+    if (parsed.data.assigneeId != null) {
+      const assignable = taskRow.projectId
+        ? await isActiveWorkspaceMember(ctx.workspaceId, parsed.data.assigneeId)
+        : await isAssignableToProjectlessTask(ctx.workspaceId, parsed.data.assigneeId)
+      if (!assignable) {
+        return NextResponse.json(
+          {
+            error: taskRow.projectId
+              ? '指定された担当者はワークスペースのメンバーではありません'
+              : 'プロジェクト未所属タスクの担当者にゲストは指定できません',
+          },
+          { status: 422 },
+        )
+      }
     }
 
     const updates: {
