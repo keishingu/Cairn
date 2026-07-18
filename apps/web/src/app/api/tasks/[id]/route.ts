@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { updateTaskSchema } from '@cairn/shared'
 import { replaceCheckboxLabelAt, toggleCheckboxAt } from '@/lib/chat/checkboxes'
 import { requireProjectAccess, requireRole } from '@/lib/permissions'
-import { isActiveWorkspaceMember, isAssignableToProjectlessTask, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
+import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
 
 export async function PATCH(
   req: Request,
@@ -66,19 +66,15 @@ export async function PATCH(
       if (forbidden) return forbidden
     }
 
-    // 担当者は active メンバーのみ設定可（null は担当者解除なので検証不要）。
-    // プロジェクト未所属タスクは guest に割り当てない（guest は閲覧も操作もできないため）。
-    if (parsed.data.assigneeId != null) {
-      const assignable = taskRow.projectId
-        ? await isActiveWorkspaceMember(ctx.workspaceId, parsed.data.assigneeId)
-        : await isAssignableToProjectlessTask(ctx.workspaceId, parsed.data.assigneeId)
-      if (!assignable) {
+    // 担当者は「実際に変更されたとき」だけ検証する。既存の担当者が後から非活性化しても、
+    // タイトル等の編集で同じ assigneeId を送り直すたびに 422 になるのを防ぐ（履歴は保持）。
+    // null は担当者解除なので検証不要。新しい担当者は本人がそのタスクを見られる範囲に限定する。
+    const assigneeChanged =
+      parsed.data.assigneeId !== undefined && parsed.data.assigneeId !== taskRow.assigneeId
+    if (assigneeChanged && parsed.data.assigneeId != null) {
+      if (!(await isAssignableTaskMember(ctx.workspaceId, parsed.data.assigneeId, taskRow.projectId))) {
         return NextResponse.json(
-          {
-            error: taskRow.projectId
-              ? '指定された担当者はワークスペースのメンバーではありません'
-              : 'プロジェクト未所属タスクの担当者にゲストは指定できません',
-          },
+          { error: '指定された担当者はこのタスクに割り当てできません' },
           { status: 422 },
         )
       }

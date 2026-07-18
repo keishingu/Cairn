@@ -16,7 +16,7 @@ const {
   mockDbUpdateSet,
   mockRequireProjectAccess,
   mockRequireRole,
-  mockIsActiveWorkspaceMember,
+  mockIsAssignableTaskMember,
   mockNotifyTaskAssigned,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
@@ -26,7 +26,7 @@ const {
   mockDbUpdateSet: vi.fn(),
   mockRequireProjectAccess: vi.fn(),
   mockRequireRole: vi.fn(),
-  mockIsActiveWorkspaceMember: vi.fn(),
+  mockIsAssignableTaskMember: vi.fn(),
   mockNotifyTaskAssigned: vi.fn(),
 }))
 
@@ -37,8 +37,7 @@ vi.mock('@/lib/permissions', () => ({
   requireRole: mockRequireRole,
 }))
 vi.mock('@/lib/tasks/assignment-notification', () => ({
-  isActiveWorkspaceMember: mockIsActiveWorkspaceMember,
-  isAssignableToProjectlessTask: vi.fn(async () => true),
+  isAssignableTaskMember: mockIsAssignableTaskMember,
   notifyTaskAssigned: mockNotifyTaskAssigned,
 }))
 vi.mock('@cairn/shared', async () => {
@@ -171,7 +170,7 @@ describe('PATCH /api/tasks/[id]', () => {
     })
     mockRequireProjectAccess.mockResolvedValue(null)
     mockRequireRole.mockReturnValue(null)
-    mockIsActiveWorkspaceMember.mockResolvedValue(true)
+    mockIsAssignableTaskMember.mockResolvedValue(true)
   })
 
   afterEach(() => vi.clearAllMocks())
@@ -244,6 +243,47 @@ describe('PATCH /api/tasks/[id]', () => {
 
     expect(res.status).toBe(200)
     expect(mockDbUpdateReturning).toHaveBeenCalled()
+  })
+
+  it('担当者が非活性化しても、同じ担当者のままのタイトル編集は422にならない', async () => {
+    // 既存担当者が後から非活性化 → isAssignableTaskMember は false を返す
+    mockIsAssignableTaskMember.mockResolvedValue(false)
+    mockDbSelectLimit.mockResolvedValueOnce([{
+      id: TASK_ID,
+      projectId: 'project-1',
+      projectTitle: 'proj',
+      title: '古いタイトル',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId: '00000000-0000-0000-0000-0000000000aa',
+      sourceMessageId: null,
+      sourceCheckboxIndex: null,
+    }])
+    mockDbUpdateReturning.mockResolvedValue([{
+      id: TASK_ID,
+      title: '新しいタイトル',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId: '00000000-0000-0000-0000-0000000000aa',
+      sourceMessageId: null,
+      sourceCheckboxIndex: null,
+    }])
+
+    const { PATCH } = await import('./route')
+    // assigneeId は既存と同じ値を送る（UIが変更していない担当者も送るケース）
+    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: '新しいタイトル', assigneeId: '00000000-0000-0000-0000-0000000000aa' }),
+      headers: { 'content-type': 'application/json' },
+    }), {
+      params: Promise.resolve({ id: TASK_ID }),
+    })
+
+    expect(res.status).toBe(200)
+    // 担当者が変わっていないので検証（isAssignableTaskMember）は呼ばれない
+    expect(mockIsAssignableTaskMember).not.toHaveBeenCalled()
   })
 
   it('タスク完了時は全操作経路で紐づくactiveナッジをresolvedにする', async () => {

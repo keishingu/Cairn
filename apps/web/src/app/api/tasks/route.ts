@@ -6,7 +6,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { createTaskSchema } from '@cairn/shared'
 import { getGuestVisibleProjectIds, requireProjectAccess, requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
-import { isActiveWorkspaceMember, isAssignableToProjectlessTask, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
+import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
 
 export interface TaskDto {
   id: string
@@ -136,20 +136,11 @@ export async function POST(req: Request) {
     }
 
     const assigneeId = parsed.data.assigneeId ?? null
-    if (assigneeId) {
-      const assignable = projectId
-        ? await isActiveWorkspaceMember(ctx.workspaceId, assigneeId)
-        : await isAssignableToProjectlessTask(ctx.workspaceId, assigneeId)
-      if (!assignable) {
-        return NextResponse.json(
-          {
-            error: projectId
-              ? '指定された担当者はワークスペースのメンバーではありません'
-              : 'プロジェクト未所属タスクの担当者にゲストは指定できません',
-          },
-          { status: 422 },
-        )
-      }
+    if (assigneeId && !(await isAssignableTaskMember(ctx.workspaceId, assigneeId, projectId))) {
+      return NextResponse.json(
+        { error: '指定された担当者はこのタスクに割り当てできません' },
+        { status: 422 },
+      )
     }
 
     const [inserted] = await db

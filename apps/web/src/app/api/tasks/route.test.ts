@@ -23,8 +23,7 @@ vi.mock('@/lib/permissions', () => ({
   getGuestVisibleProjectIds: mockGetGuestVisibleProjectIds,
 }))
 vi.mock('@/lib/tasks/assignment-notification', () => ({
-  isActiveWorkspaceMember: vi.fn(async () => true),
-  isAssignableToProjectlessTask: vi.fn(async () => true),
+  isAssignableTaskMember: vi.fn(async () => true),
   notifyTaskAssigned: vi.fn(async () => undefined),
 }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
