@@ -29,18 +29,18 @@ describe('routeFromNotification', () => {
     expect(routeFromNotification(notification({ type: 'task' }))).toBe('/(app)/tasks')
   })
 
-  it('channelId 付きの AI 通知は chats へ送る', () => {
+  it('taskId 付きの AI 通知はネイティブにカードがないため tasks へ送る', () => {
     expect(routeFromNotification(notification({
       type: 'ai',
       data: { channelId: 'ch-1', taskId: 'task-1' },
-    }))).toBe('/(app)/chats')
+    }))).toBe('/(app)/tasks')
   })
 
-  it('channelId のない AI 通知は taskId があれば tasks へ送る', () => {
+  it('taskId のない AI 通知は channelId があれば chats へ送る', () => {
     expect(routeFromNotification(notification({
       type: 'ai',
-      data: { taskId: 'task-1' },
-    }))).toBe('/(app)/tasks')
+      data: { channelId: 'ch-1' },
+    }))).toBe('/(app)/chats')
   })
 
   it('url があれば対応するトップレベル画面を優先する', () => {

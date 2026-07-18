@@ -17,8 +17,8 @@ export function routeFromNotification(item: NotificationRouteInput): string {
 
   const channelId = item.data?.['channelId']
   if (item.type === 'ai') {
-    if (channelId) return '/(app)/chats'
     if (item.data?.['taskId']) return '/(app)/tasks'
+    if (channelId) return '/(app)/chats'
   }
   if ((item.type === 'mention' || item.type === 'dm' || item.type === 'file' || item.type === 'reaction') && channelId) {
     return '/(app)/chats'

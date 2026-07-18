@@ -98,7 +98,9 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
   UPDATE ai_nudges n
-  SET status = 'suppressed', remind_after = NULL
+  SET
+    status = 'suppressed',
+    remind_after = CASE WHEN n.status = 'dismissed' THEN n.remind_after ELSE NULL END
   WHERE n.user_id = p_user_id
     AND n.status IN ('active', 'dismissed')
     AND (p_workspace_id IS NULL OR n.workspace_id = p_workspace_id)
