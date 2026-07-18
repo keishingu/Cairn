@@ -201,11 +201,14 @@ async function fetchCurrentUser(): Promise<CurrentUserDto> {
 }
 
 // 未読バッジの更新は RealtimeProvider 経由（messages / channel_read_states の購読）。
-// 配線は apps/web/src/components/realtime/realtime-provider.tsx を参照
+// 配線は apps/web/src/components/realtime/realtime-provider.tsx を参照。
+// 取りこぼし時は focus 復帰時の refetch が唯一の catch-up 経路のため、staleTime は
+// グローバル既定（query-provider.tsx）より短く保つ
 export function useProjectChannels() {
   return useQuery({
     queryKey: chatQueryKeys.projectChannels,
     queryFn: fetchProjectChannels,
+    staleTime: 60 * 1000,
   })
 }
 
@@ -213,6 +216,7 @@ export function useWorkspaceChannels() {
   return useQuery({
     queryKey: chatQueryKeys.workspaceChannels,
     queryFn: fetchWorkspaceChannels,
+    staleTime: 60 * 1000,
   })
 }
 
@@ -227,6 +231,7 @@ export function useWorkspaceDms() {
   return useQuery({
     queryKey: chatQueryKeys.dms,
     queryFn: fetchDms,
+    staleTime: 60 * 1000,
   })
 }
 
