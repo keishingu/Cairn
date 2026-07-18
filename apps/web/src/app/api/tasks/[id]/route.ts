@@ -134,7 +134,12 @@ export async function PATCH(
     if ((titleChanged || statusChanged) && updated.sourceMessageId != null && updated.sourceCheckboxIndex != null) {
       const { messages, channels, channelMembers } = await import('@cairn/db')
       const [msg] = await db
-        .select({ content: messages.content, channelId: messages.channelId, isPrivate: channels.isPrivate })
+        .select({
+          content: messages.content,
+          channelId: messages.channelId,
+          senderId: messages.senderId,
+          isPrivate: channels.isPrivate,
+        })
         .from(messages)
         .innerJoin(channels, eq(messages.channelId, channels.id))
         .where(and(eq(messages.id, updated.sourceMessageId), eq(channels.workspaceId, ctx.workspaceId)))
@@ -154,9 +159,13 @@ export async function PATCH(
       if (msg && canSync) {
         let newContent = msg.content
         if (statusChanged) {
+          // チェック状態の toggle は共同作業の基本操作なので投稿者以外でも反映する
           newContent = toggleCheckboxAt(newContent, updated.sourceCheckboxIndex, updated.status === 'done')
         }
-        if (titleChanged) {
+        // 文言の書き換えは「他人のメッセージ本文を書き換える」操作になるため、
+        // 通常のメッセージ編集（senderId === 本人）と同じ所有権ルールに合わせ、投稿者本人のみに限定する。
+        // 投稿者以外がタイトルを変えた場合はタスク側のみ反映し、チェックボックス文言は据え置く。
+        if (titleChanged && msg.senderId === ctx.userId) {
           newContent = replaceCheckboxLabelAt(newContent, updated.sourceCheckboxIndex, updated.title)
         }
         if (newContent !== msg.content) {

@@ -31,7 +31,10 @@ const {
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/chat/checkboxes', () => ({ toggleCheckboxAt: vi.fn(), replaceCheckboxLabelAt: vi.fn() }))
+vi.mock('@/lib/chat/checkboxes', () => ({
+  toggleCheckboxAt: vi.fn((content: string) => content),
+  replaceCheckboxLabelAt: vi.fn((_content: string, _index: number, label: string) => `- [ ] ${label}`),
+}))
 vi.mock('@/lib/permissions', () => ({
   requireProjectAccess: mockRequireProjectAccess,
   requireRole: mockRequireRole,
@@ -90,7 +93,7 @@ vi.mock('@cairn/db', () => {
       sourceCheckboxIndex: 'tasks.sourceCheckboxIndex',
     },
     projects: { id: 'projects.id', title: 'projects.title', workspaceId: 'projects.workspaceId' },
-    messages: { id: 'messages.id', content: 'messages.content', channelId: 'messages.channelId' },
+    messages: { id: 'messages.id', content: 'messages.content', channelId: 'messages.channelId', senderId: 'messages.senderId' },
     channels: { id: 'channels.id', workspaceId: 'channels.workspaceId', isPrivate: 'channels.isPrivate' },
     channelMembers: { channelId: 'channelMembers.channelId', userId: 'channelMembers.userId' },
     aiNudges: {
@@ -219,8 +222,8 @@ describe('PATCH /api/tasks/[id]', () => {
         sourceMessageId: 'm1',
         sourceCheckboxIndex: 0,
       }])
-      // メッセージ逆同期用の select（プライベート判定）
-      .mockResolvedValueOnce([{ content: '- [ ] 古いタイトル', channelId: 'c1', isPrivate: false }])
+      // メッセージ逆同期用の select（本人が投稿者なので senderId は自分）
+      .mockResolvedValueOnce([{ content: '- [ ] 古いタイトル', channelId: 'c1', senderId: DEV_USER_ID, isPrivate: false }])
     mockDbUpdateReturning.mockResolvedValue([{
       id: TASK_ID,
       title: '新しいタイトル',
@@ -243,6 +246,49 @@ describe('PATCH /api/tasks/[id]', () => {
 
     expect(res.status).toBe(200)
     expect(mockDbUpdateReturning).toHaveBeenCalled()
+    // 投稿者本人なので元メッセージのチェックボックス文言も書き換わる
+    expect(mockDbUpdateSet).toHaveBeenCalledWith({ content: '- [ ] 新しいタイトル' })
+  })
+
+  it('投稿者以外がタイトルを変更しても、元メッセージのチェックボックス文言は書き換えない', async () => {
+    mockDbSelectLimit
+      .mockResolvedValueOnce([{
+        id: TASK_ID,
+        projectId: 'project-1',
+        projectTitle: 'proj',
+        title: '古いタイトル',
+        priority: 'medium',
+        dueDate: null,
+        status: 'todo',
+        assigneeId: null,
+        sourceMessageId: 'm1',
+        sourceCheckboxIndex: 0,
+      }])
+      // メッセージの投稿者は別ユーザー（本人ではない）
+      .mockResolvedValueOnce([{ content: '- [ ] 古いタイトル', channelId: 'c1', senderId: 'other-user', isPrivate: false }])
+    mockDbUpdateReturning.mockResolvedValue([{
+      id: TASK_ID,
+      title: '新しいタイトル',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId: null,
+      sourceMessageId: 'm1',
+      sourceCheckboxIndex: 0,
+    }])
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: '新しいタイトル' }),
+      headers: { 'content-type': 'application/json' },
+    }), {
+      params: Promise.resolve({ id: TASK_ID }),
+    })
+
+    expect(res.status).toBe(200)
+    // タスク自体は更新されるが、メッセージ本文の書き換え（content の set）は発生しない
+    expect(mockDbUpdateSet).not.toHaveBeenCalledWith(expect.objectContaining({ content: expect.anything() }))
   })
 
   it('担当者が非活性化しても、同じ担当者のままのタイトル編集は422にならない', async () => {
