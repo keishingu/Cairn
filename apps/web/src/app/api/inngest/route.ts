@@ -12,6 +12,7 @@ import {
   indexExternalLink,
   onMessageCreated,
   onTaskAssigned,
+  reconcileAiNudgesHeartbeat,
 } from '@/lib/inngest/functions'
 
 // デプロイ環境ごとに URL が変わる場合（Vercel preview など）に対応。
@@ -31,6 +32,7 @@ const fns = [
   indexExternalLink,
   onMessageCreated,
   onTaskAssigned,
+  reconcileAiNudgesHeartbeat,
 ]
 const host = resolveServeHost()
 

@@ -22,6 +22,7 @@ export const profiles = pgTable('profiles', {
   displayName: text('display_name').notNull(),
   bio: text('bio'),
   icalToken: text('ical_token').unique(),
+  aiNudgesEnabled: boolean('ai_nudges_enabled').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })

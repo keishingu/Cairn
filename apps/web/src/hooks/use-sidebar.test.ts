@@ -67,6 +67,7 @@ const STUB_ME: CurrentUserDto = {
   status: 'online',
   statusMessage: null,
   wsRole: 'owner',
+  aiNudgesEnabled: true,
 }
 
 describe('useSidebar data hooks', () => {

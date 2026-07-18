@@ -1,10 +1,21 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { aiScopeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
+import { channels, messages } from './channels'
+import { tasks } from './tasks'
+
+export type AiNudgeDetector =
+  | 'task_due_soon'
+  | 'task_overdue'
+  | 'task_stalled'
+  | 'unanswered_ask'
+  | 'llm_risk'
+export type AiNudgeStatus = 'active' | 'dismissed' | 'resolved' | 'suppressed'
+export type AiNudgeFeedback = 'later' | 'not_helpful'
 
 export const aiAgents = pgTable('ai_agents', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -52,3 +63,38 @@ export const aiMessages = pgTable('ai_messages', {
   toolInvocations: jsonb('tool_invocations').$type<unknown[]>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+// 本人だけに見える PMO ナッジ。append-only なイベントではなく、
+// (user_id, dedupe_key) ごとの「関心事の現在状態」としてハートビートがリコンサイルする。
+export const aiNudges = pgTable(
+  'ai_nudges',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    channelId: uuid('channel_id').references(() => channels.id, { onDelete: 'set null' }),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
+    taskId: uuid('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+    messageId: uuid('message_id').references(() => messages.id, { onDelete: 'set null' }),
+    detector: text('detector').$type<AiNudgeDetector>().notNull(),
+    dedupeKey: text('dedupe_key').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    reason: jsonb('reason').$type<Record<string, unknown>>().notNull().default({}),
+    status: text('status').$type<AiNudgeStatus>().notNull().default('active'),
+    feedback: text('feedback').$type<AiNudgeFeedback>(),
+    remindAfter: timestamp('remind_after', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+  },
+  (t) => [
+    unique('ai_nudges_user_dedupe_unique').on(t.userId, t.dedupeKey),
+    index('idx_ai_nudges_user_status_created').on(t.userId, t.status, t.createdAt),
+    index('idx_ai_nudges_channel_user').on(t.channelId, t.userId),
+    index('idx_ai_nudges_cooldown').on(t.userId, t.detector, t.taskId, t.status, t.remindAfter),
+  ],
+)

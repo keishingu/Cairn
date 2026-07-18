@@ -13,6 +13,7 @@ const {
   mockDbSelectLimit,
   mockDbDeleteReturning,
   mockDbUpdateReturning,
+  mockDbUpdateSet,
   mockRequireProjectAccess,
   mockRequireRole,
   mockIsActiveWorkspaceMember,
@@ -22,6 +23,7 @@ const {
   mockDbSelectLimit: vi.fn(),
   mockDbDeleteReturning: vi.fn(),
   mockDbUpdateReturning: vi.fn(),
+  mockDbUpdateSet: vi.fn(),
   mockRequireProjectAccess: vi.fn(),
   mockRequireRole: vi.fn(),
   mockIsActiveWorkspaceMember: vi.fn(),
@@ -47,6 +49,9 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
 }))
 vi.mock('@cairn/db', () => {
+  mockDbUpdateSet.mockImplementation(() => ({
+    where: () => ({ returning: mockDbUpdateReturning }),
+  }))
   // from/leftJoin/innerJoin/where をすべて自身に返し、limit で結果を解決する簡易チェーン
   const selectChain = {
     from: () => selectChain,
@@ -55,7 +60,7 @@ vi.mock('@cairn/db', () => {
     where: () => selectChain,
     limit: mockDbSelectLimit,
   }
-  const db = {
+  const dbCore = {
     select: vi.fn(() => selectChain),
     delete: vi.fn(() => ({
       where: () => ({
@@ -63,12 +68,12 @@ vi.mock('@cairn/db', () => {
       }),
     })),
     update: vi.fn(() => ({
-      set: () => ({
-        where: () => ({
-          returning: mockDbUpdateReturning,
-        }),
-      }),
+      set: mockDbUpdateSet,
     })),
+  }
+  const db = {
+    ...dbCore,
+    transaction: vi.fn(async (callback: (tx: typeof dbCore) => Promise<unknown>) => callback(dbCore)),
   }
   return {
     db,
@@ -88,6 +93,11 @@ vi.mock('@cairn/db', () => {
     messages: { id: 'messages.id', content: 'messages.content', channelId: 'messages.channelId' },
     channels: { id: 'channels.id', workspaceId: 'channels.workspaceId', isPrivate: 'channels.isPrivate' },
     channelMembers: { channelId: 'channelMembers.channelId', userId: 'channelMembers.userId' },
+    aiNudges: {
+      workspaceId: 'aiNudges.workspaceId',
+      taskId: 'aiNudges.taskId',
+      status: 'aiNudges.status',
+    },
   }
 })
 
@@ -116,11 +126,14 @@ describe('DELETE /api/tasks/[id]', () => {
     mockDbSelectLimit.mockResolvedValue([{ id: TASK_ID, projectId: 'project-1', sourceMessageId: null }])
     mockDbDeleteReturning.mockResolvedValue([{ id: TASK_ID }])
     const { DELETE } = await import('./route')
+    const { aiNudges, db } = await import('@cairn/db')
     const res = await DELETE(new Request(`http://localhost/api/tasks/${TASK_ID}`, { method: 'DELETE' }), {
       params: Promise.resolve({ id: TASK_ID }),
     })
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ id: TASK_ID })
+    expect(db.update).toHaveBeenCalledWith(aiNudges)
+    expect(mockDbUpdateSet).toHaveBeenCalledWith({ status: 'resolved', remindAfter: null })
   })
 
   it('プロジェクト未所属の手動タスクも member なら削除できる', async () => {
@@ -230,5 +243,39 @@ describe('PATCH /api/tasks/[id]', () => {
 
     expect(res.status).toBe(200)
     expect(mockDbUpdateReturning).toHaveBeenCalled()
+  })
+
+  it('タスク完了時は全操作経路で紐づくactiveナッジをresolvedにする', async () => {
+    mockDbSelectLimit.mockResolvedValueOnce([{
+      id: TASK_ID,
+      projectId: 'project-1',
+      title: 'title',
+      priority: 'medium',
+      dueDate: null,
+      status: 'in_progress',
+      sourceMessageId: null,
+      sourceCheckboxIndex: null,
+    }])
+    mockDbUpdateReturning.mockResolvedValueOnce([{
+      id: TASK_ID,
+      title: 'title',
+      priority: 'medium',
+      dueDate: null,
+      status: 'done',
+      sourceMessageId: null,
+      sourceCheckboxIndex: null,
+    }])
+
+    const { PATCH } = await import('./route')
+    const { aiNudges, db } = await import('@cairn/db')
+    const response = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    }), { params: Promise.resolve({ id: TASK_ID }) })
+
+    expect(response.status).toBe(200)
+    expect(db.update).toHaveBeenCalledWith(aiNudges)
+    expect(mockDbUpdateSet).toHaveBeenCalledWith({ status: 'resolved', remindAfter: null })
   })
 })

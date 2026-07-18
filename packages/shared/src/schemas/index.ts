@@ -113,6 +113,7 @@ export const patchMeSchema = z.object({
   bio: z.string().max(1000).nullable().optional(),
   status: z.enum(['online', 'away', 'busy', 'offline']).optional(),
   statusMessage: z.string().max(100).nullable().optional(),
+  aiNudgesEnabled: z.boolean().optional(),
 }).refine(
   data => Object.values(data).some(value => value !== undefined),
   { message: 'At least one field is required' },

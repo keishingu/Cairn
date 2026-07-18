@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Icon, Avatar, Fab } from '../primitives'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { CreateTaskModal } from './create-task-modal'
@@ -200,6 +201,8 @@ const Section = ({ label, count, tasks, onToggle, onEdit, togglingId, open, onTo
 // ─── PageTasks ────────────────────────────────────────────────────
 
 export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
+  const searchParams = useSearchParams()
+  const openedTaskIdRef = React.useRef<string | null>(null)
   const [filter, setFilter] = React.useState<FilterKey>('todo')
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
   const [showAddModal, setShowAddModal] = React.useState(false)
@@ -213,6 +216,17 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
 
   const { data: tasks = [], isLoading } = useTasks()
   const toggleMutation = useToggleTaskStatus()
+
+  // ナッジの「タスクを開く」から対象を1タップで編集ダイアログまで開く。
+  React.useEffect(() => {
+    const taskId = searchParams.get('taskId')
+    if (!taskId || openedTaskIdRef.current === taskId) return
+    const task = tasks.find(item => item.id === taskId)
+    if (!task) return
+    openedTaskIdRef.current = taskId
+    setDialogMode('edit')
+    setEditingTask(task)
+  }, [searchParams, tasks])
 
   const handleToggle = (id: string, current: TaskDto['status']) => {
     const newStatus: TaskDto['status'] = current === 'done' ? 'todo' : 'done'

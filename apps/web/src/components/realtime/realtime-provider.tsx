@@ -136,6 +136,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             void queryClient.invalidateQueries({ queryKey: ['notifications'] })
             // 新規DM・未参加チャンネルでの活動はチャンネル一覧の再取得で拾う
             scheduleListInvalidate()
+          } else if (table === 'ai_nudges') {
+            // INSERT（新規）と UPDATE（resolve / feedback / 再 active 化）の双方を反映する。
+            void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
           } else if (table === 'channel_read_states') {
             // 他デバイスでの既読を即時反映（バッジ消去 + ベルの既読同期）
             scheduleListInvalidate()
@@ -154,6 +157,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           // (再)接続直後に一括 invalidate して切断中の取りこぼしを回収する
           void queryClient.invalidateQueries({ queryKey: ['messages'] })
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+          void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
           invalidateChannelLists(queryClient)
         } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT' || subStatus === 'CLOSED') {
           // 購読失敗の原因（認可ポリシー・トークン等）を隠さない

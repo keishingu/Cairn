@@ -27,7 +27,7 @@ export async function PATCH(
 
   try {
     const { db } = await import('@cairn/db')
-    const { tasks, projects } = await import('@cairn/db')
+    const { aiNudges, tasks, projects } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
     const { getAuthContext } = await import('@/lib/get-auth-context')
 
@@ -104,6 +104,19 @@ export async function PATCH(
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
+    // 完了経路（タスク一覧・チャットのcheckbox・AIカード）を問わず、そのタスクの
+    // activeナッジを即時解消する。status更新triggerが対応するベル通知も削除する。
+    if (updated.status === 'done') {
+      await db
+        .update(aiNudges)
+        .set({ status: 'resolved', remindAfter: null })
+        .where(and(
+          eq(aiNudges.workspaceId, ctx.workspaceId),
+          eq(aiNudges.taskId, id),
+          eq(aiNudges.status, 'active'),
+        ))
+    }
+
     // チャットメッセージのチェックボックスへ逆同期する。
     // - status 変更: チェック状態を toggle
     // - title 変更: チェックボックスの文言を replace（タスクと元メッセージの紐付けを維持する）
@@ -178,7 +191,7 @@ export async function DELETE(
 
   try {
     const { db } = await import('@cairn/db')
-    const { tasks } = await import('@cairn/db')
+    const { aiNudges, tasks } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
     const { getAuthContext } = await import('@/lib/get-auth-context')
 
@@ -212,10 +225,25 @@ export async function DELETE(
       )
     }
 
-    const [deleted] = await db
-      .delete(tasks)
-      .where(eq(tasks.id, id))
-      .returning({ id: tasks.id })
+    const [deleted] = await db.transaction(async (tx) => {
+      // FKのON DELETE SET NULLで参照履歴は保ちつつ、削除前に表示中の催促を解消する。
+      // status更新triggerにより、対応するベル通知も同一トランザクション内で削除される。
+      await tx
+        .update(aiNudges)
+        .set({ status: 'resolved', remindAfter: null })
+        .where(
+          and(
+            eq(aiNudges.workspaceId, ctx.workspaceId),
+            eq(aiNudges.taskId, id),
+            eq(aiNudges.status, 'active'),
+          ),
+        )
+
+      return tx
+        .delete(tasks)
+        .where(eq(tasks.id, id))
+        .returning({ id: tasks.id })
+    })
 
     if (!deleted) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
