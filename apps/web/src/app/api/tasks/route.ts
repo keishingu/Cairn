@@ -118,6 +118,23 @@ export async function POST(req: Request) {
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
+    // projectId を受け付ける前に、そのプロジェクトが ctx.workspaceId に属することを明示的に確認する。
+    // requireProjectAccess は member 以上を素通しするため、別ワークスペースの projectId を
+    // tasks.workspace_id=自WS と組み合わせて保存できてしまい（別WSのタイトル・件数の漏洩や
+    // 越境データ汚染につながる）。FK はプロジェクトの存在しか保証しないためここで所属を検証する。
+    let projectTitle: string | null = null
+    if (projectId) {
+      const [projectRow] = await db
+        .select({ title: projects.title })
+        .from(projects)
+        .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
+        .limit(1)
+      if (!projectRow) {
+        return NextResponse.json({ error: 'プロジェクトが見つかりません' }, { status: 404 })
+      }
+      projectTitle = projectRow.title
+    }
+
     const assigneeId = parsed.data.assigneeId ?? null
     if (assigneeId) {
       const assignable = projectId
@@ -151,13 +168,6 @@ export async function POST(req: Request) {
 
     if (!inserted) throw new Error('Insert returned no rows')
 
-    const projectRow = inserted.projectId
-      ? (await db
-          .select({ title: projects.title })
-          .from(projects)
-          .where(eq(projects.id, inserted.projectId)))[0]
-      : null
-
     const assigneeRow = inserted.assigneeId
       ? (await db
           .select({
@@ -172,7 +182,7 @@ export async function POST(req: Request) {
     const result: TaskDto = {
       id: inserted.id,
       projectId: inserted.projectId,
-      projectTitle: projectRow?.title ?? null,
+      projectTitle,
       title: inserted.title,
       status: inserted.status,
       priority: inserted.priority,
@@ -191,7 +201,7 @@ export async function POST(req: Request) {
         taskId: inserted.id,
         taskTitle: inserted.title,
         projectId: inserted.projectId,
-        projectTitle: projectRow?.title ?? '',
+        projectTitle: projectTitle ?? '',
       })
     }
 
