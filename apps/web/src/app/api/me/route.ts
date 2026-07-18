@@ -96,7 +96,7 @@ export async function PATCH(req: Request) {
 
   try {
     const { db, aiNudges, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, and, inArray } = await import('drizzle-orm')
+    const { eq, and } = await import('drizzle-orm')
 
     if (hasBio || b.aiNudgesEnabled !== undefined) {
       await db.transaction(async (tx) => {
@@ -119,7 +119,15 @@ export async function PATCH(req: Request) {
             .set({ status: 'suppressed', remindAfter: null })
             .where(and(
               eq(aiNudges.userId, ctx.userId),
-              inArray(aiNudges.status, ['active', 'dismissed']),
+              eq(aiNudges.status, 'active'),
+            ))
+          // 「あとで」の期限はOFF中も尊重し、再ONで早期復帰しないよう保持する。
+          await tx
+            .update(aiNudges)
+            .set({ status: 'suppressed' })
+            .where(and(
+              eq(aiNudges.userId, ctx.userId),
+              eq(aiNudges.status, 'dismissed'),
             ))
         }
       })
