@@ -18,6 +18,7 @@ import {
   cooldownTargetKey,
   detectTaskNudges,
   effectiveRecipientAccess,
+  isNudgeCooldownActive,
   reconcileAction,
   startOfJstDay,
   type TaskNudgeCandidate,
@@ -142,7 +143,7 @@ export async function reconcilePhaseOneAiNudges(now = new Date()) {
 
     const activeCooldowns = new Set<string>()
     for (const row of existing) {
-      if (row.status !== 'suppressed' || !row.remindAfter || row.remindAfter <= now) continue
+      if (!isNudgeCooldownActive({ status: row.status, remindAfter: row.remindAfter, now })) continue
       const key = cooldownTargetKey(row)
       if (key) activeCooldowns.add(key)
     }

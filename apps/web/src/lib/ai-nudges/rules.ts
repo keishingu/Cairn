@@ -156,6 +156,18 @@ export function effectiveRecipientAccess(input: {
   return input.profileEnabled && (input.currentCandidateAccessible || input.storedRecipientCanAccess)
 }
 
+export function isNudgeCooldownActive(input: {
+  status: AiNudgeStatus
+  remindAfter: Date | null
+  now: Date
+}): boolean {
+  return (
+    (input.status === 'dismissed' || input.status === 'suppressed') &&
+    input.remindAfter !== null &&
+    input.remindAfter.getTime() > input.now.getTime()
+  )
+}
+
 export function reconcileAction(input: {
   status: AiNudgeStatus
   remindAfter: Date | null

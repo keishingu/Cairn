@@ -4,6 +4,7 @@ import {
   detectTaskNudges,
   effectiveRecipientAccess,
   heartbeatWeekKey,
+  isNudgeCooldownActive,
   reconcileAction,
   type TaskRuleInput,
 } from './rules'
@@ -57,6 +58,14 @@ describe('Phase 1 AIナッジのルール検知', () => {
 })
 
 describe('AIナッジの状態リコンサイル', () => {
+  test('未来のremindAfterを持つlaterとnot_helpfulはdedupe keyを跨いでもクールダウン中とする', () => {
+    const remindAfter = new Date(NOW.getTime() + 1)
+    expect(isNudgeCooldownActive({ status: 'dismissed', remindAfter, now: NOW })).toBe(true)
+    expect(isNudgeCooldownActive({ status: 'suppressed', remindAfter, now: NOW })).toBe(true)
+    expect(isNudgeCooldownActive({ status: 'dismissed', remindAfter: NOW, now: NOW })).toBe(false)
+    expect(isNudgeCooldownActive({ status: 'active', remindAfter, now: NOW })).toBe(false)
+  })
+
   test('保存済み導線が失効していても現在candidateへ到達できればアクセス可能とする', () => {
     expect(
       effectiveRecipientAccess({
