@@ -216,6 +216,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         body: aiNudges.body,
         reason: aiNudges.reason,
         createdAt: aiNudges.createdAt,
+        respondedAt: aiNudges.respondedAt,
       })
       .from(aiNudges)
       .where(
@@ -296,7 +297,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           .where(
             and(
               eq(messages.channelId, reminder.channelId),
-              gt(messages.createdAt, reminder.createdAt),
+              gt(messages.createdAt, reminder.respondedAt ?? reminder.createdAt),
               isNull(messages.deletedAt),
             ),
           )
