@@ -8,6 +8,7 @@ import {
   messages,
   notifications,
   profiles,
+  projects,
   type AiNudgeStatus,
 } from '@cairn/db'
 import { and, eq, gt, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
@@ -89,7 +90,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       results
         .filter((result) => !result.input.isUnansweredAskRecheck)
         .flatMap((result) =>
-          result.input.messages.map((message) => `${result.input.channelId}:${message.id}`),
+          result.input.newMessageIds.map((messageId) => `${result.input.channelId}:${messageId}`),
         ),
     )
     const activeLlmNudges =
@@ -205,6 +206,17 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       if (!reminder.channelId || !reminder.messageId) {
         await tx.update(aiNudges).set({ status: 'resolved' }).where(eq(aiNudges.id, reminder.id))
         continue
+      }
+      if (reminder.projectId) {
+        const [project] = await tx
+          .select({ archived: projects.archived })
+          .from(projects)
+          .where(eq(projects.id, reminder.projectId))
+          .limit(1)
+        if (!project || project.archived) {
+          await tx.update(aiNudges).set({ status: 'resolved' }).where(eq(aiNudges.id, reminder.id))
+          continue
+        }
       }
 
       const [source] = await tx

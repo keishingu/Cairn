@@ -279,13 +279,13 @@ export async function loadPhaseTwoChannelInput(
           parentMessageId: messages.parentMessageId,
           content: messages.content,
           createdAt: messages.createdAt,
+          deletedAt: messages.deletedAt,
         })
         .from(messages)
         .innerJoin(profiles, eq(messages.senderId, profiles.id))
         .where(
           and(
             eq(messages.channelId, channel.channelId),
-            isNull(messages.deletedAt),
             channel.nextUnansweredAskMessageId
               ? eq(messages.id, channel.nextUnansweredAskMessageId)
               : undefined,
@@ -294,11 +294,11 @@ export async function loadPhaseTwoChannelInput(
         .orderBy(asc(messages.createdAt), asc(messages.id))
         .limit(1)
     : []
-  const recheckSource = recheckSourceRows[0]
+  const recheckAnchor = recheckSourceRows[0]
   const scanRows = isUnansweredAskRecheck
-    ? recheckSource
+    ? recheckAnchor
       ? [
-          recheckSource,
+          ...(recheckAnchor.deletedAt ? [] : [recheckAnchor]),
           ...await db
             .select({
               id: messages.id,
@@ -315,17 +315,37 @@ export async function loadPhaseTwoChannelInput(
                 eq(messages.channelId, channel.channelId),
                 isNull(messages.deletedAt),
                 or(
-                  gt(messages.createdAt, recheckSource.createdAt),
-                  and(eq(messages.createdAt, recheckSource.createdAt), gt(messages.id, recheckSource.id)),
+                  gt(messages.createdAt, recheckAnchor.createdAt),
+                  and(eq(messages.createdAt, recheckAnchor.createdAt), gt(messages.id, recheckAnchor.id)),
                 ),
               ),
             )
             .orderBy(asc(messages.createdAt), asc(messages.id))
-            .limit(PHASE_TWO_NEW_MESSAGE_LIMIT - 1),
+            .limit(PHASE_TWO_NEW_MESSAGE_LIMIT - (recheckAnchor.deletedAt ? 0 : 1)),
         ]
       : []
     : newRows
-  if (scanRows.length === 0) return null
+  if (scanRows.length === 0) {
+    // 予約元が削除され、後続メッセージもない場合は空入力で状態だけを解消する。
+    // これを返さないと期限切れの予約が毎heartbeatで選ばれ続ける。
+    if (isUnansweredAskRecheck && recheckAnchor) {
+      return {
+        channelId: channel.channelId,
+        workspaceId: channel.workspaceId,
+        projectId: channel.projectId,
+        channelName: channel.channelName,
+        messages: [],
+        newMessageIds: newRows.map((row) => row.id),
+        scannedThroughMessageId: recheckAnchor.id,
+        scannedThroughCreatedAt: recheckAnchor.createdAt.toISOString(),
+        isUnansweredAskRecheck,
+        advancesCursor: false,
+        nextUnansweredAskCheckAt: null,
+        nextUnansweredAskMessageId: null,
+      }
+    }
+    return null
+  }
 
   const first = scanRows[0]!
   const contextRows = await db
@@ -421,6 +441,7 @@ function formatMessages(input: PhaseTwoChannelInput): string {
 }
 
 export async function screenPhaseTwoCandidates(input: PhaseTwoChannelInput) {
+  if (input.messages.length === 0) return []
   const { object } = await generateObject({
     model: openai(FAST_MODEL),
     schema: primaryCandidateSchema,
