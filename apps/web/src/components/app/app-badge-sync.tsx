@@ -4,7 +4,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useUnreadNotificationCount } from '@/lib/notifications/client'
+import { useAppBadgeCount } from '@/lib/notifications/client'
 
 /**
  * アプリ表示中に OS のアプリアイコンの通知バッジ（Badging API）を未読数へ追従させる。
@@ -14,10 +14,15 @@ import { useUnreadNotificationCount } from '@/lib/notifications/client'
  * 即時に減算・クリアするために存在する。Realtime で未読数が更新されると
  * 再レンダリングされ、バッジも追従する。
  *
+ * ワークスペース横断の未読総数（useAppBadgeCount）を使う。ベル表示用の
+ * useUnreadNotificationCount は表示中ワークスペースだけに絞られており、
+ * それをバッジに使うと他ワークスペースの未読があるのに 0 件表示中の
+ * ワークスペースを開いた瞬間にバッジが消えてしまう（Push 側の集計と不一致になる）
+ *
  * バッジ API 非対応（未インストールのブラウザタブ・iOS 16.3 以前等）では no-op。
  */
 export function AppBadgeSync() {
-  const unreadCount = useUnreadNotificationCount()
+  const unreadCount = useAppBadgeCount()
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('setAppBadge' in navigator)) return

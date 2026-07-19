@@ -40,6 +40,26 @@ export function useUnreadNotificationCount(): number {
   return data.length
 }
 
+async function fetchBadgeCount(): Promise<number> {
+  const res = await fetchWithAuth('/api/notifications/badge-count')
+  if (!res.ok) throw new Error('未読バッジ数の取得に失敗しました')
+  const data = await res.json() as { count: number }
+  return data.count
+}
+
+/**
+ * OS アプリアイコンのバッジ用の未読数（全ワークスペース横断）。
+ * `useUnreadNotificationCount` は表示中ワークスペースのベル用で件数が異なるため、
+ * バッジ表示にはこちらを使う（サーバー Push 側の集計元と揃える）
+ */
+export function useAppBadgeCount(): number {
+  const { data = 0 } = useQuery({
+    queryKey: ['notifications', 'badge-count'],
+    queryFn: fetchBadgeCount,
+  })
+  return data
+}
+
 export function useMarkNotificationsRead() {
   const queryClient = useQueryClient()
   return useMutation({
