@@ -1,7 +1,18 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, index, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core'
 import { aiScopeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
@@ -64,6 +75,19 @@ export const aiMessages = pgTable('ai_messages', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+// LLM 巡回がチャンネルごとに保持する差分カーソル。
+// チャンネル削除時は状態も不要になる一方、最後に読んだメッセージだけが削除された場合は
+// last_scanned_at をフォールバックとして再開できるようカーソル参照だけを NULL にする。
+export const aiScanStates = pgTable('ai_scan_states', {
+  channelId: uuid('channel_id')
+    .primaryKey()
+    .references(() => channels.id, { onDelete: 'cascade' }),
+  lastScannedMessageId: uuid('last_scanned_message_id').references(() => messages.id, {
+    onDelete: 'set null',
+  }),
+  lastScannedAt: timestamp('last_scanned_at', { withTimezone: true }).notNull(),
+})
+
 // 本人だけに見える PMO ナッジ。append-only なイベントではなく、
 // (user_id, dedupe_key) ごとの「関心事の現在状態」としてハートビートがリコンサイルする。
 export const aiNudges = pgTable(
@@ -96,5 +120,16 @@ export const aiNudges = pgTable(
     index('idx_ai_nudges_user_status_created').on(t.userId, t.status, t.createdAt),
     index('idx_ai_nudges_channel_user').on(t.channelId, t.userId),
     index('idx_ai_nudges_cooldown').on(t.userId, t.detector, t.taskId, t.status, t.remindAfter),
+    index('idx_ai_nudges_message_cooldown').on(
+      t.userId,
+      t.detector,
+      t.messageId,
+      t.status,
+      t.remindAfter,
+    ),
+    // 宛先復元は同じ問いを候補者複数へ送らないことをDB境界でも保証する。
+    uniqueIndex('ai_nudges_unanswered_message_unique')
+      .on(t.messageId)
+      .where(sql`${t.detector} = 'unanswered_ask' AND ${t.messageId} IS NOT NULL`),
   ],
 )

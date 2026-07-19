@@ -8,6 +8,8 @@ import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
 import { hasReadMessage } from '@/lib/push/suppress'
 import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
+import type { PhaseTwoScanResult } from '@/lib/ai-nudges/phase2-delivery'
+import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/phase2-scan'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
@@ -775,4 +777,50 @@ export const reconcileAiNudgesHeartbeat = inngest.createFunction(
     const { reconcilePhaseOneAiNudges } = await import('@/lib/ai-nudges/reconcile')
     return reconcilePhaseOneAiNudges()
   }),
+)
+
+// Phase 2 の差分巡回。6時間ごとにDM以外の新着チャンネルだけを二段階LLMで評価する。
+// 02:00 JST の実行は候補を生成した後、08:00までdurable sleepしてからコード側の
+// 発話ゲートを再評価する。concurrency=1 + 同一関数内FIFOにより、古い遅延runを先に配信する。
+export const scanAiNudgesPhaseTwo = inngest.createFunction(
+  { id: 'scan-ai-nudges-phase2', concurrency: { limit: 1 } },
+  { cron: 'TZ=Asia/Tokyo 0 2,8,14,20 * * *' },
+  async ({ step }) => {
+    const channels = await step.run('list-channels-with-new-messages', async () => {
+      const { listPhaseTwoChannelsToScan } = await import('@/lib/ai-nudges/phase2-scan')
+      return listPhaseTwoChannelsToScan()
+    })
+
+    const results: PhaseTwoScanResult[] = []
+    for (const channel of channels) {
+      const input = await step.run(`load-channel-${channel.channelId}`, async () => {
+        const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/phase2-scan')
+        return loadPhaseTwoChannelInput(channel)
+      })
+      if (!input) continue
+
+      const primaryCandidates = await step.run(`screen-channel-${channel.channelId}`, async () => {
+        const { screenPhaseTwoCandidates } = await import('@/lib/ai-nudges/phase2-scan')
+        return screenPhaseTwoCandidates(input)
+      })
+      const refinedCandidates: PhaseTwoNudgeCandidate[] = []
+      for (const [index, candidate] of primaryCandidates.entries()) {
+        const refined = await step.run(`refine-channel-${channel.channelId}-${index}`, async () => {
+          const { refinePhaseTwoCandidate } = await import('@/lib/ai-nudges/phase2-scan')
+          return refinePhaseTwoCandidate(input, candidate)
+        })
+        if (refined) refinedCandidates.push(refined)
+      }
+      results.push({ input, candidates: refinedCandidates })
+    }
+    // 配信stepの再試行が22時以降へずれた場合も、DB書き込み直前の判定で翌08時まで待つ。
+    for (let attempt = 0; ; attempt += 1) {
+      const delivery = await step.run(`apply-phase2-speech-gate-${attempt}`, async () => {
+        const { deliverPhaseTwoScanResults } = await import('@/lib/ai-nudges/phase2-delivery')
+        return deliverPhaseTwoScanResults(results)
+      })
+      if (!('deferredUntil' in delivery)) return delivery
+      await step.sleepUntil(`wait-for-quiet-hours-to-end-${attempt}`, delivery.deferredUntil)
+    }
+  },
 )
