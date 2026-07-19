@@ -11,7 +11,7 @@ import {
   projects,
   type AiNudgeStatus,
 } from '@cairn/db'
-import { and, eq, gt, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm'
 import { startOfJstDay } from './rules'
 import {
   isUnansweredAskEligible,
@@ -93,25 +93,21 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           result.input.newMessageIds.map((messageId) => `${result.input.channelId}:${messageId}`),
         ),
     )
-    const activeLlmNudges =
-      scannedChannelIds.length > 0
-        ? await tx
-            .select({
-              id: aiNudges.id,
-              channelId: aiNudges.channelId,
-              messageId: aiNudges.messageId,
-              detector: aiNudges.detector,
-              userId: aiNudges.userId,
-            })
-            .from(aiNudges)
-            .where(
-              and(
-                inArray(aiNudges.detector, ['unanswered_ask', 'llm_risk']),
-                eq(aiNudges.status, 'active'),
-                inArray(aiNudges.channelId, scannedChannelIds),
-              ),
-            )
-        : []
+    const activeLlmNudges = await tx
+      .select({
+        id: aiNudges.id,
+        channelId: aiNudges.channelId,
+        messageId: aiNudges.messageId,
+        detector: aiNudges.detector,
+        userId: aiNudges.userId,
+      })
+      .from(aiNudges)
+      .where(
+        and(
+          inArray(aiNudges.detector, ['unanswered_ask', 'llm_risk']),
+          eq(aiNudges.status, 'active'),
+        ),
+      )
     const noLongerProposedIds = activeLlmNudges.flatMap((nudge) => {
       // unanswered_ask の解消条件は直接返信だけ。LLMが候補を省略しても消さない。
       if (nudge.detector !== 'llm_risk') return []
@@ -165,12 +161,23 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
             )
         : []
     const openMessageIds = openUnanswered.flatMap((row) => (row.messageId ? [row.messageId] : []))
+    const sourceSendersByMessageId =
+      openMessageIds.length > 0
+        ? new Map(
+            (
+              await tx
+                .select({ id: messages.id, senderId: messages.senderId })
+                .from(messages)
+                .where(inArray(messages.id, openMessageIds))
+            ).map((message) => [message.id, message.senderId]),
+          )
+        : new Map<string, string>()
     const answeredMessageIds =
       openMessageIds.length > 0
         ? new Set(
             (
               await tx
-                .select({ parentMessageId: messages.parentMessageId })
+                .select({ parentMessageId: messages.parentMessageId, senderId: messages.senderId })
                 .from(messages)
                 .where(
                   and(
@@ -178,7 +185,11 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
                     isNull(messages.deletedAt),
                   ),
                 )
-            ).flatMap((row) => (row.parentMessageId ? [row.parentMessageId] : [])),
+            ).flatMap((row) =>
+              row.parentMessageId && sourceSendersByMessageId.get(row.parentMessageId) !== row.senderId
+                ? [row.parentMessageId]
+                : [],
+            ),
           )
         : new Set<string>()
     const resolvedIds = openUnanswered.flatMap((row) => {
@@ -240,7 +251,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       }
 
       const [source] = await tx
-        .select({ createdAt: messages.createdAt })
+        .select({ createdAt: messages.createdAt, senderId: messages.senderId })
         .from(messages)
         .where(
           and(
@@ -259,7 +270,13 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         const [directReply] = await tx
           .select({ id: messages.id })
           .from(messages)
-          .where(and(eq(messages.parentMessageId, reminder.messageId), isNull(messages.deletedAt)))
+          .where(
+            and(
+              eq(messages.parentMessageId, reminder.messageId),
+              ne(messages.senderId, source.senderId),
+              isNull(messages.deletedAt),
+            ),
+          )
           .limit(1)
         if (
           !isUnansweredAskEligible({
@@ -369,7 +386,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
 
       // LLMが返したIDを信用せず、根拠メッセージが現在も同じチャンネルに存在することを確認する。
       const [source] = await tx
-        .select({ createdAt: messages.createdAt })
+        .select({ createdAt: messages.createdAt, senderId: messages.senderId })
         .from(messages)
         .where(
           and(
@@ -388,7 +405,13 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         const [directReply] = await tx
           .select({ id: messages.id })
           .from(messages)
-          .where(and(eq(messages.parentMessageId, candidate.messageId), isNull(messages.deletedAt)))
+          .where(
+            and(
+              eq(messages.parentMessageId, candidate.messageId),
+              ne(messages.senderId, source.senderId),
+              isNull(messages.deletedAt),
+            ),
+          )
           .limit(1)
         if (
           !isUnansweredAskEligible({
