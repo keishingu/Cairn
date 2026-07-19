@@ -22,6 +22,7 @@ import { DEFAULT_MODEL, FAST_MODEL, openai } from '@/lib/ai/client'
 import {
   PHASE_TWO_CONTEXT_MESSAGE_LIMIT,
   PHASE_TWO_NEW_MESSAGE_LIMIT,
+  nextUnansweredAskRecheckAt,
   phaseTwoDedupeKey,
   type PhaseTwoDetector,
 } from './phase2-rules'
@@ -55,6 +56,8 @@ export interface PhaseTwoChannelInput {
   newMessageIds: string[]
   scannedThroughMessageId: string
   scannedThroughCreatedAt: string
+  isUnansweredAskRecheck: boolean
+  nextUnansweredAskCheckAt: string | null
 }
 
 export interface PhaseTwoNudgeCandidate {
@@ -83,6 +86,7 @@ export interface ChannelCursorRow {
   cursorMessageAt: string | null
   latestMessageId: string | null
   latestMessageAt: string | null
+  nextUnansweredAskCheckAt: string | null
 }
 
 const primaryCandidateSchema = z.object({
@@ -149,6 +153,7 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
         where m.channel_id = ${channels.id} and m.deleted_at is null
         order by m.created_at desc, m.id desc limit 1
       )`,
+      nextUnansweredAskCheckAt: aiScanStates.nextUnansweredAskCheckAt,
     })
     .from(channels)
     .leftJoin(projects, eq(channels.projectId, projects.id))
@@ -158,7 +163,7 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
   return rows.flatMap((row) => {
     if (!row.workspaceId || !row.latestMessageId || !row.latestMessageAt) return []
     const cursorAt = row.cursorMessageAt ?? row.lastScannedAt
-    if (
+    const hasNewMessages = !(
       cursorAt &&
       !isAfterCursor(
         new Date(row.latestMessageAt),
@@ -166,7 +171,10 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
         new Date(cursorAt),
         row.lastScannedMessageId,
       )
-    ) {
+    )
+    const needsUnansweredAskRecheck =
+      row.nextUnansweredAskCheckAt !== null && new Date(row.nextUnansweredAskCheckAt) <= new Date()
+    if (!hasNewMessages && !needsUnansweredAskRecheck) {
       return []
     }
     return [
@@ -176,6 +184,9 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
         lastScannedAt: row.lastScannedAt ? toISOString(row.lastScannedAt) : null,
         cursorMessageAt: row.cursorMessageAt ? toISOString(row.cursorMessageAt) : null,
         latestMessageAt: toISOString(row.latestMessageAt),
+        nextUnansweredAskCheckAt: row.nextUnansweredAskCheckAt
+          ? toISOString(row.nextUnansweredAskCheckAt)
+          : null,
       },
     ]
   })
@@ -230,8 +241,31 @@ export async function loadPhaseTwoChannelInput(
         .limit(PHASE_TWO_NEW_MESSAGE_LIMIT)
         .then((rows) => rows.reverse())
 
-  if (newRows.length === 0) return null
-  const first = newRows[0]!
+  const isUnansweredAskRecheck = newRows.length === 0
+  if (isUnansweredAskRecheck && !channel.nextUnansweredAskCheckAt) return null
+
+  // 期限到来した再評価は、新着をカーソル外として扱わず直近ログだけを読み直す。
+  // これによりリスク検知の重複評価を避けつつ、24時間経過した依頼を拾える。
+  const scanRows = isUnansweredAskRecheck
+    ? await db
+        .select({
+          id: messages.id,
+          senderId: messages.senderId,
+          senderName: profiles.displayName,
+          parentMessageId: messages.parentMessageId,
+          content: messages.content,
+          createdAt: messages.createdAt,
+        })
+        .from(messages)
+        .innerJoin(profiles, eq(messages.senderId, profiles.id))
+        .where(and(eq(messages.channelId, channel.channelId), isNull(messages.deletedAt)))
+        .orderBy(desc(messages.createdAt), desc(messages.id))
+        .limit(PHASE_TWO_NEW_MESSAGE_LIMIT)
+        .then((rows) => rows.reverse())
+    : newRows
+  if (scanRows.length === 0) return null
+
+  const first = scanRows[0]!
   const contextRows = await db
     .select({
       id: messages.id,
@@ -256,7 +290,15 @@ export async function loadPhaseTwoChannelInput(
     .orderBy(desc(messages.createdAt), desc(messages.id))
     .limit(PHASE_TWO_CONTEXT_MESSAGE_LIMIT)
 
-  const last = newRows[newRows.length - 1]!
+  const last = scanRows[scanRows.length - 1]!
+  const checkedAt = new Date()
+  const earliestCheckAt = nextUnansweredAskRecheckAt({
+    messageCreatedAts: scanRows.map((message) => message.createdAt),
+    existingCheckAt: channel.nextUnansweredAskCheckAt
+      ? new Date(channel.nextUnansweredAskCheckAt)
+      : null,
+    now: checkedAt,
+  })
   return {
     channelId: channel.channelId,
     workspaceId: channel.workspaceId,
@@ -268,11 +310,17 @@ export async function loadPhaseTwoChannelInput(
         createdAt: row.createdAt.toISOString(),
         isNew: false,
       })),
-      ...newRows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString(), isNew: true })),
+      ...scanRows.map((row) => ({
+        ...row,
+        createdAt: row.createdAt.toISOString(),
+        isNew: !isUnansweredAskRecheck,
+      })),
     ],
     newMessageIds: newRows.map((row) => row.id),
     scannedThroughMessageId: last.id,
     scannedThroughCreatedAt: last.createdAt.toISOString(),
+    isUnansweredAskRecheck,
+    nextUnansweredAskCheckAt: earliestCheckAt?.toISOString() ?? null,
   }
 }
 
@@ -299,12 +347,18 @@ export async function screenPhaseTwoCandidates(input: PhaseTwoChannelInput) {
 - unanswered_ask: 回答がないと進行がブロックされる質問・依頼。24時間以上前のメッセージだけ。
 - llm_risk: 結論未確定のまま流れた議論、明確な認識齟齬、またはスコープ膨張の兆候。
 
+${input.isUnansweredAskRecheck ? '今回は24時間経過した未回答依頼の再評価です。unanswered_ask だけを候補にし、llm_risk は返さないでください。' : ''}
+
 sourceMessageId は必ず下記ログに実在する根拠メッセージIDにしてください。宛先や文面はまだ作らないでください。
 
 ${formatMessages(input)}`,
   })
   const messageIds = new Set(input.messages.map((message) => message.id))
-  return object.candidates.filter((candidate) => messageIds.has(candidate.sourceMessageId))
+  return object.candidates.filter(
+    (candidate) =>
+      messageIds.has(candidate.sourceMessageId) &&
+      (!input.isUnansweredAskRecheck || candidate.detector === 'unanswered_ask'),
+  )
 }
 
 async function listEligibleRecipients(

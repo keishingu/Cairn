@@ -84,10 +84,12 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
 
     // 直接返信はLLMに委ねず、未回答条件が解消した事実として決定論的にresolveする。
     const scannedChannelIds = [...new Set(results.map((result) => result.input.channelId))]
-    const evaluatedMessages = new Set(
-      results.flatMap((result) =>
-        result.input.messages.map((message) => `${result.input.channelId}:${message.id}`),
-      ),
+    const evaluatedRiskMessages = new Set(
+      results
+        .filter((result) => !result.input.isUnansweredAskRecheck)
+        .flatMap((result) =>
+          result.input.messages.map((message) => `${result.input.channelId}:${message.id}`),
+        ),
     )
     const activeLlmNudges =
       scannedChannelIds.length > 0
@@ -108,8 +110,10 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
             )
         : []
     const noLongerProposedIds = activeLlmNudges.flatMap((nudge) => {
+      // unanswered_ask の解消条件は直接返信だけ。LLMが候補を省略しても消さない。
+      if (nudge.detector !== 'llm_risk') return []
       if (!nudge.channelId || !nudge.messageId) return []
-      if (!evaluatedMessages.has(`${nudge.channelId}:${nudge.messageId}`)) return []
+      if (!evaluatedRiskMessages.has(`${nudge.channelId}:${nudge.messageId}`)) return []
       return proposedTargets.has(`${nudge.detector}:${nudge.messageId}`) ? [] : [nudge.id]
     })
     if (noLongerProposedIds.length > 0) {
@@ -247,7 +251,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           )
           .limit(1)
         if (newerMessage) {
-          const evaluatedThisRun = evaluatedMessages.has(
+          const evaluatedThisRun = evaluatedRiskMessages.has(
             `${reminder.channelId}:${reminder.messageId}`,
           )
           const proposedAgain = proposedTargets.has(`llm_risk:${reminder.messageId}`)
@@ -512,15 +516,27 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       if (!existingChannelIds.has(input.channelId)) continue
       const scannedAt = new Date(input.scannedThroughCreatedAt)
       await tx.execute(sql`
-        insert into ai_scan_states (channel_id, last_scanned_message_id, last_scanned_at)
-        values (${input.channelId}, ${input.scannedThroughMessageId}, ${scannedAt})
+        insert into ai_scan_states (
+          channel_id,
+          last_scanned_message_id,
+          last_scanned_at,
+          next_unanswered_ask_check_at
+        )
+        values (
+          ${input.channelId},
+          ${input.scannedThroughMessageId},
+          ${scannedAt},
+          ${input.nextUnansweredAskCheckAt ? new Date(input.nextUnansweredAskCheckAt) : null}
+        )
         on conflict (channel_id) do update
         set last_scanned_message_id = excluded.last_scanned_message_id,
-            last_scanned_at = excluded.last_scanned_at
+            last_scanned_at = excluded.last_scanned_at,
+            next_unanswered_ask_check_at = excluded.next_unanswered_ask_check_at
         where ai_scan_states.last_scanned_at < excluded.last_scanned_at
            or (
+             -- 新着なしの未回答依頼再評価はカーソルが同じなので、予約時刻だけ更新を許可する。
              ai_scan_states.last_scanned_at = excluded.last_scanned_at
-             and coalesce(ai_scan_states.last_scanned_message_id::text, '') < excluded.last_scanned_message_id::text
+             and coalesce(ai_scan_states.last_scanned_message_id::text, '') <= excluded.last_scanned_message_id::text
            )
       `)
     }

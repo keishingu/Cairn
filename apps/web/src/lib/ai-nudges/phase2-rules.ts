@@ -34,6 +34,22 @@ export function isUnansweredAskEligible(input: {
   )
 }
 
+export function nextUnansweredAskRecheckAt(input: {
+  messageCreatedAts: Date[]
+  existingCheckAt: Date | null
+  now: Date
+}): Date | null {
+  const futureCheckAts = [
+    ...input.messageCreatedAts.map(
+      (createdAt) => new Date(createdAt.getTime() + UNANSWERED_ASK_MIN_AGE_MS),
+    ),
+    input.existingCheckAt,
+  ].filter((checkAt): checkAt is Date => Boolean(checkAt && checkAt > input.now))
+
+  if (futureCheckAts.length === 0) return null
+  return futureCheckAts.sort((a, b) => a.getTime() - b.getTime())[0] ?? null
+}
+
 export function isQuietHoursInJst(now: Date): boolean {
   const hour = Number(
     new Intl.DateTimeFormat('en-US', {

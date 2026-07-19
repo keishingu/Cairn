@@ -3,6 +3,7 @@ import {
   isQuietHoursInJst,
   isPhaseTwoDetector,
   isUnansweredAskEligible,
+  nextUnansweredAskRecheckAt,
   nextJstDeliveryTime,
   passesPhaseTwoConfidence,
   phaseTwoDedupeKey,
@@ -42,6 +43,20 @@ describe('Phase 2 AIナッジの決定論的な発話ゲート', () => {
         now,
       }),
     ).toBe(false)
+  })
+
+  test('24時間未満で巡回した依頼は、最も早い成熟時刻に再評価を予約する', () => {
+    const now = new Date('2026-07-19T00:00:00.000Z')
+    expect(
+      nextUnansweredAskRecheckAt({
+        messageCreatedAts: [
+          new Date('2026-07-18T20:00:00.000Z'),
+          new Date('2026-07-18T23:00:00.000Z'),
+        ],
+        existingCheckAt: new Date('2026-07-19T01:00:00.000Z'),
+        now,
+      })?.toISOString(),
+    ).toBe('2026-07-19T01:00:00.000Z')
   })
 
   test('22〜08時JSTを静寂時間帯とし次の08時まで遅延する', () => {

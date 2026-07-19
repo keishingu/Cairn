@@ -86,6 +86,8 @@ export const aiScanStates = pgTable('ai_scan_states', {
     onDelete: 'set null',
   }),
   lastScannedAt: timestamp('last_scanned_at', { withTimezone: true }).notNull(),
+  // 新着巡回時に24時間未満だった依頼を、チャンネルが静かなままでも成熟後に再評価する時刻。
+  nextUnansweredAskCheckAt: timestamp('next_unanswered_ask_check_at', { withTimezone: true }),
 })
 
 // 本人だけに見える PMO ナッジ。append-only なイベントではなく、

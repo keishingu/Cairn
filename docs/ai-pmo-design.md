@@ -153,10 +153,12 @@ ai_scan_states
   channel_id            uuid PK → channels    ON DELETE CASCADE
   last_scanned_message_id  uuid → messages    ON DELETE SET NULL
   last_scanned_at       timestamptz NOT NULL
+  next_unanswered_ask_check_at timestamptz    -- 24時間未満だった依頼の再評価予約
 
 ```
 
 - `channel_id` は `ON DELETE CASCADE` 必須。デフォルトの `NO ACTION` のままだと、一度でも巡回したチャンネルが削除不能になる。`channels.project_id` は既に `ON DELETE CASCADE` でプロジェクト削除時にチャンネルへ連鎖するため、ここで塞がないとプロジェクト削除フロー自体が壊れる
+- `next_unanswered_ask_check_at` は、初回巡回時に24時間未満だったメッセージを、チャンネルに新着がなくても成熟後に再評価するための予約時刻。`unanswered_ask` の最低経過時間と差分カーソルを両立させる
 
 ### 4.3 `document_chunks` の拡張（Phase 3）
 
@@ -195,6 +197,8 @@ ai_scan_states
    - 認識齟齬・スコープ膨張の兆候はないか
 3. 候補が出たときだけ **gpt-5** で精査し、確信度・宛先・文面を生成。確信度がしきい値未満なら破棄（沈黙がデフォルト）
 4. 発話ゲート（§6）を通過したものだけ `ai_nudges` に INSERT
+
+24時間未満で読んだ依頼は `ai_scan_states.next_unanswered_ask_check_at` に成熟時刻を保存し、その時刻以降に新着がなくても `unanswered_ask` 専用の再評価を行う。すでに表示中の `unanswered_ask` は、LLMの再評価結果ではなく直接返信の有無だけで解消する。
 
 巡回頻度は6時間おき程度から開始し、コストと検知の鮮度を見て調整する。宛先の決定は「その事象に行動を起こせる本人」（依頼を受けた人・議論の当事者）に限定し、特定できない場合は発話しない。
 
