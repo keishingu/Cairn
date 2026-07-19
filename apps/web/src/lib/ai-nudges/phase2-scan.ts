@@ -22,6 +22,7 @@ import { DEFAULT_MODEL, FAST_MODEL, openai } from '@/lib/ai/client'
 import {
   PHASE_TWO_CONTEXT_MESSAGE_LIMIT,
   PHASE_TWO_NEW_MESSAGE_LIMIT,
+  UNANSWERED_ASK_MIN_AGE_MS,
   isUnansweredAskRecheckDue,
   nextUnansweredAskRecheck,
   phaseTwoDedupeKey,
@@ -392,7 +393,18 @@ export async function loadPhaseTwoChannelInput(
         .limit(1)
     : scanRows.map((message) => ({ id: message.id, createdAt: message.createdAt }))
   const nextRecheck = nextUnansweredAskRecheck({
-    messages: nextScheduledRows,
+    // 再評価窓に含まれた依頼でも、まだ24時間未満なら今回の配信では弾かれる。
+    // 次の成熟時刻を失わないよう、窓外の次行とあわせて予約候補に残す。
+    messages: isUnansweredAskRecheck
+      ? [
+          ...scanRows
+            .filter(
+              (message) => message.createdAt.getTime() + UNANSWERED_ASK_MIN_AGE_MS > checkedAt.getTime(),
+            )
+            .map((message) => ({ id: message.id, createdAt: message.createdAt })),
+          ...nextScheduledRows,
+        ]
+      : nextScheduledRows,
     existing: !isUnansweredAskRecheck &&
       channel.nextUnansweredAskCheckAt &&
       channel.nextUnansweredAskMessageId
