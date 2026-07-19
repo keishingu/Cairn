@@ -74,7 +74,7 @@ async function checkOpenAI(): Promise<ServiceStatus> {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         messages: [{ role: 'user', content: 'hi' }],
         max_tokens: 1,
       }),

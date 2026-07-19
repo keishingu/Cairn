@@ -642,8 +642,8 @@ const SettingsAI = () => (
       <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>モデル</h2>
       <div className="card" style={{ padding: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         {[
-          { n: 'GPT-4o',      d: '汎用・推奨',     on: true },
-          { n: 'GPT-4o mini', d: '高速・低コスト', on: false },
+          { n: 'GPT-5',      d: '高精度・推奨',     on: true },
+          { n: 'GPT-5 mini', d: '高速・低コスト', on: false },
         ].map((m, i) => (
           <div key={i} style={{ padding: 12, borderRadius: 8, border: `2px solid ${m.on ? 'var(--accent)' : 'var(--border)'}`, background: m.on ? 'var(--accent-soft)' : 'var(--card-2)', cursor: 'pointer' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
