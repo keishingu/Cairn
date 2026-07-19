@@ -92,6 +92,9 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
   }
 
   // Expo Push
+  // 注: ネイティブ（Expo）アプリのランチャーバッジ（setBadgeCountAsync）は
+  // 既読時に減算・クリアする同期経路が apps/mobile 側に必要になるため、本 PR では
+  // 付与しない（Web PWA バッジに範囲を限定）。Expo バッジ対応は別ブランチで行う。
   const expoSubs = subs.filter(s => s.deviceType === 'expo' && s.expoToken)
   if (expoSubs.length > 0) {
     const messages = expoSubs.map(s => {
@@ -99,7 +102,6 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
         to: s.expoToken!,
         title: payload.title,
         body: payload.body,
-        badge: badgeCount,
       }
       if (payload.url) msg.data = { url: payload.url }
       return msg
