@@ -551,6 +551,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
             nextUnansweredAskCheckAt: input.nextUnansweredAskCheckAt
               ? new Date(input.nextUnansweredAskCheckAt)
               : null,
+            nextUnansweredAskMessageId: input.nextUnansweredAskMessageId,
           })
           .where(eq(aiScanStates.channelId, input.channelId))
         continue
@@ -561,18 +562,21 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           channel_id,
           last_scanned_message_id,
           last_scanned_at,
-          next_unanswered_ask_check_at
+          next_unanswered_ask_check_at,
+          next_unanswered_ask_message_id
         )
         values (
           ${input.channelId},
           ${input.scannedThroughMessageId},
           ${scannedAt},
-          ${input.nextUnansweredAskCheckAt ? new Date(input.nextUnansweredAskCheckAt) : null}
+          ${input.nextUnansweredAskCheckAt ? new Date(input.nextUnansweredAskCheckAt) : null},
+          ${input.nextUnansweredAskMessageId}
         )
         on conflict (channel_id) do update
         set last_scanned_message_id = excluded.last_scanned_message_id,
             last_scanned_at = excluded.last_scanned_at,
-            next_unanswered_ask_check_at = excluded.next_unanswered_ask_check_at
+            next_unanswered_ask_check_at = excluded.next_unanswered_ask_check_at,
+            next_unanswered_ask_message_id = excluded.next_unanswered_ask_message_id
         where ai_scan_states.last_scanned_at < excluded.last_scanned_at
            or (
              -- 新着なしの未回答依頼再評価はカーソルが同じなので、予約時刻だけ更新を許可する。

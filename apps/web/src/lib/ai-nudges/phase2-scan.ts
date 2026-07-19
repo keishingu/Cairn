@@ -23,7 +23,7 @@ import {
   PHASE_TWO_CONTEXT_MESSAGE_LIMIT,
   PHASE_TWO_NEW_MESSAGE_LIMIT,
   isUnansweredAskRecheckDue,
-  nextUnansweredAskRecheckAt,
+  nextUnansweredAskRecheck,
   phaseTwoDedupeKey,
   type PhaseTwoDetector,
 } from './phase2-rules'
@@ -60,6 +60,7 @@ export interface PhaseTwoChannelInput {
   isUnansweredAskRecheck: boolean
   advancesCursor: boolean
   nextUnansweredAskCheckAt: string | null
+  nextUnansweredAskMessageId: string | null
 }
 
 export interface PhaseTwoNudgeCandidate {
@@ -89,6 +90,7 @@ export interface ChannelCursorRow {
   latestMessageId: string | null
   latestMessageAt: string | null
   nextUnansweredAskCheckAt: string | null
+  nextUnansweredAskMessageId: string | null
 }
 
 const primaryCandidateSchema = z.object({
@@ -156,6 +158,7 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
         order by m.created_at desc, m.id desc limit 1
       )`,
       nextUnansweredAskCheckAt: aiScanStates.nextUnansweredAskCheckAt,
+      nextUnansweredAskMessageId: aiScanStates.nextUnansweredAskMessageId,
     })
     .from(channels)
     .leftJoin(projects, eq(channels.projectId, projects.id))
@@ -177,7 +180,7 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
     const needsUnansweredAskRecheck = isUnansweredAskRecheckDue(
       row.nextUnansweredAskCheckAt ? new Date(row.nextUnansweredAskCheckAt) : null,
       new Date(),
-    )
+    ) && Boolean(row.nextUnansweredAskMessageId)
     if (!hasNewMessages && !needsUnansweredAskRecheck) {
       return []
     }
@@ -252,11 +255,16 @@ export async function loadPhaseTwoChannelInput(
   )
   if (mode === 'unanswered_ask_recheck' && !recheckDue) return null
   const isUnansweredAskRecheck = mode === 'unanswered_ask_recheck'
-  if (isUnansweredAskRecheck && !channel.nextUnansweredAskCheckAt) return null
+  if (
+    isUnansweredAskRecheck &&
+    (!channel.nextUnansweredAskCheckAt || !channel.nextUnansweredAskMessageId)
+  ) {
+    return null
+  }
 
-  // 期限到来した再評価は、新着をカーソル外として扱わず直近ログだけを読み直す。
-  // これによりリスク検知の重複評価を避けつつ、24時間経過した依頼を拾える。
-  const scanRows = isUnansweredAskRecheck
+  // 期限到来した再評価は予約時に保存した根拠メッセージを読み直す。直近100件だけを
+  // 取得すると、高トラフィックのチャンネルで成熟した依頼を見失うためである。
+  const recheckSourceRows = isUnansweredAskRecheck
     ? await db
         .select({
           id: messages.id,
@@ -268,10 +276,48 @@ export async function loadPhaseTwoChannelInput(
         })
         .from(messages)
         .innerJoin(profiles, eq(messages.senderId, profiles.id))
-        .where(and(eq(messages.channelId, channel.channelId), isNull(messages.deletedAt)))
-        .orderBy(desc(messages.createdAt), desc(messages.id))
-        .limit(PHASE_TWO_NEW_MESSAGE_LIMIT)
-        .then((rows) => rows.reverse())
+        .where(
+          and(
+            eq(messages.channelId, channel.channelId),
+            isNull(messages.deletedAt),
+            channel.nextUnansweredAskMessageId
+              ? eq(messages.id, channel.nextUnansweredAskMessageId)
+              : undefined,
+          ),
+        )
+        .orderBy(asc(messages.createdAt), asc(messages.id))
+        .limit(1)
+    : []
+  const recheckSource = recheckSourceRows[0]
+  const scanRows = isUnansweredAskRecheck
+    ? recheckSource
+      ? [
+          recheckSource,
+          ...await db
+            .select({
+              id: messages.id,
+              senderId: messages.senderId,
+              senderName: profiles.displayName,
+              parentMessageId: messages.parentMessageId,
+              content: messages.content,
+              createdAt: messages.createdAt,
+            })
+            .from(messages)
+            .innerJoin(profiles, eq(messages.senderId, profiles.id))
+            .where(
+              and(
+                eq(messages.channelId, channel.channelId),
+                isNull(messages.deletedAt),
+                or(
+                  gt(messages.createdAt, recheckSource.createdAt),
+                  and(eq(messages.createdAt, recheckSource.createdAt), gt(messages.id, recheckSource.id)),
+                ),
+              ),
+            )
+            .orderBy(asc(messages.createdAt), asc(messages.id))
+            .limit(PHASE_TWO_NEW_MESSAGE_LIMIT - 1),
+        ]
+      : []
     : newRows
   if (scanRows.length === 0) return null
 
@@ -302,10 +348,32 @@ export async function loadPhaseTwoChannelInput(
 
   const last = scanRows[scanRows.length - 1]!
   const checkedAt = new Date()
-  const earliestCheckAt = nextUnansweredAskRecheckAt({
-    messageCreatedAts: scanRows.map((message) => message.createdAt),
-    existingCheckAt: !isUnansweredAskRecheck && channel.nextUnansweredAskCheckAt
-      ? new Date(channel.nextUnansweredAskCheckAt)
+  const nextScheduledRows = isUnansweredAskRecheck
+    ? await db
+        .select({ id: messages.id, createdAt: messages.createdAt })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.channelId, channel.channelId),
+            isNull(messages.deletedAt),
+            or(
+              gt(messages.createdAt, last.createdAt),
+              and(eq(messages.createdAt, last.createdAt), gt(messages.id, last.id)),
+            ),
+          ),
+        )
+        .orderBy(asc(messages.createdAt), asc(messages.id))
+        .limit(1)
+    : scanRows.map((message) => ({ id: message.id, createdAt: message.createdAt }))
+  const nextRecheck = nextUnansweredAskRecheck({
+    messages: nextScheduledRows,
+    existing: !isUnansweredAskRecheck &&
+      channel.nextUnansweredAskCheckAt &&
+      channel.nextUnansweredAskMessageId
+      ? {
+          messageId: channel.nextUnansweredAskMessageId,
+          checkAt: new Date(channel.nextUnansweredAskCheckAt),
+        }
       : null,
     now: checkedAt,
   })
@@ -331,7 +399,8 @@ export async function loadPhaseTwoChannelInput(
     scannedThroughCreatedAt: last.createdAt.toISOString(),
     isUnansweredAskRecheck,
     advancesCursor: !isUnansweredAskRecheck,
-    nextUnansweredAskCheckAt: earliestCheckAt?.toISOString() ?? null,
+    nextUnansweredAskCheckAt: nextRecheck?.checkAt.toISOString() ?? null,
+    nextUnansweredAskMessageId: nextRecheck?.messageId ?? null,
   }
 }
 

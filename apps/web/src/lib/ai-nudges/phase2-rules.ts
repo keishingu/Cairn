@@ -34,20 +34,25 @@ export function isUnansweredAskEligible(input: {
   )
 }
 
-export function nextUnansweredAskRecheckAt(input: {
-  messageCreatedAts: Date[]
-  existingCheckAt: Date | null
+export function nextUnansweredAskRecheck(input: {
+  messages: Array<{ id: string; createdAt: Date }>
+  existing: { messageId: string; checkAt: Date } | null
   now: Date
-}): Date | null {
-  const futureCheckAts = [
-    ...input.messageCreatedAts.map(
-      (createdAt) => new Date(createdAt.getTime() + UNANSWERED_ASK_MIN_AGE_MS),
-    ),
-    input.existingCheckAt,
-  ].filter((checkAt): checkAt is Date => Boolean(checkAt && checkAt > input.now))
+}): { messageId: string; checkAt: Date } | null {
+  const futureChecks = [
+    ...input.messages.map(({ id, createdAt }) => ({
+      messageId: id,
+      checkAt: new Date(createdAt.getTime() + UNANSWERED_ASK_MIN_AGE_MS),
+    })),
+    input.existing,
+  ].filter((check): check is { messageId: string; checkAt: Date } =>
+    Boolean(check && check.checkAt > input.now),
+  )
 
-  if (futureCheckAts.length === 0) return null
-  return futureCheckAts.sort((a, b) => a.getTime() - b.getTime())[0] ?? null
+  if (futureChecks.length === 0) return null
+  return futureChecks.sort(
+    (a, b) => a.checkAt.getTime() - b.checkAt.getTime() || a.messageId.localeCompare(b.messageId),
+  )[0] ?? null
 }
 
 export function isUnansweredAskRecheckDue(checkAt: Date | null, now: Date): boolean {
