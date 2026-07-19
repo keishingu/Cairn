@@ -67,6 +67,18 @@ describe('Phase 2 AIナッジの決定論的な発話ゲート', () => {
     expect(isUnansweredAskRecheckDue(new Date('2026-07-19T00:00:00.001Z'), now)).toBe(false)
   })
 
+  test('再評価の100件窓を越えた成熟済みメッセージは即時に続行予約する', () => {
+    const now = new Date('2026-07-19T00:00:00.000Z')
+    expect(
+      nextUnansweredAskRecheck({
+        messages: [{ id: 'next', createdAt: new Date('2026-07-17T00:00:00.000Z') }],
+        existing: null,
+        now,
+        includeOverdue: true,
+      }),
+    ).toEqual({ messageId: 'next', checkAt: now })
+  })
+
   test('会話が進んだリスクの期限到来時は、再評価できなければ古いナッジを解消する', () => {
     expect(
       shouldResolveDueLlmRiskReminder({

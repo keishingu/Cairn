@@ -163,7 +163,13 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
     .from(channels)
     .leftJoin(projects, eq(channels.projectId, projects.id))
     .leftJoin(aiScanStates, eq(channels.id, aiScanStates.channelId))
-    .where(ne(channels.type, 'dm'))
+    .where(
+      and(
+        ne(channels.type, 'dm'),
+        // 個人チャンネルは対象のまま、アーカイブ済みプロジェクトの会話は巡回しない。
+        or(isNull(channels.projectId), eq(projects.archived, false)),
+      ),
+    )
 
   return rows.flatMap((row) => {
     if (!row.workspaceId || !row.latestMessageId || !row.latestMessageAt) return []
@@ -376,6 +382,7 @@ export async function loadPhaseTwoChannelInput(
         }
       : null,
     now: checkedAt,
+    includeOverdue: isUnansweredAskRecheck,
   })
   return {
     channelId: channel.channelId,
@@ -433,10 +440,12 @@ sourceMessageId は必ず下記ログに実在する根拠メッセージIDに�
 
 ${formatMessages(input)}`,
   })
-  const messageIds = new Set(input.messages.map((message) => message.id))
+  const candidateMessageIds = input.isUnansweredAskRecheck
+    ? new Set(input.messages.map((message) => message.id))
+    : new Set(input.newMessageIds)
   return object.candidates.filter(
     (candidate) =>
-      messageIds.has(candidate.sourceMessageId) &&
+      candidateMessageIds.has(candidate.sourceMessageId) &&
       (!input.isUnansweredAskRecheck || candidate.detector === 'unanswered_ask'),
   )
 }

@@ -38,16 +38,23 @@ export function nextUnansweredAskRecheck(input: {
   messages: Array<{ id: string; createdAt: Date }>
   existing: { messageId: string; checkAt: Date } | null
   now: Date
+  includeOverdue?: boolean
 }): { messageId: string; checkAt: Date } | null {
-  const futureChecks = [
+  const scheduledChecks = [
     ...input.messages.map(({ id, createdAt }) => ({
       messageId: id,
       checkAt: new Date(createdAt.getTime() + UNANSWERED_ASK_MIN_AGE_MS),
     })),
     input.existing,
-  ].filter((check): check is { messageId: string; checkAt: Date } =>
-    Boolean(check && check.checkAt > input.now),
-  )
+  ].filter((check): check is { messageId: string; checkAt: Date } => Boolean(check))
+
+  const futureChecks = scheduledChecks
+    .filter((check) => input.includeOverdue || check.checkAt > input.now)
+    .map((check) =>
+      input.includeOverdue && check.checkAt <= input.now
+        ? { ...check, checkAt: input.now }
+        : check,
+    )
 
   if (futureChecks.length === 0) return null
   return futureChecks.sort(
