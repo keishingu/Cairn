@@ -50,6 +50,18 @@ export function nextUnansweredAskRecheckAt(input: {
   return futureCheckAts.sort((a, b) => a.getTime() - b.getTime())[0] ?? null
 }
 
+export function isUnansweredAskRecheckDue(checkAt: Date | null, now: Date): boolean {
+  return checkAt !== null && checkAt <= now
+}
+
+export function shouldResolveDueLlmRiskReminder(input: {
+  hasNewerMessage: boolean
+  sourceEvaluated: boolean
+  proposedAgain: boolean
+}): boolean {
+  return input.hasNewerMessage && (!input.sourceEvaluated || !input.proposedAgain)
+}
+
 export function isQuietHoursInJst(now: Date): boolean {
   const hour = Number(
     new Intl.DateTimeFormat('en-US', {

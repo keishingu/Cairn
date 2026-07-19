@@ -2,11 +2,13 @@ import { describe, expect, test } from 'vitest'
 import {
   isQuietHoursInJst,
   isPhaseTwoDetector,
+  isUnansweredAskRecheckDue,
   isUnansweredAskEligible,
   nextUnansweredAskRecheckAt,
   nextJstDeliveryTime,
   passesPhaseTwoConfidence,
   phaseTwoDedupeKey,
+  shouldResolveDueLlmRiskReminder,
 } from './phase2-rules'
 
 describe('Phase 2 AIナッジの決定論的な発話ゲート', () => {
@@ -57,6 +59,29 @@ describe('Phase 2 AIナッジの決定論的な発話ゲート', () => {
         now,
       })?.toISOString(),
     ).toBe('2026-07-19T01:00:00.000Z')
+  })
+
+  test('成熟後の未回答依頼は新着の有無にかかわらず再評価対象にする', () => {
+    const now = new Date('2026-07-19T00:00:00.000Z')
+    expect(isUnansweredAskRecheckDue(new Date('2026-07-18T23:59:59.999Z'), now)).toBe(true)
+    expect(isUnansweredAskRecheckDue(new Date('2026-07-19T00:00:00.001Z'), now)).toBe(false)
+  })
+
+  test('会話が進んだリスクの期限到来時は、再評価できなければ古いナッジを解消する', () => {
+    expect(
+      shouldResolveDueLlmRiskReminder({
+        hasNewerMessage: true,
+        sourceEvaluated: false,
+        proposedAgain: false,
+      }),
+    ).toBe(true)
+    expect(
+      shouldResolveDueLlmRiskReminder({
+        hasNewerMessage: true,
+        sourceEvaluated: true,
+        proposedAgain: true,
+      }),
+    ).toBe(false)
   })
 
   test('22〜08時JSTを静寂時間帯とし次の08時まで遅延する', () => {

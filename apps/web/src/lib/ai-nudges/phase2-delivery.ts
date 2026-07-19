@@ -18,6 +18,7 @@ import {
   nextJstDeliveryTime,
   passesPhaseTwoConfidence,
   PHASE_TWO_DAILY_LIMIT,
+  shouldResolveDueLlmRiskReminder,
 } from './phase2-rules'
 import type { PhaseTwoChannelInput, PhaseTwoNudgeCandidate } from './phase2-scan'
 
@@ -255,7 +256,13 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
             `${reminder.channelId}:${reminder.messageId}`,
           )
           const proposedAgain = proposedTargets.has(`llm_risk:${reminder.messageId}`)
-          if (evaluatedThisRun && !proposedAgain) {
+          if (
+            shouldResolveDueLlmRiskReminder({
+              hasNewerMessage: true,
+              sourceEvaluated: evaluatedThisRun,
+              proposedAgain,
+            })
+          ) {
             await tx
               .update(aiNudges)
               .set({ status: 'resolved' })

@@ -22,6 +22,7 @@ import { DEFAULT_MODEL, FAST_MODEL, openai } from '@/lib/ai/client'
 import {
   PHASE_TWO_CONTEXT_MESSAGE_LIMIT,
   PHASE_TWO_NEW_MESSAGE_LIMIT,
+  isUnansweredAskRecheckDue,
   nextUnansweredAskRecheckAt,
   phaseTwoDedupeKey,
   type PhaseTwoDetector,
@@ -172,8 +173,10 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
         row.lastScannedMessageId,
       )
     )
-    const needsUnansweredAskRecheck =
-      row.nextUnansweredAskCheckAt !== null && new Date(row.nextUnansweredAskCheckAt) <= new Date()
+    const needsUnansweredAskRecheck = isUnansweredAskRecheckDue(
+      row.nextUnansweredAskCheckAt ? new Date(row.nextUnansweredAskCheckAt) : null,
+      new Date(),
+    )
     if (!hasNewMessages && !needsUnansweredAskRecheck) {
       return []
     }
@@ -241,7 +244,10 @@ export async function loadPhaseTwoChannelInput(
         .limit(PHASE_TWO_NEW_MESSAGE_LIMIT)
         .then((rows) => rows.reverse())
 
-  const isUnansweredAskRecheck = newRows.length === 0
+  const isUnansweredAskRecheck = isUnansweredAskRecheckDue(
+    channel.nextUnansweredAskCheckAt ? new Date(channel.nextUnansweredAskCheckAt) : null,
+    new Date(),
+  )
   if (isUnansweredAskRecheck && !channel.nextUnansweredAskCheckAt) return null
 
   // 期限到来した再評価は、新着をカーソル外として扱わず直近ログだけを読み直す。
