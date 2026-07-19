@@ -545,15 +545,30 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
     for (const { input } of results) {
       if (!existingChannelIds.has(input.channelId)) continue
       if (!input.advancesCursor) {
-        await tx
-          .update(aiScanStates)
-          .set({
-            nextUnansweredAskCheckAt: input.nextUnansweredAskCheckAt
-              ? new Date(input.nextUnansweredAskCheckAt)
-              : null,
-            nextUnansweredAskMessageId: input.nextUnansweredAskMessageId,
-          })
-          .where(eq(aiScanStates.channelId, input.channelId))
+        const nextCheckAt = input.nextUnansweredAskCheckAt
+          ? new Date(input.nextUnansweredAskCheckAt)
+          : null
+        // 同一heartbeatで通常差分が将来の再評価を予約済みなら、再評価側が null で
+        // 上書きしない。双方に候補がある場合は、最も早い時刻と対応するメッセージを残す。
+        await tx.execute(sql`
+          update ai_scan_states
+          set
+            next_unanswered_ask_check_at = case
+              when next_unanswered_ask_check_at is null then ${nextCheckAt}
+              when next_unanswered_ask_check_at <= ${now} then ${nextCheckAt}
+              when ${nextCheckAt} is null then next_unanswered_ask_check_at
+              when next_unanswered_ask_check_at <= ${nextCheckAt} then next_unanswered_ask_check_at
+              else ${nextCheckAt}
+            end,
+            next_unanswered_ask_message_id = case
+              when next_unanswered_ask_check_at is null then ${input.nextUnansweredAskMessageId}
+              when next_unanswered_ask_check_at <= ${now} then ${input.nextUnansweredAskMessageId}
+              when ${nextCheckAt} is null then next_unanswered_ask_message_id
+              when next_unanswered_ask_check_at <= ${nextCheckAt} then next_unanswered_ask_message_id
+              else ${input.nextUnansweredAskMessageId}
+            end
+          where channel_id = ${input.channelId}
+        `)
         continue
       }
       const scannedAt = new Date(input.scannedThroughCreatedAt)
