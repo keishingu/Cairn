@@ -119,11 +119,31 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       if (!evaluatedRiskMessages.has(`${nudge.channelId}:${nudge.messageId}`)) return []
       return proposedTargets.has(`${nudge.detector}:${nudge.messageId}:${nudge.userId}`) ? [] : [nudge.id]
     })
-    if (noLongerProposedIds.length > 0) {
+    // ソースメッセージはsoft deleteされるため、チャンネルが静かなままでも削除済みの
+    // 根拠を指すカードを残さないようheartbeatで解消する。
+    const activeSourceMessageIds = activeLlmNudges.flatMap((nudge) =>
+      nudge.messageId ? [nudge.messageId] : [],
+    )
+    const existingActiveSourceIds =
+      activeSourceMessageIds.length > 0
+        ? new Set(
+            (
+              await tx
+                .select({ id: messages.id })
+                .from(messages)
+                .where(and(inArray(messages.id, activeSourceMessageIds), isNull(messages.deletedAt)))
+            ).map((message) => message.id),
+          )
+        : new Set<string>()
+    const staleSourceNudgeIds = activeLlmNudges.flatMap((nudge) =>
+      nudge.messageId && !existingActiveSourceIds.has(nudge.messageId) ? [nudge.id] : [],
+    )
+    const nudgeIdsToResolve = [...new Set([...noLongerProposedIds, ...staleSourceNudgeIds])]
+    if (nudgeIdsToResolve.length > 0) {
       await tx
         .update(aiNudges)
         .set({ status: 'resolved' })
-        .where(inArray(aiNudges.id, noLongerProposedIds))
+        .where(inArray(aiNudges.id, nudgeIdsToResolve))
     }
 
     const openUnanswered =
