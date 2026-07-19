@@ -24,6 +24,12 @@ export interface PushPayload {
   url?: string
 }
 
+/** Service Worker / Expo 側に送るバッジ数を含めた実際の Push ペイロード */
+interface PushMessage extends PushPayload {
+  /** OS のアプリアイコンに表示する未読数（Badging API / Expo badge 用） */
+  badgeCount: number
+}
+
 interface Subscription {
   id: string
   deviceType: string
@@ -49,6 +55,12 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
 
   if (subs.length === 0) return
 
+  // ホーム画面 PWA / ネイティブアプリのアイコンに出す未読バッジ数。
+  // Push 送信時点で通知行は既に作成済みのため、この件数に新着分も含まれる
+  const { getUnreadNotificationCount } = await import('@/lib/notifications/badge')
+  const badgeCount = await getUnreadNotificationCount(userId)
+  const message: PushMessage = { ...payload, badgeCount }
+
   // Web Push
   if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
     ensureVapid()
@@ -60,7 +72,7 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
         try {
           await webpush.sendNotification(
             { endpoint: s.endpoint!, keys: s.keys! as { p256dh: string; auth: string } },
-            JSON.stringify(payload),
+            JSON.stringify(message),
           )
         } catch (err: unknown) {
           const status = (err as { statusCode?: number }).statusCode
@@ -87,6 +99,7 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
         to: s.expoToken!,
         title: payload.title,
         body: payload.body,
+        badge: badgeCount,
       }
       if (payload.url) msg.data = { url: payload.url }
       return msg

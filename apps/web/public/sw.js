@@ -62,14 +62,26 @@ self.addEventListener('push', (event) => {
   } catch {
     data = { body: event.data?.text() ?? '' };
   }
-  event.waitUntil(
+  const tasks = [
     self.registration.showNotification(data.title ?? 'Cairn', {
       body: data.body ?? '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
       data: { url: data.url ?? '/dashboard' },
-    })
-  );
+    }),
+  ];
+
+  // ホーム画面 PWA のアイコンに未読バッジを付ける（iOS 16.4+ / Android / デスクトップ）。
+  // アプリ非起動時はこの Service Worker だけが動くため、バッジ更新はここで行う必要がある
+  if (typeof data.badgeCount === 'number' && 'setAppBadge' in self.navigator) {
+    tasks.push(
+      data.badgeCount > 0
+        ? self.navigator.setAppBadge(data.badgeCount)
+        : self.navigator.clearAppBadge()
+    );
+  }
+
+  event.waitUntil(Promise.all(tasks));
 });
 
 self.addEventListener('notificationclick', (event) => {
