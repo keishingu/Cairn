@@ -50,14 +50,18 @@ async function fetchBadgeCount(): Promise<number> {
 /**
  * OS アプリアイコンのバッジ用の未読数（全ワークスペース横断）。
  * `useUnreadNotificationCount` は表示中ワークスペースのベル用で件数が異なるため、
- * バッジ表示にはこちらを使う（サーバー Push 側の集計元と揃える）
+ * バッジ表示にはこちらを使う（サーバー Push 側の集計元と揃える）。
+ *
+ * 未取得（ローディング）・取得失敗時は `null` を返す。呼び出し側はこれを
+ * 「不明」として扱い、既知の 0 と区別すること（オフライン起動や一時的な 500 で
+ * Service Worker が付けた既存バッジを誤って消さないため）。
  */
-export function useAppBadgeCount(): number {
-  const { data = 0 } = useQuery({
+export function useAppBadgeCount(): number | null {
+  const { data } = useQuery({
     queryKey: ['notifications', 'badge-count'],
     queryFn: fetchBadgeCount,
   })
-  return data
+  return data ?? null
 }
 
 export function useMarkNotificationsRead() {

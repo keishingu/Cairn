@@ -26,6 +26,10 @@ export function AppBadgeSync() {
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('setAppBadge' in navigator)) return
+    // 未取得（null）の間は何もしない。既知の 0 でのみクリアする。
+    // ローディング・エラーを 0 と誤認すると、Service Worker が付けた既存バッジを
+    // 未読があるのに消してしまう（オフライン起動・一時的な 500 など）
+    if (unreadCount === null) return
     if (unreadCount > 0) {
       navigator.setAppBadge(unreadCount).catch(() => { /* 未インストール等では失敗しうるが無視 */ })
     } else {
