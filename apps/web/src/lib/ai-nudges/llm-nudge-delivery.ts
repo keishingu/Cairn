@@ -465,6 +465,17 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         discarded += 1
         continue
       }
+      if (candidate.projectId) {
+        const [project] = await tx
+          .select({ archived: projects.archived })
+          .from(projects)
+          .where(eq(projects.id, candidate.projectId))
+          .limit(1)
+        if (!project || project.archived) {
+          discarded += 1
+          continue
+        }
+      }
 
       const [existing] = await tx
         .select({

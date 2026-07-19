@@ -56,6 +56,7 @@ export interface PhaseTwoChannelInput {
   channelName: string | null
   messages: PhaseTwoMessage[]
   newMessageIds: string[]
+  recheckMessageIds: string[]
   scannedThroughMessageId: string
   scannedThroughCreatedAt: string
   isUnansweredAskRecheck: boolean
@@ -337,6 +338,7 @@ export async function loadPhaseTwoChannelInput(
         channelName: channel.channelName,
         messages: [],
         newMessageIds: newRows.map((row) => row.id),
+        recheckMessageIds: [],
         scannedThroughMessageId: recheckAnchor.id,
         scannedThroughCreatedAt: recheckAnchor.createdAt.toISOString(),
         isUnansweredAskRecheck,
@@ -434,6 +436,7 @@ export async function loadPhaseTwoChannelInput(
       })),
     ],
     newMessageIds: newRows.map((row) => row.id),
+    recheckMessageIds: isUnansweredAskRecheck ? scanRows.map((row) => row.id) : [],
     scannedThroughMessageId: last.id,
     scannedThroughCreatedAt: last.createdAt.toISOString(),
     isUnansweredAskRecheck,
@@ -474,7 +477,7 @@ sourceMessageId は必ず下記ログに実在する根拠メッセージIDに�
 ${formatMessages(input)}`,
   })
   const candidateMessageIds = input.isUnansweredAskRecheck
-    ? new Set(input.messages.map((message) => message.id))
+    ? new Set(input.recheckMessageIds)
     : new Set(input.newMessageIds)
   return object.candidates.filter(
     (candidate) =>
