@@ -27,7 +27,7 @@ import {
   nextUnansweredAskRecheck,
   phaseTwoDedupeKey,
   type PhaseTwoDetector,
-} from './phase2-rules'
+} from './llm-nudge-rules'
 
 export interface PhaseTwoMessage {
   id: string

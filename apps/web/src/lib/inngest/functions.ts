@@ -8,8 +8,8 @@ import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
 import { hasReadMessage } from '@/lib/push/suppress'
 import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
-import type { PhaseTwoScanResult } from '@/lib/ai-nudges/phase2-delivery'
-import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/phase2-scan'
+import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
+import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
@@ -787,18 +787,18 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
   { cron: 'TZ=Asia/Tokyo 0 2,8,14,20 * * *' },
   async ({ step }) => {
     const channels = await step.run('list-channels-with-new-messages', async () => {
-      const { listPhaseTwoChannelsToScan } = await import('@/lib/ai-nudges/phase2-scan')
+      const { listPhaseTwoChannelsToScan } = await import('@/lib/ai-nudges/llm-nudge-scan')
       return listPhaseTwoChannelsToScan()
     })
 
     const results: PhaseTwoScanResult[] = []
     for (const channel of channels) {
       const deltaInput = await step.run(`load-channel-delta-${channel.channelId}`, async () => {
-        const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/phase2-scan')
+        const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/llm-nudge-scan')
         return loadPhaseTwoChannelInput(channel, 'delta')
       })
       const recheckInput = await step.run(`load-channel-recheck-${channel.channelId}`, async () => {
-        const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/phase2-scan')
+        const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/llm-nudge-scan')
         return loadPhaseTwoChannelInput(channel, 'unanswered_ask_recheck')
       })
       for (const input of [deltaInput, recheckInput]) {
@@ -806,13 +806,13 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
 
       const scanKind = input.isUnansweredAskRecheck ? 'recheck' : 'delta'
       const primaryCandidates = await step.run(`screen-channel-${channel.channelId}-${scanKind}`, async () => {
-        const { screenPhaseTwoCandidates } = await import('@/lib/ai-nudges/phase2-scan')
+        const { screenPhaseTwoCandidates } = await import('@/lib/ai-nudges/llm-nudge-scan')
         return screenPhaseTwoCandidates(input)
       })
       const refinedCandidates: PhaseTwoNudgeCandidate[] = []
       for (const [index, candidate] of primaryCandidates.entries()) {
         const refined = await step.run(`refine-channel-${channel.channelId}-${scanKind}-${index}`, async () => {
-          const { refinePhaseTwoCandidate } = await import('@/lib/ai-nudges/phase2-scan')
+          const { refinePhaseTwoCandidate } = await import('@/lib/ai-nudges/llm-nudge-scan')
           return refinePhaseTwoCandidate(input, candidate)
         })
         if (refined) refinedCandidates.push(refined)
@@ -823,7 +823,7 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
     // 配信stepの再試行が22時以降へずれた場合も、DB書き込み直前の判定で翌08時まで待つ。
     for (let attempt = 0; ; attempt += 1) {
       const delivery = await step.run(`apply-phase2-speech-gate-${attempt}`, async () => {
-        const { deliverPhaseTwoScanResults } = await import('@/lib/ai-nudges/phase2-delivery')
+        const { deliverPhaseTwoScanResults } = await import('@/lib/ai-nudges/llm-nudge-delivery')
         return deliverPhaseTwoScanResults(results)
       })
       if (!('deferredUntil' in delivery)) return delivery

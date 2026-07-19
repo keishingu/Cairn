@@ -9,7 +9,7 @@ import {
   passesPhaseTwoConfidence,
   phaseTwoDedupeKey,
   shouldResolveDueLlmRiskReminder,
-} from './phase2-rules'
+} from './llm-nudge-rules'
 
 describe('Phase 2 AIナッジの決定論的な発話ゲート', () => {
   test('確信度0.85以上だけを通す', () => {

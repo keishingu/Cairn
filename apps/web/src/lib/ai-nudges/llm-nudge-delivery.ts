@@ -20,8 +20,8 @@ import {
   passesPhaseTwoConfidence,
   PHASE_TWO_DAILY_LIMIT,
   shouldResolveDueLlmRiskReminder,
-} from './phase2-rules'
-import type { PhaseTwoChannelInput, PhaseTwoNudgeCandidate } from './phase2-scan'
+} from './llm-nudge-rules'
+import type { PhaseTwoChannelInput, PhaseTwoNudgeCandidate } from './llm-nudge-scan'
 
 export interface PhaseTwoScanResult {
   input: PhaseTwoChannelInput
