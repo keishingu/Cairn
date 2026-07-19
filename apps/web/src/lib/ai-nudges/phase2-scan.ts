@@ -58,6 +58,7 @@ export interface PhaseTwoChannelInput {
   scannedThroughMessageId: string
   scannedThroughCreatedAt: string
   isUnansweredAskRecheck: boolean
+  advancesCursor: boolean
   nextUnansweredAskCheckAt: string | null
 }
 
@@ -197,6 +198,7 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
 
 export async function loadPhaseTwoChannelInput(
   channel: ChannelCursorRow,
+  mode: 'delta' | 'unanswered_ask_recheck' = 'delta',
 ): Promise<PhaseTwoChannelInput | null> {
   const cursorAtValue = channel.cursorMessageAt ?? channel.lastScannedAt
   const cursorAt = cursorAtValue ? new Date(cursorAtValue) : null
@@ -244,10 +246,12 @@ export async function loadPhaseTwoChannelInput(
         .limit(PHASE_TWO_NEW_MESSAGE_LIMIT)
         .then((rows) => rows.reverse())
 
-  const isUnansweredAskRecheck = isUnansweredAskRecheckDue(
+  const isUnansweredAskRecheck =
+    mode === 'unanswered_ask_recheck' &&
+    isUnansweredAskRecheckDue(
     channel.nextUnansweredAskCheckAt ? new Date(channel.nextUnansweredAskCheckAt) : null,
     new Date(),
-  )
+    )
   if (isUnansweredAskRecheck && !channel.nextUnansweredAskCheckAt) return null
 
   // 期限到来した再評価は、新着をカーソル外として扱わず直近ログだけを読み直す。
@@ -300,7 +304,7 @@ export async function loadPhaseTwoChannelInput(
   const checkedAt = new Date()
   const earliestCheckAt = nextUnansweredAskRecheckAt({
     messageCreatedAts: scanRows.map((message) => message.createdAt),
-    existingCheckAt: channel.nextUnansweredAskCheckAt
+    existingCheckAt: !isUnansweredAskRecheck && channel.nextUnansweredAskCheckAt
       ? new Date(channel.nextUnansweredAskCheckAt)
       : null,
     now: checkedAt,
@@ -326,6 +330,7 @@ export async function loadPhaseTwoChannelInput(
     scannedThroughMessageId: last.id,
     scannedThroughCreatedAt: last.createdAt.toISOString(),
     isUnansweredAskRecheck,
+    advancesCursor: !isUnansweredAskRecheck,
     nextUnansweredAskCheckAt: earliestCheckAt?.toISOString() ?? null,
   }
 }

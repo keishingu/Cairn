@@ -793,25 +793,32 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
 
     const results: PhaseTwoScanResult[] = []
     for (const channel of channels) {
-      const input = await step.run(`load-channel-${channel.channelId}`, async () => {
+      const deltaInput = await step.run(`load-channel-delta-${channel.channelId}`, async () => {
         const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/phase2-scan')
-        return loadPhaseTwoChannelInput(channel)
+        return loadPhaseTwoChannelInput(channel, 'delta')
       })
-      if (!input) continue
+      const recheckInput = await step.run(`load-channel-recheck-${channel.channelId}`, async () => {
+        const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/phase2-scan')
+        return loadPhaseTwoChannelInput(channel, 'unanswered_ask_recheck')
+      })
+      for (const input of [deltaInput, recheckInput]) {
+        if (!input) continue
 
-      const primaryCandidates = await step.run(`screen-channel-${channel.channelId}`, async () => {
+      const scanKind = input.isUnansweredAskRecheck ? 'recheck' : 'delta'
+      const primaryCandidates = await step.run(`screen-channel-${channel.channelId}-${scanKind}`, async () => {
         const { screenPhaseTwoCandidates } = await import('@/lib/ai-nudges/phase2-scan')
         return screenPhaseTwoCandidates(input)
       })
       const refinedCandidates: PhaseTwoNudgeCandidate[] = []
       for (const [index, candidate] of primaryCandidates.entries()) {
-        const refined = await step.run(`refine-channel-${channel.channelId}-${index}`, async () => {
+        const refined = await step.run(`refine-channel-${channel.channelId}-${scanKind}-${index}`, async () => {
           const { refinePhaseTwoCandidate } = await import('@/lib/ai-nudges/phase2-scan')
           return refinePhaseTwoCandidate(input, candidate)
         })
         if (refined) refinedCandidates.push(refined)
       }
       results.push({ input, candidates: refinedCandidates })
+      }
     }
     // 配信stepの再試行が22時以降へずれた場合も、DB書き込み直前の判定で翌08時まで待つ。
     for (let attempt = 0; ; attempt += 1) {

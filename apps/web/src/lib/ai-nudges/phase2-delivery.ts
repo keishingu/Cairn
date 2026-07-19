@@ -3,6 +3,7 @@
 
 import {
   aiNudges,
+  aiScanStates,
   channels,
   db,
   messages,
@@ -76,7 +77,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         return b.confidence - a.confidence
       })
     const proposedTargets = new Set(
-      candidates.map((candidate) => `${candidate.detector}:${candidate.messageId}`),
+      candidates.map((candidate) => `${candidate.detector}:${candidate.messageId}:${candidate.userId}`),
     )
 
     let created = 0
@@ -100,6 +101,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
               channelId: aiNudges.channelId,
               messageId: aiNudges.messageId,
               detector: aiNudges.detector,
+              userId: aiNudges.userId,
             })
             .from(aiNudges)
             .where(
@@ -115,7 +117,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       if (nudge.detector !== 'llm_risk') return []
       if (!nudge.channelId || !nudge.messageId) return []
       if (!evaluatedRiskMessages.has(`${nudge.channelId}:${nudge.messageId}`)) return []
-      return proposedTargets.has(`${nudge.detector}:${nudge.messageId}`) ? [] : [nudge.id]
+      return proposedTargets.has(`${nudge.detector}:${nudge.messageId}:${nudge.userId}`) ? [] : [nudge.id]
     })
     if (noLongerProposedIds.length > 0) {
       await tx
@@ -255,7 +257,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           const evaluatedThisRun = evaluatedRiskMessages.has(
             `${reminder.channelId}:${reminder.messageId}`,
           )
-          const proposedAgain = proposedTargets.has(`llm_risk:${reminder.messageId}`)
+          const proposedAgain = proposedTargets.has(`llm_risk:${reminder.messageId}:${reminder.userId}`)
           if (
             shouldResolveDueLlmRiskReminder({
               hasNewerMessage: true,
@@ -521,6 +523,17 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         : new Set<string>()
     for (const { input } of results) {
       if (!existingChannelIds.has(input.channelId)) continue
+      if (!input.advancesCursor) {
+        await tx
+          .update(aiScanStates)
+          .set({
+            nextUnansweredAskCheckAt: input.nextUnansweredAskCheckAt
+              ? new Date(input.nextUnansweredAskCheckAt)
+              : null,
+          })
+          .where(eq(aiScanStates.channelId, input.channelId))
+        continue
+      }
       const scannedAt = new Date(input.scannedThroughCreatedAt)
       await tx.execute(sql`
         insert into ai_scan_states (
