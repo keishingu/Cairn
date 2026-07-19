@@ -369,6 +369,27 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           discarded += 1
           continue
         }
+      } else {
+        // 静寂時間帯のsleep中に会話が進んだリスクは、古い候補を配信せず次回巡回で再評価する。
+        const scanResult = results.find((result) => result.candidates.includes(candidate))
+        const scannedThroughAt = scanResult
+          ? new Date(scanResult.input.scannedThroughCreatedAt)
+          : source.createdAt
+        const [newerMessage] = await tx
+          .select({ id: messages.id })
+          .from(messages)
+          .where(
+            and(
+              eq(messages.channelId, candidate.channelId),
+              gt(messages.createdAt, scannedThroughAt),
+              isNull(messages.deletedAt),
+            ),
+          )
+          .limit(1)
+        if (newerMessage) {
+          discarded += 1
+          continue
+        }
       }
 
       // 配信直前にキルスイッチ・active membership・channel/project権限を再評価する。

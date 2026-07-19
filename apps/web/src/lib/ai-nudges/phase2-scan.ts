@@ -246,12 +246,12 @@ export async function loadPhaseTwoChannelInput(
         .limit(PHASE_TWO_NEW_MESSAGE_LIMIT)
         .then((rows) => rows.reverse())
 
-  const isUnansweredAskRecheck =
-    mode === 'unanswered_ask_recheck' &&
-    isUnansweredAskRecheckDue(
+  const recheckDue = isUnansweredAskRecheckDue(
     channel.nextUnansweredAskCheckAt ? new Date(channel.nextUnansweredAskCheckAt) : null,
     new Date(),
-    )
+  )
+  if (mode === 'unanswered_ask_recheck' && !recheckDue) return null
+  const isUnansweredAskRecheck = mode === 'unanswered_ask_recheck'
   if (isUnansweredAskRecheck && !channel.nextUnansweredAskCheckAt) return null
 
   // 期限到来した再評価は、新着をカーソル外として扱わず直近ログだけを読み直す。
