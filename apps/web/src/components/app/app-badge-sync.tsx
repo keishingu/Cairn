@@ -20,6 +20,10 @@ import { useAppBadgeCount } from '@/lib/notifications/client'
  * ワークスペースを開いた瞬間にバッジが消えてしまう（Push 側の集計と不一致になる）
  *
  * バッジ API 非対応（未インストールのブラウザタブ・iOS 16.3 以前等）では no-op。
+ *
+ * サインアウト時はこのコンポーネントが認証エリア（(app) レイアウト）とともに
+ * アンマウントされ /auth/login へ遷移する。アンマウント時にバッジをクリアし、
+ * 前ユーザーの未読数がアプリアイコンに残らないようにする。
  */
 export function AppBadgeSync() {
   const unreadCount = useAppBadgeCount()
@@ -36,6 +40,16 @@ export function AppBadgeSync() {
       navigator.clearAppBadge().catch(() => { /* 同上 */ })
     }
   }, [unreadCount])
+
+  // サインアウト等で認証エリアを抜けるとき（アンマウント時）にバッジをクリアする。
+  // 各サインアウト経路（sidebar / mobile settings / mobile-signout）に個別対応せず、
+  // 認証セッションに紐づく本コンポーネントの寿命に合わせて 1 箇所で確実に消す
+  useEffect(() => {
+    return () => {
+      if (typeof navigator === 'undefined' || !('clearAppBadge' in navigator)) return
+      navigator.clearAppBadge().catch(() => { /* 未対応環境では失敗しうるが無視 */ })
+    }
+  }, [])
 
   return null
 }
