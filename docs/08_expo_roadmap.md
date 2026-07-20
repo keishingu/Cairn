@@ -239,7 +239,8 @@ const { status } = await Notifications.requestPermissionsAsync()
 
 - `app.json`（静的）でアプリ設定を管理
 - 接続先 URL は `EXPO_PUBLIC_*` 環境変数 + 未設定時の自動導出（`lib/env.ts` が Metro の接続先ホストから導出）
-- CI（mobile-preview.yml）は EAS Update 発行時に環境変数で検証環境の URL を注入
+- EAS Build profile は同名の EAS Environment（`development` / `preview` / `production`）を使用
+- CI（mobile-preview.yml）は PR の Vercel Preview URL と共有 Supabase Preview 設定を EAS の `preview` 環境へ同期し、`eas update --environment preview` で配信
 
 ストアリリース対応（Phase 3）に着手する際、以下の構成へ移行する:
 
@@ -258,6 +259,6 @@ const { status } = await Notifications.requestPermissionsAsync()
 ### 移行のトリガー
 
 - App Store / Google Play への提出準備を始めたとき
-- もしくは preview / production の接続先が CI の環境変数注入だけでは管理しきれなくなったとき（環境数の増加・チャンネル分岐の複雑化）
+- もしくは EAS Environment だけでは接続先を管理しきれなくなったとき（環境数の増加・チャンネル分岐の複雑化）
 
 それまでは現状の「環境変数 + 自動導出」で十分なため、先行して導入しない。
