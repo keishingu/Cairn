@@ -24,10 +24,13 @@ export interface PushPayload {
   url?: string
 }
 
-/** Service Worker / Expo 側に送るバッジ数を含めた実際の Push ペイロード */
+/** Service Worker に送る、バッジ数を含めた実際の Web Push ペイロード */
 interface PushMessage extends PushPayload {
-  /** OS のアプリアイコンに表示する未読数（Badging API / Expo badge 用） */
-  badgeCount: number
+  /**
+   * OS のアプリアイコンに表示する未読数（Badging API 用）。
+   * 集計に失敗した場合は省略し、Service Worker 側はバッジ更新をスキップする
+   */
+  badgeCount?: number
 }
 
 interface Subscription {
@@ -55,17 +58,25 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
 
   if (subs.length === 0) return
 
-  // ホーム画面 PWA / ネイティブアプリのアイコンに出す未読バッジ数。
-  // Push 送信時点で通知行は既に作成済みのため、この件数に新着分も含まれる
-  const { getUnreadNotificationCount } = await import('@/lib/notifications/badge')
-  const badgeCount = await getUnreadNotificationCount(userId)
-  const message: PushMessage = { ...payload, badgeCount }
-
   // Web Push
   if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
     ensureVapid()
     const webSubs = subs.filter(s => s.deviceType === 'web' && s.endpoint && s.keys?.p256dh && s.keys?.auth)
     const expiredIds: string[] = []
+
+    // ホーム画面 PWA のアイコンに出す未読バッジ数（badgeCount は Web Push 専用）。
+    // Push 送信時点で通知行は既に作成済みのため、この件数に新着分も含まれる。
+    // best-effort: 集計に失敗しても通知本体（と後段の Expo push）は送る
+    let badgeCount: number | undefined
+    if (webSubs.length > 0) {
+      try {
+        const { getUnreadNotificationCount } = await import('@/lib/notifications/badge')
+        badgeCount = await getUnreadNotificationCount(userId)
+      } catch (err) {
+        console.error('[sendPushToUser] badge count query failed', { message: (err as Error).message })
+      }
+    }
+    const message: PushMessage = { ...payload, ...(badgeCount !== undefined ? { badgeCount } : {}) }
 
     await Promise.allSettled(
       webSubs.map(async (s) => {
