@@ -1261,7 +1261,7 @@ import type { WorkspaceStorageUsageDto } from '@/app/api/workspaces/storage-usag
 const FREE_TIER_REFERENCE_GB = 10
 
 const SettingsBilling = () => {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['workspace-storage-usage'],
     queryFn: async () => {
       const res = await fetchWithAuth('/api/workspaces/storage-usage')
@@ -1284,6 +1284,9 @@ const SettingsBilling = () => {
         <h2 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>ストレージ使用量</h2>
         {isLoading ? (
           <div style={{ color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+        ) : isError ? (
+          // 取得失敗を 0GB として偽装しない（バックエンド/マイグレーション不備を隠さないため）
+          <div style={{ fontSize: 13, color: 'var(--red-text)' }}>⚠ ストレージ使用量を取得できませんでした</div>
         ) : (
           <>
             <div style={{ height: 8, borderRadius: 4, background: 'var(--card-2)', overflow: 'hidden', marginBottom: 8 }}>

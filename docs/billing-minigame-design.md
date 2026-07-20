@@ -55,7 +55,7 @@
 
 決済完了画面がそのままゲームになる。**30秒くらい遊べて閉じる**のがちょうどいい長さ。
 
-注意: success_url 帰着時点では Stripe Webhook が未処理の可能性がある。ゲーム側は楽観的に積み石を渡して開始し、台帳付与は Webhook 側で確定させる（表示と台帳の整合は付与 reason + ref_id で突合）。
+注意: success_url 帰着時点では Stripe Webhook が未処理の可能性がある。**演出（積み石を手渡してドラッグさせる 30 秒のゲーム）は楽観的に始めてよいが、placement の永続化は確定した grant の後に限る**。具体的には、Stripe セッションを検証する（または Webhook が作成した `credit_ledger` の付与行が存在する）まで DB に配置を書き込まない。success_url は再オープン・リプレイされうるため、楽観的に永続化すると未払い/孤児の placement が生じ、`ledger_ref`（付与行との対応）の整合も壊れる。UI 上は「積んだ」ように見せ、裏側では grant 確定後に placement を確定させる（表示と台帳の整合は付与 reason + ref_id で突合）。
 
 ### 画面の前にいないとき（月次更新 = `invoice.paid`）
 

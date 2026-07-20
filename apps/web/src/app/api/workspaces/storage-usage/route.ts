@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireRole } from '@/lib/permissions'
 
 // Phase 0（計測）: 制限・課金はまだかけない。詳細は docs/billing-implementation-design.md #4
 // 使用量は files.file_size の都度集約で算出する（専用カウンタは持たない → CASCADE 削除で
@@ -14,6 +15,11 @@ export interface WorkspaceStorageUsageDto {
 export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
+
+  // ワークスペース全体の合計値のため、参加プロジェクトに視界を絞られるゲストには返さない
+  // （非参加の private プロジェクト・チャンネルの保有量を推測させないため）。
+  const forbidden = requireRole(ctx.role, 'member')
+  if (forbidden) return forbidden
 
   try {
     const { db, files } = await import('@cairn/db')
