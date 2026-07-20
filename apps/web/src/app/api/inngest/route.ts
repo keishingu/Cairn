@@ -13,6 +13,7 @@ import {
   onMessageCreated,
   onTaskAssigned,
   reconcileAiNudgesHeartbeat,
+  scanAiNudgesPhaseTwo,
 } from '@/lib/inngest/functions'
 
 // デプロイ環境ごとに URL が変わる場合（Vercel preview など）に対応。
@@ -33,6 +34,7 @@ const fns = [
   onMessageCreated,
   onTaskAssigned,
   reconcileAiNudgesHeartbeat,
+  scanAiNudgesPhaseTwo,
 ]
 const host = resolveServeHost()
 

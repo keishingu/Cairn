@@ -29,7 +29,7 @@ packages/config/   tsconfig / ESLint の共有設定
 - **DB**: Supabase PostgreSQL + Drizzle ORM + pgvector
 - **認証・リアルタイム・ストレージ**: Supabase Auth / Realtime / Storage
 - チャット・通知・未読の同期は **Supabase Realtime（Broadcast from Database）** で配信。DB トリガー + `realtime.broadcast_changes()` → `RealtimeProvider` が該当クエリを invalidate → REST 再取得（ポーリング・フォールバックなし）。**postgres_changes は本プロジェクトの Realtime では動作しないため使用しない**。詳細は [`docs/notification-ux-redesign.md`](docs/notification-ux-redesign.md) の Phase 2
-- **AI**: Vercel AI SDK + OpenAI API (gpt-4o / gpt-4o-mini)
+- **AI**: Vercel AI SDK + OpenAI API (gpt-5 / gpt-5-mini)
 - **非同期ジョブ**: Inngest
 
 
@@ -63,7 +63,7 @@ pnpm dev
 
 - **tsconfig の extends は相対パス**で書く（`../../packages/config/tsconfig/base.json`）
   - Vite/Vitest の `tsconfck` が workspace パッケージ参照を解決できないため
-- **AIモデルは OpenAI**（gpt-4o / gpt-4o-mini）。Claude は使用しない
+- **AIモデルは OpenAI**（gpt-5 / gpt-5-mini）。Claude は使用しない
 - **Mobile (Expo) は `apps/mobile/`**: チャット以外は WebView で Web 版を表示する方針。ネイティブ化のロードマップは [`docs/08_expo_roadmap.md`](docs/08_expo_roadmap.md) を参照
   - 開発は expo-dev-client を使う。`pnpm ios` / `pnpm android` でローカルビルド（単体アプリとしてインストール）、2回目以降は `pnpm dev` で Metro 起動のみ
   - ネイティブ側の接続先 URL は `EXPO_PUBLIC_*` 未設定時に Metro の接続先ホストから自動導出する（`apps/mobile/lib/env.ts`）。シミュレータ・実機・Android エミュレータで IP の手動設定は不要
