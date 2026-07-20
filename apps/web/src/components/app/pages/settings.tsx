@@ -1252,6 +1252,53 @@ const SettingsIntegrations = () => {
   )
 }
 
+// ─── Billing ──────────────────────────────────────────────────────
+// Phase 0（計測）: 制限・課金はまだかけない。ストレージ使用量の計測結果を表示するのみ。
+// 詳細: docs/billing-implementation-design.md
+
+import type { WorkspaceStorageUsageDto } from '@/app/api/workspaces/storage-usage/route'
+
+const FREE_TIER_REFERENCE_GB = 10
+
+const SettingsBilling = () => {
+  const { data, isLoading } = useQuery({
+    queryKey: ['workspace-storage-usage'],
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/workspaces/storage-usage')
+      if (!res.ok) throw new Error('取得に失敗しました')
+      return res.json() as Promise<WorkspaceStorageUsageDto>
+    },
+  })
+
+  const totalGb = ((data?.originalBytes ?? 0) + (data?.derivedBytes ?? 0)) / 1024 ** 3
+  const ratio = Math.min(1, totalGb / FREE_TIER_REFERENCE_GB)
+
+  return (
+    <div style={{ maxWidth: 780 }}>
+      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>請求</h1>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
+        課金機能は準備中です。現在はストレージ使用量を計測しているのみで、上限は設けていません。
+      </p>
+
+      <section className="card" style={{ padding: 20 }}>
+        <h2 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>ストレージ使用量</h2>
+        {isLoading ? (
+          <div style={{ color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+        ) : (
+          <>
+            <div style={{ height: 8, borderRadius: 4, background: 'var(--card-2)', overflow: 'hidden', marginBottom: 8 }}>
+              <div style={{ height: '100%', width: `${ratio * 100}%`, background: 'var(--accent)', borderRadius: 4 }}/>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+              {totalGb.toFixed(2)} GB 使用中（参考ライン: {FREE_TIER_REFERENCE_GB} GB）
+            </div>
+          </>
+        )}
+      </section>
+    </div>
+  )
+}
+
 // ─── Developer ────────────────────────────────────────────────────
 
 import type { DevStatusDto, ServiceStatus } from '@/app/api/dev/status/route'
@@ -1443,6 +1490,7 @@ const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   workflow:     SettingsWorkflow,
   ai:           SettingsAI,
   integrations: SettingsIntegrations,
+  billing:      SettingsBilling,
   developer:    SettingsDeveloper,
 }
 

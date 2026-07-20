@@ -169,6 +169,7 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
         workspaceId: files.workspaceId,
         projectId: files.projectId,
         storagePath: files.storagePath,
+        fileSize: files.fileSize,
         uploadedBy: files.uploadedBy,
         fileType: files.fileType,
         metadata: files.metadata,
@@ -188,6 +189,11 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
 
     // DB から削除（message_attachments は CASCADE で連鎖削除）
     await db.delete(files).where(eq(files.id, fileId))
+
+    if (file.fileSize) {
+      const { adjustStorageUsage } = await import('@/lib/storage-usage')
+      await adjustStorageUsage(file.workspaceId, -file.fileSize)
+    }
 
     // 外部リンクはストレージオブジェクトなし。サムネがあれば併せて削除する
     if (file.fileType !== 'link' && file.storagePath) {

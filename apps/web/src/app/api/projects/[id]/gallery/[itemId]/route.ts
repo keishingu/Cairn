@@ -32,7 +32,7 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
     if (forbidden) return forbidden
 
     const [item] = await db
-      .select({ fileId: galleryItems.fileId, storagePath: files.storagePath })
+      .select({ fileId: galleryItems.fileId, storagePath: files.storagePath, fileSize: files.fileSize })
       .from(galleryItems)
       .innerJoin(files, eq(galleryItems.fileId, files.id))
       .where(and(eq(galleryItems.id, itemId), eq(galleryItems.projectId, projectId)))
@@ -49,6 +49,11 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
 
     // files を削除すると gallery_items は CASCADE で削除される
     await db.delete(files).where(eq(files.id, item.fileId))
+
+    if (item.fileSize) {
+      const { adjustStorageUsage } = await import('@/lib/storage-usage')
+      await adjustStorageUsage(ctx.workspaceId, -item.fileSize)
+    }
 
     return new NextResponse(null, { status: 204 })
   } catch (err) {

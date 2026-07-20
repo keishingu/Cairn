@@ -114,6 +114,9 @@ export async function POST(req: Request) {
 
     if (!inserted) throw new Error('Insert returned no rows')
 
+    const { adjustStorageUsage } = await import('@/lib/storage-usage')
+    await adjustStorageUsage(ctx.workspaceId, actualSize)
+
     const { isIndexable } = await import('@/lib/ai/extract-text')
     if (isIndexable(normalizedMime)) {
       try {

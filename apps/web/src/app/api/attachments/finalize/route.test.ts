@@ -26,6 +26,7 @@ const {
   mockCreateThumbnailFromStorage: vi.fn(),
   mockInsertValues: vi.fn((v: Record<string, unknown>) => ({
     returning: vi.fn().mockResolvedValue([{ id: 'file-1', ...v }]),
+    onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
   })),
 }))
 
@@ -54,8 +55,9 @@ vi.mock('@cairn/db', () => ({
   },
   files: {},
   channels: { projectId: 'c.projectId', id: 'c.id' },
+  workspaceStorageUsage: { workspaceId: 'wsu.workspaceId', originalBytes: 'wsu.originalBytes' },
 }))
-vi.mock('drizzle-orm', () => ({ eq: vi.fn(() => 'eq') }))
+vi.mock('drizzle-orm', () => ({ eq: vi.fn(() => 'eq'), sql: vi.fn(() => 'sql') }))
 
 function post(body: unknown): Request {
   return { json: () => Promise.resolve(body) } as Request
