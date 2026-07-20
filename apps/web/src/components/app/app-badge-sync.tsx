@@ -5,6 +5,7 @@
 
 import { useEffect } from 'react'
 import { useAppBadgeCount } from '@/lib/notifications/client'
+import { createClient } from '@/lib/supabase/client'
 
 /**
  * アプリ表示中に OS のアプリアイコンの通知バッジ（Badging API）を未読数へ追従させる。
@@ -21,9 +22,8 @@ import { useAppBadgeCount } from '@/lib/notifications/client'
  *
  * バッジ API 非対応（未インストールのブラウザタブ・iOS 16.3 以前等）では no-op。
  *
- * サインアウト時はこのコンポーネントが認証エリア（(app) レイアウト）とともに
- * アンマウントされ /auth/login へ遷移する。アンマウント時にバッジをクリアし、
- * 前ユーザーの未読数がアプリアイコンに残らないようにする。
+ * サインアウト時は前ユーザーの未読数がアプリアイコンに残らないよう、
+ * Supabase の SIGNED_OUT イベントに紐づけてバッジをクリアする。
  */
 export function AppBadgeSync() {
   const unreadCount = useAppBadgeCount()
@@ -41,14 +41,18 @@ export function AppBadgeSync() {
     }
   }, [unreadCount])
 
-  // サインアウト等で認証エリアを抜けるとき（アンマウント時）にバッジをクリアする。
+  // サインアウト時にバッジをクリアし、前ユーザーの未読数を残さない。
   // 各サインアウト経路（sidebar / mobile settings / mobile-signout）に個別対応せず、
-  // 認証セッションに紐づく本コンポーネントの寿命に合わせて 1 箇所で確実に消す
+  // SIGNED_OUT イベント 1 箇所で確実に消す。コンポーネントのアンマウントに紐づけると、
+  // 認証済みのまま公開ルート（/invite 等）へ遷移しただけでも消えてしまうため使わない
   useEffect(() => {
-    return () => {
+    const supabase = createClient()
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== 'SIGNED_OUT') return
       if (typeof navigator === 'undefined' || !('clearAppBadge' in navigator)) return
       navigator.clearAppBadge().catch(() => { /* 未対応環境では失敗しうるが無視 */ })
-    }
+    })
+    return () => data.subscription.unsubscribe()
   }, [])
 
   return null
