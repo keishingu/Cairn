@@ -20,7 +20,7 @@
 | 通知・未読・Push・Realtime | `notification-design.md`（現行仕様） | `notification-ux-redesign.md`（Phase 設計・Realtime 方針の根拠）、`07_notifications_and_unread.md` |
 | モバイル（Expo） | CLAUDE.md「決定済みの技術判断」 | `08_expo_roadmap.md`、`mobile-webview-auth-handoff.md`（WebView 認証） |
 | キーボードショートカット | `keyboard-shortcuts.md` | — |
-| デプロイ・リリース・本番設定 | `production-deployment.md` | — |
+| デプロイ・リリース・本番設定 | `production-deployment.md` | `resend-email-provider-design.md`（メール SMTP を Resend に差し替え） |
 | 課金（未実装・設計のみ） | `pricing-plan-design.md`（何を売るか） | `billing-implementation-design.md`（どう実装するか）、`billing-minigame-design.md`（石積みミニゲーム） |
 | マイルストーン（未実装・設計のみ） | `milestone-design.md`（差分分析・実装計画） | `07_notifications_and_unread.md`（エンティティ=チャンネル思想） |
 | AI メンバー・定期ジョブ（未実装・設計のみ） | `10_ai_member_design.md` / `scheduled-jobs-design.md` | `ai-self-improvement-loop.md` |
@@ -61,6 +61,7 @@
 | [`06_integration_strategy.md`](./06_integration_strategy.md) | 外部連携方針（Slack / Teams / Outlook は未実装） | 2026-05-22 |
 | [`07_notifications_and_unread.md`](./07_notifications_and_unread.md) | 通知・未読の設計検討 → 現行仕様は `notification-design.md` | 2026-05-27 |
 | [`user-deactivation-design.md`](./user-deactivation-design.md) | ユーザー非活性化・退会設計（卒業生対応・GDPR 消去権の整理・匿名化）。スキーマのみ実装済み、遮断・API・UI は未着手 | 2026-06-22 |
+| [`resend-email-provider-design.md`](./resend-email-provider-design.md) | Resend メールプロバイダ導入設計（Supabase Auth のカスタム SMTP 差し替えでレート制限を解消。アプリコード不要。実装未着手） | 2026-07-20 |
 | [`08_expo_roadmap.md`](./08_expo_roadmap.md) | Expo ネイティブ化ロードマップ（WebView 化・Push まで実施済み） | 2026-05-27 |
 | [`ai-self-improvement-loop.md`](./ai-self-improvement-loop.md) | AI 自己改善ループ（提案 → issue → AI 実装 → SOUL 審査 → 人間 merge）の設計メモ（実装前） | 2026-07-03 |
 | [`lp-soul-page-copy.md`](./lp-soul-page-copy.md) | Soul ページ（Open Soul Software / SOUL.md）のコピー案ドラフト（ページ未実装） | 2026-07-03 |
