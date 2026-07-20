@@ -1,0 +1,80 @@
+name: Desktop Build
+
+# Desktop（Electron）アプリのインストーラをビルドし、成果物(artifact)としてアップロードする。
+# - develop への push → dev 構成（develop.oss-cairn.com を向く）でビルド
+# - main への push    → prod 構成（oss-cairn.com を向く）でビルド
+# 成果物は GitHub Release ではなく Actions の artifact に置く。パブリックリポジトリでも
+# artifact はリポジトリの read 権限を持つ人だけがDLできるため、限定配布になる。
+#
+# トリガは apps/desktop 配下（と本ワークフロー）の変更に限定する。Desktop はリモートの
+# Web(URL) を読み込むラッパーのため、Web 側の変更ではインストーラの中身は変わらない。
+# 任意タイミングで作りたい場合は workflow_dispatch（手動実行）を使う（dev 構成でビルド）。
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'apps/desktop/**'
+      - '.github/workflows/desktop-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact_glob: apps/desktop/dist/*.dmg
+          - os: windows-latest
+            artifact_glob: apps/desktop/dist/*.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # main への push は prod 構成、それ以外（develop への push・手動実行）は dev 構成。
+      # dev 構成は develop.oss-cairn.com を向くため、限定配布のテスターに渡す想定。
+      - name: Select electron-builder config
+        id: cfg
+        shell: bash
+        env:
+          GIT_REF: ${{ github.ref }}
+        run: |
+          if [ "$GIT_REF" = "refs/heads/main" ]; then
+            echo "script=build:prod" >> "$GITHUB_OUTPUT"
+            echo "channel=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "script=build:dev" >> "$GITHUB_OUTPUT"
+            echo "channel=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build desktop app
+        # コード署名証明書は未設定。mac で署名を自動探索して失敗しないよう無効化する
+        # （未署名ビルド。配布先で Gatekeeper/SmartScreen の警告は出る＝限定配布向け）。
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: pnpm --filter @cairn/desktop ${{ steps.cfg.outputs.script }}
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cairn-desktop-${{ steps.cfg.outputs.channel }}-${{ runner.os }}
+          path: ${{ matrix.artifact_glob }}
+          if-no-files-found: error
+          retention-days: 30
