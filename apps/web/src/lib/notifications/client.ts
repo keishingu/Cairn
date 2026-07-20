@@ -55,12 +55,20 @@ async function fetchBadgeCount(): Promise<number> {
  * 未取得（ローディング）・取得失敗時は `null` を返す。呼び出し側はこれを
  * 「不明」として扱い、既知の 0 と区別すること（オフライン起動や一時的な 500 で
  * Service Worker が付けた既存バッジを誤って消さないため）。
+ *
+ * マウント直後にキャッシュだけで値を返さない（`isFetchedAfterMount` で判定）。
+ * app 全体の 60s staleTime を継承すると、公開ルート（/invite 等）滞在中に
+ * push で SW がバッジを更新→1分以内に復帰した際、古いキャッシュの 0 を返して
+ * フレッシュ取得前にバッジを消してしまう。`staleTime: 0` でマウント毎に必ず
+ * 再取得し、完了までは `null`（不明）を返す。
  */
 export function useAppBadgeCount(): number | null {
-  const { data } = useQuery({
+  const { data, isFetchedAfterMount } = useQuery({
     queryKey: ['notifications', 'badge-count'],
     queryFn: fetchBadgeCount,
+    staleTime: 0,
   })
+  if (!isFetchedAfterMount) return null
   return data ?? null
 }
 
