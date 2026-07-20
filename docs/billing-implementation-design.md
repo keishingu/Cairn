@@ -92,7 +92,7 @@ stripe_events              Webhook 冪等性
 設計判断:
 
 - **台帳（ledger）方式**。残高カラムの直接更新は競合・監査の両面で不利。残高は `SUM(delta)`（行数が増えたら期末スナップショット行で圧縮）。**石が AI とストレージ家賃の両方をまかなう単一通貨**なので、台帳は1本に統一する（旧 `ai_credit_ledger` を一般化）
-- **使用量はカウンタ方式**。都度 `SUM(file_size)` を取らない。アップロード/削除で増減し、乖離検出用にバックフィルを用意する。家賃対象の `original_bytes` と対象外の `derived_bytes` を分けて持つ
+- **使用量の算出は段階を分ける**。最終形（Phase 1 以降）はカウンタ方式 — アップロード時の enforcement がホットパスに乗るため、都度 `SUM(file_size)` を避け、アップロード/削除で増減し、乖離検出用の reconciliation を用意し、家賃対象の `original_bytes` と対象外の `derived_bytes` を分けて持つ。**ただし Phase 0（計測）ではカウンタを持たず、`SUM(files.file_size)` の都度集約で算出する**。計測フェーズはホットパスが無く集約1発で足り、逆にカウンタは CASCADE 削除（プロジェクト削除等）でドリフトして計測値を静かに壊す。カウンタと reconciliation は enforcement と同時に Phase 1 でトランザクション込みで正しく導入する
 - **貢献の記録**: 「誰がいつ石を積んだか」は `subscriptions` + `credit_ledger(reason=subscription_grant/pack_purchase)` から導出できる。ケルン UI の礎石・タイムライン（永続表示）はこのクエリ。専用テーブルは当面不要
 - **`files.file_size` は実装済み**（`gallery_items.fileId` → `files.id` の join で取得可能。当初想定していた `gallery` テーブルへの追加は不要だった）。既存行の NULL は `storage.objects.metadata->>'size'` からのバックフィルで補正する（Phase 0 で実施済み）
 - **オリジナル別保存は未実装**: `process-image.ts` はアップロード前にクライアント側でオリジナルを圧縮版へ置き換えており、圧縮前のオリジナルは保存されない。そのため Phase 0 の `original_bytes` は「現状唯一の実体（圧縮後ファイル）」の合計であり、`derived_bytes` は常に 0。真のオリジナル保存・表示用派生の生成は Phase 1 でアップロード権判定と合わせて実装する
@@ -193,7 +193,7 @@ Team（WS 定額）は「**全メンバーがオリジナルをアップロー�
 
 | Phase | 内容 | 備考 |
 |---|---|---|
-| **0: 計測**（実装着手済み） | `files.file_size` の NULL バックフィル、`workspace_storage_usage`（original/derived）導入、使用量メーター表示。**制限はかけない** | 実データで 10GB / 文書5MB / 圧縮パラメータ / 家賃レートの妥当性を検証してから執行する。オリジナル別保存・圧縮派生の生成は行わず、現状唯一の実体（アップロード前クライアント圧縮版）を `original_bytes` として計測する（`derivedBytes` は常に 0）。true オリジナル保存とその差分化は Phase 1 のアップロード権判定と合わせて実装する |
+| **0: 計測**（実装着手済み） | `files.file_size` の NULL バックフィル、`files(workspace_id)` インデックス、`SUM(file_size)` 集約 API + 使用量メーター表示。**制限はかけない。カウンタは持たない**（→ 設計判断） | 実データで 10GB / 文書5MB / 圧縮パラメータ / 家賃レートの妥当性を検証してから執行する。オリジナル別保存・圧縮派生の生成は行わず、現状唯一の実体（アップロード前クライアント圧縮版）を `original_bytes` として計測する。true オリジナル保存とその差分化、カウンタ + reconciliation は Phase 1 のアップロード権判定・enforcement と合わせて実装する |
 | **1: Solo + ストレージ家賃 + 風化** | Stripe 購読・Webhook・クレジット台帳・家賃 cron・アップロード執行・風化時の圧縮版フォールバック・ケルン画面（簡素版） | ここで初めて課金が動く |
 | **2: AI 消費 + 買い増し** | AI 能動消費の記帳・石パック購入・受動 Heartbeat の原資化 | AIメンバー Stage 1 と同期して出すのが理想（doc 10） |
 | **3: ミニゲーム / Team / Expedition** | ケルン積みミニゲーム、Team プラン、請求書払い・SSO・監査ログ | 引き合い・余力が出てから |

@@ -3,9 +3,9 @@
 
 import { describe, expect, it, vi } from 'vitest'
 
-const { mockGetAuthContext, mockLimit } = vi.hoisted(() => ({
+const { mockGetAuthContext, mockWhere } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
-  mockLimit: vi.fn(),
+  mockWhere: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -13,37 +13,36 @@ vi.mock('@cairn/db', () => ({
   db: {
     select: () => ({
       from: () => ({
-        where: () => ({
-          limit: mockLimit,
-        }),
+        where: mockWhere,
       }),
     }),
   },
-  workspaceStorageUsage: { workspaceId: 'wsu.workspaceId' },
+  files: { workspaceId: 'files.workspaceId', fileSize: 'files.fileSize' },
 }))
-vi.mock('drizzle-orm', () => ({ eq: vi.fn(() => 'eq') }))
+vi.mock('drizzle-orm', () => ({ eq: vi.fn(() => 'eq'), sql: vi.fn(() => 'sql') }))
 
 describe('/api/workspaces/storage-usage GET', () => {
-  it('行が存在する場合は使用量を返す', async () => {
+  it('files.file_size の集約結果を数値で返す', async () => {
     mockGetAuthContext.mockResolvedValue({ ctx: { workspaceId: 'ws-1' }, error: null })
-    mockLimit.mockResolvedValue([{ originalBytes: 12345, derivedBytes: 0 }])
+    // SUM(bigint) は drizzle では文字列で返る
+    mockWhere.mockResolvedValue([{ originalBytes: '12345' }])
 
     const { GET } = await import('./route')
     const res = await GET()
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ originalBytes: 12345, derivedBytes: 0 })
+    expect(await res.json()).toEqual({ originalBytes: 12345 })
   })
 
-  it('行が存在しない場合は0を返す', async () => {
+  it('ファイルが無い場合は0を返す', async () => {
     mockGetAuthContext.mockResolvedValue({ ctx: { workspaceId: 'ws-2' }, error: null })
-    mockLimit.mockResolvedValue([])
+    mockWhere.mockResolvedValue([{ originalBytes: '0' }])
 
     const { GET } = await import('./route')
     const res = await GET()
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ originalBytes: 0, derivedBytes: 0 })
+    expect(await res.json()).toEqual({ originalBytes: 0 })
   })
 
   it('未認証の場合はエラーレスポンスをそのまま返す', async () => {

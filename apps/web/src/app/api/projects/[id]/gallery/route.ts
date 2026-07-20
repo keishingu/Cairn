@@ -169,9 +169,6 @@ export async function POST(req: Request, { params }: RouteContext) {
 
       if (!insertedItem) throw new Error('gallery_items insert returned no rows')
 
-      const { adjustStorageUsage } = await import('@/lib/storage-usage')
-      await adjustStorageUsage(ctx.workspaceId, file.size)
-
       const { data: { publicUrl } } = supabase.storage.from(GALLERY_BUCKET).getPublicUrl(storagePath)
 
       return NextResponse.json({

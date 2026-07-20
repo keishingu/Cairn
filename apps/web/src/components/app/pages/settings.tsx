@@ -1270,7 +1270,7 @@ const SettingsBilling = () => {
     },
   })
 
-  const totalGb = ((data?.originalBytes ?? 0) + (data?.derivedBytes ?? 0)) / 1024 ** 3
+  const totalGb = (data?.originalBytes ?? 0) / 1024 ** 3
   const ratio = Math.min(1, totalGb / FREE_TIER_REFERENCE_GB)
 
   return (
