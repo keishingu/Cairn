@@ -26,5 +26,10 @@ export const files = pgTable(
     metadata: jsonb('metadata').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('idx_files_project').on(t.projectId)],
+  (t) => [
+    index('idx_files_project').on(t.projectId),
+    // ストレージ使用量の workspace 単位集約（SUM(file_size)）用。
+    // 詳細: docs/billing-implementation-design.md #4
+    index('idx_files_workspace').on(t.workspaceId),
+  ],
 )
