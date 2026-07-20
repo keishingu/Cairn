@@ -114,7 +114,7 @@ pnpm dev
 | `eas build --profile preview`               | ビルド内蔵 bundle + `preview` channel    | EAS の `preview` 環境                  | EAS の `preview` 環境                   |
 | `eas build --profile production`            | ビルド内蔵 bundle + `production` channel | EAS の `production` 環境               | EAS の `production` 環境                |
 
-PR Preview の workflow は、対象 commit の Vercel Preview 完了を待ち、Web / API URL と共有 Supabase の設定を EAS の `preview` 環境へ作成または上書きしてから、`eas update --environment preview` を実行する。ローカルの `.env.local` は EAS Update に混入しない。EAS の `preview` 環境は共有状態のため、複数 PR の workflow は直列実行する。
+PR Preview の workflow は、対象 commit の Vercel Preview 完了を待ち、Web / API URL と共有 Supabase の設定を EAS の `preview` 環境へ作成または上書きしてから、`eas update --environment preview` を実行する。ローカルの `.env.local` は EAS Update に混入しない。EAS の `preview` 環境は共有状態のため、同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで順番に処理する。
 
 ### 初回セットアップ（リポジトリ管理者）
 

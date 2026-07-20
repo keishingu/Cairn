@@ -7,11 +7,12 @@ on:
       - 'packages/shared/**'
       - 'pnpm-lock.yaml'
       - '.github/workflows/mobile-preview.yml'
+      - '.github/scripts/mobile-preview-queue.cjs'
 
-# PR ごとの Vercel URL を共有の EAS preview 環境へ同期するため直列実行する。
+# 同じ PR の古い実行だけを止める。異なる PR は EAS 同期直前の FIFO ゲートで直列化する。
 concurrency:
-  group: mobile-preview-eas-environment
-  cancel-in-progress: false
+  group: mobile-preview-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   preview:
@@ -20,6 +21,7 @@ jobs:
     environment: Preview
     if: github.event.pull_request.head.repo.full_name == github.repository
     permissions:
+      actions: read
       contents: read
       deployments: read
       pull-requests: write
@@ -114,6 +116,46 @@ jobs:
             }
 
             core.setFailed('Timed out waiting for a successful Vercel Preview deployment.')
+
+      - name: Wait for earlier Mobile Preview runs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { findEarlierActiveRuns } = require(
+              `${process.env.GITHUB_WORKSPACE}/.github/scripts/mobile-preview-queue.cjs`,
+            )
+            const deadline = Date.now() + 60 * 60 * 1000
+
+            while (Date.now() < deadline) {
+              const response = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'mobile-preview.yml',
+                per_page: 100,
+              })
+
+              let earlierRuns
+              try {
+                earlierRuns = findEarlierActiveRuns(response.data.workflow_runs, context.runId)
+              } catch (error) {
+                core.info(`${error.message}; retrying in 10 seconds.`)
+                await new Promise((resolve) => setTimeout(resolve, 10_000))
+                continue
+              }
+
+              if (earlierRuns.length === 0) {
+                core.info('No earlier Mobile Preview run is active; entering the EAS update section.')
+                return
+              }
+
+              const waitingFor = earlierRuns
+                .map((run) => `#${run.run_number} (${run.status})`)
+                .join(', ')
+              core.info(`Waiting for earlier Mobile Preview runs: ${waitingFor}`)
+              await new Promise((resolve) => setTimeout(resolve, 10_000))
+            }
+
+            core.setFailed('Timed out waiting for earlier Mobile Preview runs.')
 
       - name: Sync EAS preview environment
         working-directory: apps/mobile
