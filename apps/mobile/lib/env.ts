@@ -3,7 +3,7 @@ import { requireBaseUrl, resolveBaseUrl } from './resolve-base-url'
 
 const supabaseUrl = resolveBaseUrl({
   name: 'EXPO_PUBLIC_SUPABASE_URL',
-  configuredUrl: process.env['EXPO_PUBLIC_SUPABASE_URL'],
+  configuredUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
   development: __DEV__,
   hostUri: Constants.expoConfig?.hostUri,
   developmentPort: 54321,
@@ -11,7 +11,7 @@ const supabaseUrl = resolveBaseUrl({
 
 const apiBaseUrl = resolveBaseUrl({
   name: 'EXPO_PUBLIC_API_BASE_URL',
-  configuredUrl: process.env['EXPO_PUBLIC_API_BASE_URL'],
+  configuredUrl: process.env.EXPO_PUBLIC_API_BASE_URL,
   development: __DEV__,
   hostUri: Constants.expoConfig?.hostUri,
   developmentPort: 3128,
