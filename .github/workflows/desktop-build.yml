@@ -63,6 +63,9 @@ jobs:
       - name: Publish to rolling release (desktop-latest)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Windows runner の run: 既定シェルは pwsh。このスクリプトは
+        # set -euo pipefail 等の bash 構文なので明示しないと Windows で失敗する
+        shell: bash
         run: |
           set -euo pipefail
           TAG="desktop-latest"
