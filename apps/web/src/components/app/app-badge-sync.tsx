@@ -22,6 +22,10 @@ import { createClient } from '@/lib/supabase/client'
  *
  * バッジ API 非対応（未インストールのブラウザタブ・iOS 16.3 以前等）では no-op。
  *
+ * Desktop(Electron): macOS Dock / Linux ランチャーは navigator.setAppBadge が
+ * Electron 経由でそのまま数字を出す。Windows タスクバーは Badging API 非対応のため、
+ * cairnDesktop.setBadgeCount で main へ件数を渡し、オーバーレイを出す。
+ *
  * サインアウト時は前ユーザーの未読数がアプリアイコンに残らないよう、
  * Supabase の SIGNED_OUT イベントに紐づけてバッジをクリアする。
  */
@@ -29,15 +33,22 @@ export function AppBadgeSync() {
   const unreadCount = useAppBadgeCount()
 
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !('setAppBadge' in navigator)) return
     // 未取得（null）の間は何もしない。既知の 0 でのみクリアする。
     // ローディング・エラーを 0 と誤認すると、Service Worker が付けた既存バッジを
     // 未読があるのに消してしまう（オフライン起動・一時的な 500 など）
     if (unreadCount === null) return
-    if (unreadCount > 0) {
-      navigator.setAppBadge(unreadCount).catch(() => { /* 未インストール等では失敗しうるが無視 */ })
-    } else {
-      navigator.clearAppBadge().catch(() => { /* 同上 */ })
+
+    if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator) {
+      if (unreadCount > 0) {
+        navigator.setAppBadge(unreadCount).catch(() => { /* 未インストール等では失敗しうるが無視 */ })
+      } else {
+        navigator.clearAppBadge().catch(() => { /* 同上 */ })
+      }
+    }
+
+    // Desktop(Electron) の Windows タスクバー向け。macOS/Linux は上の setAppBadge で足りる
+    if (typeof window !== 'undefined') {
+      window.cairnDesktop?.setBadgeCount?.(unreadCount)
     }
   }, [unreadCount])
 
@@ -49,8 +60,12 @@ export function AppBadgeSync() {
     const supabase = createClient()
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event !== 'SIGNED_OUT') return
-      if (typeof navigator === 'undefined' || !('clearAppBadge' in navigator)) return
-      navigator.clearAppBadge().catch(() => { /* 未対応環境では失敗しうるが無視 */ })
+      if (typeof navigator !== 'undefined' && 'clearAppBadge' in navigator) {
+        navigator.clearAppBadge().catch(() => { /* 未対応環境では失敗しうるが無視 */ })
+      }
+      if (typeof window !== 'undefined') {
+        window.cairnDesktop?.setBadgeCount?.(0)
+      }
     })
     return () => data.subscription.unsubscribe()
   }, [])
