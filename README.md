@@ -85,7 +85,7 @@ pnpm dev
 
 `expo run:ios` / `run:android` が生成する `ios/` `android/` ディレクトリは `app.json` から再生成できる成果物のため、コミットしない（`apps/mobile/.gitignore` で除外済み）。また、ネイティブプロジェクトが存在すると runtime version のポリシー（`appVersion` 等）が使えないため、`app.json` の `runtimeVersion` は固定文字列で管理する。**ネイティブモジュールを追加・更新したら `runtimeVersion` を手動で上げる**こと（古いネイティブビルドに非互換な EAS Update が配信されるのを防ぐため）。
 
-実機で使う場合は `pnpm dev` で表示される QR コードを読み込む（開発クライアントがインストール済みであること）。Xcode / Android Studio がないメンバーには、EAS の development プロファイル（`eas build --profile development`）でビルド済み開発クライアントを配布できる（iOS シミュレータ向けビルドにも対応済み）。
+実機で使う場合は `pnpm dev` で表示される QR コードを読み込む（開発クライアントがインストール済みであること）。Xcode / Android Studio がないメンバーには、EAS の `development`（iOS シミュレータ）または `development-device`（実機）プロファイルでビルド済み開発クライアントを配布できる。
 
 > **接続先 URL は自動導出される（IP の手動設定は不要）**
 >
@@ -105,26 +105,32 @@ pnpm dev
 
 ## モバイルプレビュー（EAS Update）
 
-`apps/mobile` に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。Expo Go でスキャンするだけで、ローカル環境を起動せずに実機確認ができる。
+`apps/mobile`、`packages/shared`、またはモバイルの依存関係に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。互換性のある Cairn Development Build で QR を開けば、ローカル環境を起動せずに確認できる（Expo Go は使用しない）。
 
-- 対象パスを `apps/mobile/**` に限定し、無関係な変更では発行しない（EAS の無料枠を消費しないため）
-- プレビューが見にいく Web / Supabase は固定の検証用環境（Vercel の固定プレビューデプロイ + 共有の Supabase プレビュー DB）を指す。ローカル開発用の LAN IP 設定とは無関係
+| 起動方法                                    | JavaScript の配信元                      | Web / API 接続先                       | Supabase 接続先                         |
+| ------------------------------------------- | ---------------------------------------- | -------------------------------------- | --------------------------------------- |
+| Development Build からローカル Metro を開く | 開発 PC の Metro                         | 未設定時は `http://<Metroホスト>:3128` | 未設定時は `http://<Metroホスト>:54321` |
+| PR コメントの QR を開く                     | PR ごとの EAS Update                     | 対象 PR の Vercel Preview URL          | 共有の Supabase Preview                 |
+| `eas build --profile preview`               | ビルド内蔵 bundle + `preview` channel    | EAS の `preview` 環境                  | EAS の `preview` 環境                   |
+| `eas build --profile production`            | ビルド内蔵 bundle + `production` channel | EAS の `production` 環境               | EAS の `production` 環境                |
+
+PR Preview の workflow は、対象 commit の Vercel Preview 完了を待ち、Web / API URL と共有 Supabase の設定を EAS の `preview` 環境へ作成または上書きしてから、`eas update --environment preview` を実行する。ローカルの `.env.local` は EAS Update に混入しない。EAS の `preview` 環境は共有状態のため、同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで順番に処理する。
 
 ### 初回セットアップ（リポジトリ管理者）
 
-1. Expo アカウントを作成し、`apps/mobile` で `eas init` を実行してプロジェクトを作成（`EXPO_PUBLIC_EAS_PROJECT_ID` が発行される）
+1. Expo アカウントを作成し、`apps/mobile` で `eas init` を実行してプロジェクトを作成し、`app.json` の `extra.eas.projectId` を設定する
 2. `eas update:configure` を実行し、`app.json` に `updates` / `runtimeVersion` の設定を追加する
 3. Expo のアクセストークンを発行し、GitHub リポジトリの Secrets に `EXPO_TOKEN` として登録する
-4. Vercel で `apps/web` の固定プレビュー環境を用意し、共有 Supabase プレビュー DB を指す環境変数を設定する（URL は取得済みの `oss-cairn.com` のサブドメインを割り当てる想定）
-5. GitHub リポジトリの Variables / Secrets に以下を登録する
+4. Vercel の PR Preview と共有 Supabase Preview を用意する
+5. GitHub リポジトリの Variables / Secrets に以下を登録する。EAS の `preview` 環境変数は workflow が初回実行時にも作成するため、事前登録は不要
 
-| 種別 | 名前 | 値 |
-|---|---|---|
-| Variable | `MOBILE_PREVIEW_EAS_PROJECT_ID` | `eas init` で発行されたプロジェクト ID |
-| Variable | `MOBILE_PREVIEW_API_BASE_URL` | Vercel 固定プレビューの URL |
-| Variable | `MOBILE_PREVIEW_SUPABASE_URL` | 共有 Supabase プレビュー DB の URL |
-| Secret | `MOBILE_PREVIEW_SUPABASE_ANON_KEY` | 共有 Supabase プレビュー DB の anon key |
-| Secret | `EXPO_TOKEN` | Expo のアクセストークン |
+| 種別     | 名前                               | 値                                      |
+| -------- | ---------------------------------- | --------------------------------------- |
+| Variable | `MOBILE_PREVIEW_SUPABASE_URL`      | 共有 Supabase プレビュー DB の URL      |
+| Secret   | `MOBILE_PREVIEW_SUPABASE_ANON_KEY` | 共有 Supabase プレビュー DB の anon key |
+| Secret   | `EXPO_TOKEN`                       | Expo のアクセストークン                 |
+
+`preview` / `production` のネイティブビルドは `apps/mobile/eas.json` の `environment` と同名の EAS Environment を使用する。本番ビルド前には EAS の `production` 環境へ `EXPO_PUBLIC_API_BASE_URL`、`EXPO_PUBLIC_SUPABASE_URL`、`EXPO_PUBLIC_SUPABASE_ANON_KEY` を設定すること。
 
 ---
 

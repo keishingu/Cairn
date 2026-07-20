@@ -29,7 +29,8 @@ async function registerPushToken() {
   const { status } = await Notifications.requestPermissionsAsync()
   if (status !== 'granted') return
 
-  const projectId = process.env['EXPO_PUBLIC_EAS_PROJECT_ID']
+  const projectId =
+    Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.['eas']?.projectId
   if (!projectId) return
 
   try {
