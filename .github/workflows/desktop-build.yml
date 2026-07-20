@@ -1,27 +1,24 @@
 name: Desktop Build
 
-# Desktop（Electron）アプリのインストーラをビルドし、成果物(artifact)としてアップロードする。
-# - develop への push → dev 構成（develop.oss-cairn.com を向く）でビルド
-# - main への push    → prod 構成（oss-cairn.com を向く）でビルド
-# 成果物は GitHub Release ではなく Actions の artifact に置く。パブリックリポジトリでも
-# artifact はリポジトリの read 権限を持つ人だけがDLできるため、限定配布になる。
+# main への push（apps/desktop 変更時）で Desktop（Electron）アプリの本番インストーラを
+# ビルドし、GitHub Release（ローリングタグ desktop-latest）へ添付して一般公開する。
+# develop 向けの限定配布ビルドは行わない（開発中は各自ローカルで `pnpm --filter @cairn/desktop dev` する）。
 #
-# トリガは apps/desktop 配下（と本ワークフロー）の変更に限定する。Desktop はリモートの
-# Web(URL) を読み込むラッパーのため、Web 側の変更ではインストーラの中身は変わらない。
-# 任意タイミングで作りたい場合は workflow_dispatch（手動実行）を使う（dev 構成でビルド）。
+# desktop-latest は「常に main の最新」を指すローリングリリース。push のたびに
+# 既存アセットを削除して同じタグへ上書きし、ダウンロードURLを固定に保つ。
 on:
   push:
-    branches: [develop, main]
+    branches: [main]
     paths:
       - 'apps/desktop/**'
       - '.github/workflows/desktop-build.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: desktop-build-${{ github.ref }}
+  group: desktop-build-main
   cancel-in-progress: true
 
 jobs:
@@ -48,33 +45,36 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # main への push は prod 構成、それ以外（develop への push・手動実行）は dev 構成。
-      # dev 構成は develop.oss-cairn.com を向くため、限定配布のテスターに渡す想定。
-      - name: Select electron-builder config
-        id: cfg
-        shell: bash
-        env:
-          GIT_REF: ${{ github.ref }}
-        run: |
-          if [ "$GIT_REF" = "refs/heads/main" ]; then
-            echo "script=build:prod" >> "$GITHUB_OUTPUT"
-            echo "channel=prod" >> "$GITHUB_OUTPUT"
-          else
-            echo "script=build:dev" >> "$GITHUB_OUTPUT"
-            echo "channel=dev" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build desktop app
+      - name: Build desktop app (prod)
         # コード署名証明書は未設定。mac で署名を自動探索して失敗しないよう無効化する
-        # （未署名ビルド。配布先で Gatekeeper/SmartScreen の警告は出る＝限定配布向け）。
+        # （未署名ビルド。配布先で Gatekeeper/SmartScreen の警告が出る）。
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: pnpm --filter @cairn/desktop ${{ steps.cfg.outputs.script }}
+        run: pnpm --filter @cairn/desktop build:prod
 
-      - name: Upload installer artifact
+      - name: Upload build artifact (CI 確認用)
         uses: actions/upload-artifact@v4
         with:
-          name: cairn-desktop-${{ steps.cfg.outputs.channel }}-${{ runner.os }}
+          name: cairn-desktop-${{ runner.os }}
           path: ${{ matrix.artifact_glob }}
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
+
+      - name: Publish to rolling release (desktop-latest)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="desktop-latest"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Cairn Desktop（最新ビルド）" \
+              --notes "main の最新コミットからビルドした Desktop アプリです。push のたびに上書きされます。未署名のため、初回起動時に OS の警告が出る場合があります。" \
+              --latest=false
+          fi
+          # 同じ OS 分の古いアセットだけ消して、他 OS のアセットは残す
+          for f in ${{ matrix.artifact_glob }}; do
+            NAME="$(basename "$f")"
+            gh release delete-asset "$TAG" "$NAME" --yes 2>/dev/null || true
+          done
+          gh release upload "$TAG" ${{ matrix.artifact_glob }} --clobber
