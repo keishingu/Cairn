@@ -32,7 +32,7 @@ describe('モバイルプレビューの環境同期', () => {
   })
 
   it('EAS Updateをpreview環境かつDevelopment Build向けに配信する', () => {
-    expect(workflow).toContain('qr-target: dev-client')
+    expect(workflow).toContain('qr-target: dev-build')
     expect(workflow).toContain('--environment preview')
     expect(workflow).toContain('ref: ${{ github.event.pull_request.head.sha }}')
   })
