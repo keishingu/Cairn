@@ -6,6 +6,9 @@ const workflow = readFileSync(
   new URL('../../../.github/workflows/mobile-preview.yml', import.meta.url),
   'utf8',
 )
+const mobilePackage = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+) as { dependencies: Record<string, string> }
 const require = createRequire(import.meta.url)
 const { findEarlierActiveRuns } = require('../../../.github/scripts/mobile-preview-queue.cjs') as {
   findEarlierActiveRuns: (
@@ -32,7 +35,8 @@ describe('モバイルプレビューの環境同期', () => {
   })
 
   it('EAS Updateをpreview環境かつDevelopment Build向けに配信する', () => {
-    expect(workflow).toContain('qr-target: dev-build')
+    expect(workflow).not.toContain('qr-target:')
+    expect(mobilePackage.dependencies['expo-dev-client']).toBeDefined()
     expect(workflow).toContain('--environment preview')
     expect(workflow).toContain('ref: ${{ github.event.pull_request.head.sha }}')
   })

@@ -193,5 +193,4 @@ jobs:
         uses: expo/expo-github-action/preview@v8
         with:
           working-directory: apps/mobile
-          qr-target: dev-build
           command: eas update --auto --branch pr-${{ github.event.number }} --environment preview --non-interactive
