@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { getGuestVisibleProjectIds, getWorkspaceRole } from '@/lib/permissions'
 
 export interface PinnedProjectDto {
   id: string
@@ -20,7 +21,15 @@ export async function GET() {
   try {
     const { db } = await import('@cairn/db')
     const { pinnedProjects, projects, projectStatuses } = await import('@cairn/db')
-    const { eq, and, asc } = await import('drizzle-orm')
+    const { eq, and, asc, inArray } = await import('drizzle-orm')
+
+    // guest は再招待でスコープが絞られても古い pin が残り得るため、参加プロジェクトのみに絞る
+    // （requireChannelAccess / GET /api/projects/channels と同じスコープ感）
+    const role = await getWorkspaceRole(ctx.workspaceId, ctx.userId)
+    const guestProjectIds = role === 'guest' ? await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId) : null
+    if (guestProjectIds && guestProjectIds.length === 0) {
+      return NextResponse.json([] satisfies PinnedProjectDto[])
+    }
 
     const rows = await db
       .select({
@@ -41,6 +50,7 @@ export async function GET() {
         and(
           eq(pinnedProjects.userId, ctx.userId),
           eq(pinnedProjects.workspaceId, ctx.workspaceId),
+          ...(guestProjectIds ? [inArray(pinnedProjects.projectId, guestProjectIds)] : []),
         ),
       )
       .orderBy(asc(pinnedProjects.sortOrder), asc(pinnedProjects.pinnedAt))
@@ -88,6 +98,15 @@ export async function POST(req: Request) {
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    // guest は参加プロジェクトのみ pin できる（他エンドポイントと同じスコープ感）
+    const role = await getWorkspaceRole(ctx.workspaceId, ctx.userId)
+    if (role === 'guest') {
+      const guestProjectIds = await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId)
+      if (!guestProjectIds.includes(projectId)) {
+        return NextResponse.json({ error: 'このプロジェクトにアクセスする権限がありません' }, { status: 403 })
+      }
     }
 
     const [existing] = await db
