@@ -7,7 +7,7 @@ export type ProjectMemberRole = 'leader' | 'subleader' | 'member' | 'reviewer' |
 
 export type AttendanceStatus = 'attending' | 'tentative' | 'declined'
 
-export type MessageType = 'text' | 'html' | 'system'
+export type MessageType = 'text' | 'html' | 'system' | 'poll'
 
 export type FileType = 'document' | 'image' | 'video' | 'audio' | 'other'
 

@@ -33,7 +33,7 @@ export const attendanceStatusEnum = pgEnum('attendance_status', [
   'declined',
 ])
 
-export const messageTypeEnum = pgEnum('message_type', ['text', 'html', 'system'])
+export const messageTypeEnum = pgEnum('message_type', ['text', 'html', 'system', 'poll'])
 
 export const fileTypeEnum = pgEnum('file_type', [
   'document',

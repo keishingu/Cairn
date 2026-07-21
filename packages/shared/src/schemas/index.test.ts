@@ -171,6 +171,15 @@ describe('postMessageSchema', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it('poll タイプは専用 API 以外では受け付けない', () => {
+    const result = postMessageSchema.safeParse({
+      channelId: '00000000-0000-0000-0000-000000000001',
+      content: 'アンケート',
+      messageType: 'poll',
+    })
+    expect(result.success).toBe(false)
+  })
 })
 
 describe('uploadGalleryItemSchema', () => {
