@@ -41,6 +41,16 @@ describe('モバイルプレビューの環境同期', () => {
     expect(workflow).toContain('ref: ${{ github.event.pull_request.head.sha }}')
   })
 
+  it('Webビルド除外対象だけのPRはdevelopのWeb APIを利用する', () => {
+    expect(workflow).toContain('scripts/vercel-ignore-build.cjs')
+    expect(workflow).toContain('github.rest.pulls.listFiles')
+    expect(workflow).toContain('context.payload.before')
+    expect(workflow).toContain('github.rest.repos.compareCommits')
+    expect(workflow).toContain('changedFilePaths(files)')
+    expect(workflow).toContain("const url = 'https://develop.oss-cairn.com'")
+    expect(workflow).toContain('steps.web-api-base.outputs.url')
+  })
+
   it('異なるPRの実行をEAS同期前にFIFOで待機させる', () => {
     expect(workflow).toContain('actions: read')
     expect(workflow).toContain('Wait for earlier Mobile Preview runs')

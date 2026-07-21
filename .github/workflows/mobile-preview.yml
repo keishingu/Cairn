@@ -69,12 +69,48 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Wait for Vercel Preview
-        id: vercel-preview
+      - name: Resolve Web API base URL
+        id: web-api-base
         uses: actions/github-script@v8
         with:
           script: |
+            const { changedFilePaths, shouldSkipBuild } = require(
+              `${process.env.GITHUB_WORKSPACE}/scripts/vercel-ignore-build.cjs`,
+            )
             const sha = context.payload.pull_request.head.sha
+            let changedPaths
+
+            if (context.payload.before) {
+              const comparison = await github.rest.repos.compareCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base: context.payload.before,
+                head: sha,
+                per_page: 100,
+              })
+              const files = comparison.data.files ?? []
+              // Compare APIのfilesは最大300件。上限到達時は全件を確認できないため、
+              // 空配列にしてfail-open（Vercel Previewを待つ）へ倒す。
+              changedPaths = files.length >= 300 ? [] : changedFilePaths(files)
+            } else {
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                per_page: 100,
+              })
+              changedPaths = changedFilePaths(files)
+            }
+
+            // mobile / docs / CI などWebビルド除外対象だけのPRでは、同じSHAの
+            // Vercel Previewは作られない。WebView/APIの接続先にはdevelopを使う。
+            if (shouldSkipBuild(changedPaths)) {
+              const url = 'https://develop.oss-cairn.com'
+              core.setOutput('url', url)
+              core.info(`Web build is skipped; using shared Preview: ${url}`)
+              return
+            }
+
             const deadline = Date.now() + 5 * 60 * 1000
 
             while (Date.now() < deadline) {
@@ -160,7 +196,7 @@ jobs:
       - name: Sync EAS preview environment
         working-directory: apps/mobile
         env:
-          MOBILE_PREVIEW_API_BASE_URL: ${{ steps.vercel-preview.outputs.url }}
+          MOBILE_PREVIEW_API_BASE_URL: ${{ steps.web-api-base.outputs.url }}
           MOBILE_PREVIEW_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
           MOBILE_PREVIEW_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
         run: |

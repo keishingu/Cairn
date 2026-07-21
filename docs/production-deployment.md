@@ -21,6 +21,14 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
 - **`develop` への merge → 検証デプロイ**: `develop` は Vercel の Preview デプロイ。**`develop.oss-cairn.com` を `develop` ブランチに割り当て**ており、**環境変数は Preview と共通**（PR プレビューと同じ `cairn-preview` を指す）。
 - **PR → プレビューデプロイ**: 各 PR は Vercel 自動採番の Preview URL にデプロイされる（環境変数は Preview）。
 
+### Webに影響しない変更のビルドスキップ
+
+Vercel の Ignored Build Step（`vercel.json` の `ignoreCommand`）で、前回デプロイからの変更が**すべて既知の除外対象**だった場合だけ Web ビルドをスキップする。除外対象にはドキュメント、Mobile / Desktop、GitHub Actions、Supabase、テスト、AI エージェント設定など、`apps/web` の成果物を変えないパスを明示的に列挙する。
+
+- 変更に `apps/web/**`、`packages/**`、lockfile、workspace / Turbo / Vercel / npm 設定などが1件でも含まれる場合はビルドする
+- 未知のパス、変更ファイルなし、比較元 SHA の欠落・取得失敗時は、安全側に倒してビルドする（fail-open）
+- Mobile-only の PR は同一 SHA の Vercel Preview が作られないため、Mobile Preview の WebView / API 接続先には `https://develop.oss-cairn.com` を使う。Web に影響する変更を含む場合は、従来どおり同一 SHA の Vercel Preview を待つ
+
 ### Vercel ダッシュボード設定（この振り分けの前提）
 
 リポジトリだけでは完結しないため、以下は Vercel ダッシュボードで設定する。

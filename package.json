@@ -6,7 +6,7 @@
     "dev": "turbo dev --filter=!@cairn/desktop",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "test": "turbo test",
+    "test": "node --test scripts/vercel-ignore-build.test.cjs && turbo test",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "clean": "turbo clean",
     "desktop:dev": "pnpm --filter @cairn/desktop dev",
