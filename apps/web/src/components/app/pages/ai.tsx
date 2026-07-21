@@ -12,6 +12,7 @@ import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useCommand } from '@/lib/command-registry'
+import { buildAiChatRequestBody } from './ai-request'
 
 // ---- ソースチップ ----
 
@@ -198,6 +199,7 @@ function ChatView({
       ...(m.annotations ? { annotations: m.annotations as JSONValue[] } : {}),
       ...(m.toolInvocations ? { toolInvocations: m.toolInvocations as ToolInvocation[] } : {}),
     })),
+    experimental_prepareRequestBody: ({ messages }) => buildAiChatRequestBody(messages),
     onFinish: () => {
       void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
     },

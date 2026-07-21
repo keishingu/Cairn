@@ -31,7 +31,7 @@ describe('parseLatestUserInput', () => {
       messages: [
         { role: 'user', content: [{ type: 'text', text: '質問' }] },
       ],
-    })).toThrow('messages は user/assistant の文字列メッセージ配列で指定してください')
+    })).toThrow('messages は user/assistant の文字列メッセージを 1〜50 件で指定してください')
   })
 
   it('途中に tool ロールが混ざる payload は弾く', () => {
@@ -40,7 +40,7 @@ describe('parseLatestUserInput', () => {
         { role: 'tool', content: '検索結果' },
         { role: 'user', content: '最新の質問' },
       ],
-    })).toThrow('messages は user/assistant の文字列メッセージ配列で指定してください')
+    })).toThrow('messages は user/assistant の文字列メッセージを 1〜50 件で指定してください')
   })
 
   it('途中の assistant が 4000 文字超でも最後の user だけを受け取る', () => {
@@ -62,10 +62,9 @@ describe('parseLatestUserInput', () => {
     }))
     messages.push({ role: 'user', content: '最後の質問' })
 
-    expect(parseLatestUserInput({ messages })).toEqual({
-      lastUserContent: '最後の質問',
-      clientMessageCount: 61,
-    })
+    expect(() => parseLatestUserInput({ messages })).toThrow(
+      'messages は user/assistant の文字列メッセージを 1〜50 件で指定してください',
+    )
   })
 
   it('リクエスト本文サイズ上限を公開する', () => {

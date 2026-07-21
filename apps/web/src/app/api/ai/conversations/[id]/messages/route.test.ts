@@ -69,7 +69,7 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
 
     expect(response.status).toBe(422)
     await expect(response.json()).resolves.toEqual({
-      error: 'messages は user/assistant の文字列メッセージ配列で指定してください',
+      error: 'messages は user/assistant の文字列メッセージを 1〜50 件で指定してください',
     })
   })
 })
