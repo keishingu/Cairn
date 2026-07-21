@@ -679,13 +679,24 @@ function stepSettle(dt) {
       }
     } else {
       b.plugin.still = 0;
+      // 固定オフ時: 動き出した石は「積んだ」から外す（滑落・再配置で HUD が水増しされるのを防ぐ）
+      if (b.plugin.settled) {
+        b.plugin.settled = false;
+        settledCount = Math.max(0, settledCount - 1);
+        updateHud();
+      }
     }
     // 落ちた石はトレイに戻る — 消えない
     if (b.position.y > H + 120 || b.position.x < -140 || b.position.x > W + 140) {
       Composite.remove(engine.world, b);
       if (held && held.body === b) release();
+      if (b.plugin.settled) {
+        b.plugin.settled = false;
+        settledCount = Math.max(0, settledCount - 1);
+      }
       trayAdd(b.plugin.spec);
       toast('石は手元に戻った');
+      updateHud();
     }
   }
 }
