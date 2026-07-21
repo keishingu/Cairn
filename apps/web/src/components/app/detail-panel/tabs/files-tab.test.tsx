@@ -8,6 +8,7 @@ import React from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { FilesTab } from './files-tab'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useProjectFiles } from '@/hooks/use-project-files'
 
 vi.mock('@/lib/fetch-with-auth')
 vi.mock('@/hooks/use-project-files', () => ({
@@ -21,6 +22,7 @@ vi.mock('@/hooks/use-project-files', () => ({
 }))
 
 const mockFetch = vi.mocked(fetchWithAuth)
+const mockUseProjectFiles = vi.mocked(useProjectFiles)
 
 function renderFilesTab(channelId: string | null = 'channel-1') {
   const queryClient = new QueryClient({
@@ -101,5 +103,34 @@ describe('ファイルタブ', () => {
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['project-files', 'project-1'] }))
     expect(screen.getByText('big.zip は大きすぎます')).toBeInTheDocument()
+  })
+
+  it('ファイル操作メニューに開く・ダウンロード・削除を表示する', async () => {
+    mockUseProjectFiles.mockReturnValue({
+      data: [{
+        id: 'file-1',
+        fileName: 'guide.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 1024,
+        fileType: 'file',
+        uploaderName: '山田 太郎',
+        uploaderAvatarUrl: null,
+        createdAt: '2026-06-29T09:00:00Z',
+        indexingStatus: 'indexed',
+        isLatest: false,
+      }],
+      isLoading: false,
+      isError: false,
+      deleteMutation: { mutateAsync: vi.fn() },
+      setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>)
+
+    renderFilesTab()
+
+    await userEvent.click(screen.getByTitle('操作'))
+
+    expect(screen.getByRole('button', { name: '別タブで開く' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ダウンロード' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '削除' })).toBeInTheDocument()
   })
 })

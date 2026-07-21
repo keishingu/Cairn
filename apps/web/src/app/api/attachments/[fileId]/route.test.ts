@@ -141,4 +141,26 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(res.headers.get('Content-Type')).toBe('text/plain; charset=utf-8')
     expect(await res.text()).toBe('line 1\nline 2')
   })
+
+  it('download=1 のときは attachment で返す', async () => {
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/attachments/file-1?download=1'), routeParams())
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Disposition')).toBe(
+      `attachment; filename="file.pdf"; filename*=UTF-8''file.pdf`,
+    )
+  })
+
+  it('download=1 のときは Unicode ファイル名を保持する', async () => {
+    fileRow.fileName = '設計メモ 2026.pdf'
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/attachments/file-1?download=1'), routeParams())
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Disposition')).toBe(
+      `attachment; filename="____ 2026.pdf"; filename*=UTF-8''%E8%A8%AD%E8%A8%88%E3%83%A1%E3%83%A2%202026.pdf`,
+    )
+  })
 })

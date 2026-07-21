@@ -24,14 +24,28 @@ function resolveResponseContentType(fileName: string, mimeType: string | null) {
   return isText ? `${responseMimeType}; charset=utf-8` : responseMimeType
 }
 
+function buildContentDisposition(dispositionType: 'attachment' | 'inline', fileName: string) {
+  const fallbackFileName = fileName
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7E]/g, '_')
+    .replace(/["\\]/g, '_')
+  const escapedFileName = fallbackFileName.replace(/["\\]/g, '\\$&')
+  const encodedFileName = encodeURIComponent(fileName).replace(/[!'()*]/g, (char) =>
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
+  return `${dispositionType}; filename="${escapedFileName}"; filename*=UTF-8''${encodedFileName}`
+}
+
 export async function GET(req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
   const { fileId } = await params
+  const requestUrl = new URL(req.url)
 
   // 一覧アイコン・チャットのサムネは ?thumb=1 で縮小版を要求する
-  const wantThumb = new URL(req.url).searchParams.get('thumb') === '1'
+  const wantThumb = requestUrl.searchParams.get('thumb') === '1'
+  const forceDownload = requestUrl.searchParams.get('download') === '1'
 
   try {
     const { db, files } = await import('@cairn/db')
@@ -90,7 +104,7 @@ export async function GET(req: Request, { params }: RouteContext) {
     return new NextResponse(data, {
       headers: {
         'Content-Type': servedThumb ? 'image/jpeg' : resolveResponseContentType(file.fileName, file.mimeType),
-        'Content-Disposition': `inline; filename="${encodeURIComponent(file.fileName)}"`,
+        'Content-Disposition': buildContentDisposition(forceDownload ? 'attachment' : 'inline', file.fileName),
         'Cache-Control': 'private, max-age=3600',
       },
     })
