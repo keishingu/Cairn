@@ -28,10 +28,13 @@ async function markNotificationsRead(ids?: string[]): Promise<{ updated: number 
 }
 
 export function useNotifications(filter: string) {
-  // 通知の即時更新は RealtimeProvider 経由（notifications / channel_read_states の購読）
+  // 通知・未読カウントの即時更新は RealtimeProvider 経由（notifications / channel_read_states の
+  // 購読）。取りこぼし時は focus 復帰時の refetch が唯一の catch-up 経路のため、staleTime は
+  // グローバル既定より短く保つ（query-provider.tsx 参照）
   return useQuery({
     queryKey: notificationQueryKeys.list(filter),
     queryFn: () => fetchNotifications(filter),
+    staleTime: 60 * 1000,
   })
 }
 
