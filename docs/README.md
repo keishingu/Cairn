@@ -21,7 +21,7 @@
 | モバイル（Expo） | CLAUDE.md「決定済みの技術判断」 | `08_expo_roadmap.md`、`mobile-webview-auth-handoff.md`（WebView 認証） |
 | キーボードショートカット | `keyboard-shortcuts.md` | — |
 | デプロイ・リリース・本番設定 | `production-deployment.md` | — |
-| 課金（未実装・設計のみ） | `pricing-plan-design.md`（何を売るか） | `billing-implementation-design.md`（どう実装するか）、`billing-minigame-design.md`（石積みミニゲーム） |
+| 課金（未実装・設計のみ） | `pricing-plan-design.md`（何を売るか） | `billing-implementation-design.md`（どう実装するか）、`billing-minigame-design.md`（石積みミニゲーム）、`prototypes/stone-stacking-sandbox.html`（触感検証モック。ブラウザで開くだけで動く） |
 | マイルストーン（未実装・設計のみ） | `milestone-design.md`（差分分析・実装計画） | `07_notifications_and_unread.md`（エンティティ=チャンネル思想） |
 | AI メンバー・定期ジョブ（未実装・設計のみ） | `10_ai_member_design.md` / `scheduled-jobs-design.md` | `ai-self-improvement-loop.md` |
 | AI常駐PMO・プライベートナッジ（未実装・設計のみ） | `ai-pmo-design.md` | `ai-era-pm-strategy.md`（戦略背景）、`10_ai_member_design.md`（Stage 3 との関係） |
