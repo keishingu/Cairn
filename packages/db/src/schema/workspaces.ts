@@ -1,8 +1,9 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
-import { userStatusEnum, workspaceRoleEnum } from './enums'
+import { boolean, integer, jsonb, pgTable, pgView, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { eq } from 'drizzle-orm'
+import { memberStatusEnum, userStatusEnum, workspaceRoleEnum } from './enums'
 
 export interface WorkspaceCoverPhoto {
   id: string
@@ -21,6 +22,7 @@ export const profiles = pgTable('profiles', {
   displayName: text('display_name').notNull(),
   bio: text('bio'),
   icalToken: text('ical_token').unique(),
+  aiNudgesEnabled: boolean('ai_nudges_enabled').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
@@ -50,12 +52,24 @@ export const workspaceMembers = pgTable(
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
     role: workspaceRoleEnum('role').notNull().default('member'),
+    membershipStatus: memberStatusEnum('membership_status').notNull().default('active'),
+    deactivatedAt: timestamp('deactivated_at', { withTimezone: true }),
+    deactivatedBy: uuid('deactivated_by').references(() => profiles.id),
     avatarUrl: text('avatar_url'),
+    displayName: text('display_name'),
     status: userStatusEnum('status').notNull().default('online'),
     statusMessage: text('status_message'),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.workspaceId, t.userId)],
+)
+
+// active membership の唯一の定義。「非活性化されたメンバーは所属していない」という
+// 不変条件をここ 1 箇所に閉じ込め、認可・一覧・通知などの読み取りはこのビューを経由する。
+// 各クエリで `membership_status = 'active'` を手で足す必要（＝足し忘れ）が構造的に消える。
+// active の定義を変える場合（例: deactivated_at IS NULL も条件に足す）もこのビューだけを直せばよい。
+export const activeWorkspaceMembers = pgView('active_workspace_members').as((qb) =>
+  qb.select().from(workspaceMembers).where(eq(workspaceMembers.membershipStatus, 'active')),
 )
 
 export const tags = pgTable(

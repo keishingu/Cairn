@@ -4,72 +4,83 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { createTaskSchema } from '@cairn/shared'
-import { inngest } from '@/lib/inngest/client'
-import type { TaskAssignedEvent } from '@/lib/inngest/events'
+import { getGuestVisibleProjectIds, requireProjectAccess, requireRole } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
 
 export interface TaskDto {
   id: string
-  projectId: string
-  projectTitle: string
+  projectId: string | null
+  projectTitle: string | null
   title: string
   status: 'todo' | 'in_progress' | 'done'
   priority: 'high' | 'medium' | 'low'
   dueDate: string | null
+  assigneeId: string | null
   assigneeName: string | null
   assigneeAvatarUrl: string | null
+  isLinkedToMessage: boolean
 }
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId') ?? undefined
 
-  try {
-    const { ctx, error } = await getAuthContext()
-    if (error) return error
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
 
+  try {
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, inArray } = await import('drizzle-orm')
+    const { eq, and, inArray } = await import('drizzle-orm')
 
-    const projectRows = await db
-      .select({ id: projects.id, title: projects.title })
-      .from(projects)
-      .where(eq(projects.workspaceId, ctx.workspaceId))
+    // ゲストは参加プロジェクトのタスクのみ閲覧可。プロジェクト未所属タスクは見せない。
+    const guestProjectIds = ctx.role === 'guest'
+      ? await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId)
+      : null
+    // ゲストで可視プロジェクトが無ければ SQL を実行せず空を返す（inArray の空配列を避ける）
+    if (guestProjectIds && guestProjectIds.length === 0) {
+      return NextResponse.json([])
+    }
 
-    const projectIds = projectId
-      ? [projectId]
-      : projectRows.map(p => p.id)
-
-    if (projectIds.length === 0) return NextResponse.json([])
+    // 絞り込みは SQL 側で行う（タスク数の多いワークスペースで単一プロジェクト表示が
+    // 全件スキャンにならないように、また guest が見えないタスクを読まないようにする）
+    const conditions = [eq(tasks.workspaceId, ctx.workspaceId)]
+    if (projectId) conditions.push(eq(tasks.projectId, projectId))
+    if (guestProjectIds) conditions.push(inArray(tasks.projectId, guestProjectIds))
 
     const taskRows = await db
       .select({
         id: tasks.id,
         projectId: tasks.projectId,
+        projectTitle: projects.title,
         title: tasks.title,
         status: tasks.status,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
-        assigneeName: profiles.displayName,
+        assigneeId: tasks.assigneeId,
+        sourceMessageId: tasks.sourceMessageId,
+        assigneeName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(tasks)
+      .leftJoin(projects, eq(tasks.projectId, projects.id))
       .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
-      .leftJoin(workspaceMembers, eq(workspaceMembers.userId, tasks.assigneeId))
-      .where(inArray(tasks.projectId, projectIds))
-
-    const projectMap = new Map(projectRows.map(p => [p.id, p.title]))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, tasks.assigneeId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .where(and(...conditions))
 
     const result: TaskDto[] = taskRows.map(r => ({
       id: r.id,
       projectId: r.projectId,
-      projectTitle: projectMap.get(r.projectId) ?? '',
+      projectTitle: r.projectTitle ?? null,
       title: r.title,
       status: r.status,
       priority: r.priority,
       dueDate: r.dueDate,
+      assigneeId: r.assigneeId,
       assigneeName: r.assigneeName ?? null,
       assigneeAvatarUrl: r.assigneeAvatarUrl ?? null,
+      isLinkedToMessage: r.sourceMessageId != null,
     }))
 
     return NextResponse.json(result)
@@ -80,6 +91,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const { ctx, error: authError } = await getAuthContext()
+  if (authError) return authError
+
   let body: unknown
   try {
     body = await req.json()
@@ -93,21 +107,55 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { ctx, error } = await getAuthContext()
-    if (error) return error
+    const projectId = parsed.data.projectId ?? null
+    if (projectId) {
+      // ゲストは参加プロジェクトにのみタスクを作成できる
+      const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
+      if (forbidden) return forbidden
+    } else {
+      // プロジェクト未所属タスクは member 以上のみ作成可（ゲストはプロジェクト必須）
+      const forbidden = requireRole(ctx.role, 'member')
+      if (forbidden) return forbidden
+    }
 
     const { db } = await import('@cairn/db')
     const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { eq, and } = await import('drizzle-orm')
+
+    // projectId を受け付ける前に、そのプロジェクトが ctx.workspaceId に属することを明示的に確認する。
+    // requireProjectAccess は member 以上を素通しするため、別ワークスペースの projectId を
+    // tasks.workspace_id=自WS と組み合わせて保存できてしまい（別WSのタイトル・件数の漏洩や
+    // 越境データ汚染につながる）。FK はプロジェクトの存在しか保証しないためここで所属を検証する。
+    let projectTitle: string | null = null
+    if (projectId) {
+      const [projectRow] = await db
+        .select({ title: projects.title })
+        .from(projects)
+        .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
+        .limit(1)
+      if (!projectRow) {
+        return NextResponse.json({ error: 'プロジェクトが見つかりません' }, { status: 404 })
+      }
+      projectTitle = projectRow.title
+    }
+
+    const assigneeId = parsed.data.assigneeId ?? null
+    if (assigneeId && !(await isAssignableTaskMember(ctx.workspaceId, assigneeId, projectId))) {
+      return NextResponse.json(
+        { error: '指定された担当者はこのタスクに割り当てできません' },
+        { status: 422 },
+      )
+    }
 
     const [inserted] = await db
       .insert(tasks)
       .values({
-        projectId: parsed.data.projectId,
+        workspaceId: ctx.workspaceId,
+        projectId,
         title: parsed.data.title,
         description: parsed.data.description ?? null,
         priority: parsed.data.priority,
-        assigneeId: parsed.data.assigneeId ?? null,
+        assigneeId,
         dueDate: parsed.data.dueDate ?? null,
         createdBy: ctx.userId,
       })
@@ -115,49 +163,41 @@ export async function POST(req: Request) {
 
     if (!inserted) throw new Error('Insert returned no rows')
 
-    const [projectRow] = await db
-      .select({ title: projects.title })
-      .from(projects)
-      .where(eq(projects.id, inserted.projectId))
-
     const assigneeRow = inserted.assigneeId
       ? (await db
-          .select({ displayName: profiles.displayName, avatarUrl: workspaceMembers.avatarUrl })
+          .select({
+            displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+            avatarUrl: workspaceMembers.avatarUrl,
+          })
           .from(profiles)
-          .leftJoin(workspaceMembers, eq(workspaceMembers.userId, profiles.id))
+          .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
           .where(eq(profiles.id, inserted.assigneeId)))[0]
       : null
 
     const result: TaskDto = {
       id: inserted.id,
       projectId: inserted.projectId,
-      projectTitle: projectRow?.title ?? '',
+      projectTitle,
       title: inserted.title,
       status: inserted.status,
       priority: inserted.priority,
       dueDate: inserted.dueDate,
+      assigneeId: inserted.assigneeId,
       assigneeName: assigneeRow?.displayName ?? null,
       assigneeAvatarUrl: assigneeRow?.avatarUrl ?? null,
+      isLinkedToMessage: false,
     }
 
-    if (inserted.assigneeId && inserted.assigneeId !== ctx.userId) {
-      const [assigner] = await db
-        .select({ displayName: profiles.displayName })
-        .from(profiles)
-        .where(eq(profiles.id, ctx.userId))
-
-      await inngest.send({
-        name: 'task/assigned',
-        data: {
-          taskId: inserted.id,
-          taskTitle: inserted.title,
-          assigneeId: inserted.assigneeId,
-          projectId: inserted.projectId,
-          projectTitle: projectRow?.title ?? '',
-          workspaceId: ctx.workspaceId,
-          assignerName: assigner?.displayName ?? '不明',
-        },
-      } satisfies TaskAssignedEvent)
+    if (inserted.assigneeId) {
+      await notifyTaskAssigned({
+        workspaceId: ctx.workspaceId,
+        assignerId: ctx.userId,
+        assigneeId: inserted.assigneeId,
+        taskId: inserted.id,
+        taskTitle: inserted.title,
+        projectId: inserted.projectId,
+        projectTitle: projectTitle ?? '',
+      })
     }
 
     return NextResponse.json(result, { status: 201 })

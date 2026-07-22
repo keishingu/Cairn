@@ -13,4 +13,13 @@ contextBridge.exposeInMainWorld('cairnDesktop', {
     ipcRenderer.on('cairn:seq', handler)
     return () => ipcRenderer.removeListener('cairn:seq', handler)
   },
+  onToggleSidebar: (cb) => {
+    const handler = () => cb()
+    ipcRenderer.on('cairn:toggle-sidebar', handler)
+    return () => ipcRenderer.removeListener('cairn:toggle-sidebar', handler)
+  },
+  // 未読バッジ数を main へ通知する。Windows タスクバーのオーバーレイ表示に使う。
+  // macOS Dock / Linux ランチャーは Web の navigator.setAppBadge が Electron 経由で
+  // 直接数字を出すため、この橋渡しは Windows のためだけに存在する。
+  setBadgeCount: (count) => ipcRenderer.send('cairn:set-badge', count),
 })

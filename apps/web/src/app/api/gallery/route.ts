@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { getGuestVisibleProjectIds } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 const GALLERY_BUCKET = 'gallery'
@@ -23,7 +24,15 @@ export async function GET() {
 
   try {
     const { db, galleryItems, files, projects } = await import('@cairn/db')
-    const { eq, and, isNotNull, sql } = await import('drizzle-orm')
+    const { eq, and, isNotNull, inArray, sql } = await import('drizzle-orm')
+
+    // ゲストは参加プロジェクトのギャラリーのみ閲覧可
+    const role = ctx.role
+    let guestProjectIds: string[] | null = null
+    if (role === 'guest') {
+      guestProjectIds = await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId)
+      if (guestProjectIds.length === 0) return NextResponse.json([] satisfies WorkspaceGalleryItemDto[])
+    }
 
     const rows = await db
       .select({
@@ -38,7 +47,11 @@ export async function GET() {
       .from(galleryItems)
       .innerJoin(files, eq(galleryItems.fileId, files.id))
       .innerJoin(projects, eq(galleryItems.projectId, projects.id))
-      .where(and(eq(projects.workspaceId, ctx.workspaceId), isNotNull(files.storagePath)))
+      .where(and(
+        eq(projects.workspaceId, ctx.workspaceId),
+        isNotNull(files.storagePath),
+        ...(guestProjectIds ? [inArray(projects.id, guestProjectIds)] : []),
+      ))
       .orderBy(sql`${galleryItems.takenAt} DESC NULLS LAST`, sql`${galleryItems.createdAt} DESC`)
 
     const supabase = createServiceRoleClient()

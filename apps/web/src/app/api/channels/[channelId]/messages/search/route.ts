@@ -4,6 +4,8 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
+import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { MessageDto } from '../route'
 
 type RouteContext = { params: Promise<{ channelId: string }> }
@@ -16,21 +18,22 @@ export async function GET(req: Request, { params }: RouteContext) {
   const q = new URL(req.url).searchParams.get('q')?.trim() ?? ''
   if (!q) return NextResponse.json([] satisfies MessageDto[])
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
     const { messages, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, isNull, and, ilike } = await import('drizzle-orm')
+    const { eq, ne, isNull, and, ilike, inArray } = await import('drizzle-orm')
     const { desc } = await import('drizzle-orm')
 
     const rows = await db
       .select({
         id: messages.id,
         content: messages.content,
+        messageType: messages.messageType,
         senderId: messages.senderId,
-        senderName: profiles.displayName,
+        senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         senderAvatarUrl: workspaceMembers.avatarUrl,
         createdAt: messages.createdAt,
         updatedAt: messages.updatedAt,
@@ -44,14 +47,31 @@ export async function GET(req: Request, { params }: RouteContext) {
       .where(and(
         eq(messages.channelId, channelId),
         isNull(messages.deletedAt),
+        ne(messages.messageType, 'system'),
         ilike(messages.content, `%${q}%`),
       ))
       .orderBy(desc(messages.createdAt))
       .limit(50)
 
+    // メンションを現在の表示名へ解決（保存値は名前なしの canonical 形式のため）
+    const mentionIds = [...new Set(rows.flatMap(r => extractMentionIds(r.content)))]
+    const nameMap = new Map<string, string>()
+    if (mentionIds.length > 0) {
+      const profileRows = await db
+        .select({ id: profiles.id, displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
+        .from(profiles)
+        .leftJoin(
+          workspaceMembers,
+          and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+        )
+        .where(inArray(profiles.id, mentionIds))
+      for (const p of profileRows) nameMap.set(p.id, p.displayName)
+    }
+
     const result: MessageDto[] = rows.map(r => ({
       id: r.id,
-      content: r.content,
+      content: hydrateMentions(r.content, id => nameMap.get(id)),
+      messageType: r.messageType,
       senderId: r.senderId,
       senderName: r.senderName,
       senderAvatarUrl: r.senderAvatarUrl ?? null,
@@ -59,11 +79,14 @@ export async function GET(req: Request, { params }: RouteContext) {
       isEdited: r.updatedAt.getTime() > r.createdAt.getTime(),
       reactions: [],
       attachments: [],
+      parentMessageId: null,
+      replyTo: null,
+      bookmarked: false,
     }))
 
     return NextResponse.json(result)
   } catch (err) {
     console.error('[/api/channels/[channelId]/messages/search GET] DB query failed:', err)
-    return NextResponse.json([] satisfies MessageDto[])
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

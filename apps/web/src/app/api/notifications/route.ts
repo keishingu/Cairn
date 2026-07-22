@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 
 export interface NotificationDto {
@@ -23,12 +24,13 @@ export async function GET(req: Request) {
 
   try {
     const { db, notifications } = await import('@cairn/db')
-    const { eq, isNull, and, desc } = await import('drizzle-orm')
+    const { eq, ne, isNull, and, desc } = await import('drizzle-orm')
 
     const conditions = [
       eq(notifications.userId, ctx.userId),
       eq(notifications.workspaceId, ctx.workspaceId),
     ]
+    if (!FEATURE_FLAGS.dm) conditions.push(ne(notifications.type, 'dm'))
     if (filter === 'unread') conditions.push(isNull(notifications.readAt))
     if (filter === 'mention') conditions.push(eq(notifications.type, 'mention'))
     if (filter === 'ai') conditions.push(eq(notifications.type, 'ai'))
@@ -62,8 +64,16 @@ export async function PATCH(req: Request) {
   if (error) return error
 
   let body: unknown
-  try { body = await req.json() } catch { body = {} }
-  const ids = (body as { ids?: string[] }).ids
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+  const rawIds = (body as { ids?: unknown }).ids
+  if (rawIds !== undefined && (!Array.isArray(rawIds) || rawIds.some(id => typeof id !== 'string'))) {
+    return NextResponse.json({ error: 'ids は string[] で指定してください' }, { status: 400 })
+  }
+  const ids = rawIds as string[] | undefined
 
   try {
     const { db, notifications } = await import('@cairn/db')

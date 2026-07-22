@@ -5,6 +5,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { Icon, StatusChip, Modal, ModalHeader, Field, fieldInputStyle, fieldTextareaStyle, onFocusRing, onBlurRing } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
+import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import { LocationInput } from '../location-input'
 import type { PlacePhoto } from '@/app/api/places/photos/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -94,7 +95,7 @@ const CoverPicker = ({ onPhotoNameChange, placePhotos, selectedPhotoName }: Cove
         <Icon name="image" size={16} color="var(--text-4)"/>
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>カバー写真は自動設定されます</div>
-          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>場所を入力すると、その場所の写真から選べます</div>
+          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>場所を入力すると、カバー写真の候補を選べます</div>
         </div>
       </div>
     )
@@ -195,6 +196,64 @@ const TagPicker = ({ value, onChange, available = TAG_PRESETS }: TagPickerProps)
   )
 }
 
+interface MemberPickerProps {
+  members: WorkspaceMemberDto[]
+  value: string[]
+  onChange: (v: string[]) => void
+}
+
+const MemberPicker = ({ members, value, onChange }: MemberPickerProps) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 210, overflow: 'auto', paddingRight: 2 }}>
+    {members.map(member => {
+      const selected = value.includes(member.userId)
+      return (
+        <button
+          key={member.userId}
+          type="button"
+          onClick={() => onChange(selected ? value.filter(id => id !== member.userId) : [...value, member.userId])}
+          title={member.email ?? undefined}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            width: '100%',
+            padding: '8px 10px',
+            borderRadius: 10,
+            border: `1.5px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+            background: selected ? 'var(--accent-soft)' : 'var(--card)',
+            color: selected ? 'var(--accent-text)' : 'var(--text)',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            textAlign: 'left',
+          }}
+        >
+          <div style={{
+            width: 16,
+            height: 16,
+            borderRadius: '50%',
+            border: `2px solid ${selected ? 'var(--accent)' : 'var(--border-2)'}`,
+            background: selected ? 'var(--accent)' : 'transparent',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            {selected && <Icon name="check" size={9} color="var(--on-accent)"/>}
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {member.displayName}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 1 }}>
+              {member.email ?? 'メール未設定'}
+            </div>
+          </div>
+        </button>
+      )
+    })}
+  </div>
+)
+
 // ─── API ──────────────────────────────────────────────────────────
 async function fetchStatuses(): Promise<ProjectStatusDto[]> {
   const res = await fetchWithAuth('/api/projects/statuses')
@@ -212,6 +271,7 @@ async function createProject(body: {
   location?: string | undefined
   placeId?: string | undefined
   placePhotoName?: string | undefined
+  memberUserIds?: string[] | undefined
 }): Promise<ProjectDto> {
   const res = await fetchWithAuth('/api/projects', {
     method: 'POST',
@@ -226,6 +286,12 @@ async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
   const res = await fetchWithAuth(`/api/places/photos?placeId=${encodeURIComponent(placeId)}`)
   if (!res.ok) return []
   return res.json() as Promise<PlacePhoto[]>
+}
+
+async function fetchWorkspaceMembers(): Promise<WorkspaceMemberDto[]> {
+  const res = await fetchWithAuth('/api/workspaces/members?status=active')
+  if (!res.ok) throw new Error('fetch failed')
+  return res.json() as Promise<WorkspaceMemberDto[]>
 }
 
 // ─── CreateProjectModal ───────────────────────────────────────────
@@ -246,17 +312,19 @@ interface FormState {
   location: string
   placeId: string
   selectedPhotoName: string | null
+  memberUserIds: string[]
 }
 
 export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initialEndDate }: CreateProjectModalProps) => {
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
+  const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members', 'active'], queryFn: fetchWorkspaceMembers })
   const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])
   const [photosLoading, setPhotosLoading] = React.useState(false)
 
   const [form, setForm] = React.useState<FormState>({
     title: '', description: '', status: '',
     startDate: initialStartDate ?? '', endDate: initialEndDate ?? '', tags: [],
-    location: '', placeId: '', selectedPhotoName: null,
+    location: '', placeId: '', selectedPhotoName: null, memberUserIds: [],
   })
 
   React.useEffect(() => {
@@ -328,6 +396,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
       location: form.location.trim() || undefined,
       placeId: form.placeId || undefined,
       placePhotoName: form.selectedPhotoName ?? undefined,
+      memberUserIds: form.memberUserIds.length > 0 ? form.memberUserIds : undefined,
     })
   }
 
@@ -343,7 +412,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
       }}>
-        <ModalHeader icon="folder" title="新規プロジェクト" subtitle="山行・合宿・講習会など、計画単位のプロジェクトを作成します" onClose={onClose}/>
+        <ModalHeader icon="folder" title="新規プロジェクト" subtitle="顧客案件や社内プロジェクトなど、進行管理する単位を作成します" onClose={onClose}/>
 
         {/* Body — 2 columns */}
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) 360px' }}>
@@ -353,7 +422,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
               <input id="cpm-title" ref={titleRef}
                 value={form.title}
                 onChange={e => { set('title', e.target.value); if (errors.title) clearError('title') }}
-                placeholder="例: 北アルプス縦走計画"
+                placeholder="例: 新規顧客向け導入プロジェクト"
                 style={fieldInputStyle(!!errors.title)}
                 onFocus={onFocusRing}
                 onBlur={e => onBlurRing(e, !!errors.title)}
@@ -378,7 +447,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
                 onSelect={(desc, pid) => { void handleLocationSelect(desc, pid) }}
                 onClear={handleLocationClear}
                 inputStyle={fieldInputStyle(false)}
-                placeholder="例: 北アルプス、槍ヶ岳"
+                placeholder="例: 東京都渋谷区、オンライン"
               />
             </Field>
 
@@ -413,6 +482,16 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
 
             <Field label="タグ" hint={`${form.tags.length}件選択`}>
               <TagPicker value={form.tags} onChange={v => set('tags', v)}/>
+            </Field>
+
+            <Field label="メンバー" hint={form.memberUserIds.length > 0 ? `${form.memberUserIds.length}人選択` : '任意'}>
+              {workspaceMembers.length === 0 ? (
+                <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--card)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-4)' }}>
+                  追加候補を読み込み中…
+                </div>
+              ) : (
+                <MemberPicker members={workspaceMembers} value={form.memberUserIds} onChange={v => set('memberUserIds', v)}/>
+              )}
             </Field>
 
             <Field label="カバー写真" hint="一覧・パネルで表示">
@@ -458,7 +537,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
         <footer style={{ padding: '12px 20px', borderTop: '1px solid var(--divider)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Icon name="users" size={12}/>
-            作成後にメンバーを招待できます
+            必要なら作成時にメンバーも追加できます
           </span>
           <div style={{ flex: 1 }}/>
           <button type="button" onClick={onClose} className="btn" disabled={mutation.isPending}>キャンセル</button>

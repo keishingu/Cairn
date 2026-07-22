@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceOwner } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 import type { WorkspaceSettings } from '@cairn/db'
 
 export type { WorkspaceSettings as WorkspaceSettingsDto }
@@ -34,7 +34,7 @@ export async function PATCH(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  const forbidden = await requireWorkspaceOwner(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'owner')
   if (forbidden) return forbidden
 
   const patch = await req.json() as Partial<WorkspaceSettings>

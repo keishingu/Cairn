@@ -209,13 +209,13 @@ const { status } = await Notifications.requestPermissionsAsync()
 | 2-1 | `apps/mobile/` 新設、Expo Router・Auth・API クライアント | ✅ 完了（PR #68） |
 | 2-2 | ネイティブ画面実装（projects / chats / tasks / notifications） | ✅ 完了（PR #68） |
 | 2-3 | Expo Push Notifications 統合 | ✅ 完了（PR #68） |
-| 2-4 | WebView 化（projects / tasks / notifications）+ セッション橋渡し | 未着手 → `docs/prompts/phase2b-4-webview.md` |
-| 2-5 | ネイティブチャット強化（オフライン送信キュー・バックグラウンドアップロード） | 未着手 → `docs/prompts/phase2b-5-native-chat.md` |
+| 2-4 | WebView 化（projects / tasks / notifications）+ セッション橋渡し | ✅ 完了（認証は [`mobile-webview-auth-handoff.md`](./mobile-webview-auth-handoff.md) のワンタイムトークン方式） |
+| 2-5 | ネイティブチャット強化（オフライン送信キュー・バックグラウンドアップロード） | 未着手 → [`docs/archive/prompts/phase2b-5-native-chat.md`](./archive/prompts/phase2b-5-native-chat.md) |
 
 ### Phase 3（仕上げ・マイルストーン等）
 
 - マイルストーン機能（`channels` 拡張）→ `docs/07_notifications_and_unread.md` 参照
-- Supabase Realtime 導入（ポーリングからの移行）
+- Supabase Realtime 導入（ポーリングからの移行）→ ✅ Web 側は実施済み（[`notification-ux-redesign.md`](./notification-ux-redesign.md) Phase 2。Broadcast from Database 方式）
 - App Store / Google Play リリース対応（`app.json`, EAS Build）
 
 ---
@@ -239,7 +239,8 @@ const { status } = await Notifications.requestPermissionsAsync()
 
 - `app.json`（静的）でアプリ設定を管理
 - 接続先 URL は `EXPO_PUBLIC_*` 環境変数 + 未設定時の自動導出（`lib/env.ts` が Metro の接続先ホストから導出）
-- CI（mobile-preview.yml）は EAS Update 発行時に環境変数で検証環境の URL を注入
+- EAS Build profile は同名の EAS Environment（`development` / `preview` / `production`）を使用
+- CI（mobile-preview.yml）は PR の Vercel Preview URL と共有 Supabase Preview 設定を EAS の `preview` 環境へ同期し、`eas update --environment preview` で配信
 
 ストアリリース対応（Phase 3）に着手する際、以下の構成へ移行する:
 
@@ -258,6 +259,6 @@ const { status } = await Notifications.requestPermissionsAsync()
 ### 移行のトリガー
 
 - App Store / Google Play への提出準備を始めたとき
-- もしくは preview / production の接続先が CI の環境変数注入だけでは管理しきれなくなったとき（環境数の増加・チャンネル分岐の複雑化）
+- もしくは EAS Environment だけでは接続先を管理しきれなくなったとき（環境数の増加・チャンネル分岐の複雑化）
 
 それまでは現状の「環境変数 + 自動導出」で十分なため、先行して導入しない。

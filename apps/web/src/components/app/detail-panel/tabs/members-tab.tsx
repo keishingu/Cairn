@@ -6,11 +6,12 @@ import { ConfirmDialog } from '../../confirm-dialog'
 import { RowActionMenu } from '../../row-action-menu'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import {
   useProjectMembers,
   useWorkspaceMembersForInvite,
+  useCreateProjectGuestInvite,
+  useRevokeWorkspaceInvite,
   useAddProjectMember,
   useRemoveProjectMember,
 } from '@/hooks/use-project-members'
@@ -51,21 +52,23 @@ const MemberRow = ({ member, onRemove, removing, canRemove, onMemberClick }: Mem
       padding: '8px 4px', borderBottom: '1px solid var(--divider)',
       opacity: removing ? 0.4 : 1, transition: 'opacity 0.15s',
     }}>
-      <Avatar name={member.displayName} url={member.avatarUrl} size={28}/>
-      <button
-        onClick={() => onMemberClick?.(member.userId, member.displayName)}
-        disabled={!onMemberClick}
-        style={{
-          flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text)',
-          background: 'none', border: 'none', padding: 0, textAlign: 'left',
-          cursor: onMemberClick ? 'pointer' : 'default', fontFamily: 'inherit',
-          textDecoration: 'none',
-        }}
-        onMouseEnter={e => { if (onMemberClick) e.currentTarget.style.textDecoration = 'underline' }}
-        onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none' }}
-      >
-        {member.displayName}
-      </button>
+      <div title={member.email ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+        <Avatar name={member.displayName} url={member.avatarUrl} size={28}/>
+        <button
+          onClick={() => onMemberClick?.(member.userId, member.displayName)}
+          disabled={!onMemberClick}
+          style={{
+            flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text)',
+            background: 'none', border: 'none', padding: 0, textAlign: 'left',
+            cursor: onMemberClick ? 'pointer' : 'default', fontFamily: 'inherit',
+            textDecoration: 'none',
+          }}
+          onMouseEnter={e => { if (onMemberClick) e.currentTarget.style.textDecoration = 'underline' }}
+          onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none' }}
+        >
+          {member.displayName}
+        </button>
+      </div>
       <span style={{
         fontSize: 10.5, fontWeight: 700,
         color: style.c, background: style.bg,
@@ -93,9 +96,9 @@ const WS_ROLE_LABEL: Record<string, string> = {
 interface InvitePanelProps {
   inviteable: WorkspaceMemberDto[]
   isLoadingMembers: boolean
-  selectedUserId: string
+  selectedUserIds: string[]
   selectedRole: string
-  onSelectUser: (id: string) => void
+  onToggleUser: (id: string) => void
   onSelectRole: (role: string) => void
   onConfirm: () => void
   onClose: () => void
@@ -105,8 +108,8 @@ interface InvitePanelProps {
 
 const InvitePanel = ({
   inviteable, isLoadingMembers,
-  selectedUserId, selectedRole,
-  onSelectUser, onSelectRole,
+  selectedUserIds, selectedRole,
+  onToggleUser, onSelectRole,
   onConfirm, onClose,
   isLoading, error,
 }: InvitePanelProps) => (
@@ -157,12 +160,13 @@ const InvitePanel = ({
           {/* Avatar list */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 18 }}>
             {inviteable.map(m => {
-              const selected = selectedUserId === m.userId
+              const selected = selectedUserIds.includes(m.userId)
               return (
                 <button
                   key={m.userId}
                   type="button"
-                  onClick={() => onSelectUser(selected ? '' : m.userId)}
+                  onClick={() => onToggleUser(m.userId)}
+                  title={m.email ?? undefined}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10,
                     padding: '8px 10px', borderRadius: 9,
@@ -242,18 +246,18 @@ const InvitePanel = ({
     }}>
       <button
         onClick={onConfirm}
-        disabled={!selectedUserId || isLoading}
+        disabled={selectedUserIds.length === 0 || isLoading}
         style={{
           width: '100%', padding: '10px',
           borderRadius: 9, border: 'none',
-          background: selectedUserId && !isLoading ? 'var(--accent)' : 'var(--card-2)',
-          color: selectedUserId && !isLoading ? 'var(--on-accent)' : 'var(--text-4)',
+          background: selectedUserIds.length > 0 && !isLoading ? 'var(--accent)' : 'var(--card-2)',
+          color: selectedUserIds.length > 0 && !isLoading ? 'var(--on-accent)' : 'var(--text-4)',
           fontSize: 13.5, fontWeight: 700,
-          cursor: selectedUserId && !isLoading ? 'pointer' : 'not-allowed',
+          cursor: selectedUserIds.length > 0 && !isLoading ? 'pointer' : 'not-allowed',
           fontFamily: 'inherit', transition: 'background 0.15s',
         }}
       >
-        {isLoading ? '追加中…' : '追加する'}
+        {isLoading ? '追加中…' : `${selectedUserIds.length}人を追加する`}
       </button>
     </div>
   </div>
@@ -270,25 +274,20 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
   const [url, setUrl] = React.useState<string | null>(null)
   const [token, setToken] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
-  const [isLoading, setIsLoading] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
-  const [revoking, setRevoking] = React.useState(false)
   const [revoked, setRevoked] = React.useState(false)
+  const createGuestInviteMutation = useCreateProjectGuestInvite(projectId)
+  const revokeInviteMutation = useRevokeWorkspaceInvite()
 
   React.useEffect(() => {
-    setIsLoading(true)
-    fetchWithAuth(`/api/projects/${projectId}/guest-invite`, { method: 'POST' })
-      .then(async (res) => {
-        const data = await res.json() as { url?: string; token?: string; error?: string }
-        if (!res.ok) {
-          setError(data.error ?? '招待リンクの生成に失敗しました')
-        } else {
-          setUrl(data.url ?? null)
-          setToken(data.token ?? null)
-        }
+    void createGuestInviteMutation.mutateAsync()
+      .then((data) => {
+        setUrl(data.url ?? null)
+        setToken(data.token ?? null)
       })
-      .catch(() => setError('招待リンクの生成に失敗しました'))
-      .finally(() => setIsLoading(false))
+      .catch((mutationError) => {
+        setError(mutationError instanceof Error ? mutationError.message : '招待リンクの生成に失敗しました')
+      })
   }, [projectId])
 
   const handleCopy = () => {
@@ -301,21 +300,13 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
 
   const handleRevoke = async () => {
     if (!token) return
-    setRevoking(true)
     try {
-      const res = await fetchWithAuth(`/api/workspaces/invites/${token}`, { method: 'DELETE' })
-      if (res.ok) {
-        setUrl(null)
-        setToken(null)
-        setRevoked(true)
-      } else {
-        const data = await res.json() as { error?: string }
-        setError(data.error ?? '無効化に失敗しました')
-      }
+      await revokeInviteMutation.mutateAsync(token)
+      setUrl(null)
+      setToken(null)
+      setRevoked(true)
     } catch {
       setError('無効化に失敗しました')
-    } finally {
-      setRevoking(false)
     }
   }
 
@@ -354,7 +345,7 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
           このリンクを共有すると、相手はゲストとしてワークスペースに参加し、このプロジェクトに自動で追加されます。
         </p>
 
-        {isLoading && (
+        {createGuestInviteMutation.isPending && (
           <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>
             リンクを生成中…
           </div>
@@ -406,18 +397,18 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
 
             <button
               onClick={() => { void handleRevoke() }}
-              disabled={revoking}
+              disabled={revokeInviteMutation.isPending}
               style={{
                 marginTop: 20, width: '100%', padding: '9px',
                 borderRadius: 8, border: '1px solid var(--red)',
                 background: 'transparent',
-                color: revoking ? 'var(--text-4)' : 'var(--red)',
+                color: revokeInviteMutation.isPending ? 'var(--text-4)' : 'var(--red)',
                 fontSize: 12.5, fontWeight: 600,
-                cursor: revoking ? 'not-allowed' : 'pointer',
+                cursor: revokeInviteMutation.isPending ? 'not-allowed' : 'pointer',
                 fontFamily: 'inherit',
               }}
             >
-              {revoking ? '無効化中…' : 'このリンクを無効化'}
+              {revokeInviteMutation.isPending ? '無効化中…' : 'このリンクを無効化'}
             </button>
           </>
         )}
@@ -436,7 +427,7 @@ interface MembersTabProps {
 export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
   const [showInvite, setShowInvite] = React.useState(false)
   const [showGuestInvite, setShowGuestInvite] = React.useState(false)
-  const [selectedUserId, setSelectedUserId] = React.useState('')
+  const [selectedUserIds, setSelectedUserIds] = React.useState<string[]>([])
   const [selectedRole, setSelectedRole] = React.useState('member')
   const [removeTarget, setRemoveTarget] = React.useState<ProjectMemberDto | null>(null)
 
@@ -452,13 +443,13 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
 
   const closeInvite = () => {
     setShowInvite(false)
-    setSelectedUserId('')
+    setSelectedUserIds([])
     setSelectedRole('member')
   }
 
   const handleConfirmInvite = () => {
     addMutation.mutate(
-      { userId: selectedUserId, role: selectedRole },
+      { userIds: selectedUserIds, role: selectedRole },
       { onSuccess: closeInvite },
     )
   }
@@ -525,9 +516,13 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
         <InvitePanel
           inviteable={inviteable}
           isLoadingMembers={isLoadingWs}
-          selectedUserId={selectedUserId}
+          selectedUserIds={selectedUserIds}
           selectedRole={selectedRole}
-          onSelectUser={setSelectedUserId}
+          onToggleUser={(userId) => {
+            setSelectedUserIds(current => current.includes(userId)
+              ? current.filter(id => id !== userId)
+              : [...current, userId])
+          }}
           onSelectRole={setSelectedRole}
           onConfirm={handleConfirmInvite}
           onClose={closeInvite}

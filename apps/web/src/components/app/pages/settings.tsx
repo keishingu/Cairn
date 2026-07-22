@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
@@ -15,8 +16,19 @@ import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { processImageForUpload } from '@/lib/process-image'
 import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
+
+class GcalCalendarsError extends Error {
+  code: string | undefined
+
+  constructor(message: string, code?: string) {
+    super(message)
+    this.name = 'GcalCalendarsError'
+    this.code = code
+  }
+}
 
 const Toggle = ({ on }: { on: boolean }) => (
   <div style={{
@@ -57,6 +69,83 @@ const AvatarCircle = ({ url, name, size = 64 }: { url?: string | null; name: str
   </div>
 )
 
+function isGifImage(file: File): boolean {
+  return file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif')
+}
+
+function isPngImage(file: File): boolean {
+  return file.type === 'image/png' || file.name.toLowerCase().endsWith('.png')
+}
+
+function isWebpImage(file: File): boolean {
+  return file.type === 'image/webp' || file.name.toLowerCase().endsWith('.webp')
+}
+
+function hasPngSignature(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 8
+    && bytes[0] === 0x89
+    && bytes[1] === 0x50
+    && bytes[2] === 0x4e
+    && bytes[3] === 0x47
+    && bytes[4] === 0x0d
+    && bytes[5] === 0x0a
+    && bytes[6] === 0x1a
+    && bytes[7] === 0x0a
+  )
+}
+
+function readAscii(bytes: Uint8Array, offset: number, length: number): string {
+  return String.fromCharCode(...bytes.slice(offset, offset + length))
+}
+
+async function isAnimatedPngImage(file: File): Promise<boolean> {
+  if (!isPngImage(file)) return false
+
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  if (!hasPngSignature(bytes)) return false
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  let offset = 8
+  while (offset + 8 <= bytes.length) {
+    const chunkLength = view.getUint32(offset)
+    const chunkType = readAscii(bytes, offset + 4, 4)
+    if (chunkType === 'acTL') return true
+    offset += 12 + chunkLength
+  }
+
+  return false
+}
+
+async function isAnimatedWebpImage(file: File): Promise<boolean> {
+  if (!isWebpImage(file)) return false
+
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  if (readAscii(bytes, 0, 4) !== 'RIFF' || readAscii(bytes, 8, 4) !== 'WEBP') return false
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  let offset = 12
+  while (offset + 8 <= bytes.length) {
+    const chunkType = readAscii(bytes, offset, 4)
+    const chunkLength = view.getUint32(offset + 4, true)
+    const chunkDataOffset = offset + 8
+
+    if (chunkType === 'ANIM') return true
+    if (chunkType === 'VP8X' && chunkLength >= 1 && chunkDataOffset < bytes.length) {
+      const featureFlags = bytes[chunkDataOffset] ?? 0
+      if ((featureFlags & 0x02) !== 0) return true
+    }
+
+    offset = chunkDataOffset + chunkLength + (chunkLength % 2)
+  }
+
+  return false
+}
+
+async function isAnimatedAvatarImage(file: File): Promise<boolean> {
+  return isGifImage(file) || await isAnimatedPngImage(file) || await isAnimatedWebpImage(file)
+}
+
 const SettingsAccount = () => {
   const queryClient = useQueryClient()
   const { data: user, isLoading } = useQuery<CurrentUserDto>({
@@ -86,6 +175,7 @@ const SettingsAccount = () => {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['me'] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
       setNameSaved(true)
       setTimeout(() => setNameSaved(false), 2000)
     },
@@ -93,8 +183,19 @@ const SettingsAccount = () => {
 
   const avatarMutation = useMutation({
     mutationFn: async (file: File) => {
+      if (await isAnimatedAvatarImage(file)) {
+        throw new Error('アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください')
+      }
+
+      let uploadFile = file
+      try {
+        uploadFile = (await processImageForUpload(file)).file
+      } catch {
+        throw new Error('画像の準備に失敗しました。別の写真でお試しください')
+      }
+
       const fd = new FormData()
-      fd.append('file', file)
+      fd.append('file', uploadFile)
       const res = await fetchWithAuth('/api/me/avatar', { method: 'POST', body: fd })
       if (!res.ok) {
         const d = await res.json().catch(() => ({})) as { error?: string }
@@ -104,6 +205,28 @@ const SettingsAccount = () => {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['me'] })
       void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+    },
+  })
+
+  const aiNudgesMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await fetchWithAuth('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aiNudgesEnabled: enabled }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(d.error ?? '更新に失敗しました')
+      }
+      return enabled
+    },
+    onSuccess: (enabled) => {
+      queryClient.setQueryData<CurrentUserDto>(['me'], current => current
+        ? { ...current, aiNudgesEnabled: enabled }
+        : current)
+      void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] })
     },
   })
 
@@ -136,11 +259,12 @@ const SettingsAccount = () => {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{user?.displayName}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>プロフィール写真</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 2 }}>大きい写真は自動で縮小してアップロードします</div>
             </div>
             <input
               ref={avatarInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/gif,image/webp"
+              accept="image/jpeg,image/png,image/webp,image/heic,.heic,image/heif,.heif"
               style={{ display: 'none' }}
               onChange={handleAvatarChange}
             />
@@ -197,6 +321,36 @@ const SettingsAccount = () => {
             </div>
             <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{user?.email ?? '—'}</span>
           </div>
+        </div>
+      </section>
+
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>通知</h2>
+        <div className="card" style={{ padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>AI PMO ナッジ</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}>
+                期限や停滞について、あなただけに見えるリマインドをチャットに表示します
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={user?.aiNudgesEnabled ?? true}
+              aria-label="AI PMO ナッジ"
+              disabled={aiNudgesMutation.isPending}
+              onClick={() => aiNudgesMutation.mutate(!(user?.aiNudgesEnabled ?? true))}
+              style={{ border: 'none', background: 'transparent', padding: 0, flexShrink: 0 }}
+            >
+              <Toggle on={user?.aiNudgesEnabled ?? true}/>
+            </button>
+          </div>
+          {aiNudgesMutation.isError && (
+            <div style={{ padding: '0 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
+              ⚠ {(aiNudgesMutation.error as Error).message}
+            </div>
+          )}
         </div>
       </section>
     </div>
@@ -488,8 +642,8 @@ const SettingsAI = () => (
       <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>モデル</h2>
       <div className="card" style={{ padding: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         {[
-          { n: 'GPT-4o',      d: '汎用・推奨',     on: true },
-          { n: 'GPT-4o mini', d: '高速・低コスト', on: false },
+          { n: 'GPT-5',      d: '高精度・推奨',     on: true },
+          { n: 'GPT-5 mini', d: '高速・低コスト', on: false },
         ].map((m, i) => (
           <div key={i} style={{ padding: 12, borderRadius: 8, border: `2px solid ${m.on ? 'var(--accent)' : 'var(--border)'}`, background: m.on ? 'var(--accent-soft)' : 'var(--card-2)', cursor: 'pointer' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -791,6 +945,10 @@ const SettingsWorkspaceGeneral = () => {
 
 const SettingsIntegrations = () => {
   // ── iCal 出力 ──────────────────────────────────────────────────────
+  const { data: ws } = useQuery<WorkspaceDto>({
+    queryKey: ['workspace'],
+    queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
+  })
   const { data, refetch } = useQuery<{ token: string }>({
     queryKey: ['ical-token'],
     queryFn: () => fetchWithAuth('/api/calendar/token').then(r => r.json()),
@@ -802,9 +960,9 @@ const SettingsIntegrations = () => {
   const [copiedScope, setCopiedScope] = React.useState<string | null>(null)
 
   const buildUrl = (scope: 'me' | 'workspace') => {
-    if (!data?.token) return ''
+    if (!data?.token || !ws?.id) return ''
     const base = typeof window !== 'undefined' ? window.location.origin : ''
-    return `${base}/api/calendar/ical?token=${data.token}&scope=${scope}`
+    return `${base}/api/calendar/ical?token=${data.token}&scope=${scope}&workspaceId=${ws.id}`
   }
 
   const copy = (scope: 'me' | 'workspace') => {
@@ -841,9 +999,26 @@ const SettingsIntegrations = () => {
     queryFn: () => fetchWithAuth('/api/calendar/google/status').then(r => r.json()),
   })
 
-  const { data: gcalCalendars } = useQuery<GcalCalendarDto[]>({
+  const {
+    data: gcalCalendars,
+    isLoading: gcalCalendarsLoading,
+    error: gcalCalendarsError,
+  } = useQuery<GcalCalendarDto[]>({
     queryKey: ['gcal-calendars'],
-    queryFn: () => fetchWithAuth('/api/calendar/google/calendars').then(r => r.json()),
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/calendar/google/calendars')
+      const body = await res.json().catch(() => null) as GcalCalendarDto[] | { error?: string; code?: string } | null
+      if (!res.ok) {
+        throw new GcalCalendarsError(
+          (body && !Array.isArray(body) && body.error) || 'Google カレンダー一覧の取得に失敗しました',
+          body && !Array.isArray(body) ? body.code : undefined,
+        )
+      }
+      if (!Array.isArray(body)) {
+        throw new GcalCalendarsError('Google カレンダー一覧の形式が不正です')
+      }
+      return body
+    },
     enabled: gcalStatus?.connected === true,
   })
 
@@ -1014,8 +1189,25 @@ const SettingsIntegrations = () => {
               {/* カレンダー選択 */}
               <div style={{ padding: '12px 16px' }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', marginBottom: 10 }}>表示するカレンダー</div>
-                {!gcalCalendars ? (
+                {gcalCalendarsLoading ? (
                   <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>読み込み中…</div>
+                ) : gcalCalendarsError ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>
+                      {gcalCalendarsError.message}
+                    </div>
+                    {(gcalCalendarsError as GcalCalendarsError).code === 'GOOGLE_RECONNECT_REQUIRED' && (
+                      <button
+                        className="btn btn-primary"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', fontSize: 12.5, flexShrink: 0 }}
+                        onClick={() => void connectGcal()}
+                      >
+                        <Icon name="calendar" size={13}/> Google を再接続
+                      </button>
+                    )}
+                  </div>
+                ) : !gcalCalendars ? (
+                  <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>Google カレンダー一覧を取得できませんでした。</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {gcalCalendars.map(cal => (
@@ -1060,6 +1252,56 @@ const SettingsIntegrations = () => {
   )
 }
 
+// ─── Billing ──────────────────────────────────────────────────────
+// Phase 0（計測）: 制限・課金はまだかけない。ストレージ使用量の計測結果を表示するのみ。
+// 詳細: docs/billing-implementation-design.md
+
+import type { WorkspaceStorageUsageDto } from '@/app/api/workspaces/storage-usage/route'
+
+const FREE_TIER_REFERENCE_GB = 10
+
+const SettingsBilling = () => {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['workspace-storage-usage'],
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/workspaces/storage-usage')
+      if (!res.ok) throw new Error('取得に失敗しました')
+      return res.json() as Promise<WorkspaceStorageUsageDto>
+    },
+  })
+
+  const totalGb = (data?.originalBytes ?? 0) / 1024 ** 3
+  const ratio = Math.min(1, totalGb / FREE_TIER_REFERENCE_GB)
+
+  return (
+    <div style={{ maxWidth: 780 }}>
+      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>請求</h1>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
+        課金機能は準備中です。現在はストレージ使用量を計測しているのみで、上限は設けていません。
+      </p>
+
+      <section className="card" style={{ padding: 20 }}>
+        <h2 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>ストレージ使用量</h2>
+        {isLoading ? (
+          <div style={{ color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+        ) : isError ? (
+          // 取得失敗を 0GB として偽装しない（バックエンド/マイグレーション不備を隠さないため）
+          <div style={{ fontSize: 13, color: 'var(--red-text)' }}>⚠ ストレージ使用量を取得できませんでした</div>
+        ) : (
+          <>
+            <div style={{ height: 8, borderRadius: 4, background: 'var(--card-2)', overflow: 'hidden', marginBottom: 8 }}>
+              <div style={{ height: '100%', width: `${ratio * 100}%`, background: 'var(--accent)', borderRadius: 4 }}/>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+              {totalGb.toFixed(2)} GB 使用中（参考ライン: {FREE_TIER_REFERENCE_GB} GB）
+            </div>
+          </>
+        )}
+      </section>
+    </div>
+  )
+}
+
 // ─── Developer ────────────────────────────────────────────────────
 
 import type { DevStatusDto, ServiceStatus } from '@/app/api/dev/status/route'
@@ -1068,6 +1310,17 @@ const STATUS_CONFIG: Record<ServiceStatus['status'], { label: string; color: str
   ok:           { label: '接続済み',  color: 'var(--emerald-text)', bg: 'var(--emerald-soft)' },
   error:        { label: 'エラー',    color: 'var(--red-text)',     bg: 'var(--red-soft)' },
   unconfigured: { label: '未設定',    color: 'var(--text-4)',       bg: 'var(--card-2)' },
+}
+
+const MANUAL_OK_STATUS = { label: '未確認', color: 'var(--text-4)', bg: 'var(--card-2)' }
+
+function getStatusBadgeConfig(status: ServiceStatus, hasLiveDiagnostic: boolean) {
+  if (status.status !== 'ok') return STATUS_CONFIG[status.status]
+  return hasLiveDiagnostic ? STATUS_CONFIG.ok : MANUAL_OK_STATUS
+}
+
+function getStatusBadgeLabel(status: ServiceStatus, hasLiveDiagnostic: boolean) {
+  return getStatusBadgeConfig(status, hasLiveDiagnostic).label
 }
 
 type ServiceKey = Exclude<keyof DevStatusDto, 'env'>
@@ -1081,12 +1334,37 @@ const SERVICE_META: { key: ServiceKey; label: string; icon: string; purpose: str
 ]
 
 const SettingsDeveloper = () => {
-  const { data, isLoading, refetch, isFetching } = useQuery<DevStatusDto>({
+  const { isOwner } = useWorkspacePermissions()
+  const { data: staticData, isLoading } = useQuery<DevStatusDto>({
     queryKey: ['dev-status'],
     queryFn: () => fetchWithAuth('/api/dev/status').then(r => r.json()),
     staleTime: 0,
     gcTime: 0,
   })
+  const [diagnosticData, setDiagnosticData] = React.useState<DevStatusDto | null>(null)
+  const diagnose = useMutation({
+    mutationFn: async () => {
+      const res = await fetchWithAuth('/api/dev/status', { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(body.error ?? '診断の実行に失敗しました')
+      }
+      return res.json() as Promise<DevStatusDto>
+    },
+    onSuccess: (next) => setDiagnosticData(next),
+  })
+
+  const data = diagnosticData ?? staticData
+  const hasLiveDiagnostic = diagnosticData != null
+
+  if (!isOwner) {
+    return (
+      <div>
+        <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>開発者情報</h1>
+        <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションはワークスペースのオーナーのみ利用できます。</p>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -1094,22 +1372,30 @@ const SettingsDeveloper = () => {
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', flex: 1 }}>開発者情報</h1>
         <button
           className="btn"
-          onClick={() => refetch()}
-          disabled={isFetching}
+          onClick={() => void diagnose.mutateAsync()}
+          disabled={diagnose.isPending}
           style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}
         >
-          <Icon name="refresh" size={13} style={isFetching ? { animation: 'spin 1s linear infinite' } : {}}/>
-          再チェック
+          <Icon name="refresh" size={13} style={diagnose.isPending ? { animation: 'spin 1s linear infinite' } : {}}/>
+          手動診断
         </button>
       </div>
-      <p style={{ color: 'var(--text-3)', fontSize: 13, marginBottom: 28 }}>外部サービスの接続状況を確認できます。</p>
+      <p style={{ color: 'var(--text-3)', fontSize: 13, marginBottom: 10 }}>初期表示は設定状況のみを表示し、外部サービスへの疎通確認は手動診断時にだけ実行されます。</p>
+      {diagnose.error && (
+        <p style={{ color: 'var(--red-text)', fontSize: 12.5, margin: '0 0 18px' }}>
+          {diagnose.error instanceof Error ? diagnose.error.message : '診断の実行に失敗しました'}
+        </p>
+      )}
+      {!diagnose.data && (
+        <p style={{ color: 'var(--text-4)', fontSize: 12, margin: '0 0 28px' }}>OpenAI などの実接続確認は「手動診断」でのみ行います。</p>
+      )}
 
       <section style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>外部サービス</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
           {SERVICE_META.map(({ key, label, icon, purpose }) => {
             const s = data?.[key]
-            const cfg = s ? STATUS_CONFIG[s.status] : null
+            const cfg = s ? getStatusBadgeConfig(s, hasLiveDiagnostic) : null
             return (
               <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--card)', borderBottom: '1px solid var(--divider)' }}>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1126,10 +1412,12 @@ const SettingsDeveloper = () => {
                   {s?.latencyMs != null && s.status === 'ok' && (
                     <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{s.latencyMs}ms</span>
                   )}
-                  {isLoading || isFetching ? (
+                  {isLoading ? (
                     <span style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '3px 10px', borderRadius: 999, background: 'var(--card-2)' }}>確認中...</span>
-                  ) : cfg ? (
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: cfg.color, padding: '3px 10px', borderRadius: 999, background: cfg.bg }}>{cfg.label}</span>
+                  ) : cfg && s ? (
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: cfg.color, padding: '3px 10px', borderRadius: 999, background: cfg.bg }}>
+                      {getStatusBadgeLabel(s, hasLiveDiagnostic)}
+                    </span>
                   ) : (
                     <span style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '3px 10px', borderRadius: 999, background: 'var(--card-2)' }}>-</span>
                   )}
@@ -1160,50 +1448,102 @@ const SettingsDeveloper = () => {
   )
 }
 
-const NAV_GROUPS = [
-  {
-    label: '個人',
-    items: [
-      { id: 'account',    l: 'アカウント',    i: 'user' },
-      { id: 'appearance', l: '外観',          i: 'sun' },
-    ],
-  },
-  {
-    label: 'ワークスペース',
-    items: [
-      { id: 'general',       l: 'ワークスペース設定',   i: 'settings' },
-      { id: 'workflow',      l: 'ワークフロー',         i: 'flag' },
-      { id: 'ai',            l: 'AIエージェント',       i: 'sparkles' },
-      { id: 'members',       l: 'メンバー',             i: 'users' },
-      { id: 'integrations',  l: '連携',                 i: 'layers' },
-      { id: 'billing',       l: '請求',                 i: 'archive' },
-    ],
-  },
-  {
-    label: '開発者',
-    items: [
-      { id: 'developer', l: '開発者情報', i: 'code' },
-    ],
-  },
-]
+export function getSettingsNavGroups(isOwner: boolean): { label: string; items: SettingsSectionMeta[] }[] {
+  return [
+    {
+      label: '個人',
+      items: [
+        { id: 'account', label: 'アカウント', icon: 'user' },
+        { id: 'appearance', label: '外観', icon: 'sun' },
+      ],
+    },
+    {
+      label: 'ワークスペース',
+      items: [
+        { id: 'general', label: 'ワークスペース設定', icon: 'settings' },
+        { id: 'workflow', label: 'ワークフロー', icon: 'flag' },
+        { id: 'ai', label: 'AIエージェント', icon: 'sparkles' },
+        { id: 'members', label: 'メンバー', icon: 'users' },
+        { id: 'integrations', label: '連携', icon: 'layers' },
+        { id: 'billing', label: '請求', icon: 'archive' },
+      ],
+    },
+    ...(isOwner
+      ? [{
+        label: '開発者',
+        items: [
+          { id: 'developer', label: '開発者情報', icon: 'code' },
+        ],
+      }]
+      : []),
+  ]
+}
+
+export interface SettingsSectionMeta {
+  id: string
+  label: string
+  icon: string
+}
+
+// セクションIDごとのメインカラムコンポーネント。未実装のものは準備中プレースホルダーを出す。
+const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
+  account:      SettingsAccount,
+  appearance:   SettingsAppearance,
+  general:      SettingsWorkspaceGeneral,
+  workflow:     SettingsWorkflow,
+  ai:           SettingsAI,
+  integrations: SettingsIntegrations,
+  billing:      SettingsBilling,
+  developer:    SettingsDeveloper,
+}
+
+const DEFAULT_SECTION = 'account'
+
+export function isSettingsSection(id: string | null | undefined, isOwner = true): id is string {
+  return id != null && new Set(getSettingsNavGroups(isOwner).flatMap(g => g.items.map(i => i.id))).has(id)
+}
+
+export function settingsSectionLabel(id: string, isOwner = true): string {
+  for (const g of getSettingsNavGroups(isOwner)) {
+    const item = g.items.find(i => i.id === id)
+    if (item) return item.label
+  }
+  return '設定'
+}
+
+// セクションのメインカラム本体（PC・モバイル共通）。
+export function SettingsSectionContent({ section }: { section: string }) {
+  const Comp = SETTINGS_SECTION_COMPONENTS[section]
+  if (Comp) return <Comp/>
+  return (
+    <div>
+      <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
+        {settingsSectionLabel(section)}
+      </h1>
+      <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションの設定は準備中です。</p>
+    </div>
+  )
+}
 
 export const PageSettings = () => {
-  const [section, setSection] = React.useState(() => {
-    if (typeof window === 'undefined') return 'account'
-    return new URLSearchParams(window.location.search).get('tab') ?? 'account'
-  })
+  const pathname = usePathname()
+  const router = useRouter()
+  const { isOwner } = useWorkspacePermissions()
+  const navGroups = getSettingsNavGroups(isOwner)
+  const seg = pathname.split('/')[2]
+  const section = isSettingsSection(seg, isOwner) ? seg : DEFAULT_SECTION
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <TopBar title="設定"/>
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={{ width: 220, borderRight: '1px solid var(--border)', padding: '20px 14px', background: 'var(--card)' }}>
-        {NAV_GROUPS.map((group, gi) => (
-          <div key={group.label} style={{ marginBottom: gi < NAV_GROUPS.length - 1 ? 16 : 0 }}>
+        {navGroups.map((group, gi) => (
+          <div key={group.label} style={{ marginBottom: gi < navGroups.length - 1 ? 16 : 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0 10px', marginBottom: 4 }}>
               {group.label}
             </div>
             {group.items.map(s => (
-              <button key={s.id} onClick={() => setSection(s.id)} style={{
+              <button key={s.id} onClick={() => router.push(`/settings/${s.id}`)} style={{
                 display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                 padding: '8px 10px', borderRadius: 7, border: 'none',
                 background: section === s.id ? 'var(--card-hover)' : 'transparent',
@@ -1211,28 +1551,14 @@ export const PageSettings = () => {
                 fontWeight: section === s.id ? 600 : 500,
                 fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left',
               }}>
-                <Icon name={s.i} size={14}/> {s.l}
+                <Icon name={s.icon} size={14}/> {s.label}
               </button>
             ))}
           </div>
         ))}
       </aside>
       <div style={{ flex: 1, overflow: 'auto', padding: '32px 40px' }}>
-        {section === 'account'       && <SettingsAccount/>}
-        {section === 'appearance'    && <SettingsAppearance/>}
-        {section === 'general'       && <SettingsWorkspaceGeneral/>}
-        {section === 'workflow'      && <SettingsWorkflow/>}
-        {section === 'ai'            && <SettingsAI/>}
-        {section === 'integrations'  && <SettingsIntegrations/>}
-        {section === 'developer'     && <SettingsDeveloper/>}
-        {section !== 'account' && section !== 'appearance' && section !== 'general' && section !== 'workflow' && section !== 'ai' && section !== 'integrations' && section !== 'developer' && (
-          <div>
-            <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-              {{ members: 'メンバー', billing: '請求' }[section] ?? section}
-            </h1>
-            <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションの設定は準備中です。</p>
-          </div>
-        )}
+        <SettingsSectionContent section={section}/>
       </div>
       </div>
     </div>

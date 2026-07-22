@@ -1,18 +1,18 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Icon, AvatarStack, StatusChip, MountainPhoto } from '../primitives'
+import { useRouter } from 'next/navigation'
+import { Icon, AvatarStack, StatusChip, MountainPhoto, ArchivedBadge } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
-import type { PlacePhoto } from '@/app/api/places/photos/route'
 import { ChatTab } from './tabs/chat-tab'
 import { OverviewTab, formatDateRange } from './tabs/overview-tab'
 import { FilesTab } from './tabs/files-tab'
 import { TasksTab } from './tabs/tasks-tab'
 import { MembersTab } from './tabs/members-tab'
 import { GalleryTab } from './tabs/gallery-tab'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { usePinnedProjects, usePinProject, useUnpinProject } from '@/lib/use-pinned-projects'
+import { useProjectChannels } from '@/lib/chat/client'
+import { useApplyPlacePhoto, useClearProjectCoverPhoto, usePlacePhotos } from '@/hooks/use-project-cover-photo'
 
 
 
@@ -26,53 +26,10 @@ interface CoverPickerPanelProps {
 }
 
 const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onClose }: CoverPickerPanelProps) => {
-  const queryClient = useQueryClient()
-  const [saving, setSaving] = React.useState(false)
-
-  const { data: placePhotos = [], isLoading: photosLoading } = useQuery<PlacePhoto[]>({
-    queryKey: ['place-photos', placeId],
-    queryFn: () => fetchWithAuth(`/api/places/photos?placeId=${encodeURIComponent(placeId!)}`).then(r => r.json()),
-    enabled: !!placeId,
-  })
-
-  const applyUrl = async (url: string | null) => {
-    setSaving(true)
-    try {
-      const res = await fetchWithAuth(`/api/projects/${projectId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coverPhotoUrl: url }),
-      })
-      if (!res.ok) return
-      queryClient.setQueryData<ProjectDto[]>(['projects'], old =>
-        (old ?? []).map(p => p.id === projectId ? { ...p, coverPhotoUrl: url } : p),
-      )
-      onClose()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const applyPlacePhoto = async (photoName: string) => {
-    setSaving(true)
-    try {
-      const res = await fetchWithAuth(`/api/projects/${projectId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ placePhotoName: photoName }),
-      })
-      if (!res.ok) return
-      const data = await res.json() as { coverPhotoUrl?: string | null }
-      if (data.coverPhotoUrl) {
-        queryClient.setQueryData<ProjectDto[]>(['projects'], old =>
-          (old ?? []).map(p => p.id === projectId ? { ...p, coverPhotoUrl: data.coverPhotoUrl! } : p),
-        )
-      }
-      onClose()
-    } finally {
-      setSaving(false)
-    }
-  }
+  const { data: placePhotos = [], isLoading: photosLoading } = usePlacePhotos(placeId)
+  const clearCoverPhoto = useClearProjectCoverPhoto(projectId)
+  const applyPlacePhoto = useApplyPlacePhoto(projectId)
+  const saving = clearCoverPhoto.isPending || applyPlacePhoto.isPending
 
   const thumbStyle = (selected: boolean): React.CSSProperties => ({
     flexShrink: 0, width: 80, height: 54, padding: 0,
@@ -102,7 +59,13 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
           ) : placePhotos.length > 0 ? (
             <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, marginBottom: 6, scrollbarWidth: 'thin' }}>
               {placePhotos.map(photo => (
-                <button key={photo.photoName} type="button" style={thumbStyle(false)} onClick={() => { void applyPlacePhoto(photo.photoName) }} disabled={saving}>
+                <button
+                  key={photo.photoName}
+                  type="button"
+                  style={thumbStyle(false)}
+                  onClick={() => applyPlacePhoto.mutate(photo.photoName, { onSuccess: onClose })}
+                  disabled={saving}
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={photo.thumbnailUri} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
                 </button>
@@ -116,7 +79,12 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
 
       <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>デフォルト</div>
       <div>
-        <button type="button" style={thumbStyle(currentCoverUrl === null)} onClick={() => { void applyUrl(null) }} disabled={saving}>
+        <button
+          type="button"
+          style={thumbStyle(currentCoverUrl === null)}
+          onClick={() => clearCoverPhoto.mutate(undefined, { onSuccess: onClose })}
+          disabled={saving}
+        >
           <MountainPhoto idx={defaultIdx} height={50} flat radius={5}/>
           {currentCoverUrl === null && (
             <div style={{ position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: '50%', background: 'var(--accent)', color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -144,14 +112,44 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
   const [internalTab, setInternalTab] = React.useState('chat')
   const tab = tabProp ?? internalTab
   const setTab = onTabChange ?? setInternalTab
+
+  // 訪問済みのタブは display:none で残し、再訪問時の再マウント（Chat の markdown 再パース・
+  // スクロール初期化・各タブの再フェッチ）を避ける。初回は現在のタブだけマウントして
+  // オープン直後を軽く保つ
+  const [visitedTabs, setVisitedTabs] = React.useState<Set<string>>(() => new Set([tab]))
+  React.useEffect(() => {
+    setVisitedTabs(prev => (prev.has(tab) ? prev : new Set(prev).add(tab)))
+  }, [tab])
+  // プロジェクトが変わったら訪問済みをリセットし、別プロジェクトのタブ内容を残さない
+  React.useEffect(() => {
+    setVisitedTabs(new Set([tab]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id])
+
+  const renderTabContent = (id: string): React.ReactNode => {
+    switch (id) {
+      case 'chat':     return <ChatTab project={project} {...(isMobile ? { isMobile: true } : {})}/>
+      case 'overview': return <OverviewTab project={project} onDeleted={onClose}/>
+      case 'files':    return <FilesTab projectId={project.id} channelId={projectChannelId ?? null}/>
+      case 'tasks':    return <TasksTab project={project}/>
+      case 'members':  return <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>
+      case 'gallery':  return <GalleryTab projectId={project.id}/>
+      default:         return null
+    }
+  }
   const [moreOpen, setMoreOpen] = React.useState(false)
   const [editingCover, setEditingCover] = React.useState(false)
   const moreRef = React.useRef<HTMLDivElement>(null)
 
+  const router = useRouter()
   const { data: pinnedProjects = [] } = usePinnedProjects()
   const pinProject = usePinProject()
   const unpinProject = useUnpinProject()
   const isPinned = pinnedProjects.some(p => p.projectId === project.id)
+
+  // このプロジェクトのチャットチャンネルへ遷移するための channelId
+  const { data: projectChannels = [] } = useProjectChannels()
+  const projectChannelId = projectChannels.find(c => c.projectId === project.id)?.channelId
 
   React.useEffect(() => {
     if (!moreOpen) return
@@ -224,7 +222,10 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
             </button>
           ) : (
             <>
-              <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{project.title}</span>
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                {project.title}
+                {project.archived && <ArchivedBadge onDark/>}
+              </span>
               <div ref={moreRef} style={{ position: 'relative' }}>
                 <button
                   onClick={() => { setMoreOpen(v => !v); setEditingCover(false) }}
@@ -273,6 +274,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, opacity: 0.95 }}>
                 <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
+                {project.archived && <ArchivedBadge onDark/>}
                 <span>{formatDateRange(project.startDate, project.endDate)}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                   <Icon name="users" size={11}/> {project.memberCount}人参加
@@ -305,13 +307,19 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
         />
       )}
 
-      {/* PC only: status + avatars + "詳細を開く" */}
+      {/* PC only: status + avatars + "チャットを開く" */}
       {!isMobile && (
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
+          {project.archived && <ArchivedBadge/>}
           <AvatarStack names={project.memberNames} size={22} max={5}/>
-          <button className="btn btn-ghost" style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}>
-            <Icon name="arrowRight" size={11}/> 詳細を開く
+          <button
+            className="btn btn-ghost"
+            style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}
+            disabled={!projectChannelId}
+            onClick={() => projectChannelId && router.push(`/chats/${projectChannelId}`)}
+          >
+            <Icon name="chat" size={11}/> チャットを開く
           </button>
         </div>
       )}
@@ -333,14 +341,16 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
         ))}
       </div>
 
-      {/* Tab content */}
+      {/* Tab content — 訪問済みタブはマウントしたまま表示だけ切り替える（keep-alive） */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0 }}>
-        {tab === 'chat'     && <ChatTab project={project}/>}
-        {tab === 'overview' && <OverviewTab project={project} onDeleted={onClose}/>}
-        {tab === 'files'    && <FilesTab projectId={project.id}/>}
-        {tab === 'tasks'    && <TasksTab project={project}/>}
-        {tab === 'members'  && <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>}
-        {tab === 'gallery'  && <GalleryTab projectId={project.id}/>}
+        {tabs.map(t => visitedTabs.has(t.id) ? (
+          <div
+            key={t.id}
+            style={{ flex: 1, minHeight: 0, display: tab === t.id ? 'flex' : 'none', flexDirection: 'column' }}
+          >
+            {renderTabContent(t.id)}
+          </div>
+        ) : null)}
       </div>
     </aside>
   )

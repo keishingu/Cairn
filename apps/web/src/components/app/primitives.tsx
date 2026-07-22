@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useCommand } from '@/lib/command-registry'
 
 const PHOTO_IDS = [
   '1464822759023-fed622ff2c3b', '1483728642387-6c3bdd6c93e5', '1454391304352-2bf4678b1a7a',
@@ -35,8 +36,10 @@ const PATHS: Record<string, React.ReactNode> = {
   file:        <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/></>,
   'file-text': <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></>,
   users:       <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
+  user:        <><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2"/></>,
   userPlus:    <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></>,
   settings:    <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></>,
+  gear:        <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></>,
   sparkles:    <><path d="M12 3l1.7 4.5L18 9l-4.3 1.5L12 15l-1.7-4.5L6 9l4.3-1.5z"/><path d="M19 14l.8 2 2 .8-2 .8L19 19l-.8-2-2-.8 2-.8z"/><path d="M5 4l.6 1.5L7 6l-1.4.5L5 8l-.6-1.5L3 6l1.4-.5z"/></>,
   image:       <><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="M21 15l-5-5L5 21"/></>,
   inbox:       <><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.5 5h13l3.5 7v6a2 2 0 0 1-2 2h-16a2 2 0 0 1-2-2v-6z"/></>,
@@ -91,6 +94,9 @@ const PATHS: Record<string, React.ReactNode> = {
   link:        <><path d="M10 13a5 5 0 0 0 7.5.7l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.7l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></>,
   flask:       <><path d="M9 2v6L4 19a2 2 0 0 0 1.8 3h12.4a2 2 0 0 0 1.8-3L15 8V2"/><path d="M8.5 2h7"/><path d="M6.5 14h11"/></>,
   alertTriangle: <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,
+  reply:       <><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></>,
+  bookmark:    <><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></>,
+  info:        <><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="8" x2="12.01" y2="8"/></>,
 }
 
 export const Icon = ({ name, size = 18, color = 'currentColor', strokeWidth = 1.7, style }: IconProps) => (
@@ -198,6 +204,33 @@ export const StatusChip = ({ name, color, size = 11 }: StatusChipProps) => (
   </span>
 )
 
+// ─── Archived project styling ─────────────────────────────────────
+// アーカイブ済みプロジェクトはプロジェクト一覧・詳細パネル・メンバーの
+// プロジェクト履歴など複数箇所で表示される。グレーアウト＋バッジの表現を
+// 1 箇所に集約し、どこでも同じ見た目になるようにする。
+// （打ち消し線は「完了・取り消し」を連想させ、まだ有効なアーカイブの
+// 意味と合わないため使わない。）
+
+/** アーカイブ済み要素のコンテナをグレーアウトする減光率 */
+export const ARCHIVED_OPACITY = 0.4
+
+interface ArchivedBadgeProps {
+  size?: number
+  /** カバー写真など暗い背景の上に重ねる場合は true */
+  onDark?: boolean
+}
+
+export const ArchivedBadge = ({ size = 10, onDark = false }: ArchivedBadgeProps) => (
+  <span
+    className="chip"
+    style={onDark
+      ? { background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: size, backdropFilter: 'blur(4px)' }
+      : { background: 'var(--text-4)', color: 'var(--bg)', fontSize: size }}
+  >
+    アーカイブ
+  </span>
+)
+
 // ─── Unread badge ─────────────────────────────────────────────────
 // 未読件数バッジ。ヘッダーのベル・サイドバー・チャンネル一覧・通知パネルで
 // 形・色・サイズを揃えるための共通コンポーネント。0 件では何も描画しない。
@@ -228,6 +261,45 @@ export const UnreadBadge = ({ count, max = 99, size = 'md', style }: UnreadBadge
   )
 }
 
+// ─── Switch ───────────────────────────────────────────────────────
+interface SwitchProps {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  disabled?: boolean
+  size?: 'sm' | 'md'
+  title?: string
+}
+
+export const Switch = ({ checked, onChange, disabled = false, size = 'md', title }: SwitchProps) => {
+  const sm = size === 'sm'
+  const w = sm ? 30 : 36
+  const h = sm ? 17 : 20
+  const knob = sm ? 13 : 16
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      title={title}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      style={{
+        width: w, height: h, borderRadius: 999, border: 'none', padding: 2,
+        background: checked ? 'var(--accent)' : 'var(--border)',
+        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
+        display: 'inline-flex', alignItems: 'center',
+        justifyContent: checked ? 'flex-end' : 'flex-start',
+        flexShrink: 0, transition: 'background .15s ease',
+      }}
+    >
+      <span style={{
+        width: knob, height: knob, borderRadius: '50%', background: 'var(--on-accent)',
+        boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(0,0,0,.3))', transition: 'transform .15s ease',
+      }}/>
+    </button>
+  )
+}
+
 // ─── Mountain photo ───────────────────────────────────────────────
 interface MountainPhotoProps {
   idx?: number
@@ -251,23 +323,33 @@ export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
   value: string
   onChange: (v: string) => void
   placeholder?: string
-}) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: `1px solid ${value ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8, padding: '0 10px', height: 32, width: 260, transition: 'border-color .12s' }}>
-    <Icon name="search" size={14} color={value ? 'var(--accent)' : 'var(--text-3)'}/>
-    <input
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      placeholder={placeholder}
-      style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
-      onKeyDown={e => { if (e.key === 'Escape') onChange('') }}
-    />
-    {value && (
-      <button onClick={() => onChange('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>
-        <Icon name="close" size={12}/>
-      </button>
-    )}
-  </div>
-)
+}) => {
+  const inputRef = React.useRef<HTMLInputElement>(null)
+  // ⌥S: 検索フォーカス
+  useCommand('ctx.searchFocus', () => inputRef.current?.focus())
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-2)', border: `1px solid ${value ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8, padding: '0 10px', height: 32, width: 260, transition: 'border-color .12s' }}>
+      <Icon name="search" size={14} color={value ? 'var(--accent)' : 'var(--text-3)'}/>
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+        onKeyDown={e => {
+          if (e.key !== 'Escape') return
+          // 1回目: 入力をクリア / 2回目（空の時）: 入力欄から離脱（ブラー）
+          if (value) onChange(''); else (e.currentTarget as HTMLElement).blur()
+        }}
+      />
+      {value && (
+        <button onClick={() => onChange('')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', color: 'var(--text-4)' }}>
+          <Icon name="close" size={12}/>
+        </button>
+      )}
+    </div>
+  )
+}
 
 // ─── Placeholder page ─────────────────────────────────────────────
 export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) => (

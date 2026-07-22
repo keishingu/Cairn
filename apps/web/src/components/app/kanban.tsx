@@ -1,11 +1,10 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack } from './primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useKanbanBoard } from '@/hooks/use-kanban-board'
 
 function formatDateRange(start: string | null, end: string | null): string {
   if (!start) return ''
@@ -155,48 +154,9 @@ interface KanbanBoardProps {
 }
 
 export const KanbanBoard = ({ onCardClick, isMobile = false, statusFilter, projectFilter }: KanbanBoardProps) => {
-  const queryClient = useQueryClient()
-
-  const { data: statuses = [], isLoading: statusesLoading } = useQuery<ProjectStatusDto[]>({
-    queryKey: ['statuses'],
-    queryFn: () => fetchWithAuth('/api/projects/statuses').then(r => r.json()),
-  })
-
-  const { data: allProjects = [], isLoading: projectsLoading } = useQuery<ProjectDto[]>({
-    queryKey: ['projects'],
-    queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
-  })
-
-  const projects = projectFilter ? allProjects.filter(projectFilter) : allProjects
-  const visibleStatuses = statusFilter?.length ? statuses.filter(s => statusFilter.includes(s.name)) : statuses
-
-  const isLoading = statusesLoading || projectsLoading
-
-  const updateStatus = useMutation({
-    mutationFn: async ({ id, statusName }: { id: string; statusName: string }) => {
-      const res = await fetchWithAuth(`/api/projects/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ statusName }),
-      })
-      if (!res.ok) throw new Error('Failed to update status')
-    },
-    onMutate: async ({ id, statusName }) => {
-      await queryClient.cancelQueries({ queryKey: ['projects'] })
-      const prev = queryClient.getQueryData<ProjectDto[]>(['projects'])
-      const targetStatus = statuses.find(s => s.name === statusName)
-      queryClient.setQueryData<ProjectDto[]>(
-        ['projects'],
-        old => old?.map(p => p.id === id ? { ...p, statusName, statusColor: targetStatus?.color ?? p.statusColor } : p) ?? [],
-      )
-      return { prev }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(['projects'], ctx.prev)
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
-    },
+  const { statuses: visibleStatuses, projects, isLoading, updateStatus } = useKanbanBoard({
+    statusFilter,
+    projectFilter,
   })
 
   const [draggingId, setDraggingId] = React.useState<string | null>(null)
@@ -207,7 +167,7 @@ export const KanbanBoard = ({ onCardClick, isMobile = false, statusFilter, proje
   const onDragOver = (statusId: string | null) => setDropTarget(statusId)
   const onDrop = (statusId: string) => {
     if (!draggingId) return
-    const targetStatus = statuses.find(s => s.id === statusId)
+    const targetStatus = visibleStatuses.find(status => status.id === statusId)
     if (!targetStatus) return
     const project = projects.find(p => p.id === draggingId)
     if (project && project.statusName !== targetStatus.name) {

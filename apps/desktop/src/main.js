@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, session } = require('electron')
+const { app, BrowserWindow, Menu, session, ipcMain, nativeImage } = require('electron')
 const path = require('path')
 const pkg = require('../package.json')
 
@@ -13,6 +13,14 @@ const NAV_ITEMS = [
   { label: 'カレンダー',       accelerator: 'CmdOrCtrl+2', action: 'calendar' },
   { label: 'カンバン',         accelerator: 'CmdOrCtrl+3', action: 'kanban' },
   { label: 'マイタスク',       accelerator: 'CmdOrCtrl+4', action: 'tasks' },
+  { label: 'チャット一覧',     accelerator: 'CmdOrCtrl+5', action: 'chats' },
+  { label: 'ファイル',         accelerator: 'CmdOrCtrl+6', action: 'files' },
+  { label: 'ギャラリー',       accelerator: 'CmdOrCtrl+7', action: 'gallery' },
+  { label: 'AIアシスタント',   accelerator: 'CmdOrCtrl+8', action: 'ai' },
+  { label: 'メンバー',         accelerator: 'CmdOrCtrl+9', action: 'members' },
+  { label: '設定',             accelerator: 'CmdOrCtrl+,', action: 'settings' },
+  // ⌘0 はズームリセット（resetZoom ロール）と衝突するため割り当てない。
+  // ユーザーメニュー(⌘⌥0)・サイドバー(⌘B) はキーハンドラ/専用メニューで処理する。
 ]
 
 function buildMenu() {
@@ -29,6 +37,11 @@ function buildMenu() {
       label: '表示',
       submenu: [
         ...navSubmenu,
+        {
+          label: 'サイドバーの折りたたみ',
+          accelerator: 'CmdOrCtrl+B',
+          click: (_item, win) => win?.webContents.send('cairn:toggle-sidebar'),
+        },
         { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },
@@ -44,6 +57,33 @@ function buildMenu() {
   ]
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+// Windows タスクバーの未読オーバーレイ（赤ドット）。読み込みは一度だけ。
+// macOS/Linux では未使用（Web の navigator.setAppBadge が Dock/ランチャーに数字を出す）。
+let overlayDot = null
+function getOverlayDot() {
+  if (!overlayDot) {
+    overlayDot = nativeImage.createFromPath(path.join(__dirname, 'assets', 'badge-dot.png'))
+  }
+  return overlayDot
+}
+
+// 未読バッジ数を受け取り、Windows のみタスクバーにオーバーレイを出す。
+// Electron の app.badgeCount / navigator.setAppBadge は Windows 非対応のため、
+// setOverlayIcon で代替する（今回は件数によらずドット表示。数字化は将来対応）。
+function registerBadgeBridge() {
+  ipcMain.on('cairn:set-badge', (event, count) => {
+    if (process.platform !== 'win32') return
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) return
+    const n = typeof count === 'number' && Number.isFinite(count) ? count : 0
+    if (n > 0) {
+      win.setOverlayIcon(getOverlayDot(), `未読 ${n} 件`)
+    } else {
+      win.setOverlayIcon(null, '')
+    }
+  })
 }
 
 function createWindow() {
@@ -80,6 +120,7 @@ app.whenReady().then(() => {
     callback(permission === 'notifications' || permission === 'push')
   })
 
+  registerBadgeBridge()
   buildMenu()
   createWindow()
 

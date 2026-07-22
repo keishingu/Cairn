@@ -8,6 +8,11 @@ export function fileKindLabel(mimeType: string | null, fileName: string): string
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
     mimeType === 'application/msword'
   ) return 'DOC'
+  if (
+    mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+    mimeType === 'application/vnd.ms-powerpoint'
+  ) return 'PPT'
+  if (mimeType === 'text/csv') return 'CSV'
   if (mimeType?.startsWith('image/')) return 'IMG'
   const ext = fileName.split('.').pop()?.toUpperCase() ?? 'FILE'
   return ext.slice(0, 4)
@@ -17,6 +22,8 @@ function fileKindColor(kind: string): { bg: string; color: string } {
   if (kind === 'PDF') return { bg: 'var(--red-soft)', color: 'var(--red-text)' }
   if (kind === 'XLS') return { bg: 'var(--emerald-soft)', color: 'var(--emerald-text)' }
   if (kind === 'DOC') return { bg: 'var(--blue-soft)', color: 'var(--blue-text)' }
+  if (kind === 'PPT') return { bg: 'var(--amber-soft)', color: 'var(--amber-text)' }
+  if (kind === 'CSV') return { bg: 'var(--rose-soft)', color: 'var(--rose-text)' }
   if (kind === 'IMG') return { bg: 'var(--violet-soft)', color: 'var(--violet-text)' }
   return { bg: 'var(--card-2)', color: 'var(--text-3)' }
 }
@@ -37,7 +44,7 @@ export function FileTypeIcon({
   if (mimeType?.startsWith('image/') && fileId) {
     return (
       <img
-        src={`/api/attachments/${fileId}`}
+        src={`/api/attachments/${fileId}?thumb=1`}
         alt={fileName}
         style={{ width, height, borderRadius: 4, objectFit: 'cover', flexShrink: 0, display: 'block' }}
       />

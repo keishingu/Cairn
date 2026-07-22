@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess, requireProjectAccess, requireRole } from '@/lib/permissions'
 
 const GOOGLE_DOC_RE = /https:\/\/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/
 const GOOGLE_SHEET_RE = /https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/
@@ -19,6 +20,18 @@ export interface ExternalLinkDto {
   docId: string
   indexingStatus: 'pending' | 'indexed' | 'failed' | 'skipped'
   alreadyExists?: boolean
+}
+
+// metadata.channelIds（新形式の配列）と旧形式の単一 metadata.channelId の両方を読み、重複なく統合する
+function readMetadataChannelIds(meta: Record<string, unknown>): string[] {
+  const ids = new Set<string>()
+  const legacy = meta['channelId']
+  if (typeof legacy === 'string') ids.add(legacy)
+  const arr = meta['channelIds']
+  if (Array.isArray(arr)) {
+    for (const id of arr) if (typeof id === 'string') ids.add(id)
+  }
+  return [...ids]
 }
 
 function parseGoogleUrl(url: string): { docId: string; docType: ExternalLinkDocType; label: string } | null {
@@ -60,19 +73,43 @@ export async function POST(req: Request) {
   const { docId, docType, label } = parsed
 
   try {
-    const { db, files, channels } = await import('@cairn/db')
+    const { db, files, channels, projects } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
     // channelId からプロジェクトIDを解決
     let projectId: string | null = bodyProjectId ?? null
-    if (!projectId && channelId) {
+    let metadataChannelId: string | null = null
+    if (channelId) {
+      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
+      if (forbidden) return forbidden
+
       const [ch] = await db
         .select({ projectId: channels.projectId })
         .from(channels)
         .where(eq(channels.id, channelId))
         .limit(1)
-      projectId = ch?.projectId ?? null
+      if (projectId && ch?.projectId && ch.projectId !== projectId) {
+        return NextResponse.json({ error: 'channelId と projectId が一致しません' }, { status: 400 })
+      }
+      projectId = projectId ?? ch?.projectId ?? null
+      metadataChannelId = channelId
     }
+
+    if (projectId) {
+      const [project] = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
+        .limit(1)
+
+      if (!project) return new NextResponse(null, { status: 404 })
+    }
+
+    // ゲストは参加プロジェクトにのみリンクを登録できる。プロジェクト未指定（WSレベル）はゲスト不可。
+    const forbidden = projectId
+      ? await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
+      : requireRole(ctx.role, 'member')
+    if (forbidden) return forbidden
 
     // 同一プロジェクト内の重複チェック
     if (projectId) {
@@ -90,6 +127,19 @@ export async function POST(req: Request) {
         const indexingStatus = (rawStatus === 'pending' || rawStatus === 'indexed' || rawStatus === 'failed' || rawStatus === 'skipped')
           ? rawStatus
           : 'pending' as const
+
+        // 既に別チャンネル（または Files タブ経由）で登録済みのリンクを別チャンネルに再投稿した場合、
+        // そのチャンネルのファイル一覧にも表示されるよう関連チャンネルを追加する
+        if (metadataChannelId) {
+          const existingChannelIds = readMetadataChannelIds(dupMeta)
+          if (!existingChannelIds.includes(metadataChannelId)) {
+            await db
+              .update(files)
+              .set({ metadata: { ...dupMeta, channelIds: [...existingChannelIds, metadataChannelId] } })
+              .where(eq(files.id, dup.id))
+          }
+        }
+
         return NextResponse.json({
           fileId: dup.id,
           fileName: label,
@@ -103,7 +153,13 @@ export async function POST(req: Request) {
     }
 
     const initialStatus = docType === 'doc' ? 'pending' : 'skipped'
-    const metadata = { externalUrl: url, docType, docId, indexingStatus: initialStatus }
+    const metadata = {
+      externalUrl: url,
+      docType,
+      docId,
+      indexingStatus: initialStatus,
+      ...(metadataChannelId ? { channelIds: [metadataChannelId] } : {}),
+    }
 
     const [inserted] = await db
       .insert(files)

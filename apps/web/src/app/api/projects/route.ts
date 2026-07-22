@@ -4,7 +4,8 @@
 import { NextResponse } from 'next/server'
 import { createProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ProjectDto {
   id: string
@@ -40,24 +41,19 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers, tasks, profiles, workspaceMembers } = await import('@cairn/db')
+    const { projects, projectStatuses, projectMembers, tasks, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, count, and, inArray } = await import('drizzle-orm')
     const { sql } = await import('drizzle-orm')
 
-    // ゲストは参加中のプロジェクトのみ参照可能
-    const [wsMember] = await db
-      .select({ role: workspaceMembers.role })
-      .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, ctx.userId)))
-      .limit(1)
-
-    const isGuest = wsMember?.role === 'guest'
+    // ゲストは参加中のプロジェクトのみ参照可能（getAuthContext が再照合した ctx.role で判定）
+    const isGuest = ctx.role === 'guest'
     let visibleProjectIds: string[] | null = null
     if (isGuest) {
       const memberRows = await db
         .select({ projectId: projectMembers.projectId })
         .from(projectMembers)
-        .where(eq(projectMembers.userId, ctx.userId))
+        .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+        .where(and(eq(projectMembers.userId, ctx.userId), eq(projects.workspaceId, ctx.workspaceId)))
       visibleProjectIds = memberRows.map(r => r.projectId)
       if (visibleProjectIds.length === 0) return NextResponse.json([])
     }
@@ -85,22 +81,51 @@ export async function GET() {
           : eq(projects.workspaceId, ctx.workspaceId),
       )
 
-    const counts = await db
-      .select({ projectId: projectMembers.projectId, n: count() })
-      .from(projectMembers)
-      .groupBy(projectMembers.projectId)
+    visibleProjectIds = rows.map(r => r.id)
+    if (visibleProjectIds.length === 0) return NextResponse.json([])
+
+    const [counts, memberRows, userMemberRows, taskRows] = await Promise.all([
+      db
+        .select({ projectId: projectMembers.projectId, n: count() })
+        .from(projectMembers)
+        .innerJoin(activeWorkspaceMembers, and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, projectMembers.userId),
+        ))
+        .where(inArray(projectMembers.projectId, visibleProjectIds))
+        .groupBy(projectMembers.projectId),
+      db
+        .select({
+          projectId: projectMembers.projectId,
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+          avatarUrl: workspaceMembers.avatarUrl,
+        })
+        .from(projectMembers)
+        .innerJoin(activeWorkspaceMembers, and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, projectMembers.userId),
+        ))
+        .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+        .where(inArray(projectMembers.projectId, visibleProjectIds))
+        .orderBy(projectMembers.createdAt),
+      db
+        .select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .where(eq(projectMembers.userId, ctx.userId)),
+      db
+        .select({
+          projectId: tasks.projectId,
+          total: count(),
+          completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
+        })
+        .from(tasks)
+        .where(inArray(tasks.projectId, visibleProjectIds))
+        .groupBy(tasks.projectId),
+    ])
+
     const countMap = new Map(counts.map(r => [r.projectId, Number(r.n)]))
 
-    const memberRows = await db
-      .select({
-        projectId: projectMembers.projectId,
-        displayName: profiles.displayName,
-        avatarUrl: workspaceMembers.avatarUrl,
-      })
-      .from(projectMembers)
-      .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-      .orderBy(projectMembers.createdAt)
     const memberNamesMap = new Map<string, string[]>()
     const memberAvatarUrlsMap = new Map<string, (string | null)[]>()
     for (const row of memberRows) {
@@ -114,20 +139,7 @@ export async function GET() {
       memberAvatarUrlsMap.set(row.projectId, avatarUrls)
     }
 
-    const userMemberRows = await db
-      .select({ projectId: projectMembers.projectId })
-      .from(projectMembers)
-      .where(eq(projectMembers.userId, ctx.userId))
     const userProjectIds = new Set(userMemberRows.map(r => r.projectId))
-
-    const taskRows = await db
-      .select({
-        projectId: tasks.projectId,
-        total: count(),
-        completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
-      })
-      .from(tasks)
-      .groupBy(tasks.projectId)
     const taskMap = new Map(taskRows.map(r => [r.projectId, { total: Number(r.total), completed: Number(r.completed) }]))
 
     const result: ProjectDto[] = rows.map(r => ({
@@ -175,49 +187,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
 
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, channels, projectStatuses } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { projects, channels, projectStatuses, projectMembers, workspaceMembers, activeWorkspaceMembers, profiles } = await import('@cairn/db')
+    const { eq, and, inArray } = await import('drizzle-orm')
+    const selectedMemberIds = [...new Set(parsed.data.memberUserIds ?? [])]
+
+    if (selectedMemberIds.length > 0) {
+      // 新規プロジェクトに追加できるのは active メンバーのみ
+      const wsRows = await db
+        .select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
+        .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), inArray(activeWorkspaceMembers.userId, selectedMemberIds)))
+
+      if (wsRows.length !== selectedMemberIds.length) {
+        return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })
+      }
+    }
 
     let coverPhotoUrl = parsed.data.coverPhotoUrl ?? null
 
     if (parsed.data.placePhotoName && !coverPhotoUrl) {
-      const apiKey = process.env['GOOGLE_MAPS_API_KEY']
-      if (apiKey) {
-        try {
-          const mediaRes = await fetch(
-            `https://places.googleapis.com/v1/${parsed.data.placePhotoName}/media?maxWidthPx=1200&skipHttpRedirect=true&key=${apiKey}`,
-          )
-          if (mediaRes.ok) {
-            const media = await mediaRes.json() as { photoUri?: string }
-            if (media.photoUri) {
-              const imgRes = await fetch(media.photoUri)
-              if (imgRes.ok) {
-                const buffer = await imgRes.arrayBuffer()
-                const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
-                const ext = contentType.includes('png') ? 'png' : 'jpg'
-                const slug = parsed.data.placePhotoName.split('/').join('_')
-                const storagePath = `place-photos/${slug}.${ext}`
-                const { createServiceRoleClient } = await import('@/lib/supabase/service')
-                const supabase = createServiceRoleClient()
-                const { error: uploadError } = await supabase.storage
-                  .from('covers')
-                  .upload(storagePath, buffer, { contentType, upsert: false })
-                if (!uploadError || uploadError.message.toLowerCase().includes('already exist')) {
-                  const { data: { publicUrl } } = supabase.storage.from('covers').getPublicUrl(storagePath)
-                  coverPhotoUrl = publicUrl
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[/api/projects POST] place photo upload failed (skipped):', e)
-        }
-      }
+      const { fetchAndStoreCoverFromPlace } = await import('@/lib/cover-photo')
+      coverPhotoUrl = await fetchAndStoreCoverFromPlace(parsed.data.placePhotoName)
     }
 
     const [inserted] = await db
@@ -256,13 +251,36 @@ export async function POST(req: Request) {
       type: 'project',
     })
 
-    const { projectMembers } = await import('@cairn/db')
-    await db.insert(projectMembers).values({
-      projectId: inserted.id,
-      userId: ctx.userId,
-      role: 'leader',
-      attendance: 'attending',
-    })
+    let memberNames: string[] = []
+    let memberAvatarUrls: (string | null)[] = []
+    if (selectedMemberIds.length > 0) {
+      await db.insert(projectMembers).values(
+        selectedMemberIds.map(userId => ({
+          projectId: inserted.id,
+          userId,
+          role: 'member' as const,
+          attendance: 'attending' as const,
+        })),
+      )
+
+      const memberRows = await db
+        .select({
+          userId: profiles.id,
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+          avatarUrl: workspaceMembers.avatarUrl,
+        })
+        .from(profiles)
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+        .where(inArray(profiles.id, selectedMemberIds))
+
+      const memberMap = new Map(memberRows.map(row => [row.userId, row]))
+      const selectedMembers = selectedMemberIds
+        .map(userId => memberMap.get(userId))
+        .filter((row): row is NonNullable<typeof row> => row !== undefined)
+
+      memberNames = selectedMembers.slice(0, 4).map(row => row.displayName)
+      memberAvatarUrls = selectedMembers.slice(0, 4).map(row => row.avatarUrl ?? null)
+    }
 
     try {
       const { inngest } = await import('@/lib/inngest/client')
@@ -282,13 +300,13 @@ export async function POST(req: Request) {
       statusColor,
       startDate: inserted.startDate,
       endDate: inserted.endDate,
-      memberCount: 1,
-      memberNames: [],
-      memberAvatarUrls: [],
+      memberCount: selectedMemberIds.length,
+      memberNames,
+      memberAvatarUrls,
       taskCount: 0,
       completedTaskCount: 0,
       isOwner: true,
-      isMember: true,
+      isMember: selectedMemberIds.includes(ctx.userId),
       archived: false,
       coverPhotoIdx: coverPhotoIdxFromId(inserted.id),
       coverPhotoUrl: inserted.coverPhotoUrl ?? null,

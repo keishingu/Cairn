@@ -1,32 +1,61 @@
 name: Mobile Preview
 
-# apps/mobile に変更があった PR でのみ EAS Update を発行し、
-# Expo Go で読み込める QR コード付きのプレビューリンクを PR にコメントする。
-# EAS の無料枠を消費しすぎないよう、対象パスを apps/mobile 配下に限定している。
 on:
   pull_request:
     paths:
       - 'apps/mobile/**'
+      - 'packages/shared/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/mobile-preview.yml'
+      - '.github/scripts/mobile-preview-queue.cjs'
 
+# 同じ PR の古い実行だけを止める。異なる PR は EAS 同期直前の FIFO ゲートで直列化する。
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: mobile-preview-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   preview:
-    name: Publish EAS Update preview
+    name: Publish Mobile EAS Update preview
     runs-on: ubuntu-latest
     environment: Preview
-    permissions:
-      contents: read
-      pull-requests: write
     if: github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      actions: read
+      contents: read
+      deployments: read
+      pull-requests: write
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check required settings
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          MOBILE_PREVIEW_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
+          MOBILE_PREVIEW_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "GitHub Actions secret EXPO_TOKEN is required."
+            exit 1
+          fi
+          if [ -z "$MOBILE_PREVIEW_SUPABASE_URL" ]; then
+            echo "GitHub Actions variable MOBILE_PREVIEW_SUPABASE_URL is required."
+            exit 1
+          fi
+          if [ -z "$MOBILE_PREVIEW_SUPABASE_ANON_KEY" ]; then
+            echo "GitHub Actions secret MOBILE_PREVIEW_SUPABASE_ANON_KEY is required."
+            exit 1
+          fi
 
-      - uses: pnpm/action-setup@v4
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
-      - uses: actions/setup-node@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: pnpm
@@ -34,18 +63,144 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - uses: expo/expo-github-action@v8
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Publish preview update and comment on PR
+      - name: Resolve Web API base URL
+        id: web-api-base
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const sha = context.payload.pull_request.head.sha
+
+            // PR更新時のVercel buildは明示要求までスキップされるため、
+            // Mobile Previewは初回PR作成時だけ同一SHAのVercel Previewを待つ。
+            if (context.payload.action !== 'opened') {
+              const url = 'https://develop.oss-cairn.com'
+              core.setOutput('url', url)
+              core.info(`PR update uses shared Preview: ${url}`)
+              return
+            }
+
+            const deadline = Date.now() + 5 * 60 * 1000
+
+            while (Date.now() < deadline) {
+              const deployments = await github.paginate(
+                github.rest.repos.listDeployments,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  sha,
+                  per_page: 100,
+                },
+              )
+
+              for (const deployment of deployments) {
+                if (!deployment.environment?.toLowerCase().includes('preview')) {
+                  continue
+                }
+
+                const statuses = await github.rest.repos.listDeploymentStatuses({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  deployment_id: deployment.id,
+                  per_page: 100,
+                })
+                const success = statuses.data.find(
+                  (status) => status.state === 'success' && status.environment_url,
+                )
+
+                if (success) {
+                  const url = success.environment_url.replace(/\/$/, '')
+                  core.setOutput('url', url)
+                  core.info(`Using Vercel Preview: ${url}`)
+                  return
+                }
+              }
+
+              core.info('Vercel Preview is not ready yet; retrying in 10 seconds.')
+              await new Promise((resolve) => setTimeout(resolve, 10_000))
+            }
+
+            core.setFailed('Timed out waiting for a successful Vercel Preview deployment.')
+
+      - name: Wait for earlier Mobile Preview runs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { findEarlierActiveRuns } = require(
+              `${process.env.GITHUB_WORKSPACE}/.github/scripts/mobile-preview-queue.cjs`,
+            )
+            const deadline = Date.now() + 60 * 60 * 1000
+
+            while (Date.now() < deadline) {
+              const response = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'mobile-preview.yml',
+                per_page: 100,
+              })
+
+              let earlierRuns
+              try {
+                earlierRuns = findEarlierActiveRuns(response.data.workflow_runs, context.runId)
+              } catch (error) {
+                core.info(`${error.message}; retrying in 10 seconds.`)
+                await new Promise((resolve) => setTimeout(resolve, 10_000))
+                continue
+              }
+
+              if (earlierRuns.length === 0) {
+                core.info('No earlier Mobile Preview run is active; entering the EAS update section.')
+                return
+              }
+
+              const waitingFor = earlierRuns
+                .map((run) => `#${run.run_number} (${run.status})`)
+                .join(', ')
+              core.info(`Waiting for earlier Mobile Preview runs: ${waitingFor}`)
+              await new Promise((resolve) => setTimeout(resolve, 10_000))
+            }
+
+            core.setFailed('Timed out waiting for earlier Mobile Preview runs.')
+
+      - name: Sync EAS preview environment
+        working-directory: apps/mobile
+        env:
+          MOBILE_PREVIEW_API_BASE_URL: ${{ steps.web-api-base.outputs.url }}
+          MOBILE_PREVIEW_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
+          MOBILE_PREVIEW_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
+        run: |
+          eas env:create \
+            --name EXPO_PUBLIC_API_BASE_URL \
+            --environment preview \
+            --value "$MOBILE_PREVIEW_API_BASE_URL" \
+            --visibility plaintext \
+            --scope project \
+            --force \
+            --non-interactive
+          eas env:create \
+            --name EXPO_PUBLIC_SUPABASE_URL \
+            --environment preview \
+            --value "$MOBILE_PREVIEW_SUPABASE_URL" \
+            --visibility plaintext \
+            --scope project \
+            --force \
+            --non-interactive
+          eas env:create \
+            --name EXPO_PUBLIC_SUPABASE_ANON_KEY \
+            --environment preview \
+            --value "$MOBILE_PREVIEW_SUPABASE_ANON_KEY" \
+            --visibility sensitive \
+            --scope project \
+            --force \
+            --non-interactive
+
+      - name: Publish EAS Update
         uses: expo/expo-github-action/preview@v8
         with:
           working-directory: apps/mobile
-          command: eas update --auto --branch pr-${{ github.event.number }}
-        env:
-          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.MOBILE_PREVIEW_EAS_PROJECT_ID }}
-          EXPO_PUBLIC_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
-          EXPO_PUBLIC_API_BASE_URL: ${{ vars.MOBILE_PREVIEW_API_BASE_URL }}
+          command: eas update --auto --branch pr-${{ github.event.number }} --environment preview --non-interactive

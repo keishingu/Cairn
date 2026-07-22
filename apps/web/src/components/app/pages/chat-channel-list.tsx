@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { Icon, Avatar, AvatarStack, UnreadBadge } from '../primitives'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
@@ -48,17 +49,23 @@ export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; 
 
 // アーカイブ済みプロジェクトなど、通常は隠しておきたいセクション。
 // 既定で折りたたみ、開閉状態は localStorage に保存する。
-const ChatSidebarCollapsibleSection = ({ title, count, defaultCollapsed = true, children }: { title: string; count: number; defaultCollapsed?: boolean; children: React.ReactNode }) => {
+const ChatSidebarCollapsibleSection = ({ title, count, storageKey = STORAGE_KEYS.chat_archived_collapsed, defaultCollapsed = true, children }: {
+  title: string
+  count: number
+  storageKey?: string
+  defaultCollapsed?: boolean
+  children: React.ReactNode
+}) => {
   const [collapsed, setCollapsed] = React.useState(defaultCollapsed)
 
   React.useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.chat_archived_collapsed)
+    const saved = localStorage.getItem(storageKey)
     if (saved !== null) setCollapsed(saved === 'true')
-  }, [])
+  }, [storageKey])
 
   const toggle = () => setCollapsed(prev => {
     const next = !prev
-    localStorage.setItem(STORAGE_KEYS.chat_archived_collapsed, String(next))
+    localStorage.setItem(storageKey, String(next))
     return next
   })
 
@@ -84,9 +91,27 @@ const ChatSidebarCollapsibleSection = ({ title, count, defaultCollapsed = true, 
 
 // ─── ChatSidebarItem ──────────────────────────────────────────────
 
-export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, dot, label, badge, mobile, memberNames, memberCount }: {
+// プロジェクトの期間を一覧用に短く整形（年は省略）。
+// date 列の 'YYYY-MM-DD' を UTC 解釈せずローカル日付として扱う（負オフセットで前日になるのを防ぐ）
+const formatTime = (time: string | null) => time ? time.slice(0, 5) : null
+
+export function formatChannelPeriod(start: string | null, end: string | null, startTime?: string | null, endTime?: string | null): string | undefined {
+  const f = (iso: string) => { const [, m, d] = iso.slice(0, 10).split('-').map(Number); return `${m}/${d}` }
+  const st = formatTime(startTime ?? null)
+  const et = formatTime(endTime ?? null)
+  if (start && end) {
+    const startLabel = `${f(start)}${st ? ` ${st}` : ''}`
+    const endLabel = `${end === start ? '' : f(end)}${et ? `${end === start ? '' : ' '}${et}` : ''}`
+    return endLabel ? `${startLabel}〜${endLabel}` : startLabel
+  }
+  if (end) return `〜${f(end)}${et ? ` ${et}` : ''}`
+  if (start) return `${f(start)}${st ? ` ${st}` : ''}〜`
+  return undefined
+}
+
+export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, dot, label, dateMeta, badge, mobile, memberNames, memberCount }: {
   active?: boolean; onClick?: () => void; prefix?: string
-  avatar?: string; avatarUrl?: string; dot?: string; label: string; badge?: number; mobile?: boolean
+  avatar?: string; avatarUrl?: string; dot?: string; label: string; dateMeta?: string; badge?: number; mobile?: boolean
   memberNames?: string[]; memberCount?: number
 }) => (
   <button onClick={onClick} style={{
@@ -121,7 +146,12 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
         {dot && <span style={{ position: 'absolute', bottom: -1, right: -1, width: mobile ? 10 : 6, height: mobile ? 10 : 6, borderRadius: '50%', background: dot, border: `2px solid var(--${mobile ? 'bg' : 'card-2'})` }}/>}
       </div>
     )}
-    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+    <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6 }}>
+      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      {dateMeta && (
+        <span style={{ flexShrink: 0, fontSize: mobile ? 11 : 10, color: 'var(--text-4)', fontWeight: 500, whiteSpace: 'nowrap' }}>{dateMeta}</span>
+      )}
+    </span>
     {badge != null && <UnreadBadge count={badge} size={mobile ? 'md' : 'sm'} />}
     {memberNames && memberNames.length > 0 && mobile && (
       <AvatarStack names={memberNames} size={22} max={3}/>
@@ -132,6 +162,28 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
     {mobile && <Icon name="chevRight" size={16} color="var(--text-4)"/>}
   </button>
 )
+
+const ProjectMilestoneItem = ({ channel, active, onSelectChannel, isMobile }: {
+  channel: ProjectChannelDto
+  active: boolean
+  onSelectChannel: (id: string) => void
+  isMobile: boolean
+}) => {
+  const period = formatChannelPeriod(channel.startDate, channel.endDate, channel.startTime, channel.endTime)
+  return (
+    <div style={{ paddingLeft: isMobile ? 0 : 18 }}>
+      <ChatSidebarItem
+        active={active}
+        onClick={() => onSelectChannel(channel.channelId)}
+        prefix="┗"
+        label={channel.channelName}
+        {...(period ? { dateMeta: period } : {})}
+        badge={channel.unreadCount}
+        mobile={isMobile}
+      />
+    </div>
+  )
+}
 
 // ─── DmPicker ─────────────────────────────────────────────────────
 
@@ -196,15 +248,41 @@ export const ChannelList = ({
   dms, members, isMobile = false, onAddChannel, onStartDm,
 }: ChannelListProps) => {
   const activeProjectChannels = projectChannels.filter(c => !c.archived)
-  const archivedProjectChannels = projectChannels.filter(c => c.archived)
+  const archivedProjectChannels = projectChannels.filter(c => c.archived && c.milestoneId === null)
+  const projectGroups = activeProjectChannels
+    .filter(c => c.milestoneId === null)
+    .map(general => {
+      const milestones = activeProjectChannels.filter(c => c.projectId === general.projectId && c.milestoneId !== null)
+      return {
+        general,
+        activeMilestones: milestones.filter(c => c.milestoneCompleted !== true),
+        completedMilestones: milestones.filter(c => c.milestoneCompleted === true),
+      }
+    })
+  const completedMilestoneChannels = projectGroups.flatMap(group => group.completedMilestones)
 
   return (
   <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
     <ChatSidebarSection title="プロジェクト">
-      {activeProjectChannels.map(c => (
-        <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
-      ))}
+      {projectGroups.map(({ general, activeMilestones }) => {
+        const period = formatChannelPeriod(general.startDate, general.endDate, general.startTime, general.endTime)
+        return (
+          <React.Fragment key={general.channelId}>
+            <ChatSidebarItem active={channelId === general.channelId} onClick={() => onSelectChannel(general.channelId)} prefix="#" label={general.projectTitle} {...(period ? { dateMeta: period } : {})} badge={general.unreadCount} mobile={isMobile}/>
+            {activeMilestones.map(c => (
+              <ProjectMilestoneItem key={c.channelId} channel={c} active={channelId === c.channelId} onSelectChannel={onSelectChannel} isMobile={isMobile} />
+            ))}
+          </React.Fragment>
+        )
+      })}
     </ChatSidebarSection>
+    {completedMilestoneChannels.length > 0 && (
+      <ChatSidebarCollapsibleSection title="完了済みマイルストーン" count={completedMilestoneChannels.length} storageKey={STORAGE_KEYS.chat_completed_milestones_collapsed}>
+        {completedMilestoneChannels.map(c => (
+          <ProjectMilestoneItem key={c.channelId} channel={c} active={channelId === c.channelId} onSelectChannel={onSelectChannel} isMobile={isMobile} />
+        ))}
+      </ChatSidebarCollapsibleSection>
+    )}
     {archivedProjectChannels.length > 0 && (
       <ChatSidebarCollapsibleSection title="アーカイブ済み" count={archivedProjectChannels.length}>
         {archivedProjectChannels.map(c => (
@@ -217,17 +295,19 @@ export const ChannelList = ({
         <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => onSelectChannel(c.id)} prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''} badge={c.unreadCount} mobile={isMobile} memberNames={c.memberNames} memberCount={c.memberCount}/>
       ))}
     </ChatSidebarSection>
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span>ダイレクトメッセージ</span>
-        <DmPicker members={members} onStartDm={onStartDm}/>
+    {FEATURE_FLAGS.dm && (
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>ダイレクトメッセージ</span>
+          <DmPicker members={members} onStartDm={onStartDm}/>
+        </div>
+        <div>
+          {dms.map(d => (
+            <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => onSelectChannel(d.id)} avatar={d.participantName} {...(d.participantAvatarUrl ? { avatarUrl: d.participantAvatarUrl } : {})} label={d.participantName} badge={d.unreadCount} mobile={isMobile}/>
+          ))}
+        </div>
       </div>
-      <div>
-        {dms.map(d => (
-          <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => onSelectChannel(d.id)} avatar={d.participantName} {...(d.participantAvatarUrl ? { avatarUrl: d.participantAvatarUrl } : {})} label={d.participantName} badge={d.unreadCount} mobile={isMobile}/>
-        ))}
-      </div>
-    </div>
+    )}
     <ChatSidebarSection title="アプリ">
       <ChatSidebarItem prefix="✨" label="AIアシスタント" mobile={isMobile}/>
     </ChatSidebarSection>

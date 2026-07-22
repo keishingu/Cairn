@@ -5,51 +5,20 @@
 
 import React from 'react'
 import type { PageId } from '@/components/app/sidebar'
+import { COMMANDS } from '@/lib/commands'
+import { isMac, isEditableTarget } from '@/lib/command-keys'
 
 /**
- * which-key / vimium 風のショートカットヒント。
- * ⌘（Mac）/ Ctrl（Win）または ⌥（Option/Alt）を押し続けると、次に押せるキーと
- * その操作を一覧表示する。修飾キーを離す・実キーを押す・フォーカスが外れると消える。
- *
- * 表示専用（preventDefault しない）。実際の実行は use-app-shortcuts.ts が担う。
+ * which-key / vimium 風のショートカットヒント。⌘⌥（Mac）/ Ctrl⇧（Win）または ⌥/Alt を
+ * 押し続けると、次に押せるキーと操作を一覧表示する。表示専用で、コマンドカタログから派生する。
  */
 
 type Layer = 'app' | 'context'
-type Hint = { keys: string[]; label: string }
 
-const APP_HINTS: Hint[] = [
-  { keys: ['1'], label: 'プロジェクト一覧' },
-  { keys: ['2'], label: 'カレンダー' },
-  { keys: ['3'], label: 'カンバン' },
-  { keys: ['4'], label: 'マイタスク' },
-]
-
-const CREATE_PAGES = new Set<PageId>(['projects', 'calendar', 'kanban', 'tasks', 'chats', 'ai'])
-
-function contextHints(page: PageId): Hint[] {
-  const items: Hint[] = []
-  if (page === 'calendar') {
-    items.push(
-      { keys: ['M'], label: '月表示' },
-      { keys: ['W'], label: '週表示' },
-      { keys: ['←', '→'], label: '前 / 次の期間' },
-    )
-  }
-  if (page === 'chats') items.push({ keys: ['↑', '↓'], label: '前 / 次のチャンネル' })
-  if (page === 'ai') items.push({ keys: ['↑', '↓'], label: '前 / 次の会話' })
-  if (CREATE_PAGES.has(page)) items.push({ keys: ['N'], label: '新規作成' })
-  return items
-}
-
-function isMac(): boolean {
-  if (typeof navigator === 'undefined') return false
-  return /Mac|iPhone|iPad|iPod/.test(navigator.platform) || /Mac OS X/.test(navigator.userAgent)
-}
-
-function isEditable(el: Element | null): boolean {
-  if (!(el instanceof HTMLElement)) return false
-  const tag = el.tagName
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+function hintsForLayer(layer: Layer, page: PageId): { id: string; keys: string[]; label: string }[] {
+  return COMMANDS
+    .filter(c => c.layer === layer && c.hintKeys && (c.when?.(page) ?? true))
+    .map(c => ({ id: c.id, keys: c.hintKeys ?? [], label: c.title }))
 }
 
 const SHOW_DELAY_MS = 350
@@ -61,7 +30,6 @@ export function ShortcutHints({ page }: { page: PageId }) {
 
   React.useEffect(() => {
     const mac = isMac()
-    const isDesktop = typeof window !== 'undefined' && !!window.cairnDesktop
     let timer: ReturnType<typeof setTimeout> | null = null
     let shown: Layer | null = null
 
@@ -70,27 +38,22 @@ export function ShortcutHints({ page }: { page: PageId }) {
       if (shown !== null) { shown = null; setLayer(null) }
     }
 
+    // アプリ層は全プラットフォームで ⌘⌥/Ctrl⇧（キーハンドラ）に統一して表示する。
     const desiredLayer = (e: KeyboardEvent): Layer | null => {
-      // context: 素の ⌥/Alt
       if (e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) return 'context'
-      // app: Desktop=素の ⌘/Ctrl（ネイティブメニュー） / Web=Mac ⌘⌥・Win Ctrl⇧
       const appHeld = mac
-        ? (isDesktop ? (e.metaKey && !e.ctrlKey && !e.shiftKey) : (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey))
-        : (isDesktop ? (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) : (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey))
-      if (appHeld) return 'app'
-      return null
+        ? (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey)
+        : (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey)
+      return appHeld ? 'app' : null
     }
 
     const onKey = (e: KeyboardEvent) => {
-      // 実キー（修飾キー以外）の押下はショートカット発火 or 入力中。即座に隠す
       const isModKey = e.key === 'Meta' || e.key === 'Alt' || e.key === 'Control' || e.key === 'Shift'
       if (e.type === 'keydown' && !isModKey) { hide(); return }
 
       const next = desiredLayer(e)
-      // context は入力欄では出さない（特殊文字入力・単語移動の邪魔をしない）
-      if (!next || (next === 'context' && isEditable(document.activeElement))) { hide(); return }
-      // context レイヤーで現在画面に出すものが無ければ表示しない
-      if (next === 'context' && contextHints(pageRef.current).length === 0) { hide(); return }
+      if (!next || (next === 'context' && isEditableTarget(document.activeElement))) { hide(); return }
+      if (next === 'context' && hintsForLayer('context', pageRef.current).length === 0) { hide(); return }
 
       if (shown === next || timer) return
       timer = setTimeout(() => { timer = null; shown = next; setLayer(next) }, SHOW_DELAY_MS)
@@ -110,13 +73,10 @@ export function ShortcutHints({ page }: { page: PageId }) {
   if (!layer) return null
 
   const mac = isMac()
-  const isDesktop = typeof window !== 'undefined' && !!window.cairnDesktop
-  const hints = layer === 'app' ? APP_HINTS : contextHints(page)
+  const hints = hintsForLayer(layer, page)
   if (hints.length === 0) return null
 
-  const prefix = layer === 'app'
-    ? (isDesktop ? (mac ? '⌘' : 'Ctrl') : (mac ? '⌘⌥' : 'Ctrl ⇧'))
-    : (mac ? '⌥' : 'Alt')
+  const prefix = layer === 'app' ? (mac ? '⌘⌥' : 'Ctrl ⇧') : (mac ? '⌥' : 'Alt')
   const title = layer === 'app' ? '移動' : '今の画面'
 
   return (
@@ -135,8 +95,8 @@ export function ShortcutHints({ page }: { page: PageId }) {
         {prefix} ・ {title}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {hints.map((h, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {hints.map(h => (
+          <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ display: 'flex', gap: 4 }}>
               {h.keys.map(k => (
                 <kbd

@@ -44,15 +44,17 @@ vi.mock('@/components/app/mobile/header', () => ({
 const STUB_MEMBER: WorkspaceMemberDto = {
   userId: 'user-1',
   displayName: '山田 太郎',
+  email: 'taro@example.com',
   avatarUrl: null,
   role: 'member',
+  membershipStatus: 'active',
   joinedAt: '2026-01-01',
   projectCount: 3,
 }
 
 function makeQC(members: WorkspaceMemberDto[] = [STUB_MEMBER]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  qc.setQueryData(['workspace-members'], members)
+  qc.setQueryData(['workspace-members', 'all'], members)
   return qc
 }
 
@@ -111,5 +113,57 @@ describe('PageMembers (モバイル) — initialUserId によるパネル復元'
   it('initialUserId が存在しない ID の場合はパネルを開かない', () => {
     renderMobile('unknown-id')
     expect(screen.queryByTestId('member-panel')).toBeNull()
+  })
+})
+
+describe('PageMembers — email tooltip', () => {
+  it('メンバーカードに email の title を付ける', () => {
+    renderMobile()
+
+    expect(screen.getByTitle('taro@example.com')).toBeInTheDocument()
+  })
+})
+
+describe('PageMembers — アーカイブ導線（admin）', () => {
+  const ARCHIVED_MEMBER: WorkspaceMemberDto = {
+    userId: 'user-2',
+    displayName: '佐藤 花子',
+    email: 'hanako@example.com',
+    avatarUrl: null,
+    role: 'member',
+    membershipStatus: 'inactive',
+    joinedAt: '2025-04-01',
+    projectCount: 0,
+  }
+
+  function renderAsAdmin(members: WorkspaceMemberDto[]) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    qc.setQueryData(['workspace-members', 'all'], members)
+    qc.setQueryData(['me'], { id: 'admin-1', wsRole: 'admin' })
+    return render(
+      <QueryClientProvider client={qc}>
+        <PageMembers isMobile />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('admin には現役メンバーのカードに操作メニューが出る', () => {
+    renderAsAdmin([STUB_MEMBER])
+    expect(screen.getByLabelText('メンバー操作')).toBeInTheDocument()
+  })
+
+  it('非活性メンバーは既定で隠れ、「アーカイブ済み」トグルで表示される', async () => {
+    renderAsAdmin([STUB_MEMBER, ARCHIVED_MEMBER])
+    // 既定は現役のみ
+    expect(screen.queryByText('佐藤 花子')).toBeNull()
+    await userEvent.click(screen.getByText('アーカイブ済み (1)'))
+    expect(screen.getByText('佐藤 花子')).toBeInTheDocument()
+  })
+
+  it('操作メニューを開くと非活性メンバーには「アーカイブを解除」が出る', async () => {
+    renderAsAdmin([ARCHIVED_MEMBER])
+    await userEvent.click(screen.getByText('アーカイブ済み (1)'))
+    await userEvent.click(screen.getByLabelText('メンバー操作'))
+    expect(screen.getByText('アーカイブを解除')).toBeInTheDocument()
   })
 })

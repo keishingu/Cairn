@@ -7,20 +7,18 @@ import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
 import { hasReadMessage } from '@/lib/push/suppress'
+import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
+import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
+import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
 const PUSH_GRACE_PERIOD = '10s'
 
-// <@userId|displayName> 形式の構造化メンションから userId を抽出する
-function extractMentionedUserIds(content: string): string[] {
-  const matches = content.matchAll(/<@([^|>\s]+)\|[^>\n]+>/g)
-  return [...new Set([...matches].map(m => m[1]!))]
-}
-
-// <@userId|displayName> を @displayName に変換する
-function stripMentions(content: string): string {
-  return content.replace(/<@[^|>\s]+\|([^>\n]+)>/g, '@$1')
+// メンバー一覧から userId → 表示名のリゾルバを作る（通知本文のメンション解決用）
+function nameResolver(members: { userId: string; displayName: string }[]): (id: string) => string | undefined {
+  const map = new Map(members.map(m => [m.userId, m.displayName]))
+  return id => map.get(id)
 }
 
 // 猶予期間中に対象メッセージを既読にした受信者を Push 対象から除外する
@@ -68,14 +66,20 @@ export const onMessageCreated = inngest.createFunction(
     const { messageId, channelId, workspaceId, senderId, senderName, content, attachmentFileIds } =
       event.data as MessageCreatedEvent['data']
 
-    // チャンネルメンバー（送信者を除く）を取得
+    // チャンネルメンバー（送信者を除く）を取得。非活性メンバーは DM・ファイル通知の宛先に
+    // しないよう active_workspace_members に inner join して active のみに絞る
+    // （deactivation は履歴のため channel_members 行を残すため、ここで除外しないと通知が飛ぶ）
     const members = await step.run('fetch-members', async () => {
-      const { db, channelMembers, profiles } = await import('@cairn/db')
-      const { eq } = await import('drizzle-orm')
+      const { db, channelMembers, profiles, activeWorkspaceMembers } = await import('@cairn/db')
+      const { eq, and } = await import('drizzle-orm')
       return db
         .select({ userId: channelMembers.userId, displayName: profiles.displayName })
         .from(channelMembers)
         .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
+        .innerJoin(activeWorkspaceMembers, and(
+          eq(activeWorkspaceMembers.userId, channelMembers.userId),
+          eq(activeWorkspaceMembers.workspaceId, workspaceId),
+        ))
         .where(eq(channelMembers.channelId, channelId))
         .then(rows => rows.filter(r => r.userId !== senderId))
     })
@@ -88,6 +92,8 @@ export const onMessageCreated = inngest.createFunction(
       return ch?.type === 'dm'
     })
 
+    const dmBody = stripMentionsToText(content, nameResolver(members))
+
     if (isDm) {
       // DM はアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
       await step.run('create-dm-notifications', async () => {
@@ -99,7 +105,7 @@ export const onMessageCreated = inngest.createFunction(
             workspaceId,
             type: 'dm' as const,
             title: senderName,
-            body: stripMentions(content).slice(0, 200),
+            body: dmBody.slice(0, 200),
             data: { messageId, channelId, senderName },
           })),
         )
@@ -115,7 +121,7 @@ export const onMessageCreated = inngest.createFunction(
           await Promise.allSettled(
             unreadMembers.map(m => sendPushToUser(m.userId, {
               title: senderName,
-              body: stripMentions(content).slice(0, 100),
+              body: dmBody.slice(0, 100),
               url: `/chats/${channelId}`,
             })),
           )
@@ -125,38 +131,109 @@ export const onMessageCreated = inngest.createFunction(
     }
 
     // @メンション通知（チャンネル未参加でもワークスペースメンバーなら通知）
-    const mentionedIds = extractMentionedUserIds(content)
+    const mentionedIds = extractMentionIds(content)
 
     if (members.length === 0 && mentionedIds.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
     const mentionedMembers = mentionedIds.length > 0
       ? await step.run('fetch-mentioned-members', async () => {
-          const { db, workspaceMembers, profiles } = await import('@cairn/db')
+          const { db, activeWorkspaceMembers, profiles } = await import('@cairn/db')
           const { eq, inArray, and, ne } = await import('drizzle-orm')
+          // 非活性メンバーにはメンション通知を送らない（active membership のみ宛先にする）
           return db
-            .select({ userId: workspaceMembers.userId, displayName: profiles.displayName })
-            .from(workspaceMembers)
-            .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
+            .select({ userId: activeWorkspaceMembers.userId, displayName: profiles.displayName })
+            .from(activeWorkspaceMembers)
+            .innerJoin(profiles, eq(activeWorkspaceMembers.userId, profiles.id))
             .where(and(
-              eq(workspaceMembers.workspaceId, workspaceId),
-              inArray(workspaceMembers.userId, mentionedIds),
-              ne(workspaceMembers.userId, senderId),
+              eq(activeWorkspaceMembers.workspaceId, workspaceId),
+              inArray(activeWorkspaceMembers.userId, mentionedIds),
+              ne(activeWorkspaceMembers.userId, senderId),
             ))
         })
       : []
 
+    // 本文プレビューのメンションは送信時点の最新名で解決する（メンバー名 + メンション対象名）
+    const mentionBody = stripMentionsToText(content, nameResolver([...members, ...mentionedMembers]))
+
+    // アクセスできないチャンネルへメンション通知が飛ぶのを防ぐ。
+    // - プライベートチャンネル: チャンネルメンバーのみ
+    // - プロジェクトチャンネル: 参加外プロジェクトのゲストを除外（メンバー以上は全員可）
+    // 通知を飛ばしても遷移先で 403 になり「通知は来るのに開けない」状態になるため、
+    // requireChannelAccess と同じスコープ感でここで対象を絞る。
+    const notifyMentioned = mentionedMembers.length > 0
+      ? await step.run('filter-mention-access', async () => {
+          const { db, channels, channelMembers, projectMembers, activeWorkspaceMembers } = await import('@cairn/db')
+          const { eq, and, inArray } = await import('drizzle-orm')
+          const { filterMentionRecipients } = await import('@/lib/chat/mention-access')
+          const ids = mentionedMembers.map(m => m.userId)
+
+          const [ch] = await db
+            .select({ type: channels.type, projectId: channels.projectId, isPrivate: channels.isPrivate })
+            .from(channels)
+            .where(eq(channels.id, channelId))
+            .limit(1)
+          if (!ch) return []
+
+          // プライベートチャンネルはメンバーのみ、プロジェクトチャンネルは guest の参加判定に使う集合を引く
+          const channelMemberIds = ch.isPrivate
+            ? new Set(
+                (await db
+                  .select({ userId: channelMembers.userId })
+                  .from(channelMembers)
+                  .where(and(eq(channelMembers.channelId, channelId), inArray(channelMembers.userId, ids)))
+                ).map(r => r.userId),
+              )
+            : new Set<string>()
+
+          const guestIds = ch.type === 'project' && ch.projectId
+            ? new Set(
+                (await db
+                  .select({ userId: activeWorkspaceMembers.userId })
+                  .from(activeWorkspaceMembers)
+                  .where(and(
+                    eq(activeWorkspaceMembers.workspaceId, workspaceId),
+                    inArray(activeWorkspaceMembers.userId, ids),
+                    eq(activeWorkspaceMembers.role, 'guest'),
+                  ))
+                ).map(r => r.userId),
+              )
+            : new Set<string>()
+
+          const projectMemberIds = guestIds.size > 0 && ch.projectId
+            ? new Set(
+                (await db
+                  .select({ userId: projectMembers.userId })
+                  .from(projectMembers)
+                  .where(and(
+                    eq(projectMembers.projectId, ch.projectId),
+                    inArray(projectMembers.userId, [...guestIds]),
+                  ))
+                ).map(r => r.userId),
+              )
+            : new Set<string>()
+
+          return filterMentionRecipients({
+            channel: ch,
+            recipients: mentionedMembers,
+            channelMemberIds,
+            guestIds,
+            projectMemberIds,
+          })
+        })
+      : []
+
     let mentionNotifications = 0
-    if (mentionedMembers.length > 0) {
+    if (notifyMentioned.length > 0) {
       await step.run('create-mention-notifications', async () => {
         const { db, notifications, channelReadStates } = await import('@cairn/db')
         const { sql } = await import('drizzle-orm')
 
         await db.insert(notifications).values(
-          mentionedMembers.map(m => ({
+          notifyMentioned.map(m => ({
             userId: m.userId,
             workspaceId,
             type: 'mention' as const,
             title: `${senderName} があなたをメンションしました`,
-            body: stripMentions(content).slice(0, 200),
+            body: mentionBody.slice(0, 200),
             data: { messageId, channelId, senderName },
           })),
         )
@@ -165,7 +242,7 @@ export const onMessageCreated = inngest.createFunction(
         await db
           .insert(channelReadStates)
           .values(
-            mentionedMembers.map(m => ({
+            notifyMentioned.map(m => ({
               userId: m.userId,
               channelId,
               unreadMentionCount: 1,
@@ -176,7 +253,7 @@ export const onMessageCreated = inngest.createFunction(
             set: { unreadMentionCount: sql`${channelReadStates.unreadMentionCount} + 1` },
           })
       })
-      mentionNotifications = mentionedMembers.length
+      mentionNotifications = notifyMentioned.length
     }
 
     // ファイル添付通知（送信者以外の全メンバーへ）
@@ -213,17 +290,17 @@ export const onMessageCreated = inngest.createFunction(
     }
 
     // メンション Push は猶予後に既読を再確認してから送る（アプリ内通知・バッジは上で記録済み）
-    if (mentionedMembers.length > 0) {
+    if (notifyMentioned.length > 0) {
       await step.sleep('push-grace', PUSH_GRACE_PERIOD)
       const unreadMembers = await step.run('filter-mention-push-targets', () =>
-        filterUnreadRecipients(messageId, channelId, mentionedMembers))
+        filterUnreadRecipients(messageId, channelId, notifyMentioned))
 
       await step.run('send-mention-push', async () => {
         await Promise.allSettled(
           unreadMembers.map(m =>
             sendPushToUser(m.userId, {
               title: `${senderName} があなたをメンションしました`,
-              body: stripMentions(content).slice(0, 100),
+              body: mentionBody.slice(0, 100),
               url: `/chats/${channelId}`,
             }),
           ),
@@ -288,6 +365,77 @@ export const deleteStorageObjects = inngest.createFunction(
     }
 
     return { deleted }
+  },
+)
+
+// 既存の画像ファイルにサムネを後付け生成する。1回の実行で BACKFILL_BATCH 件だけ処理し、
+// 残りがあれば自身を再送して継続する（長時間実行・タイムアウトを避けるため）。
+const BACKFILL_BATCH = 50
+
+export const backfillThumbnails = inngest.createFunction(
+  { id: 'backfill-thumbnails' },
+  { event: 'attachments/backfill-thumbnails' },
+  async ({ event, step }) => {
+    const { workspaceId, afterId } = (event.data ?? {}) as { workspaceId?: string; afterId?: string }
+
+    const targets = await step.run('fetch-targets', async () => {
+      const { db, files, galleryItems } = await import('@cairn/db')
+      const { and, asc, eq, gt, isNotNull, notExists, sql } = await import('drizzle-orm')
+
+      return db
+        .select({ id: files.id, storagePath: files.storagePath })
+        .from(files)
+        .where(and(
+          eq(files.fileType, 'image'),
+          isNotNull(files.storagePath),
+          // metadata にサムネパスが未設定のものだけを対象にする（再実行で重複処理しない）
+          sql`${files.metadata} ->> 'thumbnailPath' IS NULL`,
+          // ギャラリー画像は別バケット(gallery)に保存されており createThumbnailFromStorage
+          // (chat-attachments 固定) では取得できず永久に失敗し続けるため除外する
+          notExists(db.select({ one: sql`1` }).from(galleryItems).where(eq(galleryItems.fileId, files.id))),
+          ...(workspaceId ? [eq(files.workspaceId, workspaceId)] : []),
+          // id キーセットで前進する。失敗行は thumbnailPath が NULL のまま残るが、
+          // ここで id > afterId に進めることで同じバッチを永久再取得して詰まるのを防ぐ
+          ...(afterId ? [gt(files.id, afterId)] : []),
+        ))
+        .orderBy(asc(files.id))
+        .limit(BACKFILL_BATCH)
+    })
+
+    if (targets.length === 0) return { processed: 0, done: true }
+
+    const result = await step.run('generate-thumbnails', async () => {
+      const { createThumbnailFromStorage } = await import('@/lib/attachments/thumbnail')
+      const { db, files } = await import('@cairn/db')
+      const { eq, sql } = await import('drizzle-orm')
+      const supabase = createServiceRoleClient()
+
+      let generated = 0
+      let failed = 0
+      for (const t of targets) {
+        if (!t.storagePath) continue
+        const thumbnailPath = await createThumbnailFromStorage(supabase, t.storagePath)
+        if (!thumbnailPath) { failed++; continue }
+        // 既存 metadata を保持したまま thumbnailPath だけマージする
+        await db
+          .update(files)
+          .set({ metadata: sql`${files.metadata} || ${JSON.stringify({ thumbnailPath })}::jsonb` })
+          .where(eq(files.id, t.id))
+        generated++
+      }
+      return { generated, failed }
+    })
+
+    // バッチが満杯なら未処理が残っている可能性があるので、最後の id を起点に継続する
+    const lastId = targets[targets.length - 1]!.id
+    if (targets.length === BACKFILL_BATCH) {
+      await step.sendEvent('continue-backfill', {
+        name: 'attachments/backfill-thumbnails',
+        data: { ...(workspaceId ? { workspaceId } : {}), afterId: lastId },
+      })
+    }
+
+    return { processed: targets.length, generated: result.generated, failed: result.failed, done: targets.length < BACKFILL_BATCH }
   },
 )
 
@@ -543,8 +691,24 @@ export const indexMemberChunks = inngest.createFunction(
     const { userId, workspaceId } = event.data as { userId: string; workspaceId: string }
 
     await step.run('embed-and-save', async () => {
-      const { db, profiles, memberExperiences, documentChunks } = await import('@cairn/db')
+      const { db, profiles, memberExperiences, documentChunks, activeWorkspaceMembers } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
+
+      const deleteMemberChunks = () =>
+        db
+          .delete(documentChunks)
+          .where(and(eq(documentChunks.sourceType, 'member'), eq(documentChunks.sourceId, userId), eq(documentChunks.workspaceId, workspaceId)))
+
+      const [activeMembership] = await db
+        .select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
+        .where(and(eq(activeWorkspaceMembers.workspaceId, workspaceId), eq(activeWorkspaceMembers.userId, userId)))
+        .limit(1)
+
+      if (!activeMembership) {
+        await deleteMemberChunks()
+        return
+      }
 
       const [profile] = await db
         .select({ displayName: profiles.displayName, bio: profiles.bio })
@@ -588,9 +752,7 @@ export const indexMemberChunks = inngest.createFunction(
         value: content,
       })
 
-      await db
-        .delete(documentChunks)
-        .where(and(eq(documentChunks.sourceType, 'member'), eq(documentChunks.sourceId, userId), eq(documentChunks.workspaceId, workspaceId)))
+      await deleteMemberChunks()
 
       await db.insert(documentChunks).values({
         workspaceId,
@@ -603,5 +765,69 @@ export const indexMemberChunks = inngest.createFunction(
     })
 
     return { indexed: 1 }
+  },
+)
+
+// Phase 1 の AI PMO ハートビート。JST 09:00 に構造化タスクだけを再評価し、
+// LLM・メッセージ巡回・埋め込みは一切行わない。
+export const reconcileAiNudgesHeartbeat = inngest.createFunction(
+  { id: 'reconcile-ai-nudges-heartbeat-phase1' },
+  { cron: 'TZ=Asia/Tokyo 0 9 * * *' },
+  async ({ step }) => step.run('reconcile-task-nudges', async () => {
+    const { reconcilePhaseOneAiNudges } = await import('@/lib/ai-nudges/reconcile')
+    return reconcilePhaseOneAiNudges()
+  }),
+)
+
+// Phase 2 の差分巡回。6時間ごとにDM以外の新着チャンネルだけを二段階LLMで評価する。
+// 02:00 JST の実行は候補を生成した後、08:00までdurable sleepしてからコード側の
+// 発話ゲートを再評価する。concurrency=1 + 同一関数内FIFOにより、古い遅延runを先に配信する。
+export const scanAiNudgesPhaseTwo = inngest.createFunction(
+  { id: 'scan-ai-nudges-phase2', concurrency: { limit: 1 } },
+  { cron: 'TZ=Asia/Tokyo 0 2,8,14,20 * * *' },
+  async ({ step }) => {
+    const channels = await step.run('list-channels-with-new-messages', async () => {
+      const { listPhaseTwoChannelsToScan } = await import('@/lib/ai-nudges/llm-nudge-scan')
+      return listPhaseTwoChannelsToScan()
+    })
+
+    const results: PhaseTwoScanResult[] = []
+    for (const channel of channels) {
+      const deltaInput = await step.run(`load-channel-delta-${channel.channelId}`, async () => {
+        const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/llm-nudge-scan')
+        return loadPhaseTwoChannelInput(channel, 'delta')
+      })
+      const recheckInput = await step.run(`load-channel-recheck-${channel.channelId}`, async () => {
+        const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/llm-nudge-scan')
+        return loadPhaseTwoChannelInput(channel, 'unanswered_ask_recheck')
+      })
+      for (const input of [deltaInput, recheckInput]) {
+        if (!input) continue
+
+      const scanKind = input.isUnansweredAskRecheck ? 'recheck' : 'delta'
+      const primaryCandidates = await step.run(`screen-channel-${channel.channelId}-${scanKind}`, async () => {
+        const { screenPhaseTwoCandidates } = await import('@/lib/ai-nudges/llm-nudge-scan')
+        return screenPhaseTwoCandidates(input)
+      })
+      const refinedCandidates: PhaseTwoNudgeCandidate[] = []
+      for (const [index, candidate] of primaryCandidates.entries()) {
+        const refined = await step.run(`refine-channel-${channel.channelId}-${scanKind}-${index}`, async () => {
+          const { refinePhaseTwoCandidate } = await import('@/lib/ai-nudges/llm-nudge-scan')
+          return refinePhaseTwoCandidate(input, candidate)
+        })
+        if (refined) refinedCandidates.push(refined)
+      }
+      results.push({ input, candidates: refinedCandidates })
+      }
+    }
+    // 配信stepの再試行が22時以降へずれた場合も、DB書き込み直前の判定で翌08時まで待つ。
+    for (let attempt = 0; ; attempt += 1) {
+      const delivery = await step.run(`apply-phase2-speech-gate-${attempt}`, async () => {
+        const { deliverPhaseTwoScanResults } = await import('@/lib/ai-nudges/llm-nudge-delivery')
+        return deliverPhaseTwoScanResults(results)
+      })
+      if (!('deferredUntil' in delivery)) return delivery
+      await step.sleepUntil(`wait-for-quiet-hours-to-end-${attempt}`, delivery.deferredUntil)
+    }
   },
 )

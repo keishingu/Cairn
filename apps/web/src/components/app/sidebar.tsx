@@ -2,20 +2,17 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, UnreadBadge } from './primitives'
 import { Avatar } from './primitives'
 import { useAppShell } from './app-shell-context'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { createClient } from '@/lib/supabase/client'
-import type { CurrentUserDto } from '@/app/api/me/route'
 import type { UserStatus } from '@/lib/user-status'
-import type { WorkspaceDto } from '@/app/api/workspaces/route'
-import type { WorkspaceListItemDto } from '@/app/api/workspaces/list/route'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useCommand } from '@/lib/command-registry'
 import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
+import { useSidebarCurrentUser, useSidebarProjects, useSidebarWorkspace, useSidebarWorkspaceList } from '@/hooks/use-sidebar'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 export type PageId =
@@ -29,10 +26,12 @@ interface SidebarItemProps {
   active?: boolean
   badge?: number | undefined
   onClick?: () => void
+  // hover 時に遷移先ルートを先読みする（コールドスタート対策 A-1）
+  onPrefetch?: () => void
   indent?: boolean
 }
 
-const SidebarItem = ({ icon, label, active, badge, onClick, indent }: SidebarItemProps) => (
+const SidebarItem = ({ icon, label, active, badge, onClick, onPrefetch, indent }: SidebarItemProps) => (
   <button onClick={onClick} style={{
     display: 'flex', alignItems: 'center', gap: 10, width: '100%',
     padding: indent ? '7px 10px 7px 30px' : '8px 10px', borderRadius: 8, border: 'none',
@@ -42,7 +41,7 @@ const SidebarItem = ({ icon, label, active, badge, onClick, indent }: SidebarIte
     cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
     transition: 'background .12s', position: 'relative',
   }}
-    onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+    onMouseEnter={e => { onPrefetch?.(); if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
     onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
   >
     {active && <span style={{ position: 'absolute', left: -12, top: 6, bottom: 6, width: 3, borderRadius: 2, background: 'var(--accent)' }}/>}
@@ -64,10 +63,11 @@ interface SidebarGroupProps {
   label: string
   page: PageId
   setPage: (p: PageId) => void
+  prefetchPage?: ((p: PageId) => void) | undefined
   items: SidebarGroupItem[]
 }
 
-const SidebarGroup = ({ icon, label, page, setPage, items }: SidebarGroupProps) => {
+const SidebarGroup = ({ icon, label, page, setPage, prefetchPage, items }: SidebarGroupProps) => {
   const isChildActive = items.some(it => it.id === page)
   const [open, setOpen] = React.useState(isChildActive)
   React.useEffect(() => { if (isChildActive) setOpen(true) }, [isChildActive])
@@ -81,7 +81,7 @@ const SidebarGroup = ({ icon, label, page, setPage, items }: SidebarGroupProps) 
         fontWeight: isChildActive ? 600 : 500, fontSize: 13.5,
         cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
       }}
-        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
+        onMouseEnter={e => { prefetchPage?.(items[0]?.id ?? page); (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
       >
         <Icon name={icon} size={17}/>
@@ -95,7 +95,8 @@ const SidebarGroup = ({ icon, label, page, setPage, items }: SidebarGroupProps) 
           {items.map(it => (
             <SidebarItem key={it.id} icon={it.icon} label={it.label}
               {...(it.badge !== undefined ? { badge: it.badge } : {})}
-              active={page === it.id} onClick={() => setPage(it.id)} indent/>
+              active={page === it.id} onClick={() => setPage(it.id)}
+              onPrefetch={() => prefetchPage?.(it.id)} indent/>
           ))}
         </div>
       )}
@@ -153,12 +154,14 @@ const PinnedProjectItem = ({ name, dot, onClick, onUnpin }: PinnedProjectItemPro
 interface SidebarProps {
   page: PageId
   setPage: (p: PageId) => void
+  // hover 時に遷移先ルートを先読みするコールバック（コールドスタート対策 A-1）
+  prefetchPage?: (p: PageId) => void
   openPanel?: (project: ProjectDto) => void
   collapsed?: boolean
   onToggleCollapse?: () => void
 }
 
-export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleCollapse }: SidebarProps) => {
+export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = false, onToggleCollapse }: SidebarProps) => {
   const router = useRouter()
   const projectLabel = useProjectLabel()
   const { data: projectChannels = [] } = useProjectChannels()
@@ -169,17 +172,12 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
     () => [...projectChannels.filter(c => !c.archived), ...workspaceChannels, ...dms].reduce((sum, c) => sum + (c.unreadCount ?? 0), 0),
     [projectChannels, workspaceChannels, dms],
   )
-  const { data: workspace } = useQuery<WorkspaceDto>({
-    queryKey: ['workspace'],
-    queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
-    staleTime: 60_000,
-  })
-  const { data: workspaceList = [] } = useQuery<WorkspaceListItemDto[]>({
-    queryKey: ['workspace-list'],
-    queryFn: () => fetchWithAuth('/api/workspaces/list').then(r => r.json()),
-    staleTime: 60_000,
-  })
+  const { data: workspace } = useSidebarWorkspace()
+  const { data: workspaceList = [] } = useSidebarWorkspaceList()
   const [switcherOpen, setSwitcherOpen] = React.useState(false)
+
+  // ⌘⌥; : ワークスペース切替ポップオーバーをトグル
+  useCommand('app.workspaceMenu', () => setSwitcherOpen(o => !o))
 
   function switchWorkspace(id: string) {
     document.cookie = `cairn_workspace_id=${id}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
@@ -194,11 +192,7 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
   ]
   const { data: pinnedProjects = [] } = usePinnedProjects()
   const unpinProject = useUnpinProject()
-  const { data: allProjects = [] } = useQuery<ProjectDto[]>({
-    queryKey: ['projects'],
-    queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
-    staleTime: 30_000,
-  })
+  const { data: allProjects = [] } = useSidebarProjects()
 
   const logoEl = (
     <div style={{
@@ -323,18 +317,18 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
 
         {/* アイコンナビ */}
         <nav style={{ flex: 1, overflow: 'auto', padding: '10px 6px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <CollapsedNavItem icon="list"     label={`${projectLabel}：一覧`}       active={page === 'projects'} onClick={() => setPage('projects')}/>
-          <CollapsedNavItem icon="calendar" label={`${projectLabel}：カレンダー`} active={page === 'calendar'} onClick={() => setPage('calendar')}/>
-          <CollapsedNavItem icon="kanban"   label={`${projectLabel}：カンバン`}   active={page === 'kanban'}   onClick={() => setPage('kanban')}/>
-          <CollapsedNavItem icon="check"    label="マイタスク"     active={page === 'tasks'}   onClick={() => setPage('tasks')}/>
-          <CollapsedNavItem icon="chat"     label="チャット一覧"   badge={totalChatUnread || undefined} active={page === 'chats'}   onClick={() => setPage('chats')}/>
+          <CollapsedNavItem icon="list"     label={`${projectLabel}：一覧`}       active={page === 'projects'} onClick={() => setPage('projects')} onPrefetch={() => prefetchPage?.('projects')}/>
+          <CollapsedNavItem icon="calendar" label={`${projectLabel}：カレンダー`} active={page === 'calendar'} onClick={() => setPage('calendar')} onPrefetch={() => prefetchPage?.('calendar')}/>
+          <CollapsedNavItem icon="kanban"   label={`${projectLabel}：カンバン`}   active={page === 'kanban'}   onClick={() => setPage('kanban')} onPrefetch={() => prefetchPage?.('kanban')}/>
+          <CollapsedNavItem icon="check"    label="マイタスク"     active={page === 'tasks'}   onClick={() => setPage('tasks')} onPrefetch={() => prefetchPage?.('tasks')}/>
+          <CollapsedNavItem icon="chat"     label="チャット一覧"   badge={totalChatUnread || undefined} active={page === 'chats'}   onClick={() => setPage('chats')} onPrefetch={() => prefetchPage?.('chats')}/>
           <div style={{ margin: '6px 0', height: 1, background: 'var(--divider)' }}/>
-          <CollapsedNavItem icon="file"     label="ファイル"       active={page === 'files'}   onClick={() => setPage('files')}/>
-          <CollapsedNavItem icon="image"    label="ギャラリー"     active={page === 'gallery'} onClick={() => setPage('gallery')}/>
-          <CollapsedNavItem icon="sparkles" label="AIアシスタント" active={page === 'ai'}      onClick={() => setPage('ai')}/>
+          <CollapsedNavItem icon="file"     label="ファイル"       active={page === 'files'}   onClick={() => setPage('files')} onPrefetch={() => prefetchPage?.('files')}/>
+          <CollapsedNavItem icon="image"    label="ギャラリー"     active={page === 'gallery'} onClick={() => setPage('gallery')} onPrefetch={() => prefetchPage?.('gallery')}/>
+          <CollapsedNavItem icon="sparkles" label="AIアシスタント" active={page === 'ai'}      onClick={() => setPage('ai')} onPrefetch={() => prefetchPage?.('ai')}/>
           <div style={{ margin: '6px 0', height: 1, background: 'var(--divider)' }}/>
-          <CollapsedNavItem icon="users"    label="メンバー"       active={page === 'members'}  onClick={() => setPage('members')}/>
-          <CollapsedNavItem icon="settings" label="設定"           active={page === 'settings'} onClick={() => setPage('settings')}/>
+          <CollapsedNavItem icon="users"    label="メンバー"       active={page === 'members'}  onClick={() => setPage('members')} onPrefetch={() => prefetchPage?.('members')}/>
+          <CollapsedNavItem icon="settings" label="設定"           active={page === 'settings'} onClick={() => setPage('settings')} onPrefetch={() => prefetchPage?.('settings')}/>
         </nav>
         <SidebarUserFooter collapsed={true} onToggle={onToggleCollapse}/>
       </aside>
@@ -456,22 +450,22 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
       <nav style={{ flex: 1, overflow: 'auto', padding: '12px 12px' }}>
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase' }}>ワークスペース</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <SidebarGroup icon="folder" label={projectLabel} page={page} setPage={setPage} items={projectChildren}/>
-          <SidebarItem icon="check" label="マイタスク" active={page === 'tasks'} onClick={() => setPage('tasks')}/>
-          <SidebarItem icon="chat" label="チャット一覧" badge={totalChatUnread || undefined} active={page === 'chats'} onClick={() => setPage('chats')}/>
+          <SidebarGroup icon="folder" label={projectLabel} page={page} setPage={setPage} prefetchPage={prefetchPage} items={projectChildren}/>
+          <SidebarItem icon="check" label="マイタスク" active={page === 'tasks'} onClick={() => setPage('tasks')} onPrefetch={() => prefetchPage?.('tasks')}/>
+          <SidebarItem icon="chat" label="チャット一覧" badge={totalChatUnread || undefined} active={page === 'chats'} onClick={() => setPage('chats')} onPrefetch={() => prefetchPage?.('chats')}/>
         </div>
 
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '14px 10px 6px', textTransform: 'uppercase' }}>ライブラリ</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <SidebarItem icon="file"     label="ファイル"       active={page === 'files'}   onClick={() => setPage('files')}/>
-          <SidebarItem icon="image"    label="ギャラリー"     active={page === 'gallery'} onClick={() => setPage('gallery')}/>
-          <SidebarItem icon="sparkles" label="AIアシスタント" active={page === 'ai'}      onClick={() => setPage('ai')}/>
+          <SidebarItem icon="file"     label="ファイル"       active={page === 'files'}   onClick={() => setPage('files')} onPrefetch={() => prefetchPage?.('files')}/>
+          <SidebarItem icon="image"    label="ギャラリー"     active={page === 'gallery'} onClick={() => setPage('gallery')} onPrefetch={() => prefetchPage?.('gallery')}/>
+          <SidebarItem icon="sparkles" label="AIアシスタント" active={page === 'ai'}      onClick={() => setPage('ai')} onPrefetch={() => prefetchPage?.('ai')}/>
         </div>
 
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '14px 10px 6px', textTransform: 'uppercase' }}>管理</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <SidebarItem icon="users"    label="メンバー" active={page === 'members'}  onClick={() => setPage('members')}/>
-          <SidebarItem icon="settings" label="設定"     active={page === 'settings'} onClick={() => setPage('settings')}/>
+          <SidebarItem icon="users"    label="メンバー" active={page === 'members'}  onClick={() => setPage('members')} onPrefetch={() => prefetchPage?.('members')}/>
+          <SidebarItem icon="settings" label="設定"     active={page === 'settings'} onClick={() => setPage('settings')} onPrefetch={() => prefetchPage?.('settings')}/>
         </div>
 
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '18px 10px 8px', textTransform: 'uppercase' }}>
@@ -508,9 +502,11 @@ interface CollapsedNavItemProps {
   active?: boolean
   badge?: number | undefined
   onClick?: () => void
+  // hover 時に遷移先ルートを先読みする（コールドスタート対策 A-1）
+  onPrefetch?: () => void
 }
 
-const CollapsedNavItem = ({ icon, label, active, badge, onClick }: CollapsedNavItemProps) => (
+const CollapsedNavItem = ({ icon, label, active, badge, onClick, onPrefetch }: CollapsedNavItemProps) => (
   <button
     onClick={onClick}
     title={label}
@@ -521,7 +517,7 @@ const CollapsedNavItem = ({ icon, label, active, badge, onClick }: CollapsedNavI
       color: active ? 'var(--accent)' : 'var(--text-3)',
       cursor: 'pointer', position: 'relative',
     }}
-    onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
+    onMouseEnter={e => { onPrefetch?.(); if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
     onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
   >
     <Icon name={icon} size={18}/>
@@ -552,52 +548,14 @@ const StatusDot = ({ status, size = 10 }: { status: UserStatus | undefined; size
 
 function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolean | undefined; onToggle?: (() => void) | undefined }) {
   const router = useRouter()
-  const queryClient = useQueryClient()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
 
-  const { data: me } = useQuery<CurrentUserDto>({
-    queryKey: ['me'],
-    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
-    staleTime: 60_000,
-  })
+  // ⌘⌥0: ユーザーメニューをトグル
+  useCommand('app.userMenu', () => setMenuOpen(o => !o))
+
+  const { data: me, statusMutation, statusMessageMutation } = useSidebarCurrentUser()
   const displayName = me?.displayName ?? '…'
-
-  const statusMutation = useMutation({
-    mutationFn: async (status: UserStatus) => {
-      const res = await fetchWithAuth('/api/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(d.error ?? 'ステータスの更新に失敗しました')
-      }
-      return status
-    },
-    onSuccess: (status) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status } : prev)
-    },
-  })
-
-  const statusMessageMutation = useMutation({
-    mutationFn: async (statusMessage: string | null) => {
-      const res = await fetchWithAuth('/api/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ statusMessage }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(d.error ?? 'ステータスメッセージの更新に失敗しました')
-      }
-      return statusMessage
-    },
-    onSuccess: (statusMessage) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, statusMessage } : prev)
-    },
-  })
 
   const [statusMessageDraft, setStatusMessageDraft] = React.useState('')
   React.useEffect(() => {

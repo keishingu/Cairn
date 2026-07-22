@@ -3,6 +3,8 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireProjectAccess } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ProjectFileDto {
   id: string
@@ -14,6 +16,7 @@ export interface ProjectFileDto {
   createdAt: string
   externalUrl?: string
   indexingStatus?: string
+  isLatest: boolean
 }
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -24,14 +27,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
   if (error) return error
 
   try {
-    const { db, files, profiles, projects, galleryItems, documentChunks } = await import('@cairn/db')
+    const { db, files, profiles, projects, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
     const { eq, and, isNull, desc, inArray } = await import('drizzle-orm')
-
-    const INDEXABLE_MIMES = new Set([
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    ])
+    const { isIndexable } = await import('@/lib/ai/extract-text')
 
     // プロジェクトが同一ワークスペースに属することを確認
     const [project] = await db
@@ -44,6 +42,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
       return new NextResponse(null, { status: 404 })
     }
 
+    // ゲストは参加プロジェクトのファイルのみ閲覧可
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
+    if (forbidden) return forbidden
+
     const rows = await db
       .select({
         id: files.id,
@@ -51,12 +53,16 @@ export async function GET(_req: Request, { params }: RouteContext) {
         mimeType: files.mimeType,
         fileSize: files.fileSize,
         fileType: files.fileType,
-        uploaderName: profiles.displayName,
+        uploaderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         createdAt: files.createdAt,
         metadata: files.metadata,
       })
       .from(files)
       .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
+      .leftJoin(
+        workspaceMembers,
+        and(eq(workspaceMembers.userId, files.uploadedBy), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
+      )
       .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
       .where(and(
         eq(files.projectId, projectId),
@@ -89,7 +95,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         if (r.fileType === 'link') {
           const s = meta['indexingStatus']
           indexingStatus = typeof s === 'string' ? s : undefined
-        } else if (INDEXABLE_MIMES.has(r.mimeType ?? '')) {
+        } else if (isIndexable(r.mimeType ?? '')) {
           indexingStatus = chunkedIdSet.has(r.id) ? 'indexed' : 'pending'
         }
 
@@ -101,6 +107,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
           fileType: r.fileType,
           uploaderName: r.uploaderName,
           createdAt: r.createdAt.toISOString(),
+          isLatest: meta['isLatest'] === true,
           ...(typeof externalUrl === 'string' ? { externalUrl } : {}),
           ...(indexingStatus !== undefined ? { indexingStatus } : {}),
         }

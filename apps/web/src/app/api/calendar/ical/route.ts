@@ -78,14 +78,18 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const token = searchParams.get('token')
   const scope = searchParams.get('scope') ?? 'me'
+  const workspaceId = searchParams.get('workspaceId')
 
   if (!token) {
     return new NextResponse('token is required', { status: 400 })
   }
+  if (!workspaceId) {
+    return new NextResponse('workspaceId is required', { status: 400 })
+  }
 
   try {
     const { db } = await import('@cairn/db')
-    const { profiles, projects, projectMembers, workspaceMembers } = await import('@cairn/db')
+    const { profiles, projects, projectMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and, or, isNotNull } = await import('drizzle-orm')
 
     const [profile] = await db
@@ -99,10 +103,14 @@ export async function GET(req: NextRequest) {
 
     const userId = profile.id
 
+    // active membership のみ iCal フィードを発行する（非活性メンバーは当該 WS 未所属扱い）
     const [membership] = await db
-      .select({ workspaceId: workspaceMembers.workspaceId })
-      .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, userId))
+      .select({ workspaceId: activeWorkspaceMembers.workspaceId, role: activeWorkspaceMembers.role })
+      .from(activeWorkspaceMembers)
+      .where(and(
+        eq(activeWorkspaceMembers.userId, userId),
+        eq(activeWorkspaceMembers.workspaceId, workspaceId),
+      ))
 
     if (!membership) {
       return new NextResponse('No workspace found', { status: 404 })
@@ -111,6 +119,11 @@ export async function GET(req: NextRequest) {
     let rows: ProjectRow[]
 
     if (scope === 'workspace') {
+      const canReadWorkspaceCalendar = membership.role === 'owner' || membership.role === 'admin'
+      if (!canReadWorkspaceCalendar) {
+        return new NextResponse('Forbidden', { status: 403 })
+      }
+
       rows = await db
         .select({ id: projects.id, title: projects.title, startDate: projects.startDate, endDate: projects.endDate })
         .from(projects)
