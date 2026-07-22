@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, integer, jsonb, pgTable, pgView, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { bigint, boolean, integer, jsonb, pgTable, pgView, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { eq } from 'drizzle-orm'
 import { memberStatusEnum, userStatusEnum, workspaceRoleEnum } from './enums'
 
@@ -39,10 +39,10 @@ export const workspaces = pgTable('workspaces', {
   aiNudgesPhaseOneEnabled: boolean('ai_nudges_phase_one_enabled').notNull().default(true),
   aiNudgesPhaseTwoEnabled: boolean('ai_nudges_phase_two_enabled').notNull().default(false),
   // Phase 2 の実際の利用量。月次請求額の推定ではなく、OpenAI が返したトークン数の累計を保持する。
-  aiNudgesPhaseTwoInputTokens: integer('ai_nudges_phase_two_input_tokens').notNull().default(0),
-  aiNudgesPhaseTwoOutputTokens: integer('ai_nudges_phase_two_output_tokens').notNull().default(0),
-  aiNudgesPhaseTwoTotalTokens: integer('ai_nudges_phase_two_total_tokens').notNull().default(0),
-  aiNudgesPhaseTwoRequestCount: integer('ai_nudges_phase_two_request_count').notNull().default(0),
+  aiNudgesPhaseTwoInputTokens: bigint('ai_nudges_phase_two_input_tokens', { mode: 'number' }).notNull().default(0),
+  aiNudgesPhaseTwoOutputTokens: bigint('ai_nudges_phase_two_output_tokens', { mode: 'number' }).notNull().default(0),
+  aiNudgesPhaseTwoTotalTokens: bigint('ai_nudges_phase_two_total_tokens', { mode: 'number' }).notNull().default(0),
+  aiNudgesPhaseTwoRequestCount: bigint('ai_nudges_phase_two_request_count', { mode: 'number' }).notNull().default(0),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => profiles.id),
