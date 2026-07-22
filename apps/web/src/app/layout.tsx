@@ -11,6 +11,7 @@ import { ServiceWorkerRegistrar } from '@/components/service-worker-registrar'
 import { ThemeCookieSync } from '@/components/theme-cookie-sync'
 import { DynamicAppleTouchIcon } from '@/components/dynamic-apple-touch-icon'
 import { DynamicFavicon } from '@/components/dynamic-favicon'
+import { PostHogProvider } from '@/components/posthog-provider'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -47,12 +48,14 @@ export default function RootLayout({
     <html lang="ja" suppressHydrationWarning>
       <body className={`${inter.variable} ${notoSansJP.variable}`} style={{ margin: 0, padding: 0, height: '100%' }}>
         <ThemeProvider attribute={['class', 'data-theme']} defaultTheme="system" enableSystem disableTransitionOnChange>
-          <AccentColorProvider>
-            <QueryProvider>{children}</QueryProvider>
-            <ThemeCookieSync />
-            <DynamicAppleTouchIcon />
-            <DynamicFavicon />
-          </AccentColorProvider>
+          <PostHogProvider>
+            <AccentColorProvider>
+              <QueryProvider>{children}</QueryProvider>
+              <ThemeCookieSync />
+              <DynamicAppleTouchIcon />
+              <DynamicFavicon />
+            </AccentColorProvider>
+          </PostHogProvider>
           <Toaster />
         </ThemeProvider>
         <ServiceWorkerRegistrar />

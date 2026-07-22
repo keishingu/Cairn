@@ -63,6 +63,7 @@ pnpm dev
 
 - **DM と AI PMO は環境別 feature flag でリリースを制御する**: `packages/shared/src/config/feature-flags.ts` の `FEATURE_FLAGS` を Web・API・Expo で共有する。`VERCEL_ENV === 'production'` のときだけ `dm` / `aiPmo` を `false`、それ以外では `true` とする。Productionへ公開する際はこの条件を変更して再ビルド・再リリースする。背景は [`docs/telecom-business-filing-research.md`](docs/telecom-business-filing-research.md)
 
+- **Web のプロダクト分析は production 限定の PostHog**: Vercel Production のみに `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` を設定し、環境変数がある場合だけ初期化する。ページビューは History API の変化を自動捕捉し、認証後は Supabase の user ID を distinct ID として `identify`、サインアウト時は `reset` する。Feature Flag は市場投入判断による機能公開制御に使い、インフラ接続の環境差には使わない
 - **tsconfig の extends は相対パス**で書く（`../../packages/config/tsconfig/base.json`）
   - Vite/Vitest の `tsconfck` が workspace パッケージ参照を解決できないため
 - **AIモデルは OpenAI**（gpt-5 / gpt-5-mini）。Claude は使用しない

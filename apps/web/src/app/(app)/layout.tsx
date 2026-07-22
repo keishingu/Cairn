@@ -7,6 +7,7 @@ import { MobileShell } from './_shells/mobile-shell'
 import { RealtimeProvider } from '@/components/realtime/realtime-provider'
 import { FocusWarmup } from '@/components/app/focus-warmup'
 import { AppBadgeSync } from '@/components/app/app-badge-sync'
+import { PostHogUserIdentity } from '@/components/posthog-user-identity'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const headersList = await headers()
@@ -15,6 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <RealtimeProvider>
+      <PostHogUserIdentity />
       <FocusWarmup />
       <AppBadgeSync />
       {isMobile ? <MobileShell hideNav={isWebView} /> : <PCShell>{children}</PCShell>}
