@@ -41,13 +41,11 @@ describe('モバイルプレビューの環境同期', () => {
     expect(workflow).toContain('ref: ${{ github.event.pull_request.head.sha }}')
   })
 
-  it('Webビルド除外対象だけのPRはdevelopのWeb APIを利用する', () => {
-    expect(workflow).toContain('scripts/vercel-ignore-build.cjs')
-    expect(workflow).toContain('github.rest.pulls.listFiles')
-    expect(workflow).toContain('context.payload.before')
-    expect(workflow).toContain('github.rest.repos.compareCommits')
-    expect(workflow).toContain('changedFilePaths(files)')
+  it('PR更新時はdevelop、初回作成時は同一SHAのWeb APIを利用する', () => {
+    expect(workflow).toContain("context.payload.action !== 'opened'")
     expect(workflow).toContain("const url = 'https://develop.oss-cairn.com'")
+    expect(workflow).toContain('const sha = context.payload.pull_request.head.sha')
+    expect(workflow).toContain('github.rest.repos.listDeployments')
     expect(workflow).toContain('steps.web-api-base.outputs.url')
   })
 
