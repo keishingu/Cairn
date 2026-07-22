@@ -153,7 +153,7 @@ describe('patchMilestoneSchema', () => {
   })
 })
 
-describe('patchWorkspaceSettingsSchema', () => {
+describe('ワークスペース設定更新スキーマ', () => {
   it('空のプロジェクト名称を既定値へ戻すため null に正規化する', () => {
     const result = patchWorkspaceSettingsSchema.safeParse({ projectLabel: '   ' })
     expect(result.success).toBe(true)
