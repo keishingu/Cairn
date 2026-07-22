@@ -107,14 +107,14 @@ pnpm dev
 
 `apps/mobile`、`packages/shared`、またはモバイルの依存関係に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。互換性のある Cairn Development Build で QR を開けば、ローカル環境を起動せずに確認できる（Expo Go は使用しない）。
 
-| 起動方法                                    | JavaScript の配信元                      | Web / API 接続先                       | Supabase 接続先                         |
-| ------------------------------------------- | ---------------------------------------- | -------------------------------------- | --------------------------------------- |
-| Development Build からローカル Metro を開く | 開発 PC の Metro                         | 未設定時は `http://<Metroホスト>:3128` | 未設定時は `http://<Metroホスト>:54321` |
-| PR コメントの QR を開く                     | PR ごとの EAS Update                     | 対象 PR の Vercel Preview URL          | 共有の Supabase Preview                 |
-| `eas build --profile preview`               | ビルド内蔵 bundle + `preview` channel    | EAS の `preview` 環境                  | EAS の `preview` 環境                   |
-| `eas build --profile production`            | ビルド内蔵 bundle + `production` channel | EAS の `production` 環境               | EAS の `production` 環境                |
+| 起動方法                                    | JavaScript の配信元                      | Web / API 接続先                                                                  | Supabase 接続先                         |
+| ------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------- |
+| Development Build からローカル Metro を開く | 開発 PC の Metro                         | 未設定時は `http://<Metroホスト>:3128`                                            | 未設定時は `http://<Metroホスト>:54321` |
+| PR コメントの QR を開く                     | PR ごとの EAS Update                     | PR 作成時は対象 PR の Vercel Preview、更新時は `https://develop.oss-cairn.com`    | 共有の Supabase Preview                 |
+| `eas build --profile preview`               | ビルド内蔵 bundle + `preview` channel    | EAS の `preview` 環境                                                             | EAS の `preview` 環境                   |
+| `eas build --profile production`            | ビルド内蔵 bundle + `production` channel | EAS の `production` 環境                                                          | EAS の `production` 環境                |
 
-PR Preview の workflow は、対象 commit の Vercel Preview 完了を待ち、Web / API URL と共有 Supabase の設定を EAS の `preview` 環境へ作成または上書きしてから、`eas update --environment preview` を実行する。ローカルの `.env.local` は EAS Update に混入しない。EAS の `preview` 環境は共有状態のため、同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで順番に処理する。
+PR Preview の workflow は、PR 作成時だけ対象 commit の Vercel Preview 完了を待ち、以降の PR 更新時は `https://develop.oss-cairn.com` を Web / API URL に使う。選択した URL と共有 Supabase の設定を EAS の `preview` 環境へ作成または上書きしてから、`eas update --environment preview` を実行する。ローカルの `.env.local` は EAS Update に混入しない。EAS の `preview` 環境は共有状態のため、同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで順番に処理する。
 
 ### 初回セットアップ（リポジトリ管理者）
 
