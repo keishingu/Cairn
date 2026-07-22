@@ -96,6 +96,11 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_GITHUB_ORG: ${{ github.repository_owner }}
+          VERCEL_GITHUB_REPO: ${{ github.event.repository.name }}
+          VERCEL_GITHUB_PR_ID: ${{ steps.pr.outputs.number }}
+          VERCEL_GITHUB_COMMIT_REF: ${{ steps.pr.outputs.ref }}
+          VERCEL_GITHUB_COMMIT_SHA: ${{ steps.pr.outputs.sha }}
         run: |
           url=$(npx --yes vercel@54.6.1 deploy \
             --yes \
@@ -104,11 +109,11 @@ jobs:
             --target=preview \
             --token="$VERCEL_TOKEN" \
             --build-env CAIRN_VERCEL_PREVIEW_REQUESTED=1 \
-            --meta githubOrg=${{ github.repository_owner }} \
-            --meta githubRepo=${{ github.event.repository.name }} \
-            --meta githubPrId=${{ steps.pr.outputs.number }} \
-            --meta githubCommitRef=${{ steps.pr.outputs.ref }} \
-            --meta githubCommitSha=${{ steps.pr.outputs.sha }})
+            --meta "githubOrg=$VERCEL_GITHUB_ORG" \
+            --meta "githubRepo=$VERCEL_GITHUB_REPO" \
+            --meta "githubPrId=$VERCEL_GITHUB_PR_ID" \
+            --meta "githubCommitRef=$VERCEL_GITHUB_COMMIT_REF" \
+            --meta "githubCommitSha=$VERCEL_GITHUB_COMMIT_SHA")
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
       - name: Mark GitHub Preview deployment successful

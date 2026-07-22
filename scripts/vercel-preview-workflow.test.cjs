@@ -34,8 +34,10 @@ test('固定版CLIで最新PR SHAのPreviewを明示要求する', () => {
   assert.match(workflow, /vercel@54\.6\.1 deploy/)
   assert.match(workflow, /--build-env CAIRN_VERCEL_PREVIEW_REQUESTED=1/)
   assert.match(workflow, /--target=preview/)
-  assert.match(workflow, /--meta githubCommitRef=\$\{\{ steps\.pr\.outputs\.ref \}\}/)
-  assert.match(workflow, /--meta githubCommitSha=\$\{\{ steps\.pr\.outputs\.sha \}\}/)
+  assert.match(workflow, /VERCEL_GITHUB_COMMIT_REF: \$\{\{ steps\.pr\.outputs\.ref \}\}/)
+  assert.match(workflow, /--meta "githubCommitRef=\$VERCEL_GITHUB_COMMIT_REF"/)
+  assert.match(workflow, /--meta "githubCommitSha=\$VERCEL_GITHUB_COMMIT_SHA"/)
+  assert.doesNotMatch(workflow, /--meta githubCommitRef=\$\{\{/)
 })
 
 test('CLI PreviewをGitHub Deploymentへ成功または失敗として記録する', () => {
