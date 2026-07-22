@@ -49,10 +49,11 @@ test('CLI PreviewをGitHub Deploymentへ成功または失敗として記録す�
   assert.match(workflow, /if: failure\(\) && steps\.github-deployment\.outputs\.deployment_id/)
 })
 
-test('Vercel認証情報をsecretから受け取りPreview URLを返信する', () => {
+test('Vercel tokenはsecret、公開IDはvariablesから受け取りPreview URLを返信する', () => {
   assert.match(workflow, /secrets\.VERCEL_TOKEN/)
-  assert.match(workflow, /secrets\.VERCEL_ORG_ID/)
-  assert.match(workflow, /secrets\.VERCEL_PROJECT_ID/)
+  assert.match(workflow, /vars\.VERCEL_ORG_ID/)
+  assert.match(workflow, /vars\.VERCEL_PROJECT_ID/)
+  assert.doesNotMatch(workflow, /secrets\.VERCEL_(?:ORG_ID|PROJECT_ID)/)
   assert.match(workflow, /Vercel Preview: \$\{process\.env\.PREVIEW_URL\}/)
   assert.match(workflow, /if: github\.event_name == 'issue_comment'/)
 })
