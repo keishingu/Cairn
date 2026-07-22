@@ -69,12 +69,22 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Wait for Vercel Preview
-        id: vercel-preview
+      - name: Resolve Web API base URL
+        id: web-api-base
         uses: actions/github-script@v8
         with:
           script: |
             const sha = context.payload.pull_request.head.sha
+
+            // PR更新時のVercel buildは明示要求までスキップされるため、
+            // Mobile Previewは初回PR作成時だけ同一SHAのVercel Previewを待つ。
+            if (context.payload.action !== 'opened') {
+              const url = 'https://develop.oss-cairn.com'
+              core.setOutput('url', url)
+              core.info(`PR update uses shared Preview: ${url}`)
+              return
+            }
+
             const deadline = Date.now() + 5 * 60 * 1000
 
             while (Date.now() < deadline) {
@@ -160,7 +170,7 @@ jobs:
       - name: Sync EAS preview environment
         working-directory: apps/mobile
         env:
-          MOBILE_PREVIEW_API_BASE_URL: ${{ steps.vercel-preview.outputs.url }}
+          MOBILE_PREVIEW_API_BASE_URL: ${{ steps.web-api-base.outputs.url }}
           MOBILE_PREVIEW_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
           MOBILE_PREVIEW_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
         run: |

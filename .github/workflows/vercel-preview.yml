@@ -1,0 +1,163 @@
+name: Vercel Preview on Request
+
+on:
+  pull_request:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+jobs:
+  preview:
+    name: Deploy requested Vercel Preview
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event.issue.pull_request &&
+       github.event.comment.body == '@vercel preview' &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    environment: Preview
+    permissions:
+      contents: read
+      deployments: write
+      issues: write
+      pull-requests: read
+
+    steps:
+      - name: Resolve trusted PR head
+        id: pr
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pullRequest = context.payload.pull_request ?? (
+              await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+              })
+            ).data
+
+            if (pullRequest.state !== 'open') {
+              core.setFailed('Vercel Preview can only be requested for an open pull request.')
+              return
+            }
+            if (pullRequest.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+              core.setFailed('Vercel Preview is disabled for pull requests from forks.')
+              return
+            }
+
+            core.setOutput('sha', pullRequest.head.sha)
+            core.setOutput('number', pullRequest.number)
+            core.setOutput('ref', pullRequest.head.ref)
+
+      - name: Check required Vercel settings
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "GitHub Actions Preview environment secret ${name} is required."
+              exit 1
+            fi
+          done
+
+      - name: Checkout requested PR revision
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
+          persist-credentials: false
+
+      - name: Create GitHub Preview deployment
+        id: github-deployment
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { data: deployment } = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: '${{ steps.pr.outputs.sha }}',
+              auto_merge: false,
+              required_contexts: [],
+              environment: 'Preview',
+              description: 'Vercel Preview requested',
+              transient_environment: true,
+              production_environment: false,
+              payload: {
+                pull_request: Number('${{ steps.pr.outputs.number }}'),
+              },
+            })
+            core.setOutput('deployment_id', deployment.id)
+
+      - name: Deploy Vercel Preview
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_GITHUB_ORG: ${{ github.repository_owner }}
+          VERCEL_GITHUB_REPO: ${{ github.event.repository.name }}
+          VERCEL_GITHUB_PR_ID: ${{ steps.pr.outputs.number }}
+          VERCEL_GITHUB_COMMIT_REF: ${{ steps.pr.outputs.ref }}
+          VERCEL_GITHUB_COMMIT_SHA: ${{ steps.pr.outputs.sha }}
+        run: |
+          url=$(npx --yes vercel@54.6.1 deploy \
+            --yes \
+            --force \
+            --with-cache \
+            --target=preview \
+            --token="$VERCEL_TOKEN" \
+            --build-env CAIRN_VERCEL_PREVIEW_REQUESTED=1 \
+            --meta "githubOrg=$VERCEL_GITHUB_ORG" \
+            --meta "githubRepo=$VERCEL_GITHUB_REPO" \
+            --meta "githubPrId=$VERCEL_GITHUB_PR_ID" \
+            --meta "githubCommitRef=$VERCEL_GITHUB_COMMIT_REF" \
+            --meta "githubCommitSha=$VERCEL_GITHUB_COMMIT_SHA")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Mark GitHub Preview deployment successful
+        uses: actions/github-script@v8
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: Number('${{ steps.github-deployment.outputs.deployment_id }}'),
+              state: 'success',
+              environment: 'Preview',
+              environment_url: process.env.PREVIEW_URL,
+              description: 'Vercel Preview is ready',
+              auto_inactive: false,
+            })
+
+      - name: Mark GitHub Preview deployment failed
+        if: failure() && steps.github-deployment.outputs.deployment_id
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: Number('${{ steps.github-deployment.outputs.deployment_id }}'),
+              state: 'failure',
+              environment: 'Preview',
+              description: 'Vercel Preview failed',
+              auto_inactive: false,
+            })
+
+      - name: Reply with Preview URL
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v8
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Vercel Preview: ${process.env.PREVIEW_URL}`,
+            })

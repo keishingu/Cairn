@@ -41,6 +41,14 @@ describe('モバイルプレビューの環境同期', () => {
     expect(workflow).toContain('ref: ${{ github.event.pull_request.head.sha }}')
   })
 
+  it('PR更新時はdevelop、初回作成時は同一SHAのWeb APIを利用する', () => {
+    expect(workflow).toContain("context.payload.action !== 'opened'")
+    expect(workflow).toContain("const url = 'https://develop.oss-cairn.com'")
+    expect(workflow).toContain('const sha = context.payload.pull_request.head.sha')
+    expect(workflow).toContain('github.rest.repos.listDeployments')
+    expect(workflow).toContain('steps.web-api-base.outputs.url')
+  })
+
   it('異なるPRの実行をEAS同期前にFIFOで待機させる', () => {
     expect(workflow).toContain('actions: read')
     expect(workflow).toContain('Wait for earlier Mobile Preview runs')

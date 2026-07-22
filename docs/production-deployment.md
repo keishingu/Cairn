@@ -1,6 +1,6 @@
 # 本番デプロイ・運用リファレンス
 
-> ステータス: **現行リファレンス** ／ 最終更新: 2026-07-01
+> ステータス: **現行リファレンス** ／ 最終更新: 2026-07-22
 >
 > 本番環境（Vercel + Supabase）の構成・残タスク・将来の一般公開に向けた設定をまとめる。
 > 実装・設定が変わったら本ファイルを更新すること。
@@ -11,15 +11,26 @@
 |---|---|---|---|---|
 | 本番 | `cairn-production`（Pro / Tokyo / ref: `bmhcgjqisqnyvbrrvqug`） | Production | `https://oss-cairn.com` | `main` への merge |
 | 検証 | `cairn-preview`（Free / Tokyo） | Preview | `https://develop.oss-cairn.com` | `develop` への merge |
-| PR プレビュー | `cairn-preview`（Free / Tokyo） | Preview | （Vercel 自動採番 preview ドメイン） | PR 作成・更新 |
+| PR プレビュー | `cairn-preview`（Free / Tokyo） | Preview | （Vercel 自動採番 preview ドメイン） | PR 作成、または `@vercel preview` コメント |
 
 ## デプロイパイプライン
 
-Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側はデプロイを行わず、CI（typecheck / lint / test）のみを担当する。
+Vercel の Git 連携（GitHub）で常設環境をデプロイする。PR Previewは GitHub Actions からVercel CLIでデプロイする。
 
 - **`main` への merge → 本番デプロイ**: Vercel の **Production Branch = `main`**。Production 環境変数で `https://oss-cairn.com` にリリースされる。
 - **`develop` への merge → 検証デプロイ**: `develop` は Vercel の Preview デプロイ。**`develop.oss-cairn.com` を `develop` ブランチに割り当て**ており、**環境変数は Preview と共通**（PR プレビューと同じ `cairn-preview` を指す）。
-- **PR → プレビューデプロイ**: 各 PR は Vercel 自動採番の Preview URL にデプロイされる（環境変数は Preview）。
+- **PR → プレビューデプロイ**: PR作成時に `.github/workflows/vercel-preview.yml` がVercel自動採番の Preview URLへデプロイする。以降のpushはスキップし、最新SHAの確認が必要になったら権限のあるメンバーがPRへ `@vercel preview` とコメントする。
+
+### PR更新時のビルドスキップ
+
+Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で、Git連携によるPRの自動buildをスキップする。Production、`develop`、`main` は常にbuildし、実行コンテキストが判定できない場合も安全側に倒してbuildする。
+
+- Vercel ProjectのRoot Directoryは `apps/web` のため、`vercel.json` も同ディレクトリに置き、ignore commandはそこを起点にrepository rootの判定scriptを参照する
+- `.github/workflows/vercel-preview.yml` は同一repository内のPR作成、または完全一致の `@vercel preview` コメントを受け、openなPRの最新SHAをデプロイする
+- CLI deployの結果は同じSHAのGitHub Preview Deploymentへ記録し、Mobile Previewが成功URLを取得できるようにする
+- 公開repositoryから任意のbuildを起動されないよう、コメント投稿者は `OWNER` / `MEMBER` / `COLLABORATOR` に限定し、fork PRは拒否する
+- GitHubの `Preview` environmentに `VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID` の3 secretを登録する
+- PR更新時のMobile Previewは同一SHAのVercel Previewを待たず、WebView / API接続先に `https://develop.oss-cairn.com` を使う。PR作成時だけ初回Vercel Previewを待つ
 
 ### Vercel ダッシュボード設定（この振り分けの前提）
 

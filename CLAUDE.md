@@ -67,7 +67,7 @@ pnpm dev
 - **Mobile (Expo) は `apps/mobile/`**: チャット以外は WebView で Web 版を表示する方針。ネイティブ化のロードマップは [`docs/08_expo_roadmap.md`](docs/08_expo_roadmap.md) を参照
   - 開発は expo-dev-client を使う。`pnpm ios` / `pnpm android` でローカルビルド（単体アプリとしてインストール）、2回目以降は `pnpm dev` で Metro 起動のみ
   - ネイティブ側の接続先 URL は `EXPO_PUBLIC_*` 未設定時に Metro の接続先ホストから自動導出する（`apps/mobile/lib/env.ts`）。シミュレータ・実機・Android エミュレータで IP の手動設定は不要
-  - PR の Mobile Preview は、対象 commit の Vercel Preview URL と共有 Supabase Preview 設定を EAS の `preview` 環境へ同期し、`eas update --environment preview` で Development Build 向けに配信する（`.github/workflows/mobile-preview.yml`）。同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで直列化する
+  - PR の Mobile Preview は、PR 作成時だけ対象 commit の Vercel Preview URL を待ち、以降の PR 更新時は `https://develop.oss-cairn.com` を Web / API 接続先にする。選択した URL と共有 Supabase Preview 設定を EAS の `preview` 環境へ同期し、`eas update --environment preview` で Development Build 向けに配信する（`.github/workflows/mobile-preview.yml`）。同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで直列化する
   - EAS Build profile は `apps/mobile/eas.json` で `development` / `preview` / `production` の同名 EAS Environment へ明示的に対応づける。ローカル `.env.local` をクラウドビルドや EAS Update の接続先として使用しない
   - 実機で WebView 画面を使う場合のみ `pnpm setup:mobile-lan` で `apps/web/.env.local` の `NEXT_PUBLIC_SUPABASE_URL` を LAN IP に書き換える
   - **Google ログインはネイティブ実装**: Web のリダイレクト方式は使えないため、`expo-web-browser` で認可コードを受け取り Supabase の PKCE フロー（`exchangeCodeForSession`）で交換する（`apps/mobile/lib/oauth.ts`）。redirect 先はアプリスキーム `cairn://auth/callback`。**Supabase の許可リストに登録が必要**（ローカルは `supabase/config.toml` の `additional_redirect_urls`、本番は Supabase ダッシュボードの Redirect URLs）。初回ログイン時も `/api/auth/setup` を呼んで profiles を作成する
