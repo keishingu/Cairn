@@ -13,12 +13,14 @@ import {
   projectMembers,
   projects,
   tasks,
+  workspaces,
 } from '@cairn/db'
 import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import { generateObject } from 'ai'
 import { z } from 'zod'
 import { extractMentionIds } from '@/lib/chat/mentions'
 import { DEFAULT_MODEL, FAST_MODEL, openai } from '@/lib/ai/client'
+import { recordPhaseTwoTokenUsage } from './llm-usage'
 import {
   PHASE_TWO_CONTEXT_MESSAGE_LIMIT,
   PHASE_TWO_NEW_MESSAGE_LIMIT,
@@ -135,6 +137,17 @@ function toISOString(value: Date | string): string {
   return (typeof value === 'string' ? new Date(value) : value).toISOString()
 }
 
+// チャンネル一覧取得からLLM実行までの間にownerがOFFへ切り替えた場合も、
+// トークンを消費しないよう各LLM stepの直前に再確認する。
+async function isPhaseTwoEnabled(workspaceId: string): Promise<boolean> {
+  const [workspace] = await db
+    .select({ enabled: workspaces.aiNudgesPhaseTwoEnabled })
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .limit(1)
+  return workspace?.enabled === true
+}
+
 export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> {
   const rows = await db
     .select({
@@ -168,6 +181,12 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
     .where(
       and(
         ne(channels.type, 'dm'),
+        sql`exists (
+          select 1
+          from ${workspaces}
+          where ${workspaces.id} = coalesce(${channels.workspaceId}, ${projects.workspaceId})
+            and ${workspaces.aiNudgesPhaseTwoEnabled} = true
+        )`,
         // 個人チャンネルは対象のまま、アーカイブ済みプロジェクトの会話は巡回しない。
         or(isNull(channels.projectId), eq(projects.archived, false)),
       ),
@@ -457,7 +476,8 @@ function formatMessages(input: PhaseTwoChannelInput): string {
 
 export async function screenPhaseTwoCandidates(input: PhaseTwoChannelInput) {
   if (input.messages.length === 0) return []
-  const { object } = await generateObject({
+  if (!await isPhaseTwoEnabled(input.workspaceId)) return []
+  const { object, usage } = await generateObject({
     model: openai(FAST_MODEL),
     schema: primaryCandidateSchema,
     temperature: 0,
@@ -476,6 +496,7 @@ sourceMessageId は必ず下記ログに実在する根拠メッセージIDに�
 
 ${formatMessages(input)}`,
   })
+  await recordPhaseTwoTokenUsage(input.workspaceId, usage)
   const candidateMessageIds = input.isUnansweredAskRecheck
     ? new Set(input.recheckMessageIds)
     : new Set(input.newMessageIds)
@@ -595,6 +616,7 @@ export async function refinePhaseTwoCandidate(
   input: PhaseTwoChannelInput,
   candidate: z.infer<typeof primaryCandidateSchema>['candidates'][number],
 ): Promise<PhaseTwoNudgeCandidate | null> {
+  if (!await isPhaseTwoEnabled(input.workspaceId)) return null
   const recipients = await listEligibleRecipients(input, candidate.sourceMessageId)
   const source = input.messages.find((message) => message.id === candidate.sourceMessageId)
   if (!source || recipients.length === 0) return null
@@ -605,7 +627,7 @@ export async function refinePhaseTwoCandidate(
       : recipients
   if (allowedRecipients.length === 0) return null
 
-  const { object } = await generateObject({
+  const { object, usage } = await generateObject({
     model: openai(DEFAULT_MODEL),
     schema: refinedProposalSchema,
     temperature: 0,
@@ -629,6 +651,7 @@ ${JSON.stringify(allowedRecipients)}
 ログ:
 ${formatMessages(input)}`,
   })
+  await recordPhaseTwoTokenUsage(input.workspaceId, usage)
   const proposal = object.proposal
   if (
     !proposal ||

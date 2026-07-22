@@ -17,8 +17,8 @@ import { FEATURE_FLAGS } from '@cairn/shared'
  * （CLAUDE.md: 認可目的で membership を読む処理は必ずこのビューを経由する）。
  */
 export async function getUnreadNotificationCount(userId: string): Promise<number> {
-  const { db, notifications, activeWorkspaceMembers } = await import('@cairn/db')
-  const { eq, ne, and, isNull, count } = await import('drizzle-orm')
+  const { aiNudges, db, notifications, activeWorkspaceMembers, workspaces } = await import('@cairn/db')
+  const { eq, ne, and, isNull, count, sql } = await import('drizzle-orm')
 
   const [row] = await db
     .select({ n: count() })
@@ -34,6 +34,24 @@ export async function getUnreadNotificationCount(userId: string): Promise<number
       eq(notifications.userId, userId),
       isNull(notifications.readAt),
       FEATURE_FLAGS.dm ? undefined : ne(notifications.type, 'dm'),
+      // 通知一覧と同様に、OFFにしたPhaseのAI通知はバッジにも含めない。
+      sql`(
+        ${notifications.type} <> 'ai'
+        or exists (
+          select 1
+          from ${aiNudges}
+          inner join ${workspaces} on ${aiNudges.workspaceId} = ${workspaces.id}
+          where ${aiNudges.id}::text = ${notifications.data}->>'nudgeId'
+            and ${aiNudges.workspaceId} = ${notifications.workspaceId}
+            and ${aiNudges.userId} = ${notifications.userId}
+            and (
+              (${aiNudges.detector} in ('task_due_soon', 'task_overdue', 'task_stalled')
+                and ${workspaces.aiNudgesPhaseOneEnabled} = true)
+              or (${aiNudges.detector} in ('unanswered_ask', 'llm_risk')
+                and ${workspaces.aiNudgesPhaseTwoEnabled} = true)
+            )
+        )
+      )`,
     ))
 
   return row?.n ?? 0

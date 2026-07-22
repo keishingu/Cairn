@@ -4,6 +4,7 @@ import {
   createProjectSchema,
   createTaskSchema,
   patchMilestoneSchema,
+  patchWorkspaceSettingsSchema,
   postMessageSchema,
   uploadGalleryItemSchema,
 } from './index'
@@ -149,6 +150,16 @@ describe('patchMilestoneSchema', () => {
   it('更新対象が空ならエラーになる', () => {
     const result = patchMilestoneSchema.safeParse({})
     expect(result.success).toBe(false)
+  })
+})
+
+describe('ワークスペース設定更新スキーマ', () => {
+  it('空のプロジェクト名称を既定値へ戻すため null に正規化する', () => {
+    const result = patchWorkspaceSettingsSchema.safeParse({ projectLabel: '   ' })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.projectLabel).toBeNull()
+    }
   })
 })
 

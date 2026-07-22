@@ -23,8 +23,8 @@ export async function GET(req: Request) {
   const filter = searchParams.get('filter') ?? 'all'
 
   try {
-    const { db, notifications } = await import('@cairn/db')
-    const { eq, ne, isNull, and, desc } = await import('drizzle-orm')
+    const { aiNudges, db, notifications, workspaces } = await import('@cairn/db')
+    const { eq, ne, isNull, and, desc, sql } = await import('drizzle-orm')
 
     const conditions = [
       eq(notifications.userId, ctx.userId),
@@ -34,6 +34,25 @@ export async function GET(req: Request) {
     if (filter === 'unread') conditions.push(isNull(notifications.readAt))
     if (filter === 'mention') conditions.push(eq(notifications.type, 'mention'))
     if (filter === 'ai') conditions.push(eq(notifications.type, 'ai'))
+    // AI通知はナッジの現在の機能設定に従う。heartbeat が旧設定を読んで
+    // 先に通知を作成しても、OFF 後はここで表示対象から外す。
+    conditions.push(sql`(
+      ${notifications.type} <> 'ai'
+      or exists (
+        select 1
+        from ${aiNudges}
+        inner join ${workspaces} on ${aiNudges.workspaceId} = ${workspaces.id}
+        where ${aiNudges.id}::text = ${notifications.data}->>'nudgeId'
+          and ${aiNudges.workspaceId} = ${notifications.workspaceId}
+          and ${aiNudges.userId} = ${notifications.userId}
+          and (
+            (${aiNudges.detector} in ('task_due_soon', 'task_overdue', 'task_stalled')
+              and ${workspaces.aiNudgesPhaseOneEnabled} = true)
+            or (${aiNudges.detector} in ('unanswered_ask', 'llm_risk')
+              and ${workspaces.aiNudgesPhaseTwoEnabled} = true)
+          )
+      )
+    )`)
 
     const rows = await db
       .select()

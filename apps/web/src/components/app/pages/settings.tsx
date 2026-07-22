@@ -771,6 +771,19 @@ const SettingsWorkspaceGeneral = () => {
     setTimeout(() => setLabelSaved(false), 2000)
   }
 
+  const updateAiNudgesEnabled = (phase: 'one' | 'two', enabled: boolean) => {
+    void updateSettings.mutateAsync(
+      phase === 'one'
+        ? { aiNudgesPhaseOneEnabled: enabled }
+        : { aiNudgesPhaseTwoEnabled: enabled },
+    )
+  }
+
+  const phaseOneEnabled = wsSettings?.aiNudgesPhaseOneEnabled ?? true
+  const phaseTwoEnabled = wsSettings?.aiNudgesPhaseTwoEnabled ?? false
+  const phaseTwoUsage = wsSettings?.aiNudgesPhaseTwoUsage
+  const formatTokens = (value: number) => new Intl.NumberFormat('ja-JP').format(value)
+
   const inputStyle: React.CSSProperties = {
     padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 7,
     background: 'var(--card-2)', color: 'var(--text)', fontSize: 13,
@@ -937,6 +950,63 @@ const SettingsWorkspaceGeneral = () => {
               </button>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>AI PMO</h2>
+        <div className="card" style={{ padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Phase 1: タスクのリマインダー</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}>
+                期限・停滞を毎朝確認するルールベースのリマインダーです。生成AIは使わず、トークンは消費しません。
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={phaseOneEnabled}
+              aria-label="Phase 1: タスクのリマインダー"
+              disabled={updateSettings.isPending || readOnly}
+              title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
+              onClick={() => updateAiNudgesEnabled('one', !phaseOneEnabled)}
+              style={{ border: 'none', background: 'transparent', padding: 0, flexShrink: 0, ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+            >
+              <Toggle on={phaseOneEnabled}/>
+            </button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Phase 2: チャットのAI巡回</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}>
+                チャットの未回答依頼やリスクをAIで分析します。OpenAIのトークンを消費するため、既定ではオフです。
+              </div>
+              {isOwner && phaseTwoUsage && (
+                <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--text-2)', lineHeight: 1.6 }}>
+                  累計: {formatTokens(phaseTwoUsage.totalTokens)} トークン
+                  （入力 {formatTokens(phaseTwoUsage.inputTokens)} / 出力 {formatTokens(phaseTwoUsage.outputTokens)}、{formatTokens(phaseTwoUsage.requestCount)} 回）
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={phaseTwoEnabled}
+              aria-label="Phase 2: チャットのAI巡回"
+              disabled={updateSettings.isPending || readOnly}
+              title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
+              onClick={() => updateAiNudgesEnabled('two', !phaseTwoEnabled)}
+              style={{ border: 'none', background: 'transparent', padding: 0, flexShrink: 0, ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+            >
+              <Toggle on={phaseTwoEnabled}/>
+            </button>
+          </div>
+          {updateSettings.isError && (
+            <div style={{ padding: '0 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
+              ⚠ {(updateSettings.error as Error).message}
+            </div>
+          )}
         </div>
       </section>
     </div>

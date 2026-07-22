@@ -9,6 +9,7 @@ import {
   notifications,
   profiles,
   projects,
+  workspaces,
   type AiNudgeStatus,
 } from '@cairn/db'
 import { and, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm'
@@ -55,12 +56,28 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
     // 状態遷移を一つの直列化点で決める。Phase 1 は別枠なので別lockを使う。
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext('ai-nudges-heartbeat-phase2'))`)
 
+    // sleep 中を含め、配信直前にワークスペースの opt-in を再確認する。これにより
+    // owner が OFF にした後の古い実行や再ナッジを配信しない。
+    const enabledWorkspaceIds = (
+      await tx
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .where(eq(workspaces.aiNudgesPhaseTwoEnabled, true))
+    ).map((workspace) => workspace.id)
+    if (enabledWorkspaceIds.length === 0) {
+      return { created: 0, reactivated: 0, discarded: 0, channels: 0 }
+    }
+    const enabledResults = results.filter((result) =>
+      enabledWorkspaceIds.includes(result.input.workspaceId),
+    )
+
     const existingToday = await tx
       .select({ userId: aiNudges.userId })
       .from(aiNudges)
       .where(
         and(
           inArray(aiNudges.detector, ['unanswered_ask', 'llm_risk']),
+          inArray(aiNudges.workspaceId, enabledWorkspaceIds),
           gte(aiNudges.createdAt, startOfJstDay(now)),
         ),
       )
@@ -69,7 +86,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       deliveriesToday.set(row.userId, (deliveriesToday.get(row.userId) ?? 0) + 1)
     }
 
-    const candidates = results
+    const candidates = enabledResults
       .flatMap((result) => result.candidates)
       .filter((candidate) => passesPhaseTwoConfidence(candidate.confidence))
       .sort((a, b) => {
@@ -85,9 +102,9 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
     let discarded = 0
 
     // 直接返信はLLMに委ねず、未回答条件が解消した事実として決定論的にresolveする。
-    const scannedChannelIds = [...new Set(results.map((result) => result.input.channelId))]
+    const scannedChannelIds = [...new Set(enabledResults.map((result) => result.input.channelId))]
     const evaluatedRiskMessages = new Set(
-      results
+      enabledResults
         .filter((result) => !result.input.isUnansweredAskRecheck)
         .flatMap((result) =>
           result.input.newMessageIds.map((messageId) => `${result.input.channelId}:${messageId}`),
@@ -105,6 +122,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       .where(
         and(
           inArray(aiNudges.detector, ['unanswered_ask', 'llm_risk']),
+          inArray(aiNudges.workspaceId, enabledWorkspaceIds),
           eq(aiNudges.status, 'active'),
         ),
       )
@@ -222,6 +240,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       .where(
         and(
           inArray(aiNudges.detector, ['unanswered_ask', 'llm_risk']),
+          inArray(aiNudges.workspaceId, enabledWorkspaceIds),
           inArray(aiNudges.status, ['dismissed', 'suppressed']),
           or(isNull(aiNudges.remindAfter), lte(aiNudges.remindAfter, now)),
         ),
@@ -426,7 +445,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         }
       } else {
         // 静寂時間帯のsleep中に会話が進んだリスクは、古い候補を配信せず次回巡回で再評価する。
-        const scanResult = results.find((result) => result.candidates.includes(candidate))
+        const scanResult = enabledResults.find((result) => result.candidates.includes(candidate))
         const scannedThroughAt = scanResult
           ? new Date(scanResult.input.scannedThroughCreatedAt)
           : source.createdAt
@@ -608,7 +627,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
             ).map((row) => row.id),
           )
         : new Set<string>()
-    for (const { input } of results) {
+    for (const { input } of enabledResults) {
       if (!existingChannelIds.has(input.channelId)) continue
       if (!input.advancesCursor) {
         const nextCheckAt = input.nextUnansweredAskCheckAt
@@ -668,7 +687,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
     }
 
     return {
-      channels: results.length,
+      channels: enabledResults.length,
       candidates: candidates.length,
       created,
       reactivated,
