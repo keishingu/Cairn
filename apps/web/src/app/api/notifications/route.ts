@@ -77,7 +77,7 @@ export async function PATCH(req: Request) {
 
   try {
     const { db, notifications } = await import('@cairn/db')
-    const { eq, and, isNull, inArray } = await import('drizzle-orm')
+    const { eq, ne, and, isNull, inArray } = await import('drizzle-orm')
 
     const now = new Date()
     // GET と同様に表示中のワークスペースへスコープする。「すべて既読」が他 WS の未読まで消さないように
@@ -85,6 +85,7 @@ export async function PATCH(req: Request) {
       eq(notifications.userId, ctx.userId),
       eq(notifications.workspaceId, ctx.workspaceId),
       isNull(notifications.readAt),
+      FEATURE_FLAGS.dm ? undefined : ne(notifications.type, 'dm'),
     )
     const where = ids?.length ? and(base, inArray(notifications.id, ids)) : base
 
