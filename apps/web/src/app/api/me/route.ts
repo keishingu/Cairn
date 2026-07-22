@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { patchMeSchema } from '@cairn/shared'
+import { FEATURE_FLAGS, patchMeSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { UserStatus } from '@/lib/user-status'
@@ -90,6 +90,9 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
   const b = parsed.data
+  if (!FEATURE_FLAGS.aiPmo && b.aiNudgesEnabled !== undefined) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
 
   const hasBio = 'bio' in b
   const hasStatusMessage = 'statusMessage' in b

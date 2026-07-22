@@ -31,6 +31,7 @@ export async function GET(req: Request) {
       eq(notifications.workspaceId, ctx.workspaceId),
     ]
     if (!FEATURE_FLAGS.dm) conditions.push(ne(notifications.type, 'dm'))
+    if (!FEATURE_FLAGS.aiPmo) conditions.push(ne(notifications.type, 'ai'))
     if (filter === 'unread') conditions.push(isNull(notifications.readAt))
     if (filter === 'mention') conditions.push(eq(notifications.type, 'mention'))
     if (filter === 'ai') conditions.push(eq(notifications.type, 'ai'))
@@ -105,6 +106,7 @@ export async function PATCH(req: Request) {
       eq(notifications.workspaceId, ctx.workspaceId),
       isNull(notifications.readAt),
       FEATURE_FLAGS.dm ? undefined : ne(notifications.type, 'dm'),
+      FEATURE_FLAGS.aiPmo ? undefined : ne(notifications.type, 'ai'),
     )
     const where = ids?.length ? and(base, inArray(notifications.id, ids)) : base
 

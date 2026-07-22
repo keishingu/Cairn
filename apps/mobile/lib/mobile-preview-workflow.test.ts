@@ -31,7 +31,8 @@ describe('モバイルプレビューの環境同期', () => {
     expect(workflow).toContain('--name EXPO_PUBLIC_API_BASE_URL')
     expect(workflow).toContain('--name EXPO_PUBLIC_SUPABASE_URL')
     expect(workflow).toContain('--name EXPO_PUBLIC_SUPABASE_ANON_KEY')
-    expect(workflow.match(/--force/g)).toHaveLength(3)
+    expect(workflow).toContain('--name EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV')
+    expect(workflow.match(/--force/g)).toHaveLength(4)
   })
 
   it('EAS Updateをpreview環境かつDevelopment Build向けに配信する', () => {

@@ -34,6 +34,7 @@ export async function getUnreadNotificationCount(userId: string): Promise<number
       eq(notifications.userId, userId),
       isNull(notifications.readAt),
       FEATURE_FLAGS.dm ? undefined : ne(notifications.type, 'dm'),
+      FEATURE_FLAGS.aiPmo ? undefined : ne(notifications.type, 'ai'),
       // 通知一覧と同様に、OFFにしたPhaseのAI通知はバッジにも含めない。
       sql`(
         ${notifications.type} <> 'ai'

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { patchWorkspaceSettingsSchema } from '@cairn/shared'
+import { FEATURE_FLAGS, patchWorkspaceSettingsSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 import type { AiNudgeDetector, WorkspaceSettings } from '@cairn/db'
@@ -96,6 +96,11 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
   const patch = parsed.data
+  if (!FEATURE_FLAGS.aiPmo && (
+    patch.aiNudgesPhaseOneEnabled !== undefined || patch.aiNudgesPhaseTwoEnabled !== undefined
+  )) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
 
   try {
     const { db } = await import('@cairn/db')

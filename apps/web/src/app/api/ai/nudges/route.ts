@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import type { AiNudgeDetector } from '@cairn/db'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
@@ -21,6 +22,7 @@ export interface AiNudgeDto {
 export async function GET(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
+  if (!FEATURE_FLAGS.aiPmo) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const channelId = new URL(req.url).searchParams.get('channelId')
   if (!channelId) {
