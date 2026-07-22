@@ -21,6 +21,10 @@ function lanDevOrigins(): string[] {
 const nextConfig: NextConfig = {
   transpilePackages: ['@cairn/core', '@cairn/db', '@cairn/shared'],
   allowedDevOrigins: lanDevOrigins(),
+  // VERCEL_ENV はクライアントへ自動公開されないため、環境別feature flag用に明示的に渡す。
+  env: {
+    NEXT_PUBLIC_CAIRN_DEPLOYMENT_ENV: process.env.VERCEL_ENV ?? 'development',
+  },
   async headers() {
     return [
       {

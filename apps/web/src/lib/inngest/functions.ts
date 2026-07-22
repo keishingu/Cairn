@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { inngest } from './client'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
@@ -773,10 +774,13 @@ export const indexMemberChunks = inngest.createFunction(
 export const reconcileAiNudgesHeartbeat = inngest.createFunction(
   { id: 'reconcile-ai-nudges-heartbeat-phase1' },
   { cron: 'TZ=Asia/Tokyo 0 9 * * *' },
-  async ({ step }) => step.run('reconcile-task-nudges', async () => {
-    const { reconcilePhaseOneAiNudges } = await import('@/lib/ai-nudges/reconcile')
-    return reconcilePhaseOneAiNudges()
-  }),
+  async ({ step }) => {
+    if (!FEATURE_FLAGS.aiPmo) return { skipped: true }
+    return step.run('reconcile-task-nudges', async () => {
+      const { reconcilePhaseOneAiNudges } = await import('@/lib/ai-nudges/reconcile')
+      return reconcilePhaseOneAiNudges()
+    })
+  },
 )
 
 // Phase 2 の差分巡回。6時間ごとにDM以外の新着チャンネルだけを二段階LLMで評価する。
@@ -786,6 +790,7 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
   { id: 'scan-ai-nudges-phase2', concurrency: { limit: 1 } },
   { cron: 'TZ=Asia/Tokyo 0 2,8,14,20 * * *' },
   async ({ step }) => {
+    if (!FEATURE_FLAGS.aiPmo) return { skipped: true }
     const channels = await step.run('list-channels-with-new-messages', async () => {
       const { listPhaseTwoChannelsToScan } = await import('@/lib/ai-nudges/llm-nudge-scan')
       return listPhaseTwoChannelsToScan()
