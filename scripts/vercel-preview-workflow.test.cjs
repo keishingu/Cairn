@@ -38,6 +38,15 @@ test('固定版CLIで最新PR SHAのPreviewを明示要求する', () => {
   assert.match(workflow, /--meta githubCommitSha=\$\{\{ steps\.pr\.outputs\.sha \}\}/)
 })
 
+test('CLI PreviewをGitHub Deploymentへ成功または失敗として記録する', () => {
+  assert.match(workflow, /deployments: write/)
+  assert.match(workflow, /github\.rest\.repos\.createDeployment\(/)
+  assert.match(workflow, /ref: '\$\{\{ steps\.pr\.outputs\.sha \}\}'/)
+  assert.match(workflow, /github\.rest\.repos\.createDeploymentStatus\(/)
+  assert.match(workflow, /environment_url: process\.env\.PREVIEW_URL/)
+  assert.match(workflow, /if: failure\(\) && steps\.github-deployment\.outputs\.deployment_id/)
+})
+
 test('Vercel認証情報をsecretから受け取りPreview URLを返信する', () => {
   assert.match(workflow, /secrets\.VERCEL_TOKEN/)
   assert.match(workflow, /secrets\.VERCEL_ORG_ID/)

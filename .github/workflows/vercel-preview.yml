@@ -19,6 +19,7 @@ jobs:
     environment: Preview
     permissions:
       contents: read
+      deployments: write
       issues: write
       pull-requests: read
 
@@ -68,6 +69,27 @@ jobs:
           ref: ${{ steps.pr.outputs.sha }}
           persist-credentials: false
 
+      - name: Create GitHub Preview deployment
+        id: github-deployment
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { data: deployment } = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: '${{ steps.pr.outputs.sha }}',
+              auto_merge: false,
+              required_contexts: [],
+              environment: 'Preview',
+              description: 'Vercel Preview requested',
+              transient_environment: true,
+              production_environment: false,
+              payload: {
+                pull_request: Number('${{ steps.pr.outputs.number }}'),
+              },
+            })
+            core.setOutput('deployment_id', deployment.id)
+
       - name: Deploy Vercel Preview
         id: deploy
         env:
@@ -88,6 +110,38 @@ jobs:
             --meta githubCommitRef=${{ steps.pr.outputs.ref }} \
             --meta githubCommitSha=${{ steps.pr.outputs.sha }})
           echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Mark GitHub Preview deployment successful
+        uses: actions/github-script@v8
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: Number('${{ steps.github-deployment.outputs.deployment_id }}'),
+              state: 'success',
+              environment: 'Preview',
+              environment_url: process.env.PREVIEW_URL,
+              description: 'Vercel Preview is ready',
+              auto_inactive: false,
+            })
+
+      - name: Mark GitHub Preview deployment failed
+        if: failure() && steps.github-deployment.outputs.deployment_id
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: Number('${{ steps.github-deployment.outputs.deployment_id }}'),
+              state: 'failure',
+              environment: 'Preview',
+              description: 'Vercel Preview failed',
+              auto_inactive: false,
+            })
 
       - name: Reply with Preview URL
         if: github.event_name == 'issue_comment'

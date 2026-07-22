@@ -27,6 +27,7 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
 
 - Vercel ProjectのRoot Directoryは `apps/web` のため、`vercel.json` も同ディレクトリに置き、ignore commandはそこを起点にrepository rootの判定scriptを参照する
 - `.github/workflows/vercel-preview.yml` は同一repository内のPR作成、または完全一致の `@vercel preview` コメントを受け、openなPRの最新SHAをデプロイする
+- CLI deployの結果は同じSHAのGitHub Preview Deploymentへ記録し、Mobile Previewが成功URLを取得できるようにする
 - 公開repositoryから任意のbuildを起動されないよう、コメント投稿者は `OWNER` / `MEMBER` / `COLLABORATOR` に限定し、fork PRは拒否する
 - GitHubの `Preview` environmentに `VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID` の3 secretを登録する
 - PR更新時のMobile Previewは同一SHAのVercel Previewを待たず、WebView / API接続先に `https://develop.oss-cairn.com` を使う。PR作成時だけ初回Vercel Previewを待つ
