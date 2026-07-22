@@ -7,8 +7,8 @@
  * デプロイ環境ごとの値はビルド時に固定され、Web・API・モバイルへ同じ設定が反映される。
  */
 export function enabledOutsideProduction(
-  environment = process.env.NEXT_PUBLIC_CAIRN_DEPLOYMENT_ENV
-    ?? process.env.EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV
+  environment = process.env['NEXT_PUBLIC_CAIRN_DEPLOYMENT_ENV']
+    ?? process.env['EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV']
     ?? process.env.NODE_ENV,
 ): boolean {
   return environment !== 'production'
