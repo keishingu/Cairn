@@ -33,7 +33,9 @@ Cairnはチャット（DM・チャンネル）機能を持つ、複数の他社�
 
 ## 別論点: 外部送信規律
 
-2022年改正で導入された「外部送信規律」（Cookie等のユーザー情報を外部送信する場合の通知・同意義務）は、利用者数等の規模要件次第で適用される別の論点。届出の要否とは別に確認が必要。
+2022年改正で導入された「外部送信規律」（Cookie等の利用者情報を外部送信する場合の通知・公表等）は、届出の要否とは別に対応が必要。
+
+Cairn のチャット・DM は、電気通信事業法施行規則22条の2の27第1号の「他人の通信を媒介する電気通信役務」に当たる可能性があり、この区分には利用者数による適用基準が設けられていない。規模要件は検索サービス等の別区分に関するものであるため、Cairn の外部送信規律への対応を利用者数だけを理由に先送りしない。外部タグや SDK をリリースする前に、送信する情報・送信先・利用目的を棚卸しし、通知・公表、同意取得またはオプトアウト提供のいずれの対応を採るかを専門家へ確認する。
 
 ## 参考資料
 
@@ -44,3 +46,4 @@ Cairnはチャット（DM・チャンネル）機能を持つ、複数の他社�
 - [電気通信事業法｜適用除外規定（office-hayashi.com）](https://www.office-hayashi.com/index-2-081009.html)
 - [電気通信事業の届出・登録どちらが必要？（許認可ナビ）](https://www.kyoninka-navi.jp/guides/denki-tsushin-jigyo-toroku-shinsei)
 - [令和4年改正・電気通信事業法とウェブサービスへの影響（KWM）](https://www.kwm.com/jp/ja/insights/latest-thinking/Amendment-of-Telecommunications-Business-Act-and-Its-Impact-on-Web-Services.html)
+- [電気通信事業法施行規則（e-Gov法令検索）](https://laws.e-gov.go.jp/law/360M50001000025/)
