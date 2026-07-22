@@ -954,7 +954,16 @@ const SettingsWorkspaceGeneral = () => {
       </section>
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>AI PMO</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+          AI PMO
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 700,
+            color: 'var(--accent-text)', background: 'var(--accent-soft)', border: '1px solid var(--accent)',
+            borderRadius: 999, padding: '1px 7px',
+          }}>
+            <Icon name="flask" size={11} /> Lab
+          </span>
+        </h2>
         <div className="card" style={{ padding: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
