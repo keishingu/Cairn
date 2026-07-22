@@ -125,7 +125,8 @@ export const createProjectStatusSchema = z.object({
 })
 
 export const patchWorkspaceSettingsSchema = z.object({
-  projectLabel: z.string().trim().min(1).max(100).nullable().optional(),
+  // 空欄はUIの既定表示「プロジェクト」へ戻す意図なので、DBには null として保存する。
+  projectLabel: z.string().trim().max(100).transform(value => value || null).nullable().optional(),
   aiNudgesPhaseOneEnabled: z.boolean().optional(),
   aiNudgesPhaseTwoEnabled: z.boolean().optional(),
 }).refine(

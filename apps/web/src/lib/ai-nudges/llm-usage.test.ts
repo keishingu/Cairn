@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { normalizePhaseTwoTokenUsage } from './llm-usage'
 
-describe('normalizePhaseTwoTokenUsage', () => {
+describe('Phase 2のトークン使用量の正規化', () => {
   it('OpenAI が返した入力・出力・合計トークンをそのまま表示用に変換する', () => {
     expect(normalizePhaseTwoTokenUsage({
       promptTokens: 120,
