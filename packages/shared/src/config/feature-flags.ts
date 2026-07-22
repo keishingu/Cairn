@@ -9,7 +9,7 @@
 export function enabledOutsideProduction(
   environment = process.env['NEXT_PUBLIC_CAIRN_DEPLOYMENT_ENV']
     ?? process.env['EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV']
-    ?? process.env.NODE_ENV,
+    ?? process.env['NODE_ENV'],
 ): boolean {
   return environment !== 'production'
 }
