@@ -112,6 +112,41 @@ export async function GET() {
         )`,
       ))
 
+    const visibleNonDmAttachedFileSq = db
+      .select({ one: sql<number>`1` })
+      .from(messageAttachments)
+      .innerJoin(messages, eq(messageAttachments.messageId, messages.id))
+      .innerJoin(channels, eq(messages.channelId, channels.id))
+      .where(and(
+        eq(messageAttachments.fileId, files.id),
+        ne(channels.type, 'dm'),
+        channelAccessCondition,
+      ))
+
+    const visibleNonDmMetadataFileSq = db
+      .select({ one: sql<number>`1` })
+      .from(channels)
+      .where(and(
+        ne(channels.type, 'dm'),
+        sql`(
+          ${channels.id}::text = ${files.metadata}->>'channelId'
+          or ${files.metadata}->'channelIds' @> jsonb_build_array(${channels.id}::text)
+        )`,
+        channelAccessCondition,
+      ))
+
+    const visibleNonDmFileCondition = role === 'guest'
+      ? or(
+          exists(fileProjectMemberSq),
+          exists(visibleNonDmAttachedFileSq),
+          exists(visibleNonDmMetadataFileSq),
+        )
+      : or(
+          isNotNull(files.projectId),
+          exists(visibleNonDmAttachedFileSq),
+          exists(visibleNonDmMetadataFileSq),
+        )
+
     const visibleFileCondition = role === 'guest'
       ? or(
           eq(files.uploadedBy, ctx.userId),
@@ -159,7 +194,10 @@ export async function GET() {
         isNull(galleryItems.id),
         FEATURE_FLAGS.dm
           ? undefined
-          : and(not(exists(dmAttachedFileSq)), not(exists(dmMetadataFileSq))),
+          : or(
+              and(not(exists(dmAttachedFileSq)), not(exists(dmMetadataFileSq))),
+              visibleNonDmFileCondition,
+            ),
         visibleFileCondition,
       ))
       .orderBy(desc(files.createdAt))

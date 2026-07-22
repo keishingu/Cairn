@@ -7,10 +7,12 @@ import { FEATURE_FLAGS } from '@cairn/shared'
 const {
   mockGetAuthContext,
   mockNot,
+  mockOr,
   mockDb,
 } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn()
   const mockNot = vi.fn((condition: unknown) => ({ not: condition }))
+  const mockOr = vi.fn((...conditions: unknown[]) => ({ or: conditions }))
 
   function makeQuery() {
     return {
@@ -27,7 +29,7 @@ const {
     selectDistinct: vi.fn(() => makeQuery()),
   }
 
-  return { mockGetAuthContext, mockNot, mockDb }
+  return { mockGetAuthContext, mockNot, mockOr, mockDb }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -68,7 +70,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn((left: unknown, right: unknown) => ({ eq: [left, right] })),
   ne: vi.fn((left: unknown, right: unknown) => ({ ne: [left, right] })),
   and: vi.fn((...conditions: unknown[]) => ({ and: conditions })),
-  or: vi.fn((...conditions: unknown[]) => ({ or: conditions })),
+  or: mockOr,
   exists: vi.fn((query: unknown) => ({ exists: query })),
   not: mockNot,
   isNull: vi.fn((value: unknown) => ({ isNull: value })),
@@ -103,6 +105,17 @@ describe('GET /api/files', () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual([])
     expect(mockNot).toHaveBeenCalledTimes(2)
+  })
+
+  it('DMが無効でも、可視な非DM関連があるファイルを許可する条件を組み合わせる', async () => {
+    ;(FEATURE_FLAGS as { dm: boolean }).dm = false
+
+    await GET()
+
+    const finalGate = mockOr.mock.results.at(-1)?.value as { or?: unknown[] } | undefined
+    expect(finalGate?.or).toHaveLength(2)
+    expect(finalGate?.or?.[0]).toEqual(expect.objectContaining({ and: expect.any(Array) }))
+    expect(finalGate?.or?.[1]).toEqual(expect.objectContaining({ or: expect.any(Array) }))
   })
 
   it('DMが有効なとき、DM関連ファイルの除外条件を追加しない', async () => {
