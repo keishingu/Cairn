@@ -7,11 +7,11 @@
 
 ## 環境構成
 
-| 環境 | Supabase | Vercel | ドメイン | デプロイ契機 |
-|---|---|---|---|---|
-| 本番 | `cairn-production`（Pro / Tokyo / ref: `bmhcgjqisqnyvbrrvqug`） | Production | `https://oss-cairn.com` | `main` への merge |
-| 検証 | `cairn-preview`（Free / Tokyo） | Preview | `https://develop.oss-cairn.com` | `develop` への merge |
-| PR プレビュー | `cairn-preview`（Free / Tokyo） | Preview | （Vercel 自動採番 preview ドメイン） | PR 作成、または `@vercel preview` コメント |
+| 環境          | Supabase                                                        | Vercel     | ドメイン                             | デプロイ契機                               |
+| ------------- | --------------------------------------------------------------- | ---------- | ------------------------------------ | ------------------------------------------ |
+| 本番          | `cairn-production`（Pro / Tokyo / ref: `bmhcgjqisqnyvbrrvqug`） | Production | `https://oss-cairn.com`              | `main` への merge                          |
+| 検証          | `cairn-preview`（Free / Tokyo）                                 | Preview    | `https://develop.oss-cairn.com`      | `develop` への merge                       |
+| PR プレビュー | `cairn-preview`（Free / Tokyo）                                 | Preview    | （Vercel 自動採番 preview ドメイン） | PR 作成、または `@vercel preview` コメント |
 
 ## デプロイパイプライン
 
@@ -30,7 +30,7 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
 - CLI deployの結果は同じSHAのGitHub Preview Deploymentへ記録し、Mobile Previewが成功URLを取得できるようにする
 - 公開repositoryから任意のbuildを起動されないよう、コメント投稿者は `OWNER` / `MEMBER` / `COLLABORATOR` に限定し、fork PRは拒否する
 - GitHubの `Preview` environmentに、`VERCEL_TOKEN`をsecret、`VERCEL_ORG_ID`と`VERCEL_PROJECT_ID`をvariablesとして登録する
-- PR更新時のMobile Previewは同一SHAのVercel Previewを待たず、WebView / API接続先に `https://develop.oss-cairn.com` を使う。PR作成時だけ初回Vercel Previewを待つ
+- Mobile PreviewはPR作成時からWebView / API接続先に `https://develop.oss-cairn.com` を使う。PR固有の `*.vercel.app` はDeployment Protectionのログイン画面へ遷移し得るため、モバイル接続先には使わない
 
 ### Vercel ダッシュボード設定（この振り分けの前提）
 
@@ -106,6 +106,7 @@ PostHog は production の利用状況を収集するインフラ接続なので
 現在は **限定公開（自分たち中心 / テストユーザー）で運用可能**。広く一般に開放する際は以下が必要になる。
 
 ### 1. Google OAuth 同意画面の公開・検証
+
 - 同意画面を **「テスト」→「本番環境に公開」** にする（テストモードは利用者がテストユーザー登録した人に限られ、最大 100 人）。
 - **ログイン用スコープ（`openid`/`email`/`profile`）は非機密** → ブランド検証（ロゴ・ドメイン確認）程度で済む。
 - **カレンダー用スコープ（`calendar.readonly`）は機密スコープ** → **Google の審査（verification）が必要**。
@@ -113,22 +114,27 @@ PostHog は production の利用状況を収集するインフラ接続なので
   - 未審査のままだと「未確認アプリ」警告 + 100 ユーザー上限。
 
 ### 2. Supabase Custom Domain（任意・信頼性向上）
+
 - Google ログイン/同意画面に出る `bmhcgjqisqnyvbrrvqug.supabase.co` を自前ドメイン（例 `auth.oss-cairn.com`）に置き換える。
 - **Custom Domains アドオン（~$10/月）**。機能には影響しないため限定公開中は不要。
 - 切替時の追従: DNS に Supabase 指定 CNAME 追加 / Google の承認済みリダイレクト URI を新ホストに変更 / Vercel の `NEXT_PUBLIC_SUPABASE_URL`・`SUPABASE_URL` を新ホストに変更して再デプロイ。
 
 ### 3. 本番用 SMTP（メール送信）
+
 - Supabase のデフォルト SMTP は**本番不可レベルのレート制限**（数通/時）。
 - サインアップ確認・パスワードリセット等を不特定多数に送るなら、**カスタム SMTP（SendGrid / Resend / SES 等）** を Auth に設定。
 - メールテンプレート内 URL が本番ドメインで動くか確認。
 
 ### 4. プライバシーポリシー・利用規約ページ
+
 - `oss-cairn.com` 上に公開ページを用意（Google 審査・同意画面・ユーザー信頼の前提）。
 
 ### 5. 不正対策・スケール
+
 - Supabase Auth の **Attack Protection / CAPTCHA（hCaptcha・Turnstile）**、レート制限の見直し。
 - **Compute スケール**: 初期は Micro。負荷が上がったら拡張（コネクション数・RAM/CPU）。
 - **バックアップ**: 重要度が上がったら PITR（Point-in-Time Recovery）アドオンを検討。
 
 ### 6. （任意）OAuth クライアントの環境分離
+
 - 本番 / プレビューで Google OAuth クライアントを分離し、鍵のローテーション・影響範囲を分離。

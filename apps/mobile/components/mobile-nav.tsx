@@ -1,14 +1,5 @@
 import React from 'react'
-import {
-  Image,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useColorScheme,
-  View,
-} from 'react-native'
+import { Image, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -17,7 +8,7 @@ import { useMe, useWorkspace } from '../hooks/use-account'
 import { useProjectChannels } from '../hooks/use-projects'
 import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channels'
 import { supabase } from '../lib/supabase'
-import { THEME } from '../lib/theme'
+import { useAppAppearance } from './appearance-provider'
 import { type ProjectsView, useProjectsView } from './projects-view-context'
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -76,7 +67,7 @@ const MENU_ROUTES = new Set([
 
 export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets()
-  const palette = THEME[useColorScheme() === 'dark' ? 'dark' : 'light']
+  const { palette } = useAppAppearance()
   const { view, setView } = useProjectsView()
   const { data: channels } = useProjectChannels()
   const { data: workspaceChannels } = useWorkspaceChannels()

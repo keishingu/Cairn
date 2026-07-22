@@ -4,3 +4,4 @@
 export * from './types/index'
 export * from './schemas/index'
 export * from './config/feature-flags'
+export * from './config/appearance'

@@ -23,7 +23,6 @@ jobs:
     permissions:
       actions: read
       contents: read
-      deployments: read
       pull-requests: write
 
     steps:
@@ -69,64 +68,6 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Resolve Web API base URL
-        id: web-api-base
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const sha = context.payload.pull_request.head.sha
-
-            // PR更新時のVercel buildは明示要求までスキップされるため、
-            // Mobile Previewは初回PR作成時だけ同一SHAのVercel Previewを待つ。
-            if (context.payload.action !== 'opened') {
-              const url = 'https://develop.oss-cairn.com'
-              core.setOutput('url', url)
-              core.info(`PR update uses shared Preview: ${url}`)
-              return
-            }
-
-            const deadline = Date.now() + 5 * 60 * 1000
-
-            while (Date.now() < deadline) {
-              const deployments = await github.paginate(
-                github.rest.repos.listDeployments,
-                {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  sha,
-                  per_page: 100,
-                },
-              )
-
-              for (const deployment of deployments) {
-                if (!deployment.environment?.toLowerCase().includes('preview')) {
-                  continue
-                }
-
-                const statuses = await github.rest.repos.listDeploymentStatuses({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  deployment_id: deployment.id,
-                  per_page: 100,
-                })
-                const success = statuses.data.find(
-                  (status) => status.state === 'success' && status.environment_url,
-                )
-
-                if (success) {
-                  const url = success.environment_url.replace(/\/$/, '')
-                  core.setOutput('url', url)
-                  core.info(`Using Vercel Preview: ${url}`)
-                  return
-                }
-              }
-
-              core.info('Vercel Preview is not ready yet; retrying in 10 seconds.')
-              await new Promise((resolve) => setTimeout(resolve, 10_000))
-            }
-
-            core.setFailed('Timed out waiting for a successful Vercel Preview deployment.')
-
       - name: Wait for earlier Mobile Preview runs
         uses: actions/github-script@v8
         with:
@@ -170,7 +111,9 @@ jobs:
       - name: Sync EAS preview environment
         working-directory: apps/mobile
         env:
-          MOBILE_PREVIEW_API_BASE_URL: ${{ steps.web-api-base.outputs.url }}
+          # PR 固有の *.vercel.app は Deployment Protection で Vercel 認証へ
+          # リダイレクトされ得るため、モバイル WebView は公開済みの固定ドメインを使う。
+          MOBILE_PREVIEW_API_BASE_URL: https://develop.oss-cairn.com
           MOBILE_PREVIEW_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
           MOBILE_PREVIEW_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
         run: |

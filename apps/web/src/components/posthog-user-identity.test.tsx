@@ -30,6 +30,8 @@ const user: CurrentUserDto = {
   statusMessage: null,
   wsRole: 'member',
   aiNudgesEnabled: true,
+  theme: 'system',
+  accentId: 'emerald',
 }
 
 describe('PostHogUserIdentity', () => {

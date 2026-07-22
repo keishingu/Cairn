@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { z } from 'zod'
+import { ACCENT_IDS, APPEARANCE_THEMES } from '../config/appearance'
 
 const timeStringSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
 
@@ -51,6 +52,7 @@ export const postMessageSchema = z
     channelId: z.string().uuid(),
     content: z.string().max(10000).default(''),
     messageType: z.enum(['text', 'html']).default('text'),
+    clientMessageId: z.string().uuid().optional(),
     parentMessageId: z.string().uuid().optional(),
     attachmentFileIds: z.array(z.string().uuid()).max(10).optional(),
   })
@@ -114,6 +116,8 @@ export const patchMeSchema = z.object({
   status: z.enum(['online', 'away', 'busy', 'offline']).optional(),
   statusMessage: z.string().max(100).nullable().optional(),
   aiNudgesEnabled: z.boolean().optional(),
+  theme: z.enum(APPEARANCE_THEMES).optional(),
+  accentId: z.enum(ACCENT_IDS).optional(),
 }).refine(
   data => Object.values(data).some(value => value !== undefined),
   { message: 'At least one field is required' },

@@ -83,6 +83,8 @@ pnpm dev
 
 ネイティブビルドのやり直しが必要なのは、ネイティブモジュールの追加や `app.json` のネイティブ設定変更時のみ。JS の変更は Metro のホットリロードで反映される。
 
+ネイティブチャットの本文・返信は、通信失敗時に端末内のユーザー別キューへ保存される。8秒間隔またはアプリの前面復帰時に自動再送し、クライアント生成UUIDによって応答欠落後の再送も二重投稿にならない。アップロード完了済みの添付IDはキューへ含められるが、完全オフラインで選んだローカル画像・ファイル自体の後送は未対応。詳細と検証記録は [`docs/mobile-chat-parity-checklist.md`](docs/mobile-chat-parity-checklist.md) を参照。
+
 `expo run:ios` / `run:android` が生成する `ios/` `android/` ディレクトリは `app.json` から再生成できる成果物のため、コミットしない（`apps/mobile/.gitignore` で除外済み）。また、ネイティブプロジェクトが存在すると runtime version のポリシー（`appVersion` 等）が使えないため、`app.json` の `runtimeVersion` は固定文字列で管理する。**ネイティブモジュールを追加・更新したら `runtimeVersion` を手動で上げる**こと（古いネイティブビルドに非互換な EAS Update が配信されるのを防ぐため）。
 
 実機で使う場合は `pnpm dev` で表示される QR コードを読み込む（開発クライアントがインストール済みであること）。Xcode / Android Studio がないメンバーには、EAS の `development`（iOS シミュレータ）または `development-device`（実機）プロファイルでビルド済み開発クライアントを配布できる。
@@ -107,14 +109,14 @@ pnpm dev
 
 `apps/mobile`、`packages/shared`、またはモバイルの依存関係に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。互換性のある Cairn Development Build で QR を開けば、ローカル環境を起動せずに確認できる（Expo Go は使用しない）。
 
-| 起動方法                                    | JavaScript の配信元                      | Web / API 接続先                                                                  | Supabase 接続先                         |
-| ------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------- |
-| Development Build からローカル Metro を開く | 開発 PC の Metro                         | 未設定時は `http://<Metroホスト>:3128`                                            | 未設定時は `http://<Metroホスト>:54321` |
-| PR コメントの QR を開く                     | PR ごとの EAS Update                     | PR 作成時は対象 PR の Vercel Preview、更新時は `https://develop.oss-cairn.com`    | 共有の Supabase Preview                 |
-| `eas build --profile preview`               | ビルド内蔵 bundle + `preview` channel    | EAS の `preview` 環境                                                             | EAS の `preview` 環境                   |
-| `eas build --profile production`            | ビルド内蔵 bundle + `production` channel | EAS の `production` 環境                                                          | EAS の `production` 環境                |
+| 起動方法                                    | JavaScript の配信元                      | Web / API 接続先                       | Supabase 接続先                         |
+| ------------------------------------------- | ---------------------------------------- | -------------------------------------- | --------------------------------------- |
+| Development Build からローカル Metro を開く | 開発 PC の Metro                         | 未設定時は `http://<Metroホスト>:3128` | 未設定時は `http://<Metroホスト>:54321` |
+| PR コメントの QR を開く                     | PR ごとの EAS Update                     | `https://develop.oss-cairn.com`        | 共有の Supabase Preview                 |
+| `eas build --profile preview`               | ビルド内蔵 bundle + `preview` channel    | EAS の `preview` 環境                  | EAS の `preview` 環境                   |
+| `eas build --profile production`            | ビルド内蔵 bundle + `production` channel | EAS の `production` 環境               | EAS の `production` 環境                |
 
-PR Preview の workflow は、PR 作成時だけ対象 commit の Vercel Preview 完了を待ち、以降の PR 更新時は `https://develop.oss-cairn.com` を Web / API URL に使う。選択した URL と共有 Supabase の設定を EAS の `preview` 環境へ作成または上書きしてから、`eas update --environment preview` を実行する。ローカルの `.env.local` は EAS Update に混入しない。EAS の `preview` 環境は共有状態のため、同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで順番に処理する。
+PR Preview の workflow は、Vercel Deployment Protection のログイン画面へ遷移しないよう、初回から `https://develop.oss-cairn.com` を Web / API URL に使う。この URL と共有 Supabase の設定を EAS の `preview` 環境へ作成または上書きしてから、`eas update --environment preview` を実行する。ローカルの `.env.local` は EAS Update に混入しない。EAS の `preview` 環境は共有状態のため、同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで順番に処理する。
 
 ### 初回セットアップ（リポジトリ管理者）
 
@@ -193,6 +195,7 @@ npx web-push generate-vapid-keys
 ```
 
 出力例：
+
 ```
 Public Key: BxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxA
 Private Key: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
@@ -200,11 +203,11 @@ Private Key: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
 
 ### 環境変数
 
-| 変数名 | 説明 |
-|---|---|
-| `VAPID_PUBLIC_KEY` | 生成した公開鍵 |
-| `VAPID_PRIVATE_KEY` | 生成した秘密鍵（機密情報） |
-| `VAPID_SUBJECT` | 管理者連絡先。`mailto:admin@example.com` 形式推奨 |
+| 変数名              | 説明                                              |
+| ------------------- | ------------------------------------------------- |
+| `VAPID_PUBLIC_KEY`  | 生成した公開鍵                                    |
+| `VAPID_PRIVATE_KEY` | 生成した秘密鍵（機密情報）                        |
+| `VAPID_SUBJECT`     | 管理者連絡先。`mailto:admin@example.com` 形式推奨 |
 
 **ローカル**: `apps/web/.env.local` に追記  
 **Vercel**: Dashboard → Project → Settings → Environment Variables で追加（`VAPID_PRIVATE_KEY` は Sensitive にチェック）
@@ -237,8 +240,6 @@ Private Key: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
 
 ---
 
-
-
 アクセントカラー（7色）× テーマ（ライト/ダーク）の組み合わせで PWA アイコンを事前生成している。
 設定画面でカラーやテーマを変えると、ホーム画面アイコンに自動反映される。
 
@@ -250,12 +251,12 @@ node scripts/generate-icons.mjs
 
 `apps/web/public/` に以下のファイルを生成する:
 
-| ファイル名パターン | 用途 |
-|---|---|
-| `icon-{color}-{theme}-192.png` | Android manifest (192×192) |
-| `icon-{color}-{theme}-512.png` | Android manifest (512×512) |
-| `apple-touch-icon-{color}-{theme}.png` | iOS ホーム画面アイコン (180×180) |
-| `icon-192.png` / `icon-512.png` / `apple-touch-icon.png` | cookie 未設定時のフォールバック |
+| ファイル名パターン                                       | 用途                             |
+| -------------------------------------------------------- | -------------------------------- |
+| `icon-{color}-{theme}-192.png`                           | Android manifest (192×192)       |
+| `icon-{color}-{theme}-512.png`                           | Android manifest (512×512)       |
+| `apple-touch-icon-{color}-{theme}.png`                   | iOS ホーム画面アイコン (180×180) |
+| `icon-192.png` / `icon-512.png` / `apple-touch-icon.png` | cookie 未設定時のフォールバック  |
 
 `{color}`: `emerald` / `blue` / `violet` / `rose` / `pink` / `amber` / `cyan`  
 `{theme}`: `light` / `dark`
@@ -278,10 +279,10 @@ Chromium ベースのため `PushManager` / Web Push API をフルサポート�
 
 ### 接続先 URL とアイコン（環境別）
 
-| 環境 | URL | アイコン |
-|---|---|---|
-| prod | `https://oss-cairn.com` | `icon-emerald-dark-512.png`（濃紺 + 緑） |
-| dev | `https://develop.oss-cairn.com` | `icon-blue-light-512.png`（白 + 青） |
+| 環境 | URL                             | アイコン                                 |
+| ---- | ------------------------------- | ---------------------------------------- |
+| prod | `https://oss-cairn.com`         | `icon-emerald-dark-512.png`（濃紺 + 緑） |
+| dev  | `https://develop.oss-cairn.com` | `icon-blue-light-512.png`（白 + 青）     |
 
 ### コマンド
 

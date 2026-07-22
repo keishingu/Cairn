@@ -1,10 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
+import type { AccentId, AppearanceTheme } from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
 
 export interface MeDto {
+  id: string
   displayName: string
   email: string | null
   avatarUrl: string | null
+  theme: AppearanceTheme
+  accentId: AccentId
 }
 
 export interface WorkspaceDto {
