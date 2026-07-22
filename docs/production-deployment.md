@@ -46,6 +46,7 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
 
 ### 接続・キーの方針
 
+- **PostHog**: Vercel の **Production のみ**に `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` と `NEXT_PUBLIC_POSTHOG_HOST` を設定する。加えて `FEATURE_FLAGS.posthog` が `VERCEL_ENV === 'production'` の場合だけ有効になるため、Preview に誤ってキーを設定しても SDK はイベントを送信しない。
 - **アプリ実行時 `DATABASE_URL`（Vercel）**: Transaction pooler の **Shared Pooler / IPv4**（ホスト `aws-X-ap-northeast-1.pooler.supabase.com:6543`、ユーザー `postgres.<ref>`）。
   - Direct connection（`db.<ref>.supabase.co`）は **IPv6 専用で Vercel(IPv4) から繋がらない**ため使わない。
 - **マイグレーション `supabase db push`**: ローカルから **Session/Direct（5432）** で実行（`--db-url` を明示し、CLI の link は preview のまま）。

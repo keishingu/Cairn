@@ -23,7 +23,16 @@ export function enabledOutsideProduction(
   return environment !== 'production'
 }
 
+export function enabledInProduction(
+  environment = process.env.NEXT_PUBLIC_CAIRN_DEPLOYMENT_ENV
+    ?? process.env.EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV
+    ?? process.env['NODE_ENV'],
+): boolean {
+  return environment === 'production'
+}
+
 export const FEATURE_FLAGS = {
   dm: enabledOutsideProduction(),
   aiPmo: enabledOutsideProduction(),
+  posthog: enabledInProduction(),
 } as const
