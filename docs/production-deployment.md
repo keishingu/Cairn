@@ -46,13 +46,23 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
 
 ### 接続・キーの方針
 
-- **PostHog**: Vercel の **Production のみ**に `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` と `NEXT_PUBLIC_POSTHOG_HOST` を設定する。加えて `FEATURE_FLAGS.posthog` が `VERCEL_ENV === 'production'` の場合だけ有効になるため、Preview に誤ってキーを設定しても SDK はイベントを送信しない。
+- **PostHog**: Vercel の **Production のみ**に `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` と `NEXT_PUBLIC_POSTHOG_HOST` を設定する。ローカルと Preview には設定せず、SDK を初期化しない。これはデプロイ環境の接続設定として扱い、事業判断による公開制御用の Feature Flag には含めない。
 - **アプリ実行時 `DATABASE_URL`（Vercel）**: Transaction pooler の **Shared Pooler / IPv4**（ホスト `aws-X-ap-northeast-1.pooler.supabase.com:6543`、ユーザー `postgres.<ref>`）。
   - Direct connection（`db.<ref>.supabase.co`）は **IPv6 専用で Vercel(IPv4) から繋がらない**ため使わない。
 - **マイグレーション `supabase db push`**: ローカルから **Session/Direct（5432）** で実行（`--db-url` を明示し、CLI の link は preview のまま）。
 - **`SUPABASE_SERVICE_ROLE_KEY`**: **Legacy service_role JWT（`eyJ...`）** を使う。
   - 新形式 `sb_secret_...` は **Storage が JWT を要求するため `Invalid Compact JWS` で失敗**する。
 - **`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`**: 新形式 `sb_publishable_...`（Auth は新形式で動作）。
+
+### 環境設定と Feature Flag の境界
+
+環境ごとの外部サービス接続や認証情報は、Vercel / EAS の環境変数スコープで制御する。Feature Flag は、システムとして提供可能な機能について「市場へいつ・誰に公開するか」を事業判断で制御するために使う。
+
+- **環境変数を使うもの**: production 専用の外部サービス、接続先 URL、API token、環境別 project ID など。対象環境に値が存在すること自体を有効化条件にする
+- **Feature Flag を使うもの**: 実装と運用準備は完了しているが、Go-to-Market、段階公開、契約・届出、ユーザーセグメント等の理由で公開を制御する機能
+- **併用する場合**: 外部サービスへの接続可否は環境変数、ユーザーへの機能公開可否は Feature Flag と、責務を分ける。接続情報の有無を Feature Flag で代用しない
+
+PostHog は production の利用状況を収集するインフラ接続なので前者に該当する。Vercel Production のみに project token を設定し、独立した Feature Flag は設けない。
 
 ## リリース手順（develop → main）
 

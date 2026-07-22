@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import posthog from 'posthog-js'
-import { FEATURE_FLAGS } from '@cairn/shared'
 
 const projectToken = process.env['NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN']
 
-export const isPostHogConfigured = FEATURE_FLAGS.posthog && Boolean(projectToken)
+export const isPostHogConfigured = Boolean(projectToken)
 
 if (typeof window !== 'undefined' && isPostHogConfigured && projectToken && !posthog.__loaded) {
   posthog.init(projectToken, {
