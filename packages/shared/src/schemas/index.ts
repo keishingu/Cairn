@@ -123,6 +123,15 @@ export const createProjectStatusSchema = z.object({
   name: z.string().trim().min(1).max(100),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
 })
+
+export const patchWorkspaceSettingsSchema = z.object({
+  projectLabel: z.string().trim().min(1).max(100).nullable().optional(),
+  aiNudgesPhaseOneEnabled: z.boolean().optional(),
+  aiNudgesPhaseTwoEnabled: z.boolean().optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
 export type CreateProjectStatusInput = z.infer<typeof createProjectStatusSchema>
 
 export const patchProjectStatusSchema = z.object({
@@ -154,6 +163,7 @@ export type UpdateTaskInput = z.infer<typeof updateTaskSchema>
 export type UploadGalleryItemInput = z.infer<typeof uploadGalleryItemSchema>
 export type PatchProjectInput = z.infer<typeof patchProjectSchema>
 export type PatchWorkspaceInput = z.infer<typeof patchWorkspaceSchema>
+export type PatchWorkspaceSettingsInput = z.infer<typeof patchWorkspaceSettingsSchema>
 export type PatchMeInput = z.infer<typeof patchMeSchema>
 export type PatchProjectStatusInput = z.infer<typeof patchProjectStatusSchema>
 

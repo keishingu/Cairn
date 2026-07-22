@@ -10,6 +10,7 @@ import {
   projectMembers,
   projects,
   tasks,
+  workspaces,
   type AiNudgeDetector,
 } from '@cairn/db'
 import { and, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
@@ -77,6 +78,7 @@ export async function reconcilePhaseOneAiNudges(now = new Date()) {
       })
       .from(tasks)
       .innerJoin(projects, eq(tasks.projectId, projects.id))
+      .innerJoin(workspaces, eq(projects.workspaceId, workspaces.id))
       .innerJoin(profiles, eq(tasks.assigneeId, profiles.id))
       .innerJoin(
         activeWorkspaceMembers,
@@ -95,6 +97,7 @@ export async function reconcilePhaseOneAiNudges(now = new Date()) {
       .where(
         and(
           eq(projects.archived, false),
+          eq(workspaces.aiNudgesPhaseOneEnabled, true),
           eq(profiles.aiNudgesEnabled, true),
           isNotNull(tasks.assigneeId),
           or(ne(activeWorkspaceMembers.role, 'guest'), isNotNull(projectMembers.id)),
@@ -131,8 +134,12 @@ export async function reconcilePhaseOneAiNudges(now = new Date()) {
         )`,
       })
       .from(aiNudges)
+      .innerJoin(workspaces, eq(aiNudges.workspaceId, workspaces.id))
       .innerJoin(profiles, eq(aiNudges.userId, profiles.id))
-      .where(inArray(aiNudges.detector, PHASE_ONE_DETECTORS))
+      .where(and(
+        inArray(aiNudges.detector, PHASE_ONE_DETECTORS),
+        eq(workspaces.aiNudgesPhaseOneEnabled, true),
+      ))
 
     const dayStart = startOfJstDay(now)
     const deliveriesToday = new Map<string, number>()

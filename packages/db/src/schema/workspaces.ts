@@ -34,6 +34,15 @@ export const workspaces = pgTable('workspaces', {
   description: text('description'),
   logoUrl: text('logo_url'),
   settings: jsonb('settings').$type<WorkspaceSettings>(),
+  // Phase 1 は構造化タスクを使う決定論的なリマインダー、Phase 2 は LLM 巡回である。
+  // workspace 単位で明示的に分けることで、LLM の利用開始は owner の opt-in にする。
+  aiNudgesPhaseOneEnabled: boolean('ai_nudges_phase_one_enabled').notNull().default(true),
+  aiNudgesPhaseTwoEnabled: boolean('ai_nudges_phase_two_enabled').notNull().default(false),
+  // Phase 2 の実際の利用量。月次請求額の推定ではなく、OpenAI が返したトークン数の累計を保持する。
+  aiNudgesPhaseTwoInputTokens: integer('ai_nudges_phase_two_input_tokens').notNull().default(0),
+  aiNudgesPhaseTwoOutputTokens: integer('ai_nudges_phase_two_output_tokens').notNull().default(0),
+  aiNudgesPhaseTwoTotalTokens: integer('ai_nudges_phase_two_total_tokens').notNull().default(0),
+  aiNudgesPhaseTwoRequestCount: integer('ai_nudges_phase_two_request_count').notNull().default(0),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => profiles.id),
