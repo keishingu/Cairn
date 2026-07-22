@@ -26,7 +26,6 @@ import {
   useDeleteMessage,
   useEditMessage,
   useMessages,
-  useSendMessage,
   useToggleMessageBookmark,
   useToggleMessageReaction,
 } from '../../../hooks/use-messages'
@@ -37,11 +36,7 @@ import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
 import { API_BASE_URL } from '../../../lib/env'
-import {
-  createClientMessageId,
-  isRetryableSendError,
-  type QueuedMessage,
-} from '../../../lib/offline-message-queue'
+import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
 
 // SDK 54 の legacy download API は安定した進捗不要ダウンロードに使える。
@@ -396,7 +391,6 @@ export default function ChatThreadScreen() {
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
   const messagesQuery = useMessages(channelId ?? null)
-  const sendMessage = useSendMessage(channelId ?? '')
   const markRead = useMarkChannelRead(channelId ?? '')
   const toggleReaction = useToggleMessageReaction(channelId ?? '')
   const editMessage = useEditMessage(channelId ?? '')
@@ -407,6 +401,7 @@ export default function ChatThreadScreen() {
   const session = useSession()
   const offlineQueue = useOfflineMessageQueue()
   const [draft, setDraft] = React.useState('')
+  const [isQueueing, setIsQueueing] = React.useState(false)
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [replyTarget, setReplyTarget] = React.useState<MessageDto | null>(null)
   const [editingMessage, setEditingMessage] = React.useState<MessageDto | null>(null)
@@ -417,6 +412,8 @@ export default function ChatThreadScreen() {
   // 送信失敗時の catch は非同期に発火するため、常に最新の channelId を参照できるようにする
   const channelIdRef = React.useRef(channelId)
   channelIdRef.current = channelId
+  const draftRef = React.useRef(draft)
+  draftRef.current = draft
 
   // chats/[channelId] は chats/index と同じ Tab Navigator 内の兄弟タブ（href: null）のため、
   // 他のタブへ切り替えても既定では画面がアンマウントされない。
@@ -527,53 +524,40 @@ export default function ChatThreadScreen() {
       return
     }
     const attachmentFileIds = upload.doneFileIds
-    if ((!content && attachmentFileIds.length === 0) || sendMessage.isPending || upload.isUploading)
+    if (
+      (!content && attachmentFileIds.length === 0) ||
+      !channelId ||
+      !offlineQueue.ready ||
+      isQueueing ||
+      upload.isUploading
+    )
       return
     const sendingChannelId = channelId
+    const sendingDraft = draft
     const parentMessageId = replyTarget?.id
     const clientMessageId = createClientMessageId()
-    setDraft('')
     setSendError(null)
+    setIsQueueing(true)
     try {
-      await sendMessage.mutateAsync({
-        clientMessageId,
+      // ネットワークへ送る前に必ず端末へ保存する。POST応答待ち中にアプリが終了しても、
+      // 次回起動時に同じ clientMessageId で再送できるため本文を失わない。
+      await offlineQueue.enqueue({
+        id: clientMessageId,
+        channelId: sendingChannelId,
         content,
+        createdAt: new Date().toISOString(),
         ...(parentMessageId ? { parentMessageId } : {}),
         ...(attachmentFileIds.length > 0 ? { attachmentFileIds } : {}),
       })
+      if (channelIdRef.current !== sendingChannelId) return
+      if (draftRef.current === sendingDraft) setDraft('')
       setReplyTarget(null)
       upload.clearUploads()
-    } catch (err) {
-      if (sendingChannelId && isRetryableSendError(err) && offlineQueue.ready) {
-        // 送信直後に別チャンネルへ移動していても、元チャンネルのメッセージは失わない。
-        // UI 状態を触るかどうかとは独立して、必ず送信時の channelId でキューへ保存する。
-        try {
-          await offlineQueue.enqueue({
-            id: clientMessageId,
-            channelId: sendingChannelId,
-            content,
-            createdAt: new Date().toISOString(),
-            ...(parentMessageId ? { parentMessageId } : {}),
-            ...(attachmentFileIds.length > 0 ? { attachmentFileIds } : {}),
-          })
-        } catch {
-          if (channelIdRef.current === sendingChannelId) {
-            setDraft(content)
-            setSendError('未送信メッセージを端末に保存できませんでした。再度送信してください。')
-          }
-          return
-        }
-        if (channelIdRef.current !== sendingChannelId) return
-        setReplyTarget(null)
-        upload.clearUploads()
-        setSendError(null)
-        return
-      }
-      // 隠しタブとして同じ画面インスタンスが再利用されるため、古い送信結果で
-      // 移動先チャンネルの入力欄を上書きしない。
+    } catch {
       if (channelIdRef.current !== sendingChannelId) return
-      setDraft(content)
-      setSendError(err instanceof Error ? err.message : 'メッセージの送信に失敗しました')
+      setSendError('未送信メッセージを端末に保存できませんでした。再度送信してください。')
+    } finally {
+      setIsQueueing(false)
     }
   }
 
@@ -620,7 +604,8 @@ export default function ChatThreadScreen() {
   const canSubmit = editingMessage
     ? draft.trim().length > 0 && !editMessage.isPending
     : (draft.trim().length > 0 || upload.doneFileIds.length > 0) &&
-      !sendMessage.isPending &&
+      offlineQueue.ready &&
+      !isQueueing &&
       !upload.isUploading
 
   const handleToggleReaction = (messageId: string, emoji: string) => {
@@ -730,44 +715,70 @@ export default function ChatThreadScreen() {
             再度ログインしてください。
           </Text>
         </View>
-      ) : messagesQuery.error && listItems.length === 0 ? (
-        <View style={styles.center}>
-          <Text style={[styles.errorText, { color: palette.redText }]}>
-            {messagesQuery.error.message}
-          </Text>
-        </View>
       ) : (
-        <FlatList
-          data={listItems}
-          inverted
-          keyExtractor={(item) => `${item.kind}:${item.message.id}`}
-          renderItem={({ item }) =>
-            item.kind === 'queued' ? (
-              <QueuedMessageRow
-                message={item.message}
-                palette={palette}
-                senderName={me?.displayName ?? '自分'}
-                onRetry={() => offlineQueue.retry(item.message.id)}
-                onCancel={() => offlineQueue.cancel(item.message.id)}
-              />
-            ) : (
-              <ChatMessageRow
-                message={item.message}
-                palette={palette}
-                onToggleReaction={handleToggleReaction}
-                onAddReaction={setReactionTarget}
-                onOpenActions={setActionTarget}
-                {...(session?.access_token ? { accessToken: session.access_token } : {})}
-              />
-            )
-          }
-          contentContainerStyle={styles.list}
-          ListEmptyComponent={
-            <Text style={[styles.empty, { color: palette.text4 }]}>
-              まだメッセージはありません。最初のメッセージを送ってみましょう！
-            </Text>
-          }
-        />
+        <View style={styles.messageListContainer}>
+          {messagesQuery.error && (
+            <View
+              accessibilityRole="alert"
+              style={[
+                styles.refreshError,
+                { backgroundColor: palette.card2, borderColor: palette.redText },
+              ]}
+            >
+              <Ionicons name="cloud-offline-outline" size={16} color={palette.redText} />
+              <Text style={[styles.refreshErrorText, { color: palette.redText }]} numberOfLines={2}>
+                {messagesQuery.error.message}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="メッセージを再読み込み"
+                disabled={messagesQuery.isFetching}
+                onPress={() => void messagesQuery.refetch()}
+                hitSlop={6}
+              >
+                {messagesQuery.isFetching ? (
+                  <ActivityIndicator size="small" color={palette.redText} />
+                ) : (
+                  <Text style={[styles.refreshErrorAction, { color: palette.redText }]}>再試行</Text>
+                )}
+              </Pressable>
+            </View>
+          )}
+          <FlatList
+            style={styles.messageList}
+            data={listItems}
+            inverted
+            keyExtractor={(item) => `${item.kind}:${item.message.id}`}
+            renderItem={({ item }) =>
+              item.kind === 'queued' ? (
+                <QueuedMessageRow
+                  message={item.message}
+                  palette={palette}
+                  senderName={me?.displayName ?? '自分'}
+                  onRetry={() => offlineQueue.retry(item.message.id)}
+                  onCancel={() => offlineQueue.cancel(item.message.id)}
+                />
+              ) : (
+                <ChatMessageRow
+                  message={item.message}
+                  palette={palette}
+                  onToggleReaction={handleToggleReaction}
+                  onAddReaction={setReactionTarget}
+                  onOpenActions={setActionTarget}
+                  {...(session?.access_token ? { accessToken: session.access_token } : {})}
+                />
+              )
+            }
+            contentContainerStyle={styles.list}
+            ListEmptyComponent={
+              messagesQuery.error ? null : (
+                <Text style={[styles.empty, { color: palette.text4 }]}>
+                  まだメッセージはありません。最初のメッセージを送ってみましょう！
+                </Text>
+              )
+            }
+          />
+        </View>
       )}
 
       {!isAccessDenied && !isSessionExpired && (
@@ -904,7 +915,7 @@ export default function ChatThreadScreen() {
               onPress={() => void handleSend()}
               disabled={!canSubmit}
             >
-              {sendMessage.isPending || editMessage.isPending ? (
+              {isQueueing || editMessage.isPending ? (
                 <ActivityIndicator size="small" color={palette.onAccent} />
               ) : (
                 <Ionicons
@@ -1113,6 +1124,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   composerArea: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 8 },
+  messageListContainer: { flex: 1 },
+  messageList: { flex: 1 },
+  refreshError: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  refreshErrorText: { flex: 1, fontSize: 12, lineHeight: 16 },
+  refreshErrorAction: { fontSize: 12, fontWeight: '700' },
   sendError: { fontSize: 12, marginBottom: 6 },
   composerContext: {
     minHeight: 44,

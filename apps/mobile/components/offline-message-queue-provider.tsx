@@ -6,6 +6,7 @@ import { apiFetch } from '../lib/api-fetch'
 import {
   isRetryableSendError,
   parseStoredMessageQueue,
+  persistThenStartSend,
   type QueuedMessage,
 } from '../lib/offline-message-queue'
 import { useSession } from '../lib/session-context'
@@ -153,10 +154,20 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
       ready,
       messages,
       enqueue: async (message) => {
-        await updateMessages((current) => {
-          if (current.some((queued) => queued.id === message.id)) return current
-          return [...current, { ...message, attempts: 0, status: 'waiting' }]
-        })
+        await persistThenStartSend(
+          () =>
+            updateMessages((current) => {
+              if (current.some((queued) => queued.id === message.id)) return current
+              return [...current, { ...message, attempts: 0, status: 'waiting' }]
+            }),
+          () => {
+            // 端末保存の完了後にだけネットワーク送信を始める。呼び出し元は保存完了時点で
+            // 下書きを安全に消せるよう、POST完了を待たずに戻す。
+            void flush().catch((error) =>
+              console.warn('[offline-message-queue] 自動送信の開始に失敗しました:', error),
+            )
+          },
+        )
       },
       retry: (id) => {
         void (async () => {

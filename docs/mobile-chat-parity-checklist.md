@@ -19,7 +19,7 @@
 
 | 項目 | 実装 | 状態 |
 |---|---|---|
-| 端末内への永続化 | ユーザー別のAsyncStorageキューへ、本文・返信先・送信先・作成時刻・アップロード済みfile IDを保存 | [x] |
+| 端末内への永続化 | 初回POSTより前に、ユーザー別AsyncStorageキューへ本文・返信先・送信先・作成時刻・アップロード済みfile IDを保存 | [x] |
 | 待機状態の表示 | スレッド内に「電波待ち・接続後に自動送信」を表示。手動再試行と取消も可能 | [x] |
 | 自動再送 | 8秒間隔とアプリ前面復帰時に再送。通信障害時は後続を止めて送信順を維持 | [x] |
 | アプリ再起動 | `sending` を `waiting` として復元し、同じクライアントIDで再送 | [x] |
@@ -60,6 +60,7 @@
 ## 実画面の確認記録
 
 - [x] iOS Development Buildをネイティブモジュール込みで再ビルドし、iPhone 17 Proシミュレータへインストール・起動。
+- [x] Android Development BuildをPixel 9（Android 37 / 16KB page size）でビルド・インストールし、seedログイン、ダーク/violet配色、期間付きチャット一覧、スレッド表示、キュー経由の本文送信を確認。
 - [x] seedユーザーでログインし、ネイティブチャット一覧・スレッド・送信・👍リアクション・画像ピッカー・文書ピッカーを確認。
 - [x] プロジェクト・タスク・AI・設定タブがアプリ内WebViewで開き、Vercel.comへ遷移しないことを確認。
 - [x] ダークテーマ・violetアクセントがネイティブ画面とWebViewの両方へ反映されることを確認。
@@ -73,7 +74,7 @@
 ## 自動検証
 
 - [x] Mobile / Shared / WebのTypeScript型チェック
-- [x] Mobile: 8 files / 28 tests
+- [x] Mobile: 8 files / 30 tests
 - [x] Shared: 2 files / 25 tests
 - [x] Web全体: 91 files / 467 tests（高並列時に1件だけタイムアウトしたため、並列数を抑えて全件再実行）
 - [x] `git diff --check`

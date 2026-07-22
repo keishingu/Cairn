@@ -83,7 +83,7 @@ pnpm dev
 
 ネイティブビルドのやり直しが必要なのは、ネイティブモジュールの追加や `app.json` のネイティブ設定変更時のみ。JS の変更は Metro のホットリロードで反映される。
 
-ネイティブチャットの本文・返信は、通信失敗時に端末内のユーザー別キューへ保存される。8秒間隔またはアプリの前面復帰時に自動再送し、クライアント生成UUIDによって応答欠落後の再送も二重投稿にならない。アップロード完了済みの添付IDはキューへ含められるが、完全オフラインで選んだローカル画像・ファイル自体の後送は未対応。詳細と検証記録は [`docs/mobile-chat-parity-checklist.md`](docs/mobile-chat-parity-checklist.md) を参照。
+ネイティブチャットの本文・返信は、初回POSTより前に端末内のユーザー別キューへ保存され、保存完了後に即時送信される。失敗時は8秒間隔またはアプリの前面復帰時に自動再送し、クライアント生成UUIDによって応答欠落後の再送も二重投稿にならない。アップロード完了済みの添付IDはキューへ含められるが、完全オフラインで選んだローカル画像・ファイル自体の後送は未対応。詳細と検証記録は [`docs/mobile-chat-parity-checklist.md`](docs/mobile-chat-parity-checklist.md) を参照。
 
 `expo run:ios` / `run:android` が生成する `ios/` `android/` ディレクトリは `app.json` から再生成できる成果物のため、コミットしない（`apps/mobile/.gitignore` で除外済み）。また、ネイティブプロジェクトが存在すると runtime version のポリシー（`appVersion` 等）が使えないため、`app.json` の `runtimeVersion` は固定文字列で管理する。**ネイティブモジュールを追加・更新したら `runtimeVersion` を手動で上げる**こと（古いネイティブビルドに非互換な EAS Update が配信されるのを防ぐため）。
 

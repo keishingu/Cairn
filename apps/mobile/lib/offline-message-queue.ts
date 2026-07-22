@@ -20,6 +20,14 @@ export function createClientMessageId(): string {
   })
 }
 
+export async function persistThenStartSend(
+  persist: () => Promise<void>,
+  startSend: () => void,
+): Promise<void> {
+  await persist()
+  startSend()
+}
+
 export function isRetryableSendError(error: unknown): boolean {
   if (typeof error !== 'object' || error === null || !('status' in error)) return true
   const status = (error as { status?: unknown }).status

@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   createClientMessageId,
   isRetryableSendError,
   parseStoredMessageQueue,
+  persistThenStartSend,
 } from './offline-message-queue'
 
 describe('offline message queue', () => {
@@ -32,5 +33,36 @@ describe('offline message queue', () => {
       ]),
     )
     expect(message?.status).toBe('waiting')
+  })
+
+  it('端末保存が完了してからネットワーク送信を開始する', async () => {
+    const order: string[] = []
+    let finishPersist: (() => void) | undefined
+    const persist = new Promise<void>((resolve) => {
+      finishPersist = resolve
+    })
+
+    const operation = persistThenStartSend(
+      async () => {
+        order.push('persist:start')
+        await persist
+        order.push('persist:done')
+      },
+      () => order.push('send'),
+    )
+
+    expect(order).toEqual(['persist:start'])
+    finishPersist?.()
+    await operation
+    expect(order).toEqual(['persist:start', 'persist:done', 'send'])
+  })
+
+  it('端末保存に失敗した場合はネットワーク送信を開始しない', async () => {
+    const startSend = vi.fn()
+
+    await expect(
+      persistThenStartSend(async () => Promise.reject(new Error('storage failed')), startSend),
+    ).rejects.toThrow('storage failed')
+    expect(startSend).not.toHaveBeenCalled()
   })
 })
