@@ -32,8 +32,8 @@ export async function GET(req: Request) {
   if (forbidden) return forbidden
 
   try {
-    const { aiNudges, db, profiles } = await import('@cairn/db')
-    const { and, asc, eq } = await import('drizzle-orm')
+    const { aiNudges, db, profiles, workspaces } = await import('@cairn/db')
+    const { and, asc, eq, inArray, or } = await import('drizzle-orm')
     const rows = await db
       .select({
         id: aiNudges.id,
@@ -48,6 +48,9 @@ export async function GET(req: Request) {
       })
       .from(aiNudges)
       .innerJoin(profiles, eq(aiNudges.userId, profiles.id))
+      // owner がOFFへ切り替える操作とheartbeatが競合しても、読み取り時の再評価で
+      // 無効化済みPhaseのカードをクライアントへ返さない。
+      .innerJoin(workspaces, eq(aiNudges.workspaceId, workspaces.id))
       .where(
         and(
           eq(aiNudges.workspaceId, ctx.workspaceId),
@@ -55,6 +58,16 @@ export async function GET(req: Request) {
           eq(aiNudges.channelId, channelId),
           eq(aiNudges.status, 'active'),
           eq(profiles.aiNudgesEnabled, true),
+          or(
+            and(
+              inArray(aiNudges.detector, ['task_due_soon', 'task_overdue', 'task_stalled']),
+              eq(workspaces.aiNudgesPhaseOneEnabled, true),
+            ),
+            and(
+              inArray(aiNudges.detector, ['unanswered_ask', 'llm_risk']),
+              eq(workspaces.aiNudgesPhaseTwoEnabled, true),
+            ),
+          ),
         ),
       )
       .orderBy(asc(aiNudges.createdAt))
