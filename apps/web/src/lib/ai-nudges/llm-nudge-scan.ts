@@ -137,6 +137,17 @@ function toISOString(value: Date | string): string {
   return (typeof value === 'string' ? new Date(value) : value).toISOString()
 }
 
+// チャンネル一覧取得からLLM実行までの間にownerがOFFへ切り替えた場合も、
+// トークンを消費しないよう各LLM stepの直前に再確認する。
+async function isPhaseTwoEnabled(workspaceId: string): Promise<boolean> {
+  const [workspace] = await db
+    .select({ enabled: workspaces.aiNudgesPhaseTwoEnabled })
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .limit(1)
+  return workspace?.enabled === true
+}
+
 export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> {
   const rows = await db
     .select({
@@ -465,6 +476,7 @@ function formatMessages(input: PhaseTwoChannelInput): string {
 
 export async function screenPhaseTwoCandidates(input: PhaseTwoChannelInput) {
   if (input.messages.length === 0) return []
+  if (!await isPhaseTwoEnabled(input.workspaceId)) return []
   const { object, usage } = await generateObject({
     model: openai(FAST_MODEL),
     schema: primaryCandidateSchema,
@@ -604,6 +616,7 @@ export async function refinePhaseTwoCandidate(
   input: PhaseTwoChannelInput,
   candidate: z.infer<typeof primaryCandidateSchema>['candidates'][number],
 ): Promise<PhaseTwoNudgeCandidate | null> {
+  if (!await isPhaseTwoEnabled(input.workspaceId)) return null
   const recipients = await listEligibleRecipients(input, candidate.sourceMessageId)
   const source = input.messages.find((message) => message.id === candidate.sourceMessageId)
   if (!source || recipients.length === 0) return null
