@@ -4,10 +4,12 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
+const { existsSync, readFileSync } = require('node:fs')
+const { resolve } = require('node:path')
 const test = require('node:test')
 
 const workflow = readFileSync('.github/workflows/vercel-preview.yml', 'utf8')
+const vercelConfig = JSON.parse(readFileSync('apps/web/vercel.json', 'utf8'))
 
 test('@vercel previewの完全一致かつ権限のあるコメントだけを受け付ける', () => {
   assert.match(workflow, /github\.event\.comment\.body == '@vercel preview'/)
@@ -42,4 +44,9 @@ test('Vercel認証情報をsecretから受け取りPreview URLを返信する', 
   assert.match(workflow, /secrets\.VERCEL_PROJECT_ID/)
   assert.match(workflow, /Vercel Preview: \$\{process\.env\.PREVIEW_URL\}/)
   assert.match(workflow, /if: github\.event_name == 'issue_comment'/)
+})
+
+test('apps/webをRoot DirectoryとするVercelからignore scriptを実行できる', () => {
+  const commandPath = vercelConfig.ignoreCommand.replace(/^node /, '')
+  assert.equal(existsSync(resolve('apps/web', commandPath)), true)
 })

@@ -28,6 +28,13 @@ test('Preview workflowからの明示要求はビルドする', () => {
 test('mainとdevelopへのpushは常にビルドする', () => {
   assert.equal(shouldBuild({ VERCEL_GIT_COMMIT_REF: 'main' }).build, true)
   assert.equal(shouldBuild({ VERCEL_GIT_COMMIT_REF: 'develop' }).build, true)
+  assert.equal(
+    shouldBuild({
+      VERCEL_GIT_COMMIT_REF: 'develop',
+      VERCEL_GIT_PULL_REQUEST_ID: '404',
+    }).build,
+    true,
+  )
 })
 
 test('PR作成前のfeature branch pushはスキップする', () => {

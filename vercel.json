@@ -1,4 +1,0 @@
-{
-  "regions": ["hnd1"],
-  "ignoreCommand": "node scripts/vercel-ignore-build.cjs"
-}

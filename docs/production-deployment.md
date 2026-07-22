@@ -23,8 +23,9 @@ Vercel の Git 連携（GitHub）で常設環境をデプロイする。PR Previ
 
 ### PR更新時のビルドスキップ
 
-Vercel の Ignored Build Step（`vercel.json` の `ignoreCommand`）で、Git連携によるPRの自動buildをスキップする。Production、`develop`、`main` は常にbuildし、実行コンテキストが判定できない場合も安全側に倒してbuildする。
+Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で、Git連携によるPRの自動buildをスキップする。Production、`develop`、`main` は常にbuildし、実行コンテキストが判定できない場合も安全側に倒してbuildする。
 
+- Vercel ProjectのRoot Directoryは `apps/web` のため、`vercel.json` も同ディレクトリに置き、ignore commandはそこを起点にrepository rootの判定scriptを参照する
 - `.github/workflows/vercel-preview.yml` は同一repository内のPR作成、または完全一致の `@vercel preview` コメントを受け、openなPRの最新SHAをデプロイする
 - 公開repositoryから任意のbuildを起動されないよう、コメント投稿者は `OWNER` / `MEMBER` / `COLLABORATOR` に限定し、fork PRは拒否する
 - GitHubの `Preview` environmentに `VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID` の3 secretを登録する
