@@ -109,6 +109,7 @@ jobs:
             --target=preview \
             --token="$VERCEL_TOKEN" \
             --build-env CAIRN_VERCEL_PREVIEW_REQUESTED=1 \
+            --meta "githubDeployment=1" \
             --meta "githubOrg=$VERCEL_GITHUB_ORG" \
             --meta "githubRepo=$VERCEL_GITHUB_REPO" \
             --meta "githubPrId=$VERCEL_GITHUB_PR_ID" \
