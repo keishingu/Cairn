@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 
 export interface NotificationDto {
@@ -23,12 +24,13 @@ export async function GET(req: Request) {
 
   try {
     const { aiNudges, db, notifications, workspaces } = await import('@cairn/db')
-    const { eq, isNull, and, desc, sql } = await import('drizzle-orm')
+    const { eq, ne, isNull, and, desc, sql } = await import('drizzle-orm')
 
     const conditions = [
       eq(notifications.userId, ctx.userId),
       eq(notifications.workspaceId, ctx.workspaceId),
     ]
+    if (!FEATURE_FLAGS.dm) conditions.push(ne(notifications.type, 'dm'))
     if (filter === 'unread') conditions.push(isNull(notifications.readAt))
     if (filter === 'mention') conditions.push(eq(notifications.type, 'mention'))
     if (filter === 'ai') conditions.push(eq(notifications.type, 'ai'))
@@ -94,7 +96,7 @@ export async function PATCH(req: Request) {
 
   try {
     const { db, notifications } = await import('@cairn/db')
-    const { eq, and, isNull, inArray } = await import('drizzle-orm')
+    const { eq, ne, and, isNull, inArray } = await import('drizzle-orm')
 
     const now = new Date()
     // GET と同様に表示中のワークスペースへスコープする。「すべて既読」が他 WS の未読まで消さないように
@@ -102,6 +104,7 @@ export async function PATCH(req: Request) {
       eq(notifications.userId, ctx.userId),
       eq(notifications.workspaceId, ctx.workspaceId),
       isNull(notifications.readAt),
+      FEATURE_FLAGS.dm ? undefined : ne(notifications.type, 'dm'),
     )
     const where = ids?.length ? and(base, inArray(notifications.id, ids)) : base
 

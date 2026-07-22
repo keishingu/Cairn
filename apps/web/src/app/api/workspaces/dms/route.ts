@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
@@ -17,7 +18,13 @@ export interface DmChannelDto {
 
 const createDmSchema = z.object({ targetUserId: z.string().uuid() })
 
+function dmDisabledResponse() {
+  return NextResponse.json({ error: 'DM機能は現在利用できません' }, { status: 404 })
+}
+
 export async function GET() {
+  if (!FEATURE_FLAGS.dm) return dmDisabledResponse()
+
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
@@ -95,6 +102,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!FEATURE_FLAGS.dm) return dmDisabledResponse()
+
   const { ctx, error } = await getAuthContext()
   if (error) return error
 

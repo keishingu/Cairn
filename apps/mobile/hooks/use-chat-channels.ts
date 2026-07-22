@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
 
 export interface WorkspaceChannelDto {
@@ -40,5 +41,6 @@ export function useWorkspaceDms() {
   return useQuery<DmChannelDto[]>({
     queryKey: ['workspace-dms'],
     queryFn: fetchJson('/api/workspaces/dms', 'ダイレクトメッセージ'),
+    enabled: FEATURE_FLAGS.dm,
   })
 }

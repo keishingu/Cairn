@@ -70,6 +70,7 @@
 | ファイル | 内容 | 作成 |
 |---|---|---|
 | [`09_product_strategy_notes.md`](./09_product_strategy_notes.md) | 展開戦略・魅力向上の優先課題の議論記録 | 2026-06-11 |
+| [`telecom-business-filing-research.md`](./telecom-business-filing-research.md) | 電気通信事業の届出要否・タイミングの調査記録 | 2026-06-17 |
 | [`ai-era-pm-strategy.md`](./ai-era-pm-strategy.md) | AI時代のPM ツール戦略（3つの逆転）の合意記録: 会話ソース連携・カレンダー経由の紐付け・出席者承認・MCPサーバーとしての座取り・沈黙の設計 | 2026-07-17 |
 
 ## アーカイブ

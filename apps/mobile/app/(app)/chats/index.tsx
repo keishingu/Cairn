@@ -1,4 +1,5 @@
 import React from 'react'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Image, useColorScheme } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -148,8 +149,12 @@ export default function ChatsScreen() {
           <>
             <Text style={[styles.sectionTitle, { color: palette.text4 }]}>チャンネル</Text>
             {(workspaceChannelsQuery.data ?? []).map(channel => <WorkspaceChannelItem key={channel.id} channel={channel} />)}
-            <Text style={[styles.sectionTitle, { color: palette.text4 }]}>ダイレクトメッセージ</Text>
-            {(dmsQuery.data ?? []).map(channel => <DirectMessageItem key={channel.id} channel={channel} />)}
+            {FEATURE_FLAGS.dm && (
+              <>
+                <Text style={[styles.sectionTitle, { color: palette.text4 }]}>ダイレクトメッセージ</Text>
+                {(dmsQuery.data ?? []).map(channel => <DirectMessageItem key={channel.id} channel={channel} />)}
+              </>
+            )}
             <Text style={[styles.sectionTitle, { color: palette.text4 }]}>アプリ</Text>
             <TouchableOpacity style={[styles.channelRow, { borderBottomColor: palette.divider }]} onPress={() => router.push('/(app)/ai')} activeOpacity={0.7}>
               <View style={[styles.channelIcon, { backgroundColor: palette.accentSoft }]}><Text style={[styles.channelIconText, { color: palette.accentText }]}>✨</Text></View>

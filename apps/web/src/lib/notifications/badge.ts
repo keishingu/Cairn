@@ -1,6 +1,8 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { FEATURE_FLAGS } from '@cairn/shared'
+
 /**
  * ユーザーの未読アプリ内通知の総数を返す（全ワークスペース横断）。
  *
@@ -16,7 +18,7 @@
  */
 export async function getUnreadNotificationCount(userId: string): Promise<number> {
   const { aiNudges, db, notifications, activeWorkspaceMembers, workspaces } = await import('@cairn/db')
-  const { eq, and, isNull, count, sql } = await import('drizzle-orm')
+  const { eq, ne, and, isNull, count, sql } = await import('drizzle-orm')
 
   const [row] = await db
     .select({ n: count() })
@@ -31,6 +33,7 @@ export async function getUnreadNotificationCount(userId: string): Promise<number
     .where(and(
       eq(notifications.userId, userId),
       isNull(notifications.readAt),
+      FEATURE_FLAGS.dm ? undefined : ne(notifications.type, 'dm'),
       // 通知一覧と同様に、OFFにしたPhaseのAI通知はバッジにも含めない。
       sql`(
         ${notifications.type} <> 'ai'

@@ -61,6 +61,8 @@ pnpm dev
 
 ## 決定済みの技術判断
 
+- **DM は静的 feature flag でリリースを制御する**: `packages/shared/src/config/feature-flags.ts` の `FEATURE_FLAGS.dm` を Web・API・Expo で共有する。電気通信事業の届出要否の最終確認と必要な手続きが完了するまでは `false` とし、完了後に `true` へ変更して再ビルド・再リリースする。背景は [`docs/telecom-business-filing-research.md`](docs/telecom-business-filing-research.md)
+
 - **tsconfig の extends は相対パス**で書く（`../../packages/config/tsconfig/base.json`）
   - Vite/Vitest の `tsconfck` が workspace パッケージ参照を解決できないため
 - **AIモデルは OpenAI**（gpt-5 / gpt-5-mini）。Claude は使用しない

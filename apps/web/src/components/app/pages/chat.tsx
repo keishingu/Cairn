@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { usePathname, useRouter } from 'next/navigation'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MobileHeader } from '../mobile/header'
@@ -364,7 +365,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     ],
     [projectChannels, workspaceChannels, dms],
   )
-  const hasResolvedInitialChannelLists = isProjectChannelsFetched && isWorkspaceChannelsFetched && isDmsFetched
+  const hasResolvedInitialChannelLists = isProjectChannelsFetched && isWorkspaceChannelsFetched && (isDmsFetched || !FEATURE_FLAGS.dm)
 
   React.useEffect(() => {
     if (channelId) setLastVisitedChatChannelId(channelId)
