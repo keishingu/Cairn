@@ -147,6 +147,7 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
       openPanel,
       openMember,
       openNotif: () => setNotifOpen(true),
+      isWebView: false,
       projectsView,
       setProjectsView,
       crossSearchNonce,

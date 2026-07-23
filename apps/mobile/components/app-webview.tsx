@@ -10,24 +10,31 @@ import { API_BASE_URL as WEB_BASE } from '../lib/env'
 import { webPath } from '../lib/webview-path'
 import { isAccentId, isAppearanceTheme } from '@cairn/shared'
 import { useAppAppearance } from './appearance-provider'
+import {
+  NATIVE_HEADER_BACK_SCRIPT,
+  parseNativeHeaderDescriptor,
+  type NativeHeaderDescriptor,
+} from '../lib/native-header-bridge'
 
 export interface AppWebViewHandle {
   injectJavaScript: (script: string) => void
+  triggerNativeHeaderBack: () => void
 }
 
-interface Props {
+export interface AppWebViewProps {
   path: string
   onLoadEnd?: () => void
   allowChatRoutes?: boolean
   includeSafeAreaTop?: boolean
+  onNativeHeaderChange?: (header: NativeHeaderDescriptor) => void
 }
 
 export function webUrl(path: string): string {
   return `${WEB_BASE}${webPath(path)}`
 }
 
-export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function AppWebView(
-  { path, onLoadEnd, allowChatRoutes = false, includeSafeAreaTop = true },
+export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(function AppWebView(
+  { path, onLoadEnd, allowChatRoutes = false, includeSafeAreaTop = true, onNativeHeaderChange },
   ref,
 ) {
   const webViewRef = React.useRef<WebView>(null)
@@ -42,6 +49,8 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
     ref,
     () => ({
       injectJavaScript: (script) => webViewRef.current?.injectJavaScript(script),
+      triggerNativeHeaderBack: () =>
+        webViewRef.current?.injectJavaScript(NATIVE_HEADER_BACK_SCRIPT),
     }),
     [],
   )
@@ -89,16 +98,21 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
           }
           throw new Error(`handoff failed: ${res.status}`)
         }
-        const data = (await res.json()) as { tokenHash?: string }
-        if (!data.tokenHash) throw new Error('handoff response missing tokenHash')
+        const data = (await res.json()) as { tokenHash?: string; workspaceId?: string }
+        if (!data.tokenHash || !data.workspaceId) {
+          throw new Error('handoff response missing tokenHash or workspaceId')
+        }
 
         const redirect = encodeURIComponent(webPath(targetPath))
         const th = encodeURIComponent(data.tokenHash)
+        const workspaceId = encodeURIComponent(data.workspaceId)
         initialPathRef.current = targetPath
         loadedRef.current = false
         // トークンは URL フラグメント（#th=...）で渡す。
         // フラグメントはサーバーに送信されないためアクセスログに残らない。
-        setUri(`${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}#th=${th}`)
+        setUri(
+          `${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}&workspaceId=${workspaceId}#th=${th}`,
+        )
       } catch (err) {
         // 失敗理由が Metro ログで追えるように必ず出力する
         console.error('[AppWebView] ハンドオフに失敗:', err)
@@ -159,12 +173,22 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
   }
 
   function handleMessage(event: WebViewMessageEvent) {
-    let msg: { type?: string; theme?: unknown; accentId?: unknown } | null = null
+    let msg: {
+      type?: string
+      theme?: unknown
+      accentId?: unknown
+      title?: unknown
+      subtitle?: unknown
+      canGoBack?: unknown
+    } | null = null
     try {
       msg = JSON.parse(event.nativeEvent.data) as {
         type?: string
         theme?: unknown
         accentId?: unknown
+        title?: unknown
+        subtitle?: unknown
+        canGoBack?: unknown
       }
     } catch {
       return
@@ -174,6 +198,10 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
     }
     if (msg?.type === 'open-chats') {
       router.push('/(app)/chats')
+    }
+    if (msg?.type === 'native-header') {
+      const descriptor = parseNativeHeaderDescriptor(msg)
+      if (descriptor) onNativeHeaderChange?.(descriptor)
     }
     if (
       msg?.type === 'appearance-changed' &&

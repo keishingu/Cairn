@@ -3,9 +3,17 @@
 import { Suspense, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { WORKSPACE_COOKIE } from '@/lib/workspace-cookie'
 
 function isSafeRedirect(path: string): boolean {
   return path.startsWith('/') && !path.startsWith('//')
+}
+
+function isWorkspaceId(value: string | null): value is string {
+  return (
+    value !== null &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  )
 }
 
 // ネイティブ側（react-native-webview）へメッセージを返すためのブリッジ。
@@ -33,6 +41,7 @@ function MobileHandoffInner() {
   useEffect(() => {
     const rawRedirect = params.get('redirect') ?? '/projects'
     const redirect = isSafeRedirect(rawRedirect) ? rawRedirect : '/projects'
+    const workspaceId = params.get('workspaceId')
 
     // ワンタイムトークン（magiclink の hashed_token）は URL フラグメント（#th=...）で受け取る。
     // フラグメントはサーバーに送信されないためアクセスログに残らない。
@@ -48,6 +57,12 @@ function MobileHandoffInner() {
 
     const supabase = createClient()
 
+    // ネイティブで選んだ workspace を WebView の独立セッションにも引き継ぐ。
+    // UUID 以外は Cookie に書き込まず、サーバー側でも active membership を再検証する。
+    if (isWorkspaceId(workspaceId)) {
+      document.cookie = `${WORKSPACE_COOKIE}=${workspaceId}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
+    }
+
     // router.replace() は RSC フェッチを発生させ、ミドルウェアが Cookie を
     // 確認するタイミングでまだ Cookie が届いていない場合がある。
     // window.location.replace() でフルリロードすることで Cookie を確実に送信する。
@@ -56,7 +71,9 @@ function MobileHandoffInner() {
     void (async () => {
       // 既にこの WebView にセッションがあれば再ハンドオフ不要。
       // タブ切り替えごとに verifyOtp して無駄なセッションを増やさないため。
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (session) {
         goRedirect()
         return
@@ -75,7 +92,7 @@ function MobileHandoffInner() {
 
       goRedirect()
     })()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return null

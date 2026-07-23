@@ -30,6 +30,8 @@ import type { DmChannelDto, WorkspaceChannelDto } from '../../../hooks/use-chat-
 import type { ThemePalette } from '../../../lib/theme'
 import { formatChannelPeriod } from '../../../lib/channel-period'
 import { useAppAppearance } from '../../../components/appearance-provider'
+import { useNotificationPanel } from '../../../components/notification-panel-provider'
+import { WorkspaceSwitcherButton } from '../../../components/workspace-switcher-button'
 import { useMe } from '../../../hooks/use-account'
 
 type ChannelItemProps = {
@@ -194,6 +196,7 @@ export default function ChatsScreen() {
   const { data: me } = useMe()
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
+  const { openNotifications } = useNotificationPanel()
   const [createMode, setCreateMode] = React.useState<'menu' | 'channel' | 'dm' | null>(null)
   const [channelName, setChannelName] = React.useState('')
   const [privateChannel, setPrivateChannel] = React.useState(false)
@@ -239,16 +242,14 @@ export default function ChatsScreen() {
           { backgroundColor: palette.card, borderBottomColor: palette.border },
         ]}
       >
-        <View style={[styles.headerIcon, { backgroundColor: palette.accentSoft }]}>
-          <Ionicons name="chatbubble-outline" size={17} color={palette.accentText} />
-        </View>
+        <WorkspaceSwitcherButton />
         <Text style={[styles.heading, { color: palette.text }]}>チャット</Text>
         <View style={styles.headerActions}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="通知"
             style={styles.headerAction}
-            onPress={() => router.push('/(app)/notifications')}
+            onPress={openNotifications}
           >
             <Ionicons name="notifications-outline" size={19} color={palette.text3} />
           </Pressable>
@@ -612,13 +613,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: 1,
-  },
-  headerIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   heading: { fontSize: 17, fontWeight: '700' },
   headerActions: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 1 },

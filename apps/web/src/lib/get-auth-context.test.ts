@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockHeaders, mockCookies, mockSupabase, mockDb } = vi.hoisted(() => {
+const { mockHeaders, mockCookies, mockSupabase, mockDb, mockEq } = vi.hoisted(() => {
   const mockHeaders = vi.fn()
   const mockCookies = vi.fn()
   const mockSupabase = {
@@ -15,7 +15,8 @@ const { mockHeaders, mockCookies, mockSupabase, mockDb } = vi.hoisted(() => {
   const mockDb = {
     select: vi.fn(),
   }
-  return { mockHeaders, mockCookies, mockSupabase, mockDb }
+  const mockEq = vi.fn(() => 'eq')
+  return { mockHeaders, mockCookies, mockSupabase, mockDb, mockEq }
 })
 
 // verifyAccessToken 内の JWKS 取得は Cookie 認証の検証経路に影響しないよう、
@@ -47,7 +48,7 @@ vi.mock('@cairn/db', () => ({
 }))
 
 vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => 'eq'),
+  eq: mockEq,
   and: vi.fn(() => 'and'),
 }))
 
@@ -149,6 +150,33 @@ describe('get-auth-context', () => {
     const result = await getAuthContext()
 
     expect(result).toEqual({ ctx: { userId: 'user-1', workspaceId: 'ws-active' }, error: null })
+  })
+
+  it('ネイティブの workspace header を Cookie より優先する', async () => {
+    mockHeaders.mockResolvedValue(
+      new Headers({
+        Authorization: 'Bearer token-123',
+        'X-Cairn-Workspace-Id': 'ws-native',
+      }),
+    )
+    mockCookies.mockResolvedValue({
+      get: vi.fn().mockReturnValue({ value: 'ws-cookie' }),
+    })
+    mockSupabase.auth.getClaims.mockResolvedValue(okClaims)
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-native', role: 'member' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext()
+
+    expect(mockEq).toHaveBeenCalledWith('awm.workspaceId', 'ws-native')
+    expect(result).toEqual({
+      ctx: {
+        userId: 'user-1',
+        workspaceId: 'ws-native',
+        role: 'member',
+      },
+      error: null,
+    })
   })
 
   it('warm cache があっても active membership を毎回再照合し、非活性化を即時反映する', async () => {

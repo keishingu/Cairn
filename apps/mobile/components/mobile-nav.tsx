@@ -9,6 +9,7 @@ import { useProjectChannels } from '../hooks/use-projects'
 import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channels'
 import { supabase } from '../lib/supabase'
 import { useAppAppearance } from './appearance-provider'
+import { useNotificationPanel } from './notification-panel-provider'
 import { type ProjectsView, useProjectsView } from './projects-view-context'
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -68,6 +69,7 @@ const MENU_ROUTES = new Set([
 export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
+  const { openNotifications } = useNotificationPanel()
   const { view, setView } = useProjectsView()
   const { data: channels } = useProjectChannels()
   const { data: workspaceChannels } = useWorkspaceChannels()
@@ -240,7 +242,14 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
               <TouchableOpacity
                 key={item.route}
                 style={[styles.menuItem, { borderTopColor: palette.divider }]}
-                onPress={() => navigate(item.route)}
+                onPress={() => {
+                  if (item.route === 'notifications/index') {
+                    closeOverlays()
+                    requestAnimationFrame(openNotifications)
+                    return
+                  }
+                  navigate(item.route)
+                }}
               >
                 <Ionicons name={item.icon} size={19} color={palette.text3} />
                 <Text style={[styles.menuLabel, { color: palette.text }]}>{item.label}</Text>

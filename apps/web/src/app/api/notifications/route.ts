@@ -21,10 +21,11 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url)
   const filter = searchParams.get('filter') ?? 'all'
+  const countOnly = searchParams.get('count') === '1'
 
   try {
     const { aiNudges, db, notifications, workspaces } = await import('@cairn/db')
-    const { eq, ne, isNull, and, desc, sql } = await import('drizzle-orm')
+    const { eq, ne, isNull, and, count, desc, sql } = await import('drizzle-orm')
 
     const conditions = [
       eq(notifications.userId, ctx.userId),
@@ -55,6 +56,14 @@ export async function GET(req: Request) {
       )
     )`)
 
+    if (countOnly) {
+      const [row] = await db
+        .select({ count: count() })
+        .from(notifications)
+        .where(and(...conditions))
+      return NextResponse.json({ count: row?.count ?? 0 })
+    }
+
     const rows = await db
       .select()
       .from(notifications)
@@ -62,7 +71,7 @@ export async function GET(req: Request) {
       .orderBy(desc(notifications.createdAt))
       .limit(50)
 
-    const result: NotificationDto[] = rows.map(r => ({
+    const result: NotificationDto[] = rows.map((r) => ({
       id: r.id,
       type: r.type,
       title: r.title,
@@ -90,7 +99,10 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
   const rawIds = (body as { ids?: unknown }).ids
-  if (rawIds !== undefined && (!Array.isArray(rawIds) || rawIds.some(id => typeof id !== 'string'))) {
+  if (
+    rawIds !== undefined &&
+    (!Array.isArray(rawIds) || rawIds.some((id) => typeof id !== 'string'))
+  ) {
     return NextResponse.json({ error: 'ids は string[] で指定してください' }, { status: 400 })
   }
   const ids = rawIds as string[] | undefined

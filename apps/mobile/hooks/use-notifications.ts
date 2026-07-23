@@ -19,7 +19,18 @@ export function useNotifications() {
       if (!res.ok) throw new Error(`通知の取得に失敗しました (${res.status})`)
       return res.json() as Promise<NotificationDto[]>
     },
-    refetchInterval: 30_000,
+  })
+}
+
+export function useUnreadNotificationCount() {
+  return useQuery<number>({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/notifications?filter=unread&count=1')
+      if (!res.ok) throw new Error(`未読通知数の取得に失敗しました (${res.status})`)
+      const data = (await res.json()) as { count: number }
+      return data.count
+    },
   })
 }
 

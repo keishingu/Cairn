@@ -9,6 +9,7 @@ import { ProjectsViewProvider } from '../../components/projects-view-context'
 import { AppearanceProvider } from '../../components/appearance-provider'
 import { RealtimeProvider } from '../../components/realtime-provider'
 import { OfflineMessageQueueProvider } from '../../components/offline-message-queue-provider'
+import { NotificationPanelProvider } from '../../components/notification-panel-provider'
 
 // Expo Go の Android は SDK 53 以降プッシュ通知非対応のためスキップ
 const isExpoGo = Constants.appOwnership === 'expo'
@@ -84,27 +85,29 @@ export default function AppLayout() {
     <RealtimeProvider>
       <OfflineMessageQueueProvider>
         <AppearanceProvider>
-          <ProjectsViewProvider>
-            <Tabs
-              screenOptions={{ headerShown: false }}
-              tabBar={(props) => <MobileNav {...props} />}
-            >
-              <Tabs.Screen name="projects/index" />
-              <Tabs.Screen name="chats/index" />
-              <Tabs.Screen name="chats/[channelId]" options={{ href: null }} />
-              <Tabs.Screen name="chat-tools/index" options={{ href: null }} />
-              <Tabs.Screen name="tasks/index" />
-              <Tabs.Screen name="ai/index" />
-              <Tabs.Screen name="projects/[id]" options={{ href: null }} />
-              <Tabs.Screen name="notifications/index" options={{ href: null }} />
-              <Tabs.Screen name="files/index" options={{ href: null }} />
-              <Tabs.Screen name="gallery/index" options={{ href: null }} />
-              <Tabs.Screen name="members/index" options={{ href: null }} />
-              <Tabs.Screen name="settings/index" options={{ href: null }} />
-              <Tabs.Screen name="signout/index" options={{ href: null }} />
-              <Tabs.Screen name="menu/index" options={{ href: null }} />
-            </Tabs>
-          </ProjectsViewProvider>
+          <NotificationPanelProvider>
+            <ProjectsViewProvider>
+              <Tabs
+                screenOptions={{ headerShown: false }}
+                tabBar={(props) => <MobileNav {...props} />}
+              >
+                <Tabs.Screen name="projects/index" />
+                <Tabs.Screen name="chats/index" />
+                <Tabs.Screen name="chats/[channelId]" options={{ href: null }} />
+                <Tabs.Screen name="chat-tools/index" options={{ href: null }} />
+                <Tabs.Screen name="tasks/index" />
+                <Tabs.Screen name="ai/index" />
+                <Tabs.Screen name="projects/[id]" options={{ href: null }} />
+                <Tabs.Screen name="notifications/index" options={{ href: null }} />
+                <Tabs.Screen name="files/index" options={{ href: null }} />
+                <Tabs.Screen name="gallery/index" options={{ href: null }} />
+                <Tabs.Screen name="members/index" options={{ href: null }} />
+                <Tabs.Screen name="settings/index" options={{ href: null }} />
+                <Tabs.Screen name="signout/index" options={{ href: null }} />
+                <Tabs.Screen name="menu/index" options={{ href: null }} />
+              </Tabs>
+            </ProjectsViewProvider>
+          </NotificationPanelProvider>
         </AppearanceProvider>
       </OfflineMessageQueueProvider>
     </RealtimeProvider>

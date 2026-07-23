@@ -38,5 +38,5 @@ export async function POST() {
     return NextResponse.json({ error: 'Failed to generate handoff token' }, { status: 500 })
   }
 
-  return NextResponse.json({ tokenHash })
+  return NextResponse.json({ tokenHash, workspaceId: ctx.workspaceId })
 }

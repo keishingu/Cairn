@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons'
 import {
   useMarkNotificationsRead,
   useNotifications,
+  useUnreadNotificationCount,
   type NotificationDto,
 } from '../../../hooks/use-notifications'
 import { routeFromNotification } from '../../../lib/notification-routing'
@@ -66,9 +67,12 @@ function NotificationCard({
 export default function NotificationsScreen() {
   const router = useRouter()
   const notificationsQuery = useNotifications()
+  const unreadCountQuery = useUnreadNotificationCount()
   const markRead = useMarkNotificationsRead()
   const { palette } = useAppAppearance()
   const notifications = notificationsQuery.data ?? []
+  const unreadCount =
+    unreadCountQuery.data ?? notifications.filter((item) => item.readAt === null).length
   const errorMessage =
     notificationsQuery.error instanceof Error
       ? notificationsQuery.error.message
@@ -134,7 +138,7 @@ export default function NotificationsScreen() {
         </Pressable>
         <Text style={[styles.heading, { color: palette.text }]}>通知</Text>
         <Pressable
-          disabled={markRead.isPending || notifications.every((item) => item.readAt)}
+          disabled={markRead.isPending || unreadCount === 0}
           onPress={() => markRead.mutate(null)}
           style={({ pressed }) => [
             styles.markAllButton,
@@ -151,8 +155,10 @@ export default function NotificationsScreen() {
         contentContainerStyle={notifications.length === 0 ? styles.emptyList : styles.list}
         refreshControl={
           <RefreshControl
-            refreshing={notificationsQuery.isRefetching}
-            onRefresh={() => void notificationsQuery.refetch()}
+            refreshing={notificationsQuery.isRefetching || unreadCountQuery.isRefetching}
+            onRefresh={() =>
+              void Promise.all([notificationsQuery.refetch(), unreadCountQuery.refetch()])
+            }
             tintColor={palette.accent}
           />
         }
