@@ -152,6 +152,10 @@ jobs:
 
       - name: Publish EAS Update
         uses: expo/expo-github-action/preview@v8
+        env:
+          # EAS CLI は --environment preview の値を内部で読み込むが、Action が
+          # PR コメント用の Expo config を再評価するときにも同じvariantを使わせる。
+          EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV: preview
         with:
           working-directory: apps/mobile
           command: eas update --auto --branch pr-${{ github.event.number }} --environment preview --non-interactive

@@ -39,6 +39,7 @@ describe('モバイルプレビューの環境同期', () => {
     expect(workflow).not.toContain('qr-target:')
     expect(mobilePackage.dependencies['expo-dev-client']).toBeDefined()
     expect(workflow).toContain('--environment preview')
+    expect(workflow).toContain('EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV: preview')
     expect(workflow).toContain('ref: ${{ github.event.pull_request.head.sha }}')
   })
 
