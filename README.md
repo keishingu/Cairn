@@ -109,7 +109,7 @@ pnpm dev
 
 ## モバイルプレビュー（EAS Update）
 
-`apps/mobile`、`packages/shared`、またはモバイルの依存関係に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。互換性のある Cairn Development Build で QR を開けば、ローカル環境を起動せずに確認できる（Expo Go は使用しない）。
+`apps/mobile`、`packages/shared`、またはモバイルの依存関係に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。互換性のある Cairn Development Build で QR を開けば、ローカル環境を起動せずに確認できる（Expo Go は使用しない）。同じ revision は `preview` channel にも配信され、Internal Distribution build は次回起動時に取得する。
 
 | 起動方法                                    | JavaScript の配信元                      | Web / API 接続先                       | Supabase 接続先                         |
 | ------------------------------------------- | ---------------------------------------- | -------------------------------------- | --------------------------------------- |
@@ -118,7 +118,7 @@ pnpm dev
 | `eas build --profile preview`               | ビルド内蔵 bundle + `preview` channel    | EAS の `preview` 環境                  | EAS の `preview` 環境                   |
 | `eas build --profile production`            | ビルド内蔵 bundle + `production` channel | EAS の `production` 環境               | EAS の `production` 環境                |
 
-PR Preview の workflow は、Vercel Deployment Protection のログイン画面へ遷移しないよう、初回から `https://develop.oss-cairn.com` を Web / API URL に使う。この URL と共有 Supabase の設定を EAS の `preview` 環境へ作成または上書きしてから、`eas update --environment preview` を実行する。ローカルの `.env.local` は EAS Update に混入しない。EAS の `preview` 環境は共有状態のため、同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで順番に処理する。
+PR Preview の workflow は、Vercel Deployment Protection のログイン画面へ遷移しないよう、初回から `https://develop.oss-cairn.com` を Web / API URL に使う。この URL と共有 Supabase の設定を EAS の `preview` 環境へ作成または上書きしてから、PR 固有 branch と Internal Distribution 用 `preview` channel の両方へ EAS Update を発行する。ローカルの `.env.local` は EAS Update に混入しない。EAS の `preview` 環境と channel は共有状態のため、同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで順番に処理する。Internal Distribution では最後に成功した Mobile Preview が最新版になる。
 
 Internal Distribution は `apps/mobile` で `pnpm build:internal:android` / `pnpm build:internal:ios` を実行するか、GitHub Actions の `Mobile Internal Distribution` を手動実行する。Android はインストール可能な APK、iOS は登録済み端末用の Ad Hoc build が生成される。`Cairn Dev` / `Cairn Preview` / `Cairn` は別の URL scheme と bundle/package ID を使うため、同じ端末へ共存できる。
 

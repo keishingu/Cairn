@@ -17,18 +17,42 @@ describe('WebViewのナビゲーション判定', () => {
         url: `${trustedOrigin}/projects?webview=1`,
         trustedOrigin,
         allowChatRoutes: false,
+        isTopFrame: true,
       }),
     ).toBe('allow')
   })
 
-  it('Vercel Toolbarを含む外部URLを拒否する', () => {
+  it('Vercel Toolbarをトップフレームでも拒否する', () => {
     expect(
       decideWebViewNavigation({
         url: 'https://vercel.live/_next-live/feedback/feedback.html?dpl=dpl_example',
         trustedOrigin,
         allowChatRoutes: false,
+        isTopFrame: true,
       }),
     ).toBe('block')
+  })
+
+  it('バックグラウンドiframeの外部URLを拒否する', () => {
+    expect(
+      decideWebViewNavigation({
+        url: 'https://example.com/embed',
+        trustedOrigin,
+        allowChatRoutes: false,
+        isTopFrame: false,
+      }),
+    ).toBe('block')
+  })
+
+  it('ユーザーが開いたトップフレームの外部URLをブラウザへ委譲する', () => {
+    expect(
+      decideWebViewNavigation({
+        url: 'https://example.com/document',
+        trustedOrigin,
+        allowChatRoutes: false,
+        isTopFrame: true,
+      }),
+    ).toBe('open-external')
   })
 
   it('Web側のチャット導線をネイティブチャットへ委譲する', () => {
@@ -37,6 +61,7 @@ describe('WebViewのナビゲーション判定', () => {
         url: `${trustedOrigin}/chats/channel-1`,
         trustedOrigin,
         allowChatRoutes: false,
+        isTopFrame: true,
       }),
     ).toBe('open-native-chat')
   })
@@ -47,6 +72,7 @@ describe('WebViewのナビゲーション判定', () => {
         url: `${trustedOrigin}/chats/search`,
         trustedOrigin,
         allowChatRoutes: true,
+        isTopFrame: true,
       }),
     ).toBe('allow')
   })

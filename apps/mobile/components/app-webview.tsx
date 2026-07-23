@@ -1,9 +1,13 @@
 import React from 'react'
-import { Platform, View, Text, Pressable, StyleSheet } from 'react-native'
+import { Linking, Platform, View, Text, Pressable, StyleSheet } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
-import type { WebViewNavigation, WebViewMessageEvent } from 'react-native-webview'
+import type {
+  WebViewProps,
+  WebViewNavigation,
+  WebViewMessageEvent,
+} from 'react-native-webview'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/api-fetch'
 import { API_BASE_URL as WEB_BASE } from '../lib/env'
@@ -19,6 +23,10 @@ import {
   decideWebViewNavigation,
   WEBVIEW_ORIGIN_WHITELIST,
 } from '../lib/webview-navigation'
+
+type ShouldStartLoadRequest = Parameters<
+  NonNullable<WebViewProps['onShouldStartLoadWithRequest']>
+>[0]
 
 export interface AppWebViewHandle {
   injectJavaScript: (script: string) => void
@@ -228,14 +236,21 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
   }
 
   // WebView 内のチャット導線は、Web ではなくネイティブのチャットタブへ委譲する。
-  function handleShouldStartLoadWithRequest(request: WebViewNavigation) {
+  function handleShouldStartLoadWithRequest(request: ShouldStartLoadRequest) {
     const decision = decideWebViewNavigation({
       url: request.url,
       trustedOrigin,
       allowChatRoutes,
+      isTopFrame: request.isTopFrame,
     })
     if (decision === 'open-native-chat') {
       router.push('/(app)/chats')
+      return false
+    }
+    if (decision === 'open-external') {
+      void Linking.openURL(request.url).catch((err) => {
+        console.error('[AppWebView] 外部URLを開けませんでした:', err)
+      })
       return false
     }
     return decision === 'allow'

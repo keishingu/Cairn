@@ -52,7 +52,7 @@ pnpm build:internal:ios
 1. `app.json` の `runtimeVersion` を上げる
 2. Development Build / Internal Distribution build を作り直して端末へ再インストールする
 
-JS / TypeScript だけの変更で runtime に互換性がある場合は、新しい実機 build は不要で EAS Update を利用できる。
+JS / TypeScript だけの変更で runtime に互換性がある場合は、新しい実機 build は不要で EAS Update を利用できる。Mobile Preview workflow はPR固有branchに加えて `preview` channelへも同じrevisionを配信するため、Internal Distribution buildは次回起動時に最新の成功済みPR更新を取得する。
 
 ローカルの `ios/` / `android/` が既に存在する場合、`app.config.ts` の識別子や config plugin の変更は `expo run:*` だけでは残存することがある。次のように生成物を作り直してからローカルビルドする。
 

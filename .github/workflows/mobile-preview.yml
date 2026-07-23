@@ -151,3 +151,15 @@ jobs:
         with:
           working-directory: apps/mobile
           command: eas update --auto --branch pr-${{ github.event.number }} --environment preview --non-interactive
+
+      # PR固有QRとは別に、Internal Distribution buildが購読するpreviewチャネルへも
+      # 同じrevisionを配信する。異なるPRは上のFIFOゲートで直列化され、最後に成功した
+      # Mobile Previewが検証端末の最新版になる。
+      - name: Publish Internal Distribution EAS Update
+        working-directory: apps/mobile
+        run: |
+          eas update \
+            --channel preview \
+            --message "PR #${{ github.event.number }} ${{ github.event.pull_request.head.sha }}" \
+            --environment preview \
+            --non-interactive
