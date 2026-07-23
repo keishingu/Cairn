@@ -242,6 +242,7 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       trustedOrigin,
       allowChatRoutes,
       isTopFrame: request.isTopFrame,
+      isAndroid: Platform.OS === 'android',
     })
     if (decision === 'open-native-chat') {
       router.push('/(app)/chats')

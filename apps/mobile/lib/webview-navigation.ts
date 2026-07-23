@@ -20,11 +20,13 @@ export function decideWebViewNavigation({
   trustedOrigin,
   allowChatRoutes,
   isTopFrame,
+  isAndroid = false,
 }: {
   url: string
   trustedOrigin: string
   allowChatRoutes: boolean
-  isTopFrame: boolean
+  isTopFrame: boolean | undefined
+  isAndroid?: boolean
 }): WebViewNavigationDecision {
   if (url === 'about:blank' || url.startsWith('about:')) return 'allow'
   if (isVercelToolbarUrl(url)) return 'block'
@@ -38,7 +40,10 @@ export function decideWebViewNavigation({
   }
 
   if (url === trustedOrigin || url.startsWith(`${trustedOrigin}/`)) return 'allow'
-  if (isTopFrame && (url.startsWith('https://') || url.startsWith('http://'))) {
+  // Android の onShouldStartLoadWithRequest は main-frame navigation のみを通知する一方、
+  // iOS 専用の isTopFrame を含まない。iOS では false の iframe を引き続き拒否する。
+  const isMainFrame = isTopFrame ?? isAndroid
+  if (isMainFrame && (url.startsWith('https://') || url.startsWith('http://'))) {
     return 'open-external'
   }
   return 'block'

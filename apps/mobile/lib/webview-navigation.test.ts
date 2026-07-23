@@ -55,6 +55,30 @@ describe('WebViewのナビゲーション判定', () => {
     ).toBe('open-external')
   })
 
+  it('AndroidではisTopFrameがなくても外部URLをブラウザへ委譲する', () => {
+    expect(
+      decideWebViewNavigation({
+        url: 'https://example.com/document',
+        trustedOrigin,
+        allowChatRoutes: false,
+        isTopFrame: undefined,
+        isAndroid: true,
+      }),
+    ).toBe('open-external')
+  })
+
+  it('AndroidでもVercel Toolbarは拒否する', () => {
+    expect(
+      decideWebViewNavigation({
+        url: 'https://vercel.live/_next-live/feedback/feedback.html?dpl=dpl_example',
+        trustedOrigin,
+        allowChatRoutes: false,
+        isTopFrame: undefined,
+        isAndroid: true,
+      }),
+    ).toBe('block')
+  })
+
   it('Web側のチャット導線をネイティブチャットへ委譲する', () => {
     expect(
       decideWebViewNavigation({
