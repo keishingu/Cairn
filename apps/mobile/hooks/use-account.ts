@@ -12,8 +12,17 @@ export interface MeDto {
 }
 
 export interface WorkspaceDto {
+  id: string
   name: string
   logoUrl: string | null
+}
+
+export interface WorkspaceListItemDto {
+  id: string
+  name: string
+  slug: string
+  logoUrl: string | null
+  role: 'owner' | 'admin' | 'member' | 'guest'
 }
 
 async function getJson<T>(path: string, label: string): Promise<T> {
@@ -35,5 +44,14 @@ export function useWorkspace() {
     queryKey: ['workspace'],
     queryFn: () => getJson<WorkspaceDto>('/api/workspaces', 'ワークスペース情報'),
     staleTime: 60_000,
+  })
+}
+
+export function useWorkspaceList(enabled = true) {
+  return useQuery({
+    queryKey: ['workspace-list'],
+    queryFn: () => getJson<WorkspaceListItemDto[]>('/api/workspaces/list', 'ワークスペース一覧'),
+    staleTime: 60_000,
+    enabled,
   })
 }

@@ -98,16 +98,21 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
           }
           throw new Error(`handoff failed: ${res.status}`)
         }
-        const data = (await res.json()) as { tokenHash?: string }
-        if (!data.tokenHash) throw new Error('handoff response missing tokenHash')
+        const data = (await res.json()) as { tokenHash?: string; workspaceId?: string }
+        if (!data.tokenHash || !data.workspaceId) {
+          throw new Error('handoff response missing tokenHash or workspaceId')
+        }
 
         const redirect = encodeURIComponent(webPath(targetPath))
         const th = encodeURIComponent(data.tokenHash)
+        const workspaceId = encodeURIComponent(data.workspaceId)
         initialPathRef.current = targetPath
         loadedRef.current = false
         // トークンは URL フラグメント（#th=...）で渡す。
         // フラグメントはサーバーに送信されないためアクセスログに残らない。
-        setUri(`${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}#th=${th}`)
+        setUri(
+          `${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}&workspaceId=${workspaceId}#th=${th}`,
+        )
       } catch (err) {
         // 失敗理由が Metro ログで追えるように必ず出力する
         console.error('[AppWebView] ハンドオフに失敗:', err)

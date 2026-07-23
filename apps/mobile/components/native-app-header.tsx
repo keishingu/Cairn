@@ -1,10 +1,10 @@
 import React from 'react'
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useWorkspace } from '../hooks/use-account'
 import { useAppAppearance } from './appearance-provider'
 import { useNotificationPanel } from './notification-panel-provider'
+import { WorkspaceSwitcherButton } from './workspace-switcher-button'
 
 interface NativeAppHeaderProps {
   title: string
@@ -25,7 +25,6 @@ export function NativeAppHeader({
 }: NativeAppHeaderProps) {
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
-  const { data: workspace } = useWorkspace()
   const { unreadCount, openNotifications } = useNotificationPanel()
 
   return (
@@ -50,14 +49,8 @@ export function NativeAppHeader({
           >
             <Ionicons name="chevron-back" size={22} color={palette.accent} />
           </Pressable>
-        ) : workspace?.logoUrl ? (
-          <Image source={{ uri: workspace.logoUrl }} style={styles.workspaceLogo} />
         ) : (
-          <View style={[styles.workspaceLogo, { backgroundColor: palette.accent }]}>
-            <Text style={[styles.workspaceInitial, { color: palette.onAccent }]}>
-              {workspace?.name?.slice(0, 1) ?? 'C'}
-            </Text>
-          </View>
+          <WorkspaceSwitcherButton />
         )}
 
         <View style={styles.titleArea}>
@@ -110,14 +103,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   leadingButton: { padding: 5 },
-  workspaceLogo: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  workspaceInitial: { fontSize: 12, fontWeight: '800' },
   titleArea: { flex: 1, minWidth: 0 },
   title: { fontSize: 17, fontWeight: '700' },
   titleWithSubtitle: { fontSize: 15 },

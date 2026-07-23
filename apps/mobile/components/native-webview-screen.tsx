@@ -4,6 +4,7 @@ import { AppWebView, type AppWebViewHandle, type AppWebViewProps } from './app-w
 import { NativeAppHeader } from './native-app-header'
 import type { NativeHeaderDescriptor } from '../lib/native-header-bridge'
 import { useAppAppearance } from './appearance-provider'
+import { useWorkspace } from '../hooks/use-account'
 
 interface NativeWebViewScreenProps extends Omit<
   AppWebViewProps,
@@ -18,6 +19,7 @@ export const NativeWebViewScreen = React.forwardRef<AppWebViewHandle, NativeWebV
   function NativeWebViewScreen({ title, subtitle, onBack, ...webViewProps }, forwardedRef) {
     const innerRef = React.useRef<AppWebViewHandle>(null)
     const { palette } = useAppAppearance()
+    const { data: workspace } = useWorkspace()
     const [header, setHeader] = React.useState<NativeHeaderDescriptor>({
       title,
       canGoBack: false,
@@ -48,6 +50,7 @@ export const NativeWebViewScreen = React.forwardRef<AppWebViewHandle, NativeWebV
           {...(handleBack ? { onBack: handleBack } : {})}
         />
         <AppWebView
+          key={workspace?.id ?? 'workspace-loading'}
           ref={innerRef}
           {...webViewProps}
           includeSafeAreaTop={false}
