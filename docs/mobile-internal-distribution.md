@@ -15,7 +15,7 @@
 | `preview`                            | Cairn Preview | `cairn-preview` | `com.oss-cairn.preview` | `com.oss_cairn.preview` | Internal Distribution            |
 | `production`                         | Cairn         | `cairn`         | `com.oss-cairn`         | `com.oss_cairn`         | ストア配布                       |
 
-識別子と OAuth callback scheme は `EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV` をもとに `apps/mobile/app.config.ts` が決める。複数variantを同時インストールしても callback が別アプリへ渡らない。EAS の各 build profile は同名の EAS Environment とこの値を明示しているため、ローカル `.env.local` をクラウドビルドへ持ち込まない。
+識別子と native URL scheme は `EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV` をもとに `apps/mobile/app.config.ts` が決める。OAuth callback は OTA manifest ではなく、端末に実際にインストールされた bundle/package ID から選ぶ。これにより複数variantを同時インストールした場合や Development Build にpreview updateを載せた場合も、callbackが別アプリへ渡らない。EAS の各 build profile は同名の EAS Environment とこの値を明示しているため、ローカル `.env.local` をクラウドビルドへ持ち込まない。
 
 ## ビルド
 

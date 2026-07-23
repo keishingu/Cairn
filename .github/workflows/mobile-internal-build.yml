@@ -69,37 +69,29 @@ jobs:
           MOBILE_PREVIEW_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
           MOBILE_PREVIEW_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
         run: |
-          eas env:create \
+          eas env:set preview \
             --name EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV \
-            --environment preview \
             --value preview \
             --visibility plaintext \
             --scope project \
-            --force \
             --non-interactive
-          eas env:create \
+          eas env:set preview \
             --name EXPO_PUBLIC_API_BASE_URL \
-            --environment preview \
             --value "$MOBILE_PREVIEW_API_BASE_URL" \
             --visibility plaintext \
             --scope project \
-            --force \
             --non-interactive
-          eas env:create \
+          eas env:set preview \
             --name EXPO_PUBLIC_SUPABASE_URL \
-            --environment preview \
             --value "$MOBILE_PREVIEW_SUPABASE_URL" \
             --visibility plaintext \
             --scope project \
-            --force \
             --non-interactive
-          eas env:create \
+          eas env:set preview \
             --name EXPO_PUBLIC_SUPABASE_ANON_KEY \
-            --environment preview \
             --value "$MOBILE_PREVIEW_SUPABASE_ANON_KEY" \
             --visibility sensitive \
             --scope project \
-            --force \
             --non-interactive
 
       - name: Queue Internal Distribution build

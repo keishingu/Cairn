@@ -35,6 +35,8 @@ describe('モバイルInternal Distribution', () => {
     expect(workflow).toContain('--name EXPO_PUBLIC_API_BASE_URL')
     expect(workflow).toContain('--name EXPO_PUBLIC_SUPABASE_URL')
     expect(workflow).toContain('--name EXPO_PUBLIC_SUPABASE_ANON_KEY')
+    expect(workflow.match(/eas env:set preview/g)).toHaveLength(4)
+    expect(workflow).not.toContain('eas env:create')
   })
 
   it('次のオフライン機能に必要なnative moduleとruntimeを含む', () => {

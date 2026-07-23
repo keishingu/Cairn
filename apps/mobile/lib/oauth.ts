@@ -1,6 +1,6 @@
 import * as WebBrowser from 'expo-web-browser'
 import * as Linking from 'expo-linking'
-import Constants from 'expo-constants'
+import * as Application from 'expo-application'
 import { supabase } from './supabase'
 import { apiFetch } from './api-fetch'
 import { resolveOAuthScheme } from './oauth-scheme'
@@ -17,7 +17,10 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
   // scheme を明示する。明示しないと dev ビルドで exp:// 形式や
   // スラッシュ3つの custom-scheme:///... を返すことがあり、それだと Supabase の
   // 許可リストに一致せず Site URL（web）へフォールバックして 500 になる。
-  const scheme = resolveOAuthScheme(Constants.expoConfig?.scheme)
+  // OTA update の app config ではなく、実際にインストールされた native binary の
+  // bundle/package ID から callback scheme を決める。Development Build に
+  // preview update を載せた場合も、binary が登録した scheme と必ず一致する。
+  const scheme = resolveOAuthScheme(Application.applicationId)
   const redirectTo = Linking.createURL('auth/callback', { scheme })
   // redirectTo はクエリを含まないため出力可。認可 URL / 戻り URL は
   // PKCE チャレンジや認可コードを含むため、クエリを除いたオリジンのみ出す。
