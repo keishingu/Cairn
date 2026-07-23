@@ -28,6 +28,15 @@ describe('モバイルInternal Distribution', () => {
     expect(workflow).toContain('--profile preview --non-interactive --no-wait')
   })
 
+  it('build開始前に必須設定を検証してEAS preview環境を同期する', () => {
+    expect(workflow).toContain('MOBILE_PREVIEW_SUPABASE_URL')
+    expect(workflow).toContain('MOBILE_PREVIEW_SUPABASE_ANON_KEY')
+    expect(workflow).toContain('--name EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV')
+    expect(workflow).toContain('--name EXPO_PUBLIC_API_BASE_URL')
+    expect(workflow).toContain('--name EXPO_PUBLIC_SUPABASE_URL')
+    expect(workflow).toContain('--name EXPO_PUBLIC_SUPABASE_ANON_KEY')
+  })
+
   it('次のオフライン機能に必要なnative moduleとruntimeを含む', () => {
     const app = JSON.parse(appConfig) as {
       expo: { runtimeVersion: string; plugins: unknown[] }

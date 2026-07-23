@@ -120,7 +120,7 @@ pnpm dev
 
 PR Preview の workflow は、Vercel Deployment Protection のログイン画面へ遷移しないよう、初回から `https://develop.oss-cairn.com` を Web / API URL に使う。この URL と共有 Supabase の設定を EAS の `preview` 環境へ作成または上書きしてから、`eas update --environment preview` を実行する。ローカルの `.env.local` は EAS Update に混入しない。EAS の `preview` 環境は共有状態のため、同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで順番に処理する。
 
-Internal Distribution は `apps/mobile` で `pnpm build:internal:android` / `pnpm build:internal:ios` を実行するか、GitHub Actions の `Mobile Internal Distribution` を手動実行する。Android はインストール可能な APK、iOS は登録済み端末用の Ad Hoc build が生成される。`Cairn Dev` / `Cairn Preview` / `Cairn` は別の bundle/package ID を使うため、同じ端末へ共存できる。
+Internal Distribution は `apps/mobile` で `pnpm build:internal:android` / `pnpm build:internal:ios` を実行するか、GitHub Actions の `Mobile Internal Distribution` を手動実行する。Android はインストール可能な APK、iOS は登録済み端末用の Ad Hoc build が生成される。`Cairn Dev` / `Cairn Preview` / `Cairn` は別の URL scheme と bundle/package ID を使うため、同じ端末へ共存できる。
 
 ### 初回セットアップ（リポジトリ管理者）
 

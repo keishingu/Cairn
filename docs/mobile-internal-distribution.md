@@ -9,13 +9,13 @@
 
 ## 配布版の区分
 
-| EAS profile                          | 表示名        | iOS bundle ID           | Android package         | 用途                             |
-| ------------------------------------ | ------------- | ----------------------- | ----------------------- | -------------------------------- |
-| `development` / `development-device` | Cairn Dev     | `com.oss-cairn.dev`     | `com.oss_cairn.dev`     | Metro に接続する開発クライアント |
-| `preview`                            | Cairn Preview | `com.oss-cairn.preview` | `com.oss_cairn.preview` | Internal Distribution            |
-| `production`                         | Cairn         | `com.oss-cairn`         | `com.oss_cairn`         | ストア配布                       |
+| EAS profile                          | 表示名        | URL scheme      | iOS bundle ID           | Android package         | 用途                             |
+| ------------------------------------ | ------------- | --------------- | ----------------------- | ----------------------- | -------------------------------- |
+| `development` / `development-device` | Cairn Dev     | `cairn-dev`     | `com.oss-cairn.dev`     | `com.oss_cairn.dev`     | Metro に接続する開発クライアント |
+| `preview`                            | Cairn Preview | `cairn-preview` | `com.oss-cairn.preview` | `com.oss_cairn.preview` | Internal Distribution            |
+| `production`                         | Cairn         | `cairn`         | `com.oss-cairn`         | `com.oss_cairn`         | ストア配布                       |
 
-識別子は `EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV` をもとに `apps/mobile/app.config.ts` が決める。EAS の各 build profile は同名の EAS Environment とこの値を明示しているため、ローカル `.env.local` をクラウドビルドへ持ち込まない。
+識別子と OAuth callback scheme は `EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV` をもとに `apps/mobile/app.config.ts` が決める。複数variantを同時インストールしても callback が別アプリへ渡らない。EAS の各 build profile は同名の EAS Environment とこの値を明示しているため、ローカル `.env.local` をクラウドビルドへ持ち込まない。
 
 ## ビルド
 
@@ -29,7 +29,9 @@ pnpm build:internal:android
 pnpm build:internal:ios
 ```
 
-GitHub Actions の `Mobile Internal Distribution` から `android` / `ios` / `all` を選んで手動実行してもよい。workflow は EAS build をキューへ投入して終了し、成果物とインストール用リンクは Expo dashboard で確認する。
+GitHub Actions の `Mobile Internal Distribution` から `android` / `ios` / `all` を選んで手動実行してもよい。workflow は GitHub の Preview environment にある API / Supabase 設定を検証して EAS の `preview` environment へ同期してから build をキューへ投入する。成果物とインストール用リンクは Expo dashboard で確認する。
+
+共有 Supabase Preview の Auth Redirect URLs には `cairn-preview://auth/callback`、開発用には `cairn-dev://auth/callback` を登録する。ローカル Supabase の許可URLは `supabase/config.toml` で管理する。
 
 ## iOS 実機の登録
 

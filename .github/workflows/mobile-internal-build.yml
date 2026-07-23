@@ -22,12 +22,22 @@ jobs:
       contents: read
 
     steps:
-      - name: Check Expo token
+      - name: Check required settings
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          MOBILE_PREVIEW_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
+          MOBILE_PREVIEW_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
         run: |
           if [ -z "$EXPO_TOKEN" ]; then
             echo "GitHub Actions secret EXPO_TOKEN is required."
+            exit 1
+          fi
+          if [ -z "$MOBILE_PREVIEW_SUPABASE_URL" ]; then
+            echo "GitHub Actions variable MOBILE_PREVIEW_SUPABASE_URL is required."
+            exit 1
+          fi
+          if [ -z "$MOBILE_PREVIEW_SUPABASE_ANON_KEY" ]; then
+            echo "GitHub Actions secret MOBILE_PREVIEW_SUPABASE_ANON_KEY is required."
             exit 1
           fi
 
@@ -51,6 +61,46 @@ jobs:
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Sync EAS preview environment
+        working-directory: apps/mobile
+        env:
+          MOBILE_PREVIEW_API_BASE_URL: https://develop.oss-cairn.com
+          MOBILE_PREVIEW_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
+          MOBILE_PREVIEW_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
+        run: |
+          eas env:create \
+            --name EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV \
+            --environment preview \
+            --value preview \
+            --visibility plaintext \
+            --scope project \
+            --force \
+            --non-interactive
+          eas env:create \
+            --name EXPO_PUBLIC_API_BASE_URL \
+            --environment preview \
+            --value "$MOBILE_PREVIEW_API_BASE_URL" \
+            --visibility plaintext \
+            --scope project \
+            --force \
+            --non-interactive
+          eas env:create \
+            --name EXPO_PUBLIC_SUPABASE_URL \
+            --environment preview \
+            --value "$MOBILE_PREVIEW_SUPABASE_URL" \
+            --visibility plaintext \
+            --scope project \
+            --force \
+            --non-interactive
+          eas env:create \
+            --name EXPO_PUBLIC_SUPABASE_ANON_KEY \
+            --environment preview \
+            --value "$MOBILE_PREVIEW_SUPABASE_ANON_KEY" \
+            --visibility sensitive \
+            --scope project \
+            --force \
+            --non-interactive
 
       - name: Queue Internal Distribution build
         working-directory: apps/mobile
