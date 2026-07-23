@@ -92,6 +92,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     if (!authenticated) return
+    let cancelled = false
     let retryTimer: ReturnType<typeof setTimeout> | null = null
     const subscriptions = channelIds.map((channelId) => {
       const channel = supabase
@@ -104,6 +105,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           if (table === 'messages') invalidateChannelLists(queryClient)
         })
       channel.subscribe((status, error) => {
+        if (cancelled) return
         if (shouldRetryRealtime(status)) {
           console.warn(
             `[Realtime] channel:${channelId} を再接続します:`,
@@ -119,6 +121,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     })
 
     return () => {
+      cancelled = true
       if (retryTimer) clearTimeout(retryTimer)
       for (const channel of subscriptions) void supabase.removeChannel(channel)
     }
