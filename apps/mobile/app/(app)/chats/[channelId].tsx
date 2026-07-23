@@ -639,13 +639,13 @@ export default function ChatThreadScreen() {
     ...reversedMessages.map((message) => ({ kind: 'server' as const, message })),
   ]
 
-  const openWebPanel = (panel: 'search' | 'info') => {
+  const openSearch = () => {
     if (!channelId) return
     router.push({
       pathname: '/(app)/chat-tools',
       params: {
-        path: `/chats/${channelId}?nativeAux=1&panel=${panel}`,
-        title: panel === 'info' ? 'チャンネル情報' : 'メッセージ検索',
+        path: `/chats/${channelId}?nativeAux=1&panel=search`,
+        title: 'メッセージ検索',
         returnChannelId: channelId,
         ...(channelName ? { returnChannelName: channelName } : {}),
       },
@@ -679,19 +679,10 @@ export default function ChatThreadScreen() {
           accessibilityRole="button"
           accessibilityLabel="メッセージを検索"
           style={styles.headerButton}
-          onPress={() => openWebPanel('search')}
+          onPress={openSearch}
           hitSlop={6}
         >
           <Ionicons name="search-outline" size={19} color={palette.text3} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="チャンネル情報"
-          style={styles.headerButton}
-          onPress={() => openWebPanel('info')}
-          hitSlop={6}
-        >
-          <Ionicons name="information-circle-outline" size={20} color={palette.text3} />
         </Pressable>
       </View>
 
