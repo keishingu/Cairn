@@ -58,6 +58,7 @@ AIの文章生成と業務データの更新境界を分離し、承認APIを唯
 | F-10 | 他の編集と競合しない場合だけ元へ戻せる |
 | F-11 | AI経由の変更を監査ログとチャンネルへ残す |
 | F-12 | 更新後に通常画面の関連キャッシュを再取得する |
+| F-13 | 提案作成前に操作者のプロジェクト参照権限を検証し、権限のない対象の現在値や差分を保存・返却しない |
 
 | ID | 非機能要求 |
 |---|---|
@@ -70,6 +71,7 @@ AIの文章生成と業務データの更新境界を分離し、承認APIを唯
 | N-7 | 提案は30分で失効する |
 | N-8 | PCとモバイルで意味・安全性・履歴を一致させる |
 | N-9 | エラーを成功や既定値へフォールバックしない |
+| N-10 | 推測・期限切れのIDを含め、未認可の対象からaction snapshotを生成しない |
 
 ## 5. UX
 ### 5.1 ステータス変更
@@ -152,10 +154,12 @@ RAGは検索索引であり、操作直前の正本には使わない。
 - RAGを経由せず、必要最小限の列だけモデルへ渡す
 `proposeProjectStatusChange`:
 - `projectId`, `statusId`, 理由を受ける
+- 現在値を読み取りaction snapshotを作る前に、操作者がprojectを参照できることを検証する
 - 同じステータスなら提案を作らない
 - ステータスのworkspace所属を検証し、`actionId` と差分を返す
 `proposeMilestoneScheduleChange`:
 - `projectId`, `milestoneId`, 変更値、根拠、仮定、確信度を受ける
+- 現在値を読み取りaction snapshotを作る前に、操作者がprojectを参照できることを検証する
 - 未指定フィールドは変更しない
 - 開始日が終了日より後の案を拒否する
 - milestoneのproject所属を検証し、`actionId` と差分を返す
@@ -228,6 +232,7 @@ Expo側はWebViewのため初期版でReact Native画面追加は不要。
 - 日程の事実・仮定・確信度の分離
 API:
 - owner/admin/memberは実行可能、guest・非活性は拒否
+- 提案作成時点でproject参照権限を検証し、未認可ならactionとsnapshotを作らない
 - 他人・別workspace・別projectのaction/entityを拒否
 - 期限切れ、二重実行、競合を安全に扱う
 - revertが他の編集を上書きしない
