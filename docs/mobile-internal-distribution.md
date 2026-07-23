@@ -29,7 +29,7 @@ pnpm build:internal:android
 pnpm build:internal:ios
 ```
 
-GitHub Actions の `Mobile Internal Distribution` から `android` / `ios` / `all` を選んで手動実行してもよい。workflow は GitHub の Preview environment にある API / Supabase 設定を検証して EAS の `preview` environment へ同期してから build をキューへ投入する。成果物とインストール用リンクは Expo dashboard で確認する。
+GitHub Actions の `Mobile Internal Distribution` から `android` / `ios` / `all` を選んで手動実行してもよい。workflow は GitHub の Preview environment にある API / Supabase 設定を検証して EAS の `preview` environment へ同期してから build をキューへ投入する。`ios` / `all` では `--refresh-ad-hoc-provisioning-profile` を付け、EAS に登録済みの端末を provisioning profile へ反映する。成果物とインストール用リンクは Expo dashboard で確認する。
 
 共有 Supabase Preview の Auth Redirect URLs には `cairn-preview://auth/callback`、開発用には `cairn-dev://auth/callback` を登録する。ローカル Supabase の許可URLは `supabase/config.toml` で管理する。
 
@@ -43,7 +43,7 @@ pnpm device:register:ios
 pnpm build:internal:ios
 ```
 
-新しい端末を登録しただけでは既存 build の provisioning profile は変わらない。登録後に iOS build を作り直す。非対話の GitHub Actions は既に用意された署名情報を使うため、初回の証明書・provisioning 設定や端末追加は管理者がローカルの EAS CLI で行う。
+新しい端末を登録しただけでは既存 build の provisioning profile は変わらない。登録後に iOS build を作り直す。GitHub Actions の `ios` / `all` build は provisioning profile の端末一覧を更新してから build するため、EAS に保存済みの App Store Connect API key が必要になる。初回の証明書・API key・provisioning 設定と端末登録は、管理者がローカルの EAS CLI で行う。
 
 ## ネイティブ runtime と EAS Update
 

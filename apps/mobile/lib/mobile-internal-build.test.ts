@@ -24,8 +24,14 @@ describe('モバイルInternal Distribution', () => {
 
   it('手動workflowからplatformを選んで非対話buildを開始できる', () => {
     expect(workflow).toContain('workflow_dispatch:')
-    expect(workflow).toContain('eas build --platform "${{ inputs.platform }}"')
+    expect(workflow).toContain('--platform "${{ inputs.platform }}"')
     expect(workflow).toContain('--profile preview --non-interactive --no-wait')
+  })
+
+  it('iOSを含むCI buildではAd Hoc provisioning profileを更新する', () => {
+    expect(workflow).toContain('if [ "${{ inputs.platform }}" = "android" ]')
+    expect(workflow).toContain('eas build --platform android')
+    expect(workflow).toContain('--refresh-ad-hoc-provisioning-profile')
   })
 
   it('build開始前に必須設定を検証してEAS preview環境を同期する', () => {

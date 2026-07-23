@@ -96,4 +96,14 @@ jobs:
 
       - name: Queue Internal Distribution build
         working-directory: apps/mobile
-        run: eas build --platform "${{ inputs.platform }}" --profile preview --non-interactive --no-wait
+        run: |
+          if [ "${{ inputs.platform }}" = "android" ]; then
+            eas build --platform android --profile preview --non-interactive --no-wait
+          else
+            eas build \
+              --platform "${{ inputs.platform }}" \
+              --profile preview \
+              --non-interactive \
+              --refresh-ad-hoc-provisioning-profile \
+              --no-wait
+          fi
