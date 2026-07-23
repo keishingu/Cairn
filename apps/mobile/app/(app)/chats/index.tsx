@@ -30,6 +30,7 @@ import type { DmChannelDto, WorkspaceChannelDto } from '../../../hooks/use-chat-
 import type { ThemePalette } from '../../../lib/theme'
 import { formatChannelPeriod } from '../../../lib/channel-period'
 import { useAppAppearance } from '../../../components/appearance-provider'
+import { useNotificationPanel } from '../../../components/notification-panel-provider'
 import { useMe } from '../../../hooks/use-account'
 
 type ChannelItemProps = {
@@ -194,6 +195,7 @@ export default function ChatsScreen() {
   const { data: me } = useMe()
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
+  const { openNotifications } = useNotificationPanel()
   const [createMode, setCreateMode] = React.useState<'menu' | 'channel' | 'dm' | null>(null)
   const [channelName, setChannelName] = React.useState('')
   const [privateChannel, setPrivateChannel] = React.useState(false)
@@ -248,7 +250,7 @@ export default function ChatsScreen() {
             accessibilityRole="button"
             accessibilityLabel="通知"
             style={styles.headerAction}
-            onPress={() => router.push('/(app)/notifications')}
+            onPress={openNotifications}
           >
             <Ionicons name="notifications-outline" size={19} color={palette.text3} />
           </Pressable>

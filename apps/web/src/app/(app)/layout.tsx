@@ -21,7 +21,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <AppearanceDbSync />
       <FocusWarmup />
       <AppBadgeSync />
-      {isMobile ? <MobileShell hideNav={isWebView} /> : <PCShell>{children}</PCShell>}
+      {isMobile ? (
+        <MobileShell hideNav={isWebView} webView={isWebView} />
+      ) : (
+        <PCShell>{children}</PCShell>
+      )}
     </RealtimeProvider>
   )
 }

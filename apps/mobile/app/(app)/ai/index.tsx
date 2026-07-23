@@ -1,5 +1,5 @@
-import { AppWebView } from '../../../components/app-webview'
+import { NativeWebViewScreen } from '../../../components/native-webview-screen'
 
 export default function AiScreen() {
-  return <AppWebView path="/ai" />
+  return <NativeWebViewScreen path="/ai" title="AIアシスタント" />
 }

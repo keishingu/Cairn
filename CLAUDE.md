@@ -69,6 +69,7 @@ pnpm dev
   - PR の Mobile Preview は、Vercel Deployment Protection を避けるため初回から `https://develop.oss-cairn.com` を Web / API 接続先にする。この URL と共有 Supabase Preview 設定を EAS の `preview` 環境へ同期し、`eas update --environment preview` で Development Build 向けに配信する（`.github/workflows/mobile-preview.yml`）。同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで直列化する
   - EAS Build profile は `apps/mobile/eas.json` で `development` / `preview` / `production` の同名 EAS Environment へ明示的に対応づける。ローカル `.env.local` をクラウドビルドや EAS Update の接続先として使用しない
   - 実機で WebView 画面を使う場合のみ `pnpm setup:mobile-lan` で `apps/web/.env.local` の `NEXT_PUBLIC_SUPABASE_URL` を LAN IP に書き換える
+  - **Expo の共通ヘッダーと通知スライドインは React Native が所有する**。WebView モードでは Web の `MobileHeader` を描画せず、`native-header` bridge でタイトル・サブタイトル・戻る可否を Expo へ通知する。Web 固有の右側アクションだけは WebView 内のコンテンツツールバーとして残す
   - **テーマとハイライトカラーは `profiles.theme` / `profiles.accent_id` が共有元**。Web の `next-themes` / localStorage は即時描画用キャッシュに留め、設定変更時は `PATCH /api/me` へ保存する。設定 WebView は `appearance-changed` を React Native bridge へ通知し、Expo は `/api/me` と前面復帰時の再取得で別端末の変更にも追従する
   - ネイティブチャットも Web と同じ private Realtime Broadcast（`user:{userId}` / `channel:{channelId}`）で更新し、ポーリングは使わない
   - **ネイティブの本文・返信送信は必ずオフラインキューを経由する**。初回POSTより前にユーザー別AsyncStorageへ保存し、保存完了後に即時送信、失敗時は8秒間隔・前面復帰時に自動再送する。クライアント生成UUIDを `messages.id` としてAPIへ渡して再送を冪等化し、通信障害時は後続送信を止めて順序を維持する。完全オフラインで選択したローカル添付ファイルの後送は未対応

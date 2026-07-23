@@ -19,7 +19,6 @@ export function useNotifications() {
       if (!res.ok) throw new Error(`通知の取得に失敗しました (${res.status})`)
       return res.json() as Promise<NotificationDto[]>
     },
-    refetchInterval: 30_000,
   })
 }
 
