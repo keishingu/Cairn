@@ -27,6 +27,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { data: dms = [] } = useWorkspaceDms()
   const [authenticated, setAuthenticated] = React.useState(false)
   const [retryNonce, setRetryNonce] = React.useState(0)
+  const [channelRetryNonce, setChannelRetryNonce] = React.useState(0)
 
   const channelIds = React.useMemo(() => {
     const ids = new Set<string>()
@@ -91,6 +92,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     if (!authenticated) return
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
     const subscriptions = channelIds.map((channelId) => {
       const channel = supabase
         .channel(`channel:${channelId}`, { config: { private: true } })
@@ -102,21 +104,25 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           if (table === 'messages') invalidateChannelLists(queryClient)
         })
       channel.subscribe((status, error) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        if (shouldRetryRealtime(status)) {
           console.warn(
-            `[Realtime] channel:${channelId} の購読に失敗:`,
+            `[Realtime] channel:${channelId} を再接続します:`,
             status,
             error?.message ?? error,
           )
+          if (!retryTimer) {
+            retryTimer = setTimeout(() => setChannelRetryNonce((value) => value + 1), 5_000)
+          }
         }
       })
       return channel
     })
 
     return () => {
+      if (retryTimer) clearTimeout(retryTimer)
       for (const channel of subscriptions) void supabase.removeChannel(channel)
     }
-  }, [authenticated, channelIds, queryClient])
+  }, [authenticated, channelIds, channelRetryNonce, queryClient])
 
   return <>{children}</>
 }

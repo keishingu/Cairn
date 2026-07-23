@@ -6,7 +6,7 @@ import {
   persistThenStartSend,
 } from './offline-message-queue'
 
-describe('offline message queue', () => {
+describe('オフラインメッセージキュー', () => {
   it('APIのidempotencyに使えるUUIDを作る', () => {
     expect(createClientMessageId()).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,

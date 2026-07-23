@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { formatChannelPeriod } from './channel-period'
 
-describe('formatChannelPeriod', () => {
+describe('チャンネル期間表示', () => {
   it('単日のプロジェクトは月日だけを表示する', () => {
     expect(formatChannelPeriod('2026-07-14', '2026-07-14')).toBe('7/14')
   })

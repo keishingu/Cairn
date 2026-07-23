@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { hasFailedUploads, shouldRetryRealtime } from './mobile-chat-state'
 
-describe('mobile chat state', () => {
+describe('モバイルチャット状態', () => {
   it.each(['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'])(
     '%sになったRealtime購読を再接続する',
     (status) => {

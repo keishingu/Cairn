@@ -797,6 +797,21 @@ export default function ChatThreadScreen() {
           {sendError && (
             <Text style={[styles.sendError, { color: palette.redText }]}>{sendError}</Text>
           )}
+          {offlineQueue.restoreError && (
+            <View style={styles.queueRestoreError} accessibilityRole="alert">
+              <Text style={[styles.queueRestoreErrorText, { color: palette.redText }]}>
+                {offlineQueue.restoreError}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="未送信メッセージを再読み込み"
+                onPress={offlineQueue.retryRestore}
+                hitSlop={6}
+              >
+                <Text style={[styles.queueRestoreRetry, { color: palette.redText }]}>再試行</Text>
+              </Pressable>
+            </View>
+          )}
           {(replyTarget || editingMessage) && (
             <View
               style={[
@@ -1140,6 +1155,14 @@ const styles = StyleSheet.create({
   refreshErrorText: { flex: 1, fontSize: 12, lineHeight: 16 },
   refreshErrorAction: { fontSize: 12, fontWeight: '700' },
   sendError: { fontSize: 12, marginBottom: 6 },
+  queueRestoreError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  queueRestoreErrorText: { flex: 1, fontSize: 12, lineHeight: 16 },
+  queueRestoreRetry: { fontSize: 12, fontWeight: '700' },
   composerContext: {
     minHeight: 44,
     flexDirection: 'row',

@@ -13,7 +13,9 @@ import { useSession } from '../lib/session-context'
 
 interface QueueContextValue {
   ready: boolean
+  restoreError: string | null
   messages: QueuedMessage[]
+  retryRestore: () => void
   enqueue: (message: Omit<QueuedMessage, 'attempts' | 'status'>) => Promise<void>
   retry: (id: string) => void
   cancel: (id: string) => void
@@ -33,6 +35,8 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
   const storageKey = userId ? `${STORAGE_PREFIX}${userId}` : null
   const qc = useQueryClient()
   const [ready, setReady] = React.useState(false)
+  const [restoreError, setRestoreError] = React.useState<string | null>(null)
+  const [restoreNonce, setRestoreNonce] = React.useState(0)
   const [messages, setMessages] = React.useState<QueuedMessage[]>([])
   const messagesRef = React.useRef<QueuedMessage[]>([])
   const flushingRef = React.useRef(false)
@@ -59,20 +63,27 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
   React.useEffect(() => {
     let cancelled = false
     setReady(false)
+    setRestoreError(null)
     messagesRef.current = []
     setMessages([])
     if (!storageKey) return
-    void AsyncStorage.getItem(storageKey).then((raw) => {
-      if (cancelled) return
-      const restored = parseStoredMessageQueue(raw)
-      messagesRef.current = restored
-      setMessages(restored)
-      setReady(true)
-    })
+    void AsyncStorage.getItem(storageKey)
+      .then((raw) => {
+        if (cancelled) return
+        const restored = parseStoredMessageQueue(raw)
+        messagesRef.current = restored
+        setMessages(restored)
+        setReady(true)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        console.warn('[offline-message-queue] 端末保存の読み込みに失敗しました:', error)
+        setRestoreError('未送信メッセージを端末から読み込めませんでした')
+      })
     return () => {
       cancelled = true
     }
-  }, [storageKey])
+  }, [restoreNonce, storageKey])
 
   const flush = React.useCallback(async () => {
     if (!ready || !storageKey || flushingRef.current) return
@@ -152,7 +163,9 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
   const value = React.useMemo<QueueContextValue>(
     () => ({
       ready,
+      restoreError,
       messages,
+      retryRestore: () => setRestoreNonce((value) => value + 1),
       enqueue: async (message) => {
         await persistThenStartSend(
           () =>
@@ -187,7 +200,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
         )
       },
     }),
-    [flush, messages, ready, updateMessages],
+    [flush, messages, ready, restoreError, updateMessages],
   )
 
   return <QueueContext.Provider value={value}>{children}</QueueContext.Provider>
