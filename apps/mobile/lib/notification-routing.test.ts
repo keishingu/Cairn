@@ -17,7 +17,7 @@ function notification(overrides: Partial<{
   }
 }
 
-describe('routeFromNotification', () => {
+describe('通知からの画面遷移', () => {
   it('channelId 付きのチャネル系通知は chats へ送る', () => {
     expect(routeFromNotification(notification({
       type: 'mention',

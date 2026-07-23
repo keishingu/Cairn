@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { webPath } from '../lib/webview-path'
 
-describe('webPath', () => {
+describe('アプリ内WebViewのパス変換', () => {
   it('webview=1 を相対パスへ付与する', () => {
     expect(webPath('/ai')).toBe('/ai?webview=1')
   })

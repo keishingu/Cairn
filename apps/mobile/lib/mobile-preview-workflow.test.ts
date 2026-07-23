@@ -42,12 +42,11 @@ describe('モバイルプレビューの環境同期', () => {
     expect(workflow).toContain('ref: ${{ github.event.pull_request.head.sha }}')
   })
 
-  it('PR更新時はdevelop、初回作成時は同一SHAのWeb APIを利用する', () => {
-    expect(workflow).toContain("context.payload.action !== 'opened'")
-    expect(workflow).toContain("const url = 'https://develop.oss-cairn.com'")
-    expect(workflow).toContain('const sha = context.payload.pull_request.head.sha')
-    expect(workflow).toContain('github.rest.repos.listDeployments')
-    expect(workflow).toContain('steps.web-api-base.outputs.url')
+  it('Vercel認証を避けるため初回から固定のdevelop Web APIを利用する', () => {
+    expect(workflow).toContain('MOBILE_PREVIEW_API_BASE_URL: https://develop.oss-cairn.com')
+    expect(workflow).not.toContain('github.rest.repos.listDeployments')
+    expect(workflow).not.toContain('steps.web-api-base.outputs.url')
+    expect(workflow).not.toContain('deployments: read')
   })
 
   it('異なるPRの実行をEAS同期前にFIFOで待機させる', () => {

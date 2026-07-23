@@ -51,4 +51,30 @@ describe('PATCH /api/me', () => {
     expect(mockSet).toHaveBeenNthCalledWith(2, { status: 'suppressed', remindAfter: null })
     expect(mockSet).toHaveBeenNthCalledWith(3, { status: 'suppressed' })
   })
+
+  it('テーマとハイライトカラーをプロフィールへ保存する', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: USER_ID, workspaceId: WORKSPACE_ID },
+      error: null,
+    })
+
+    const { PATCH } = await import('./route')
+    const response = await PATCH(new Request('http://localhost/api/me', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ theme: 'dark', accentId: 'violet' }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({
+      theme: 'dark',
+      accentId: 'violet',
+      updatedAt: expect.any(Date),
+    }))
+    await expect(response.json()).resolves.toEqual({
+      id: USER_ID,
+      theme: 'dark',
+      accentId: 'violet',
+    })
+  })
 })

@@ -1,8 +1,8 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { bigint, boolean, integer, jsonb, pgTable, pgView, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
-import { eq } from 'drizzle-orm'
+import { bigint, boolean, check, integer, jsonb, pgTable, pgView, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { eq, sql } from 'drizzle-orm'
 import { memberStatusEnum, userStatusEnum, workspaceRoleEnum } from './enums'
 
 export interface WorkspaceCoverPhoto {
@@ -17,15 +17,27 @@ export interface WorkspaceSettings {
   coverPhotos?: WorkspaceCoverPhoto[]
 }
 
-export const profiles = pgTable('profiles', {
-  id: uuid('id').primaryKey(),
-  displayName: text('display_name').notNull(),
-  bio: text('bio'),
-  icalToken: text('ical_token').unique(),
-  aiNudgesEnabled: boolean('ai_nudges_enabled').notNull().default(true),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+export const profiles = pgTable(
+  'profiles',
+  {
+    id: uuid('id').primaryKey(),
+    displayName: text('display_name').notNull(),
+    bio: text('bio'),
+    icalToken: text('ical_token').unique(),
+    aiNudgesEnabled: boolean('ai_nudges_enabled').notNull().default(true),
+    theme: text('theme').notNull().default('system'),
+    accentId: text('accent_id').notNull().default('emerald'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('profiles_theme_check', sql`${t.theme} in ('light', 'system', 'dark')`),
+    check(
+      'profiles_accent_id_check',
+      sql`${t.accentId} in ('emerald', 'blue', 'violet', 'rose', 'pink', 'amber', 'cyan')`,
+    ),
+  ],
+)
 
 export const workspaces = pgTable('workspaces', {
   id: uuid('id').primaryKey().defaultRandom(),

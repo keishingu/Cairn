@@ -10,10 +10,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#0B0F14"
     },
-    "platforms": [
-      "ios",
-      "android"
-    ],
+    "platforms": ["ios", "android"],
     "ios": {
       "bundleIdentifier": "com.oss-cairn",
       "infoPlist": {
@@ -26,7 +23,13 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "チャットに添付する画像を選択するため、写真へのアクセスを使用します"
+        }
+      ]
     ],
     "extra": {
       "router": {},
@@ -35,7 +38,7 @@
       }
     },
     "owner": "keishingu",
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "1.0.1",
     "updates": {
       "url": "https://u.expo.dev/46195650-8dc8-4c73-9b32-c1b5134c0326"
     }

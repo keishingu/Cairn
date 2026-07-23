@@ -1,5 +1,5 @@
 import React from 'react'
-import { Platform, View, Text, Pressable, StyleSheet, useColorScheme } from 'react-native'
+import { Platform, View, Text, Pressable, StyleSheet } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
@@ -8,10 +8,8 @@ import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/api-fetch'
 import { API_BASE_URL as WEB_BASE } from '../lib/env'
 import { webPath } from '../lib/webview-path'
-
-// Web 側の globals.css --bg と揃える
-const BG_DARK = '#0B0F14'
-const BG_LIGHT = '#F8FAFC'
+import { isAccentId, isAppearanceTheme } from '@cairn/shared'
+import { useAppAppearance } from './appearance-provider'
 
 export interface AppWebViewHandle {
   injectJavaScript: (script: string) => void
@@ -20,6 +18,8 @@ export interface AppWebViewHandle {
 interface Props {
   path: string
   onLoadEnd?: () => void
+  allowChatRoutes?: boolean
+  includeSafeAreaTop?: boolean
 }
 
 export function webUrl(path: string): string {
@@ -27,15 +27,15 @@ export function webUrl(path: string): string {
 }
 
 export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function AppWebView(
-  { path, onLoadEnd },
+  { path, onLoadEnd, allowChatRoutes = false, includeSafeAreaTop = true },
   ref,
 ) {
   const webViewRef = React.useRef<WebView>(null)
   const [uri, setUri] = React.useState<string | null>(null)
   const [error, setError] = React.useState(false)
   const insets = useSafeAreaInsets()
-  const colorScheme = useColorScheme()
-  const bg = colorScheme === 'dark' ? BG_DARK : BG_LIGHT
+  const { palette, updateAppearance } = useAppAppearance()
+  const bg = palette.bg
   const router = useRouter()
 
   React.useImperativeHandle(
@@ -81,7 +81,14 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
         const res = await apiFetch('/api/auth/webview-handoff', {
           method: 'POST',
         })
-        if (!res.ok) throw new Error(`handoff failed: ${res.status}`)
+        if (!res.ok) {
+          if (res.status === 401) {
+            await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined)
+            router.replace('/(auth)/login')
+            return
+          }
+          throw new Error(`handoff failed: ${res.status}`)
+        }
         const data = (await res.json()) as { tokenHash?: string }
         if (!data.tokenHash) throw new Error('handoff response missing tokenHash')
 
@@ -152,9 +159,13 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
   }
 
   function handleMessage(event: WebViewMessageEvent) {
-    let msg: { type?: string } | null = null
+    let msg: { type?: string; theme?: unknown; accentId?: unknown } | null = null
     try {
-      msg = JSON.parse(event.nativeEvent.data) as { type?: string }
+      msg = JSON.parse(event.nativeEvent.data) as {
+        type?: string
+        theme?: unknown
+        accentId?: unknown
+      }
     } catch {
       return
     }
@@ -163,6 +174,13 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
     }
     if (msg?.type === 'open-chats') {
       router.push('/(app)/chats')
+    }
+    if (
+      msg?.type === 'appearance-changed' &&
+      isAppearanceTheme(msg.theme) &&
+      isAccentId(msg.accentId)
+    ) {
+      updateAppearance({ theme: msg.theme, accentId: msg.accentId })
     }
   }
 
@@ -183,7 +201,10 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
     // about:blank など内部リソースは通す
     if (url === 'about:blank' || url.startsWith('about:')) return true
     const chatsPath = `${trustedOrigin}/chats`
-    if (url === chatsPath || url.startsWith(`${chatsPath}/`) || url.startsWith(`${chatsPath}?`)) {
+    if (
+      !allowChatRoutes &&
+      (url === chatsPath || url.startsWith(`${chatsPath}/`) || url.startsWith(`${chatsPath}?`))
+    ) {
       router.push('/(app)/chats')
       return false
     }
@@ -193,10 +214,19 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
 
   if (error) {
     return (
-      <View style={[styles.fill, styles.center, { backgroundColor: bg, paddingTop: insets.top }]}>
-        <Text style={styles.errorText}>読み込みに失敗しました</Text>
-        <Pressable style={styles.retryButton} onPress={() => void performHandoff(pathRef.current)}>
-          <Text style={styles.retryLabel}>再試行</Text>
+      <View
+        style={[
+          styles.fill,
+          styles.center,
+          { backgroundColor: bg, paddingTop: includeSafeAreaTop ? insets.top : 0 },
+        ]}
+      >
+        <Text style={[styles.errorText, { color: palette.text3 }]}>読み込みに失敗しました</Text>
+        <Pressable
+          style={[styles.retryButton, { backgroundColor: palette.accent }]}
+          onPress={() => void performHandoff(pathRef.current)}
+        >
+          <Text style={[styles.retryLabel, { color: palette.onAccent }]}>再試行</Text>
         </Pressable>
       </View>
     )
@@ -205,7 +235,12 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
   if (!uri) return <View style={[styles.fill, { backgroundColor: bg }]} />
 
   return (
-    <View style={[styles.fill, { backgroundColor: bg, paddingTop: insets.top }]}>
+    <View
+      style={[
+        styles.fill,
+        { backgroundColor: bg, paddingTop: includeSafeAreaTop ? insets.top : 0 },
+      ]}
+    >
       <WebView
         ref={webViewRef}
         source={{ uri }}
@@ -228,12 +263,11 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center', gap: 16 },
   webview: { flex: 1 },
-  errorText: { fontSize: 15, color: '#94A3B8' },
+  errorText: { fontSize: 15 },
   retryButton: {
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: '#2563EB',
   },
-  retryLabel: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  retryLabel: { fontSize: 15, fontWeight: '600' },
 })

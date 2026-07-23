@@ -142,6 +142,11 @@ function MobileShellInner({ hideNav }: { hideNav: boolean }) {
   const settingsSection = pathname.startsWith('/settings/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
   const [isWebView] = React.useState(loadWebViewMode)
+  const [isNativeChatAux] = React.useState(
+    () =>
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('nativeAux') === '1',
+  )
   const [notifOpen, setNotifOpen] = React.useState(false)
 
   React.useEffect(() => {
@@ -151,10 +156,10 @@ function MobileShellInner({ hideNav }: { hideNav: boolean }) {
   }, [])
 
   React.useEffect(() => {
-    if (!isWebView || page !== 'chats') return
+    if (!isWebView || page !== 'chats' || isNativeChatAux) return
     window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'open-chats' }))
     router.back()
-  }, [isWebView, page, router])
+  }, [isNativeChatAux, isWebView, page, router])
 
   const { panelState, panelProject, panelMember, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
 
