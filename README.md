@@ -87,7 +87,9 @@ pnpm dev
 
 `expo run:ios` / `run:android` が生成する `ios/` `android/` ディレクトリは `app.json` から再生成できる成果物のため、コミットしない（`apps/mobile/.gitignore` で除外済み）。また、ネイティブプロジェクトが存在すると runtime version のポリシー（`appVersion` 等）が使えないため、`app.json` の `runtimeVersion` は固定文字列で管理する。**ネイティブモジュールを追加・更新したら `runtimeVersion` を手動で上げる**こと（古いネイティブビルドに非互換な EAS Update が配信されるのを防ぐため）。
 
-実機で使う場合は `pnpm dev` で表示される QR コードを読み込む（開発クライアントがインストール済みであること）。Xcode / Android Studio がないメンバーには、EAS の `development`（iOS シミュレータ）または `development-device`（実機）プロファイルでビルド済み開発クライアントを配布できる。
+`app.config.ts` のアプリ名・bundle/package ID や config plugin を変更した後、既存の生成済み native project は `expo run:*` だけでは全設定が更新されないことがある。`apps/mobile` で `pnpm exec expo prebuild --clean --platform ios` または `--platform android` を実行してから再ビルドする。
+
+実機で使う場合は `pnpm dev` で表示される QR コードを読み込む（開発クライアントがインストール済みであること）。Xcode / Android Studio がないメンバーには、EAS の `development`（iOS シミュレータ）または `development-device`（実機）プロファイルでビルド済み開発クライアントを配布できる。接続先を内蔵して単体動作する検証版は `preview` の Internal Distribution を使う。配布手順は [`docs/mobile-internal-distribution.md`](docs/mobile-internal-distribution.md) を参照。
 
 > **接続先 URL は自動導出される（IP の手動設定は不要）**
 >
@@ -107,7 +109,7 @@ pnpm dev
 
 ## モバイルプレビュー（EAS Update）
 
-`apps/mobile`、`packages/shared`、またはモバイルの依存関係に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。互換性のある Cairn Development Build で QR を開けば、ローカル環境を起動せずに確認できる（Expo Go は使用しない）。
+`apps/mobile`、`packages/shared`、またはモバイルの依存関係に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。互換性のある Cairn Development Build で QR を開けば、ローカル環境を起動せずに確認できる（Expo Go は使用しない）。同じ revision は `preview` channel にも配信され、Internal Distribution build は次回起動時に取得する。
 
 | 起動方法                                    | JavaScript の配信元                      | Web / API 接続先                       | Supabase 接続先                         |
 | ------------------------------------------- | ---------------------------------------- | -------------------------------------- | --------------------------------------- |
@@ -116,7 +118,9 @@ pnpm dev
 | `eas build --profile preview`               | ビルド内蔵 bundle + `preview` channel    | EAS の `preview` 環境                  | EAS の `preview` 環境                   |
 | `eas build --profile production`            | ビルド内蔵 bundle + `production` channel | EAS の `production` 環境               | EAS の `production` 環境                |
 
-PR Preview の workflow は、Vercel Deployment Protection のログイン画面へ遷移しないよう、初回から `https://develop.oss-cairn.com` を Web / API URL に使う。この URL と共有 Supabase の設定を EAS の `preview` 環境へ作成または上書きしてから、`eas update --environment preview` を実行する。ローカルの `.env.local` は EAS Update に混入しない。EAS の `preview` 環境は共有状態のため、同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで順番に処理する。
+PR Preview の workflow は、Vercel Deployment Protection のログイン画面へ遷移しないよう、初回から `https://develop.oss-cairn.com` を Web / API URL に使う。この URL と共有 Supabase の設定を EAS の `preview` 環境へ作成または上書きしてから、PR 固有 branch と Internal Distribution 用 `preview` channel の両方へ EAS Update を発行する。ローカルの `.env.local` は EAS Update に混入しない。EAS の `preview` 環境と channel は共有状態のため、同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで順番に処理する。Internal Distribution では最後に成功した Mobile Preview が最新版になる。
+
+Internal Distribution は `apps/mobile` で `pnpm build:internal:android` / `pnpm build:internal:ios` を実行するか、GitHub Actions の `Mobile Internal Distribution` を手動実行する。Android はインストール可能な APK、iOS は登録済み端末用の Ad Hoc build が生成される。GitHub Actions で `ios` / `all` を選ぶと、EAS に登録済みの端末を provisioning profile へ反映してから build する。`Cairn Dev` / `Cairn Preview` / `Cairn` は別の URL scheme と bundle/package ID を使うため、同じ端末へ共存できる。
 
 ### 初回セットアップ（リポジトリ管理者）
 
@@ -132,7 +136,7 @@ PR Preview の workflow は、Vercel Deployment Protection のログイン画面
 | Secret   | `MOBILE_PREVIEW_SUPABASE_ANON_KEY` | 共有 Supabase プレビュー DB の anon key |
 | Secret   | `EXPO_TOKEN`                       | Expo のアクセストークン                 |
 
-`preview` / `production` のネイティブビルドは `apps/mobile/eas.json` の `environment` と同名の EAS Environment を使用する。本番ビルド前には EAS の `production` 環境へ `EXPO_PUBLIC_API_BASE_URL`、`EXPO_PUBLIC_SUPABASE_URL`、`EXPO_PUBLIC_SUPABASE_ANON_KEY` を設定すること。
+`preview` / `production` のネイティブビルドは `apps/mobile/eas.json` の `environment` と同名の EAS Environment を使用する。本番ビルド前には EAS の `production` 環境へ `EXPO_PUBLIC_API_BASE_URL`、`EXPO_PUBLIC_SUPABASE_URL`、`EXPO_PUBLIC_SUPABASE_ANON_KEY` を設定すること。`expo-sqlite` / `expo-network` を含む最初の互換 runtime は `1.1.0`。それ以前の Development Build では `1.1.0` 向け EAS Update を開けないため、一度ネイティブビルドを更新する。
 
 ---
 

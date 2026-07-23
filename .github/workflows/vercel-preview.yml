@@ -21,7 +21,7 @@ jobs:
       contents: read
       deployments: write
       issues: write
-      pull-requests: read
+      pull-requests: write
 
     steps:
       - name: Resolve trusted PR head
