@@ -529,7 +529,8 @@ export default function ChatThreadScreen() {
       !channelId ||
       !offlineQueue.ready ||
       isQueueing ||
-      upload.isUploading
+      upload.isUploading ||
+      upload.hasFailedUploads
     )
       return
     const sendingChannelId = channelId
@@ -606,7 +607,8 @@ export default function ChatThreadScreen() {
     : (draft.trim().length > 0 || upload.doneFileIds.length > 0) &&
       offlineQueue.ready &&
       !isQueueing &&
-      !upload.isUploading
+      !upload.isUploading &&
+      !upload.hasFailedUploads
 
   const handleToggleReaction = (messageId: string, emoji: string) => {
     toggleReaction.mutate(

@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useMe } from '../hooks/use-account'
 import { useProjectChannels } from '../hooks/use-projects'
 import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channels'
+import { shouldRetryRealtime } from '../lib/mobile-chat-state'
 import { supabase } from '../lib/supabase'
 
 function tableOf(payload: unknown): string | undefined {
@@ -61,7 +62,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         if (status === 'SUBSCRIBED') {
           setAuthenticated(true)
           invalidateChannelLists(queryClient)
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        } else if (shouldRetryRealtime(status)) {
           setAuthenticated(false)
           console.warn(
             '[Realtime] ユーザートピックを再接続します:',

@@ -3,6 +3,7 @@ import * as DocumentPicker from 'expo-document-picker'
 import * as ImagePicker from 'expo-image-picker'
 import { File } from 'expo-file-system'
 import { apiFetch } from '../lib/api-fetch'
+import { hasFailedUploads } from '../lib/mobile-chat-state'
 import { supabase } from '../lib/supabase'
 
 const ALLOWED_DOCUMENT_TYPES = [
@@ -165,5 +166,6 @@ export function useAttachmentUpload(channelId: string) {
     clearUploads,
     doneFileIds,
     isUploading: uploads.some((upload) => upload.status === 'uploading'),
+    hasFailedUploads: hasFailedUploads(uploads),
   }
 }

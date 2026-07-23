@@ -498,57 +498,80 @@ export default function ChatsScreen() {
           {createMode === 'dm' && (
             <ScrollView style={styles.memberList}>
               {membersQuery.isLoading && <ActivityIndicator size="small" color={palette.accent} />}
-              {(membersQuery.data ?? [])
-                .filter((member) => member.userId !== me?.id)
-                .map((member) => (
+              {membersQuery.error ? (
+                <View style={styles.memberError}>
+                  <Text style={[styles.memberErrorText, { color: palette.redText }]}>
+                    {membersQuery.error.message}
+                  </Text>
                   <Pressable
-                    key={member.userId}
-                    disabled={createDm.isPending}
-                    style={[styles.memberRow, { borderTopColor: palette.divider }]}
-                    onPress={() =>
-                      createDm.mutate(member.userId, {
-                        onSuccess: ({ id }) => {
-                          setCreateMode(null)
-                          router.push({
-                            pathname: '/chats/[channelId]',
-                            params: { channelId: id, channelName: member.displayName },
-                          })
-                        },
-                        onError: (error) =>
-                          setCreateError(
-                            error instanceof Error ? error.message : 'DMの開始に失敗しました',
-                          ),
-                      })
-                    }
+                    accessibilityRole="button"
+                    accessibilityLabel="メンバーを再読み込み"
+                    disabled={membersQuery.isFetching}
+                    onPress={() => void membersQuery.refetch()}
+                    style={[styles.memberRetry, { borderColor: palette.border }]}
                   >
-                    {member.avatarUrl ? (
-                      <Image source={{ uri: member.avatarUrl }} style={styles.memberAvatar} />
+                    {membersQuery.isFetching ? (
+                      <ActivityIndicator size="small" color={palette.accent} />
                     ) : (
-                      <View
-                        style={[
-                          styles.memberAvatar,
-                          styles.avatarFallback,
-                          { backgroundColor: palette.accentSoft },
-                        ]}
-                      >
-                        <Text style={{ color: palette.accentText }}>
-                          {member.displayName.slice(0, 1)}
-                        </Text>
-                      </View>
-                    )}
-                    <View style={styles.memberCopy}>
-                      <Text style={[styles.memberName, { color: palette.text }]}>
-                        {member.displayName}
+                      <Text style={[styles.memberRetryText, { color: palette.accentText }]}>
+                        再試行
                       </Text>
-                      {member.email && (
-                        <Text style={[styles.memberEmail, { color: palette.text3 }]}>
-                          {member.email}
-                        </Text>
-                      )}
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={palette.text4} />
+                    )}
                   </Pressable>
-                ))}
+                </View>
+              ) : (
+                (membersQuery.data ?? [])
+                  .filter((member) => member.userId !== me?.id)
+                  .map((member) => (
+                    <Pressable
+                      key={member.userId}
+                      disabled={createDm.isPending}
+                      style={[styles.memberRow, { borderTopColor: palette.divider }]}
+                      onPress={() =>
+                        createDm.mutate(member.userId, {
+                          onSuccess: ({ id }) => {
+                            setCreateMode(null)
+                            router.push({
+                              pathname: '/chats/[channelId]',
+                              params: { channelId: id, channelName: member.displayName },
+                            })
+                          },
+                          onError: (error) =>
+                            setCreateError(
+                              error instanceof Error ? error.message : 'DMの開始に失敗しました',
+                            ),
+                        })
+                      }
+                    >
+                      {member.avatarUrl ? (
+                        <Image source={{ uri: member.avatarUrl }} style={styles.memberAvatar} />
+                      ) : (
+                        <View
+                          style={[
+                            styles.memberAvatar,
+                            styles.avatarFallback,
+                            { backgroundColor: palette.accentSoft },
+                          ]}
+                        >
+                          <Text style={{ color: palette.accentText }}>
+                            {member.displayName.slice(0, 1)}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.memberCopy}>
+                        <Text style={[styles.memberName, { color: palette.text }]}>
+                          {member.displayName}
+                        </Text>
+                        {member.email && (
+                          <Text style={[styles.memberEmail, { color: palette.text3 }]}>
+                            {member.email}
+                          </Text>
+                        )}
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={palette.text4} />
+                    </Pressable>
+                  ))
+              )}
             </ScrollView>
           )}
         </View>
@@ -690,6 +713,18 @@ const styles = StyleSheet.create({
   createSubmit: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
   createSubmitText: { fontSize: 14, fontWeight: '700' },
   memberList: { maxHeight: 430 },
+  memberError: { alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 24 },
+  memberErrorText: { fontSize: 13, lineHeight: 18, textAlign: 'center' },
+  memberRetry: {
+    minWidth: 88,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 9,
+    paddingHorizontal: 14,
+  },
+  memberRetryText: { fontSize: 13, fontWeight: '700' },
   memberRow: {
     minHeight: 58,
     flexDirection: 'row',

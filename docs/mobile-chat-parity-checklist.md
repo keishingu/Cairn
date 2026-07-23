@@ -74,7 +74,7 @@
 ## 自動検証
 
 - [x] Mobile / Shared / WebのTypeScript型チェック
-- [x] Mobile: 8 files / 30 tests
+- [x] Mobile: 9 files / 35 tests
 - [x] Shared: 2 files / 25 tests
 - [x] Web全体: 91 files / 467 tests（高並列時に1件だけタイムアウトしたため、並列数を抑えて全件再実行）
 - [x] `git diff --check`
