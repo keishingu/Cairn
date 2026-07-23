@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { resolveOAuthScheme } from './oauth-scheme'
 
-describe('OAuth callback scheme', () => {
+describe('OAuth callback schemeの解決', () => {
   it('インストール済みiOS binaryのbundle IDからvariant固有schemeを決める', () => {
     expect(resolveOAuthScheme('com.oss-cairn.dev')).toBe('cairn-dev')
     expect(resolveOAuthScheme('com.oss-cairn.preview')).toBe('cairn-preview')
