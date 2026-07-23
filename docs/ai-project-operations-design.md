@@ -181,10 +181,11 @@ RAGは検索索引であり、操作直前の正本には使わない。
 API:
 | パス | 動作 |
 |---|---|
-| `GET /api/ai/actions/[id]` | 作成者本人へ現在状態を返す |
+| `GET /api/ai/actions/[id]` | 作成者本人かつ現在も対象projectを参照できる場合だけ現在状態を返す |
 | `POST .../[id]/execute` | 再認可・競合検知後に実行する |
 | `POST .../[id]/cancel` | pending提案を取り消す |
 | `POST .../[id]/revert` | 現在値が適用後値と一致する場合だけ戻す |
+`GET` もactionのworkspaceとprojectに対するactive membership・参照権限をリクエストごとに再検証し、離脱・無効化・権限変更後はsnapshotを返さない。作成者本人であることだけでは認可しない。
 `execute` は更新、監査ログ、action状態更新を同一トランザクションで行う。
 実行済みactionへの再リクエストは、更新を重ねず同じ結果を返す。
 
@@ -240,6 +241,7 @@ Expo側はWebViewのため初期版でReact Native画面追加は不要。
 API:
 - owner/admin/memberは実行可能、guest・非活性は拒否
 - 提案作成時点でproject参照権限を検証し、未認可ならactionとsnapshotを作らない
+- action作成後にprojectから離脱・無効化されたユーザーへ、`GET`でsnapshotを返さない
 - 他人・別workspace・別projectのaction/entityを拒否
 - 期限切れ、二重実行、競合を安全に扱う
 - revertが他の編集を上書きしない
