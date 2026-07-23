@@ -22,9 +22,10 @@
 | キーボードショートカット | `keyboard-shortcuts.md` | — |
 | デプロイ・リリース・本番設定 | `production-deployment.md` | — |
 | 課金（未実装・設計のみ） | `pricing-plan-design.md`（何を売るか） | `billing-implementation-design.md`（どう実装するか）、`billing-minigame-design.md`（石積みミニゲーム）、`prototypes/stone-stacking-sandbox.html`（触感検証モック。ブラウザで開くだけで動く） |
-| マイルストーン（未実装・設計のみ） | `milestone-design.md`（差分分析・実装計画） | `07_notifications_and_unread.md`（エンティティ=チャンネル思想） |
+| マイルストーン（主要機能実装済み） | `milestone-design.md`（差分分析・実装計画） | `07_notifications_and_unread.md`（エンティティ=チャンネル思想） |
 | AI メンバー・定期ジョブ（未実装・設計のみ） | `10_ai_member_design.md` / `scheduled-jobs-design.md` | `ai-self-improvement-loop.md` |
-| AI常駐PMO・プライベートナッジ（未実装・設計のみ） | `ai-pmo-design.md` | `ai-era-pm-strategy.md`（戦略背景）、`10_ai_member_design.md`（Stage 3 との関係） |
+| AI常駐PMO・プライベートナッジ（Phase 1・2主要機能実装済み） | `ai-pmo-design.md` | `ai-era-pm-strategy.md`（戦略背景）、`10_ai_member_design.md`（Stage 3 との関係） |
+| AIからのプロジェクト操作 | `ai-project-operations-design.md` | `ai-pmo-design.md`（介入の作法）、`milestone-design.md`（マイルストーン構造） |
 | LP・マーケティング | `lp-content-redesign.md` | `landing-page-routing-design.md`、`lp-soul-page-copy.md` |
 
 ## 現行リファレンス
@@ -39,9 +40,9 @@
 | [`mobile-chat-parity-checklist.md`](./mobile-chat-parity-checklist.md) | モバイルWebとExpoネイティブチャットの表示同等性チェックリスト | 2026-07-12 |
 | [`mobile-internal-distribution.md`](./mobile-internal-distribution.md) | Expo Internal Distribution とオフライン基盤の運用手順 | 2026-07-23 |
 | [`10_ai_member_design.md`](./10_ai_member_design.md) | AIメンバー設計（構想段階の現行合意。実装着手時に更新する） | 2026-06-11 |
-| [`ai-pmo-design.md`](./ai-pmo-design.md) | AI常駐PMO設計（ハートビート巡回 + 本人だけに見えるプライベートナッジ。実装未着手） | 2026-07-17 |
+| [`ai-pmo-design.md`](./ai-pmo-design.md) | AI常駐PMO設計（ハートビート巡回 + 本人だけに見えるプライベートナッジ。Phase 1・2主要機能実装済み） | 2026-07-17 |
 | [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) | 定期ジョブ（cron・自然言語で定義）+ アプリ内投票機能の設計（構想段階） | 2026-06-25 |
-| [`milestone-design.md`](./milestone-design.md) | マイルストーン機能の実装設計（現実装との差分分析・DB/API/UI 設計・フェーズ計画。実装未着手） | 2026-07-09 |
+| [`milestone-design.md`](./milestone-design.md) | マイルストーン機能の実装設計（現実装との差分分析・DB/API/UI 設計・フェーズ計画。主要機能実装済み） | 2026-07-09 |
 | [`production-deployment.md`](./production-deployment.md) | 本番環境構成・残タスク・一般公開に向けた設定 | 2026-06-21 |
 | [`pricing-plan-design.md`](./pricing-plan-design.md) | 料金プラン設計（Free / Solo / Team / Expedition、ケルン消費モデル。実装未着手） | 2026-06-16 |
 | [`billing-implementation-design.md`](./billing-implementation-design.md) | 課金の実装設計（クレジット台帳・ストレージ家賃・風化・Stripe統合。実装未着手） | 2026-06-16 |
@@ -51,6 +52,7 @@
 | [`lp-content-redesign.md`](./lp-content-redesign.md) | LP コンテンツの利用者ファースト化（ペルソナ切替 `?p=`、誠実化、CTA/UTM 規約） | 2026-07-03 |
 | [`ui-consistency-checklist.md`](./ui-consistency-checklist.md) | UI 一貫性統一の進捗管理チェックリスト（方針本文は `frontend-guidelines.md`） | 2026-06 |
 | [`performance-improvement-plan.md`](./performance-improvement-plan.md) | フロントエンド体感速度の改善施策（認証往復・認可クエリ・API集約のボトルネック分析と実施計画。実装未着手） | 2026-07-12 |
+| [`ai-project-operations-design.md`](./ai-project-operations-design.md) | `/ai` からプロジェクトステータスとマイルストーン日程を、確認・競合検知・監査付きで変更する設計（実装前） | 2026-07-24 |
 
 ## 設計時スナップショット
 
