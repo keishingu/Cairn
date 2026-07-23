@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   useMarkNotificationsRead,
   useNotifications,
+  useUnreadNotificationCount,
   type NotificationDto,
 } from '../hooks/use-notifications'
 import { routeFromNotification } from '../lib/notification-routing'
@@ -46,12 +47,14 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
   const { width } = useWindowDimensions()
   const { palette } = useAppAppearance()
   const notificationsQuery = useNotifications()
+  const unreadCountQuery = useUnreadNotificationCount()
   const markRead = useMarkNotificationsRead()
   const [visible, setVisible] = React.useState(false)
   const [reduceMotion, setReduceMotion] = React.useState(false)
   const progress = React.useRef(new Animated.Value(1)).current
   const notifications = notificationsQuery.data ?? []
-  const unreadCount = notifications.filter((item) => item.readAt === null).length
+  const unreadCount =
+    unreadCountQuery.data ?? notifications.filter((item) => item.readAt === null).length
   const panelWidth = Math.min(400, Math.max(0, width - 24))
 
   React.useEffect(() => {
@@ -222,8 +225,10 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
                   }
                   refreshControl={
                     <RefreshControl
-                      refreshing={notificationsQuery.isRefetching}
-                      onRefresh={() => void notificationsQuery.refetch()}
+                      refreshing={notificationsQuery.isRefetching || unreadCountQuery.isRefetching}
+                      onRefresh={() =>
+                        void Promise.all([notificationsQuery.refetch(), unreadCountQuery.refetch()])
+                      }
                       tintColor={palette.accent}
                     />
                   }

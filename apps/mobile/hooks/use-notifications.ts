@@ -22,6 +22,18 @@ export function useNotifications() {
   })
 }
 
+export function useUnreadNotificationCount() {
+  return useQuery<number>({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/notifications?filter=unread&count=1')
+      if (!res.ok) throw new Error(`未読通知数の取得に失敗しました (${res.status})`)
+      const data = (await res.json()) as { count: number }
+      return data.count
+    },
+  })
+}
+
 export function useMarkNotificationsRead() {
   const qc = useQueryClient()
   return useMutation({
