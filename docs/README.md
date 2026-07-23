@@ -26,6 +26,7 @@
 | AI メンバー・定期ジョブ（未実装・設計のみ） | `10_ai_member_design.md` / `scheduled-jobs-design.md` | `ai-self-improvement-loop.md` |
 | AI常駐PMO・プライベートナッジ（Phase 1・2主要機能実装済み） | `ai-pmo-design.md` | `ai-era-pm-strategy.md`（戦略背景）、`10_ai_member_design.md`（Stage 3 との関係） |
 | AIからのプロジェクト操作 | `ai-project-operations-design.md` | `ai-pmo-design.md`（介入の作法）、`milestone-design.md`（マイルストーン構造） |
+| 外部サービス接続・ミーティング取り込み | `exclusive-service-integration-design.md` | `06_integration_strategy.md`（旧構想）、`ai-era-pm-strategy.md`（戦略背景） |
 | LP・マーケティング | `lp-content-redesign.md` | `landing-page-routing-design.md`、`lp-soul-page-copy.md` |
 
 ## 現行リファレンス
@@ -53,6 +54,7 @@
 | [`ui-consistency-checklist.md`](./ui-consistency-checklist.md) | UI 一貫性統一の進捗管理チェックリスト（方針本文は `frontend-guidelines.md`） | 2026-06 |
 | [`performance-improvement-plan.md`](./performance-improvement-plan.md) | フロントエンド体感速度の改善施策（認証往復・認可クエリ・API集約のボトルネック分析と実施計画。実装未着手） | 2026-07-12 |
 | [`ai-project-operations-design.md`](./ai-project-operations-design.md) | `/ai` からプロジェクトステータスとマイルストーン日程を、確認・競合検知・監査付きで変更する設計（実装前） | 2026-07-24 |
+| [`exclusive-service-integration-design.md`](./exclusive-service-integration-design.md) | categoryごとの主系service排他選択、外部resourceの手動紐付け、Circleback tag取り込みとmeetingハブの設計（実装前） | 2026-07-24 |
 
 ## 設計時スナップショット
 
@@ -61,7 +63,7 @@
 | [`01_product_requirements.md`](./01_product_requirements.md) | プロダクト要件（初期構想。未実装機能を含む） | 2026-05-22 |
 | [`03_technical_architecture.md`](./03_technical_architecture.md) | 技術要件（確定判断は CLAUDE.md が正） | 2026-05-22 |
 | [`05_infrastructure.md`](./05_infrastructure.md) | インフラ要件 | 2026-05-22 |
-| [`06_integration_strategy.md`](./06_integration_strategy.md) | 外部連携方針（Slack / Teams / Outlook は未実装） | 2026-05-22 |
+| [`06_integration_strategy.md`](./06_integration_strategy.md) | 旧外部連携構想（現行方針は `exclusive-service-integration-design.md`） | 2026-05-22 |
 | [`07_notifications_and_unread.md`](./07_notifications_and_unread.md) | 通知・未読の設計検討 → 現行仕様は `notification-design.md` | 2026-05-27 |
 | [`user-deactivation-design.md`](./user-deactivation-design.md) | ユーザー非活性化・退会設計（卒業生対応・GDPR 消去権の整理・匿名化）。スキーマのみ実装済み、遮断・API・UI は未着手 | 2026-06-22 |
 | [`08_expo_roadmap.md`](./08_expo_roadmap.md) | Expo ネイティブ化ロードマップ（WebView 化・Push まで実施済み） | 2026-05-27 |

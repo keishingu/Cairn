@@ -14,6 +14,7 @@ Cairn は、PCを開かなくてもスマートフォンからプロジェクト
 - 誤認識、権限逸脱、同時編集による意図しない更新を防ぐ
 - AI経由の操作も通常UIと同じ権限・履歴・通知ルールで扱う
 本書は [`ai-pmo-design.md`](./ai-pmo-design.md) の「本人の明示アクションを経る」原則と、[`milestone-design.md`](./milestone-design.md) のデータ構造を継承する。
+カレンダーの書き込み先は [`exclusive-service-integration-design.md`](./exclusive-service-integration-design.md) の排他接続方針に従う。Google Calendar が主系なら、確認後のマイルストーン日程変更は手動で紐付け済みの Google Calendar event へ書き込み、成功した結果だけを Cairn の派生値へ反映する。
 
 ## 2. 決定
 `/ai` にプロジェクト操作を追加するが、LLMのツールから業務データを直接更新しない。
@@ -42,6 +43,7 @@ AIの文章生成と業務データの更新境界を分離し、承認APIを唯
 - AI判断だけによる自動実行
 - マイルストーン変更に伴うタスク期限・プロジェクト終了日の連鎖変更
 - AI PMOナッジからの無承認実行
+- 未紐付けの Google Calendar event をAIが推測して自動紐付けすること
 
 ## 4. 要求
 | ID | 機能要求 |
@@ -186,9 +188,12 @@ API:
 `execute` は更新、監査ログ、action状態更新を同一トランザクションで行う。
 実行済みactionへの再リクエストは、更新を重ねず同じ結果を返す。
 
+Google Calendar が主系の場合、外部API呼び出しをDBトランザクションへ含めることはできないため、actionに外部操作の冪等性keyと実行段階を持たせる。Google Calendar更新が失敗したときはCairnの日程だけを更新せず `failed` にする。外部更新成功後のDB反映に失敗した場合は、再試行で同じ外部結果を確認して収束させる。
+
 ## 11. 更新処理の共通化
 AI承認APIから既存PATCH APIをHTTPで呼ばず、サーバー内の共通更新サービスへ抽出する。
 通常UIとAIの両方から次を同じ処理として利用する。
+- workspaceのcalendar provider解決と、Cairn / Google Calendar adapterの選択
 - workspace所属・role・入力検証
 - DB更新と `updated_at`
 - `audit_logs`
@@ -205,6 +210,8 @@ AI承認APIから既存PATCH APIをHTTPで呼ばず、サーバー内の共通�
 - 実行時にbefore snapshotが不一致なら `conflicted` にする
 - revertは現在値がafter snapshotと一致する場合だけ許可する
 - 相対日付は提案作成時にJSTの絶対日付へ固定する
+- Google Calendarが主系なら、対象milestoneに手動確定済みのactiveなevent linkがあることを提案作成時と実行時に検証する
+- AIはタイトル・参加者・日時が似たeventを自動で紐付けない
 - 日付だけの依頼では時刻、時刻だけの依頼では日付を保持する
 - 未指定フィールドをnullにしない
 - プロジェクト期間外・マイルストーン重複は警告し、自動調整しない
