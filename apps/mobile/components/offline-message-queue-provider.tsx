@@ -1,8 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useQueryClient } from '@tanstack/react-query'
+import { useNetworkState } from 'expo-network'
 import React from 'react'
 import { AppState } from 'react-native'
 import { apiFetch } from '../lib/api-fetch'
+import { shouldAttemptNetworkRequest } from '../lib/network-state'
 import {
   isRetryableSendError,
   parseStoredMessageQueue,
@@ -31,6 +33,8 @@ function errorMessage(error: unknown): string {
 
 export function OfflineMessageQueueProvider({ children }: React.PropsWithChildren) {
   const session = useSession()
+  const networkState = useNetworkState()
+  const canUseNetwork = shouldAttemptNetworkRequest(networkState)
   const userId = session?.user.id
   const storageKey = userId ? `${STORAGE_PREFIX}${userId}` : null
   const qc = useQueryClient()
@@ -44,16 +48,18 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
 
   const updateMessages = React.useCallback(
     async (updater: (current: QueuedMessage[]) => QueuedMessage[]) => {
-      const operation = persistenceRef.current.catch(() => undefined).then(async () => {
-        // 更新処理自体を直列化し、再送中の enqueue / retry / cancel が古い配列で
-        // 新しいメッセージを上書きしないよう、実行直前の最新状態から next を作る。
-        const next = updater(messagesRef.current)
-        if (storageKey) await AsyncStorage.setItem(storageKey, JSON.stringify(next))
-        // 永続化できる前に「電波待ち」と表示すると、直後のアプリ終了で本文が失われる。
-        // 端末保存の成功を待ってから、画面と自動再送対象へ反映する。
-        messagesRef.current = next
-        setMessages(next)
-      })
+      const operation = persistenceRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          // 更新処理自体を直列化し、再送中の enqueue / retry / cancel が古い配列で
+          // 新しいメッセージを上書きしないよう、実行直前の最新状態から next を作る。
+          const next = updater(messagesRef.current)
+          if (storageKey) await AsyncStorage.setItem(storageKey, JSON.stringify(next))
+          // 永続化できる前に「電波待ち」と表示すると、直後のアプリ終了で本文が失われる。
+          // 端末保存の成功を待ってから、画面と自動再送対象へ反映する。
+          messagesRef.current = next
+          setMessages(next)
+        })
       persistenceRef.current = operation
       await operation
     },
@@ -86,7 +92,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
   }, [restoreNonce, storageKey])
 
   const flush = React.useCallback(async () => {
-    if (!ready || !storageKey || flushingRef.current) return
+    if (!ready || !storageKey || !canUseNetwork || flushingRef.current) return
     flushingRef.current = true
     try {
       const pending = messagesRef.current.filter((message) => message.status === 'waiting')
@@ -145,11 +151,11 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
     } finally {
       flushingRef.current = false
     }
-  }, [qc, ready, storageKey, updateMessages])
+  }, [canUseNetwork, qc, ready, storageKey, updateMessages])
 
   React.useEffect(() => {
     if (!ready) return
-    void flush()
+    if (canUseNetwork) void flush()
     const timer = setInterval(() => void flush(), RETRY_INTERVAL_MS)
     const appState = AppState.addEventListener('change', (state) => {
       if (state === 'active') void flush()
@@ -158,7 +164,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
       clearInterval(timer)
       appState.remove()
     }
-  }, [flush, ready])
+  }, [canUseNetwork, flush, ready])
 
   const value = React.useMemo<QueueContextValue>(
     () => ({
@@ -192,7 +198,9 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
             }),
           )
           await flush()
-        })().catch((error) => console.warn('[offline-message-queue] 再送準備に失敗しました:', error))
+        })().catch((error) =>
+          console.warn('[offline-message-queue] 再送準備に失敗しました:', error),
+        )
       },
       cancel: (id) => {
         void updateMessages((current) => current.filter((message) => message.id !== id)).catch(

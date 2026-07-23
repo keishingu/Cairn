@@ -18,7 +18,7 @@
 | API ルートの追加・変更 | `api-conventions.md` | — |
 | フロントエンド・UI 実装 | `frontend-guidelines.md` | `ui-consistency-checklist.md`（統一の進捗） |
 | 通知・未読・Push・Realtime | `notification-design.md`（現行仕様） | `notification-ux-redesign.md`（Phase 設計・Realtime 方針の根拠）、`07_notifications_and_unread.md` |
-| モバイル（Expo） | CLAUDE.md「決定済みの技術判断」 | `08_expo_roadmap.md`、`mobile-webview-auth-handoff.md`（WebView 認証） |
+| モバイル（Expo） | CLAUDE.md「決定済みの技術判断」、`mobile-internal-distribution.md` | `08_expo_roadmap.md`、`mobile-webview-auth-handoff.md`（WebView 認証） |
 | キーボードショートカット | `keyboard-shortcuts.md` | — |
 | デプロイ・リリース・本番設定 | `production-deployment.md` | — |
 | 課金（未実装・設計のみ） | `pricing-plan-design.md`（何を売るか） | `billing-implementation-design.md`（どう実装するか）、`billing-minigame-design.md`（石積みミニゲーム）、`prototypes/stone-stacking-sandbox.html`（触感検証モック。ブラウザで開くだけで動く） |
@@ -37,6 +37,7 @@
 | [`notification-ux-redesign.md`](./notification-ux-redesign.md) | 通知・未読・Push の再設計。**Phase 1〜3 実装済み**（現行 Realtime 方針 = Broadcast from Database はここの Phase 2）。Phase 4〜5 は構想 | 2026-07-03 |
 | [`mobile-webview-auth-handoff.md`](./mobile-webview-auth-handoff.md) | モバイル WebView 認証のワンタイムトークンハンドオフ（実装済み） | 2026-07-03 |
 | [`mobile-chat-parity-checklist.md`](./mobile-chat-parity-checklist.md) | モバイルWebとExpoネイティブチャットの表示同等性チェックリスト | 2026-07-12 |
+| [`mobile-internal-distribution.md`](./mobile-internal-distribution.md) | Expo Internal Distribution とオフライン基盤の運用手順 | 2026-07-23 |
 | [`10_ai_member_design.md`](./10_ai_member_design.md) | AIメンバー設計（構想段階の現行合意。実装着手時に更新する） | 2026-06-11 |
 | [`ai-pmo-design.md`](./ai-pmo-design.md) | AI常駐PMO設計（ハートビート巡回 + 本人だけに見えるプライベートナッジ。実装未着手） | 2026-07-17 |
 | [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) | 定期ジョブ（cron・自然言語で定義）+ アプリ内投票機能の設計（構想段階） | 2026-06-25 |
