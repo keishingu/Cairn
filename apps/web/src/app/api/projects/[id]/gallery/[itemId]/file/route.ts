@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { resolveWorkspaceState } from '@cairn/core'
+import { resolveWorkspaceState } from '@cairn/core/billing'
+import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireProjectAccess } from '@/lib/permissions'
 import { GALLERY_BUCKET, GALLERY_ORIGINALS_BUCKET } from '@/lib/gallery-upload'
@@ -41,10 +42,12 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .limit(1)
     if (!item) return new NextResponse(null, { status: 404 })
 
-    const billingEnabled = Boolean(process.env['STRIPE_SECRET_KEY'])
+    const billingEnabled = isBillingEnabled()
     const [balance] = billingEnabled
-      ? await db.select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
-        .from(creditLedger).where(eq(creditLedger.workspaceId, ctx.workspaceId))
+      ? await db
+          .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
+          .from(creditLedger)
+          .where(eq(creditLedger.workspaceId, ctx.workspaceId))
       : [{ value: '0' }]
     const workspaceState = resolveWorkspaceState(Number(balance?.value ?? 0), billingEnabled)
     const useOriginal = workspaceState !== 'weathered' && item.storagePath !== null
@@ -56,13 +59,18 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .from(useOriginal ? GALLERY_ORIGINALS_BUCKET : GALLERY_BUCKET)
       .download(storagePath)
     if (storageError || !data) {
-      console.error('[/api/projects/[id]/gallery/[itemId]/file GET] Storage download failed:', storageError)
+      console.error(
+        '[/api/projects/[id]/gallery/[itemId]/file GET] Storage download failed:',
+        storageError,
+      )
       return NextResponse.json({ error: '画像の取得に失敗しました' }, { status: 502 })
     }
 
     return new NextResponse(data, {
       headers: {
-        'Content-Type': (useOriginal ? item.mimeType : item.derivedMimeType ?? item.mimeType) ?? 'application/octet-stream',
+        'Content-Type':
+          (useOriginal ? item.mimeType : (item.derivedMimeType ?? item.mimeType)) ??
+          'application/octet-stream',
         'Cache-Control': 'private, max-age=3600',
       },
     })

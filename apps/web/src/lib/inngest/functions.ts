@@ -958,6 +958,18 @@ export const reconcileWorkspaceStorageUsageDaily = inngest.createFunction(
   },
 )
 
+// JST の日次家賃。使用量 reconciliation の直後に同じカウンタを入力として記帳する。
+export const chargeStorageRentDaily = inngest.createFunction(
+  { id: 'charge-storage-rent', concurrency: { limit: 1 } },
+  { cron: 'TZ=Asia/Tokyo 20 3 * * *' },
+  async ({ step }) => {
+    return step.run('charge-storage-rent', async () => {
+      const { chargeAllWorkspaceStorageRent } = await import('@/lib/billing/storage-rent')
+      return chargeAllWorkspaceStorageRent()
+    })
+  },
+)
+
 // 署名付きURLだけが発行されて確定されなかった画像を定期回収する。
 export const cleanupExpiredUploadRequests = inngest.createFunction(
   { id: 'cleanup-expired-upload-requests', concurrency: { limit: 1 } },

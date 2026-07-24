@@ -35,12 +35,21 @@ export async function POST(req: Request) {
     typeof mimeType !== 'string' ||
     typeof fileSize !== 'number'
   ) {
-    return NextResponse.json({ error: 'channelId・storagePath・fileName・mimeType・fileSize は必須です' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'channelId・storagePath・fileName・mimeType・fileSize は必須です' },
+      { status: 400 },
+    )
   }
 
   const normalizedMime = normalizeMimeType(fileName, mimeType)
   if (!ALLOWED_MIME_TYPES.has(normalizedMime)) {
-    return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel・PowerPoint・CSV・テキスト）' }, { status: 400 })
+    return NextResponse.json(
+      {
+        error:
+          '対応していないファイル形式です（画像・PDF・Word・Excel・PowerPoint・CSV・テキスト）',
+      },
+      { status: 400 },
+    )
   }
 
   // storagePath は upload-url が発行した `${workspaceId}/${channelId}/...` 形式のはず。
@@ -69,12 +78,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'アップロードの確認に失敗しました' }, { status: 500 })
   }
 
-  const object = listed?.find(o => o.name === objectName)
+  const object = listed?.find((o) => o.name === objectName)
   if (!object) {
-    return NextResponse.json({ error: 'アップロードされたファイルが見つかりません' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'アップロードされたファイルが見つかりません' },
+      { status: 400 },
+    )
   }
 
-  const actualSize = typeof object.metadata?.['size'] === 'number' ? object.metadata['size'] as number : fileSize
+  const actualSize =
+    typeof object.metadata?.['size'] === 'number' ? (object.metadata['size'] as number) : fileSize
   let thumbnailPath: string | null = null
   if (normalizedMime.startsWith('image/')) {
     try {
@@ -97,20 +110,31 @@ export async function POST(req: Request) {
       .where(eq(channels.id, channelId))
       .limit(1)
 
-    const [inserted] = await db
-      .insert(files)
-      .values({
-        workspaceId: ctx.workspaceId,
-        projectId: channel?.projectId ?? null,
-        uploadedBy: ctx.userId,
-        storagePath,
-        fileName,
-        mimeType: normalizedMime,
-        fileSize: actualSize,
-        fileType: resolveFileType(normalizedMime),
-        metadata: thumbnailPath ? { thumbnailPath } : {},
-      })
-      .returning()
+    const inserted = await db.transaction(async (tx) => {
+      const [file] = await tx
+        .insert(files)
+        .values({
+          workspaceId: ctx.workspaceId,
+          projectId: channel?.projectId ?? null,
+          uploadedBy: ctx.userId,
+          storagePath,
+          fileName,
+          mimeType: normalizedMime,
+          fileSize: actualSize,
+          fileType: resolveFileType(normalizedMime),
+          metadata: thumbnailPath ? { thumbnailPath } : {},
+        })
+        .returning()
+      if (!file) throw new Error('Insert returned no rows')
+
+      const { recordStorageUsageDelta } = await import('@/lib/billing/storage-usage')
+      await recordStorageUsageDelta(
+        ctx.workspaceId,
+        { originalBytes: actualSize, derivedBytes: 0 },
+        tx,
+      )
+      return file
+    })
 
     if (!inserted) throw new Error('Insert returned no rows')
 
@@ -143,7 +167,9 @@ export async function POST(req: Request) {
     )
   } catch (err) {
     // DBインサート失敗時はストレージをロールバック（サムネがあれば併せて削除）
-    await supabase.storage.from('chat-attachments').remove(thumbnailPath ? [storagePath, thumbnailPath] : [storagePath])
+    await supabase.storage
+      .from('chat-attachments')
+      .remove(thumbnailPath ? [storagePath, thumbnailPath] : [storagePath])
     console.error('[/api/attachments/finalize] DB insert failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

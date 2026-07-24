@@ -89,7 +89,9 @@ export async function GET(req: Request, { params }: RouteContext) {
 
     return new NextResponse(data, {
       headers: {
-        'Content-Type': servedThumb ? 'image/jpeg' : resolveResponseContentType(file.fileName, file.mimeType),
+        'Content-Type': servedThumb
+          ? 'image/jpeg'
+          : resolveResponseContentType(file.fileName, file.mimeType),
         'Content-Disposition': `inline; filename="${encodeURIComponent(file.fileName)}"`,
         'Cache-Control': 'private, max-age=3600',
       },
@@ -169,6 +171,8 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
         workspaceId: files.workspaceId,
         projectId: files.projectId,
         storagePath: files.storagePath,
+        fileSize: files.fileSize,
+        derivedFileSize: files.derivedFileSize,
         uploadedBy: files.uploadedBy,
         fileType: files.fileType,
         metadata: files.metadata,
@@ -186,8 +190,20 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       .delete(documentChunks)
       .where(and(eq(documentChunks.sourceType, 'file'), eq(documentChunks.sourceId, fileId)))
 
-    // DB から削除（message_attachments は CASCADE で連鎖削除）
-    await db.delete(files).where(eq(files.id, fileId))
+    // DB削除と使用量カウンタの更新を同一トランザクションにする。
+    // （プロジェクト削除のCASCADE経路は日次reconciliationで回収する。）
+    await db.transaction(async (tx) => {
+      await tx.delete(files).where(eq(files.id, fileId))
+      const { recordStorageUsageDelta } = await import('@/lib/billing/storage-usage')
+      await recordStorageUsageDelta(
+        file.workspaceId,
+        {
+          originalBytes: -(file.fileSize ?? 0),
+          derivedBytes: -(file.derivedFileSize ?? 0),
+        },
+        tx,
+      )
+    })
 
     // 外部リンクはストレージオブジェクトなし。サムネがあれば併せて削除する
     if (file.fileType !== 'link' && file.storagePath) {
@@ -196,7 +212,10 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({
         name: 'storage/objects.delete',
-        data: { bucket: 'chat-attachments', paths: thumbnailPath ? [file.storagePath, thumbnailPath] : [file.storagePath] },
+        data: {
+          bucket: 'chat-attachments',
+          paths: thumbnailPath ? [file.storagePath, thumbnailPath] : [file.storagePath],
+        },
       })
     }
 

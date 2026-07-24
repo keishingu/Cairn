@@ -1435,10 +1435,13 @@ const SettingsIntegrations = () => {
 // 詳細: docs/billing-implementation-design.md
 
 import type { WorkspaceStorageUsageDto } from '@/app/api/workspaces/storage-usage/route'
+import type { BillingSummaryDto } from '@/app/api/billing/summary/route'
 
 const FREE_TIER_REFERENCE_GB = 10
 
 const SettingsBilling = () => {
+  const [billingAction, setBillingAction] = React.useState<'checkout' | 'portal' | null>(null)
+  const [billingActionError, setBillingActionError] = React.useState<string | null>(null)
   const { data, isLoading, isError } = useQuery({
     queryKey: ['workspace-storage-usage'],
     queryFn: async () => {
@@ -1447,6 +1450,46 @@ const SettingsBilling = () => {
       return res.json() as Promise<WorkspaceStorageUsageDto>
     },
   })
+  const billingQuery = useQuery({
+    queryKey: ['billing-summary'],
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/billing/summary')
+      if (!res.ok) throw new Error('請求情報の取得に失敗しました')
+      return res.json() as Promise<BillingSummaryDto>
+    },
+  })
+
+  const beginCheckout = async () => {
+    setBillingAction('checkout')
+    setBillingActionError(null)
+    try {
+      const res = await fetchWithAuth('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quantity: 1 }),
+      })
+      const result = await res.json().catch(() => ({})) as { url?: string; error?: string }
+      if (!res.ok || !result.url) throw new Error(result.error ?? '決済画面を開けませんでした')
+      window.location.assign(result.url)
+    } catch (err) {
+      setBillingAction(null)
+      setBillingActionError(err instanceof Error ? err.message : '決済画面を開けませんでした')
+    }
+  }
+
+  const openPortal = async () => {
+    setBillingAction('portal')
+    setBillingActionError(null)
+    try {
+      const res = await fetchWithAuth('/api/billing/portal', { method: 'POST' })
+      const result = await res.json().catch(() => ({})) as { url?: string; error?: string }
+      if (!res.ok || !result.url) throw new Error(result.error ?? '請求管理画面を開けませんでした')
+      window.location.assign(result.url)
+    } catch (err) {
+      setBillingAction(null)
+      setBillingActionError(err instanceof Error ? err.message : '請求管理画面を開けませんでした')
+    }
+  }
 
   const totalGb = (data?.originalBytes ?? 0) / 1024 ** 3
   const ratio = Math.min(1, totalGb / FREE_TIER_REFERENCE_GB)
@@ -1455,8 +1498,47 @@ const SettingsBilling = () => {
     <div style={{ maxWidth: 780 }}>
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>請求</h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
-        課金機能は準備中です。現在はストレージ使用量を計測しているのみで、上限は設けていません。
+        {billingQuery.data?.billingEnabled
+          ? 'オリジナルの保管とストレージ家賃を、ワークスペースのクレジットで管理します。'
+          : '現在はストレージ使用量を計測しているのみで、上限は設けていません。'}
       </p>
+
+      {billingQuery.isError ? (
+        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
+          ⚠ 請求情報を取得できませんでした
+        </div>
+      ) : billingQuery.data?.billingEnabled ? (
+        <section className="card" style={{ padding: 20, marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div>
+              <h2 style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 700 }}>ワークスペースのケルン</h2>
+              <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.03em' }}>
+                {billingQuery.data.creditBalance} 石
+              </div>
+              <div style={{ marginTop: 4, fontSize: 12.5, color: billingQuery.data.workspaceState === 'weathered' ? 'var(--amber-text)' : 'var(--text-3)' }}>
+                {billingQuery.data.workspaceState === 'weathered'
+                  ? '風化中です。オリジナルは圧縮版で閲覧できます。'
+                  : 'クレジットでオリジナルを保管できます。'}
+              </div>
+            </div>
+            {billingQuery.data.hasActiveSubscription ? (
+              <button className="btn" style={{ height: 32, fontSize: 12.5 }} onClick={() => void openPortal()} disabled={billingAction !== null}>
+                {billingAction === 'portal' ? '移動中…' : '購読を管理'}
+              </button>
+            ) : (
+              <button className="btn btn-primary" style={{ height: 32, fontSize: 12.5 }} onClick={() => void beginCheckout()} disabled={billingAction !== null}>
+                {billingAction === 'checkout' ? '移動中…' : '石を積む（月額 ¥300）'}
+              </button>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {billingActionError && (
+        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
+          ⚠ {billingActionError}
+        </div>
+      )}
 
       <section className="card" style={{ padding: 20 }}>
         <h2 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>ストレージ使用量</h2>

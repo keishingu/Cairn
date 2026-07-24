@@ -16,6 +16,7 @@ const {
   mockInngestSend,
   mockCreateThumbnailFromStorage,
   mockInsertValues,
+  mockRecordStorageUsageDelta,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -24,6 +25,7 @@ const {
   mockIsIndexable: vi.fn(),
   mockInngestSend: vi.fn().mockResolvedValue(undefined),
   mockCreateThumbnailFromStorage: vi.fn(),
+  mockRecordStorageUsageDelta: vi.fn().mockResolvedValue(undefined),
   mockInsertValues: vi.fn((v: Record<string, unknown>) => ({
     returning: vi.fn().mockResolvedValue([{ id: 'file-1', ...v }]),
   })),
@@ -39,6 +41,7 @@ vi.mock('@/lib/supabase/service', () => ({
 vi.mock('@/lib/ai/extract-text', () => ({ isIndexable: mockIsIndexable }))
 vi.mock('@/lib/attachments/thumbnail', () => ({ createThumbnailFromStorage: mockCreateThumbnailFromStorage }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
+vi.mock('@/lib/billing/storage-usage', () => ({ recordStorageUsageDelta: mockRecordStorageUsageDelta }))
 vi.mock('@cairn/db', () => ({
   db: {
     select: () => ({
@@ -51,6 +54,10 @@ vi.mock('@cairn/db', () => ({
     insert: () => ({
       values: mockInsertValues,
     }),
+    transaction: async (callback: (tx: { insert: () => { values: typeof mockInsertValues } }) => unknown) =>
+      callback({
+        insert: () => ({ values: mockInsertValues }),
+      }),
   },
   files: {},
   channels: { projectId: 'c.projectId', id: 'c.id' },
