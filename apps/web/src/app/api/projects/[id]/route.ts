@@ -6,18 +6,24 @@ import { patchProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 
-export async function DELETE(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = await params
 
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
 
   try {
-    const { db, projects, files, channels, messages, messageAttachments, galleryItems } = await import('@cairn/db')
-    const { eq, and, or } = await import('drizzle-orm')
+    const {
+      db,
+      projects,
+      files,
+      channels,
+      messages,
+      messageAttachments,
+      galleryItems,
+      uploadRequests,
+    } = await import('@cairn/db')
+    const { eq, and, isNull, or } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client')
 
     const [project] = await db
@@ -48,35 +54,59 @@ export async function DELETE(
       .leftJoin(messages, eq(messages.id, messageAttachments.messageId))
       .leftJoin(channels, eq(channels.id, messages.channelId))
       .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
-      .where(
-        or(
-          eq(files.projectId, projectId),
-          eq(channels.projectId, projectId),
-        ),
-      )
+      .where(or(eq(files.projectId, projectId), eq(channels.projectId, projectId)))
 
-    if (filePaths.length > 0) {
-      // 添付のオリジナルに加えて、生成済みのサムネ(metadata.thumbnailPath)も削除対象に含める
-      const attachmentPaths = filePaths.filter(f => !f.galleryItemId).flatMap(f => {
-        const meta = (f.metadata ?? {}) as Record<string, unknown>
-        const thumbnailPath = typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
-        return [f.storagePath, thumbnailPath].filter((path): path is string => path !== null)
+    // 未確定アップロードは files に現れないため、CASCADE 前に別途回収する。
+    const pendingUploadPaths = await db
+      .select({
+        derivedStoragePath: uploadRequests.derivedStoragePath,
+        originalStoragePath: uploadRequests.originalStoragePath,
       })
-      const galleryDerivedPaths = filePaths
-        .filter(f => f.galleryItemId)
-        .flatMap(f => [f.derivedStoragePath].filter((path): path is string => path !== null))
-      const galleryOriginalPaths = filePaths
-        .filter(f => f.galleryItemId)
-        .flatMap(f => [f.storagePath].filter((path): path is string => path !== null))
+      .from(uploadRequests)
+      .where(and(eq(uploadRequests.projectId, projectId), isNull(uploadRequests.finalizedAt)))
+
+    if (filePaths.length > 0 || pendingUploadPaths.length > 0) {
+      // 添付のオリジナルに加えて、生成済みのサムネ(metadata.thumbnailPath)も削除対象に含める
+      const attachmentPaths = filePaths
+        .filter((f) => !f.galleryItemId)
+        .flatMap((f) => {
+          const meta = (f.metadata ?? {}) as Record<string, unknown>
+          const thumbnailPath =
+            typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
+          return [f.storagePath, thumbnailPath].filter((path): path is string => path !== null)
+        })
+      const galleryDerivedPaths = [
+        ...filePaths
+          .filter((f) => f.galleryItemId)
+          .flatMap((f) => [f.derivedStoragePath].filter((path): path is string => path !== null)),
+        ...pendingUploadPaths.map((request) => request.derivedStoragePath),
+      ]
+      const galleryOriginalPaths = [
+        ...filePaths
+          .filter((f) => f.galleryItemId)
+          .flatMap((f) => [f.storagePath].filter((path): path is string => path !== null)),
+        ...pendingUploadPaths
+          .map((request) => request.originalStoragePath)
+          .filter((path): path is string => path !== null),
+      ]
       await Promise.all([
         attachmentPaths.length > 0
-          ? inngest.send({ name: 'storage/objects.delete', data: { bucket: 'chat-attachments', paths: attachmentPaths } })
+          ? inngest.send({
+              name: 'storage/objects.delete',
+              data: { bucket: 'chat-attachments', paths: attachmentPaths },
+            })
           : undefined,
         galleryDerivedPaths.length > 0
-          ? inngest.send({ name: 'storage/objects.delete', data: { bucket: 'gallery', paths: galleryDerivedPaths } })
+          ? inngest.send({
+              name: 'storage/objects.delete',
+              data: { bucket: 'gallery', paths: galleryDerivedPaths },
+            })
           : undefined,
         galleryOriginalPaths.length > 0
-          ? inngest.send({ name: 'storage/objects.delete', data: { bucket: 'gallery-originals', paths: galleryOriginalPaths } })
+          ? inngest.send({
+              name: 'storage/objects.delete',
+              data: { bucket: 'gallery-originals', paths: galleryOriginalPaths },
+            })
           : undefined,
       ])
     }
@@ -92,10 +122,7 @@ export async function DELETE(
   }
 }
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
   const { ctx, error: authError } = await getAuthContext()
@@ -211,7 +238,13 @@ export async function PATCH(
         const [channel] = await db
           .select({ id: channels.id })
           .from(channels)
-          .where(and(eq(channels.projectId, id), eq(channels.type, 'project'), isNull(channels.milestoneId)))
+          .where(
+            and(
+              eq(channels.projectId, id),
+              eq(channels.type, 'project'),
+              isNull(channels.milestoneId),
+            ),
+          )
           .limit(1)
         if (channel) {
           const [actor] = await db

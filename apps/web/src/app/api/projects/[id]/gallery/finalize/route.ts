@@ -6,22 +6,13 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { requireProjectAccess } from '@/lib/permissions'
 import { recordStorageUsageDelta } from '@/lib/billing/storage-usage'
-import {
-  GALLERY_BUCKET,
-  GALLERY_ORIGINALS_BUCKET,
-  isGalleryImageMimeType,
-  isGalleryStoragePath,
-} from '@/lib/gallery-upload'
+import { GALLERY_BUCKET, GALLERY_ORIGINALS_BUCKET } from '@/lib/gallery-upload'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
 interface FinalizeBody {
-  fileName?: unknown
-  originalMimeType?: unknown
-  derivedMimeType?: unknown
-  originalStoragePath?: unknown
-  derivedStoragePath?: unknown
+  uploadId?: unknown
   takenAt?: unknown
   latitude?: unknown
   longitude?: unknown
@@ -31,7 +22,10 @@ interface StorageObject {
   size: number
 }
 
-async function readStorageObject(bucket: string, storagePath: string): Promise<StorageObject | null> {
+async function readStorageObject(
+  bucket: string,
+  storagePath: string,
+): Promise<StorageObject | null> {
   const slash = storagePath.lastIndexOf('/')
   const folder = storagePath.slice(0, slash)
   const objectName = storagePath.slice(slash + 1)
@@ -55,47 +49,15 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: 'リクエスト形式が不正です' }, { status: 400 })
   }
 
-  if (
-    typeof body.fileName !== 'string' ||
-    typeof body.derivedMimeType !== 'string' ||
-    typeof body.derivedStoragePath !== 'string' ||
-    (body.originalStoragePath !== undefined &&
-      body.originalStoragePath !== null &&
-      typeof body.originalStoragePath !== 'string') ||
-    (body.originalMimeType !== undefined &&
-      body.originalMimeType !== null &&
-      typeof body.originalMimeType !== 'string')
-  ) {
+  if (typeof body.uploadId !== 'string') {
     return NextResponse.json({ error: 'アップロード確定情報が不正です' }, { status: 400 })
-  }
-  if (!isGalleryImageMimeType(body.derivedMimeType)) {
-    return NextResponse.json({ error: '対応していない画像形式です' }, { status: 400 })
-  }
-  if (!isGalleryStoragePath(body.derivedStoragePath, ctx.workspaceId, projectId, 'derived')) {
-    return NextResponse.json({ error: '不正な圧縮版の保存先です' }, { status: 400 })
-  }
-  if (
-    body.originalStoragePath &&
-    !isGalleryStoragePath(body.originalStoragePath, ctx.workspaceId, projectId, 'original')
-  ) {
-    return NextResponse.json({ error: '不正なオリジナルの保存先です' }, { status: 400 })
-  }
-  if (
-    body.originalStoragePath &&
-    (!body.originalMimeType || !isGalleryImageMimeType(body.originalMimeType))
-  ) {
-    return NextResponse.json({ error: '対応していないオリジナル画像形式です' }, { status: 400 })
   }
 
   // 型検証後にローカル定数へ固定する。transaction のクロージャ内でも型を安全に保つため。
-  const fileName = body.fileName
-  const derivedMimeType = body.derivedMimeType
-  const derivedStoragePath = body.derivedStoragePath
-  const originalStoragePath = body.originalStoragePath ?? null
-  const originalMimeType = body.originalMimeType ?? null
+  const uploadId = body.uploadId
 
   try {
-    const { db, files, galleryItems, projects } = await import('@cairn/db')
+    const { db, files, galleryItems, projects, uploadRequests } = await import('@cairn/db')
     const { and, eq } = await import('drizzle-orm')
     const [project] = await db
       .select({ id: projects.id })
@@ -106,6 +68,97 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
     if (forbidden) return forbidden
+
+    const [request] = await db
+      .select({
+        id: uploadRequests.id,
+        fileName: uploadRequests.fileName,
+        derivedMimeType: uploadRequests.derivedMimeType,
+        originalMimeType: uploadRequests.originalMimeType,
+        derivedStoragePath: uploadRequests.derivedStoragePath,
+        originalStoragePath: uploadRequests.originalStoragePath,
+        expiresAt: uploadRequests.expiresAt,
+        finalizedAt: uploadRequests.finalizedAt,
+        fileId: uploadRequests.fileId,
+      })
+      .from(uploadRequests)
+      .where(
+        and(
+          eq(uploadRequests.id, uploadId),
+          eq(uploadRequests.workspaceId, ctx.workspaceId),
+          eq(uploadRequests.projectId, projectId),
+          eq(uploadRequests.requestedBy, ctx.userId),
+        ),
+      )
+      .limit(1)
+    if (!request) {
+      return NextResponse.json(
+        { error: 'アップロードの有効期限が切れたか、見つかりません' },
+        { status: 404 },
+      )
+    }
+
+    const derivedStoragePath = request.derivedStoragePath
+    const originalStoragePath = request.originalStoragePath
+    const fileName = request.fileName
+    const derivedMimeType = request.derivedMimeType
+    const originalMimeType = request.originalMimeType
+
+    const toResponse = async (fileId: string, status: 200 | 201) => {
+      const [item] = await db
+        .select({
+          id: galleryItems.id,
+          takenAt: galleryItems.takenAt,
+          createdAt: galleryItems.createdAt,
+        })
+        .from(galleryItems)
+        .where(eq(galleryItems.fileId, fileId))
+        .limit(1)
+      if (!item) {
+        return NextResponse.json(
+          { error: '確定済みアップロードの情報が見つかりません' },
+          { status: 409 },
+        )
+      }
+      const supabase = createServiceRoleClient()
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from(GALLERY_BUCKET).getPublicUrl(derivedStoragePath)
+      return NextResponse.json(
+        {
+          id: item.id,
+          fileId,
+          publicUrl,
+          takenAt: item.takenAt?.toISOString() ?? null,
+          createdAt: item.createdAt.toISOString(),
+        },
+        { status },
+      )
+    }
+
+    if (request.finalizedAt && request.fileId) return toResponse(request.fileId, 200)
+
+    if (request.expiresAt <= new Date()) {
+      const supabase = createServiceRoleClient()
+      const [{ error: derivedError }, originalResult] = await Promise.all([
+        supabase.storage.from(GALLERY_BUCKET).remove([derivedStoragePath]),
+        originalStoragePath
+          ? supabase.storage.from(GALLERY_ORIGINALS_BUCKET).remove([originalStoragePath])
+          : Promise.resolve({ error: null }),
+      ])
+      if (derivedError || originalResult.error) {
+        console.error('[/api/projects/[id]/gallery/finalize] expired upload cleanup failed:', {
+          derivedError,
+          originalError: originalResult.error,
+        })
+        return NextResponse.json(
+          { error: '期限切れアップロードの削除に失敗しました' },
+          { status: 500 },
+        )
+      }
+      await db.delete(uploadRequests).where(eq(uploadRequests.id, request.id))
+      return NextResponse.json({ error: 'アップロードURLの有効期限が切れました' }, { status: 410 })
+    }
 
     // 署名付きURLの発行後に残高・購読状態が変わる可能性があるため、原本を登録する直前にも再確認する。
     if (originalStoragePath) {
@@ -134,9 +187,40 @@ export async function POST(req: Request, { params }: RouteContext) {
     const takenAt = typeof body.takenAt === 'string' ? new Date(body.takenAt) : null
     const latitude = typeof body.latitude === 'string' ? body.latitude : null
     const longitude = typeof body.longitude === 'string' ? body.longitude : null
-    const [insertedItem, insertedFile] = await (async () => {
+    const finalized = await (async () => {
       try {
         return await db.transaction(async (tx) => {
+          const [lockedRequest] = await tx
+            .select({
+              id: uploadRequests.id,
+              fileName: uploadRequests.fileName,
+              derivedMimeType: uploadRequests.derivedMimeType,
+              originalMimeType: uploadRequests.originalMimeType,
+              derivedStoragePath: uploadRequests.derivedStoragePath,
+              originalStoragePath: uploadRequests.originalStoragePath,
+              expiresAt: uploadRequests.expiresAt,
+              finalizedAt: uploadRequests.finalizedAt,
+              fileId: uploadRequests.fileId,
+            })
+            .from(uploadRequests)
+            .where(
+              and(
+                eq(uploadRequests.id, uploadId),
+                eq(uploadRequests.workspaceId, ctx.workspaceId),
+                eq(uploadRequests.projectId, projectId),
+                eq(uploadRequests.requestedBy, ctx.userId),
+              ),
+            )
+            .for('update')
+            .limit(1)
+          if (!lockedRequest) throw new Error('upload request disappeared before finalization')
+          if (lockedRequest.finalizedAt && lockedRequest.fileId) {
+            return { fileId: lockedRequest.fileId, reused: true }
+          }
+          if (lockedRequest.expiresAt <= new Date()) {
+            throw new Error('upload request expired before finalization')
+          }
+
           const [file] = await tx
             .insert(files)
             .values({
@@ -145,9 +229,9 @@ export async function POST(req: Request, { params }: RouteContext) {
               uploadedBy: ctx.userId,
               storagePath: originalStoragePath,
               derivedStoragePath,
-            fileName,
-            mimeType: originalMimeType ?? derivedMimeType,
-            derivedMimeType,
+              fileName,
+              mimeType: originalMimeType ?? derivedMimeType,
+              derivedMimeType,
               fileSize: original?.size ?? null,
               derivedFileSize: derived.size,
               fileType: 'image',
@@ -176,7 +260,11 @@ export async function POST(req: Request, { params }: RouteContext) {
             },
             tx,
           )
-          return [item, file] as const
+          await tx
+            .update(uploadRequests)
+            .set({ fileId: file.id, finalizedAt: new Date() })
+            .where(eq(uploadRequests.id, lockedRequest.id))
+          return { fileId: file.id, reused: false }
         })
       } catch (transactionError) {
         const supabase = createServiceRoleClient()
@@ -190,20 +278,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       }
     })()
 
-    const supabase = createServiceRoleClient()
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from(GALLERY_BUCKET).getPublicUrl(derivedStoragePath)
-    return NextResponse.json(
-      {
-        id: insertedItem.id,
-        fileId: insertedFile.id,
-        publicUrl,
-        takenAt: insertedItem.takenAt?.toISOString() ?? null,
-        createdAt: insertedItem.createdAt.toISOString(),
-      },
-      { status: 201 },
-    )
+    return toResponse(finalized.fileId, finalized.reused ? 200 : 201)
   } catch (err) {
     console.error('[/api/projects/[id]/gallery/finalize POST]', err)
     return NextResponse.json({ error: 'アップロードの確定に失敗しました' }, { status: 500 })

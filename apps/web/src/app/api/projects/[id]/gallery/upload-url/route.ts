@@ -10,6 +10,7 @@ import {
   galleryStoragePath,
   GALLERY_BUCKET,
   GALLERY_ORIGINALS_BUCKET,
+  UPLOAD_REQUEST_EXPIRY_MS,
   isGalleryImageMimeType,
 } from '@/lib/gallery-upload'
 import { createServiceRoleClient } from '@/lib/supabase/service'
@@ -53,7 +54,7 @@ export async function POST(req: Request, { params }: RouteContext) {
   }
 
   try {
-    const { db, projects } = await import('@cairn/db')
+    const { db, projects, uploadRequests } = await import('@cairn/db')
     const { and, eq } = await import('drizzle-orm')
     const [project] = await db
       .select({ id: projects.id })
@@ -81,6 +82,23 @@ export async function POST(req: Request, { params }: RouteContext) {
         )
       : null
 
+    const expiresAt = new Date(Date.now() + UPLOAD_REQUEST_EXPIRY_MS)
+    const [uploadRequest] = await db
+      .insert(uploadRequests)
+      .values({
+        workspaceId: ctx.workspaceId,
+        projectId,
+        requestedBy: ctx.userId,
+        fileName: body.original.fileName,
+        derivedMimeType: body.derived.mimeType,
+        originalMimeType: originalStoragePath ? body.original.mimeType : null,
+        derivedStoragePath,
+        originalStoragePath,
+        expiresAt,
+      })
+      .returning({ id: uploadRequests.id })
+    if (!uploadRequest) throw new Error('upload request insert returned no rows')
+
     const supabase = createServiceRoleClient()
     const [{ data: derived, error: derivedError }, originalResult] = await Promise.all([
       supabase.storage.from(GALLERY_BUCKET).createSignedUploadUrl(derivedStoragePath),
@@ -94,6 +112,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       originalResult.error ||
       (originalStoragePath && !originalResult.data)
     ) {
+      await db.delete(uploadRequests).where(eq(uploadRequests.id, uploadRequest.id))
       console.error('[/api/projects/[id]/gallery/upload-url] createSignedUploadUrl failed:', {
         derivedError,
         originalError: originalResult.error,
@@ -102,6 +121,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     }
 
     return NextResponse.json({
+      uploadId: uploadRequest.id,
       derived: {
         bucket: GALLERY_BUCKET,
         token: derived.token,
@@ -110,8 +130,8 @@ export async function POST(req: Request, { params }: RouteContext) {
       },
       original:
         originalStoragePath && originalResult.data
-        ? {
-            bucket: GALLERY_ORIGINALS_BUCKET,
+          ? {
+              bucket: GALLERY_ORIGINALS_BUCKET,
               token: originalResult.data.token,
               path: originalResult.data.path,
               storagePath: originalStoragePath,

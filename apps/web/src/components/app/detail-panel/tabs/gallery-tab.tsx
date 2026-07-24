@@ -39,6 +39,7 @@ async function uploadFile(projectId: string, original: File): Promise<void> {
   }
 
   const signed = (await urlRes.json()) as {
+    uploadId: string
     derived: { bucket: string; token: string; path: string; storagePath: string }
     original: { bucket: string; token: string; path: string; storagePath: string } | null
   }
@@ -63,11 +64,7 @@ async function uploadFile(projectId: string, original: File): Promise<void> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      fileName: original.name,
-      originalMimeType: signed.original ? originalFile.type : null,
-      derivedMimeType: derivedFile.type,
-      originalStoragePath: signed.original?.storagePath ?? null,
-      derivedStoragePath: signed.derived.storagePath,
+      uploadId: signed.uploadId,
       takenAt: takenAt?.toISOString() ?? null,
       latitude: latitude === null ? null : String(latitude),
       longitude: longitude === null ? null : String(longitude),
@@ -140,7 +137,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
     () =>
       items.map((it) => ({
         key: it.id,
-      src: it.originalUrl ?? it.publicUrl,
+        src: it.originalUrl ?? it.publicUrl,
       })),
     [items],
   )

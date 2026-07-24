@@ -957,3 +957,15 @@ export const reconcileWorkspaceStorageUsageDaily = inngest.createFunction(
     return { reconciled: results.length, drifted: drifted.length }
   },
 )
+
+// 署名付きURLだけが発行されて確定されなかった画像を定期回収する。
+export const cleanupExpiredUploadRequests = inngest.createFunction(
+  { id: 'cleanup-expired-upload-requests', concurrency: { limit: 1 } },
+  { cron: 'TZ=Asia/Tokyo 15 * * * *' },
+  async ({ step }) => {
+    return step.run('remove-expired-upload-objects', async () => {
+      const { cleanupExpiredUploadRequests: cleanup } = await import('@/lib/uploads/cleanup')
+      return cleanup()
+    })
+  },
+)
