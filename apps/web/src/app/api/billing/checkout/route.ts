@@ -52,19 +52,27 @@ export async function POST(request: Request) {
       .from(billingCustomers)
       .where(eq(billingCustomers.userId, ctx.userId))
       .limit(1)
-    const customerId =
-      existingCustomer?.stripeCustomerId ??
-      (
-        await stripe.customers.create({
-          metadata: { userId: ctx.userId },
-        })
-      ).id
-
-    if (!existingCustomer) {
-      await db
+    let customerId = existingCustomer?.stripeCustomerId
+    if (!customerId) {
+      const createdCustomer = await stripe.customers.create({
+        metadata: { userId: ctx.userId },
+      })
+      const [insertedCustomer] = await db
         .insert(billingCustomers)
-        .values({ userId: ctx.userId, stripeCustomerId: customerId })
+        .values({ userId: ctx.userId, stripeCustomerId: createdCustomer.id })
         .onConflictDoNothing()
+        .returning({ stripeCustomerId: billingCustomers.stripeCustomerId })
+      if (insertedCustomer) {
+        customerId = insertedCustomer.stripeCustomerId
+      } else {
+        const [persistedCustomer] = await db
+          .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
+          .from(billingCustomers)
+          .where(eq(billingCustomers.userId, ctx.userId))
+          .limit(1)
+        if (!persistedCustomer) throw new Error('Stripe customer was not persisted')
+        customerId = persistedCustomer.stripeCustomerId
+      }
     }
 
     const appUrl = resolveApplicationUrl(request)
