@@ -5,6 +5,7 @@ import { BILLING_CONFIG } from '@cairn/core/billing'
 import type Stripe from 'stripe'
 import { creditLedger, db, stripeEvents, subscriptions } from '@cairn/db'
 import { getStripeClient, stripeId } from './stripe'
+import { resolveSubscriptionGrantQuantity } from './subscription-grant'
 
 type StripeSubscriptionRecord = {
   id: string
@@ -12,6 +13,13 @@ type StripeSubscriptionRecord = {
   quantity: number
   currentPeriodEnd: number
   metadata: Record<string, string>
+}
+
+type StripeInvoiceRecord = {
+  id: string
+  billingReason: string | null
+  subscriptionId: string | null
+  invoiceQuantity: number | null
 }
 
 function asSubscriptionRecord(subscription: Stripe.Subscription): StripeSubscriptionRecord {
@@ -35,6 +43,28 @@ function toSubscriptionStatus(status: string): 'active' | 'past_due' | 'canceled
   if (status === 'active' || status === 'trialing') return 'active'
   if (status === 'past_due' || status === 'unpaid') return 'past_due'
   return 'canceled'
+}
+
+function asInvoiceRecord(invoice: Stripe.Invoice): StripeInvoiceRecord {
+  const value = invoice as unknown as {
+    id: string
+    billing_reason?: string | null
+    subscription?: string | { id: string } | null
+    parent?: {
+      subscription_details?: { subscription?: string | { id: string } | null } | null
+    } | null
+    lines?: { data?: Array<{ quantity?: number | null }> }
+  }
+  const billingReason = value.billing_reason ?? null
+  const invoiceQuantity = resolveSubscriptionGrantQuantity(billingReason, value.lines?.data)
+
+  return {
+    id: value.id,
+    billingReason,
+    subscriptionId:
+      stripeId(value.subscription) ?? stripeId(value.parent?.subscription_details?.subscription),
+    invoiceQuantity,
+  }
 }
 
 async function syncSubscription(
@@ -76,6 +106,7 @@ export async function processStripeWebhookEvent(
   const stripe = getStripeClient()
   let subscription: StripeSubscriptionRecord | null = null
   let invoiceId: string | null = null
+  let invoiceQuantity: number | null = null
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session
@@ -84,19 +115,12 @@ export async function processStripeWebhookEvent(
       subscription = asSubscriptionRecord(await stripe.subscriptions.retrieve(subscriptionId))
   }
   if (event.type === 'invoice.paid') {
-    const invoice = event.data.object as Stripe.Invoice
-    const value = invoice as unknown as {
-      id: string
-      subscription?: string | { id: string } | null
-      parent?: {
-        subscription_details?: { subscription?: string | { id: string } | null } | null
-      } | null
-    }
-    const subscriptionId =
-      stripeId(value.subscription) ?? stripeId(value.parent?.subscription_details?.subscription)
+    const invoice = asInvoiceRecord(event.data.object as Stripe.Invoice)
+    const subscriptionId = invoice.subscriptionId
     if (subscriptionId)
       subscription = asSubscriptionRecord(await stripe.subscriptions.retrieve(subscriptionId))
-    invoiceId = value.id
+    invoiceId = invoice.id
+    invoiceQuantity = invoice.invoiceQuantity
   }
   if (
     event.type === 'customer.subscription.updated' ||
@@ -114,7 +138,7 @@ export async function processStripeWebhookEvent(
     if (!processed) return { duplicate: true }
 
     if (subscription) await syncSubscription(tx, subscription)
-    if (event.type === 'invoice.paid' && subscription && invoiceId) {
+    if (event.type === 'invoice.paid' && subscription && invoiceId && invoiceQuantity) {
       const workspaceId = subscription.metadata['workspaceId']
       if (!workspaceId)
         throw new Error(`Invoice ${invoiceId} subscription has no workspace metadata`)
@@ -122,7 +146,7 @@ export async function processStripeWebhookEvent(
         .insert(creditLedger)
         .values({
           workspaceId,
-          delta: BILLING_CONFIG.monthlyCreditGrant * subscription.quantity,
+          delta: BILLING_CONFIG.monthlyCreditGrant * invoiceQuantity,
           reason: 'subscription_grant',
           refId: invoiceId,
         })
