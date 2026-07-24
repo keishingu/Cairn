@@ -28,7 +28,7 @@ const ROLE_LABEL: Record<CurrentUserDto['wsRole'], string> = {
 export function MobileSettings() {
   const { data: me } = useCurrentUser()
   const router = useRouter()
-  const navGroups = getSettingsNavGroups(me?.wsRole === 'owner')
+  const navGroups = getSettingsNavGroups(me?.wsRole === 'owner', { isMobile: true })
 
   async function handleLogout() {
     const supabase = createClient()
@@ -107,10 +107,10 @@ export function MobileSettingsDetail({ section }: { section: string }) {
   const { data: me } = useCurrentUser()
   const router = useRouter()
   const isOwner = me?.wsRole === 'owner'
-  const resolvedSection = isSettingsSection(section, isOwner) ? section : 'account'
+  const resolvedSection = isSettingsSection(section, isOwner, { isMobile: true }) ? section : 'account'
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-      <MobileHeader title={settingsSectionLabel(resolvedSection, isOwner)} onBack={() => router.push('/settings')}/>
+      <MobileHeader title={settingsSectionLabel(resolvedSection, isOwner, { isMobile: true })} onBack={() => router.push('/settings')}/>
       <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         <SettingsSectionContent section={resolvedSection}/>
       </div>

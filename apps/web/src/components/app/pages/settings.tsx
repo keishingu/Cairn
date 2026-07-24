@@ -1708,7 +1708,19 @@ const SettingsDeveloper = () => {
   )
 }
 
-export function getSettingsNavGroups(isOwner: boolean): { label: string; items: SettingsSectionMeta[] }[] {
+export function getSettingsNavGroups(
+  isOwner: boolean,
+  options: { isMobile?: boolean } = {},
+): { label: string; items: SettingsSectionMeta[] }[] {
+  const workspaceItems: SettingsSectionMeta[] = [
+    { id: 'general', label: 'ワークスペース設定', icon: 'settings' },
+    { id: 'workflow', label: 'ワークフロー', icon: 'flag' },
+    { id: 'ai', label: 'AIエージェント', icon: 'sparkles' },
+    { id: 'members', label: 'メンバー', icon: 'users' },
+    { id: 'integrations', label: '連携', icon: 'layers' },
+    ...(!options.isMobile ? [{ id: 'billing', label: '請求', icon: 'archive' } satisfies SettingsSectionMeta] : []),
+  ]
+
   return [
     {
       label: '個人',
@@ -1719,14 +1731,7 @@ export function getSettingsNavGroups(isOwner: boolean): { label: string; items: 
     },
     {
       label: 'ワークスペース',
-      items: [
-        { id: 'general', label: 'ワークスペース設定', icon: 'settings' },
-        { id: 'workflow', label: 'ワークフロー', icon: 'flag' },
-        { id: 'ai', label: 'AIエージェント', icon: 'sparkles' },
-        { id: 'members', label: 'メンバー', icon: 'users' },
-        { id: 'integrations', label: '連携', icon: 'layers' },
-        { id: 'billing', label: '請求', icon: 'archive' },
-      ],
+      items: workspaceItems,
     },
     ...(isOwner
       ? [{
@@ -1759,12 +1764,20 @@ const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
 
 const DEFAULT_SECTION = 'account'
 
-export function isSettingsSection(id: string | null | undefined, isOwner = true): id is string {
-  return id != null && new Set(getSettingsNavGroups(isOwner).flatMap(g => g.items.map(i => i.id))).has(id)
+export function isSettingsSection(
+  id: string | null | undefined,
+  isOwner = true,
+  options: { isMobile?: boolean } = {},
+): id is string {
+  return id != null && new Set(getSettingsNavGroups(isOwner, options).flatMap(g => g.items.map(i => i.id))).has(id)
 }
 
-export function settingsSectionLabel(id: string, isOwner = true): string {
-  for (const g of getSettingsNavGroups(isOwner)) {
+export function settingsSectionLabel(
+  id: string,
+  isOwner = true,
+  options: { isMobile?: boolean } = {},
+): string {
+  for (const g of getSettingsNavGroups(isOwner, options)) {
     const item = g.items.find(i => i.id === id)
     if (item) return item.label
   }
