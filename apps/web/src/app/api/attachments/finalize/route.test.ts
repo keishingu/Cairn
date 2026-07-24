@@ -19,6 +19,7 @@ const {
   mockInsertValues,
   mockInsertReturning,
   mockRecordStorageUsageDelta,
+  mockSelectLimit,
   mockTransactionSelectLimit,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
@@ -30,6 +31,7 @@ const {
   mockInngestSend: vi.fn().mockResolvedValue(undefined),
   mockCreateThumbnailFromStorage: vi.fn(),
   mockRecordStorageUsageDelta: vi.fn().mockResolvedValue(undefined),
+  mockSelectLimit: vi.fn(),
   mockInsertReturning: vi.fn(),
   mockTransactionSelectLimit: vi.fn(),
   mockInsertValues: vi.fn((v: Record<string, unknown>) => ({
@@ -54,7 +56,7 @@ vi.mock('@cairn/db', () => ({
     select: () => ({
       from: () => ({
         where: () => ({
-          limit: vi.fn().mockResolvedValue([{ projectId: null }]),
+          limit: mockSelectLimit,
         }),
       }),
     }),
@@ -95,6 +97,7 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     })
     mockList.mockResolvedValue({ data: [{ name: 'x.pdf', metadata: { size: 100 } }], error: null })
     mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: true } })
+    mockSelectLimit.mockReset().mockResolvedValueOnce([]).mockResolvedValueOnce([{ projectId: null }])
     mockInsertReturning.mockImplementation((values) => Promise.resolve([{ id: 'file-1', ...values }]))
   })
 
@@ -177,6 +180,7 @@ describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {
     })
     mockRequireChannelAccess.mockResolvedValue(null)
     mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: true } })
+    mockSelectLimit.mockReset().mockResolvedValueOnce([]).mockResolvedValueOnce([{ projectId: null }])
     mockIsIndexable.mockReturnValue(true)
     mockCreateThumbnailFromStorage.mockResolvedValue(null)
   })

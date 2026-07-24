@@ -63,6 +63,33 @@ export async function POST(req: Request) {
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
+  const { db, files } = await import('@cairn/db')
+  const { and, eq } = await import('drizzle-orm')
+
+  // 応答喪失後の再試行は、現在の支援・残高が失効していても既に確定済みの
+  // オブジェクトを消してはならない。冪等に既存の登録結果を返す。
+  const [existing] = await db
+    .select({
+      id: files.id,
+      fileName: files.fileName,
+      mimeType: files.mimeType,
+      fileSize: files.fileSize,
+    })
+    .from(files)
+    .where(and(eq(files.workspaceId, ctx.workspaceId), eq(files.storagePath, storagePath)))
+    .limit(1)
+  if (existing) {
+    return NextResponse.json(
+      {
+        fileId: existing.id,
+        fileName: existing.fileName,
+        mimeType: existing.mimeType,
+        fileSize: existing.fileSize,
+      },
+      { status: 200 },
+    )
+  }
+
   const supabase = createServiceRoleClient()
 
   // 署名付きURLの発行後に支援・残高が変わる可能性があるため、登録直前にも確認する。
@@ -111,8 +138,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { db, files, channels } = await import('@cairn/db')
-    const { and, eq } = await import('drizzle-orm')
+    const { channels } = await import('@cairn/db')
 
     // プロジェクトチャンネル経由のアップロードは projectId を紐付け、
     // プロジェクト削除時の CASCADE で files レコードも自動削除されるようにする

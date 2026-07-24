@@ -24,7 +24,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       uploadRequests,
     } = await import('@cairn/db')
     const { eq, and, isNull, or } = await import('drizzle-orm')
-    const { inngest } = await import('@/lib/inngest/client')
 
     const [project] = await db
       .select({ id: projects.id })
@@ -39,31 +38,65 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const forbidden = requireRole(ctx.role, 'admin')
     if (forbidden) return forbidden
 
-    // CASCADE 前にストレージパスを収集する
-    // - files.projectId = projectId（直接紐付き）
-    // - プロジェクトチャンネル経由でアップロードされたファイル（projectId が未設定の旧データ含む）
-    const filePaths = await db
-      .selectDistinct({
-        storagePath: files.storagePath,
-        derivedStoragePath: files.derivedStoragePath,
-        metadata: files.metadata,
-        galleryItemId: galleryItems.id,
-      })
-      .from(files)
-      .leftJoin(messageAttachments, eq(messageAttachments.fileId, files.id))
-      .leftJoin(messages, eq(messages.id, messageAttachments.messageId))
-      .leftJoin(channels, eq(channels.id, messages.channelId))
-      .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
-      .where(or(eq(files.projectId, projectId), eq(channels.projectId, projectId)))
+    const deleted = await db.transaction(async (tx) => {
+      // CASCADE の直前にプロジェクトをロックし、同じトランザクションで対象ファイルを
+      // 集計・家賃精算する。日次 reconciliation まで古い使用量を請求し続けない。
+      const [lockedProject] = await tx
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
+        .for('update')
+        .limit(1)
+      if (!lockedProject) return null
 
-    // 未確定アップロードは files に現れないため、CASCADE 前に別途回収する。
-    const pendingUploadPaths = await db
-      .select({
-        derivedStoragePath: uploadRequests.derivedStoragePath,
-        originalStoragePath: uploadRequests.originalStoragePath,
-      })
-      .from(uploadRequests)
-      .where(and(eq(uploadRequests.projectId, projectId), isNull(uploadRequests.finalizedAt)))
+      // CASCADE 前にストレージパスを収集する。
+      const filePaths = await tx
+        .selectDistinct({
+          storagePath: files.storagePath,
+          derivedStoragePath: files.derivedStoragePath,
+          fileSize: files.fileSize,
+          derivedFileSize: files.derivedFileSize,
+          metadata: files.metadata,
+          galleryItemId: galleryItems.id,
+        })
+        .from(files)
+        .leftJoin(messageAttachments, eq(messageAttachments.fileId, files.id))
+        .leftJoin(messages, eq(messages.id, messageAttachments.messageId))
+        .leftJoin(channels, eq(channels.id, messages.channelId))
+        .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
+        .where(or(eq(files.projectId, projectId), eq(channels.projectId, projectId)))
+
+      // 未確定アップロードは files に現れないため、CASCADE 前に別途回収する。
+      const pendingUploadPaths = await tx
+        .select({
+          derivedStoragePath: uploadRequests.derivedStoragePath,
+          originalStoragePath: uploadRequests.originalStoragePath,
+        })
+        .from(uploadRequests)
+        .where(and(eq(uploadRequests.projectId, projectId), isNull(uploadRequests.finalizedAt)))
+
+      const { recordStorageUsageDelta } = await import('@/lib/billing/storage-usage')
+      await recordStorageUsageDelta(
+        ctx.workspaceId,
+        {
+          originalBytes: -filePaths.reduce((total, file) => total + (file.fileSize ?? 0), 0),
+          derivedBytes: -filePaths.reduce((total, file) => total + (file.derivedFileSize ?? 0), 0),
+        },
+        tx,
+      )
+
+      const [removedProject] = await tx
+        .delete(projects)
+        .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
+        .returning({ id: projects.id })
+      if (!removedProject) return null
+
+      return { filePaths, pendingUploadPaths }
+    })
+
+    if (!deleted) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+
+    const { filePaths, pendingUploadPaths } = deleted
 
     if (filePaths.length > 0 || pendingUploadPaths.length > 0) {
       // 添付のオリジナルに加えて、生成済みのサムネ(metadata.thumbnailPath)も削除対象に含める
@@ -89,6 +122,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
           .map((request) => request.originalStoragePath)
           .filter((path): path is string => path !== null),
       ]
+      const { inngest } = await import('@/lib/inngest/client')
       await Promise.all([
         attachmentPaths.length > 0
           ? inngest.send({
@@ -110,10 +144,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
           : undefined,
       ])
     }
-
-    await db
-      .delete(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
 
     return NextResponse.json({ success: true })
   } catch (err) {

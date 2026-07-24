@@ -109,6 +109,25 @@ export async function POST(request: Request) {
       if (openSession?.url) return { url: openSession.url }
       if (openSession) return { error: '決済画面の準備中です。少し待ってから再試行してください' }
 
+      // Checkout が complete になった直後は、Webhook が subscriptions を同期する前でも
+      // Stripe 側には購読が存在する。この間に2件目の Checkout を作らない。
+      const stripeSubscriptions = await stripe.subscriptions.list({
+        customer: customerId,
+        status: 'all',
+        limit: 100,
+      })
+      const pendingSubscription = stripeSubscriptions.data.find(
+        (subscription) =>
+          subscription.metadata?.['workspaceId'] === ctx.workspaceId &&
+          subscription.metadata?.['supporterUserId'] === ctx.userId &&
+          subscription.metadata?.['plan'] === 'individual' &&
+          subscription.status !== 'canceled' &&
+          subscription.status !== 'incomplete_expired',
+      )
+      if (pendingSubscription) {
+        return { error: '既存の購読を処理中です。少し待ってから請求管理画面を確認してください' }
+      }
+
       const appUrl = resolveApplicationUrl(request)
       const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
