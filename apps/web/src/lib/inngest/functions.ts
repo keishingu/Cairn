@@ -964,8 +964,12 @@ export const chargeStorageRentDaily = inngest.createFunction(
   { cron: 'TZ=Asia/Tokyo 20 3 * * *' },
   async ({ step }) => {
     return step.run('charge-storage-rent', async () => {
+      const { isBillingEnabled } = await import('@/lib/billing/is-billing-enabled')
+      if (!isBillingEnabled()) return { skipped: true, charged: 0 }
+
       const { chargeAllWorkspaceStorageRent } = await import('@/lib/billing/storage-rent')
-      return chargeAllWorkspaceStorageRent()
+      const results = await chargeAllWorkspaceStorageRent()
+      return { skipped: false, charged: results.length }
     })
   },
 )
