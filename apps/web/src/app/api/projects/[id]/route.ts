@@ -23,7 +23,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       galleryItems,
       uploadRequests,
     } = await import('@cairn/db')
-    const { eq, and, isNull, or } = await import('drizzle-orm')
+    const { eq, and, inArray, isNull, or } = await import('drizzle-orm')
 
     const [project] = await db
       .select({ id: projects.id })
@@ -54,6 +54,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         .selectDistinct({
           storagePath: files.storagePath,
           derivedStoragePath: files.derivedStoragePath,
+          id: files.id,
+          projectId: files.projectId,
           fileSize: files.fileSize,
           derivedFileSize: files.derivedFileSize,
           metadata: files.metadata,
@@ -84,6 +86,13 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         },
         tx,
       )
+
+      const legacyFileIds = filePaths
+        .filter((file) => file.projectId === null)
+        .map((file) => file.id)
+      if (legacyFileIds.length > 0) {
+        await tx.delete(files).where(inArray(files.id, legacyFileIds))
+      }
 
       const [removedProject] = await tx
         .delete(projects)

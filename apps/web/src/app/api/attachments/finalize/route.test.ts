@@ -64,10 +64,12 @@ vi.mock('@cairn/db', () => ({
       values: mockInsertValues,
     }),
     transaction: async (callback: (tx: {
+      execute: () => Promise<void>
       insert: () => { values: typeof mockInsertValues }
       select: () => { from: () => { where: () => { limit: typeof mockTransactionSelectLimit } } }
     }) => unknown) =>
       callback({
+        execute: vi.fn().mockResolvedValue(undefined),
         insert: () => ({ values: mockInsertValues }),
         select: () => ({
           from: () => ({
@@ -79,7 +81,7 @@ vi.mock('@cairn/db', () => ({
   files: {},
   channels: { projectId: 'c.projectId', id: 'c.id' },
 }))
-vi.mock('drizzle-orm', () => ({ and: vi.fn(() => 'and'), eq: vi.fn(() => 'eq') }))
+vi.mock('drizzle-orm', () => ({ and: vi.fn(() => 'and'), eq: vi.fn(() => 'eq'), sql: vi.fn(() => 'sql') }))
 
 function post(body: unknown): Request {
   return { json: () => Promise.resolve(body) } as Request
@@ -155,7 +157,9 @@ describe('/api/attachments/finalize のアクセス制御', () => {
 
   it('原本保存の権利を失った場合はオブジェクトを削除して登録しない', async () => {
     mockRequireChannelAccess.mockResolvedValue(null)
-    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: false } })
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadLargeFile: false } })
+    mockList.mockResolvedValue({ data: [{ name: 'x.pdf', metadata: { size: 6 * 1024 * 1024 } }], error: null })
+    mockTransactionSelectLimit.mockResolvedValue([])
 
     const { POST } = await import('./route')
     const res = await POST(post({

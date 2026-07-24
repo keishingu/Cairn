@@ -4,6 +4,7 @@
 import { BILLING_CONFIG } from '@cairn/core/billing'
 import type Stripe from 'stripe'
 import { creditLedger, db, stripeEvents, subscriptions } from '@cairn/db'
+import { sql } from 'drizzle-orm'
 import { getStripeClient, stripeId } from './stripe'
 import { resolveSubscriptionGrantQuantity } from './subscription-grant'
 import { asStripeSubscriptionRecord, type StripeSubscriptionRecord } from './stripe-subscription'
@@ -80,21 +81,17 @@ export async function processStripeWebhookEvent(
   event: Stripe.Event,
 ): Promise<{ duplicate: boolean }> {
   const stripe = getStripeClient()
-  let subscription: StripeSubscriptionRecord | null = null
   let invoiceId: string | null = null
   let invoiceQuantity: number | null = null
+  let subscriptionId: string | null = null
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session
-    const subscriptionId = stripeId(session.subscription)
-    if (subscriptionId)
-      subscription = asStripeSubscriptionRecord(await stripe.subscriptions.retrieve(subscriptionId))
+    subscriptionId = stripeId(session.subscription)
   }
   if (event.type === 'invoice.paid') {
     const invoice = asInvoiceRecord(event.data.object as Stripe.Invoice)
-    const subscriptionId = invoice.subscriptionId
-    if (subscriptionId)
-      subscription = asStripeSubscriptionRecord(await stripe.subscriptions.retrieve(subscriptionId))
+    subscriptionId = invoice.subscriptionId
     invoiceId = invoice.id
     invoiceQuantity = invoice.invoiceQuantity
   }
@@ -104,7 +101,7 @@ export async function processStripeWebhookEvent(
   ) {
     const eventSubscription = event.data.object as Stripe.Subscription
     // 順不同で届く payload ではなく、Stripe 側の最新状態を正として同期する。
-    subscription = asStripeSubscriptionRecord(await stripe.subscriptions.retrieve(eventSubscription.id))
+    subscriptionId = eventSubscription.id
   }
 
   return db.transaction(async (tx) => {
@@ -115,6 +112,13 @@ export async function processStripeWebhookEvent(
       .returning({ eventId: stripeEvents.eventId })
     if (!processed) return { duplicate: true }
 
+    let subscription: StripeSubscriptionRecord | null = null
+    if (subscriptionId) {
+      // 取得と upsert を同じ購読単位で直列化し、後着した古いスナップショットが
+      // Stripe の最新状態を上書きしないようにする。
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`stripe-subscription:${subscriptionId}`}, 0))`)
+      subscription = asStripeSubscriptionRecord(await stripe.subscriptions.retrieve(subscriptionId))
+    }
     if (subscription) await syncSubscription(tx, subscription)
     if (event.type === 'invoice.paid' && subscription && invoiceId && invoiceQuantity) {
       const workspaceId = subscription.metadata['workspaceId']

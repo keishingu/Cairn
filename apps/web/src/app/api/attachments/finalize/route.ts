@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { ALLOWED_MIME_TYPES, normalizeMimeType, resolveFileType } from '@/lib/attachments'
+import { ALLOWED_MIME_TYPES, FREE_ATTACHMENT_MAX_FILE_SIZE, normalizeMimeType, resolveFileType } from '@/lib/attachments'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { requireChannelAccess } from '@/lib/permissions'
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
   if (forbidden) return forbidden
 
   const { db, files } = await import('@cairn/db')
-  const { and, eq } = await import('drizzle-orm')
+  const { and, eq, sql } = await import('drizzle-orm')
 
   // 応答喪失後の再試行は、現在の支援・残高が失効していても既に確定済みの
   // オブジェクトを消してはならない。冪等に既存の登録結果を返す。
@@ -92,17 +92,6 @@ export async function POST(req: Request) {
 
   const supabase = createServiceRoleClient()
 
-  // 署名付きURLの発行後に支援・残高が変わる可能性があるため、登録直前にも確認する。
-  // 拒否時は未追跡のストレージオブジェクトを残さない。
-  const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
-  if (!entitlements.rights.canUploadOriginal) {
-    await supabase.storage.from('chat-attachments').remove([storagePath])
-    return NextResponse.json(
-      { error: 'ファイルを保存するには、残高のある有効な支援が必要です' },
-      { status: 403 },
-    )
-  }
-
   // アップロードが実際に完了しているか確認し、権威あるファイルサイズを取得する
   // （クライアント申告値のなりすまし・アップロード未完了での登録を防ぐ）
   const lastSlash = storagePath.lastIndexOf('/')
@@ -127,6 +116,33 @@ export async function POST(req: Request) {
 
   const actualSize =
     typeof object.metadata?.['size'] === 'number' ? (object.metadata['size'] as number) : fileSize
+  if (actualSize > FREE_ATTACHMENT_MAX_FILE_SIZE) {
+    const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+    if (!entitlements.rights.canUploadLargeFile) {
+      // 成功側も同じ advisory lock を取得する。判定後に並行 finalize が確定しても
+      // そのオブジェクトを削除しない。
+      const committed = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`attachment:${ctx.workspaceId}:${storagePath}`}, 0))`)
+        const [file] = await tx
+          .select({ id: files.id, fileName: files.fileName, mimeType: files.mimeType, fileSize: files.fileSize })
+          .from(files)
+          .where(and(eq(files.workspaceId, ctx.workspaceId), eq(files.storagePath, storagePath)))
+          .limit(1)
+        return file ?? null
+      })
+      if (committed) {
+        return NextResponse.json(
+          { fileId: committed.id, fileName: committed.fileName, mimeType: committed.mimeType, fileSize: committed.fileSize },
+          { status: 200 },
+        )
+      }
+      await supabase.storage.from('chat-attachments').remove([storagePath])
+      return NextResponse.json(
+        { error: '5MBを超えるファイルを保存するには、残高のある有効な支援が必要です' },
+        { status: 403 },
+      )
+    }
+  }
   let thumbnailPath: string | null = null
   if (normalizedMime.startsWith('image/')) {
     try {
@@ -149,6 +165,7 @@ export async function POST(req: Request) {
       .limit(1)
 
     const finalized = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`attachment:${ctx.workspaceId}:${storagePath}`}, 0))`)
       const [file] = await tx
         .insert(files)
         .values({

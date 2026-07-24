@@ -52,7 +52,7 @@ describe('/api/attachments/upload-url', () => {
     )
 
     const { POST } = await import('./route')
-    const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'a.pdf', mimeType: 'application/pdf', fileSize: 100 }))
+    const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'a.pdf', mimeType: 'application/pdf', fileSize: 6 * 1024 * 1024 }))
 
     expect(res.status).toBe(403)
     expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
@@ -75,10 +75,10 @@ describe('/api/attachments/upload-url', () => {
   })
 
   it('原本保存の権利が無い場合は署名付きURLを発行しない', async () => {
-    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: false } })
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadLargeFile: false } })
 
     const { POST } = await import('./route')
-    const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'a.pdf', mimeType: 'application/pdf', fileSize: 100 }))
+    const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'a.pdf', mimeType: 'application/pdf', fileSize: 6 * 1024 * 1024 }))
 
     expect(res.status).toBe(403)
     expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
