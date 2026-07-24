@@ -46,11 +46,8 @@ export async function POST(req: Request, { params }: RouteContext) {
       { status: 400 },
     )
   }
-  if (
-    !isGalleryImageMimeType(body.original.mimeType) ||
-    !isGalleryImageMimeType(body.derived.mimeType)
-  ) {
-    return NextResponse.json({ error: '対応していない画像形式です' }, { status: 400 })
+  if (!isGalleryImageMimeType(body.derived.mimeType)) {
+    return NextResponse.json({ error: '対応していない圧縮版の画像形式です' }, { status: 400 })
   }
 
   try {
@@ -67,6 +64,9 @@ export async function POST(req: Request, { params }: RouteContext) {
     if (forbidden) return forbidden
 
     const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+    if (entitlements.rights.canUploadOriginal && !isGalleryImageMimeType(body.original.mimeType)) {
+      return NextResponse.json({ error: '対応していないオリジナル画像形式です' }, { status: 400 })
+    }
     const derivedStoragePath = galleryStoragePath(
       ctx.workspaceId,
       projectId,
