@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
+import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { requireProjectAccess } from '@/lib/permissions'
 import { recordStorageUsageDelta } from '@/lib/billing/storage-usage'
 import { GALLERY_BUCKET, GALLERY_ORIGINALS_BUCKET } from '@/lib/gallery-upload'
@@ -57,8 +58,8 @@ export async function POST(req: Request, { params }: RouteContext) {
   const uploadId = body.uploadId
 
   try {
-    const { db, files, galleryItems, projects, uploadRequests } = await import('@cairn/db')
-    const { and, eq } = await import('drizzle-orm')
+    const { creditLedger, db, files, galleryItems, projects, subscriptions, uploadRequests } = await import('@cairn/db')
+    const { and, eq, sql } = await import('drizzle-orm')
     const [project] = await db
       .select({ id: projects.id })
       .from(projects)
@@ -219,6 +220,34 @@ export async function POST(req: Request, { params }: RouteContext) {
           }
           if (lockedRequest.expiresAt <= new Date()) {
             throw new Error('upload request expired before finalization')
+          }
+
+          if (originalStoragePath && isBillingEnabled()) {
+            // 原本を登録する直前に、usage 行をロックして未請求家賃を精算した後の
+            // 残高・支援状態を確認する。外側の事前判定だけには依存しない。
+            const { settleWorkspaceStorageRent } = await import('@/lib/billing/storage-rent')
+            await settleWorkspaceStorageRent(tx, ctx.workspaceId)
+            const [[balance], [subscription]] = await Promise.all([
+              tx
+                .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
+                .from(creditLedger)
+                .where(eq(creditLedger.workspaceId, ctx.workspaceId)),
+              tx
+                .select({ id: subscriptions.id })
+                .from(subscriptions)
+                .where(
+                  and(
+                    eq(subscriptions.workspaceId, ctx.workspaceId),
+                    eq(subscriptions.supporterUserId, ctx.userId),
+                    eq(subscriptions.plan, 'individual'),
+                    eq(subscriptions.status, 'active'),
+                  ),
+                )
+                .limit(1),
+            ])
+            if (!subscription || Number(balance?.balance ?? 0) <= 0) {
+              throw new Error('original-upload-entitlement-required')
+            }
           }
 
           const [file] = await tx

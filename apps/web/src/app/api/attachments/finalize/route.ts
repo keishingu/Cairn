@@ -265,10 +265,21 @@ export async function POST(req: Request) {
       { status: finalized.created ? 201 : 200 },
     )
   } catch (err) {
-    // DBインサート失敗時はストレージをロールバック（サムネがあれば併せて削除）
-    await supabase.storage
-      .from('chat-attachments')
-      .remove(thumbnailPath ? [storagePath, thumbnailPath] : [storagePath])
+    // 競合した別 finalize が確定済みなら、そのオブジェクトをロールバックしてはならない。
+    const committed = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`attachment:${ctx.workspaceId}:${storagePath}`}, 0))`)
+      const [file] = await tx
+        .select({ id: files.id })
+        .from(files)
+        .where(and(eq(files.workspaceId, ctx.workspaceId), eq(files.storagePath, storagePath)))
+        .limit(1)
+      return file ?? null
+    })
+    if (!committed) {
+      await supabase.storage
+        .from('chat-attachments')
+        .remove(thumbnailPath ? [storagePath, thumbnailPath] : [storagePath])
+    }
     if (err instanceof Error && err.message === LARGE_FILE_ENTITLEMENT_ERROR) {
       return NextResponse.json(
         { error: '5MBを超えるファイルを保存するには、残高のある有効な支援が必要です' },
