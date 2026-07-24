@@ -3,6 +3,8 @@
 
 import { db, files, workspaceStorageUsage, workspaces } from '@cairn/db'
 import { eq, sql } from 'drizzle-orm'
+import { isBillingEnabled } from './is-billing-enabled'
+import { settleWorkspaceStorageRent, type StorageRentTransaction } from './storage-rent'
 
 export interface StorageUsage {
   originalBytes: number
@@ -15,7 +17,7 @@ export interface StorageUsageReconciliation extends StorageUsage {
   derivedBytesDrift: number
 }
 
-type StorageUsageExecutor = Pick<typeof db, 'insert'>
+type StorageUsageExecutor = StorageRentTransaction
 
 /**
  * 通常のアップロード・削除で使用量カウンタを更新する。
@@ -24,12 +26,23 @@ type StorageUsageExecutor = Pick<typeof db, 'insert'>
 export async function recordStorageUsageDelta(
   workspaceId: string,
   delta: StorageUsage,
-  executor: StorageUsageExecutor = db,
+  executor: StorageUsageExecutor | typeof db = db,
 ): Promise<void> {
   if (delta.originalBytes === 0 && delta.derivedBytes === 0) return
 
+  // 使用量変更の直前までを古い使用量で精算してから新しい使用量を反映する。
+  // これにより cron 間に増減した容量を遡って請求しない。
+  if (executor === db) {
+    await db.transaction(tx => recordStorageUsageDelta(workspaceId, delta, tx))
+    return
+  }
+
+  const tx = executor as StorageUsageExecutor
   const now = new Date()
-  await executor
+  if (isBillingEnabled()) {
+    await settleWorkspaceStorageRent(tx, workspaceId, now)
+  }
+  await tx
     .insert(workspaceStorageUsage)
     .values({
       workspaceId,
