@@ -1,6 +1,6 @@
 # 課金実装設計書
 
-> **ステータス**: 現行の設計合意（作成: 2026-06-12 / 改訂: 2026-06-16、実装未着手）
+> **ステータス**: Phase 1 基盤に着手（作成: 2026-06-12 / 改訂: 2026-07-24）
 > [`pricing-plan-design.md`](./pricing-plan-design.md) のケルン消費モデルを実装に落とすための設計。実装着手時に本書を更新する。関連: [`10_ai_member_design.md`](./10_ai_member_design.md)（AI の消費主体）
 
 ---
@@ -63,7 +63,7 @@ subscriptions              支援サブスクリプション（UI: 積み石 / S
   id             PK
   workspace_id   → workspaces.id (cascade)
   supporter_user_id → profiles.id        ※ WS 退会後も継続可（OB積み石）
-  plan           enum: solo / team
+  plan           enum: individual / workspace  ※ UI 表示は Solo / Team
   stripe_subscription_id  unique
   quantity       int                     ※ 重ね掛け口数（Solo）
   status         enum: active / past_due / canceled
@@ -96,6 +96,7 @@ stripe_events              Webhook 冪等性
 - **貢献の記録**: 「誰がいつ石を積んだか」は `subscriptions` + `credit_ledger(reason=subscription_grant/pack_purchase)` から導出できる。ケルン UI の礎石・タイムライン（永続表示）はこのクエリ。専用テーブルは当面不要
 - **`files.file_size` は実装済み**（`gallery_items.fileId` → `files.id` の join で取得可能。当初想定していた `gallery` テーブルへの追加は不要だった）。既存行の NULL は `storage.objects.metadata->>'size'` からのバックフィルで補正する（Phase 0 で実施済み）
 - **オリジナル別保存は未実装**: `process-image.ts` はアップロード前にクライアント側でオリジナルを圧縮版へ置き換えており、圧縮前のオリジナルは保存されない。そのため Phase 0 の `original_bytes` は「現状唯一の実体（圧縮後ファイル）」の合計であり、`derived_bytes` は常に 0。真のオリジナル保存・表示用派生の生成は Phase 1 でアップロード権判定と合わせて実装する
+- **2026-07-24 の基盤実装**: `billing_customers` / `subscriptions` / `credit_ledger` / `stripe_events` と、DB 非依存の状態・アップロード権解決を追加した。`workspace_storage_usage` は reconciliation と削除経路の設計が未完了のため、この時点では作成していない
 
 ## 5. エンタイトルメント解決
 

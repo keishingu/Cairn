@@ -13,6 +13,7 @@ import {
   onMessageCreated,
   onTaskAssigned,
   reconcileAiNudgesHeartbeat,
+  reconcileWorkspaceStorageUsageDaily,
   scanAiNudgesPhaseTwo,
 } from '@/lib/inngest/functions'
 
@@ -34,6 +35,7 @@ const fns = [
   onMessageCreated,
   onTaskAssigned,
   reconcileAiNudgesHeartbeat,
+  reconcileWorkspaceStorageUsageDaily,
   scanAiNudgesPhaseTwo,
 ]
 const host = resolveServeHost()

@@ -16,7 +16,7 @@ export async function DELETE(
   if (authError) return authError
 
   try {
-    const { db, projects, files, channels, messages, messageAttachments } = await import('@cairn/db')
+    const { db, projects, files, channels, messages, messageAttachments, galleryItems } = await import('@cairn/db')
     const { eq, and, or } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client')
 
@@ -37,11 +37,17 @@ export async function DELETE(
     // - files.projectId = projectId（直接紐付き）
     // - プロジェクトチャンネル経由でアップロードされたファイル（projectId が未設定の旧データ含む）
     const filePaths = await db
-      .selectDistinct({ storagePath: files.storagePath, metadata: files.metadata })
+      .selectDistinct({
+        storagePath: files.storagePath,
+        derivedStoragePath: files.derivedStoragePath,
+        metadata: files.metadata,
+        galleryItemId: galleryItems.id,
+      })
       .from(files)
       .leftJoin(messageAttachments, eq(messageAttachments.fileId, files.id))
       .leftJoin(messages, eq(messages.id, messageAttachments.messageId))
       .leftJoin(channels, eq(channels.id, messages.channelId))
+      .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
       .where(
         or(
           eq(files.projectId, projectId),
@@ -50,19 +56,29 @@ export async function DELETE(
       )
 
     if (filePaths.length > 0) {
-      // オリジナルに加えて、生成済みのサムネ(metadata.thumbnailPath)も削除対象に含める
-      const paths = filePaths.flatMap(f => {
+      // 添付のオリジナルに加えて、生成済みのサムネ(metadata.thumbnailPath)も削除対象に含める
+      const attachmentPaths = filePaths.filter(f => !f.galleryItemId).flatMap(f => {
         const meta = (f.metadata ?? {}) as Record<string, unknown>
         const thumbnailPath = typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
-        return thumbnailPath ? [f.storagePath, thumbnailPath] : [f.storagePath]
+        return [f.storagePath, thumbnailPath].filter((path): path is string => path !== null)
       })
-      await inngest.send({
-        name: 'storage/objects.delete',
-        data: {
-          bucket: 'chat-attachments',
-          paths,
-        },
-      })
+      const galleryDerivedPaths = filePaths
+        .filter(f => f.galleryItemId)
+        .flatMap(f => [f.derivedStoragePath].filter((path): path is string => path !== null))
+      const galleryOriginalPaths = filePaths
+        .filter(f => f.galleryItemId)
+        .flatMap(f => [f.storagePath].filter((path): path is string => path !== null))
+      await Promise.all([
+        attachmentPaths.length > 0
+          ? inngest.send({ name: 'storage/objects.delete', data: { bucket: 'chat-attachments', paths: attachmentPaths } })
+          : undefined,
+        galleryDerivedPaths.length > 0
+          ? inngest.send({ name: 'storage/objects.delete', data: { bucket: 'gallery', paths: galleryDerivedPaths } })
+          : undefined,
+        galleryOriginalPaths.length > 0
+          ? inngest.send({ name: 'storage/objects.delete', data: { bucket: 'gallery-originals', paths: galleryOriginalPaths } })
+          : undefined,
+      ])
     }
 
     await db
