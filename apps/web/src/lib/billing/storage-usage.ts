@@ -68,16 +68,13 @@ export async function reconcileWorkspaceStorageUsage(
   workspaceId: string,
 ): Promise<StorageUsageReconciliation> {
   return db.transaction(async (tx) => {
-    const [actual] = await tx
-      .select({
-        originalBytes: sql<string>`COALESCE(SUM(${files.fileSize}), 0)`,
-        derivedBytes: sql<string>`COALESCE(SUM(${files.derivedFileSize}), 0)`,
-      })
-      .from(files)
-      .where(eq(files.workspaceId, workspaceId))
+    // 先に行を確保してロックする。SUM の後でロックすると、その間にコミットした
+    // アップロードのカウンタ更新を古い集計値で上書きしてしまう。
+    await tx
+      .insert(workspaceStorageUsage)
+      .values({ workspaceId })
+      .onConflictDoNothing()
 
-    const originalBytes = Number(actual?.originalBytes ?? 0)
-    const derivedBytes = Number(actual?.derivedBytes ?? 0)
     const [current] = await tx
       .select({
         originalBytes: workspaceStorageUsage.originalBytes,
@@ -88,6 +85,16 @@ export async function reconcileWorkspaceStorageUsage(
       .for('update')
       .limit(1)
 
+    const [actual] = await tx
+      .select({
+        originalBytes: sql<string>`COALESCE(SUM(${files.fileSize}), 0)`,
+        derivedBytes: sql<string>`COALESCE(SUM(${files.derivedFileSize}), 0)`,
+      })
+      .from(files)
+      .where(eq(files.workspaceId, workspaceId))
+
+    const originalBytes = Number(actual?.originalBytes ?? 0)
+    const derivedBytes = Number(actual?.derivedBytes ?? 0)
     const now = new Date()
     if (isBillingEnabled()) {
       await settleWorkspaceStorageRent(tx, workspaceId, now)

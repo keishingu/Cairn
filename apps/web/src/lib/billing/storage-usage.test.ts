@@ -3,13 +3,14 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockSettleWorkspaceStorageRent, mockOnConflictDoUpdate } = vi.hoisted(() => ({
+const { mockDbTransaction, mockSettleWorkspaceStorageRent, mockOnConflictDoUpdate } = vi.hoisted(() => ({
+  mockDbTransaction: vi.fn(),
   mockSettleWorkspaceStorageRent: vi.fn(),
   mockOnConflictDoUpdate: vi.fn(),
 }))
 
 vi.mock('@cairn/db', () => ({
-  db: {},
+  db: { transaction: mockDbTransaction },
   files: {},
   workspaces: {},
   workspaceStorageUsage: {
@@ -49,5 +50,45 @@ describe('recordStorageUsageDelta', () => {
       expect.any(Date),
     )
     expect(tx.insert).toHaveBeenCalled()
+  })
+
+  it('reconciliationは使用量行をロックしてからfilesを再集計する', async () => {
+    const mockSeedOnConflictDoNothing = vi.fn().mockResolvedValue(undefined)
+    const mockCurrentLimit = vi.fn().mockResolvedValue([{ originalBytes: 100, derivedBytes: 0 }])
+    const mockActualWhere = vi.fn().mockResolvedValue([{ originalBytes: '200', derivedBytes: '10' }])
+    const mockUsageUpdate = vi.fn()
+    const tx = {
+      insert: vi.fn()
+        .mockReturnValueOnce({
+          values: vi.fn(() => ({ onConflictDoNothing: mockSeedOnConflictDoNothing })),
+        })
+        .mockReturnValueOnce({
+          values: vi.fn(() => ({ onConflictDoUpdate: mockUsageUpdate })),
+        }),
+      select: vi.fn()
+        .mockReturnValueOnce({
+          from: () => ({
+            where: () => ({
+              for: () => ({ limit: mockCurrentLimit }),
+            }),
+          }),
+        })
+        .mockReturnValueOnce({
+          from: () => ({ where: mockActualWhere }),
+        }),
+    }
+    mockDbTransaction.mockImplementation(async (callback) => callback(tx))
+
+    const { reconcileWorkspaceStorageUsage } = await import('./storage-usage')
+    await reconcileWorkspaceStorageUsage('workspace-1')
+
+    expect(mockCurrentLimit.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockActualWhere.mock.invocationCallOrder[0]!,
+    )
+    expect(mockSettleWorkspaceStorageRent).toHaveBeenCalledWith(
+      tx,
+      'workspace-1',
+      expect.any(Date),
+    )
   })
 })

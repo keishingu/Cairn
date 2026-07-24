@@ -45,27 +45,8 @@ export async function POST(request: Request) {
 
   try {
     const { billingCustomers, db, subscriptions } = await import('@cairn/db')
-    const { and, eq, inArray } = await import('drizzle-orm')
+    const { and, eq, inArray, sql } = await import('drizzle-orm')
     const stripe = getStripeClient()
-    const [existingSubscription] = await db
-      .select({ id: subscriptions.id })
-      .from(subscriptions)
-      .where(
-        and(
-          eq(subscriptions.workspaceId, ctx.workspaceId),
-          eq(subscriptions.supporterUserId, ctx.userId),
-          eq(subscriptions.plan, 'individual'),
-          inArray(subscriptions.status, ['active', 'past_due']),
-        ),
-      )
-      .limit(1)
-    if (existingSubscription) {
-      return NextResponse.json(
-        { error: '既存の購読は請求管理画面から変更してください' },
-        { status: 409 },
-      )
-    }
-
     const [existingCustomer] = await db
       .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
       .from(billingCustomers)
@@ -94,21 +75,58 @@ export async function POST(request: Request) {
       }
     }
 
-    const appUrl = resolveApplicationUrl(request)
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      customer: customerId,
-      client_reference_id: ctx.userId,
-      line_items: [{ price: getIndividualSubscriptionPriceId(), quantity }],
-      success_url: `${appUrl}/settings/billing?checkout=success`,
-      cancel_url: `${appUrl}/settings/billing?checkout=cancel`,
-      metadata: { workspaceId: ctx.workspaceId, supporterUserId: ctx.userId, plan: 'individual' },
-      subscription_data: {
+    const checkout = await db.transaction(async (tx) => {
+      // Webhook 到着前には subscriptions に行がないため、同じ支援者・ワークスペースの
+      // Checkout 作成を直列化し、Stripe 上の未完了セッションも確認する。
+      const lockKey = `checkout:${ctx.workspaceId}:${ctx.userId}:individual`
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`)
+
+      const [existingSubscription] = await tx
+        .select({ id: subscriptions.id })
+        .from(subscriptions)
+        .where(
+          and(
+            eq(subscriptions.workspaceId, ctx.workspaceId),
+            eq(subscriptions.supporterUserId, ctx.userId),
+            eq(subscriptions.plan, 'individual'),
+            inArray(subscriptions.status, ['active', 'past_due']),
+          ),
+        )
+        .limit(1)
+      if (existingSubscription) return { error: '既存の購読は請求管理画面から変更してください' }
+
+      const openSessions = await stripe.checkout.sessions.list({
+        customer: customerId,
+        status: 'open',
+        limit: 100,
+      })
+      const openSession = openSessions.data.find(
+        (session) =>
+          session.metadata?.['workspaceId'] === ctx.workspaceId &&
+          session.metadata?.['supporterUserId'] === ctx.userId &&
+          session.metadata?.['plan'] === 'individual',
+      )
+      if (openSession?.url) return { url: openSession.url }
+      if (openSession) return { error: '決済画面の準備中です。少し待ってから再試行してください' }
+
+      const appUrl = resolveApplicationUrl(request)
+      const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        customer: customerId,
+        client_reference_id: ctx.userId,
+        line_items: [{ price: getIndividualSubscriptionPriceId(), quantity }],
+        success_url: `${appUrl}/settings/billing?checkout=success`,
+        cancel_url: `${appUrl}/settings/billing?checkout=cancel`,
         metadata: { workspaceId: ctx.workspaceId, supporterUserId: ctx.userId, plan: 'individual' },
-      },
+        subscription_data: {
+          metadata: { workspaceId: ctx.workspaceId, supporterUserId: ctx.userId, plan: 'individual' },
+        },
+      })
+      if (!session.url) throw new Error('Stripe Checkout session did not include a URL')
+      return { url: session.url }
     })
-    if (!session.url) throw new Error('Stripe Checkout session did not include a URL')
-    return NextResponse.json({ url: session.url })
+    if ('error' in checkout) return NextResponse.json({ error: checkout.error }, { status: 409 })
+    return NextResponse.json({ url: checkout.url })
   } catch (err) {
     console.error('[/api/billing/checkout POST]', err)
     return NextResponse.json({ error: '決済画面の準備に失敗しました' }, { status: 500 })
