@@ -6,37 +6,13 @@ import type Stripe from 'stripe'
 import { creditLedger, db, stripeEvents, subscriptions } from '@cairn/db'
 import { getStripeClient, stripeId } from './stripe'
 import { resolveSubscriptionGrantQuantity } from './subscription-grant'
-
-type StripeSubscriptionRecord = {
-  id: string
-  status: string
-  quantity: number
-  currentPeriodEnd: number
-  metadata: Record<string, string>
-}
+import { asStripeSubscriptionRecord, type StripeSubscriptionRecord } from './stripe-subscription'
 
 type StripeInvoiceRecord = {
   id: string
   billingReason: string | null
   subscriptionId: string | null
   invoiceQuantity: number | null
-}
-
-function asSubscriptionRecord(subscription: Stripe.Subscription): StripeSubscriptionRecord {
-  const value = subscription as unknown as {
-    id: string
-    status: string
-    items: { data: Array<{ quantity: number | null }> }
-    current_period_end: number
-    metadata: Record<string, string>
-  }
-  return {
-    id: value.id,
-    status: value.status,
-    quantity: value.items.data[0]?.quantity ?? 1,
-    currentPeriodEnd: value.current_period_end,
-    metadata: value.metadata,
-  }
 }
 
 function toSubscriptionStatus(status: string): 'active' | 'past_due' | 'canceled' {
@@ -112,13 +88,13 @@ export async function processStripeWebhookEvent(
     const session = event.data.object as Stripe.Checkout.Session
     const subscriptionId = stripeId(session.subscription)
     if (subscriptionId)
-      subscription = asSubscriptionRecord(await stripe.subscriptions.retrieve(subscriptionId))
+      subscription = asStripeSubscriptionRecord(await stripe.subscriptions.retrieve(subscriptionId))
   }
   if (event.type === 'invoice.paid') {
     const invoice = asInvoiceRecord(event.data.object as Stripe.Invoice)
     const subscriptionId = invoice.subscriptionId
     if (subscriptionId)
-      subscription = asSubscriptionRecord(await stripe.subscriptions.retrieve(subscriptionId))
+      subscription = asStripeSubscriptionRecord(await stripe.subscriptions.retrieve(subscriptionId))
     invoiceId = invoice.id
     invoiceQuantity = invoice.invoiceQuantity
   }
@@ -126,7 +102,9 @@ export async function processStripeWebhookEvent(
     event.type === 'customer.subscription.updated' ||
     event.type === 'customer.subscription.deleted'
   ) {
-    subscription = asSubscriptionRecord(event.data.object as Stripe.Subscription)
+    const eventSubscription = event.data.object as Stripe.Subscription
+    // 順不同で届く payload ではなく、Stripe 側の最新状態を正として同期する。
+    subscription = asStripeSubscriptionRecord(await stripe.subscriptions.retrieve(eventSubscription.id))
   }
 
   return db.transaction(async (tx) => {
