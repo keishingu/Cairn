@@ -77,17 +77,20 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         .from(uploadRequests)
         .where(and(eq(uploadRequests.projectId, projectId), isNull(uploadRequests.finalizedAt)))
 
+      // gallery_items とのJOINで同じ files 行が複数現れ得るため、使用量は file ID ごとに
+      // 一度だけ計上する。ストレージ削除対象の参照一覧は下でそのまま保持する。
+      const uniqueFiles = [...new Map(filePaths.map((file) => [file.id, file])).values()]
       const { recordStorageUsageDelta } = await import('@/lib/billing/storage-usage')
       await recordStorageUsageDelta(
         ctx.workspaceId,
         {
-          originalBytes: -filePaths.reduce((total, file) => total + (file.fileSize ?? 0), 0),
-          derivedBytes: -filePaths.reduce((total, file) => total + (file.derivedFileSize ?? 0), 0),
+          originalBytes: -uniqueFiles.reduce((total, file) => total + (file.fileSize ?? 0), 0),
+          derivedBytes: -uniqueFiles.reduce((total, file) => total + (file.derivedFileSize ?? 0), 0),
         },
         tx,
       )
 
-      const legacyFileIds = filePaths
+      const legacyFileIds = uniqueFiles
         .filter((file) => file.projectId === null)
         .map((file) => file.id)
       if (legacyFileIds.length > 0) {

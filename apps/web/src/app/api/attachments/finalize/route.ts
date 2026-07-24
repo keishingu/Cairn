@@ -5,8 +5,11 @@ import { NextResponse } from 'next/server'
 import { ALLOWED_MIME_TYPES, FREE_ATTACHMENT_MAX_FILE_SIZE, normalizeMimeType, resolveFileType } from '@/lib/attachments'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
+import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+
+const LARGE_FILE_ENTITLEMENT_ERROR = 'large-file-entitlement-required'
 
 // 署名付きURLでのアップロード(upload-url)完了後、files レコードを登録し
 // 検索インデックスジョブを発火する。ファイル本体はここを通らないため
@@ -63,7 +66,7 @@ export async function POST(req: Request) {
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
-  const { db, files } = await import('@cairn/db')
+  const { creditLedger, db, files, subscriptions } = await import('@cairn/db')
   const { and, eq, sql } = await import('drizzle-orm')
 
   // 応答喪失後の再試行は、現在の支援・残高が失効していても既に確定済みの
@@ -166,6 +169,33 @@ export async function POST(req: Request) {
 
     const finalized = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`attachment:${ctx.workspaceId}:${storagePath}`}, 0))`)
+      if (isBillingEnabled() && actualSize > FREE_ATTACHMENT_MAX_FILE_SIZE) {
+        // 既存容量の家賃を先に精算して usage 行をロックし、残高を同じTXで再判定する。
+        // これにより複数の大容量 finalize が同じ古い残高を同時に消費できない。
+        const { settleWorkspaceStorageRent } = await import('@/lib/billing/storage-rent')
+        await settleWorkspaceStorageRent(tx, ctx.workspaceId)
+        const [[balance], [subscription]] = await Promise.all([
+          tx
+            .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
+            .from(creditLedger)
+            .where(eq(creditLedger.workspaceId, ctx.workspaceId)),
+          tx
+            .select({ id: subscriptions.id })
+            .from(subscriptions)
+            .where(
+              and(
+                eq(subscriptions.workspaceId, ctx.workspaceId),
+                eq(subscriptions.supporterUserId, ctx.userId),
+                eq(subscriptions.plan, 'individual'),
+                eq(subscriptions.status, 'active'),
+              ),
+            )
+            .limit(1),
+        ])
+        if (!subscription || Number(balance?.balance ?? 0) <= 0) {
+          throw new Error(LARGE_FILE_ENTITLEMENT_ERROR)
+        }
+      }
       const [file] = await tx
         .insert(files)
         .values({
@@ -239,6 +269,12 @@ export async function POST(req: Request) {
     await supabase.storage
       .from('chat-attachments')
       .remove(thumbnailPath ? [storagePath, thumbnailPath] : [storagePath])
+    if (err instanceof Error && err.message === LARGE_FILE_ENTITLEMENT_ERROR) {
+      return NextResponse.json(
+        { error: '5MBを超えるファイルを保存するには、残高のある有効な支援が必要です' },
+        { status: 403 },
+      )
+    }
     console.error('[/api/attachments/finalize] DB insert failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

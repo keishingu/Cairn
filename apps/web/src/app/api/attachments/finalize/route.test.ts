@@ -79,6 +79,8 @@ vi.mock('@cairn/db', () => ({
       }),
   },
   files: {},
+  creditLedger: {},
+  subscriptions: {},
   channels: { projectId: 'c.projectId', id: 'c.id' },
 }))
 vi.mock('drizzle-orm', () => ({ and: vi.fn(() => 'and'), eq: vi.fn(() => 'eq'), sql: vi.fn(() => 'sql') }))
