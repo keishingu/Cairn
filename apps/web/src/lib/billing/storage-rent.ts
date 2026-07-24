@@ -3,7 +3,7 @@
 
 import { calculateStorageRentAccrual, settleStorageRent } from '@cairn/core/billing'
 import { creditLedger, db, workspaceStorageUsage } from '@cairn/db'
-import { eq, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 export interface StorageRentChargeResult {
   workspaceId: string
@@ -69,7 +69,6 @@ export async function chargeAllWorkspaceStorageRent(
   const rows = await db
     .select({ workspaceId: workspaceStorageUsage.workspaceId })
     .from(workspaceStorageUsage)
-    .where(sql`${workspaceStorageUsage.originalBytes} > 0`)
 
   const results: StorageRentChargeResult[] = []
   for (const row of rows) {
