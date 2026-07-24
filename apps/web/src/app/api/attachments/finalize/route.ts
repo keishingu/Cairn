@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { ALLOWED_MIME_TYPES, normalizeMimeType, resolveFileType } from '@/lib/attachments'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
@@ -63,6 +64,17 @@ export async function POST(req: Request) {
   if (forbidden) return forbidden
 
   const supabase = createServiceRoleClient()
+
+  // 署名付きURLの発行後に支援・残高が変わる可能性があるため、登録直前にも確認する。
+  // 拒否時は未追跡のストレージオブジェクトを残さない。
+  const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+  if (!entitlements.rights.canUploadOriginal) {
+    await supabase.storage.from('chat-attachments').remove([storagePath])
+    return NextResponse.json(
+      { error: 'ファイルを保存するには、残高のある有効な支援が必要です' },
+      { status: 403 },
+    )
+  }
 
   // アップロードが実際に完了しているか確認し、権威あるファイルサイズを取得する
   // （クライアント申告値のなりすまし・アップロード未完了での登録を防ぐ）

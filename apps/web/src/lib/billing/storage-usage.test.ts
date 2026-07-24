@@ -3,8 +3,16 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockDbTransaction, mockSettleWorkspaceStorageRent, mockOnConflictDoUpdate } = vi.hoisted(() => ({
+const {
+  mockDbTransaction,
+  mockIsBillingEnabled,
+  mockAdvanceWorkspaceStorageRentCursor,
+  mockSettleWorkspaceStorageRent,
+  mockOnConflictDoUpdate,
+} = vi.hoisted(() => ({
   mockDbTransaction: vi.fn(),
+  mockIsBillingEnabled: vi.fn(),
+  mockAdvanceWorkspaceStorageRentCursor: vi.fn(),
   mockSettleWorkspaceStorageRent: vi.fn(),
   mockOnConflictDoUpdate: vi.fn(),
 }))
@@ -23,15 +31,36 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   sql: vi.fn(() => 'sql'),
 }))
-vi.mock('./is-billing-enabled', () => ({ isBillingEnabled: () => true }))
+vi.mock('./is-billing-enabled', () => ({ isBillingEnabled: mockIsBillingEnabled }))
 vi.mock('./storage-rent', () => ({
+  advanceWorkspaceStorageRentCursor: mockAdvanceWorkspaceStorageRentCursor,
   settleWorkspaceStorageRent: mockSettleWorkspaceStorageRent,
 }))
 
 describe('recordStorageUsageDelta', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockIsBillingEnabled.mockReturnValue(true)
     mockSettleWorkspaceStorageRent.mockResolvedValue({ debitedCredits: 0 })
+  })
+
+  it('課金無効期間の容量変更では家賃を請求せずカーソルだけ進める', async () => {
+    mockIsBillingEnabled.mockReturnValue(false)
+    const tx = {
+      insert: vi.fn(() => ({
+        values: vi.fn(() => ({ onConflictDoUpdate: mockOnConflictDoUpdate })),
+      })),
+    }
+
+    const { recordStorageUsageDelta } = await import('./storage-usage')
+    await recordStorageUsageDelta('workspace-1', { originalBytes: 100, derivedBytes: 0 }, tx as never)
+
+    expect(mockAdvanceWorkspaceStorageRentCursor).toHaveBeenCalledWith(
+      tx,
+      'workspace-1',
+      expect.any(Date),
+    )
+    expect(mockSettleWorkspaceStorageRent).not.toHaveBeenCalled()
   })
 
   it('容量変更前に古い容量の家賃を同一トランザクションで精算する', async () => {

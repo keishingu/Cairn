@@ -4,7 +4,11 @@
 import { db, files, workspaceStorageUsage, workspaces } from '@cairn/db'
 import { eq, sql } from 'drizzle-orm'
 import { isBillingEnabled } from './is-billing-enabled'
-import { settleWorkspaceStorageRent, type StorageRentTransaction } from './storage-rent'
+import {
+  advanceWorkspaceStorageRentCursor,
+  settleWorkspaceStorageRent,
+  type StorageRentTransaction,
+} from './storage-rent'
 
 export interface StorageUsage {
   originalBytes: number
@@ -41,6 +45,9 @@ export async function recordStorageUsageDelta(
   const now = new Date()
   if (isBillingEnabled()) {
     await settleWorkspaceStorageRent(tx, workspaceId, now)
+  } else {
+    // 課金無効期間の容量変化を、後で有効化した時点から遡って請求しない。
+    await advanceWorkspaceStorageRentCursor(tx, workspaceId, now)
   }
   await tx
     .insert(workspaceStorageUsage)
@@ -96,7 +103,8 @@ export async function reconcileWorkspaceStorageUsage(
     const originalBytes = Number(actual?.originalBytes ?? 0)
     const derivedBytes = Number(actual?.derivedBytes ?? 0)
     const now = new Date()
-    if (isBillingEnabled()) {
+    const billingEnabled = isBillingEnabled()
+    if (billingEnabled) {
       await settleWorkspaceStorageRent(tx, workspaceId, now)
     }
     await tx
@@ -115,6 +123,7 @@ export async function reconcileWorkspaceStorageUsage(
           derivedBytes,
           lastReconciledAt: now,
           updatedAt: now,
+          ...(!billingEnabled ? { lastRentAt: now } : {}),
         },
       })
 

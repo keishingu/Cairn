@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE, normalizeMimeType, resolveStorageExtension } from '@/lib/attachments'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
@@ -45,6 +46,14 @@ export async function POST(req: Request) {
 
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
+
+  const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+  if (!entitlements.rights.canUploadOriginal) {
+    return NextResponse.json(
+      { error: 'ファイルをアップロードするには、残高のある有効な支援が必要です' },
+      { status: 403 },
+    )
+  }
 
   const ext = resolveStorageExtension(fileName, normalizedMime)
   const storagePath = `${ctx.workspaceId}/${channelId}/${crypto.randomUUID()}.${ext}`

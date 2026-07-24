@@ -34,15 +34,54 @@ SET file_id = duplicates.canonical_file_id
 FROM duplicate_file_map AS duplicates
 WHERE request.file_id = duplicates.duplicate_file_id;
 
-UPDATE document_chunks AS chunk
-SET source_id = duplicates.canonical_file_id
+-- 正規行にチャンクが無い場合だけ、重複行のうち1セットを引き継ぐ。
+-- 全セットを統合すると同じ文書の embedding が検索結果を埋め尽くす。
+CREATE TEMP TABLE duplicate_chunk_source_map ON COMMIT DROP AS
+SELECT DISTINCT ON (duplicates.canonical_file_id)
+  duplicates.duplicate_file_id,
+  duplicates.canonical_file_id
 FROM duplicate_file_map AS duplicates
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM document_chunks AS canonical_chunk
+  WHERE canonical_chunk.source_type = 'file'
+    AND canonical_chunk.source_id = duplicates.canonical_file_id
+)
+ORDER BY duplicates.canonical_file_id, duplicates.duplicate_file_id;
+
+UPDATE document_chunks AS chunk
+SET source_id = selected.canonical_file_id
+FROM duplicate_chunk_source_map AS selected
+WHERE chunk.source_type = 'file'
+  AND chunk.source_id = selected.duplicate_file_id;
+
+DELETE FROM document_chunks AS chunk
+USING duplicate_file_map AS duplicates
 WHERE chunk.source_type = 'file'
   AND chunk.source_id = duplicates.duplicate_file_id;
 
 DELETE FROM files AS file
 USING duplicate_file_map AS duplicates
 WHERE file.id = duplicates.duplicate_file_id;
+
+-- 削除した重複 bytes をそのまま家賃カウンタに残さない。履歴が無い移行時点で
+-- カーソルと端数をリセットし、存在しないストレージを遡って請求しない。
+UPDATE workspace_storage_usage AS usage
+SET
+  original_bytes = COALESCE((
+    SELECT SUM(file_size)
+    FROM files
+    WHERE workspace_id = usage.workspace_id
+  ), 0),
+  derived_bytes = COALESCE((
+    SELECT SUM(derived_file_size)
+    FROM files
+    WHERE workspace_id = usage.workspace_id
+  ), 0),
+  unbilled_rent_credits = 0,
+  last_rent_at = now(),
+  last_reconciled_at = now(),
+  updated_at = now();
 
 CREATE UNIQUE INDEX "files_workspace_storage_path_unique"
 ON "files" USING btree ("workspace_id", "storage_path");

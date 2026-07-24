@@ -10,6 +10,7 @@ const CHANNEL_ID = '20000000-0000-0000-0000-000000000001'
 const {
   mockGetAuthContext,
   mockRequireChannelAccess,
+  mockResolveUploadEntitlements,
   mockList,
   mockRemove,
   mockIsIndexable,
@@ -22,6 +23,7 @@ const {
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
+  mockResolveUploadEntitlements: vi.fn(),
   mockList: vi.fn(),
   mockRemove: vi.fn().mockResolvedValue({ error: null }),
   mockIsIndexable: vi.fn(),
@@ -37,6 +39,7 @@ const {
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({ requireChannelAccess: mockRequireChannelAccess }))
+vi.mock('@/lib/billing/entitlements', () => ({ resolveUploadEntitlements: mockResolveUploadEntitlements }))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
     storage: { from: () => ({ list: mockList, remove: mockRemove }) },
@@ -91,6 +94,7 @@ describe('/api/attachments/finalize のアクセス制御', () => {
       error: null,
     })
     mockList.mockResolvedValue({ data: [{ name: 'x.pdf', metadata: { size: 100 } }], error: null })
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: true } })
     mockInsertReturning.mockImplementation((values) => Promise.resolve([{ id: 'file-1', ...values }]))
   })
 
@@ -145,6 +149,24 @@ describe('/api/attachments/finalize のアクセス制御', () => {
 
     expect(res.status).toBe(400)
   })
+
+  it('原本保存の権利を失った場合はオブジェクトを削除して登録しない', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: false } })
+
+    const { POST } = await import('./route')
+    const res = await POST(post({
+      channelId: CHANNEL_ID,
+      storagePath: storagePathFor('x.pdf'),
+      fileName: 'x.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 100,
+    }))
+
+    expect(res.status).toBe(403)
+    expect(mockRemove).toHaveBeenCalledWith([storagePathFor('x.pdf')])
+    expect(mockInsertValues).not.toHaveBeenCalled()
+  })
 })
 
 describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {
@@ -154,6 +176,7 @@ describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {
       error: null,
     })
     mockRequireChannelAccess.mockResolvedValue(null)
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: true } })
     mockIsIndexable.mockReturnValue(true)
     mockCreateThumbnailFromStorage.mockResolvedValue(null)
   })
