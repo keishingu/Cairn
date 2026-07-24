@@ -100,7 +100,7 @@ export async function POST(req: Request) {
 
   try {
     const { db, files, channels } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { and, eq } = await import('drizzle-orm')
 
     // プロジェクトチャンネル経由のアップロードは projectId を紐付け、
     // プロジェクト削除時の CASCADE で files レコードも自動削除されるようにする
@@ -110,7 +110,7 @@ export async function POST(req: Request) {
       .where(eq(channels.id, channelId))
       .limit(1)
 
-    const inserted = await db.transaction(async (tx) => {
+    const finalized = await db.transaction(async (tx) => {
       const [file] = await tx
         .insert(files)
         .values({
@@ -124,8 +124,22 @@ export async function POST(req: Request) {
           fileType: resolveFileType(normalizedMime),
           metadata: thumbnailPath ? { thumbnailPath } : {},
         })
+        // 署名付きURLの完了通知はネットワーク再試行され得る。同一オブジェクトの
+        // 二重登録・使用量の二重加算を防ぐため、storagePath を冪等キーにする。
+        .onConflictDoNothing({ target: [files.workspaceId, files.storagePath] })
         .returning()
-      if (!file) throw new Error('Insert returned no rows')
+
+      if (!file) {
+        const [existing] = await tx
+          .select()
+          .from(files)
+          .where(
+            and(eq(files.workspaceId, ctx.workspaceId), eq(files.storagePath, storagePath)),
+          )
+          .limit(1)
+        if (!existing) throw new Error('Conflicted insert returned no rows')
+        return { file: existing, created: false }
+      }
 
       const { recordStorageUsageDelta } = await import('@/lib/billing/storage-usage')
       await recordStorageUsageDelta(
@@ -133,19 +147,19 @@ export async function POST(req: Request) {
         { originalBytes: actualSize, derivedBytes: 0 },
         tx,
       )
-      return file
+      return { file, created: true }
     })
 
-    if (!inserted) throw new Error('Insert returned no rows')
+    if (!finalized) throw new Error('Insert returned no rows')
 
     const { isIndexable } = await import('@/lib/ai/extract-text')
-    if (isIndexable(normalizedMime)) {
+    if (finalized.created && isIndexable(normalizedMime)) {
       try {
         const { inngest } = await import('@/lib/inngest/client')
         await inngest.send({
           name: 'file/uploaded',
           data: {
-            fileId: inserted.id,
+            fileId: finalized.file.id,
             workspaceId: ctx.workspaceId,
             mimeType: normalizedMime,
             storagePath,
@@ -158,12 +172,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json(
       {
-        fileId: inserted.id,
-        fileName: inserted.fileName,
-        mimeType: inserted.mimeType,
-        fileSize: inserted.fileSize,
+        fileId: finalized.file.id,
+        fileName: finalized.file.fileName,
+        mimeType: finalized.file.mimeType,
+        fileSize: finalized.file.fileSize,
       },
-      { status: 201 },
+      { status: finalized.created ? 201 : 200 },
     )
   } catch (err) {
     // DBインサート失敗時はストレージをロールバック（サムネがあれば併せて削除）

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "files_workspace_storage_path_unique" ON "files" USING btree ("workspace_id","storage_path");

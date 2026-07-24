@@ -16,7 +16,9 @@ const {
   mockInngestSend,
   mockCreateThumbnailFromStorage,
   mockInsertValues,
+  mockInsertReturning,
   mockRecordStorageUsageDelta,
+  mockTransactionSelectLimit,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -26,8 +28,10 @@ const {
   mockInngestSend: vi.fn().mockResolvedValue(undefined),
   mockCreateThumbnailFromStorage: vi.fn(),
   mockRecordStorageUsageDelta: vi.fn().mockResolvedValue(undefined),
+  mockInsertReturning: vi.fn(),
+  mockTransactionSelectLimit: vi.fn(),
   mockInsertValues: vi.fn((v: Record<string, unknown>) => ({
-    returning: vi.fn().mockResolvedValue([{ id: 'file-1', ...v }]),
+    onConflictDoNothing: () => ({ returning: () => mockInsertReturning(v) }),
   })),
 }))
 
@@ -54,15 +58,23 @@ vi.mock('@cairn/db', () => ({
     insert: () => ({
       values: mockInsertValues,
     }),
-    transaction: async (callback: (tx: { insert: () => { values: typeof mockInsertValues } }) => unknown) =>
+    transaction: async (callback: (tx: {
+      insert: () => { values: typeof mockInsertValues }
+      select: () => { from: () => { where: () => { limit: typeof mockTransactionSelectLimit } } }
+    }) => unknown) =>
       callback({
         insert: () => ({ values: mockInsertValues }),
+        select: () => ({
+          from: () => ({
+            where: () => ({ limit: mockTransactionSelectLimit }),
+          }),
+        }),
       }),
   },
   files: {},
   channels: { projectId: 'c.projectId', id: 'c.id' },
 }))
-vi.mock('drizzle-orm', () => ({ eq: vi.fn(() => 'eq') }))
+vi.mock('drizzle-orm', () => ({ and: vi.fn(() => 'and'), eq: vi.fn(() => 'eq') }))
 
 function post(body: unknown): Request {
   return { json: () => Promise.resolve(body) } as Request
@@ -79,6 +91,7 @@ describe('/api/attachments/finalize のアクセス制御', () => {
       error: null,
     })
     mockList.mockResolvedValue({ data: [{ name: 'x.pdf', metadata: { size: 100 } }], error: null })
+    mockInsertReturning.mockImplementation((values) => Promise.resolve([{ id: 'file-1', ...values }]))
   })
 
   afterEach(() => {
@@ -208,5 +221,28 @@ describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {
     expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
       metadata: { thumbnailPath: `${DEV_WORKSPACE_ID}/${CHANNEL_ID}/thumb/image.jpg` },
     }))
+  })
+
+  it('同じstoragePathの再試行は既存ファイルを返し、使用量と索引を重複させない', async () => {
+    mockList.mockResolvedValue({ data: [{ name: 'x.pdf', metadata: { size: 100 } }], error: null })
+    mockIsIndexable.mockReturnValue(true)
+    mockInsertReturning.mockResolvedValue([])
+    mockTransactionSelectLimit.mockResolvedValue([
+      { id: 'file-existing', fileName: 'x.pdf', mimeType: 'application/pdf', fileSize: 100 },
+    ])
+
+    const { POST } = await import('./route')
+    const res = await POST(post({
+      channelId: CHANNEL_ID,
+      storagePath: storagePathFor('x.pdf'),
+      fileName: 'x.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 100,
+    }))
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ fileId: 'file-existing' })
+    expect(mockRecordStorageUsageDelta).not.toHaveBeenCalled()
+    expect(mockInngestSend).not.toHaveBeenCalled()
   })
 })
