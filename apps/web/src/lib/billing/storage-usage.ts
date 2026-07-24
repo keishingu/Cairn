@@ -67,52 +67,58 @@ export async function recordStorageUsageDelta(
 export async function reconcileWorkspaceStorageUsage(
   workspaceId: string,
 ): Promise<StorageUsageReconciliation> {
-  const [actual] = await db
-    .select({
-      originalBytes: sql<string>`COALESCE(SUM(${files.fileSize}), 0)`,
-      derivedBytes: sql<string>`COALESCE(SUM(${files.derivedFileSize}), 0)`,
-    })
-    .from(files)
-    .where(eq(files.workspaceId, workspaceId))
+  return db.transaction(async (tx) => {
+    const [actual] = await tx
+      .select({
+        originalBytes: sql<string>`COALESCE(SUM(${files.fileSize}), 0)`,
+        derivedBytes: sql<string>`COALESCE(SUM(${files.derivedFileSize}), 0)`,
+      })
+      .from(files)
+      .where(eq(files.workspaceId, workspaceId))
 
-  const originalBytes = Number(actual?.originalBytes ?? 0)
-  const derivedBytes = Number(actual?.derivedBytes ?? 0)
-  const [current] = await db
-    .select({
-      originalBytes: workspaceStorageUsage.originalBytes,
-      derivedBytes: workspaceStorageUsage.derivedBytes,
-    })
-    .from(workspaceStorageUsage)
-    .where(eq(workspaceStorageUsage.workspaceId, workspaceId))
-    .limit(1)
+    const originalBytes = Number(actual?.originalBytes ?? 0)
+    const derivedBytes = Number(actual?.derivedBytes ?? 0)
+    const [current] = await tx
+      .select({
+        originalBytes: workspaceStorageUsage.originalBytes,
+        derivedBytes: workspaceStorageUsage.derivedBytes,
+      })
+      .from(workspaceStorageUsage)
+      .where(eq(workspaceStorageUsage.workspaceId, workspaceId))
+      .for('update')
+      .limit(1)
 
-  const now = new Date()
-  await db
-    .insert(workspaceStorageUsage)
-    .values({
-      workspaceId,
-      originalBytes,
-      derivedBytes,
-      lastReconciledAt: now,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: workspaceStorageUsage.workspaceId,
-      set: {
+    const now = new Date()
+    if (isBillingEnabled()) {
+      await settleWorkspaceStorageRent(tx, workspaceId, now)
+    }
+    await tx
+      .insert(workspaceStorageUsage)
+      .values({
+        workspaceId,
         originalBytes,
         derivedBytes,
         lastReconciledAt: now,
         updatedAt: now,
-      },
-    })
+      })
+      .onConflictDoUpdate({
+        target: workspaceStorageUsage.workspaceId,
+        set: {
+          originalBytes,
+          derivedBytes,
+          lastReconciledAt: now,
+          updatedAt: now,
+        },
+      })
 
-  return {
-    workspaceId,
-    originalBytes,
-    derivedBytes,
-    originalBytesDrift: originalBytes - (current?.originalBytes ?? 0),
-    derivedBytesDrift: derivedBytes - (current?.derivedBytes ?? 0),
-  }
+    return {
+      workspaceId,
+      originalBytes,
+      derivedBytes,
+      originalBytesDrift: originalBytes - (current?.originalBytes ?? 0),
+      derivedBytesDrift: derivedBytes - (current?.derivedBytes ?? 0),
+    }
+  })
 }
 
 /**

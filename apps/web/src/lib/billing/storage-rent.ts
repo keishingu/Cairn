@@ -71,6 +71,25 @@ export async function chargeWorkspaceStorageRent(
   return db.transaction(tx => settleWorkspaceStorageRent(tx, workspaceId, now))
 }
 
+export async function advanceWorkspaceStorageRentCursor(
+  tx: StorageRentTransaction,
+  workspaceId: string,
+  now = new Date(),
+): Promise<void> {
+  const [usage] = await tx
+    .select({ lastRentAt: workspaceStorageUsage.lastRentAt })
+    .from(workspaceStorageUsage)
+    .where(eq(workspaceStorageUsage.workspaceId, workspaceId))
+    .for('update')
+    .limit(1)
+  if (!usage || now <= usage.lastRentAt) return
+
+  await tx
+    .update(workspaceStorageUsage)
+    .set({ lastRentAt: now, updatedAt: now })
+    .where(eq(workspaceStorageUsage.workspaceId, workspaceId))
+}
+
 export async function chargeAllWorkspaceStorageRent(
   now = new Date(),
 ): Promise<StorageRentChargeResult[]> {
@@ -83,4 +102,15 @@ export async function chargeAllWorkspaceStorageRent(
     results.push(await chargeWorkspaceStorageRent(row.workspaceId, now))
   }
   return results
+}
+
+export async function advanceAllWorkspaceStorageRentCursors(now = new Date()): Promise<number> {
+  const rows = await db
+    .select({ workspaceId: workspaceStorageUsage.workspaceId })
+    .from(workspaceStorageUsage)
+
+  for (const row of rows) {
+    await db.transaction(tx => advanceWorkspaceStorageRentCursor(tx, row.workspaceId, now))
+  }
+  return rows.length
 }
