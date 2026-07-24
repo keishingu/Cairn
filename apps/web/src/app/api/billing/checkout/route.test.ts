@@ -32,6 +32,13 @@ vi.mock('@/lib/billing/stripe', () => ({
 }))
 vi.mock('@cairn/db', () => ({
   billingCustomers: { userId: 'bc.userId', stripeCustomerId: 'bc.stripeCustomerId' },
+  subscriptions: {
+    id: 's.id',
+    workspaceId: 's.workspaceId',
+    supporterUserId: 's.supporterUserId',
+    plan: 's.plan',
+    status: 's.status',
+  },
   db: {
     select: () => ({
       from: () => ({
@@ -45,7 +52,11 @@ vi.mock('@cairn/db', () => ({
     }),
   },
 }))
-vi.mock('drizzle-orm', () => ({ eq: vi.fn(() => 'eq') }))
+vi.mock('drizzle-orm', () => ({
+  and: vi.fn(() => 'and'),
+  eq: vi.fn(() => 'eq'),
+  inArray: vi.fn(() => 'inArray'),
+}))
 
 describe('POST /api/billing/checkout', () => {
   beforeEach(() => {
@@ -61,6 +72,7 @@ describe('POST /api/billing/checkout', () => {
 
   it('顧客作成の競合時は永続化済みCustomerでCheckoutを作成する', async () => {
     mockSelectLimit
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ stripeCustomerId: 'cus-persisted' }])
     mockInsertReturning.mockResolvedValue([])

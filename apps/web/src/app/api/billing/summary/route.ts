@@ -13,7 +13,7 @@ export interface BillingSummaryDto {
   workspaceState: 'unlimited' | 'funded' | 'weathered'
   originalBytes: number
   derivedBytes: number
-  hasActiveSubscription: boolean
+  hasManageableSubscription: boolean
 }
 
 export async function GET() {
@@ -30,13 +30,13 @@ export async function GET() {
       workspaceState: resolveWorkspaceState(0, false),
       originalBytes: 0,
       derivedBytes: 0,
-      hasActiveSubscription: false,
+      hasManageableSubscription: false,
     } satisfies BillingSummaryDto)
   }
 
   try {
     const { creditLedger, db, subscriptions, workspaceStorageUsage } = await import('@cairn/db')
-    const { and, eq, gt, sql } = await import('drizzle-orm')
+    const { and, eq, inArray, sql } = await import('drizzle-orm')
     const [[balance], [usage], [subscription]] = await Promise.all([
       db
         .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
@@ -58,8 +58,7 @@ export async function GET() {
             eq(subscriptions.workspaceId, ctx.workspaceId),
             eq(subscriptions.supporterUserId, ctx.userId),
             eq(subscriptions.plan, 'individual'),
-            eq(subscriptions.status, 'active'),
-            gt(subscriptions.currentPeriodEnd, new Date()),
+            inArray(subscriptions.status, ['active', 'past_due']),
           ),
         )
         .limit(1),
@@ -71,7 +70,7 @@ export async function GET() {
       workspaceState: resolveWorkspaceState(creditBalance, true),
       originalBytes: usage?.originalBytes ?? 0,
       derivedBytes: usage?.derivedBytes ?? 0,
-      hasActiveSubscription: subscription !== undefined,
+      hasManageableSubscription: subscription !== undefined,
     } satisfies BillingSummaryDto)
   } catch (err) {
     console.error('[/api/billing/summary GET]', err)

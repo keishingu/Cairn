@@ -1521,7 +1521,7 @@ const SettingsBilling = () => {
                   : 'クレジットでオリジナルを保管できます。'}
               </div>
             </div>
-            {billingQuery.data.hasActiveSubscription ? (
+            {billingQuery.data.hasManageableSubscription ? (
               <button className="btn" style={{ height: 32, fontSize: 12.5 }} onClick={() => void openPortal()} disabled={billingAction !== null}>
                 {billingAction === 'portal' ? '移動中…' : '購読を管理'}
               </button>

@@ -44,9 +44,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'ワークスペースへのアクセス権がありません' }, { status: 403 })
 
   try {
-    const { billingCustomers, db } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { billingCustomers, db, subscriptions } = await import('@cairn/db')
+    const { and, eq, inArray } = await import('drizzle-orm')
     const stripe = getStripeClient()
+    const [existingSubscription] = await db
+      .select({ id: subscriptions.id })
+      .from(subscriptions)
+      .where(
+        and(
+          eq(subscriptions.workspaceId, ctx.workspaceId),
+          eq(subscriptions.supporterUserId, ctx.userId),
+          eq(subscriptions.plan, 'individual'),
+          inArray(subscriptions.status, ['active', 'past_due']),
+        ),
+      )
+      .limit(1)
+    if (existingSubscription) {
+      return NextResponse.json(
+        { error: '既存の購読は請求管理画面から変更してください' },
+        { status: 409 },
+      )
+    }
+
     const [existingCustomer] = await db
       .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
       .from(billingCustomers)
