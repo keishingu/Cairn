@@ -9,8 +9,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getSettingsNavGroups,
   isSettingsSection,
+  resolveCreditPackFulfillmentPolling,
   SettingsSectionContent,
-  shouldPollCreditPackFulfillment,
 } from './settings'
 
 const { fetchWithAuth, processImageForUpload } = vi.hoisted(() => ({
@@ -220,19 +220,32 @@ describe('SettingsSectionContent', () => {
 describe('クレジットパック購入後の確認', () => {
   it('Checkoutの返却時は台帳記帳を確認できるまで残高を再取得する', () => {
     expect(
-      shouldPollCreditPackFulfillment({
+      resolveCreditPackFulfillmentPolling({
         isCreditPackReturn: true,
         sessionId: 'cs_credit_pack',
         fulfilled: false,
+        startedAt: 0,
+        now: 1,
       }),
-    ).toBe(true)
+    ).toBe('polling')
     expect(
-      shouldPollCreditPackFulfillment({
+      resolveCreditPackFulfillmentPolling({
         isCreditPackReturn: true,
         sessionId: 'cs_credit_pack',
         fulfilled: true,
+        startedAt: 0,
+        now: 1,
       }),
-    ).toBe(false)
+    ).toBe('fulfilled')
+    expect(
+      resolveCreditPackFulfillmentPolling({
+        isCreditPackReturn: true,
+        sessionId: 'cs_credit_pack',
+        fulfilled: false,
+        startedAt: 0,
+        now: 60_000,
+      }),
+    ).toBe('timed_out')
   })
 })
 

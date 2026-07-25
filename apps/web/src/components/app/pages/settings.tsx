@@ -2087,13 +2087,18 @@ import type { BillingSummaryDto } from '@/app/api/billing/summary/route'
 import { BILLING_CONFIG } from '@cairn/core/billing'
 
 const FREE_TIER_REFERENCE_GB = 10
+const CREDIT_PACK_FULFILLMENT_TIMEOUT_MS = 60_000
 
-export function shouldPollCreditPackFulfillment(input: {
+export function resolveCreditPackFulfillmentPolling(input: {
   isCreditPackReturn: boolean
   sessionId: string | null
   fulfilled: boolean | null | undefined
-}): boolean {
-  return input.isCreditPackReturn && input.sessionId !== null && input.fulfilled !== true
+  startedAt: number
+  now: number
+}): 'idle' | 'polling' | 'fulfilled' | 'timed_out' {
+  if (!input.isCreditPackReturn || input.sessionId === null) return 'idle'
+  if (input.fulfilled === true) return 'fulfilled'
+  return input.now - input.startedAt < CREDIT_PACK_FULFILLMENT_TIMEOUT_MS ? 'polling' : 'timed_out'
 }
 
 const SettingsBilling = () => {
@@ -2104,6 +2109,7 @@ const SettingsBilling = () => {
   const searchParams = useSearchParams()
   const creditPackSessionId = searchParams.get('credit_pack_session_id')
   const isCreditPackReturn = searchParams.get('credit_pack') === 'success'
+  const creditPackPollingStartedAt = React.useRef(Date.now())
   const { data, isLoading, isError } = useQuery({
     queryKey: ['workspace-storage-usage'],
     queryFn: async () => {
@@ -2123,13 +2129,23 @@ const SettingsBilling = () => {
       return res.json() as Promise<BillingSummaryDto>
     },
     refetchInterval: (query) =>
-      shouldPollCreditPackFulfillment({
+      resolveCreditPackFulfillmentPolling({
         isCreditPackReturn,
         sessionId: creditPackSessionId,
         fulfilled: query.state.data?.creditPackFulfilled,
+        startedAt: creditPackPollingStartedAt.current,
+        now: Date.now(),
       })
+        === 'polling'
         ? 2_000
         : false,
+  })
+  const creditPackFulfillmentState = resolveCreditPackFulfillmentPolling({
+    isCreditPackReturn,
+    sessionId: creditPackSessionId,
+    fulfilled: billingQuery.data?.creditPackFulfilled,
+    startedAt: creditPackPollingStartedAt.current,
+    now: Date.now(),
   })
 
   const beginCheckout = async () => {
@@ -2272,13 +2288,15 @@ const SettingsBilling = () => {
         </div>
       )}
 
-      {shouldPollCreditPackFulfillment({
-        isCreditPackReturn,
-        sessionId: creditPackSessionId,
-        fulfilled: billingQuery.data?.creditPackFulfilled,
-      }) && (
+      {creditPackFulfillmentState === 'polling' && (
         <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-3)' }}>
           決済を確認しています。クレジット残高は自動で更新されます。
+        </div>
+      )}
+
+      {creditPackFulfillmentState === 'timed_out' && (
+        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
+          ⚠ 決済の反映を確認できませんでした。数分後に再読み込みし、解消しない場合はサポートへお問い合わせください。
         </div>
       )}
 
