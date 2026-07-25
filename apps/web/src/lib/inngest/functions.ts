@@ -415,6 +415,55 @@ export const deleteStorageObjects = inngest.createFunction(
   },
 )
 
+export const runStorageDeletionJob = inngest.createFunction(
+  { id: 'run-storage-deletion-job' },
+  { event: 'storage/deletion.requested' },
+  async ({ event, step }) => {
+    const { jobId } = event.data as { jobId: string }
+    const { db, storageDeletionJobs } = await import('@cairn/db')
+    const { eq } = await import('drizzle-orm')
+    const [job] = await db
+      .select({ targets: storageDeletionJobs.targets })
+      .from(storageDeletionJobs)
+      .where(eq(storageDeletionJobs.id, jobId))
+      .limit(1)
+    if (!job) return { deleted: 0 }
+
+    let deleted = 0
+    for (const { bucket, paths } of job.targets) {
+      for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+        const batch = paths.slice(i, i + BATCH_SIZE)
+        await step.run(`delete-${bucket}-batch-${i}`, async () => {
+          const supabase = createServiceRoleClient()
+          const { data, error } = await supabase.storage.from(bucket).remove(batch)
+          if (error) throw error
+          deleted += data?.length ?? 0
+        })
+      }
+    }
+    await db.delete(storageDeletionJobs).where(eq(storageDeletionJobs.id, jobId))
+    return { deleted }
+  },
+)
+
+export const requeueStorageDeletionJobs = inngest.createFunction(
+  { id: 'requeue-storage-deletion-jobs' },
+  { cron: 'TZ=Asia/Tokyo */15 * * * *' },
+  async () => {
+    const { db, storageDeletionJobs } = await import('@cairn/db')
+    const rows = await db
+      .select({ id: storageDeletionJobs.id })
+      .from(storageDeletionJobs)
+      .limit(100)
+    if (rows.length > 0) {
+      await inngest.send(
+        rows.map((row) => ({ name: 'storage/deletion.requested', data: { jobId: row.id } })),
+      )
+    }
+    return { enqueued: rows.length }
+  },
+)
+
 // 既存の画像ファイルにサムネを後付け生成する。1回の実行で BACKFILL_BATCH 件だけ処理し、
 // 残りがあれば自身を再送して継続する（長時間実行・タイムアウトを避けるため）。
 const BACKFILL_BATCH = 50

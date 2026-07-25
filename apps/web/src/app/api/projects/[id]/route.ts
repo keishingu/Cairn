@@ -21,6 +21,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       messages,
       messageAttachments,
       galleryItems,
+      storageDeletionJobs,
       uploadRequests,
     } = await import('@cairn/db')
     const { eq, and, inArray, isNull, or } = await import('drizzle-orm')
@@ -38,9 +39,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const forbidden = requireRole(ctx.role, 'admin')
     if (forbidden) return forbidden
 
-    const { inngest } = await import('@/lib/inngest/client')
-
     const deleted = await db.transaction(async (tx) => {
+      let deletionJobId: string | null = null
       // CASCADE の直前にプロジェクトをロックし、同じトランザクションで対象ファイルを
       // 集計・家賃精算する。日次 reconciliation まで古い使用量を請求し続けない。
       const [lockedProject] = await tx
@@ -114,7 +114,12 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
           : null,
       ].filter((target): target is { bucket: string; paths: string[] } => target !== null)
       if (deletionTargets.length > 0) {
-        await inngest.send({ name: 'storage/objects.delete', data: { targets: deletionTargets } })
+        const [job] = await tx
+          .insert(storageDeletionJobs)
+          .values({ targets: deletionTargets })
+          .returning({ id: storageDeletionJobs.id })
+        if (!job) throw new Error('storage deletion outbox insert returned no rows')
+        deletionJobId = job.id
       }
 
       // gallery_items とのJOINで同じ files 行が複数現れ得るため、使用量は file ID ごとに
@@ -146,10 +151,24 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         .returning({ id: projects.id })
       if (!removedProject) return null
 
-      return true
+      return { deletionJobId }
     })
 
     if (!deleted) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+
+    if (deleted.deletionJobId) {
+      try {
+        const { inngest } = await import('@/lib/inngest/client')
+        await inngest.send({
+          name: 'storage/deletion.requested',
+          data: { jobId: deleted.deletionJobId },
+        })
+      } catch (sendError) {
+        // ジョブはコミット済みのため、cron が再送する。削除済みプロジェクトを 500 にしても
+        // クライアント再試行では回復できないため、成功として返す。
+        console.error('[DELETE /api/projects/[id]] storage deletion enqueue failed:', sendError)
+      }
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {

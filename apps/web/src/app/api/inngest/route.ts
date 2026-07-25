@@ -16,6 +16,8 @@ import {
   onTaskAssigned,
   reconcileAiNudgesHeartbeat,
   reconcileWorkspaceStorageUsageDaily,
+  requeueStorageDeletionJobs,
+  runStorageDeletionJob,
   scanAiNudgesPhaseTwo,
 } from '@/lib/inngest/functions'
 
@@ -40,6 +42,8 @@ const fns = [
   onTaskAssigned,
   reconcileAiNudgesHeartbeat,
   reconcileWorkspaceStorageUsageDaily,
+  requeueStorageDeletionJobs,
+  runStorageDeletionJob,
   scanAiNudgesPhaseTwo,
 ]
 const host = resolveServeHost()
