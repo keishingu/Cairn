@@ -151,7 +151,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         { status: 403 },
       )
     }
-    if (entitlements.workspaceState !== 'funded') {
+    if (entitlements.creditBalance < BILLING_CONFIG.activeAiRequestCredits) {
       return NextResponse.json(
         {
           error: 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。',
@@ -365,8 +365,7 @@ export async function POST(req: Request, { params }: RouteContext) {
                 ...(annotations.length > 0 ? { annotations } : {}),
                 ...(toolInvocations.length > 0 ? { toolInvocations } : {}),
               })
-              // 事前確認後に生成を完了してから記帳する。並行リクエストでは僅かな
-              // マイナスを許容し、次回の依頼をブロックする設計である。
+              // 生成開始前に必要残高を確認したうえで、成功した依頼だけを記帳する。
               if (isBillingEnabled()) {
                 await tx.insert(creditLedger).values({
                   workspaceId: ctx.workspaceId,

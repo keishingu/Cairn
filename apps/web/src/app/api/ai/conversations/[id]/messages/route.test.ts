@@ -103,4 +103,27 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
         'AIへの依頼は、石を積んでいるメンバーのみ利用できます。設定の請求から石を積んでください。',
     })
   })
+
+  it('課金環境では必要クレジット未満の能動AI依頼を拒否する', async () => {
+    mockIsBillingEnabled.mockReturnValue(true)
+    mockResolveUploadEntitlements.mockResolvedValue({
+      isActiveSupporter: true,
+      creditBalance: 9,
+    })
+    const { POST } = await import('./route')
+
+    const response = await POST(
+      new Request('http://localhost/api/ai/conversations/conv/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: 'user', content: '質問' }] }),
+      }),
+      { params: Promise.resolve({ id: 'conv-1' }) },
+    )
+
+    expect(response.status).toBe(402)
+    await expect(response.json()).resolves.toEqual({
+      error: 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。',
+    })
+  })
 })
