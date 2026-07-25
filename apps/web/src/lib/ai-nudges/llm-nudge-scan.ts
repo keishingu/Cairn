@@ -16,6 +16,7 @@ import {
   projects,
   tasks,
   workspaces,
+  type AiNudgeStatus,
 } from '@cairn/db'
 import { BILLING_CONFIG } from '@cairn/core/billing'
 import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
@@ -151,18 +152,18 @@ export function resolvePhaseTwoScanCandidateBudget(creditBalance: number): numbe
   return Math.max(0, Math.floor(creditBalance / BILLING_CONFIG.heartbeatAiDeliveryCredits))
 }
 
-export function limitPhaseTwoPrimaryCandidates<T>(candidates: readonly T[], budget: number): {
-  candidates: T[]
-  hasDeferredCandidates: boolean
-} {
-  const limit = Math.max(0, budget)
-  return {
-    candidates: candidates.slice(0, limit),
-    hasDeferredCandidates: candidates.length > limit,
-  }
+export function blocksPhaseTwoCandidateRefinement(
+  status: AiNudgeStatus,
+  remindAfter: Date | null,
+  now: Date,
+): boolean {
+  return !(
+    (status === 'dismissed' || status === 'suppressed') &&
+    (remindAfter === null || remindAfter.getTime() <= now.getTime())
+  )
 }
 
-// 同じ根拠に対する active なナッジは既に配信済みなので、残高枠を消費して再精査しない。
+// 同じ根拠に対して現在は配信できないナッジは、残高枠を消費して再精査しない。
 // これにより、カーソル保持後の再巡回でも未処理候補へ順に進める。
 export async function excludeDeliveredPhaseTwoPrimaryCandidates(
   input: PhaseTwoChannelInput,
@@ -170,14 +171,19 @@ export async function excludeDeliveredPhaseTwoPrimaryCandidates(
 ): Promise<PhaseTwoPrimaryCandidate[]> {
   if (candidates.length === 0) return []
   const messageIds = [...new Set(candidates.map((candidate) => candidate.sourceMessageId))]
-  const delivered = await db
-    .select({ detector: aiNudges.detector, messageId: aiNudges.messageId })
+  const now = new Date()
+  const existing = await db
+    .select({
+      detector: aiNudges.detector,
+      messageId: aiNudges.messageId,
+      status: aiNudges.status,
+      remindAfter: aiNudges.remindAfter,
+    })
     .from(aiNudges)
     .where(
       and(
         eq(aiNudges.workspaceId, input.workspaceId),
         eq(aiNudges.channelId, input.channelId),
-        eq(aiNudges.status, 'active'),
         inArray(aiNudges.messageId, messageIds),
         inArray(
           aiNudges.detector,
@@ -185,13 +191,16 @@ export async function excludeDeliveredPhaseTwoPrimaryCandidates(
         ),
       ),
     )
-  const deliveredTargets = new Set(
-    delivered.flatMap((candidate) =>
-      candidate.messageId ? [`${candidate.detector}:${candidate.messageId}`] : [],
+  const blockedTargets = new Set(
+    existing.flatMap((candidate) =>
+      candidate.messageId &&
+      blocksPhaseTwoCandidateRefinement(candidate.status, candidate.remindAfter, now)
+        ? [`${candidate.detector}:${candidate.messageId}`]
+        : [],
     ),
   )
   return candidates.filter(
-    (candidate) => !deliveredTargets.has(`${candidate.detector}:${candidate.sourceMessageId}`),
+    (candidate) => !blockedTargets.has(`${candidate.detector}:${candidate.sourceMessageId}`),
   )
 }
 

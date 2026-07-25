@@ -3,8 +3,8 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  blocksPhaseTwoCandidateRefinement,
   hasCreditsForPhaseTwoScan,
-  limitPhaseTwoPrimaryCandidates,
   resolvePhaseTwoScanCandidateBudget,
 } from './llm-nudge-scan'
 
@@ -21,10 +21,13 @@ describe('Phase 2 スキャンのクレジット判定', () => {
     expect(resolvePhaseTwoScanCandidateBudget(29)).toBe(2)
   })
 
-  it('候補枠を越える精査は次回へ繰り越す', () => {
-    expect(limitPhaseTwoPrimaryCandidates(['first', 'second', 'third'], 2)).toEqual({
-      candidates: ['first', 'second'],
-      hasDeferredCandidates: true,
-    })
+  it('active・resolved・再通知待ちの候補は精査前に除外する', () => {
+    const now = new Date('2026-07-25T00:00:00.000Z')
+    expect(blocksPhaseTwoCandidateRefinement('active', null, now)).toBe(true)
+    expect(blocksPhaseTwoCandidateRefinement('resolved', null, now)).toBe(true)
+    expect(
+      blocksPhaseTwoCandidateRefinement('dismissed', new Date('2026-07-26T00:00:00.000Z'), now),
+    ).toBe(true)
+    expect(blocksPhaseTwoCandidateRefinement('suppressed', null, now)).toBe(false)
   })
 })
