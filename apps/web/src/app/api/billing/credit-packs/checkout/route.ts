@@ -22,6 +22,26 @@ export function isConfiguredCreditPackPrice(price: {
   )
 }
 
+type CreditPackCheckoutSession = {
+  id: string
+  url: string | null
+  metadata: Record<string, string> | null
+}
+
+export function isReusableCreditPackCheckout(
+  session: CreditPackCheckoutSession,
+  input: { workspaceId: string; supporterUserId: string; priceId: string },
+): boolean {
+  return (
+    session.metadata?.['workspaceId'] === input.workspaceId &&
+    session.metadata?.['supporterUserId'] === input.supporterUserId &&
+    session.metadata?.['purchaseType'] === 'credit_pack' &&
+    session.metadata?.['creditPackCredits'] === String(BILLING_CONFIG.creditPackCredits) &&
+    session.metadata?.['creditPackPriceId'] === input.priceId &&
+    session.metadata?.['creditPackAmountJpy'] === String(BILLING_CONFIG.creditPackPriceJpy)
+  )
+}
+
 export async function POST(request: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -85,22 +105,33 @@ export async function POST(request: Request) {
         return { error: 'クレジットの追加は、石を積んでいるメンバーのみ利用できます' }
       }
 
+      const creditPackPriceId = getCreditPackPriceId()
       const openSessions = await stripe.checkout.sessions.list({
         customer: customerId,
         status: 'open',
         limit: 100,
       })
-      const openSession = openSessions.data.find(
+      const relevantOpenSessions = openSessions.data.filter(
         (session) =>
           session.metadata?.['workspaceId'] === ctx.workspaceId &&
           session.metadata?.['supporterUserId'] === ctx.userId &&
           session.metadata?.['purchaseType'] === 'credit_pack',
       )
-      if (openSession?.url) return { url: openSession.url }
-      if (openSession) return { error: '決済画面の準備中です。少し待ってから再試行してください' }
+      const reusableSession = relevantOpenSessions.find((session) =>
+        isReusableCreditPackCheckout(session, {
+          workspaceId: ctx.workspaceId,
+          supporterUserId: ctx.userId,
+          priceId: creditPackPriceId,
+        }),
+      )
+      if (reusableSession?.url) return { url: reusableSession.url }
+      if (reusableSession) return { error: '決済画面の準備中です。少し待ってから再試行してください' }
+
+      // 旧実装が作成した不完全なセッションを再利用すると、Webhook が決済内容を検証できず、
+      // 支払い済みでもクレジットを付与できない。新規作成前に失効させる。
+      await Promise.all(relevantOpenSessions.map((session) => stripe.checkout.sessions.expire(session.id)))
 
       const appUrl = resolveApplicationUrl(request)
-      const creditPackPriceId = getCreditPackPriceId()
       const creditPackPrice = await stripe.prices.retrieve(creditPackPriceId)
       if (!isConfiguredCreditPackPrice(creditPackPrice)) {
         throw new Error(`Configured credit pack Price ${creditPackPriceId} does not match billing config`)

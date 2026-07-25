@@ -9,6 +9,7 @@ const {
   mockStripePriceRetrieve,
   mockStripeSessionsList,
   mockStripeSessionsCreate,
+  mockStripeSessionsExpire,
   mockSelectLimit,
   mockTransaction,
 } = vi.hoisted(() => ({
@@ -17,6 +18,7 @@ const {
   mockStripePriceRetrieve: vi.fn(),
   mockStripeSessionsList: vi.fn(),
   mockStripeSessionsCreate: vi.fn(),
+  mockStripeSessionsExpire: vi.fn(),
   mockSelectLimit: vi.fn(),
   mockTransaction: vi.fn(),
 }))
@@ -28,7 +30,13 @@ vi.mock('@/lib/billing/stripe', () => ({
   getCreditPackPriceId: () => 'price_credit_pack',
   getStripeClient: () => ({
     prices: { retrieve: mockStripePriceRetrieve },
-    checkout: { sessions: { create: mockStripeSessionsCreate, list: mockStripeSessionsList } },
+    checkout: {
+      sessions: {
+        create: mockStripeSessionsCreate,
+        expire: mockStripeSessionsExpire,
+        list: mockStripeSessionsList,
+      },
+    },
   }),
   resolveApplicationUrl: () => 'https://cairn.example',
 }))
@@ -74,6 +82,7 @@ describe('POST /api/billing/credit-packs/checkout', () => {
     })
     mockStripeSessionsList.mockResolvedValue({ data: [] })
     mockStripeSessionsCreate.mockResolvedValue({ url: 'https://checkout.stripe.test/session' })
+    mockStripeSessionsExpire.mockResolvedValue({})
     mockTransaction.mockImplementation(async (callback) =>
       callback({
         execute: vi.fn().mockResolvedValue(undefined),
@@ -144,5 +153,33 @@ describe('POST /api/billing/credit-packs/checkout', () => {
 
     expect(res.status).toBe(500)
     expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
+  })
+
+  it('決済内容を検証できない旧Checkoutを失効して新規作成する', async () => {
+    mockSelectLimit
+      .mockResolvedValueOnce([{ stripeCustomerId: 'cus-existing' }])
+      .mockResolvedValueOnce([{ id: 'sub-1' }])
+    mockStripeSessionsList.mockResolvedValue({
+      data: [
+        {
+          id: 'cs-legacy',
+          url: 'https://checkout.stripe.test/legacy',
+          metadata: {
+            workspaceId: 'workspace-1',
+            supporterUserId: 'user-1',
+            purchaseType: 'credit_pack',
+          },
+        },
+      ],
+    })
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('https://cairn.example/api/billing/credit-packs/checkout', { method: 'POST' }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(mockStripeSessionsExpire).toHaveBeenCalledWith('cs-legacy')
+    expect(mockStripeSessionsCreate).toHaveBeenCalledOnce()
   })
 })
