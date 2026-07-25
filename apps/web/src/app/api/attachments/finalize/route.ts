@@ -2,14 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { ALLOWED_MIME_TYPES, FREE_ATTACHMENT_MAX_FILE_SIZE, normalizeMimeType, resolveFileType } from '@/lib/attachments'
+import { BILLING_CONFIG } from '@cairn/core/billing'
+import {
+  ALLOWED_MIME_TYPES,
+  FREE_ATTACHMENT_MAX_FILE_SIZE,
+  normalizeMimeType,
+  resolveFileType,
+} from '@/lib/attachments'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
-const LARGE_FILE_ENTITLEMENT_ERROR = 'large-file-entitlement-required'
+const PAID_STORAGE_ENTITLEMENT_ERROR = 'paid-storage-entitlement-required'
 
 // 署名付きURLでのアップロード(upload-url)完了後、files レコードを登録し
 // 検索インデックスジョブを発火する。ファイル本体はここを通らないため
@@ -66,7 +72,8 @@ export async function POST(req: Request) {
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
-  const { creditLedger, db, files, subscriptions } = await import('@cairn/db')
+  const { creditLedger, db, files, subscriptions, workspaceStorageUsage } =
+    await import('@cairn/db')
   const { and, eq, gt, sql } = await import('drizzle-orm')
 
   // 応答喪失後の再試行は、現在の支援・残高が失効していても既に確定済みの
@@ -94,6 +101,30 @@ export async function POST(req: Request) {
   }
 
   const supabase = createServiceRoleClient()
+  const removeIfUnfinalized = async (paths: string[]) =>
+    db.transaction(async (tx) => {
+      // 削除する間も成功側の finalize を直列化する。同じパスの成功側が、この判定の後に
+      // files 行を確定してからオブジェクトだけ削除される競合を防ぐ。
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`attachment:${ctx.workspaceId}:${storagePath}`}, 0))`,
+      )
+      const [file] = await tx
+        .select({
+          id: files.id,
+          fileName: files.fileName,
+          mimeType: files.mimeType,
+          fileSize: files.fileSize,
+        })
+        .from(files)
+        .where(and(eq(files.workspaceId, ctx.workspaceId), eq(files.storagePath, storagePath)))
+        .limit(1)
+      if (file) return file
+
+      const { error: removeError } = await supabase.storage.from('chat-attachments').remove(paths)
+      if (removeError)
+        throw new Error(`Failed to remove rejected attachment: ${removeError.message}`)
+      return null
+    })
 
   // アップロードが実際に完了しているか確認し、権威あるファイルサイズを取得する
   // （クライアント申告値のなりすまし・アップロード未完了での登録を防ぐ）
@@ -122,24 +153,32 @@ export async function POST(req: Request) {
   if (actualSize > FREE_ATTACHMENT_MAX_FILE_SIZE) {
     const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
     if (!entitlements.rights.canUploadLargeFile) {
-      // 成功側も同じ advisory lock を取得する。判定後に並行 finalize が確定しても
-      // そのオブジェクトを削除しない。
-      const committed = await db.transaction(async (tx) => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`attachment:${ctx.workspaceId}:${storagePath}`}, 0))`)
-        const [file] = await tx
-          .select({ id: files.id, fileName: files.fileName, mimeType: files.mimeType, fileSize: files.fileSize })
-          .from(files)
-          .where(and(eq(files.workspaceId, ctx.workspaceId), eq(files.storagePath, storagePath)))
-          .limit(1)
-        return file ?? null
-      })
+      let committed: {
+        id: string
+        fileName: string
+        mimeType: string | null
+        fileSize: number | null
+      } | null
+      try {
+        committed = await removeIfUnfinalized([storagePath])
+      } catch (cleanupError) {
+        console.error('[/api/attachments/finalize] Rejected object cleanup failed:', cleanupError)
+        return NextResponse.json(
+          { error: 'アップロード済みファイルの削除に失敗しました' },
+          { status: 500 },
+        )
+      }
       if (committed) {
         return NextResponse.json(
-          { fileId: committed.id, fileName: committed.fileName, mimeType: committed.mimeType, fileSize: committed.fileSize },
+          {
+            fileId: committed.id,
+            fileName: committed.fileName,
+            mimeType: committed.mimeType,
+            fileSize: committed.fileSize,
+          },
           { status: 200 },
         )
       }
-      await supabase.storage.from('chat-attachments').remove([storagePath])
       return NextResponse.json(
         { error: '5MBを超えるファイルを保存するには、残高のある有効な支援が必要です' },
         { status: 403 },
@@ -168,33 +207,54 @@ export async function POST(req: Request) {
       .limit(1)
 
     const finalized = await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`attachment:${ctx.workspaceId}:${storagePath}`}, 0))`)
-      if (isBillingEnabled() && actualSize > FREE_ATTACHMENT_MAX_FILE_SIZE) {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`attachment:${ctx.workspaceId}:${storagePath}`}, 0))`,
+      )
+      if (isBillingEnabled()) {
+        // 使用量行を先に作成してロックする。これにより初回アップロード同士でも無料枠の
+        // 超過判定が競合せず、以後の使用量加算まで同じ行を直列化できる。
+        await tx
+          .insert(workspaceStorageUsage)
+          .values({ workspaceId: ctx.workspaceId })
+          .onConflictDoNothing()
+
         // 既存容量の家賃を先に精算して usage 行をロックし、残高を同じTXで再判定する。
         // これにより複数の大容量 finalize が同じ古い残高を同時に消費できない。
         const { settleWorkspaceStorageRent } = await import('@/lib/billing/storage-rent')
         await settleWorkspaceStorageRent(tx, ctx.workspaceId)
-        const [[balance], [subscription]] = await Promise.all([
-          tx
-            .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
-            .from(creditLedger)
-            .where(eq(creditLedger.workspaceId, ctx.workspaceId)),
-          tx
-            .select({ id: subscriptions.id })
-            .from(subscriptions)
-            .where(
-              and(
-                eq(subscriptions.workspaceId, ctx.workspaceId),
-                eq(subscriptions.supporterUserId, ctx.userId),
-                    eq(subscriptions.plan, 'individual'),
-                    eq(subscriptions.status, 'active'),
-                    gt(subscriptions.currentPeriodEnd, new Date()),
-              ),
-            )
-            .limit(1),
-        ])
-        if (!subscription || Number(balance?.balance ?? 0) <= 0) {
-          throw new Error(LARGE_FILE_ENTITLEMENT_ERROR)
+        const [usage] = await tx
+          .select({ originalBytes: workspaceStorageUsage.originalBytes })
+          .from(workspaceStorageUsage)
+          .where(eq(workspaceStorageUsage.workspaceId, ctx.workspaceId))
+          .for('update')
+          .limit(1)
+        const exceedsFreeStorageAllowance =
+          Number(usage?.originalBytes ?? 0) + actualSize > BILLING_CONFIG.freeStorageBytes
+        const requiresPaidStorage =
+          actualSize > FREE_ATTACHMENT_MAX_FILE_SIZE || exceedsFreeStorageAllowance
+        if (requiresPaidStorage) {
+          const [[balance], [subscription]] = await Promise.all([
+            tx
+              .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
+              .from(creditLedger)
+              .where(eq(creditLedger.workspaceId, ctx.workspaceId)),
+            tx
+              .select({ id: subscriptions.id })
+              .from(subscriptions)
+              .where(
+                and(
+                  eq(subscriptions.workspaceId, ctx.workspaceId),
+                  eq(subscriptions.supporterUserId, ctx.userId),
+                  eq(subscriptions.plan, 'individual'),
+                  eq(subscriptions.status, 'active'),
+                  gt(subscriptions.currentPeriodEnd, new Date()),
+                ),
+              )
+              .limit(1),
+          ])
+          if (!subscription || Number(balance?.balance ?? 0) <= 0) {
+            throw new Error(PAID_STORAGE_ENTITLEMENT_ERROR)
+          }
         }
       }
       const [file] = await tx
@@ -219,9 +279,7 @@ export async function POST(req: Request) {
         const [existing] = await tx
           .select()
           .from(files)
-          .where(
-            and(eq(files.workspaceId, ctx.workspaceId), eq(files.storagePath, storagePath)),
-          )
+          .where(and(eq(files.workspaceId, ctx.workspaceId), eq(files.storagePath, storagePath)))
           .limit(1)
         if (!existing) throw new Error('Conflicted insert returned no rows')
         return { file: existing, created: false }
@@ -267,23 +325,21 @@ export async function POST(req: Request) {
     )
   } catch (err) {
     // 競合した別 finalize が確定済みなら、そのオブジェクトをロールバックしてはならない。
-    const committed = await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`attachment:${ctx.workspaceId}:${storagePath}`}, 0))`)
-      const [file] = await tx
-        .select({ id: files.id })
-        .from(files)
-        .where(and(eq(files.workspaceId, ctx.workspaceId), eq(files.storagePath, storagePath)))
-        .limit(1)
-      return file ?? null
-    })
-    if (!committed) {
-      await supabase.storage
-        .from('chat-attachments')
-        .remove(thumbnailPath ? [storagePath, thumbnailPath] : [storagePath])
-    }
-    if (err instanceof Error && err.message === LARGE_FILE_ENTITLEMENT_ERROR) {
+    try {
+      await removeIfUnfinalized(thumbnailPath ? [storagePath, thumbnailPath] : [storagePath])
+    } catch (cleanupError) {
+      console.error(
+        '[/api/attachments/finalize] Failed to clean up failed attachment:',
+        cleanupError,
+      )
       return NextResponse.json(
-        { error: '5MBを超えるファイルを保存するには、残高のある有効な支援が必要です' },
+        { error: 'アップロード済みファイルの削除に失敗しました' },
+        { status: 500 },
+      )
+    }
+    if (err instanceof Error && err.message === PAID_STORAGE_ENTITLEMENT_ERROR) {
+      return NextResponse.json(
+        { error: '無料容量を超えて保存するには、残高のある有効な支援が必要です' },
         { status: 403 },
       )
     }

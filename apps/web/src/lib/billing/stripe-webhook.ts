@@ -5,7 +5,7 @@ import { BILLING_CONFIG } from '@cairn/core/billing'
 import type Stripe from 'stripe'
 import { creditLedger, db, stripeEvents, subscriptions } from '@cairn/db'
 import { sql } from 'drizzle-orm'
-import { getStripeClient, stripeId } from './stripe'
+import { getIndividualSubscriptionPriceId, getStripeClient, stripeId } from './stripe'
 import { resolveSubscriptionGrantQuantity } from './subscription-grant'
 import { asStripeSubscriptionRecord, type StripeSubscriptionRecord } from './stripe-subscription'
 
@@ -22,7 +22,10 @@ function toSubscriptionStatus(status: string): 'active' | 'past_due' | 'canceled
   return 'canceled'
 }
 
-function asInvoiceRecord(invoice: Stripe.Invoice): StripeInvoiceRecord {
+async function asInvoiceRecord(
+  stripe: Stripe,
+  invoice: Stripe.Invoice,
+): Promise<StripeInvoiceRecord> {
   const value = invoice as unknown as {
     id: string
     billing_reason?: string | null
@@ -30,10 +33,21 @@ function asInvoiceRecord(invoice: Stripe.Invoice): StripeInvoiceRecord {
     parent?: {
       subscription_details?: { subscription?: string | { id: string } | null } | null
     } | null
-    lines?: { data?: Array<{ quantity?: number | null }> }
   }
   const billingReason = value.billing_reason ?? null
-  const invoiceQuantity = resolveSubscriptionGrantQuantity(billingReason, value.lines?.data)
+  let invoiceQuantity: number | null = null
+  if (billingReason === 'subscription_create' || billingReason === 'subscription_cycle') {
+    const subscriptionPriceId = getIndividualSubscriptionPriceId()
+    const lines: Array<{ quantity?: number | null; priceId?: string | null }> = []
+    // invoice.lines は先頭ページだけの場合があるため、Stripe のページングを最後まで辿る。
+    for await (const line of stripe.invoices.listLineItems(value.id, { limit: 100 })) {
+      lines.push({
+        quantity: line.quantity,
+        priceId: stripeId(line.pricing?.price_details?.price),
+      })
+    }
+    invoiceQuantity = resolveSubscriptionGrantQuantity(billingReason, lines, subscriptionPriceId)
+  }
 
   return {
     id: value.id,
@@ -90,7 +104,7 @@ export async function processStripeWebhookEvent(
     subscriptionId = stripeId(session.subscription)
   }
   if (event.type === 'invoice.paid') {
-    const invoice = asInvoiceRecord(event.data.object as Stripe.Invoice)
+    const invoice = await asInvoiceRecord(stripe, event.data.object as Stripe.Invoice)
     subscriptionId = invoice.subscriptionId
     invoiceId = invoice.id
     invoiceQuantity = invoice.invoiceQuantity
@@ -116,7 +130,9 @@ export async function processStripeWebhookEvent(
     if (subscriptionId) {
       // 取得と upsert を同じ購読単位で直列化し、後着した古いスナップショットが
       // Stripe の最新状態を上書きしないようにする。
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`stripe-subscription:${subscriptionId}`}, 0))`)
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`stripe-subscription:${subscriptionId}`}, 0))`,
+      )
       subscription = asStripeSubscriptionRecord(await stripe.subscriptions.retrieve(subscriptionId))
     }
     if (subscription) await syncSubscription(tx, subscription)
