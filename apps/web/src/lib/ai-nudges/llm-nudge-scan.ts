@@ -6,6 +6,7 @@ import {
   aiScanStates,
   channelMembers,
   channels,
+  creditLedger,
   db,
   documentChunks,
   messages,
@@ -20,6 +21,7 @@ import { generateObject } from 'ai'
 import { z } from 'zod'
 import { extractMentionIds } from '@/lib/chat/mentions'
 import { DEFAULT_MODEL, FAST_MODEL, openai } from '@/lib/ai/client'
+import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { recordPhaseTwoTokenUsage } from './llm-usage'
 import {
   PHASE_TWO_CONTEXT_MESSAGE_LIMIT,
@@ -145,7 +147,14 @@ async function isPhaseTwoEnabled(workspaceId: string): Promise<boolean> {
     .from(workspaces)
     .where(eq(workspaces.id, workspaceId))
     .limit(1)
-  return workspace?.enabled === true
+  if (workspace?.enabled !== true) return false
+  if (!isBillingEnabled()) return true
+
+  const [balance] = await db
+    .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
+    .from(creditLedger)
+    .where(eq(creditLedger.workspaceId, workspaceId))
+  return Number(balance?.value ?? 0) > 0
 }
 
 export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> {
@@ -204,10 +213,11 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
         row.lastScannedMessageId,
       )
     )
-    const needsUnansweredAskRecheck = isUnansweredAskRecheckDue(
-      row.nextUnansweredAskCheckAt ? new Date(row.nextUnansweredAskCheckAt) : null,
-      new Date(),
-    ) && Boolean(row.nextUnansweredAskMessageId)
+    const needsUnansweredAskRecheck =
+      isUnansweredAskRecheckDue(
+        row.nextUnansweredAskCheckAt ? new Date(row.nextUnansweredAskCheckAt) : null,
+        new Date(),
+      ) && Boolean(row.nextUnansweredAskMessageId)
     if (!hasNewMessages && !needsUnansweredAskRecheck) {
       return []
     }
@@ -320,7 +330,7 @@ export async function loadPhaseTwoChannelInput(
     ? recheckAnchor
       ? [
           ...(recheckAnchor.deletedAt ? [] : [recheckAnchor]),
-          ...await db
+          ...(await db
             .select({
               id: messages.id,
               senderId: messages.senderId,
@@ -337,12 +347,15 @@ export async function loadPhaseTwoChannelInput(
                 isNull(messages.deletedAt),
                 or(
                   gt(messages.createdAt, recheckAnchor.createdAt),
-                  and(eq(messages.createdAt, recheckAnchor.createdAt), gt(messages.id, recheckAnchor.id)),
+                  and(
+                    eq(messages.createdAt, recheckAnchor.createdAt),
+                    gt(messages.id, recheckAnchor.id),
+                  ),
                 ),
               ),
             )
             .orderBy(asc(messages.createdAt), asc(messages.id))
-            .limit(PHASE_TWO_NEW_MESSAGE_LIMIT - (recheckAnchor.deletedAt ? 0 : 1)),
+            .limit(PHASE_TWO_NEW_MESSAGE_LIMIT - (recheckAnchor.deletedAt ? 0 : 1))),
         ]
       : []
     : newRows
@@ -420,20 +433,22 @@ export async function loadPhaseTwoChannelInput(
       ? [
           ...scanRows
             .filter(
-              (message) => message.createdAt.getTime() + UNANSWERED_ASK_MIN_AGE_MS > checkedAt.getTime(),
+              (message) =>
+                message.createdAt.getTime() + UNANSWERED_ASK_MIN_AGE_MS > checkedAt.getTime(),
             )
             .map((message) => ({ id: message.id, createdAt: message.createdAt })),
           ...nextScheduledRows,
         ]
       : nextScheduledRows,
-    existing: !isUnansweredAskRecheck &&
+    existing:
+      !isUnansweredAskRecheck &&
       channel.nextUnansweredAskCheckAt &&
       channel.nextUnansweredAskMessageId
-      ? {
-          messageId: channel.nextUnansweredAskMessageId,
-          checkAt: new Date(channel.nextUnansweredAskCheckAt),
-        }
-      : null,
+        ? {
+            messageId: channel.nextUnansweredAskMessageId,
+            checkAt: new Date(channel.nextUnansweredAskCheckAt),
+          }
+        : null,
     now: checkedAt,
     includeOverdue: isUnansweredAskRecheck,
   })
@@ -476,7 +491,7 @@ function formatMessages(input: PhaseTwoChannelInput): string {
 
 export async function screenPhaseTwoCandidates(input: PhaseTwoChannelInput) {
   if (input.messages.length === 0) return []
-  if (!await isPhaseTwoEnabled(input.workspaceId)) return []
+  if (!(await isPhaseTwoEnabled(input.workspaceId))) return []
   const { object, usage } = await generateObject({
     model: openai(FAST_MODEL),
     schema: primaryCandidateSchema,
@@ -616,7 +631,7 @@ export async function refinePhaseTwoCandidate(
   input: PhaseTwoChannelInput,
   candidate: z.infer<typeof primaryCandidateSchema>['candidates'][number],
 ): Promise<PhaseTwoNudgeCandidate | null> {
-  if (!await isPhaseTwoEnabled(input.workspaceId)) return null
+  if (!(await isPhaseTwoEnabled(input.workspaceId))) return null
   const recipients = await listEligibleRecipients(input, candidate.sourceMessageId)
   const source = input.messages.find((message) => message.id === candidate.sourceMessageId)
   if (!source || recipients.length === 0) return null

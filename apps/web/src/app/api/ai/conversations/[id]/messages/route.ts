@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { createDataStreamResponse, streamText, type CoreMessage } from 'ai'
+import { createDataStreamResponse, streamText } from 'ai'
+import { BILLING_CONFIG } from '@cairn/core/billing'
 import { openai, DEFAULT_MODEL } from '@/lib/ai/client'
+import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
+import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getGuestVisibleProjectIds } from '@/lib/permissions'
 import { webSearchTool } from '@/lib/ai/web-search'
@@ -45,19 +48,31 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const [conv] = await db
       .select({ id: aiConversations.id })
       .from(aiConversations)
-      .where(and(eq(aiConversations.id, conversationId), eq(aiConversations.workspaceId, ctx.workspaceId)))
+      .where(
+        and(
+          eq(aiConversations.id, conversationId),
+          eq(aiConversations.workspaceId, ctx.workspaceId),
+        ),
+      )
       .limit(1)
 
     if (!conv) return new NextResponse(null, { status: 404 })
 
     const rows = await db
-      .select({ id: aiMessages.id, role: aiMessages.role, content: aiMessages.content, annotations: aiMessages.annotations, toolInvocations: aiMessages.toolInvocations, createdAt: aiMessages.createdAt })
+      .select({
+        id: aiMessages.id,
+        role: aiMessages.role,
+        content: aiMessages.content,
+        annotations: aiMessages.annotations,
+        toolInvocations: aiMessages.toolInvocations,
+        createdAt: aiMessages.createdAt,
+      })
       .from(aiMessages)
       .where(eq(aiMessages.conversationId, conversationId))
       .orderBy(asc(aiMessages.createdAt))
 
     const normalizedRows = normalizeStoredConversationMessages<StoredMessageRow>(
-      rows.map(row => ({
+      rows.map((row) => ({
         id: row.id,
         role: row.role,
         content: row.content,
@@ -68,7 +83,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     )
 
     return NextResponse.json(
-      normalizedRows.map(r => {
+      normalizedRows.map((r) => {
         const createdAt = r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)
 
         return {
@@ -91,6 +106,7 @@ export async function POST(req: Request, { params }: RouteContext) {
   const { id: conversationId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
+  if (!ctx) return NextResponse.json({ error: '認証情報を取得できませんでした' }, { status: 401 })
 
   if (!process.env['OPENAI_API_KEY']) {
     return NextResponse.json({ error: 'OPENAI_API_KEY が設定されていません' }, { status: 503 })
@@ -124,6 +140,27 @@ export async function POST(req: Request, { params }: RouteContext) {
     )
   }
 
+  if (isBillingEnabled()) {
+    const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+    if (!entitlements.isActiveSupporter) {
+      return NextResponse.json(
+        {
+          error:
+            'AIへの依頼は、石を積んでいるメンバーのみ利用できます。設定の請求から石を積んでください。',
+        },
+        { status: 403 },
+      )
+    }
+    if (entitlements.workspaceState !== 'funded') {
+      return NextResponse.json(
+        {
+          error: 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。',
+        },
+        { status: 402 },
+      )
+    }
+  }
+
   let historyMessages: StoredConversationMessage[] = []
   {
     const { db, aiConversations, aiMessages } = await import('@cairn/db')
@@ -131,12 +168,22 @@ export async function POST(req: Request, { params }: RouteContext) {
     const [conv] = await db
       .select({ id: aiConversations.id })
       .from(aiConversations)
-      .where(and(eq(aiConversations.id, conversationId), eq(aiConversations.workspaceId, ctx.workspaceId)))
+      .where(
+        and(
+          eq(aiConversations.id, conversationId),
+          eq(aiConversations.workspaceId, ctx.workspaceId),
+        ),
+      )
       .limit(1)
     if (!conv) return new NextResponse(null, { status: 404 })
 
     const rows = await db
-      .select({ id: aiMessages.id, role: aiMessages.role, content: aiMessages.content, createdAt: aiMessages.createdAt })
+      .select({
+        id: aiMessages.id,
+        role: aiMessages.role,
+        content: aiMessages.content,
+        createdAt: aiMessages.createdAt,
+      })
       .from(aiMessages)
       .where(eq(aiMessages.conversationId, conversationId))
       .orderBy(desc(aiMessages.createdAt), desc(aiMessages.id))
@@ -158,7 +205,13 @@ export async function POST(req: Request, { params }: RouteContext) {
   })
 
   // RAG: 最後のユーザーメッセージに関連するチャンクを検索
-  type RagSource = { sourceType: string; sourceId: string; name: string; fileType?: string; externalUrl?: string }
+  type RagSource = {
+    sourceType: string
+    sourceId: string
+    name: string
+    fileType?: string
+    externalUrl?: string
+  }
   let contextSection = ''
   let ragSources: RagSource[] = []
 
@@ -167,41 +220,92 @@ export async function POST(req: Request, { params }: RouteContext) {
       const { searchChunks } = await import('@/lib/ai/search-chunks')
       // ゲストは参加プロジェクトのチャンクのみ RAG 参照可。member 以上は制限なし。
       const role = ctx.role
-      const allowedProjectIds = role === 'guest'
-        ? await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId)
-        : null
-      const chunks = await searchChunks(lastUserContent, ctx.workspaceId, { limit: 5, minSimilarity: 0.5, allowedProjectIds })
-      console.log(`[AI chat] RAG: query="${lastUserContent.slice(0, 50)}" chunks=${chunks.length}`, chunks.map(c => ({ type: c.sourceType, sim: c.similarity.toFixed(3), preview: c.content.slice(0, 60) })))
+      const allowedProjectIds =
+        role === 'guest' ? await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId) : null
+      const chunks = await searchChunks(lastUserContent, ctx.workspaceId, {
+        limit: 5,
+        minSimilarity: 0.5,
+        allowedProjectIds,
+      })
+      console.log(
+        `[AI chat] RAG: query="${lastUserContent.slice(0, 50)}" chunks=${chunks.length}`,
+        chunks.map((c) => ({
+          type: c.sourceType,
+          sim: c.similarity.toFixed(3),
+          preview: c.content.slice(0, 60),
+        })),
+      )
       if (chunks.length > 0) {
-        contextSection = `\n\n【ワークスペースの参照情報】\n${chunks.map(c => c.content).join('\n\n---\n\n')}`
+        contextSection = `\n\n【ワークスペースの参照情報】\n${chunks.map((c) => c.content).join('\n\n---\n\n')}`
 
         // ソース名を解決（重複排除後）
         const seen = new Set<string>()
-        const unique = chunks.filter(c => { const k = `${c.sourceType}:${c.sourceId}`; if (seen.has(k)) return false; seen.add(k); return true })
+        const unique = chunks.filter((c) => {
+          const k = `${c.sourceType}:${c.sourceId}`
+          if (seen.has(k)) return false
+          seen.add(k)
+          return true
+        })
         try {
           const { db, files, projects, profiles } = await import('@cairn/db')
           const { inArray } = await import('drizzle-orm')
-          const fileIds = unique.filter(c => c.sourceType === 'file').map(c => c.sourceId)
-          const projectIds = unique.filter(c => c.sourceType === 'project').map(c => c.sourceId)
-          const memberIds = unique.filter(c => c.sourceType === 'member').map(c => c.sourceId)
+          const fileIds = unique.filter((c) => c.sourceType === 'file').map((c) => c.sourceId)
+          const projectIds = unique.filter((c) => c.sourceType === 'project').map((c) => c.sourceId)
+          const memberIds = unique.filter((c) => c.sourceType === 'member').map((c) => c.sourceId)
           const [fileRows, projectRows, memberRows] = await Promise.all([
-            fileIds.length > 0 ? db.select({ id: files.id, fileName: files.fileName, fileType: files.fileType, metadata: files.metadata }).from(files).where(inArray(files.id, fileIds)) : [],
-            projectIds.length > 0 ? db.select({ id: projects.id, title: projects.title }).from(projects).where(inArray(projects.id, projectIds)) : [],
-            memberIds.length > 0 ? db.select({ id: profiles.id, displayName: profiles.displayName }).from(profiles).where(inArray(profiles.id, memberIds)) : [],
+            fileIds.length > 0
+              ? db
+                  .select({
+                    id: files.id,
+                    fileName: files.fileName,
+                    fileType: files.fileType,
+                    metadata: files.metadata,
+                  })
+                  .from(files)
+                  .where(inArray(files.id, fileIds))
+              : [],
+            projectIds.length > 0
+              ? db
+                  .select({ id: projects.id, title: projects.title })
+                  .from(projects)
+                  .where(inArray(projects.id, projectIds))
+              : [],
+            memberIds.length > 0
+              ? db
+                  .select({ id: profiles.id, displayName: profiles.displayName })
+                  .from(profiles)
+                  .where(inArray(profiles.id, memberIds))
+              : [],
           ])
-          const fileMap = new Map(fileRows.map(r => [r.id, r]))
-          const projectMap = new Map(projectRows.map(r => [r.id, r.title]))
-          const memberMap = new Map(memberRows.map(r => [r.id, r.displayName]))
-          ragSources = unique.map(c => {
+          const fileMap = new Map(fileRows.map((r) => [r.id, r]))
+          const projectMap = new Map(projectRows.map((r) => [r.id, r.title]))
+          const memberMap = new Map(memberRows.map((r) => [r.id, r.displayName]))
+          ragSources = unique.map((c) => {
             if (c.sourceType === 'file') {
               const f = fileMap.get(c.sourceId)
               const meta = (f?.metadata ?? {}) as Record<string, unknown>
-              return { sourceType: 'file', sourceId: c.sourceId, name: f?.fileName ?? c.sourceId, ...(f?.fileType !== undefined ? { fileType: f.fileType } : {}), ...(typeof meta['externalUrl'] === 'string' ? { externalUrl: meta['externalUrl'] } : {}) }
+              return {
+                sourceType: 'file',
+                sourceId: c.sourceId,
+                name: f?.fileName ?? c.sourceId,
+                ...(f?.fileType !== undefined ? { fileType: f.fileType } : {}),
+                ...(typeof meta['externalUrl'] === 'string'
+                  ? { externalUrl: meta['externalUrl'] }
+                  : {}),
+              }
             }
             if (c.sourceType === 'project') {
-              return { sourceType: 'project', sourceId: c.sourceId, name: projectMap.get(c.sourceId) ?? c.sourceId }
+              return {
+                sourceType: 'project',
+                sourceId: c.sourceId,
+                name: projectMap.get(c.sourceId) ?? c.sourceId,
+              }
             }
-            return { sourceType: 'member', sourceId: c.sourceId, name: memberMap.get(c.sourceId) ?? c.sourceId }
+            return {
+              sourceType: 'member',
+              sourceId: c.sourceId,
+              name: memberMap.get(c.sourceId) ?? c.sourceId,
+            }
           })
         } catch (e) {
           console.warn('[AI chat] RAG source name lookup failed:', e)
@@ -212,11 +316,16 @@ export async function POST(req: Request, { params }: RouteContext) {
     }
   }
 
-  const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'full', timeStyle: 'short' })
+  const now = new Date().toLocaleString('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    dateStyle: 'full',
+    timeStyle: 'short',
+  })
 
   const systemPrompt = `あなたはワークスペースのAIアシスタントです。メンバーのプロジェクト管理・計画策定・情報整理を支援します。現在日時: ${now}。${contextSection}
 
 回答は日本語で、簡潔かつ実用的にしてください。安全に関わる内容は専門家や現地の最新情報を確認するよう促してください。参照情報がある場合はそれを積極的に活用してください。${hasWebSearch ? '参照情報がない場合や最新情報が必要な場合は、webSearch ツールでウェブ検索してから回答してください。' : '参照情報がない場合は正直にその旨を伝えてください。'}`
+  const assistantMessageId = crypto.randomUUID()
 
   return createDataStreamResponse({
     execute: (dataStream) => {
@@ -231,20 +340,42 @@ export async function POST(req: Request, { params }: RouteContext) {
         onFinish: async ({ text, steps }) => {
           if (!lastUserContent) return
           try {
-            const { db, aiMessages, aiConversations } = await import('@cairn/db')
+            const { aiConversations, aiMessages, creditLedger, db } = await import('@cairn/db')
             const { eq, and, isNull } = await import('drizzle-orm')
-            const annotations: unknown[] = ragSources.length > 0 ? [{ type: 'rag-sources', sources: ragSources }] : []
-            const toolInvocations: unknown[] = steps.flatMap(step =>
-              step.toolResults.map(r => ({ state: 'result', toolCallId: r.toolCallId, toolName: r.toolName, args: r.args, result: r.result }))
+            const annotations: unknown[] =
+              ragSources.length > 0 ? [{ type: 'rag-sources', sources: ragSources }] : []
+            const toolInvocations: unknown[] = steps.flatMap((step) =>
+              step.toolResults.map((r) => ({
+                state: 'result',
+                toolCallId: r.toolCallId,
+                toolName: r.toolName,
+                args: r.args,
+                result: r.result,
+              })),
             )
-            await db.insert(aiMessages).values([
-              { conversationId, role: 'user', content: lastUserContent },
-              {
-                conversationId, role: 'assistant', content: text,
+            await db.transaction(async (tx) => {
+              await tx
+                .insert(aiMessages)
+                .values({ conversationId, role: 'user', content: lastUserContent })
+              await tx.insert(aiMessages).values({
+                id: assistantMessageId,
+                conversationId,
+                role: 'assistant',
+                content: text,
                 ...(annotations.length > 0 ? { annotations } : {}),
                 ...(toolInvocations.length > 0 ? { toolInvocations } : {}),
-              },
-            ])
+              })
+              // 事前確認後に生成を完了してから記帳する。並行リクエストでは僅かな
+              // マイナスを許容し、次回の依頼をブロックする設計である。
+              if (isBillingEnabled()) {
+                await tx.insert(creditLedger).values({
+                  workspaceId: ctx.workspaceId,
+                  delta: -BILLING_CONFIG.activeAiRequestCredits,
+                  reason: 'ai_consumption',
+                  refId: assistantMessageId,
+                })
+              }
+            })
             // 初回メッセージでタイトルを設定
             await db
               .update(aiConversations)
@@ -257,6 +388,6 @@ export async function POST(req: Request, { params }: RouteContext) {
       })
       result.mergeIntoDataStream(dataStream)
     },
-    onError: (err) => err instanceof Error ? err.message : String(err),
+    onError: (err) => (err instanceof Error ? err.message : String(err)),
   })
 }

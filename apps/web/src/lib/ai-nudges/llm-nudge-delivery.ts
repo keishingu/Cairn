@@ -12,7 +12,9 @@ import {
   workspaces,
   type AiNudgeStatus,
 } from '@cairn/db'
+import { BILLING_CONFIG } from '@cairn/core/billing'
 import { and, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm'
+import { consumeCreditsForPassiveBenefit } from '@/lib/billing/credits'
 import { startOfJstDay } from './rules'
 import {
   isUnansweredAskEligible,
@@ -94,7 +96,9 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         return b.confidence - a.confidence
       })
     const proposedTargets = new Set(
-      candidates.map((candidate) => `${candidate.detector}:${candidate.messageId}:${candidate.userId}`),
+      candidates.map(
+        (candidate) => `${candidate.detector}:${candidate.messageId}:${candidate.userId}`,
+      ),
     )
 
     let created = 0
@@ -131,7 +135,9 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       if (nudge.detector !== 'llm_risk') return []
       if (!nudge.channelId || !nudge.messageId) return []
       if (!evaluatedRiskMessages.has(`${nudge.channelId}:${nudge.messageId}`)) return []
-      return proposedTargets.has(`${nudge.detector}:${nudge.messageId}:${nudge.userId}`) ? [] : [nudge.id]
+      return proposedTargets.has(`${nudge.detector}:${nudge.messageId}:${nudge.userId}`)
+        ? []
+        : [nudge.id]
     })
     // ソースメッセージはsoft deleteされるため、チャンネルが静かなままでも削除済みの
     // 根拠を指すカードを残さないようheartbeatで解消する。
@@ -145,7 +151,9 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
               await tx
                 .select({ id: messages.id })
                 .from(messages)
-                .where(and(inArray(messages.id, activeSourceMessageIds), isNull(messages.deletedAt)))
+                .where(
+                  and(inArray(messages.id, activeSourceMessageIds), isNull(messages.deletedAt)),
+                )
             ).map((message) => message.id),
           )
         : new Set<string>()
@@ -204,7 +212,8 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
                   ),
                 )
             ).flatMap((row) =>
-              row.parentMessageId && sourceSendersByMessageId.get(row.parentMessageId) !== row.senderId
+              row.parentMessageId &&
+              sourceSendersByMessageId.get(row.parentMessageId) !== row.senderId
                 ? [row.parentMessageId]
                 : [],
             ),
@@ -325,7 +334,9 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           const evaluatedThisRun = evaluatedRiskMessages.has(
             `${reminder.channelId}:${reminder.messageId}`,
           )
-          const proposedAgain = proposedTargets.has(`llm_risk:${reminder.messageId}:${reminder.userId}`)
+          const proposedAgain = proposedTargets.has(
+            `llm_risk:${reminder.messageId}:${reminder.userId}`,
+          )
           if (
             shouldResolveDueLlmRiskReminder({
               hasNewerMessage: true,
@@ -356,6 +367,14 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         .where(eq(profiles.id, reminder.userId))
         .limit(1)
       if (!recipient?.enabled || !recipient.canAccess) continue
+      if (
+        !(await consumeCreditsForPassiveBenefit(tx, {
+          workspaceId: reminder.workspaceId,
+          credits: BILLING_CONFIG.heartbeatAiDeliveryCredits,
+          refId: `heartbeat:${reminder.id}:${now.toISOString()}`,
+        }))
+      )
+        continue
 
       await tx
         .update(aiNudges)
@@ -532,6 +551,16 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           discarded += 1
           continue
         }
+        if (
+          !(await consumeCreditsForPassiveBenefit(tx, {
+            workspaceId: candidate.workspaceId,
+            credits: BILLING_CONFIG.heartbeatAiDeliveryCredits,
+            refId: `heartbeat:${existing.id}:${now.toISOString()}`,
+          }))
+        ) {
+          discarded += 1
+          continue
+        }
         await tx
           .update(aiNudges)
           .set({
@@ -599,6 +628,17 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         .onConflictDoNothing()
         .returning({ id: aiNudges.id })
       if (!inserted) {
+        discarded += 1
+        continue
+      }
+      if (
+        !(await consumeCreditsForPassiveBenefit(tx, {
+          workspaceId: candidate.workspaceId,
+          credits: BILLING_CONFIG.heartbeatAiDeliveryCredits,
+          refId: `heartbeat:${inserted.id}`,
+        }))
+      ) {
+        await tx.delete(aiNudges).where(eq(aiNudges.id, inserted.id))
         discarded += 1
         continue
       }

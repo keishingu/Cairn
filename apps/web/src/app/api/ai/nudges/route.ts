@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import type { AiNudgeDetector } from '@cairn/db'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { requireChannelAccess } from '@/lib/permissions'
 
 export interface AiNudgeDto {
@@ -34,8 +35,15 @@ export async function GET(req: Request) {
   if (forbidden) return forbidden
 
   try {
-    const { aiNudges, db, profiles, workspaces } = await import('@cairn/db')
-    const { and, asc, eq, inArray, or } = await import('drizzle-orm')
+    const { aiNudges, creditLedger, db, profiles, workspaces } = await import('@cairn/db')
+    const { and, asc, eq, inArray, or, sql } = await import('drizzle-orm')
+    if (isBillingEnabled()) {
+      const [balance] = await db
+        .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
+        .from(creditLedger)
+        .where(eq(creditLedger.workspaceId, ctx.workspaceId))
+      if (Number(balance?.value ?? 0) <= 0) return NextResponse.json([] satisfies AiNudgeDto[])
+    }
     const rows = await db
       .select({
         id: aiNudges.id,

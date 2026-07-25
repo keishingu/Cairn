@@ -4,6 +4,10 @@
 export const BILLING_CONFIG = {
   individualSubscriptionPriceJpy: 300,
   monthlyCreditGrant: 300,
+  creditPackPriceJpy: 500,
+  creditPackCredits: 400,
+  activeAiRequestCredits: 10,
+  heartbeatAiDeliveryCredits: 10,
   freeStorageBytes: 10 * 1024 ** 3,
   storageRentCreditsPerGibMonth: 4,
   billingTimeZone: 'Asia/Tokyo',
