@@ -6,6 +6,7 @@ import {
   blocksPhaseTwoPrimaryCandidate,
   blocksPhaseTwoCandidateRefinement,
   hasCreditsForPhaseTwoScan,
+  restrictPhaseTwoRecipientsToFixedRecipient,
   resolvePhaseTwoScanCandidateBudget,
 } from './llm-nudge-scan'
 
@@ -64,5 +65,13 @@ describe('Phase 2 スキャンのクレジット判定', () => {
         now,
       }),
     ).toBe(false)
+  })
+
+  it('再通知の未回答質問は固定受信者だけを精査候補にする', () => {
+    const recipients = [{ userId: 'user-1' }, { userId: 'user-2' }]
+    expect(restrictPhaseTwoRecipientsToFixedRecipient(recipients, 'user-2')).toEqual([
+      { userId: 'user-2' },
+    ])
+    expect(restrictPhaseTwoRecipientsToFixedRecipient(recipients, undefined)).toEqual(recipients)
   })
 })

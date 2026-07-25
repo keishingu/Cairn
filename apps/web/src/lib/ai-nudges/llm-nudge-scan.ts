@@ -128,7 +128,12 @@ const refinedProposalSchema = z.object({
     .nullable(),
 })
 
-export type PhaseTwoPrimaryCandidate = z.infer<typeof primaryCandidateSchema>['candidates'][number]
+type PhaseTwoPrimaryCandidateBase = z.infer<typeof primaryCandidateSchema>['candidates'][number]
+
+export type PhaseTwoPrimaryCandidate = PhaseTwoPrimaryCandidateBase & {
+  // unanswered_ask は根拠メッセージごとに宛先を固定するため、再通知時も同じ受信者だけを選ぶ。
+  fixedRecipientUserId?: string
+}
 
 export interface PhaseTwoPrimaryCandidateFilterResult {
   candidates: PhaseTwoPrimaryCandidate[]
@@ -185,6 +190,15 @@ export function blocksPhaseTwoPrimaryCandidate(input: {
   )
 }
 
+export function restrictPhaseTwoRecipientsToFixedRecipient<T extends { userId: string }>(
+  recipients: T[],
+  fixedRecipientUserId: string | undefined,
+): T[] {
+  return fixedRecipientUserId
+    ? recipients.filter((recipient) => recipient.userId === fixedRecipientUserId)
+    : recipients
+}
+
 // 同じ根拠に対して現在は配信できないナッジは、残高枠を消費して再精査しない。
 // これにより、カーソル保持後の再巡回でも未処理候補へ順に進める。
 export async function excludeDeliveredPhaseTwoPrimaryCandidates(
@@ -237,6 +251,22 @@ export async function excludeDeliveredPhaseTwoPrimaryCandidates(
         : [],
     ),
   )
+  const fixedUnansweredAskRecipients = new Map(
+    existing.flatMap((candidate) =>
+      candidate.detector === 'unanswered_ask' &&
+      candidate.messageId &&
+      !blocksPhaseTwoPrimaryCandidate({
+        detector: candidate.detector,
+        status: candidate.status,
+        remindAfter: candidate.remindAfter,
+        recipientEnabled: candidate.recipientEnabled,
+        recipientCanAccess: candidate.recipientCanAccess,
+        now,
+      })
+        ? [[candidate.messageId, candidate.userId]]
+        : [],
+    ),
+  )
   // 再巡回で既存の active risk を精査対象から外しても、同じ根拠が再び提案された事実は
   // 解消判定に渡す。これがないと既存カードを誤って resolved にしてしまう。
   const proposedPrimaryTargets = new Set(
@@ -251,9 +281,15 @@ export async function excludeDeliveredPhaseTwoPrimaryCandidates(
       : [],
   )
   return {
-    candidates: candidates.filter(
-      (candidate) => !blockedTargets.has(`${candidate.detector}:${candidate.sourceMessageId}`),
-    ),
+    candidates: candidates
+      .filter((candidate) => !blockedTargets.has(`${candidate.detector}:${candidate.sourceMessageId}`))
+      .map((candidate) => {
+        const fixedRecipientUserId =
+          candidate.detector === 'unanswered_ask'
+            ? fixedUnansweredAskRecipients.get(candidate.sourceMessageId)
+            : undefined
+        return fixedRecipientUserId ? { ...candidate, fixedRecipientUserId } : candidate
+      }),
     preservedActiveRiskTargets,
   }
 }
@@ -768,7 +804,11 @@ export async function refinePhaseTwoCandidate(
     candidate.detector === 'unanswered_ask'
       ? recipients.filter((recipient) => recipient.userId !== source.senderId)
       : recipients
-  if (allowedRecipients.length === 0) return null
+  const selectableRecipients = restrictPhaseTwoRecipientsToFixedRecipient(
+    allowedRecipients,
+    candidate.fixedRecipientUserId,
+  )
+  if (selectableRecipients.length === 0) return null
 
   const { object, usage } = await generateObject({
     model: openai(DEFAULT_MODEL),
@@ -782,7 +822,7 @@ sourceMessageId=${candidate.sourceMessageId}
 observation=${candidate.observation}
 
 宛先候補（この配列から必ず1人だけ選ぶ。複数人への送信は不可）:
-${JSON.stringify(allowedRecipients)}
+${JSON.stringify(selectableRecipients)}
 
 要件:
 - unanswered_ask は、回答がなければ進行が止まる依頼・質問だけ。最も行動できる1人を特定できないなら null。
@@ -800,7 +840,7 @@ ${formatMessages(input)}`,
     !proposal ||
     proposal.detector !== candidate.detector ||
     proposal.sourceMessageId !== candidate.sourceMessageId ||
-    !allowedRecipients.some((recipient) => recipient.userId === proposal.recipientUserId)
+    !selectableRecipients.some((recipient) => recipient.userId === proposal.recipientUserId)
   ) {
     return null
   }
