@@ -941,6 +941,7 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
 
     const results: PhaseTwoScanResult[] = []
     const remainingCandidateBudget = new Map<string, number>()
+    const acceptedCandidatesByWorkspace = new Map<string, number>()
     for (const channel of channels) {
       const deltaInput = await step.run(`load-channel-delta-${channel.channelId}`, async () => {
         const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/llm-nudge-scan')
@@ -998,6 +999,7 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
           },
         )
         const refinedCandidates: PhaseTwoNudgeCandidate[] = []
+        const acceptedBeforeCurrentInput = acceptedCandidatesByWorkspace.get(input.workspaceId) ?? 0
         let attemptedPrimaryCandidates = 0
         let fundingBlocked = false
         // false positiveを飛ばしつつ、残りの配信枠が埋まった時点で精査を止める。
@@ -1015,7 +1017,7 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
               return getPhaseTwoScanCandidateBudget(input.workspaceId)
             },
           )
-          if (currentBudget <= refinedCandidates.length) {
+          if (currentBudget <= acceptedBeforeCurrentInput + refinedCandidates.length) {
             fundingBlocked = true
             break
           }
@@ -1038,6 +1040,10 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
         }
         const acceptedCandidates = refinedCandidates
         remainingCandidateBudget.set(input.workspaceId, budget - acceptedCandidates.length)
+        acceptedCandidatesByWorkspace.set(
+          input.workspaceId,
+          acceptedBeforeCurrentInput + acceptedCandidates.length,
+        )
         const hasDeferredCandidates =
           fundingBlocked || attemptedPrimaryCandidates < primaryCandidateFilter.candidates.length
         // 残高枠で未試行候補が残った入力は、買い増し後に同じ差分を再評価する。
