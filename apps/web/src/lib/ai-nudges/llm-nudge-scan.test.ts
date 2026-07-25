@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  blocksPhaseTwoPrimaryCandidate,
   blocksPhaseTwoCandidateRefinement,
   hasCreditsForPhaseTwoScan,
   resolvePhaseTwoScanCandidateBudget,
@@ -29,5 +30,39 @@ describe('Phase 2 スキャンのクレジット判定', () => {
       blocksPhaseTwoCandidateRefinement('dismissed', new Date('2026-07-26T00:00:00.000Z'), now),
     ).toBe(true)
     expect(blocksPhaseTwoCandidateRefinement('suppressed', null, now)).toBe(false)
+  })
+
+  it('固定受信者が無効な未回答質問の再通知は精査前に除外する', () => {
+    const now = new Date('2026-07-25T00:00:00.000Z')
+    expect(
+      blocksPhaseTwoPrimaryCandidate({
+        detector: 'unanswered_ask',
+        status: 'dismissed',
+        remindAfter: now,
+        recipientEnabled: false,
+        recipientCanAccess: true,
+        now,
+      }),
+    ).toBe(true)
+    expect(
+      blocksPhaseTwoPrimaryCandidate({
+        detector: 'unanswered_ask',
+        status: 'suppressed',
+        remindAfter: null,
+        recipientEnabled: true,
+        recipientCanAccess: false,
+        now,
+      }),
+    ).toBe(true)
+    expect(
+      blocksPhaseTwoPrimaryCandidate({
+        detector: 'unanswered_ask',
+        status: 'dismissed',
+        remindAfter: now,
+        recipientEnabled: true,
+        recipientCanAccess: true,
+        now,
+      }),
+    ).toBe(false)
   })
 })

@@ -168,6 +168,23 @@ export function blocksPhaseTwoCandidateRefinement(
   )
 }
 
+export function blocksPhaseTwoPrimaryCandidate(input: {
+  detector: string
+  status: AiNudgeStatus
+  remindAfter: Date | null
+  recipientEnabled: boolean | null
+  recipientCanAccess: boolean
+  now: Date
+}): boolean {
+  if (blocksPhaseTwoCandidateRefinement(input.status, input.remindAfter, input.now)) return true
+  // unanswered_ask は根拠メッセージごとに宛先を固定する。期限到来後でも、その宛先が
+  // 無効またはアクセス不能なら別ユーザーへの付け替えは配信側で拒否されるため除外する。
+  return (
+    input.detector === 'unanswered_ask' &&
+    (!input.recipientEnabled || !input.recipientCanAccess)
+  )
+}
+
 // 同じ根拠に対して現在は配信できないナッジは、残高枠を消費して再精査しない。
 // これにより、カーソル保持後の再巡回でも未処理候補へ順に進める。
 export async function excludeDeliveredPhaseTwoPrimaryCandidates(
@@ -184,8 +201,16 @@ export async function excludeDeliveredPhaseTwoPrimaryCandidates(
       userId: aiNudges.userId,
       status: aiNudges.status,
       remindAfter: aiNudges.remindAfter,
+      recipientEnabled: profiles.aiNudgesEnabled,
+      recipientCanAccess: sql<boolean>`public.user_can_access_ai_nudge(
+        ${aiNudges.userId},
+        ${aiNudges.workspaceId},
+        ${aiNudges.channelId},
+        ${aiNudges.projectId}
+      )`,
     })
     .from(aiNudges)
+    .leftJoin(profiles, eq(profiles.id, aiNudges.userId))
     .where(
       and(
         eq(aiNudges.workspaceId, input.workspaceId),
@@ -200,7 +225,14 @@ export async function excludeDeliveredPhaseTwoPrimaryCandidates(
   const blockedTargets = new Set(
     existing.flatMap((candidate) =>
       candidate.messageId &&
-      blocksPhaseTwoCandidateRefinement(candidate.status, candidate.remindAfter, now)
+      blocksPhaseTwoPrimaryCandidate({
+        detector: candidate.detector,
+        status: candidate.status,
+        remindAfter: candidate.remindAfter,
+        recipientEnabled: candidate.recipientEnabled,
+        recipientCanAccess: candidate.recipientCanAccess,
+        now,
+      })
         ? [`${candidate.detector}:${candidate.messageId}`]
         : [],
     ),
