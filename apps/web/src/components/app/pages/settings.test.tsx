@@ -250,12 +250,14 @@ describe('クレジットパック購入後の確認', () => {
 })
 
 describe('モバイル設定のセクション', () => {
-  it('請求を一覧にも直接URLにも公開しない', () => {
+  it('請求を公開せず、決済を含まないケルン画面だけを公開する', () => {
     const ids = getSettingsNavGroups(false, { isMobile: true })
       .flatMap(group => group.items.map(item => item.id))
 
     expect(ids).not.toContain('billing')
+    expect(ids).toContain('contributions')
     expect(isSettingsSection('billing', false, { isMobile: true })).toBe(false)
+    expect(isSettingsSection('contributions', false, { isMobile: true })).toBe(true)
     expect(isSettingsSection('billing', false)).toBe(true)
   })
 })

@@ -2347,6 +2347,27 @@ const SettingsBilling = () => {
   )
 }
 
+const SettingsContributions = () => {
+  const billingQuery = useQuery({
+    queryKey: ['billing-summary'],
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/billing/summary')
+      if (!res.ok) throw new Error('請求情報の取得に失敗しました')
+      return res.json() as Promise<BillingSummaryDto>
+    },
+  })
+
+  if (billingQuery.isLoading) {
+    return <div style={{ color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+  }
+  if (billingQuery.isError) {
+    return <div style={{ color: 'var(--red-text)', fontSize: 13 }}>⚠ ケルンを取得できませんでした</div>
+  }
+  if (!billingQuery.data?.billingEnabled) return null
+
+  return <CreditPlacementBoard />
+}
+
 // ─── Developer ────────────────────────────────────────────────────
 
 import type { DevStatusDto, ServiceStatus } from '@/app/api/dev/status/route'
@@ -2657,6 +2678,9 @@ export function getSettingsNavGroups(
     { id: 'ai', label: 'AIエージェント', icon: 'sparkles' },
     { id: 'members', label: 'メンバー', icon: 'users' },
     { id: 'integrations', label: '連携', icon: 'layers' },
+    ...(options.isMobile
+      ? [{ id: 'contributions', label: 'ケルン', icon: 'layers' } satisfies SettingsSectionMeta]
+      : []),
     ...(!options.isMobile
       ? [{ id: 'billing', label: '請求', icon: 'archive' } satisfies SettingsSectionMeta]
       : []),
@@ -2700,6 +2724,7 @@ const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   ai: SettingsAI,
   integrations: SettingsIntegrations,
   billing: SettingsBilling,
+  contributions: SettingsContributions,
   developer: SettingsDeveloper,
 }
 
