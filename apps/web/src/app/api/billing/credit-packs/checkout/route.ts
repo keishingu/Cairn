@@ -7,40 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceRole } from '@/lib/access/membership'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { getCreditPackPriceId, getStripeClient, resolveApplicationUrl } from '@/lib/billing/stripe'
-
-export function isConfiguredCreditPackPrice(price: {
-  active: boolean
-  currency: string
-  type: string
-  unit_amount: number | null
-}): boolean {
-  return (
-    price.active &&
-    price.type === 'one_time' &&
-    price.currency.toLowerCase() === 'jpy' &&
-    price.unit_amount === BILLING_CONFIG.creditPackPriceJpy
-  )
-}
-
-type CreditPackCheckoutSession = {
-  id: string
-  url: string | null
-  metadata: Record<string, string> | null
-}
-
-export function isReusableCreditPackCheckout(
-  session: CreditPackCheckoutSession,
-  input: { workspaceId: string; supporterUserId: string; priceId: string },
-): boolean {
-  return (
-    session.metadata?.['workspaceId'] === input.workspaceId &&
-    session.metadata?.['supporterUserId'] === input.supporterUserId &&
-    session.metadata?.['purchaseType'] === 'credit_pack' &&
-    session.metadata?.['creditPackCredits'] === String(BILLING_CONFIG.creditPackCredits) &&
-    session.metadata?.['creditPackPriceId'] === input.priceId &&
-    session.metadata?.['creditPackAmountJpy'] === String(BILLING_CONFIG.creditPackPriceJpy)
-  )
-}
+import { isConfiguredCreditPackPrice, isReusableCreditPackCheckout } from './credit-pack-checkout'
 
 export async function POST(request: Request) {
   const { ctx, error } = await getAuthContext()
