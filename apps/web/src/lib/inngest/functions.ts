@@ -972,6 +972,11 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
             return screenPhaseTwoCandidates(input)
           },
         )
+        if (primaryCandidates.fundingBlocked) {
+          // 予算読込後に家賃・別配信で残高が尽きた場合は、未評価差分を飛ばさない。
+          results.push({ input: { ...input, advancesCursor: false }, candidates: [] })
+          continue
+        }
         const primaryCandidateFilter = await step.run(
           `exclude-delivered-candidates-${channel.channelId}-${scanKind}`,
           async () => {
@@ -983,32 +988,39 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
             )
             const eligibleCandidates = await excludeIneligiblePhaseTwoPrimaryCandidates(
               input,
-              primaryCandidates,
+              primaryCandidates.candidates,
             )
             return excludeDeliveredPhaseTwoPrimaryCandidates(input, eligibleCandidates)
           },
         )
         const refinedCandidates: PhaseTwoNudgeCandidate[] = []
         let attemptedPrimaryCandidates = 0
+        let fundingBlocked = false
         // false positiveを飛ばしつつ、残りの配信枠が埋まった時点で精査を止める。
         // 未試行候補が残る場合だけカーソルを保持して次回へ回す。
         for (const [index, candidate] of primaryCandidateFilter.candidates.entries()) {
           if (refinedCandidates.length >= budget) break
           attemptedPrimaryCandidates += 1
-          const refined = await step.run(
+          const refinement = await step.run(
             `refine-channel-${channel.channelId}-${scanKind}-${index}`,
             async () => {
               const { refinePhaseTwoCandidate } = await import('@/lib/ai-nudges/llm-nudge-scan')
               return refinePhaseTwoCandidate(input, candidate)
             },
           )
+          if (refinement.fundingBlocked) {
+            fundingBlocked = true
+            break
+          }
           // 配信時と同じ信頼度ゲートをここでも適用し、低信頼候補で枠を使い切らない。
-          if (refined && passesPhaseTwoConfidence(refined.confidence)) refinedCandidates.push(refined)
+          if (refinement.candidate && passesPhaseTwoConfidence(refinement.candidate.confidence)) {
+            refinedCandidates.push(refinement.candidate)
+          }
         }
         const acceptedCandidates = refinedCandidates
         remainingCandidateBudget.set(input.workspaceId, budget - acceptedCandidates.length)
         const hasDeferredCandidates =
-          attemptedPrimaryCandidates < primaryCandidateFilter.candidates.length
+          fundingBlocked || attemptedPrimaryCandidates < primaryCandidateFilter.candidates.length
         // 残高枠で未試行候補が残った入力は、買い増し後に同じ差分を再評価する。
         results.push({
           input:

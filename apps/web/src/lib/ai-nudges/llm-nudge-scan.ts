@@ -306,20 +306,26 @@ export async function getPhaseTwoScanCandidateBudget(workspaceId: string): Promi
 
 // チャンネル一覧取得からLLM実行までの間にownerがOFFへ切り替えた場合も、
 // トークンを消費しないよう各LLM stepの直前に再確認する。
-async function isPhaseTwoEnabled(workspaceId: string): Promise<boolean> {
+type PhaseTwoScanReadiness = 'enabled' | 'disabled' | 'funding_blocked'
+
+export function isPhaseTwoFundingBlocked(readiness: PhaseTwoScanReadiness): boolean {
+  return readiness === 'funding_blocked'
+}
+
+async function getPhaseTwoScanReadiness(workspaceId: string): Promise<PhaseTwoScanReadiness> {
   const [workspace] = await db
     .select({ enabled: workspaces.aiNudgesPhaseTwoEnabled })
     .from(workspaces)
     .where(eq(workspaces.id, workspaceId))
     .limit(1)
-  if (workspace?.enabled !== true) return false
-  if (!isBillingEnabled()) return true
+  if (workspace?.enabled !== true) return 'disabled'
+  if (!isBillingEnabled()) return 'enabled'
 
   const [balance] = await db
     .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
     .from(creditLedger)
     .where(eq(creditLedger.workspaceId, workspaceId))
-  return hasCreditsForPhaseTwoScan(Number(balance?.value ?? 0))
+  return hasCreditsForPhaseTwoScan(Number(balance?.value ?? 0)) ? 'enabled' : 'funding_blocked'
 }
 
 export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> {
@@ -654,9 +660,17 @@ function formatMessages(input: PhaseTwoChannelInput): string {
     .join('\n\n')
 }
 
-export async function screenPhaseTwoCandidates(input: PhaseTwoChannelInput) {
-  if (input.messages.length === 0) return []
-  if (!(await isPhaseTwoEnabled(input.workspaceId))) return []
+export interface PhaseTwoScreenResult {
+  candidates: PhaseTwoPrimaryCandidate[]
+  fundingBlocked: boolean
+}
+
+export async function screenPhaseTwoCandidates(input: PhaseTwoChannelInput): Promise<PhaseTwoScreenResult> {
+  if (input.messages.length === 0) return { candidates: [], fundingBlocked: false }
+  const readiness = await getPhaseTwoScanReadiness(input.workspaceId)
+  if (readiness !== 'enabled') {
+    return { candidates: [], fundingBlocked: isPhaseTwoFundingBlocked(readiness) }
+  }
   const { object, usage } = await generateObject({
     model: openai(FAST_MODEL),
     schema: primaryCandidateSchema,
@@ -680,11 +694,14 @@ ${formatMessages(input)}`,
   const candidateMessageIds = input.isUnansweredAskRecheck
     ? new Set(input.recheckMessageIds)
     : new Set(input.newMessageIds)
-  return object.candidates.filter(
-    (candidate) =>
-      candidateMessageIds.has(candidate.sourceMessageId) &&
-      (!input.isUnansweredAskRecheck || candidate.detector === 'unanswered_ask'),
-  )
+  return {
+    candidates: object.candidates.filter(
+      (candidate) =>
+        candidateMessageIds.has(candidate.sourceMessageId) &&
+        (!input.isUnansweredAskRecheck || candidate.detector === 'unanswered_ask'),
+    ),
+    fundingBlocked: false,
+  }
 }
 
 export function isPhaseTwoPrimaryCandidateEligible(input: {
@@ -860,11 +877,14 @@ async function listEligibleRecipients(
 export async function refinePhaseTwoCandidate(
   input: PhaseTwoChannelInput,
   candidate: PhaseTwoPrimaryCandidate,
-): Promise<PhaseTwoNudgeCandidate | null> {
-  if (!(await isPhaseTwoEnabled(input.workspaceId))) return null
+): Promise<{ candidate: PhaseTwoNudgeCandidate | null; fundingBlocked: boolean }> {
+  const readiness = await getPhaseTwoScanReadiness(input.workspaceId)
+  if (readiness !== 'enabled') {
+    return { candidate: null, fundingBlocked: isPhaseTwoFundingBlocked(readiness) }
+  }
   const recipients = await listEligibleRecipients(input, candidate.sourceMessageId)
   const source = input.messages.find((message) => message.id === candidate.sourceMessageId)
-  if (!source || recipients.length === 0) return null
+  if (!source || recipients.length === 0) return { candidate: null, fundingBlocked: false }
 
   const allowedRecipients =
     candidate.detector === 'unanswered_ask'
@@ -874,7 +894,7 @@ export async function refinePhaseTwoCandidate(
     allowedRecipients,
     candidate.fixedRecipientUserId,
   )
-  if (selectableRecipients.length === 0) return null
+  if (selectableRecipients.length === 0) return { candidate: null, fundingBlocked: false }
 
   const { object, usage } = await generateObject({
     model: openai(DEFAULT_MODEL),
@@ -908,27 +928,30 @@ ${formatMessages(input)}`,
     proposal.sourceMessageId !== candidate.sourceMessageId ||
     !selectableRecipients.some((recipient) => recipient.userId === proposal.recipientUserId)
   ) {
-    return null
+    return { candidate: null, fundingBlocked: false }
   }
 
   return {
-    workspaceId: input.workspaceId,
-    userId: proposal.recipientUserId,
-    channelId: input.channelId,
-    projectId: input.projectId,
-    messageId: proposal.sourceMessageId,
-    detector: proposal.detector,
-    dedupeKey: phaseTwoDedupeKey(proposal.detector, proposal.sourceMessageId),
-    title: proposal.title,
-    body: proposal.body,
-    confidence: proposal.confidence,
-    reason: {
-      sourceMessageId: proposal.sourceMessageId,
-      observation: candidate.observation,
-      rationale: proposal.rationale,
+    candidate: {
+      workspaceId: input.workspaceId,
+      userId: proposal.recipientUserId,
+      channelId: input.channelId,
+      projectId: input.projectId,
+      messageId: proposal.sourceMessageId,
+      detector: proposal.detector,
+      dedupeKey: phaseTwoDedupeKey(proposal.detector, proposal.sourceMessageId),
+      title: proposal.title,
+      body: proposal.body,
       confidence: proposal.confidence,
-      screenedBy: FAST_MODEL,
-      refinedBy: DEFAULT_MODEL,
+      reason: {
+        sourceMessageId: proposal.sourceMessageId,
+        observation: candidate.observation,
+        rationale: proposal.rationale,
+        confidence: proposal.confidence,
+        screenedBy: FAST_MODEL,
+        refinedBy: DEFAULT_MODEL,
+      },
     },
+    fundingBlocked: false,
   }
 }

@@ -6,6 +6,7 @@ import {
   blocksPhaseTwoPrimaryCandidate,
   blocksPhaseTwoCandidateRefinement,
   hasCreditsForPhaseTwoScan,
+  isPhaseTwoFundingBlocked,
   isPhaseTwoPrimaryCandidateEligible,
   restrictPhaseTwoRecipientsToFixedRecipient,
   resolvePhaseTwoScanCandidateBudget,
@@ -99,5 +100,10 @@ describe('Phase 2 スキャンのクレジット判定', () => {
         now,
       }),
     ).toBe(false)
+  })
+
+  it('スキャン時の残高不足はカーソル保持が必要な状態として区別する', () => {
+    expect(isPhaseTwoFundingBlocked('funding_blocked')).toBe(true)
+    expect(isPhaseTwoFundingBlocked('disabled')).toBe(false)
   })
 })
