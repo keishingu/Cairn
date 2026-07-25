@@ -33,7 +33,7 @@ export async function consumeCreditsForPassiveBenefit(
     .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
     .from(creditLedger)
     .where(eq(creditLedger.workspaceId, workspaceId))
-  if (Number(row?.balance ?? 0) <= 0) return false
+  if (Number(row?.balance ?? 0) < credits) return false
 
   await tx
     .insert(creditLedger)

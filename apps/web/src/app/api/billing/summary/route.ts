@@ -14,6 +14,7 @@ export interface BillingSummaryDto {
   originalBytes: number
   derivedBytes: number
   hasManageableSubscription: boolean
+  canPurchaseCreditPack: boolean
 }
 
 export async function GET() {
@@ -31,13 +32,14 @@ export async function GET() {
       originalBytes: 0,
       derivedBytes: 0,
       hasManageableSubscription: false,
+      canPurchaseCreditPack: false,
     } satisfies BillingSummaryDto)
   }
 
   try {
     const { creditLedger, db, subscriptions, workspaceStorageUsage } = await import('@cairn/db')
-    const { and, eq, inArray, sql } = await import('drizzle-orm')
-    const [[balance], [usage], [subscription]] = await Promise.all([
+    const { and, eq, gt, inArray, sql } = await import('drizzle-orm')
+    const [[balance], [usage], [subscription], [creditPackSubscription]] = await Promise.all([
       db
         .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
         .from(creditLedger)
@@ -62,6 +64,19 @@ export async function GET() {
           ),
         )
         .limit(1),
+      db
+        .select({ id: subscriptions.id })
+        .from(subscriptions)
+        .where(
+          and(
+            eq(subscriptions.workspaceId, ctx.workspaceId),
+            eq(subscriptions.supporterUserId, ctx.userId),
+            eq(subscriptions.plan, 'individual'),
+            eq(subscriptions.status, 'active'),
+            gt(subscriptions.currentPeriodEnd, new Date()),
+          ),
+        )
+        .limit(1),
     ])
     const creditBalance = Number(balance?.value ?? 0)
     return NextResponse.json({
@@ -71,6 +86,7 @@ export async function GET() {
       originalBytes: usage?.originalBytes ?? 0,
       derivedBytes: usage?.derivedBytes ?? 0,
       hasManageableSubscription: subscription !== undefined,
+      canPurchaseCreditPack: creditPackSubscription !== undefined,
     } satisfies BillingSummaryDto)
   } catch (err) {
     console.error('[/api/billing/summary GET]', err)

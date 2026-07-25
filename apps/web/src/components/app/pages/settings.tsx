@@ -2209,16 +2209,18 @@ const SettingsBilling = () => {
             </div>
             {billingQuery.data.hasManageableSubscription ? (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  className="btn btn-primary"
-                  style={{ height: 32, fontSize: 12.5 }}
-                  onClick={() => void beginCreditPackCheckout()}
-                  disabled={billingAction !== null}
-                >
-                  {billingAction === 'credit-pack'
-                    ? '移動中…'
-                    : `石を追加（¥${BILLING_CONFIG.creditPackPriceJpy} / ${BILLING_CONFIG.creditPackCredits} 石）`}
-                </button>
+                {billingQuery.data.canPurchaseCreditPack && (
+                  <button
+                    className="btn btn-primary"
+                    style={{ height: 32, fontSize: 12.5 }}
+                    onClick={() => void beginCreditPackCheckout()}
+                    disabled={billingAction !== null}
+                  >
+                    {billingAction === 'credit-pack'
+                      ? '移動中…'
+                      : `石を追加（¥${BILLING_CONFIG.creditPackPriceJpy} / ${BILLING_CONFIG.creditPackCredits} 石）`}
+                  </button>
+                )}
                 <button
                   className="btn"
                   style={{ height: 32, fontSize: 12.5 }}
