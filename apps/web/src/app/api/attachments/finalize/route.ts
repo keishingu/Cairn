@@ -67,7 +67,7 @@ export async function POST(req: Request) {
   if (forbidden) return forbidden
 
   const { creditLedger, db, files, subscriptions } = await import('@cairn/db')
-  const { and, eq, sql } = await import('drizzle-orm')
+  const { and, eq, gt, sql } = await import('drizzle-orm')
 
   // 応答喪失後の再試行は、現在の支援・残高が失効していても既に確定済みの
   // オブジェクトを消してはならない。冪等に既存の登録結果を返す。
@@ -186,8 +186,9 @@ export async function POST(req: Request) {
               and(
                 eq(subscriptions.workspaceId, ctx.workspaceId),
                 eq(subscriptions.supporterUserId, ctx.userId),
-                eq(subscriptions.plan, 'individual'),
-                eq(subscriptions.status, 'active'),
+                    eq(subscriptions.plan, 'individual'),
+                    eq(subscriptions.status, 'active'),
+                    gt(subscriptions.currentPeriodEnd, new Date()),
               ),
             )
             .limit(1),

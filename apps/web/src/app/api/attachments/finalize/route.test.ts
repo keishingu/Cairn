@@ -83,7 +83,7 @@ vi.mock('@cairn/db', () => ({
   subscriptions: {},
   channels: { projectId: 'c.projectId', id: 'c.id' },
 }))
-vi.mock('drizzle-orm', () => ({ and: vi.fn(() => 'and'), eq: vi.fn(() => 'eq'), sql: vi.fn(() => 'sql') }))
+vi.mock('drizzle-orm', () => ({ and: vi.fn(() => 'and'), eq: vi.fn(() => 'eq'), gt: vi.fn(() => 'gt'), sql: vi.fn(() => 'sql') }))
 
 function post(body: unknown): Request {
   return { json: () => Promise.resolve(body) } as Request

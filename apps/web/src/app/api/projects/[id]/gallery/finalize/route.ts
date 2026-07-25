@@ -59,7 +59,7 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   try {
     const { creditLedger, db, files, galleryItems, projects, subscriptions, uploadRequests } = await import('@cairn/db')
-    const { and, eq, sql } = await import('drizzle-orm')
+    const { and, eq, gt, sql } = await import('drizzle-orm')
     const [project] = await db
       .select({ id: projects.id })
       .from(projects)
@@ -241,6 +241,7 @@ export async function POST(req: Request, { params }: RouteContext) {
                     eq(subscriptions.supporterUserId, ctx.userId),
                     eq(subscriptions.plan, 'individual'),
                     eq(subscriptions.status, 'active'),
+                    gt(subscriptions.currentPeriodEnd, new Date()),
                   ),
                 )
                 .limit(1),
