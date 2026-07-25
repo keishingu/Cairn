@@ -346,72 +346,84 @@ export async function POST(req: Request, { params }: RouteContext) {
   const systemPrompt = `あなたはワークスペースのAIアシスタントです。メンバーのプロジェクト管理・計画策定・情報整理を支援します。現在日時: ${now}。${contextSection}
 
 回答は日本語で、簡潔かつ実用的にしてください。安全に関わる内容は専門家や現地の最新情報を確認するよう促してください。参照情報がある場合はそれを積極的に活用してください。${hasWebSearch ? '参照情報がない場合や最新情報が必要な場合は、webSearch ツールでウェブ検索してから回答してください。' : '参照情報がない場合は正直にその旨を伝えてください。'}`
+
+  const refundPendingActiveCredit = async () => {
+    if (!activeCreditReservationPending) return
+    // 返金済みの応答を保存して無償利用されないよう、先に永続化を止める。
+    activeCreditReservationFailed = true
+    try {
+      await refundActiveBenefitReservation(
+        ctx.workspaceId,
+        BILLING_CONFIG.activeAiRequestCredits,
+        assistantMessageId,
+      )
+    } finally {
+      activeCreditReservationPending = false
+    }
+  }
+
   return createDataStreamResponse({
-    execute: (dataStream) => {
-      if (ragSources.length > 0) {
-        dataStream.writeMessageAnnotation({ type: 'rag-sources', sources: ragSources })
-      }
-      const result = streamText({
-        model: openai(DEFAULT_MODEL),
-        system: systemPrompt,
-        messages,
-        ...(hasWebSearch ? { tools: { webSearch: webSearchTool }, maxSteps: 5 } : {}),
-        onError: async () => {
-          if (!activeCreditReservationPending) return
-          // AI SDK はエラー後にも途中までの step を onFinish へ渡すことがある。
-          // 返金済みの応答を保存して無償利用されないよう、先に永続化を止める。
-          activeCreditReservationFailed = true
-          await refundActiveBenefitReservation(
-            ctx.workspaceId,
-            BILLING_CONFIG.activeAiRequestCredits,
-            assistantMessageId,
-          )
-          activeCreditReservationPending = false
-        },
-        onFinish: async ({ text, steps }) => {
-          if (!lastUserContent || !shouldPersistFinishedAssistantMessage(activeCreditReservationFailed)) {
-            return
-          }
-          try {
-            const { aiConversations, aiMessages, db } = await import('@cairn/db')
-            const { eq, and, isNull } = await import('drizzle-orm')
-            const annotations: unknown[] =
-              ragSources.length > 0 ? [{ type: 'rag-sources', sources: ragSources }] : []
-            const toolInvocations: unknown[] = steps.flatMap((step) =>
-              step.toolResults.map((r) => ({
-                state: 'result',
-                toolCallId: r.toolCallId,
-                toolName: r.toolName,
-                args: r.args,
-                result: r.result,
-              })),
-            )
-            await db.transaction(async (tx) => {
-              await tx
-                .insert(aiMessages)
-                .values({ conversationId, role: 'user', content: lastUserContent })
-              await tx.insert(aiMessages).values({
-                id: assistantMessageId,
-                conversationId,
-                role: 'assistant',
-                content: text,
-                ...(annotations.length > 0 ? { annotations } : {}),
-                ...(toolInvocations.length > 0 ? { toolInvocations } : {}),
+    execute: async (dataStream) => {
+      try {
+        if (ragSources.length > 0) {
+          dataStream.writeMessageAnnotation({ type: 'rag-sources', sources: ragSources })
+        }
+        const result = streamText({
+          model: openai(DEFAULT_MODEL),
+          system: systemPrompt,
+          messages,
+          ...(hasWebSearch ? { tools: { webSearch: webSearchTool }, maxSteps: 5 } : {}),
+          onError: refundPendingActiveCredit,
+          onFinish: async ({ text, steps }) => {
+            if (!lastUserContent || !shouldPersistFinishedAssistantMessage(activeCreditReservationFailed)) {
+              return
+            }
+            try {
+              const { aiConversations, aiMessages, db } = await import('@cairn/db')
+              const { eq, and, isNull } = await import('drizzle-orm')
+              const annotations: unknown[] =
+                ragSources.length > 0 ? [{ type: 'rag-sources', sources: ragSources }] : []
+              const toolInvocations: unknown[] = steps.flatMap((step) =>
+                step.toolResults.map((r) => ({
+                  state: 'result',
+                  toolCallId: r.toolCallId,
+                  toolName: r.toolName,
+                  args: r.args,
+                  result: r.result,
+                })),
+              )
+              await db.transaction(async (tx) => {
+                await tx
+                  .insert(aiMessages)
+                  .values({ conversationId, role: 'user', content: lastUserContent })
+                await tx.insert(aiMessages).values({
+                  id: assistantMessageId,
+                  conversationId,
+                  role: 'assistant',
+                  content: text,
+                  ...(annotations.length > 0 ? { annotations } : {}),
+                  ...(toolInvocations.length > 0 ? { toolInvocations } : {}),
+                })
               })
-            })
-            activeCreditReservationPending = false
-            // 初回メッセージでタイトルを設定
-            await db
-              .update(aiConversations)
-              .set({ title: lastUserContent.slice(0, 40) })
-              .where(and(eq(aiConversations.id, conversationId), isNull(aiConversations.title)))
-          } catch (e) {
-            if (activeCreditReservationPending) await refundActiveBenefitReservation(ctx.workspaceId, BILLING_CONFIG.activeAiRequestCredits, assistantMessageId)
-            console.error('[AI chat] onFinish DB save failed:', e)
-          }
-        },
-      })
-      result.mergeIntoDataStream(dataStream)
+              activeCreditReservationPending = false
+              // 初回メッセージでタイトルを設定
+              await db
+                .update(aiConversations)
+                .set({ title: lastUserContent.slice(0, 40) })
+                .where(and(eq(aiConversations.id, conversationId), isNull(aiConversations.title)))
+            } catch (e) {
+              await refundPendingActiveCredit()
+              console.error('[AI chat] onFinish DB save failed:', e)
+            }
+          },
+        })
+        result.mergeIntoDataStream(dataStream)
+      } catch (err) {
+        // streamText の生成前に失敗すると内側の onError は登録されないため、
+        // createDataStreamResponse の外側ハンドラへ渡す前に予約を明示的に返金する。
+        await refundPendingActiveCredit()
+        throw err
+      }
     },
     onError: (err) => (err instanceof Error ? err.message : String(err)),
   })
