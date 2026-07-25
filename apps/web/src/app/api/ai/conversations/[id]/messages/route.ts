@@ -162,10 +162,6 @@ export async function POST(req: Request, { params }: RouteContext) {
         { status: 402 },
       )
     }
-    if (!(await reserveCreditsForActiveBenefit(ctx.workspaceId, BILLING_CONFIG.activeAiRequestCredits, assistantMessageId))) {
-      return NextResponse.json({ error: 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。' }, { status: 402 })
-    }
-    activeCreditReservationPending = true
   }
 
   let historyMessages: StoredConversationMessage[] = []
@@ -197,6 +193,22 @@ export async function POST(req: Request, { params }: RouteContext) {
       .limit(MAX_HISTORY_MESSAGES)
 
     historyMessages = normalizeStoredConversationMessages<StoredMessageRow>(rows)
+  }
+
+  if (isBillingEnabled()) {
+    if (
+      !(await reserveCreditsForActiveBenefit(
+        ctx.workspaceId,
+        BILLING_CONFIG.activeAiRequestCredits,
+        assistantMessageId,
+      ))
+    ) {
+      return NextResponse.json(
+        { error: 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。' },
+        { status: 402 },
+      )
+    }
+    activeCreditReservationPending = true
   }
 
   const messages = buildModelMessages(historyMessages, lastUserContent)
@@ -342,6 +354,15 @@ export async function POST(req: Request, { params }: RouteContext) {
         system: systemPrompt,
         messages,
         ...(hasWebSearch ? { tools: { webSearch: webSearchTool }, maxSteps: 5 } : {}),
+        onError: async () => {
+          if (!activeCreditReservationPending) return
+          await refundActiveBenefitReservation(
+            ctx.workspaceId,
+            BILLING_CONFIG.activeAiRequestCredits,
+            assistantMessageId,
+          )
+          activeCreditReservationPending = false
+        },
         onFinish: async ({ text, steps }) => {
           if (!lastUserContent) return
           try {
@@ -385,9 +406,6 @@ export async function POST(req: Request, { params }: RouteContext) {
       })
       result.mergeIntoDataStream(dataStream)
     },
-    onError: (err) => {
-      if (activeCreditReservationPending) void refundActiveBenefitReservation(ctx.workspaceId, BILLING_CONFIG.activeAiRequestCredits, assistantMessageId)
-      return err instanceof Error ? err.message : String(err)
-    },
+    onError: (err) => (err instanceof Error ? err.message : String(err)),
   })
 }

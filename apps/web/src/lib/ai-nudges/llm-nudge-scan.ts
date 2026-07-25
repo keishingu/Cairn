@@ -144,6 +144,19 @@ export function hasCreditsForPhaseTwoScan(creditBalance: number): boolean {
   return creditBalance >= BILLING_CONFIG.heartbeatAiDeliveryCredits
 }
 
+export function resolvePhaseTwoScanCandidateBudget(creditBalance: number): number {
+  return Math.max(0, Math.floor(creditBalance / BILLING_CONFIG.heartbeatAiDeliveryCredits))
+}
+
+export async function getPhaseTwoScanCandidateBudget(workspaceId: string): Promise<number> {
+  if (!isBillingEnabled()) return Number.POSITIVE_INFINITY
+  const [balance] = await db
+    .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
+    .from(creditLedger)
+    .where(eq(creditLedger.workspaceId, workspaceId))
+  return resolvePhaseTwoScanCandidateBudget(Number(balance?.value ?? 0))
+}
+
 // チャンネル一覧取得からLLM実行までの間にownerがOFFへ切り替えた場合も、
 // トークンを消費しないよう各LLM stepの直前に再確認する。
 async function isPhaseTwoEnabled(workspaceId: string): Promise<boolean> {

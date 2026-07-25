@@ -939,6 +939,7 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
     })
 
     const results: PhaseTwoScanResult[] = []
+    const remainingCandidateBudget = new Map<string, number>()
     for (const channel of channels) {
       const deltaInput = await step.run(`load-channel-delta-${channel.channelId}`, async () => {
         const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/llm-nudge-scan')
@@ -950,6 +951,17 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
       })
       for (const input of [deltaInput, recheckInput]) {
         if (!input) continue
+
+        let budget = remainingCandidateBudget.get(input.workspaceId)
+        if (budget === undefined) {
+          budget = await step.run(`load-phase2-budget-${input.workspaceId}`, async () => {
+            const { getPhaseTwoScanCandidateBudget } = await import('@/lib/ai-nudges/llm-nudge-scan')
+            return getPhaseTwoScanCandidateBudget(input.workspaceId)
+          })
+          remainingCandidateBudget.set(input.workspaceId, budget)
+        }
+        // 配信可能な候補枠が残っていないワークスペースはLLMを呼ばず、カーソルも進めない。
+        if (budget <= 0) continue
 
         const scanKind = input.isUnansweredAskRecheck ? 'recheck' : 'delta'
         const primaryCandidates = await step.run(
@@ -970,7 +982,16 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
           )
           if (refined) refinedCandidates.push(refined)
         }
-        results.push({ input, candidates: refinedCandidates })
+        const acceptedCandidates = refinedCandidates.slice(0, budget)
+        remainingCandidateBudget.set(input.workspaceId, budget - acceptedCandidates.length)
+        // 残高枠で候補を切り詰めた入力は、買い増し後に同じ差分を再評価する。
+        results.push({
+          input:
+            acceptedCandidates.length < refinedCandidates.length
+              ? { ...input, advancesCursor: false }
+              : input,
+          candidates: acceptedCandidates,
+        })
       }
     }
     // 配信stepの再試行が22時以降へずれた場合も、DB書き込み直前の判定で翌08時まで待つ。
