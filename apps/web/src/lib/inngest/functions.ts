@@ -1004,6 +1004,21 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
         // 未試行候補が残る場合だけカーソルを保持して次回へ回す。
         for (const [index, candidate] of primaryCandidateFilter.candidates.entries()) {
           if (refinedCandidates.length >= budget) break
+          // 最初の予算読込後にも家賃・別の配信で残高が動く。未記帳の精査済み候補数を
+          // 差し引いた現在予算を毎回確認し、配信できない候補のLLM精査を避ける。
+          const currentBudget = await step.run(
+            `recheck-phase2-budget-${channel.channelId}-${scanKind}-${index}`,
+            async () => {
+              const { getPhaseTwoScanCandidateBudget } = await import(
+                '@/lib/ai-nudges/llm-nudge-scan'
+              )
+              return getPhaseTwoScanCandidateBudget(input.workspaceId)
+            },
+          )
+          if (currentBudget <= refinedCandidates.length) {
+            fundingBlocked = true
+            break
+          }
           attemptedPrimaryCandidates += 1
           const refinement = await step.run(
             `refine-channel-${channel.channelId}-${scanKind}-${index}`,
