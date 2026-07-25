@@ -3,13 +3,14 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockIsBillingEnabled } = vi.hoisted(() => ({
+const { mockDbTransaction, mockIsBillingEnabled } = vi.hoisted(() => ({
+  mockDbTransaction: vi.fn(),
   mockIsBillingEnabled: vi.fn(),
 }))
 
 vi.mock('@cairn/db', () => ({
   creditLedger: { workspaceId: 'creditLedger.workspaceId', delta: 'creditLedger.delta' },
-  db: { transaction: vi.fn() },
+  db: { transaction: mockDbTransaction },
 }))
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
@@ -80,5 +81,21 @@ describe('consumeCreditsForPassiveBenefit', () => {
 
     expect(tx.insert).toHaveBeenCalled()
     expect(onConflictDoNothing).toHaveBeenCalled()
+  })
+
+  it('能動利用は残高ロック下で必要クレジットを予約する', async () => {
+    const insert = vi.fn(() => ({ values: vi.fn().mockResolvedValue(undefined) }))
+    const tx = {
+      execute: vi.fn(),
+      select: vi.fn(() => ({ from: () => ({ where: async () => [{ balance: '10' }] }) })),
+      insert,
+    }
+    mockDbTransaction.mockImplementation(async (callback) => callback(tx))
+
+    const { reserveCreditsForActiveBenefit } = await import('./credits')
+    await expect(reserveCreditsForActiveBenefit('workspace-1', 10, 'assistant-1')).resolves.toBe(true)
+
+    expect(tx.execute).toHaveBeenCalled()
+    expect(insert).toHaveBeenCalled()
   })
 })

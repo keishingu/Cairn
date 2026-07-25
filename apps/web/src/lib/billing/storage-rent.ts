@@ -4,6 +4,7 @@
 import { calculateStorageRentAccrual, settleStorageRent } from '@cairn/core/billing'
 import { creditLedger, db, workspaceStorageUsage } from '@cairn/db'
 import { eq, sql } from 'drizzle-orm'
+import { lockWorkspaceCreditBalance } from './credits'
 
 export interface StorageRentChargeResult {
   workspaceId: string
@@ -35,6 +36,8 @@ export async function settleWorkspaceStorageRent(
   if (!usage || now <= usage.lastRentAt) {
     return { workspaceId, debitedCredits: 0 }
   }
+
+  await lockWorkspaceCreditBalance(tx, workspaceId)
 
   const [balanceRow] = await tx
     .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })

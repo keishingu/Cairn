@@ -6,6 +6,7 @@ import { createDataStreamResponse, streamText } from 'ai'
 import { BILLING_CONFIG } from '@cairn/core/billing'
 import { openai, DEFAULT_MODEL } from '@/lib/ai/client'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
+import { refundActiveBenefitReservation, reserveCreditsForActiveBenefit } from '@/lib/billing/credits'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getGuestVisibleProjectIds } from '@/lib/permissions'
@@ -140,6 +141,8 @@ export async function POST(req: Request, { params }: RouteContext) {
     )
   }
 
+  const assistantMessageId = crypto.randomUUID()
+  let activeCreditReservationPending = false
   if (isBillingEnabled()) {
     const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
     if (!entitlements.isActiveSupporter) {
@@ -159,6 +162,10 @@ export async function POST(req: Request, { params }: RouteContext) {
         { status: 402 },
       )
     }
+    if (!(await reserveCreditsForActiveBenefit(ctx.workspaceId, BILLING_CONFIG.activeAiRequestCredits, assistantMessageId))) {
+      return NextResponse.json({ error: 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。' }, { status: 402 })
+    }
+    activeCreditReservationPending = true
   }
 
   let historyMessages: StoredConversationMessage[] = []
@@ -325,8 +332,6 @@ export async function POST(req: Request, { params }: RouteContext) {
   const systemPrompt = `あなたはワークスペースのAIアシスタントです。メンバーのプロジェクト管理・計画策定・情報整理を支援します。現在日時: ${now}。${contextSection}
 
 回答は日本語で、簡潔かつ実用的にしてください。安全に関わる内容は専門家や現地の最新情報を確認するよう促してください。参照情報がある場合はそれを積極的に活用してください。${hasWebSearch ? '参照情報がない場合や最新情報が必要な場合は、webSearch ツールでウェブ検索してから回答してください。' : '参照情報がない場合は正直にその旨を伝えてください。'}`
-  const assistantMessageId = crypto.randomUUID()
-
   return createDataStreamResponse({
     execute: (dataStream) => {
       if (ragSources.length > 0) {
@@ -340,7 +345,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         onFinish: async ({ text, steps }) => {
           if (!lastUserContent) return
           try {
-            const { aiConversations, aiMessages, creditLedger, db } = await import('@cairn/db')
+            const { aiConversations, aiMessages, db } = await import('@cairn/db')
             const { eq, and, isNull } = await import('drizzle-orm')
             const annotations: unknown[] =
               ragSources.length > 0 ? [{ type: 'rag-sources', sources: ragSources }] : []
@@ -365,28 +370,24 @@ export async function POST(req: Request, { params }: RouteContext) {
                 ...(annotations.length > 0 ? { annotations } : {}),
                 ...(toolInvocations.length > 0 ? { toolInvocations } : {}),
               })
-              // 生成開始前に必要残高を確認したうえで、成功した依頼だけを記帳する。
-              if (isBillingEnabled()) {
-                await tx.insert(creditLedger).values({
-                  workspaceId: ctx.workspaceId,
-                  delta: -BILLING_CONFIG.activeAiRequestCredits,
-                  reason: 'ai_consumption',
-                  refId: assistantMessageId,
-                })
-              }
             })
+            activeCreditReservationPending = false
             // 初回メッセージでタイトルを設定
             await db
               .update(aiConversations)
               .set({ title: lastUserContent.slice(0, 40) })
               .where(and(eq(aiConversations.id, conversationId), isNull(aiConversations.title)))
           } catch (e) {
+            if (activeCreditReservationPending) await refundActiveBenefitReservation(ctx.workspaceId, BILLING_CONFIG.activeAiRequestCredits, assistantMessageId)
             console.error('[AI chat] onFinish DB save failed:', e)
           }
         },
       })
       result.mergeIntoDataStream(dataStream)
     },
-    onError: (err) => (err instanceof Error ? err.message : String(err)),
+    onError: (err) => {
+      if (activeCreditReservationPending) void refundActiveBenefitReservation(ctx.workspaceId, BILLING_CONFIG.activeAiRequestCredits, assistantMessageId)
+      return err instanceof Error ? err.message : String(err)
+    },
   })
 }

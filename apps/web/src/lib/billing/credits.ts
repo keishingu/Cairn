@@ -7,6 +7,12 @@ import { isBillingEnabled } from './is-billing-enabled'
 
 type BillingTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
+export async function lockWorkspaceCreditBalance(tx: BillingTransaction, workspaceId: string) {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`credit-consumption:${workspaceId}`}, 0))`,
+  )
+}
+
 export async function getWorkspaceCreditBalance(workspaceId: string): Promise<number> {
   const [row] = await db
     .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
@@ -26,9 +32,7 @@ export async function consumeCreditsForPassiveBenefit(
 ): Promise<boolean> {
   if (!isBillingEnabled()) return true
 
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`credit-consumption:${workspaceId}`}, 0))`,
-  )
+  await lockWorkspaceCreditBalance(tx, workspaceId)
   const [row] = await tx
     .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
     .from(creditLedger)
@@ -40,4 +44,30 @@ export async function consumeCreditsForPassiveBenefit(
     .values({ workspaceId, delta: -credits, reason: 'ai_consumption', refId })
     .onConflictDoNothing()
   return true
+}
+
+export async function reserveCreditsForActiveBenefit(
+  workspaceId: string,
+  credits: number,
+  refId: string,
+): Promise<boolean> {
+  if (!isBillingEnabled()) return true
+  return db.transaction(async (tx) => {
+    await lockWorkspaceCreditBalance(tx, workspaceId)
+    const [row] = await tx
+      .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
+      .from(creditLedger)
+      .where(eq(creditLedger.workspaceId, workspaceId))
+    if (Number(row?.balance ?? 0) < credits) return false
+    await tx.insert(creditLedger).values({ workspaceId, delta: -credits, reason: 'ai_consumption', refId })
+    return true
+  })
+}
+
+export async function refundActiveBenefitReservation(workspaceId: string, credits: number, refId: string) {
+  if (!isBillingEnabled()) return
+  await db
+    .insert(creditLedger)
+    .values({ workspaceId, delta: credits, reason: 'adjustment', refId: `refund:${refId}` })
+    .onConflictDoNothing()
 }
