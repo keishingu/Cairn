@@ -14,6 +14,10 @@ const BOARD_WIDTH = 640
 const BOARD_HEIGHT = 360
 const STABLE_FOR_MS = 750
 
+export function shouldRefreshContributionsAfterError(status: number): boolean {
+  return status === 409
+}
+
 type ActivePlacement = {
   body: Matter.Body
   ledgerId: string
@@ -130,7 +134,12 @@ export function CreditPlacementBoard() {
           }),
         })
         const result = (await response.json().catch(() => ({}))) as CreditPlacementDto & { error?: string }
-        if (!response.ok) throw new Error(result.error ?? '積み石を保存できませんでした')
+        if (!response.ok) {
+          if (shouldRefreshContributionsAfterError(response.status)) {
+            await queryClient.invalidateQueries({ queryKey: ['credit-contributions'] })
+          }
+          throw new Error(result.error ?? '積み石を保存できませんでした')
+        }
         await queryClient.invalidateQueries({ queryKey: ['credit-contributions'] })
       } catch (err) {
         Matter.Composite.remove(engine.world, body)
