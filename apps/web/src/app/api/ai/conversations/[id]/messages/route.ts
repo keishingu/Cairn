@@ -351,15 +351,22 @@ export async function POST(req: Request, { params }: RouteContext) {
     if (!activeCreditReservationPending) return
     // 返金済みの応答を保存して無償利用されないよう、先に永続化を止める。
     activeCreditReservationFailed = true
-    try {
-      await refundActiveBenefitReservation(
-        ctx.workspaceId,
-        BILLING_CONFIG.activeAiRequestCredits,
-        assistantMessageId,
-      )
-    } finally {
-      activeCreditReservationPending = false
+    let lastError: unknown
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await refundActiveBenefitReservation(
+          ctx.workspaceId,
+          BILLING_CONFIG.activeAiRequestCredits,
+          assistantMessageId,
+        )
+        // 返金記帳に成功した場合だけ完了扱いにし、失敗時は後続のエラー経路でも再試行する。
+        activeCreditReservationPending = false
+        return
+      } catch (err) {
+        lastError = err
+      }
     }
+    throw lastError
   }
 
   return createDataStreamResponse({
