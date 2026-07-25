@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { resolveUploadRights, resolveWorkspaceState } from './billing'
+import {
+  isPlacementEligibleCredit,
+  resolveUploadRights,
+  resolveWorkspaceState,
+} from './billing'
 
 describe('resolveWorkspaceState', () => {
   it('課金が無効なセルフホストでは残高にかかわらず無制限にする', () => {
@@ -15,6 +19,20 @@ describe('resolveWorkspaceState', () => {
 
   it.each([0, -1])('残高 %i の課金ワークスペースを weathered にする', (creditBalance) => {
     expect(resolveWorkspaceState(creditBalance, true)).toBe('weathered')
+  })
+})
+
+describe('isPlacementEligibleCredit', () => {
+  it('月次付与とパック購入の正の台帳行だけを配置対象にする', () => {
+    expect(isPlacementEligibleCredit({ reason: 'subscription_grant', delta: 1 })).toBe(true)
+    expect(isPlacementEligibleCredit({ reason: 'pack_purchase', delta: 400 })).toBe(true)
+  })
+
+  it('消費・家賃・調整または負の行を配置対象にしない', () => {
+    expect(isPlacementEligibleCredit({ reason: 'ai_consumption', delta: -1 })).toBe(false)
+    expect(isPlacementEligibleCredit({ reason: 'storage_rent', delta: -1 })).toBe(false)
+    expect(isPlacementEligibleCredit({ reason: 'adjustment', delta: 1 })).toBe(false)
+    expect(isPlacementEligibleCredit({ reason: 'pack_purchase', delta: -1 })).toBe(false)
   })
 })
 

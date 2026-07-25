@@ -4,8 +4,11 @@
 // Web から参照する純粋な課金ドメインの専用エントリーポイント。
 // application/ の Node.js 向け use case を解決しないため、Next.js のバンドルにも安全に渡せる。
 export {
+  isPlacementEligibleCredit,
+  placementEligibleCreditReasons,
   resolveUploadRights,
   resolveWorkspaceState,
+  type PlacementEligibleCreditReason,
   type UploadRights,
   type WorkspaceState,
 } from './domain/billing'

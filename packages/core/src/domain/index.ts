@@ -9,8 +9,11 @@ export type { GalleryItem } from './gallery-item'
 export type { AiAgent } from './ai-agent'
 export type { ProjectMember } from './project-member'
 export {
+  isPlacementEligibleCredit,
+  placementEligibleCreditReasons,
   resolveUploadRights,
   resolveWorkspaceState,
+  type PlacementEligibleCreditReason,
   type UploadRights,
   type WorkspaceState,
 } from './billing'

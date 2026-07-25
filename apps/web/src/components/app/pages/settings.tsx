@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import dynamic from 'next/dynamic'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -21,6 +22,11 @@ import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { AccentId } from '@cairn/shared'
 import { FEATURE_FLAGS } from '@cairn/shared'
+
+const CreditPlacementBoard = dynamic(
+  () => import('@/components/billing/credit-placement-board').then((module) => module.CreditPlacementBoard),
+  { ssr: false },
+)
 
 class GcalCalendarsError extends Error {
   code: string | undefined
@@ -2282,6 +2288,8 @@ const SettingsBilling = () => {
         </section>
       ) : null}
 
+      {billingQuery.data?.billingEnabled && <CreditPlacementBoard />}
+
       {billingActionError && (
         <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
           ⚠ {billingActionError}
@@ -2337,6 +2345,27 @@ const SettingsBilling = () => {
       </section>
     </div>
   )
+}
+
+const SettingsContributions = () => {
+  const billingQuery = useQuery({
+    queryKey: ['billing-summary'],
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/billing/summary')
+      if (!res.ok) throw new Error('請求情報の取得に失敗しました')
+      return res.json() as Promise<BillingSummaryDto>
+    },
+  })
+
+  if (billingQuery.isLoading) {
+    return <div style={{ color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+  }
+  if (billingQuery.isError) {
+    return <div style={{ color: 'var(--red-text)', fontSize: 13 }}>⚠ ケルンを取得できませんでした</div>
+  }
+  if (!billingQuery.data?.billingEnabled) return null
+
+  return <CreditPlacementBoard />
 }
 
 // ─── Developer ────────────────────────────────────────────────────
@@ -2649,6 +2678,9 @@ export function getSettingsNavGroups(
     { id: 'ai', label: 'AIエージェント', icon: 'sparkles' },
     { id: 'members', label: 'メンバー', icon: 'users' },
     { id: 'integrations', label: '連携', icon: 'layers' },
+    ...(options.isMobile
+      ? [{ id: 'contributions', label: 'ケルン', icon: 'layers' } satisfies SettingsSectionMeta]
+      : []),
     ...(!options.isMobile
       ? [{ id: 'billing', label: '請求', icon: 'archive' } satisfies SettingsSectionMeta]
       : []),
@@ -2692,6 +2724,7 @@ const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   ai: SettingsAI,
   integrations: SettingsIntegrations,
   billing: SettingsBilling,
+  contributions: SettingsContributions,
   developer: SettingsDeveloper,
 }
 

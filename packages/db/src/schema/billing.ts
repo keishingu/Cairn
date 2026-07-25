@@ -61,6 +61,33 @@ export const creditLedger = pgTable(
   ],
 )
 
+// 付与クレジットを画面上に配置した結果。台帳行と 1:1 にし、同じ付与を二重に配置できないようにする。
+// placed_by はメンバーの非活性化・退会後にも履歴を残すため cascade しない。
+export const creditPlacements = pgTable(
+  'credit_placements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    ledgerId: uuid('ledger_id')
+      .notNull()
+      .references(() => creditLedger.id, { onDelete: 'cascade' }),
+    placedBy: uuid('placed_by')
+      .notNull()
+      .references(() => profiles.id),
+    x: numeric('x', { precision: 8, scale: 6 }).notNull(),
+    y: numeric('y', { precision: 8, scale: 6 }).notNull(),
+    rotation: numeric('rotation', { precision: 8, scale: 6 }).notNull(),
+    shape: text('shape').notNull().default('regular'),
+    placedAt: timestamp('placed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('credit_placements_ledger_unique').on(t.ledgerId),
+    index('idx_credit_placements_workspace_placed').on(t.workspaceId, t.placedAt),
+  ],
+)
+
 // アップロードの執行と家賃計算に使う使用量カウンタ。
 // files の CASCADE 削除などでずれることを前提に、定期的な reconciliation で再計算する。
 export const workspaceStorageUsage = pgTable('workspace_storage_usage', {
