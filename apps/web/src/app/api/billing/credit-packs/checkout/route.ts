@@ -8,6 +8,20 @@ import { getWorkspaceRole } from '@/lib/access/membership'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { getCreditPackPriceId, getStripeClient, resolveApplicationUrl } from '@/lib/billing/stripe'
 
+export function isConfiguredCreditPackPrice(price: {
+  active: boolean
+  currency: string
+  type: string
+  unit_amount: number | null
+}): boolean {
+  return (
+    price.active &&
+    price.type === 'one_time' &&
+    price.currency.toLowerCase() === 'jpy' &&
+    price.unit_amount === BILLING_CONFIG.creditPackPriceJpy
+  )
+}
+
 export async function POST(request: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -87,6 +101,10 @@ export async function POST(request: Request) {
 
       const appUrl = resolveApplicationUrl(request)
       const creditPackPriceId = getCreditPackPriceId()
+      const creditPackPrice = await stripe.prices.retrieve(creditPackPriceId)
+      if (!isConfiguredCreditPackPrice(creditPackPrice)) {
+        throw new Error(`Configured credit pack Price ${creditPackPriceId} does not match billing config`)
+      }
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
         customer: customerId,

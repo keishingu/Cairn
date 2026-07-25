@@ -19,6 +19,7 @@ import {
   parseLatestUserInput,
   type StoredConversationMessage,
 } from './message-input'
+import { shouldPersistFinishedAssistantMessage } from './message-stream-lifecycle'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -143,6 +144,7 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   const assistantMessageId = crypto.randomUUID()
   let activeCreditReservationPending = false
+  let activeCreditReservationFailed = false
   if (isBillingEnabled()) {
     const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
     if (!entitlements.isActiveSupporter) {
@@ -356,6 +358,9 @@ export async function POST(req: Request, { params }: RouteContext) {
         ...(hasWebSearch ? { tools: { webSearch: webSearchTool }, maxSteps: 5 } : {}),
         onError: async () => {
           if (!activeCreditReservationPending) return
+          // AI SDK はエラー後にも途中までの step を onFinish へ渡すことがある。
+          // 返金済みの応答を保存して無償利用されないよう、先に永続化を止める。
+          activeCreditReservationFailed = true
           await refundActiveBenefitReservation(
             ctx.workspaceId,
             BILLING_CONFIG.activeAiRequestCredits,
@@ -364,7 +369,9 @@ export async function POST(req: Request, { params }: RouteContext) {
           activeCreditReservationPending = false
         },
         onFinish: async ({ text, steps }) => {
-          if (!lastUserContent) return
+          if (!lastUserContent || !shouldPersistFinishedAssistantMessage(activeCreditReservationFailed)) {
+            return
+          }
           try {
             const { aiConversations, aiMessages, db } = await import('@cairn/db')
             const { eq, and, isNull } = await import('drizzle-orm')

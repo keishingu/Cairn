@@ -126,4 +126,11 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
       error: 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。',
     })
   })
+
+  it('ストリーム失敗後は途中のassistant応答を保存しない', async () => {
+    const { shouldPersistFinishedAssistantMessage } = await import('./message-stream-lifecycle')
+
+    expect(shouldPersistFinishedAssistantMessage(true)).toBe(false)
+    expect(shouldPersistFinishedAssistantMessage(false)).toBe(true)
+  })
 })

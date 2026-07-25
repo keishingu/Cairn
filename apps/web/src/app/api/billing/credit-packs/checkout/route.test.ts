@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   mockGetAuthContext,
   mockGetWorkspaceRole,
+  mockStripePriceRetrieve,
   mockStripeSessionsList,
   mockStripeSessionsCreate,
   mockSelectLimit,
@@ -13,6 +14,7 @@ const {
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockGetWorkspaceRole: vi.fn(),
+  mockStripePriceRetrieve: vi.fn(),
   mockStripeSessionsList: vi.fn(),
   mockStripeSessionsCreate: vi.fn(),
   mockSelectLimit: vi.fn(),
@@ -25,6 +27,7 @@ vi.mock('@/lib/billing/is-billing-enabled', () => ({ isBillingEnabled: () => tru
 vi.mock('@/lib/billing/stripe', () => ({
   getCreditPackPriceId: () => 'price_credit_pack',
   getStripeClient: () => ({
+    prices: { retrieve: mockStripePriceRetrieve },
     checkout: { sessions: { create: mockStripeSessionsCreate, list: mockStripeSessionsList } },
   }),
   resolveApplicationUrl: () => 'https://cairn.example',
@@ -63,6 +66,12 @@ describe('POST /api/billing/credit-packs/checkout', () => {
       error: null,
     })
     mockGetWorkspaceRole.mockResolvedValue('member')
+    mockStripePriceRetrieve.mockResolvedValue({
+      active: true,
+      currency: 'jpy',
+      type: 'one_time',
+      unit_amount: 500,
+    })
     mockStripeSessionsList.mockResolvedValue({ data: [] })
     mockStripeSessionsCreate.mockResolvedValue({ url: 'https://checkout.stripe.test/session' })
     mockTransaction.mockImplementation(async (callback) =>
@@ -114,6 +123,26 @@ describe('POST /api/billing/credit-packs/checkout', () => {
     )
 
     expect(res.status).toBe(403)
+    expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
+  })
+
+  it('設定済みPriceの通貨または金額が異なる場合はCheckoutを作成しない', async () => {
+    mockSelectLimit
+      .mockResolvedValueOnce([{ stripeCustomerId: 'cus-existing' }])
+      .mockResolvedValueOnce([{ id: 'sub-1' }])
+    mockStripePriceRetrieve.mockResolvedValue({
+      active: true,
+      currency: 'usd',
+      type: 'one_time',
+      unit_amount: 500,
+    })
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('https://cairn.example/api/billing/credit-packs/checkout', { method: 'POST' }),
+    )
+
+    expect(res.status).toBe(500)
     expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
   })
 })
