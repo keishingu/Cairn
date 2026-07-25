@@ -3,7 +3,7 @@
 
 import { calculateStorageRentAccrual, settleStorageRent } from '@cairn/core/billing'
 import { creditLedger, db, workspaceStorageUsage } from '@cairn/db'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 
 export interface StorageRentChargeResult {
   workspaceId: string
@@ -36,16 +36,30 @@ export async function settleWorkspaceStorageRent(
     return { workspaceId, debitedCredits: 0 }
   }
 
+  const [balanceRow] = await tx
+    .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
+    .from(creditLedger)
+    .where(eq(creditLedger.workspaceId, workspaceId))
+  const availableCredits = Math.max(0, Number(balanceRow?.balance ?? 0))
+  if (availableCredits <= 0) {
+    await tx
+      .update(workspaceStorageUsage)
+      .set({ unbilledRentCredits: '0', lastRentAt: now, updatedAt: now })
+      .where(eq(workspaceStorageUsage.workspaceId, workspaceId))
+    return { workspaceId, debitedCredits: 0 }
+  }
+
   const accruedCredits = calculateStorageRentAccrual(usage.originalBytes, usage.lastRentAt, now)
   const settlement = settleStorageRent(accruedCredits, Number(usage.unbilledRentCredits))
   const refId = `${usage.lastRentAt.toISOString()}:${now.toISOString()}`
 
-  if (settlement.debitCredits > 0) {
+  const debitCredits = Math.min(settlement.debitCredits, availableCredits)
+  if (debitCredits > 0) {
     await tx
       .insert(creditLedger)
       .values({
         workspaceId,
-        delta: -settlement.debitCredits,
+        delta: -debitCredits,
         reason: 'storage_rent',
         refId,
       })
@@ -55,20 +69,23 @@ export async function settleWorkspaceStorageRent(
   await tx
     .update(workspaceStorageUsage)
     .set({
-      unbilledRentCredits: String(settlement.remainingCredits),
+      // 残高を使い切った時点で風化へ移行する。未払い家賃を持ち越して後の付与を
+      // 遡及消費しないよう、端数もここで破棄する。
+      unbilledRentCredits:
+        debitCredits < settlement.debitCredits ? '0' : String(settlement.remainingCredits),
       lastRentAt: now,
       updatedAt: now,
     })
     .where(eq(workspaceStorageUsage.workspaceId, workspaceId))
 
-  return { workspaceId, debitedCredits: settlement.debitCredits }
+  return { workspaceId, debitedCredits: debitCredits }
 }
 
 export async function chargeWorkspaceStorageRent(
   workspaceId: string,
   now = new Date(),
 ): Promise<StorageRentChargeResult> {
-  return db.transaction(tx => settleWorkspaceStorageRent(tx, workspaceId, now))
+  return db.transaction((tx) => settleWorkspaceStorageRent(tx, workspaceId, now))
 }
 
 export async function advanceWorkspaceStorageRentCursor(
@@ -110,7 +127,7 @@ export async function advanceAllWorkspaceStorageRentCursors(now = new Date()): P
     .from(workspaceStorageUsage)
 
   for (const row of rows) {
-    await db.transaction(tx => advanceWorkspaceStorageRentCursor(tx, row.workspaceId, now))
+    await db.transaction((tx) => advanceWorkspaceStorageRentCursor(tx, row.workspaceId, now))
   }
   return rows.length
 }

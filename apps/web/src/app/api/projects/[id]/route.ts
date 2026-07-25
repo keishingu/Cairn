@@ -122,28 +122,30 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         deletionJobId = job.id
       }
 
-      // gallery_items とのJOINで同じ files 行が複数現れ得るため、使用量は file ID ごとに
-      // 一度だけ計上する。ストレージ削除対象の参照一覧は下でそのまま保持する。
+      // gallery_items とのJOINで同じ files 行が複数現れ得るため、削除対象は file ID ごとに
+      // 一度だけ扱う。先に明示削除して、競合した個別削除があった場合は実際に消えた行だけを
+      // 使用量へ反映する（プロジェクトCASCADEに任せるとこの差分を確定できない）。
       const uniqueFiles = [...new Map(filePaths.map((file) => [file.id, file])).values()]
+      const fileIds = uniqueFiles.map((file) => file.id)
+      const removedFiles =
+        fileIds.length > 0
+          ? await tx
+              .delete(files)
+              .where(inArray(files.id, fileIds))
+              .returning({ fileSize: files.fileSize, derivedFileSize: files.derivedFileSize })
+          : []
       const { recordStorageUsageDelta } = await import('@/lib/billing/storage-usage')
       await recordStorageUsageDelta(
         ctx.workspaceId,
         {
-          originalBytes: -uniqueFiles.reduce((total, file) => total + (file.fileSize ?? 0), 0),
-          derivedBytes: -uniqueFiles.reduce(
+          originalBytes: -removedFiles.reduce((total, file) => total + (file.fileSize ?? 0), 0),
+          derivedBytes: -removedFiles.reduce(
             (total, file) => total + (file.derivedFileSize ?? 0),
             0,
           ),
         },
         tx,
       )
-
-      const legacyFileIds = uniqueFiles
-        .filter((file) => file.projectId === null)
-        .map((file) => file.id)
-      if (legacyFileIds.length > 0) {
-        await tx.delete(files).where(inArray(files.id, legacyFileIds))
-      }
 
       const [removedProject] = await tx
         .delete(projects)
