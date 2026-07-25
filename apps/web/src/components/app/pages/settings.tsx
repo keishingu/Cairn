@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import dynamic from 'next/dynamic'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -21,6 +22,11 @@ import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { AccentId } from '@cairn/shared'
 import { FEATURE_FLAGS } from '@cairn/shared'
+
+const CreditPlacementBoard = dynamic(
+  () => import('@/components/billing/credit-placement-board').then((module) => module.CreditPlacementBoard),
+  { ssr: false },
+)
 
 class GcalCalendarsError extends Error {
   code: string | undefined
@@ -2281,6 +2287,8 @@ const SettingsBilling = () => {
           </div>
         </section>
       ) : null}
+
+      {billingQuery.data?.billingEnabled && <CreditPlacementBoard />}
 
       {billingActionError && (
         <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>

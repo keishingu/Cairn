@@ -3,6 +3,18 @@
 
 export type WorkspaceState = 'unlimited' | 'funded' | 'weathered'
 
+export const placementEligibleCreditReasons = ['subscription_grant', 'pack_purchase'] as const
+
+export type PlacementEligibleCreditReason = (typeof placementEligibleCreditReasons)[number]
+
+// 確定済みの付与行だけを配置可能な単位として扱う。
+// 消費・家賃・調整の行を誤って配置対象に含めないため、DB 依存なしで判定する。
+export function isPlacementEligibleCredit(input: { reason: string; delta: number }): boolean {
+  return input.delta > 0 && placementEligibleCreditReasons.includes(
+    input.reason as PlacementEligibleCreditReason,
+  )
+}
+
 export interface UploadRights {
   canUploadOriginal: boolean
   canUploadLargeFile: boolean
