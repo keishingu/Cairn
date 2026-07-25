@@ -24,7 +24,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       storageDeletionJobs,
       uploadRequests,
     } = await import('@cairn/db')
-    const { eq, and, inArray, isNull, or } = await import('drizzle-orm')
+    const { eq, and, inArray, isNull, ne, or } = await import('drizzle-orm')
 
     const [project] = await db
       .select({ id: projects.id })
@@ -106,13 +106,60 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
           .map((request) => request.originalStoragePath)
           .filter((path): path is string => path !== null),
       ]
-      const deletionTargets = [
+      let deletionTargets = [
         attachmentPaths.length > 0 ? { bucket: 'chat-attachments', paths: attachmentPaths } : null,
         galleryDerivedPaths.length > 0 ? { bucket: 'gallery', paths: galleryDerivedPaths } : null,
         galleryOriginalPaths.length > 0
           ? { bucket: 'gallery-originals', paths: galleryOriginalPaths }
           : null,
       ].filter((target): target is { bucket: string; paths: string[] } => target !== null)
+
+      // gallery_items とのJOINで同じ files 行が複数現れ得るため、削除対象は file ID ごとに
+      // 一度だけ扱う。先に明示削除して、競合した個別削除があった場合は実際に消えた行だけを
+      // 使用量へ反映する（プロジェクトCASCADEに任せるとこの差分を確定できない）。
+      const uniqueFiles = [...new Map(filePaths.map((file) => [file.id, file])).values()]
+      const fileIds = uniqueFiles.map((file) => file.id)
+      const sharedFileIds =
+        fileIds.length > 0
+          ? new Set(
+              (
+                await tx
+                  .selectDistinct({ id: files.id })
+                  .from(files)
+                  .innerJoin(messageAttachments, eq(messageAttachments.fileId, files.id))
+                  .innerJoin(messages, eq(messages.id, messageAttachments.messageId))
+                  .innerJoin(channels, eq(channels.id, messages.channelId))
+                  .where(
+                    and(
+                      inArray(files.id, fileIds),
+                      or(ne(channels.projectId, projectId), isNull(channels.projectId)),
+                    ),
+                  )
+              ).map((file) => file.id),
+            )
+          : new Set<string>()
+      const removableFileIds = fileIds.filter((id) => !sharedFileIds.has(id))
+      // 削除対象プロジェクトを指す共有ファイルは project_id を外してCASCADEから保護する。
+      if (sharedFileIds.size > 0) {
+        await tx
+          .update(files)
+          .set({ projectId: null })
+          .where(and(inArray(files.id, [...sharedFileIds]), eq(files.projectId, projectId)))
+      }
+      // 共有ファイルは外部プロジェクトに残すため、outbox の削除対象からも外す。
+      deletionTargets = deletionTargets
+        .map((target) => ({
+          ...target,
+          paths: target.paths.filter(
+            (path) =>
+              !uniqueFiles.some(
+                (file) =>
+                  sharedFileIds.has(file.id) &&
+                  (file.storagePath === path || file.derivedStoragePath === path),
+              ),
+          ),
+        }))
+        .filter((target) => target.paths.length > 0)
       if (deletionTargets.length > 0) {
         const [job] = await tx
           .insert(storageDeletionJobs)
@@ -121,17 +168,11 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         if (!job) throw new Error('storage deletion outbox insert returned no rows')
         deletionJobId = job.id
       }
-
-      // gallery_items とのJOINで同じ files 行が複数現れ得るため、削除対象は file ID ごとに
-      // 一度だけ扱う。先に明示削除して、競合した個別削除があった場合は実際に消えた行だけを
-      // 使用量へ反映する（プロジェクトCASCADEに任せるとこの差分を確定できない）。
-      const uniqueFiles = [...new Map(filePaths.map((file) => [file.id, file])).values()]
-      const fileIds = uniqueFiles.map((file) => file.id)
       const removedFiles =
-        fileIds.length > 0
+        removableFileIds.length > 0
           ? await tx
               .delete(files)
-              .where(inArray(files.id, fileIds))
+              .where(inArray(files.id, removableFileIds))
               .returning({ fileSize: files.fileSize, derivedFileSize: files.derivedFileSize })
           : []
       const { recordStorageUsageDelta } = await import('@/lib/billing/storage-usage')
