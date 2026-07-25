@@ -111,6 +111,8 @@ describe('POST /api/billing/credit-packs/checkout', () => {
         mode: 'payment',
         customer: 'cus-existing',
         line_items: [{ price: 'price_credit_pack', quantity: 1 }],
+        success_url:
+          'https://cairn.example/settings/billing?credit_pack=success&credit_pack_session_id={CHECKOUT_SESSION_ID}',
         metadata: expect.objectContaining({
           purchaseType: 'credit_pack',
           creditPackCredits: '400',

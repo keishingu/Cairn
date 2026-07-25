@@ -15,9 +15,10 @@ export interface BillingSummaryDto {
   derivedBytes: number
   hasManageableSubscription: boolean
   canPurchaseCreditPack: boolean
+  creditPackFulfilled: boolean | null
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
   const forbidden = requireRole(ctx.role, 'member')
@@ -33,13 +34,16 @@ export async function GET() {
       derivedBytes: 0,
       hasManageableSubscription: false,
       canPurchaseCreditPack: false,
+      creditPackFulfilled: null,
     } satisfies BillingSummaryDto)
   }
 
   try {
     const { creditLedger, db, subscriptions, workspaceStorageUsage } = await import('@cairn/db')
     const { and, eq, gt, inArray, sql } = await import('drizzle-orm')
-    const [[balance], [usage], [subscription], [creditPackSubscription]] = await Promise.all([
+    const creditPackSessionId = new URL(request.url).searchParams.get('credit_pack_session_id')
+    const [[balance], [usage], [subscription], [creditPackSubscription], creditPackFulfillments] =
+      await Promise.all([
       db
         .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
         .from(creditLedger)
@@ -77,6 +81,19 @@ export async function GET() {
           ),
         )
         .limit(1),
+      creditPackSessionId
+        ? db
+            .select({ id: creditLedger.id })
+            .from(creditLedger)
+            .where(
+              and(
+                eq(creditLedger.workspaceId, ctx.workspaceId),
+                eq(creditLedger.reason, 'pack_purchase'),
+                eq(creditLedger.refId, creditPackSessionId),
+              ),
+            )
+            .limit(1)
+        : Promise.resolve([]),
     ])
     const creditBalance = Number(balance?.value ?? 0)
     return NextResponse.json({
@@ -87,6 +104,7 @@ export async function GET() {
       derivedBytes: usage?.derivedBytes ?? 0,
       hasManageableSubscription: subscription !== undefined,
       canPurchaseCreditPack: creditPackSubscription !== undefined,
+      creditPackFulfilled: creditPackSessionId ? creditPackFulfillments.length > 0 : null,
     } satisfies BillingSummaryDto)
   } catch (err) {
     console.error('[/api/billing/summary GET]', err)

@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
@@ -2088,11 +2088,22 @@ import { BILLING_CONFIG } from '@cairn/core/billing'
 
 const FREE_TIER_REFERENCE_GB = 10
 
+export function shouldPollCreditPackFulfillment(input: {
+  isCreditPackReturn: boolean
+  sessionId: string | null
+  fulfilled: boolean | null | undefined
+}): boolean {
+  return input.isCreditPackReturn && input.sessionId !== null && input.fulfilled !== true
+}
+
 const SettingsBilling = () => {
   const [billingAction, setBillingAction] = React.useState<
     'checkout' | 'credit-pack' | 'portal' | null
   >(null)
   const [billingActionError, setBillingActionError] = React.useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const creditPackSessionId = searchParams.get('credit_pack_session_id')
+  const isCreditPackReturn = searchParams.get('credit_pack') === 'success'
   const { data, isLoading, isError } = useQuery({
     queryKey: ['workspace-storage-usage'],
     queryFn: async () => {
@@ -2102,12 +2113,23 @@ const SettingsBilling = () => {
     },
   })
   const billingQuery = useQuery({
-    queryKey: ['billing-summary'],
+    queryKey: ['billing-summary', creditPackSessionId],
     queryFn: async () => {
-      const res = await fetchWithAuth('/api/billing/summary')
+      const summaryUrl = creditPackSessionId
+        ? `/api/billing/summary?credit_pack_session_id=${encodeURIComponent(creditPackSessionId)}`
+        : '/api/billing/summary'
+      const res = await fetchWithAuth(summaryUrl)
       if (!res.ok) throw new Error('請求情報の取得に失敗しました')
       return res.json() as Promise<BillingSummaryDto>
     },
+    refetchInterval: (query) =>
+      shouldPollCreditPackFulfillment({
+        isCreditPackReturn,
+        sessionId: creditPackSessionId,
+        fulfilled: query.state.data?.creditPackFulfilled,
+      })
+        ? 2_000
+        : false,
   })
 
   const beginCheckout = async () => {
@@ -2247,6 +2269,16 @@ const SettingsBilling = () => {
       {billingActionError && (
         <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
           ⚠ {billingActionError}
+        </div>
+      )}
+
+      {shouldPollCreditPackFulfillment({
+        isCreditPackReturn,
+        sessionId: creditPackSessionId,
+        fulfilled: billingQuery.data?.creditPackFulfilled,
+      }) && (
+        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-3)' }}>
+          決済を確認しています。クレジット残高は自動で更新されます。
         </div>
       )}
 

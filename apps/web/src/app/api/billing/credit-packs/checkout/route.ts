@@ -141,7 +141,7 @@ export async function POST(request: Request) {
         customer: customerId,
         client_reference_id: ctx.userId,
         line_items: [{ price: creditPackPriceId, quantity: 1 }],
-        success_url: `${appUrl}/settings/billing?credit_pack=success`,
+        success_url: `${appUrl}/settings/billing?credit_pack=success&credit_pack_session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${appUrl}/settings/billing?credit_pack=cancel`,
         metadata: {
           workspaceId: ctx.workspaceId,
