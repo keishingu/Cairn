@@ -8,7 +8,7 @@ import { getWorkspaceRole } from '@/lib/access/membership'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { getCreditPackPriceId, getStripeClient, resolveApplicationUrl } from '@/lib/billing/stripe'
 
-export function isConfiguredCreditPackPrice(price: {
+function isConfiguredCreditPackPrice(price: {
   active: boolean
   currency: string
   type: string
@@ -28,7 +28,7 @@ type CreditPackCheckoutSession = {
   metadata: Record<string, string> | null
 }
 
-export function isReusableCreditPackCheckout(
+function isReusableCreditPackCheckout(
   session: CreditPackCheckoutSession,
   input: { workspaceId: string; supporterUserId: string; priceId: string },
 ): boolean {
