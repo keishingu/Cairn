@@ -47,6 +47,12 @@ WHERE NOT EXISTS (
   WHERE canonical_chunk.source_type = 'file'
     AND canonical_chunk.source_id = duplicates.canonical_file_id
 )
+  AND EXISTS (
+    SELECT 1
+    FROM document_chunks AS duplicate_chunk
+    WHERE duplicate_chunk.source_type = 'file'
+      AND duplicate_chunk.source_id = duplicates.duplicate_file_id
+  )
 ORDER BY duplicates.canonical_file_id, duplicates.duplicate_file_id;
 
 UPDATE document_chunks AS chunk

@@ -23,6 +23,8 @@ interface StorageObject {
   size: number
 }
 
+const ORIGINAL_UPLOAD_ENTITLEMENT_ERROR = 'original-upload-entitlement-required'
+
 async function readStorageObject(
   bucket: string,
   storagePath: string,
@@ -58,7 +60,8 @@ export async function POST(req: Request, { params }: RouteContext) {
   const uploadId = body.uploadId
 
   try {
-    const { creditLedger, db, files, galleryItems, projects, subscriptions, uploadRequests } = await import('@cairn/db')
+    const { creditLedger, db, files, galleryItems, projects, subscriptions, uploadRequests } =
+      await import('@cairn/db')
     const { and, eq, gt, sql } = await import('drizzle-orm')
     const [project] = await db
       .select({ id: projects.id })
@@ -247,7 +250,7 @@ export async function POST(req: Request, { params }: RouteContext) {
                 .limit(1),
             ])
             if (!subscription || Number(balance?.balance ?? 0) <= 0) {
-              throw new Error('original-upload-entitlement-required')
+              throw new Error(ORIGINAL_UPLOAD_ENTITLEMENT_ERROR)
             }
           }
 
@@ -310,6 +313,12 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     return toResponse(finalized.fileId, finalized.reused ? 200 : 201)
   } catch (err) {
+    if (err instanceof Error && err.message === ORIGINAL_UPLOAD_ENTITLEMENT_ERROR) {
+      return NextResponse.json(
+        { error: 'オリジナルを保存するには、残高のある有効な支援が必要です' },
+        { status: 403 },
+      )
+    }
     console.error('[/api/projects/[id]/gallery/finalize POST]', err)
     return NextResponse.json({ error: 'アップロードの確定に失敗しました' }, { status: 500 })
   }

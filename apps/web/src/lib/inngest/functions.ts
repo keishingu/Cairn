@@ -393,19 +393,22 @@ export const deleteStorageObjects = inngest.createFunction(
   { id: 'delete-storage-objects' },
   { event: 'storage/objects.delete' },
   async ({ event, step }) => {
-    const { bucket, paths } = event.data as { bucket: string; paths: string[] }
-
-    if (paths.length === 0) return { deleted: 0 }
+    const data = event.data as
+      | { bucket: string; paths: string[] }
+      | { targets: Array<{ bucket: string; paths: string[] }> }
+    const targets = 'targets' in data ? data.targets : [{ bucket: data.bucket, paths: data.paths }]
 
     let deleted = 0
-    for (let i = 0; i < paths.length; i += BATCH_SIZE) {
-      const batch = paths.slice(i, i + BATCH_SIZE)
-      await step.run(`delete-batch-${i}`, async () => {
-        const supabase = createServiceRoleClient()
-        const { data, error } = await supabase.storage.from(bucket).remove(batch)
-        if (error) throw error
-        deleted += data?.length ?? 0
-      })
+    for (const { bucket, paths } of targets) {
+      for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+        const batch = paths.slice(i, i + BATCH_SIZE)
+        await step.run(`delete-${bucket}-batch-${i}`, async () => {
+          const supabase = createServiceRoleClient()
+          const { data, error } = await supabase.storage.from(bucket).remove(batch)
+          if (error) throw error
+          deleted += data?.length ?? 0
+        })
+      }
     }
 
     return { deleted }

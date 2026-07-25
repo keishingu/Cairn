@@ -38,6 +38,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const forbidden = requireRole(ctx.role, 'admin')
     if (forbidden) return forbidden
 
+    const { inngest } = await import('@/lib/inngest/client')
+
     const deleted = await db.transaction(async (tx) => {
       // CASCADE の直前にプロジェクトをロックし、同じトランザクションで対象ファイルを
       // 集計・家賃精算する。日次 reconciliation まで古い使用量を請求し続けない。
@@ -77,6 +79,44 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         .from(uploadRequests)
         .where(and(eq(uploadRequests.projectId, projectId), isNull(uploadRequests.finalizedAt)))
 
+      // DB を削除する前に、全バケットを1つの Inngest event として永続キューへ送る。
+      // enqueue が失敗すればこのトランザクション全体をロールバックするため、プロジェクトと
+      // パス一覧が残り、クライアント再試行でクリーンアップを再送できる。
+      const attachmentPaths = filePaths
+        .filter((file) => !file.galleryItemId)
+        .flatMap((file) => {
+          const metadata = (file.metadata ?? {}) as Record<string, unknown>
+          const thumbnailPath =
+            typeof metadata['thumbnailPath'] === 'string' ? metadata['thumbnailPath'] : null
+          return [file.storagePath, thumbnailPath].filter((path): path is string => path !== null)
+        })
+      const galleryDerivedPaths = [
+        ...filePaths
+          .filter((file) => file.galleryItemId)
+          .flatMap((file) =>
+            [file.derivedStoragePath].filter((path): path is string => path !== null),
+          ),
+        ...pendingUploadPaths.map((request) => request.derivedStoragePath),
+      ]
+      const galleryOriginalPaths = [
+        ...filePaths
+          .filter((file) => file.galleryItemId)
+          .flatMap((file) => [file.storagePath].filter((path): path is string => path !== null)),
+        ...pendingUploadPaths
+          .map((request) => request.originalStoragePath)
+          .filter((path): path is string => path !== null),
+      ]
+      const deletionTargets = [
+        attachmentPaths.length > 0 ? { bucket: 'chat-attachments', paths: attachmentPaths } : null,
+        galleryDerivedPaths.length > 0 ? { bucket: 'gallery', paths: galleryDerivedPaths } : null,
+        galleryOriginalPaths.length > 0
+          ? { bucket: 'gallery-originals', paths: galleryOriginalPaths }
+          : null,
+      ].filter((target): target is { bucket: string; paths: string[] } => target !== null)
+      if (deletionTargets.length > 0) {
+        await inngest.send({ name: 'storage/objects.delete', data: { targets: deletionTargets } })
+      }
+
       // gallery_items とのJOINで同じ files 行が複数現れ得るため、使用量は file ID ごとに
       // 一度だけ計上する。ストレージ削除対象の参照一覧は下でそのまま保持する。
       const uniqueFiles = [...new Map(filePaths.map((file) => [file.id, file])).values()]
@@ -85,7 +125,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         ctx.workspaceId,
         {
           originalBytes: -uniqueFiles.reduce((total, file) => total + (file.fileSize ?? 0), 0),
-          derivedBytes: -uniqueFiles.reduce((total, file) => total + (file.derivedFileSize ?? 0), 0),
+          derivedBytes: -uniqueFiles.reduce(
+            (total, file) => total + (file.derivedFileSize ?? 0),
+            0,
+          ),
         },
         tx,
       )
@@ -103,59 +146,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         .returning({ id: projects.id })
       if (!removedProject) return null
 
-      return { filePaths, pendingUploadPaths }
+      return true
     })
 
     if (!deleted) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
-
-    const { filePaths, pendingUploadPaths } = deleted
-
-    if (filePaths.length > 0 || pendingUploadPaths.length > 0) {
-      // 添付のオリジナルに加えて、生成済みのサムネ(metadata.thumbnailPath)も削除対象に含める
-      const attachmentPaths = filePaths
-        .filter((f) => !f.galleryItemId)
-        .flatMap((f) => {
-          const meta = (f.metadata ?? {}) as Record<string, unknown>
-          const thumbnailPath =
-            typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
-          return [f.storagePath, thumbnailPath].filter((path): path is string => path !== null)
-        })
-      const galleryDerivedPaths = [
-        ...filePaths
-          .filter((f) => f.galleryItemId)
-          .flatMap((f) => [f.derivedStoragePath].filter((path): path is string => path !== null)),
-        ...pendingUploadPaths.map((request) => request.derivedStoragePath),
-      ]
-      const galleryOriginalPaths = [
-        ...filePaths
-          .filter((f) => f.galleryItemId)
-          .flatMap((f) => [f.storagePath].filter((path): path is string => path !== null)),
-        ...pendingUploadPaths
-          .map((request) => request.originalStoragePath)
-          .filter((path): path is string => path !== null),
-      ]
-      const { inngest } = await import('@/lib/inngest/client')
-      await Promise.all([
-        attachmentPaths.length > 0
-          ? inngest.send({
-              name: 'storage/objects.delete',
-              data: { bucket: 'chat-attachments', paths: attachmentPaths },
-            })
-          : undefined,
-        galleryDerivedPaths.length > 0
-          ? inngest.send({
-              name: 'storage/objects.delete',
-              data: { bucket: 'gallery', paths: galleryDerivedPaths },
-            })
-          : undefined,
-        galleryOriginalPaths.length > 0
-          ? inngest.send({
-              name: 'storage/objects.delete',
-              data: { bucket: 'gallery-originals', paths: galleryOriginalPaths },
-            })
-          : undefined,
-      ])
-    }
 
     return NextResponse.json({ success: true })
   } catch (err) {
