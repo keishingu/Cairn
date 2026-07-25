@@ -14,6 +14,7 @@ import { isBillingEnabled } from './is-billing-enabled'
 export interface UploadEntitlements {
   workspaceState: WorkspaceState
   creditBalance: number
+  isActiveSupporter: boolean
   rights: UploadRights
 }
 
@@ -30,6 +31,7 @@ export async function resolveUploadEntitlements(
     return {
       workspaceState: resolveWorkspaceState(0, false),
       creditBalance: 0,
+      isActiveSupporter: true,
       rights: resolveUploadRights(false, true, false),
     }
   }
@@ -59,6 +61,7 @@ export async function resolveUploadEntitlements(
   return {
     workspaceState,
     creditBalance,
+    isActiveSupporter: subscription !== undefined,
     rights: resolveUploadRights(subscription !== undefined, workspaceState === 'funded', true),
   }
 }

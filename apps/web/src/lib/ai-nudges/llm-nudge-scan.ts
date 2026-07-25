@@ -3,9 +3,11 @@
 
 import {
   activeWorkspaceMembers,
+  aiNudges,
   aiScanStates,
   channelMembers,
   channels,
+  creditLedger,
   db,
   documentChunks,
   messages,
@@ -14,17 +16,21 @@ import {
   projects,
   tasks,
   workspaces,
+  type AiNudgeStatus,
 } from '@cairn/db'
+import { BILLING_CONFIG } from '@cairn/core/billing'
 import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import { generateObject } from 'ai'
 import { z } from 'zod'
 import { extractMentionIds } from '@/lib/chat/mentions'
 import { DEFAULT_MODEL, FAST_MODEL, openai } from '@/lib/ai/client'
+import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { recordPhaseTwoTokenUsage } from './llm-usage'
 import {
   PHASE_TWO_CONTEXT_MESSAGE_LIMIT,
   PHASE_TWO_NEW_MESSAGE_LIMIT,
   UNANSWERED_ASK_MIN_AGE_MS,
+  isUnansweredAskEligible,
   isUnansweredAskRecheckDue,
   nextUnansweredAskRecheck,
   phaseTwoDedupeKey,
@@ -123,6 +129,18 @@ const refinedProposalSchema = z.object({
     .nullable(),
 })
 
+type PhaseTwoPrimaryCandidateBase = z.infer<typeof primaryCandidateSchema>['candidates'][number]
+
+export type PhaseTwoPrimaryCandidate = PhaseTwoPrimaryCandidateBase & {
+  // unanswered_ask は根拠メッセージごとに宛先を固定するため、再通知時も同じ受信者だけを選ぶ。
+  fixedRecipientUserId?: string
+}
+
+export interface PhaseTwoPrimaryCandidateFilterResult {
+  candidates: PhaseTwoPrimaryCandidate[]
+  preservedActiveRiskTargets: string[]
+}
+
 function isAfterCursor(
   createdAt: Date,
   id: string,
@@ -137,15 +155,177 @@ function toISOString(value: Date | string): string {
   return (typeof value === 'string' ? new Date(value) : value).toISOString()
 }
 
+export function hasCreditsForPhaseTwoScan(creditBalance: number): boolean {
+  return creditBalance >= BILLING_CONFIG.heartbeatAiDeliveryCredits
+}
+
+export function resolvePhaseTwoScanCandidateBudget(creditBalance: number): number {
+  return Math.max(0, Math.floor(creditBalance / BILLING_CONFIG.heartbeatAiDeliveryCredits))
+}
+
+export function blocksPhaseTwoCandidateRefinement(
+  status: AiNudgeStatus,
+  remindAfter: Date | null,
+  now: Date,
+): boolean {
+  return !(
+    (status === 'dismissed' || status === 'suppressed') &&
+    (remindAfter === null || remindAfter.getTime() <= now.getTime())
+  )
+}
+
+export function blocksPhaseTwoPrimaryCandidate(input: {
+  detector: string
+  status: AiNudgeStatus
+  remindAfter: Date | null
+  recipientEnabled: boolean | null
+  recipientCanAccess: boolean
+  now: Date
+}): boolean {
+  if (blocksPhaseTwoCandidateRefinement(input.status, input.remindAfter, input.now)) return true
+  // unanswered_ask は根拠メッセージごとに宛先を固定する。期限到来後でも、その宛先が
+  // 無効またはアクセス不能なら別ユーザーへの付け替えは配信側で拒否されるため除外する。
+  return (
+    input.detector === 'unanswered_ask' &&
+    (!input.recipientEnabled || !input.recipientCanAccess)
+  )
+}
+
+export function restrictPhaseTwoRecipientsToFixedRecipient<T extends { userId: string }>(
+  recipients: T[],
+  fixedRecipientUserId: string | undefined,
+): T[] {
+  return fixedRecipientUserId
+    ? recipients.filter((recipient) => recipient.userId === fixedRecipientUserId)
+    : recipients
+}
+
+// 同じ根拠に対して現在は配信できないナッジは、残高枠を消費して再精査しない。
+// これにより、カーソル保持後の再巡回でも未処理候補へ順に進める。
+export async function excludeDeliveredPhaseTwoPrimaryCandidates(
+  input: PhaseTwoChannelInput,
+  candidates: PhaseTwoPrimaryCandidate[],
+): Promise<PhaseTwoPrimaryCandidateFilterResult> {
+  if (candidates.length === 0) return { candidates: [], preservedActiveRiskTargets: [] }
+  const messageIds = [...new Set(candidates.map((candidate) => candidate.sourceMessageId))]
+  const now = new Date()
+  const existing = await db
+    .select({
+      detector: aiNudges.detector,
+      messageId: aiNudges.messageId,
+      userId: aiNudges.userId,
+      status: aiNudges.status,
+      remindAfter: aiNudges.remindAfter,
+      recipientEnabled: profiles.aiNudgesEnabled,
+      recipientCanAccess: sql<boolean>`public.user_can_access_ai_nudge(
+        ${aiNudges.userId},
+        ${aiNudges.workspaceId},
+        ${aiNudges.channelId},
+        ${aiNudges.projectId}
+      )`,
+    })
+    .from(aiNudges)
+    .leftJoin(profiles, eq(profiles.id, aiNudges.userId))
+    .where(
+      and(
+        eq(aiNudges.workspaceId, input.workspaceId),
+        eq(aiNudges.channelId, input.channelId),
+        inArray(aiNudges.messageId, messageIds),
+        inArray(
+          aiNudges.detector,
+          [...new Set(candidates.map((candidate) => candidate.detector))],
+        ),
+      ),
+    )
+  const blockedTargets = new Set(
+    existing.flatMap((candidate) =>
+      candidate.messageId &&
+      blocksPhaseTwoPrimaryCandidate({
+        detector: candidate.detector,
+        status: candidate.status,
+        remindAfter: candidate.remindAfter,
+        recipientEnabled: candidate.recipientEnabled,
+        recipientCanAccess: candidate.recipientCanAccess,
+        now,
+      })
+        ? [`${candidate.detector}:${candidate.messageId}`]
+        : [],
+    ),
+  )
+  const fixedUnansweredAskRecipients = new Map(
+    existing.flatMap((candidate) =>
+      candidate.detector === 'unanswered_ask' &&
+      candidate.messageId &&
+      !blocksPhaseTwoPrimaryCandidate({
+        detector: candidate.detector,
+        status: candidate.status,
+        remindAfter: candidate.remindAfter,
+        recipientEnabled: candidate.recipientEnabled,
+        recipientCanAccess: candidate.recipientCanAccess,
+        now,
+      })
+        ? [[candidate.messageId, candidate.userId]]
+        : [],
+    ),
+  )
+  // 再巡回で既存の active risk を精査対象から外しても、同じ根拠が再び提案された事実は
+  // 解消判定に渡す。これがないと既存カードを誤って resolved にしてしまう。
+  const proposedPrimaryTargets = new Set(
+    candidates.map((candidate) => `${candidate.detector}:${candidate.sourceMessageId}`),
+  )
+  const preservedActiveRiskTargets = existing.flatMap((candidate) =>
+    candidate.status === 'active' &&
+    candidate.detector === 'llm_risk' &&
+    candidate.messageId &&
+    proposedPrimaryTargets.has(`${candidate.detector}:${candidate.messageId}`)
+      ? [`${candidate.detector}:${candidate.messageId}:${candidate.userId}`]
+      : [],
+  )
+  return {
+    candidates: candidates
+      .filter((candidate) => !blockedTargets.has(`${candidate.detector}:${candidate.sourceMessageId}`))
+      .map((candidate) => {
+        const fixedRecipientUserId =
+          candidate.detector === 'unanswered_ask'
+            ? fixedUnansweredAskRecipients.get(candidate.sourceMessageId)
+            : undefined
+        return fixedRecipientUserId ? { ...candidate, fixedRecipientUserId } : candidate
+      }),
+    preservedActiveRiskTargets,
+  }
+}
+
+export async function getPhaseTwoScanCandidateBudget(workspaceId: string): Promise<number> {
+  if (!isBillingEnabled()) return Number.POSITIVE_INFINITY
+  const [balance] = await db
+    .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
+    .from(creditLedger)
+    .where(eq(creditLedger.workspaceId, workspaceId))
+  return resolvePhaseTwoScanCandidateBudget(Number(balance?.value ?? 0))
+}
+
 // チャンネル一覧取得からLLM実行までの間にownerがOFFへ切り替えた場合も、
 // トークンを消費しないよう各LLM stepの直前に再確認する。
-async function isPhaseTwoEnabled(workspaceId: string): Promise<boolean> {
+type PhaseTwoScanReadiness = 'enabled' | 'disabled' | 'funding_blocked'
+
+export function isPhaseTwoFundingBlocked(readiness: PhaseTwoScanReadiness): boolean {
+  return readiness === 'funding_blocked'
+}
+
+async function getPhaseTwoScanReadiness(workspaceId: string): Promise<PhaseTwoScanReadiness> {
   const [workspace] = await db
     .select({ enabled: workspaces.aiNudgesPhaseTwoEnabled })
     .from(workspaces)
     .where(eq(workspaces.id, workspaceId))
     .limit(1)
-  return workspace?.enabled === true
+  if (workspace?.enabled !== true) return 'disabled'
+  if (!isBillingEnabled()) return 'enabled'
+
+  const [balance] = await db
+    .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
+    .from(creditLedger)
+    .where(eq(creditLedger.workspaceId, workspaceId))
+  return hasCreditsForPhaseTwoScan(Number(balance?.value ?? 0)) ? 'enabled' : 'funding_blocked'
 }
 
 export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> {
@@ -204,10 +384,11 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
         row.lastScannedMessageId,
       )
     )
-    const needsUnansweredAskRecheck = isUnansweredAskRecheckDue(
-      row.nextUnansweredAskCheckAt ? new Date(row.nextUnansweredAskCheckAt) : null,
-      new Date(),
-    ) && Boolean(row.nextUnansweredAskMessageId)
+    const needsUnansweredAskRecheck =
+      isUnansweredAskRecheckDue(
+        row.nextUnansweredAskCheckAt ? new Date(row.nextUnansweredAskCheckAt) : null,
+        new Date(),
+      ) && Boolean(row.nextUnansweredAskMessageId)
     if (!hasNewMessages && !needsUnansweredAskRecheck) {
       return []
     }
@@ -320,7 +501,7 @@ export async function loadPhaseTwoChannelInput(
     ? recheckAnchor
       ? [
           ...(recheckAnchor.deletedAt ? [] : [recheckAnchor]),
-          ...await db
+          ...(await db
             .select({
               id: messages.id,
               senderId: messages.senderId,
@@ -337,12 +518,15 @@ export async function loadPhaseTwoChannelInput(
                 isNull(messages.deletedAt),
                 or(
                   gt(messages.createdAt, recheckAnchor.createdAt),
-                  and(eq(messages.createdAt, recheckAnchor.createdAt), gt(messages.id, recheckAnchor.id)),
+                  and(
+                    eq(messages.createdAt, recheckAnchor.createdAt),
+                    gt(messages.id, recheckAnchor.id),
+                  ),
                 ),
               ),
             )
             .orderBy(asc(messages.createdAt), asc(messages.id))
-            .limit(PHASE_TWO_NEW_MESSAGE_LIMIT - (recheckAnchor.deletedAt ? 0 : 1)),
+            .limit(PHASE_TWO_NEW_MESSAGE_LIMIT - (recheckAnchor.deletedAt ? 0 : 1))),
         ]
       : []
     : newRows
@@ -420,20 +604,22 @@ export async function loadPhaseTwoChannelInput(
       ? [
           ...scanRows
             .filter(
-              (message) => message.createdAt.getTime() + UNANSWERED_ASK_MIN_AGE_MS > checkedAt.getTime(),
+              (message) =>
+                message.createdAt.getTime() + UNANSWERED_ASK_MIN_AGE_MS > checkedAt.getTime(),
             )
             .map((message) => ({ id: message.id, createdAt: message.createdAt })),
           ...nextScheduledRows,
         ]
       : nextScheduledRows,
-    existing: !isUnansweredAskRecheck &&
+    existing:
+      !isUnansweredAskRecheck &&
       channel.nextUnansweredAskCheckAt &&
       channel.nextUnansweredAskMessageId
-      ? {
-          messageId: channel.nextUnansweredAskMessageId,
-          checkAt: new Date(channel.nextUnansweredAskCheckAt),
-        }
-      : null,
+        ? {
+            messageId: channel.nextUnansweredAskMessageId,
+            checkAt: new Date(channel.nextUnansweredAskCheckAt),
+          }
+        : null,
     now: checkedAt,
     includeOverdue: isUnansweredAskRecheck,
   })
@@ -474,9 +660,17 @@ function formatMessages(input: PhaseTwoChannelInput): string {
     .join('\n\n')
 }
 
-export async function screenPhaseTwoCandidates(input: PhaseTwoChannelInput) {
-  if (input.messages.length === 0) return []
-  if (!await isPhaseTwoEnabled(input.workspaceId)) return []
+export interface PhaseTwoScreenResult {
+  candidates: PhaseTwoPrimaryCandidate[]
+  fundingBlocked: boolean
+}
+
+export async function screenPhaseTwoCandidates(input: PhaseTwoChannelInput): Promise<PhaseTwoScreenResult> {
+  if (input.messages.length === 0) return { candidates: [], fundingBlocked: false }
+  const readiness = await getPhaseTwoScanReadiness(input.workspaceId)
+  if (readiness !== 'enabled') {
+    return { candidates: [], fundingBlocked: isPhaseTwoFundingBlocked(readiness) }
+  }
   const { object, usage } = await generateObject({
     model: openai(FAST_MODEL),
     schema: primaryCandidateSchema,
@@ -500,10 +694,78 @@ ${formatMessages(input)}`,
   const candidateMessageIds = input.isUnansweredAskRecheck
     ? new Set(input.recheckMessageIds)
     : new Set(input.newMessageIds)
-  return object.candidates.filter(
-    (candidate) =>
-      candidateMessageIds.has(candidate.sourceMessageId) &&
-      (!input.isUnansweredAskRecheck || candidate.detector === 'unanswered_ask'),
+  return {
+    candidates: object.candidates.filter(
+      (candidate) =>
+        candidateMessageIds.has(candidate.sourceMessageId) &&
+        (!input.isUnansweredAskRecheck || candidate.detector === 'unanswered_ask'),
+    ),
+    fundingBlocked: false,
+  }
+}
+
+export function isPhaseTwoPrimaryCandidateEligible(input: {
+  candidate: PhaseTwoPrimaryCandidate
+  source: { createdAt: Date; senderId: string } | undefined
+  hasDirectReply: boolean
+  now: Date
+}): boolean {
+  if (input.candidate.detector !== 'unanswered_ask') return true
+  return (
+    input.source !== undefined &&
+    isUnansweredAskEligible({
+      messageCreatedAt: input.source.createdAt,
+      hasDirectReply: input.hasDirectReply,
+      now: input.now,
+    })
+  )
+}
+
+// 一次候補のうち未回答質問だけは、LLM精査へ渡す前に年齢と直接返信をDBで再確認する。
+// ここで除外しないと、配信時に破棄される候補が候補枠だけを占有して後続候補を飢餓化させる。
+export async function excludeIneligiblePhaseTwoPrimaryCandidates(
+  input: PhaseTwoChannelInput,
+  candidates: PhaseTwoPrimaryCandidate[],
+  now = new Date(),
+): Promise<PhaseTwoPrimaryCandidate[]> {
+  const unansweredAskIds = candidates
+    .filter((candidate) => candidate.detector === 'unanswered_ask')
+    .map((candidate) => candidate.sourceMessageId)
+  if (unansweredAskIds.length === 0) return candidates
+
+  const sources = await db
+    .select({ id: messages.id, createdAt: messages.createdAt, senderId: messages.senderId })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.channelId, input.channelId),
+        inArray(messages.id, unansweredAskIds),
+        isNull(messages.deletedAt),
+      ),
+    )
+  const directReplies = await db
+    .select({ parentMessageId: messages.parentMessageId, senderId: messages.senderId })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.channelId, input.channelId),
+        inArray(messages.parentMessageId, unansweredAskIds),
+        isNull(messages.deletedAt),
+      ),
+    )
+  const sourceById = new Map(sources.map((source) => [source.id, source]))
+
+  return candidates.filter((candidate) =>
+    isPhaseTwoPrimaryCandidateEligible({
+      candidate,
+      source: sourceById.get(candidate.sourceMessageId),
+      hasDirectReply: directReplies.some(
+        (reply) =>
+          reply.parentMessageId === candidate.sourceMessageId &&
+          reply.senderId !== sourceById.get(candidate.sourceMessageId)?.senderId,
+      ),
+      now,
+    }),
   )
 }
 
@@ -614,18 +876,25 @@ async function listEligibleRecipients(
 
 export async function refinePhaseTwoCandidate(
   input: PhaseTwoChannelInput,
-  candidate: z.infer<typeof primaryCandidateSchema>['candidates'][number],
-): Promise<PhaseTwoNudgeCandidate | null> {
-  if (!await isPhaseTwoEnabled(input.workspaceId)) return null
+  candidate: PhaseTwoPrimaryCandidate,
+): Promise<{ candidate: PhaseTwoNudgeCandidate | null; fundingBlocked: boolean }> {
+  const readiness = await getPhaseTwoScanReadiness(input.workspaceId)
+  if (readiness !== 'enabled') {
+    return { candidate: null, fundingBlocked: isPhaseTwoFundingBlocked(readiness) }
+  }
   const recipients = await listEligibleRecipients(input, candidate.sourceMessageId)
   const source = input.messages.find((message) => message.id === candidate.sourceMessageId)
-  if (!source || recipients.length === 0) return null
+  if (!source || recipients.length === 0) return { candidate: null, fundingBlocked: false }
 
   const allowedRecipients =
     candidate.detector === 'unanswered_ask'
       ? recipients.filter((recipient) => recipient.userId !== source.senderId)
       : recipients
-  if (allowedRecipients.length === 0) return null
+  const selectableRecipients = restrictPhaseTwoRecipientsToFixedRecipient(
+    allowedRecipients,
+    candidate.fixedRecipientUserId,
+  )
+  if (selectableRecipients.length === 0) return { candidate: null, fundingBlocked: false }
 
   const { object, usage } = await generateObject({
     model: openai(DEFAULT_MODEL),
@@ -639,7 +908,7 @@ sourceMessageId=${candidate.sourceMessageId}
 observation=${candidate.observation}
 
 宛先候補（この配列から必ず1人だけ選ぶ。複数人への送信は不可）:
-${JSON.stringify(allowedRecipients)}
+${JSON.stringify(selectableRecipients)}
 
 要件:
 - unanswered_ask は、回答がなければ進行が止まる依頼・質問だけ。最も行動できる1人を特定できないなら null。
@@ -657,29 +926,32 @@ ${formatMessages(input)}`,
     !proposal ||
     proposal.detector !== candidate.detector ||
     proposal.sourceMessageId !== candidate.sourceMessageId ||
-    !allowedRecipients.some((recipient) => recipient.userId === proposal.recipientUserId)
+    !selectableRecipients.some((recipient) => recipient.userId === proposal.recipientUserId)
   ) {
-    return null
+    return { candidate: null, fundingBlocked: false }
   }
 
   return {
-    workspaceId: input.workspaceId,
-    userId: proposal.recipientUserId,
-    channelId: input.channelId,
-    projectId: input.projectId,
-    messageId: proposal.sourceMessageId,
-    detector: proposal.detector,
-    dedupeKey: phaseTwoDedupeKey(proposal.detector, proposal.sourceMessageId),
-    title: proposal.title,
-    body: proposal.body,
-    confidence: proposal.confidence,
-    reason: {
-      sourceMessageId: proposal.sourceMessageId,
-      observation: candidate.observation,
-      rationale: proposal.rationale,
+    candidate: {
+      workspaceId: input.workspaceId,
+      userId: proposal.recipientUserId,
+      channelId: input.channelId,
+      projectId: input.projectId,
+      messageId: proposal.sourceMessageId,
+      detector: proposal.detector,
+      dedupeKey: phaseTwoDedupeKey(proposal.detector, proposal.sourceMessageId),
+      title: proposal.title,
+      body: proposal.body,
       confidence: proposal.confidence,
-      screenedBy: FAST_MODEL,
-      refinedBy: DEFAULT_MODEL,
+      reason: {
+        sourceMessageId: proposal.sourceMessageId,
+        observation: candidate.observation,
+        rationale: proposal.rationale,
+        confidence: proposal.confidence,
+        screenedBy: FAST_MODEL,
+        refinedBy: DEFAULT_MODEL,
+      },
     },
+    fundingBlocked: false,
   }
 }

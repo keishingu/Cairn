@@ -12,7 +12,9 @@ import {
   workspaces,
   type AiNudgeStatus,
 } from '@cairn/db'
+import { BILLING_CONFIG } from '@cairn/core/billing'
 import { and, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm'
+import { consumeCreditsForPassiveBenefit, lockWorkspaceCreditBalances } from '@/lib/billing/credits'
 import { startOfJstDay } from './rules'
 import {
   isUnansweredAskEligible,
@@ -20,6 +22,7 @@ import {
   nextJstDeliveryTime,
   passesPhaseTwoConfidence,
   PHASE_TWO_DAILY_LIMIT,
+  shouldAdvancePhaseTwoScanCursor,
   shouldResolveDueLlmRiskReminder,
 } from './llm-nudge-rules'
 import type { PhaseTwoChannelInput, PhaseTwoNudgeCandidate } from './llm-nudge-scan'
@@ -27,6 +30,15 @@ import type { PhaseTwoChannelInput, PhaseTwoNudgeCandidate } from './llm-nudge-s
 export interface PhaseTwoScanResult {
   input: PhaseTwoChannelInput
   candidates: PhaseTwoNudgeCandidate[]
+  preservedActiveRiskTargets?: string[]
+  fundingBlocked?: boolean
+}
+
+export function shouldReconcilePhaseTwoRisk(result: {
+  input: Pick<PhaseTwoChannelInput, 'isUnansweredAskRecheck'>
+  fundingBlocked?: boolean
+}): boolean {
+  return !result.input.isUnansweredAskRecheck && !result.fundingBlocked
 }
 
 function notificationData(candidate: PhaseTwoNudgeCandidate, nudgeId: string) {
@@ -93,19 +105,24 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         if (a.detector !== b.detector) return a.detector === 'unanswered_ask' ? -1 : 1
         return b.confidence - a.confidence
       })
-    const proposedTargets = new Set(
-      candidates.map((candidate) => `${candidate.detector}:${candidate.messageId}:${candidate.userId}`),
-    )
+    const proposedTargets = new Set([
+      ...candidates.map((candidate) => `${candidate.detector}:${candidate.messageId}:${candidate.userId}`),
+      ...enabledResults.flatMap((result) => result.preservedActiveRiskTargets ?? []),
+    ])
 
     let created = 0
     let reactivated = 0
     let discarded = 0
+    // 同じHeartbeat内で期限リマインダーが先に残高を使い切ることがある。
+    // その結果、新規候補の課金だけ失敗したチャンネルはカーソルを保持し、
+    // 買い増し後に同じ差分を再評価できるようにする。
+    const creditBlockedChannelIds = new Set<string>()
 
     // 直接返信はLLMに委ねず、未回答条件が解消した事実として決定論的にresolveする。
     const scannedChannelIds = [...new Set(enabledResults.map((result) => result.input.channelId))]
     const evaluatedRiskMessages = new Set(
       enabledResults
-        .filter((result) => !result.input.isUnansweredAskRecheck)
+        .filter(shouldReconcilePhaseTwoRisk)
         .flatMap((result) =>
           result.input.newMessageIds.map((messageId) => `${result.input.channelId}:${messageId}`),
         ),
@@ -131,7 +148,9 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       if (nudge.detector !== 'llm_risk') return []
       if (!nudge.channelId || !nudge.messageId) return []
       if (!evaluatedRiskMessages.has(`${nudge.channelId}:${nudge.messageId}`)) return []
-      return proposedTargets.has(`${nudge.detector}:${nudge.messageId}:${nudge.userId}`) ? [] : [nudge.id]
+      return proposedTargets.has(`${nudge.detector}:${nudge.messageId}:${nudge.userId}`)
+        ? []
+        : [nudge.id]
     })
     // ソースメッセージはsoft deleteされるため、チャンネルが静かなままでも削除済みの
     // 根拠を指すカードを残さないようheartbeatで解消する。
@@ -145,7 +164,9 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
               await tx
                 .select({ id: messages.id })
                 .from(messages)
-                .where(and(inArray(messages.id, activeSourceMessageIds), isNull(messages.deletedAt)))
+                .where(
+                  and(inArray(messages.id, activeSourceMessageIds), isNull(messages.deletedAt)),
+                )
             ).map((message) => message.id),
           )
         : new Set<string>()
@@ -204,7 +225,8 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
                   ),
                 )
             ).flatMap((row) =>
-              row.parentMessageId && sourceSendersByMessageId.get(row.parentMessageId) !== row.senderId
+              row.parentMessageId &&
+              sourceSendersByMessageId.get(row.parentMessageId) !== row.senderId
                 ? [row.parentMessageId]
                 : [],
             ),
@@ -245,6 +267,11 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           or(isNull(aiNudges.remindAfter), lte(aiNudges.remindAfter, now)),
         ),
       )
+
+    await lockWorkspaceCreditBalances(tx, [
+      ...dueReminders.map((reminder) => reminder.workspaceId),
+      ...candidates.map((candidate) => candidate.workspaceId),
+    ])
 
     for (const reminder of dueReminders) {
       const delivered = deliveriesToday.get(reminder.userId) ?? 0
@@ -325,7 +352,9 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           const evaluatedThisRun = evaluatedRiskMessages.has(
             `${reminder.channelId}:${reminder.messageId}`,
           )
-          const proposedAgain = proposedTargets.has(`llm_risk:${reminder.messageId}:${reminder.userId}`)
+          const proposedAgain = proposedTargets.has(
+            `llm_risk:${reminder.messageId}:${reminder.userId}`,
+          )
           if (
             shouldResolveDueLlmRiskReminder({
               hasNewerMessage: true,
@@ -356,6 +385,14 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         .where(eq(profiles.id, reminder.userId))
         .limit(1)
       if (!recipient?.enabled || !recipient.canAccess) continue
+      if (
+        !(await consumeCreditsForPassiveBenefit(tx, {
+          workspaceId: reminder.workspaceId,
+          credits: BILLING_CONFIG.heartbeatAiDeliveryCredits,
+          refId: `heartbeat:${reminder.id}:${now.toISOString()}`,
+        }))
+      )
+        continue
 
       await tx
         .update(aiNudges)
@@ -532,6 +569,17 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           discarded += 1
           continue
         }
+        if (
+          !(await consumeCreditsForPassiveBenefit(tx, {
+            workspaceId: candidate.workspaceId,
+            credits: BILLING_CONFIG.heartbeatAiDeliveryCredits,
+            refId: `heartbeat:${existing.id}:${now.toISOString()}`,
+          }))
+        ) {
+          creditBlockedChannelIds.add(candidate.channelId)
+          discarded += 1
+          continue
+        }
         await tx
           .update(aiNudges)
           .set({
@@ -602,6 +650,18 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         discarded += 1
         continue
       }
+      if (
+        !(await consumeCreditsForPassiveBenefit(tx, {
+          workspaceId: candidate.workspaceId,
+          credits: BILLING_CONFIG.heartbeatAiDeliveryCredits,
+          refId: `heartbeat:${inserted.id}`,
+        }))
+      ) {
+        await tx.delete(aiNudges).where(eq(aiNudges.id, inserted.id))
+        creditBlockedChannelIds.add(candidate.channelId)
+        discarded += 1
+        continue
+      }
       await tx.insert(notifications).values({
         userId: candidate.userId,
         workspaceId: candidate.workspaceId,
@@ -629,7 +689,12 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         : new Set<string>()
     for (const { input } of enabledResults) {
       if (!existingChannelIds.has(input.channelId)) continue
-      if (!input.advancesCursor) {
+      if (
+        !shouldAdvancePhaseTwoScanCursor({
+          inputAllowsAdvance: input.advancesCursor,
+          creditBlocked: creditBlockedChannelIds.has(input.channelId),
+        })
+      ) {
         const nextCheckAt = input.nextUnansweredAskCheckAt
           ? new Date(input.nextUnansweredAskCheckAt)
           : null
@@ -692,6 +757,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       created,
       reactivated,
       discarded,
+      creditBlockedChannels: creditBlockedChannelIds.size,
     }
   })
 }

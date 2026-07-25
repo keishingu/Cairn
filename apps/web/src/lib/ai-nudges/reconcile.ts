@@ -13,7 +13,9 @@ import {
   workspaces,
   type AiNudgeDetector,
 } from '@cairn/db'
+import { BILLING_CONFIG } from '@cairn/core/billing'
 import { and, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
+import { consumeCreditsForPassiveBenefit, lockWorkspaceCreditBalances } from '@/lib/billing/credits'
 import {
   AI_NUDGE_DAILY_LIMIT,
   cooldownTargetKey,
@@ -108,6 +110,10 @@ export async function reconcilePhaseOneAiNudges(now = new Date()) {
       if (!row.assigneeId) return []
       return detectTaskNudges({ ...row, assigneeId: row.assigneeId }, now)
     })
+    await lockWorkspaceCreditBalances(
+      tx,
+      candidates.map((candidate) => candidate.workspaceId),
+    )
     const candidateByConcern = new Map(
       candidates.map((candidate) => [concernKey(candidate.userId, candidate.dedupeKey), candidate]),
     )
@@ -193,6 +199,15 @@ export async function reconcilePhaseOneAiNudges(now = new Date()) {
         if (delivered >= AI_NUDGE_DAILY_LIMIT || (cooldownKey && activeCooldowns.has(cooldownKey)))
           continue
 
+        if (
+          !(await consumeCreditsForPassiveBenefit(tx, {
+            workspaceId: candidate.workspaceId,
+            credits: BILLING_CONFIG.heartbeatAiDeliveryCredits,
+            refId: `heartbeat:${row.id}:${now.toISOString()}`,
+          }))
+        )
+          continue
+
         await tx
           .update(aiNudges)
           .set({
@@ -261,6 +276,16 @@ export async function reconcilePhaseOneAiNudges(now = new Date()) {
         .returning({ id: aiNudges.id })
 
       if (!inserted) continue
+      if (
+        !(await consumeCreditsForPassiveBenefit(tx, {
+          workspaceId: candidate.workspaceId,
+          credits: BILLING_CONFIG.heartbeatAiDeliveryCredits,
+          refId: `heartbeat:${inserted.id}`,
+        }))
+      ) {
+        await tx.delete(aiNudges).where(eq(aiNudges.id, inserted.id))
+        continue
+      }
       await tx.insert(notifications).values({
         userId: candidate.userId,
         workspaceId: candidate.workspaceId,

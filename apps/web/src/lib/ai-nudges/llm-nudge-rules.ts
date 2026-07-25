@@ -74,6 +74,13 @@ export function shouldResolveDueLlmRiskReminder(input: {
   return input.hasNewerMessage && (!input.sourceEvaluated || !input.proposedAgain)
 }
 
+export function shouldAdvancePhaseTwoScanCursor(input: {
+  inputAllowsAdvance: boolean
+  creditBlocked: boolean
+}): boolean {
+  return input.inputAllowsAdvance && !input.creditBlocked
+}
+
 export function isQuietHoursInJst(now: Date): boolean {
   const hour = Number(
     new Intl.DateTimeFormat('en-US', {

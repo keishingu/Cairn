@@ -11,6 +11,7 @@ import { hasReadMessage } from '@/lib/push/suppress'
 import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
 import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
+import { passesPhaseTwoConfidence } from '@/lib/ai-nudges/llm-nudge-rules'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
@@ -939,6 +940,8 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
     })
 
     const results: PhaseTwoScanResult[] = []
+    const remainingCandidateBudget = new Map<string, number>()
+    const acceptedCandidatesByWorkspace = new Map<string, number>()
     for (const channel of channels) {
       const deltaInput = await step.run(`load-channel-delta-${channel.channelId}`, async () => {
         const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/llm-nudge-scan')
@@ -951,6 +954,17 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
       for (const input of [deltaInput, recheckInput]) {
         if (!input) continue
 
+        let budget = remainingCandidateBudget.get(input.workspaceId)
+        if (budget === undefined) {
+          budget = await step.run(`load-phase2-budget-${input.workspaceId}`, async () => {
+            const { getPhaseTwoScanCandidateBudget } = await import('@/lib/ai-nudges/llm-nudge-scan')
+            return getPhaseTwoScanCandidateBudget(input.workspaceId)
+          })
+          remainingCandidateBudget.set(input.workspaceId, budget)
+        }
+        // 配信可能な候補枠が残っていないワークスペースはLLMを呼ばず、カーソルも進めない。
+        if (budget <= 0) continue
+
         const scanKind = input.isUnansweredAskRecheck ? 'recheck' : 'delta'
         const primaryCandidates = await step.run(
           `screen-channel-${channel.channelId}-${scanKind}`,
@@ -959,18 +973,88 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
             return screenPhaseTwoCandidates(input)
           },
         )
+        if (primaryCandidates.fundingBlocked) {
+          // 予算読込後に家賃・別配信で残高が尽きた場合は、未評価差分を飛ばさない。
+          results.push({
+            input: { ...input, advancesCursor: false },
+            candidates: [],
+            fundingBlocked: true,
+          })
+          continue
+        }
+        const primaryCandidateFilter = await step.run(
+          `exclude-delivered-candidates-${channel.channelId}-${scanKind}`,
+          async () => {
+            const { excludeIneligiblePhaseTwoPrimaryCandidates } = await import(
+              '@/lib/ai-nudges/llm-nudge-scan'
+            )
+            const { excludeDeliveredPhaseTwoPrimaryCandidates } = await import(
+              '@/lib/ai-nudges/llm-nudge-scan'
+            )
+            const eligibleCandidates = await excludeIneligiblePhaseTwoPrimaryCandidates(
+              input,
+              primaryCandidates.candidates,
+            )
+            return excludeDeliveredPhaseTwoPrimaryCandidates(input, eligibleCandidates)
+          },
+        )
         const refinedCandidates: PhaseTwoNudgeCandidate[] = []
-        for (const [index, candidate] of primaryCandidates.entries()) {
-          const refined = await step.run(
+        const acceptedBeforeCurrentInput = acceptedCandidatesByWorkspace.get(input.workspaceId) ?? 0
+        let attemptedPrimaryCandidates = 0
+        let fundingBlocked = false
+        // false positiveを飛ばしつつ、残りの配信枠が埋まった時点で精査を止める。
+        // 未試行候補が残る場合だけカーソルを保持して次回へ回す。
+        for (const [index, candidate] of primaryCandidateFilter.candidates.entries()) {
+          if (refinedCandidates.length >= budget) break
+          // 最初の予算読込後にも家賃・別の配信で残高が動く。未記帳の精査済み候補数を
+          // 差し引いた現在予算を毎回確認し、配信できない候補のLLM精査を避ける。
+          const currentBudget = await step.run(
+            `recheck-phase2-budget-${channel.channelId}-${scanKind}-${index}`,
+            async () => {
+              const { getPhaseTwoScanCandidateBudget } = await import(
+                '@/lib/ai-nudges/llm-nudge-scan'
+              )
+              return getPhaseTwoScanCandidateBudget(input.workspaceId)
+            },
+          )
+          if (currentBudget <= acceptedBeforeCurrentInput + refinedCandidates.length) {
+            fundingBlocked = true
+            break
+          }
+          attemptedPrimaryCandidates += 1
+          const refinement = await step.run(
             `refine-channel-${channel.channelId}-${scanKind}-${index}`,
             async () => {
               const { refinePhaseTwoCandidate } = await import('@/lib/ai-nudges/llm-nudge-scan')
               return refinePhaseTwoCandidate(input, candidate)
             },
           )
-          if (refined) refinedCandidates.push(refined)
+          if (refinement.fundingBlocked) {
+            fundingBlocked = true
+            break
+          }
+          // 配信時と同じ信頼度ゲートをここでも適用し、低信頼候補で枠を使い切らない。
+          if (refinement.candidate && passesPhaseTwoConfidence(refinement.candidate.confidence)) {
+            refinedCandidates.push(refinement.candidate)
+          }
         }
-        results.push({ input, candidates: refinedCandidates })
+        const acceptedCandidates = refinedCandidates
+        remainingCandidateBudget.set(input.workspaceId, budget - acceptedCandidates.length)
+        acceptedCandidatesByWorkspace.set(
+          input.workspaceId,
+          acceptedBeforeCurrentInput + acceptedCandidates.length,
+        )
+        const hasDeferredCandidates =
+          fundingBlocked || attemptedPrimaryCandidates < primaryCandidateFilter.candidates.length
+        // 残高枠で未試行候補が残った入力は、買い増し後に同じ差分を再評価する。
+        results.push({
+          input:
+            hasDeferredCandidates
+              ? { ...input, advancesCursor: false }
+              : input,
+          candidates: acceptedCandidates,
+          preservedActiveRiskTargets: primaryCandidateFilter.preservedActiveRiskTargets,
+        })
       }
     }
     // 配信stepの再試行が22時以降へずれた場合も、DB書き込み直前の判定で翌08時まで待つ。

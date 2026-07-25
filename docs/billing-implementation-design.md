@@ -1,6 +1,6 @@
 # 課金実装設計書
 
-> **ステータス**: Phase 1 基盤に着手（作成: 2026-06-12 / 改訂: 2026-07-24）
+> **ステータス**: Phase 2 実装中（作成: 2026-06-12 / 改訂: 2026-07-25）
 > [`pricing-plan-design.md`](./pricing-plan-design.md) のケルン消費モデルを実装に落とすための設計。実装着手時に本書を更新する。関連: [`10_ai_member_design.md`](./10_ai_member_design.md)（AI の消費主体）
 
 ---
@@ -97,6 +97,7 @@ stripe_events              Webhook 冪等性
 - **`files.file_size` は実装済み**（`gallery_items.fileId` → `files.id` の join で取得可能。当初想定していた `gallery` テーブルへの追加は不要だった）。既存行の NULL は `storage.objects.metadata->>'size'` からのバックフィルで補正する（Phase 0 で実施済み）
 - **オリジナル別保存は未実装**: `process-image.ts` はアップロード前にクライアント側でオリジナルを圧縮版へ置き換えており、圧縮前のオリジナルは保存されない。そのため Phase 0 の `original_bytes` は「現状唯一の実体（圧縮後ファイル）」の合計であり、`derived_bytes` は常に 0。真のオリジナル保存・表示用派生の生成は Phase 1 でアップロード権判定と合わせて実装する
 - **2026-07-24 の Phase 1 実装**: `billing_customers` / `subscriptions` / `credit_ledger` / `stripe_events` / `workspace_storage_usage` を追加した。Stripe Checkout・Webhook・クレジット台帳・ストレージ家賃 cron・日次 reconciliation・アップロード執行・風化時の圧縮版フォールバックを実装済み。使用量カウンタはアップロード/削除で更新し、CASCADE 等の経路は reconciliation で補正する
+- **2026-07-25 の Phase 2 実装**: 能動AIは支援者かつ funded のワークスペースだけが利用し、応答保存と同一トランザクションで `ai_consumption` を記帳する。単発クレジットパックは `mode=payment` のCheckoutとWebhookで `pack_purchase` を記帳する。AI PMOのHeartbeatは funded のワークスペースだけで巡回・配信し、配信ごとに `ai_consumption` を記帳する
 
 ## 5. エンタイトルメント解決
 
@@ -137,6 +138,7 @@ Team（WS 定額）は「**全メンバーがオリジナルをアップロー�
 
 - リクエスト前に残高 > 0 をチェック → 応答完了後に実測で `ai_consumption`（負）を記帳。事後記録のため僅かなマイナスは許容し、次回をブロック（リザーブ方式は初期は採らない・複雑すぎる）
 - 単位: 「1依頼 = N クレジット」を基本とし、内部でモデル別係数（gpt-4o / gpt-4o-mini / embedding）で原価換算。**消費しないもの**: ハートビートの一次巡回（gpt-4o-mini・原価僅少）、RAG の embedding 検索。**消費するもの**: 応答生成・ツール実行・HTML テンプレート生成・ハートビートの発言時の gpt-4o
+- 初期仮値は能動AI 1依頼・Heartbeat 1配信ともに **10 クレジット**。`packages/core/src/domain/billing-config.ts` の定数だけを参照し、原価計測後に見直す
 
 ### アップロード時の判定
 
@@ -165,6 +167,7 @@ Team（WS 定額）は「**全メンバーがオリジナルをアップロー�
   - `customer.subscription.updated` / `deleted` → status・quantity・plan 同期
   - 署名検証必須。`stripe_events` による冪等化
 - Webhook は Vercel 上で同期処理できる軽さに保つ。重い後続処理は Inngest に流す
+- 初期パックは **¥500 / 400 クレジット**。Stripe の単発 Price ID は `STRIPE_CREDIT_PACK_PRICE_ID` に設定する
 
 ## 9. packages/core への配置（CQRS 命名）
 
@@ -201,7 +204,7 @@ Team（WS 定額）は「**全メンバーがオリジナルをアップロー�
 
 ## 12. 未決事項
 
-- 石の単価・月次付与数・家賃レート（石/GB/月）・AI 1依頼あたりの消費数（原価シミュレーション要）
+- クレジット単価・月次付与数・家賃レート（石/GB/月）・AI 1依頼あたりの消費数の本決定（現時点は `BILLING_CONFIG` の初期仮値。原価シミュレーション要）
 - AI 天井の見せ方（減る残高 or 毎月リセットの上限。後者推奨）
 - 画像圧縮の最終パラメータと文書 5MB 上限の妥当性（Phase 0 の計測で検証）
 - チャット添付で開放する音声・動画・ZIP の対応 MIME タイプ・サイズ上限（動画は gallery 系の上限と揃えるか個別設定か含めて未決）
