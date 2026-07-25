@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { hasCreditsForPhaseTwoScan, resolvePhaseTwoScanCandidateBudget } from './llm-nudge-scan'
+import {
+  hasCreditsForPhaseTwoScan,
+  limitPhaseTwoPrimaryCandidates,
+  resolvePhaseTwoScanCandidateBudget,
+} from './llm-nudge-scan'
 
 describe('Phase 2 スキャンのクレジット判定', () => {
   it('Heartbeat配信費用未満ではLLMスキャンを開始しない', () => {
@@ -15,5 +19,12 @@ describe('Phase 2 スキャンのクレジット判定', () => {
 
   it('バッチの候補枠を残高から算出する', () => {
     expect(resolvePhaseTwoScanCandidateBudget(29)).toBe(2)
+  })
+
+  it('候補枠を越える精査は次回へ繰り越す', () => {
+    expect(limitPhaseTwoPrimaryCandidates(['first', 'second', 'third'], 2)).toEqual({
+      candidates: ['first', 'second'],
+      hasDeferredCandidates: true,
+    })
   })
 })

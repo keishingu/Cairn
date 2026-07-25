@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { BILLING_CONFIG } from '@cairn/core/billing'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceRole } from '@/lib/access/membership'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
@@ -85,17 +86,21 @@ export async function POST(request: Request) {
       if (openSession) return { error: '決済画面の準備中です。少し待ってから再試行してください' }
 
       const appUrl = resolveApplicationUrl(request)
+      const creditPackPriceId = getCreditPackPriceId()
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
         customer: customerId,
         client_reference_id: ctx.userId,
-        line_items: [{ price: getCreditPackPriceId(), quantity: 1 }],
+        line_items: [{ price: creditPackPriceId, quantity: 1 }],
         success_url: `${appUrl}/settings/billing?credit_pack=success`,
         cancel_url: `${appUrl}/settings/billing?credit_pack=cancel`,
         metadata: {
           workspaceId: ctx.workspaceId,
           supporterUserId: ctx.userId,
           purchaseType: 'credit_pack',
+          creditPackCredits: String(BILLING_CONFIG.creditPackCredits),
+          creditPackPriceId,
+          creditPackAmountJpy: String(BILLING_CONFIG.creditPackPriceJpy),
         },
       })
       if (!session.url) throw new Error('Stripe Checkout session did not include a URL')

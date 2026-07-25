@@ -93,7 +93,12 @@ describe('POST /api/billing/credit-packs/checkout', () => {
         mode: 'payment',
         customer: 'cus-existing',
         line_items: [{ price: 'price_credit_pack', quantity: 1 }],
-        metadata: expect.objectContaining({ purchaseType: 'credit_pack' }),
+        metadata: expect.objectContaining({
+          purchaseType: 'credit_pack',
+          creditPackCredits: '400',
+          creditPackPriceId: 'price_credit_pack',
+          creditPackAmountJpy: '500',
+        }),
       }),
     )
   })

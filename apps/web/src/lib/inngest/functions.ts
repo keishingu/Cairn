@@ -11,6 +11,7 @@ import { hasReadMessage } from '@/lib/push/suppress'
 import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
 import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
+import { limitPhaseTwoPrimaryCandidates } from '@/lib/ai-nudges/llm-nudge-scan'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
@@ -971,8 +972,20 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
             return screenPhaseTwoCandidates(input)
           },
         )
+        const undeliveredPrimaryCandidates = await step.run(
+          `exclude-delivered-candidates-${channel.channelId}-${scanKind}`,
+          async () => {
+            const { excludeDeliveredPhaseTwoPrimaryCandidates } = await import(
+              '@/lib/ai-nudges/llm-nudge-scan'
+            )
+            return excludeDeliveredPhaseTwoPrimaryCandidates(input, primaryCandidates)
+          },
+        )
+        // 残りの配信枠を越える候補は精査LLMを呼ばず、カーソルを保持して次回へ回す。
+        const { candidates: candidatesToRefine, hasDeferredCandidates } =
+          limitPhaseTwoPrimaryCandidates(undeliveredPrimaryCandidates, budget)
         const refinedCandidates: PhaseTwoNudgeCandidate[] = []
-        for (const [index, candidate] of primaryCandidates.entries()) {
+        for (const [index, candidate] of candidatesToRefine.entries()) {
           const refined = await step.run(
             `refine-channel-${channel.channelId}-${scanKind}-${index}`,
             async () => {
@@ -982,12 +995,12 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
           )
           if (refined) refinedCandidates.push(refined)
         }
-        const acceptedCandidates = refinedCandidates.slice(0, budget)
+        const acceptedCandidates = refinedCandidates
         remainingCandidateBudget.set(input.workspaceId, budget - acceptedCandidates.length)
         // 残高枠で候補を切り詰めた入力は、買い増し後に同じ差分を再評価する。
         results.push({
           input:
-            acceptedCandidates.length < refinedCandidates.length
+            hasDeferredCandidates
               ? { ...input, advancesCursor: false }
               : input,
           candidates: acceptedCandidates,

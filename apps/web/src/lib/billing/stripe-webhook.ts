@@ -20,6 +20,17 @@ export interface CreditPackFulfillment {
   workspaceId: string
   supporterUserId: string
   checkoutSessionId: string
+  credits: number
+  priceId: string
+  amountJpy: number
+}
+
+function parsePositiveInteger(value: string | undefined, label: string, sessionId: string): number {
+  const parsed = Number(value)
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`Credit pack Checkout ${sessionId} has invalid ${label}`)
+  }
+  return parsed
 }
 
 export function resolveCreditPackFulfillment(
@@ -33,7 +44,35 @@ export function resolveCreditPackFulfillment(
   if (!workspaceId || !supporterUserId) {
     throw new Error(`Credit pack Checkout ${session.id} is missing billing metadata`)
   }
-  return { workspaceId, supporterUserId, checkoutSessionId: session.id }
+  const credits = parsePositiveInteger(session.metadata['creditPackCredits'], 'credit quantity', session.id)
+  const priceId = session.metadata['creditPackPriceId']
+  const amountJpy = parsePositiveInteger(session.metadata['creditPackAmountJpy'], 'paid amount', session.id)
+  if (
+    !workspaceId ||
+    !supporterUserId ||
+    !priceId ||
+    session.currency?.toLowerCase() !== 'jpy' ||
+    session.amount_total !== amountJpy
+  ) {
+    throw new Error(`Credit pack Checkout ${session.id} is missing billing metadata`)
+  }
+  return { workspaceId, supporterUserId, checkoutSessionId: session.id, credits, priceId, amountJpy }
+}
+
+async function validateCreditPackLineItem(stripe: Stripe, fulfillment: CreditPackFulfillment) {
+  const lineItems = await stripe.checkout.sessions.listLineItems(fulfillment.checkoutSessionId, { limit: 2 })
+  const [lineItem] = lineItems.data
+  if (
+    lineItems.has_more ||
+    lineItems.data.length !== 1 ||
+    !lineItem ||
+    lineItem.quantity !== 1 ||
+    stripeId(lineItem.price) !== fulfillment.priceId ||
+    lineItem.currency.toLowerCase() !== 'jpy' ||
+    lineItem.amount_total !== fulfillment.amountJpy
+  ) {
+    throw new Error(`Credit pack Checkout ${fulfillment.checkoutSessionId} has unexpected line items`)
+  }
 }
 
 function toSubscriptionStatus(status: string): 'active' | 'past_due' | 'canceled' {
@@ -127,6 +166,7 @@ export async function processStripeWebhookEvent(
     const session = event.data.object as Stripe.Checkout.Session
     subscriptionId = stripeId(session.subscription)
     creditPackFulfillment = resolveCreditPackFulfillment(session)
+    if (creditPackFulfillment) await validateCreditPackLineItem(stripe, creditPackFulfillment)
   }
   if (event.type === 'invoice.paid') {
     const invoice = await asInvoiceRecord(stripe, event.data.object as Stripe.Invoice)
@@ -166,7 +206,7 @@ export async function processStripeWebhookEvent(
         .insert(creditLedger)
         .values({
           workspaceId: creditPackFulfillment.workspaceId,
-          delta: BILLING_CONFIG.creditPackCredits,
+          delta: creditPackFulfillment.credits,
           reason: 'pack_purchase',
           refId: creditPackFulfillment.checkoutSessionId,
         })

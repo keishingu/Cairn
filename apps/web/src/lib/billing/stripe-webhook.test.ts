@@ -12,8 +12,13 @@ function checkoutSession(overrides: Partial<Stripe.Checkout.Session> = {}) {
       purchaseType: 'credit_pack',
       workspaceId: 'workspace-1',
       supporterUserId: 'user-1',
+      creditPackCredits: '400',
+      creditPackPriceId: 'price_credit_pack',
+      creditPackAmountJpy: '500',
     },
     payment_status: 'paid',
+    currency: 'jpy',
+    amount_total: 500,
     ...overrides,
   } as Stripe.Checkout.Session
 }
@@ -24,6 +29,9 @@ describe('resolveCreditPackFulfillment', () => {
       workspaceId: 'workspace-1',
       supporterUserId: 'user-1',
       checkoutSessionId: 'cs_credit_pack',
+      credits: 400,
+      priceId: 'price_credit_pack',
+      amountJpy: 500,
     })
   })
 
@@ -38,5 +46,11 @@ describe('resolveCreditPackFulfillment', () => {
     expect(() =>
       resolveCreditPackFulfillment(checkoutSession({ metadata: { purchaseType: 'credit_pack' } })),
     ).toThrow('Credit pack Checkout cs_credit_pack is missing billing metadata')
+  })
+
+  it('Checkoutに保存した決済額と実支払額が異なる場合は付与しない', () => {
+    expect(() => resolveCreditPackFulfillment(checkoutSession({ amount_total: 499 }))).toThrow(
+      'Credit pack Checkout cs_credit_pack is missing billing metadata',
+    )
   })
 })

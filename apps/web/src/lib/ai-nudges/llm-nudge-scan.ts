@@ -3,6 +3,7 @@
 
 import {
   activeWorkspaceMembers,
+  aiNudges,
   aiScanStates,
   channelMembers,
   channels,
@@ -126,6 +127,8 @@ const refinedProposalSchema = z.object({
     .nullable(),
 })
 
+export type PhaseTwoPrimaryCandidate = z.infer<typeof primaryCandidateSchema>['candidates'][number]
+
 function isAfterCursor(
   createdAt: Date,
   id: string,
@@ -146,6 +149,50 @@ export function hasCreditsForPhaseTwoScan(creditBalance: number): boolean {
 
 export function resolvePhaseTwoScanCandidateBudget(creditBalance: number): number {
   return Math.max(0, Math.floor(creditBalance / BILLING_CONFIG.heartbeatAiDeliveryCredits))
+}
+
+export function limitPhaseTwoPrimaryCandidates<T>(candidates: readonly T[], budget: number): {
+  candidates: T[]
+  hasDeferredCandidates: boolean
+} {
+  const limit = Math.max(0, budget)
+  return {
+    candidates: candidates.slice(0, limit),
+    hasDeferredCandidates: candidates.length > limit,
+  }
+}
+
+// 同じ根拠に対する active なナッジは既に配信済みなので、残高枠を消費して再精査しない。
+// これにより、カーソル保持後の再巡回でも未処理候補へ順に進める。
+export async function excludeDeliveredPhaseTwoPrimaryCandidates(
+  input: PhaseTwoChannelInput,
+  candidates: PhaseTwoPrimaryCandidate[],
+): Promise<PhaseTwoPrimaryCandidate[]> {
+  if (candidates.length === 0) return []
+  const messageIds = [...new Set(candidates.map((candidate) => candidate.sourceMessageId))]
+  const delivered = await db
+    .select({ detector: aiNudges.detector, messageId: aiNudges.messageId })
+    .from(aiNudges)
+    .where(
+      and(
+        eq(aiNudges.workspaceId, input.workspaceId),
+        eq(aiNudges.channelId, input.channelId),
+        eq(aiNudges.status, 'active'),
+        inArray(aiNudges.messageId, messageIds),
+        inArray(
+          aiNudges.detector,
+          [...new Set(candidates.map((candidate) => candidate.detector))],
+        ),
+      ),
+    )
+  const deliveredTargets = new Set(
+    delivered.flatMap((candidate) =>
+      candidate.messageId ? [`${candidate.detector}:${candidate.messageId}`] : [],
+    ),
+  )
+  return candidates.filter(
+    (candidate) => !deliveredTargets.has(`${candidate.detector}:${candidate.sourceMessageId}`),
+  )
 }
 
 export async function getPhaseTwoScanCandidateBudget(workspaceId: string): Promise<number> {
@@ -647,7 +694,7 @@ async function listEligibleRecipients(
 
 export async function refinePhaseTwoCandidate(
   input: PhaseTwoChannelInput,
-  candidate: z.infer<typeof primaryCandidateSchema>['candidates'][number],
+  candidate: PhaseTwoPrimaryCandidate,
 ): Promise<PhaseTwoNudgeCandidate | null> {
   if (!(await isPhaseTwoEnabled(input.workspaceId))) return null
   const recipients = await listEligibleRecipients(input, candidate.sourceMessageId)
