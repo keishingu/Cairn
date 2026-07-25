@@ -96,7 +96,7 @@ stripe_events              Webhook 冪等性
 - **貢献の記録**: 「誰がいつ石を積んだか」は `subscriptions` + `credit_ledger(reason=subscription_grant/pack_purchase)` から導出できる。ケルン UI の礎石・タイムライン（永続表示）はこのクエリ。専用テーブルは当面不要
 - **`files.file_size` は実装済み**（`gallery_items.fileId` → `files.id` の join で取得可能。当初想定していた `gallery` テーブルへの追加は不要だった）。既存行の NULL は `storage.objects.metadata->>'size'` からのバックフィルで補正する（Phase 0 で実施済み）
 - **オリジナル別保存は未実装**: `process-image.ts` はアップロード前にクライアント側でオリジナルを圧縮版へ置き換えており、圧縮前のオリジナルは保存されない。そのため Phase 0 の `original_bytes` は「現状唯一の実体（圧縮後ファイル）」の合計であり、`derived_bytes` は常に 0。真のオリジナル保存・表示用派生の生成は Phase 1 でアップロード権判定と合わせて実装する
-- **2026-07-24 の基盤実装**: `billing_customers` / `subscriptions` / `credit_ledger` / `stripe_events` と、DB 非依存の状態・アップロード権解決を追加した。`workspace_storage_usage` は reconciliation と削除経路の設計が未完了のため、この時点では作成していない
+- **2026-07-24 の Phase 1 実装**: `billing_customers` / `subscriptions` / `credit_ledger` / `stripe_events` / `workspace_storage_usage` を追加した。Stripe Checkout・Webhook・クレジット台帳・ストレージ家賃 cron・日次 reconciliation・アップロード執行・風化時の圧縮版フォールバックを実装済み。使用量カウンタはアップロード/削除で更新し、CASCADE 等の経路は reconciliation で補正する
 
 ## 5. エンタイトルメント解決
 

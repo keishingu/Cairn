@@ -17,7 +17,8 @@ export function calculateStorageRentAccrual(
   startAt: Date,
   endAt: Date,
 ): number {
-  if (originalBytes <= 0 || endAt <= startAt) return 0
+  const billableBytes = Math.max(0, originalBytes - BILLING_CONFIG.freeStorageBytes)
+  if (billableBytes <= 0 || endAt <= startAt) return 0
 
   let cursor = startAt.getTime()
   const end = endAt.getTime()
@@ -30,7 +31,7 @@ export function calculateStorageRentAccrual(
     const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate()
     const monthMilliseconds = daysInMonth * 24 * 60 * 60 * 1000
 
-    accrual += (originalBytes / BYTES_PER_GIB)
+    accrual += (billableBytes / BYTES_PER_GIB)
       * BILLING_CONFIG.storageRentCreditsPerGibMonth
       * ((segmentEnd - cursor) / monthMilliseconds)
     cursor = segmentEnd

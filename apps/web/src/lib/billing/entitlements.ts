@@ -6,7 +6,7 @@ import {
   resolveWorkspaceState,
   type UploadRights,
   type WorkspaceState,
-} from '@cairn/core'
+} from '@cairn/core/billing'
 import { creditLedger, db, subscriptions } from '@cairn/db'
 import { and, eq, gt, sql } from 'drizzle-orm'
 import { isBillingEnabled } from './is-billing-enabled'

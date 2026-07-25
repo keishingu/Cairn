@@ -3,6 +3,12 @@
 
 import { db, files, workspaceStorageUsage, workspaces } from '@cairn/db'
 import { eq, sql } from 'drizzle-orm'
+import { isBillingEnabled } from './is-billing-enabled'
+import {
+  advanceWorkspaceStorageRentCursor,
+  settleWorkspaceStorageRent,
+  type StorageRentTransaction,
+} from './storage-rent'
 
 export interface StorageUsage {
   originalBytes: number
@@ -15,7 +21,7 @@ export interface StorageUsageReconciliation extends StorageUsage {
   derivedBytesDrift: number
 }
 
-type StorageUsageExecutor = Pick<typeof db, 'insert'>
+type StorageUsageExecutor = StorageRentTransaction
 
 /**
  * 通常のアップロード・削除で使用量カウンタを更新する。
@@ -24,12 +30,26 @@ type StorageUsageExecutor = Pick<typeof db, 'insert'>
 export async function recordStorageUsageDelta(
   workspaceId: string,
   delta: StorageUsage,
-  executor: StorageUsageExecutor = db,
+  executor: StorageUsageExecutor | typeof db = db,
 ): Promise<void> {
   if (delta.originalBytes === 0 && delta.derivedBytes === 0) return
 
+  // 使用量変更の直前までを古い使用量で精算してから新しい使用量を反映する。
+  // これにより cron 間に増減した容量を遡って請求しない。
+  if (executor === db) {
+    await db.transaction(tx => recordStorageUsageDelta(workspaceId, delta, tx))
+    return
+  }
+
+  const tx = executor as StorageUsageExecutor
   const now = new Date()
-  await executor
+  if (isBillingEnabled()) {
+    await settleWorkspaceStorageRent(tx, workspaceId, now)
+  } else {
+    // 課金無効期間の容量変化を、後で有効化した時点から遡って請求しない。
+    await advanceWorkspaceStorageRentCursor(tx, workspaceId, now)
+  }
+  await tx
     .insert(workspaceStorageUsage)
     .values({
       workspaceId,
@@ -54,52 +74,67 @@ export async function recordStorageUsageDelta(
 export async function reconcileWorkspaceStorageUsage(
   workspaceId: string,
 ): Promise<StorageUsageReconciliation> {
-  const [actual] = await db
-    .select({
-      originalBytes: sql<string>`COALESCE(SUM(${files.fileSize}), 0)`,
-      derivedBytes: sql<string>`COALESCE(SUM(${files.derivedFileSize}), 0)`,
-    })
-    .from(files)
-    .where(eq(files.workspaceId, workspaceId))
+  return db.transaction(async (tx) => {
+    // 先に行を確保してロックする。SUM の後でロックすると、その間にコミットした
+    // アップロードのカウンタ更新を古い集計値で上書きしてしまう。
+    await tx
+      .insert(workspaceStorageUsage)
+      .values({ workspaceId })
+      .onConflictDoNothing()
 
-  const originalBytes = Number(actual?.originalBytes ?? 0)
-  const derivedBytes = Number(actual?.derivedBytes ?? 0)
-  const [current] = await db
-    .select({
-      originalBytes: workspaceStorageUsage.originalBytes,
-      derivedBytes: workspaceStorageUsage.derivedBytes,
-    })
-    .from(workspaceStorageUsage)
-    .where(eq(workspaceStorageUsage.workspaceId, workspaceId))
-    .limit(1)
+    const [current] = await tx
+      .select({
+        originalBytes: workspaceStorageUsage.originalBytes,
+        derivedBytes: workspaceStorageUsage.derivedBytes,
+      })
+      .from(workspaceStorageUsage)
+      .where(eq(workspaceStorageUsage.workspaceId, workspaceId))
+      .for('update')
+      .limit(1)
 
-  const now = new Date()
-  await db
-    .insert(workspaceStorageUsage)
-    .values({
-      workspaceId,
-      originalBytes,
-      derivedBytes,
-      lastReconciledAt: now,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: workspaceStorageUsage.workspaceId,
-      set: {
+    const [actual] = await tx
+      .select({
+        originalBytes: sql<string>`COALESCE(SUM(${files.fileSize}), 0)`,
+        derivedBytes: sql<string>`COALESCE(SUM(${files.derivedFileSize}), 0)`,
+      })
+      .from(files)
+      .where(eq(files.workspaceId, workspaceId))
+
+    const originalBytes = Number(actual?.originalBytes ?? 0)
+    const derivedBytes = Number(actual?.derivedBytes ?? 0)
+    const now = new Date()
+    const billingEnabled = isBillingEnabled()
+    if (billingEnabled) {
+      await settleWorkspaceStorageRent(tx, workspaceId, now)
+    }
+    await tx
+      .insert(workspaceStorageUsage)
+      .values({
+        workspaceId,
         originalBytes,
         derivedBytes,
         lastReconciledAt: now,
         updatedAt: now,
-      },
-    })
+      })
+      .onConflictDoUpdate({
+        target: workspaceStorageUsage.workspaceId,
+        set: {
+          originalBytes,
+          derivedBytes,
+          lastReconciledAt: now,
+          updatedAt: now,
+          ...(!billingEnabled ? { lastRentAt: now } : {}),
+        },
+      })
 
-  return {
-    workspaceId,
-    originalBytes,
-    derivedBytes,
-    originalBytesDrift: originalBytes - (current?.originalBytes ?? 0),
-    derivedBytesDrift: derivedBytes - (current?.derivedBytes ?? 0),
-  }
+    return {
+      workspaceId,
+      originalBytes,
+      derivedBytes,
+      originalBytesDrift: originalBytes - (current?.originalBytes ?? 0),
+      derivedBytesDrift: derivedBytes - (current?.derivedBytes ?? 0),
+    }
+  })
 }
 
 /**

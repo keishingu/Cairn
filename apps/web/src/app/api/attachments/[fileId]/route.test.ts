@@ -7,10 +7,23 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const FILE_ID = '30000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockCanAccessFile, mockDownload, fileRow } = vi.hoisted(() => ({
+const {
+  mockGetAuthContext,
+  mockCanAccessFile,
+  mockDownload,
+  mockDeleteWhere,
+  mockTransaction,
+  mockTransactionSelectLimit,
+  mockRecordStorageUsageDelta,
+  fileRow,
+} = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockCanAccessFile: vi.fn(),
   mockDownload: vi.fn(),
+  mockDeleteWhere: vi.fn().mockResolvedValue(undefined),
+  mockTransaction: vi.fn(),
+  mockTransactionSelectLimit: vi.fn(),
+  mockRecordStorageUsageDelta: vi.fn().mockResolvedValue(undefined),
   fileRow: {
     id: '30000000-0000-0000-0000-000000000001',
     workspaceId: '10000000-0000-0000-0000-000000000001',
@@ -31,16 +44,25 @@ vi.mock('@/lib/supabase/service', () => ({
     storage: { from: () => ({ download: mockDownload, remove: vi.fn() }) },
   }),
 }))
+vi.mock('@/lib/billing/storage-usage', () => ({ recordStorageUsageDelta: mockRecordStorageUsageDelta }))
+vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn().mockResolvedValue(undefined) } }))
 
 // db は最初の1件取得だけ使う。チェーンの最後で [fileRow] を返す。
 vi.mock('@cairn/db', () => {
-  const builder = {
-    select: () => builder,
-    from: () => builder,
-    where: () => builder,
+  const selectBuilder = {
+    from: () => selectBuilder,
+    where: () => selectBuilder,
     limit: () => Promise.resolve([fileRow]),
   }
-  return { db: builder, files: {}, documentChunks: {} }
+  return {
+    db: {
+      select: () => selectBuilder,
+      delete: () => ({ where: mockDeleteWhere }),
+      transaction: mockTransaction,
+    },
+    files: {},
+    documentChunks: {},
+  }
 })
 vi.mock('drizzle-orm', () => ({ eq: vi.fn(), and: vi.fn(), sql: vi.fn() }))
 
@@ -65,6 +87,21 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       data: 'file body',
       error: null,
     })
+    mockTransaction.mockImplementation(async (callback) => callback({
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            for: () => ({ limit: mockTransactionSelectLimit }),
+          }),
+        }),
+      }),
+      delete: () => ({
+        where: () => ({
+          returning: () => Promise.resolve([{ id: FILE_ID }]),
+        }),
+      }),
+    }))
+    mockTransactionSelectLimit.mockResolvedValue([{ id: FILE_ID }])
   })
 
   afterEach(() => {
@@ -102,6 +139,16 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     const { DELETE } = await import('./route')
     const res = await DELETE(new Request('http://localhost/', { method: 'DELETE' }), routeParams())
     expect(res.status).toBe(403)
+  })
+
+  it('同時削除で行ロック取得後にファイルが無い場合は使用量を減算しない', async () => {
+    mockTransactionSelectLimit.mockResolvedValue([])
+
+    const { DELETE } = await import('./route')
+    const res = await DELETE(new Request('http://localhost/', { method: 'DELETE' }), routeParams())
+
+    expect(res.status).toBe(404)
+    expect(mockRecordStorageUsageDelta).not.toHaveBeenCalled()
   })
 
   it('Markdownファイルは保存MIMEが汎用でもUTF-8つきtext/markdownで返す', async () => {
