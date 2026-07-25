@@ -6,6 +6,7 @@ import {
   blocksPhaseTwoPrimaryCandidate,
   blocksPhaseTwoCandidateRefinement,
   hasCreditsForPhaseTwoScan,
+  isPhaseTwoPrimaryCandidateEligible,
   restrictPhaseTwoRecipientsToFixedRecipient,
   resolvePhaseTwoScanCandidateBudget,
 } from './llm-nudge-scan'
@@ -73,5 +74,30 @@ describe('Phase 2 スキャンのクレジット判定', () => {
       { userId: 'user-2' },
     ])
     expect(restrictPhaseTwoRecipientsToFixedRecipient(recipients, undefined)).toEqual(recipients)
+  })
+
+  it('直接返信済みまたは24時間未満の未回答質問は精査枠を消費しない', () => {
+    const candidate = {
+      detector: 'unanswered_ask' as const,
+      sourceMessageId: 'message-1',
+      observation: '回答待ち',
+    }
+    const now = new Date('2026-07-25T12:00:00.000Z')
+    expect(
+      isPhaseTwoPrimaryCandidateEligible({
+        candidate,
+        source: { createdAt: new Date('2026-07-25T11:00:00.000Z'), senderId: 'sender-1' },
+        hasDirectReply: false,
+        now,
+      }),
+    ).toBe(false)
+    expect(
+      isPhaseTwoPrimaryCandidateEligible({
+        candidate,
+        source: { createdAt: new Date('2026-07-24T11:00:00.000Z'), senderId: 'sender-1' },
+        hasDirectReply: true,
+        now,
+      }),
+    ).toBe(false)
   })
 })

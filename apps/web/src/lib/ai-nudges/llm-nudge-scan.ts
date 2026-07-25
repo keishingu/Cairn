@@ -30,6 +30,7 @@ import {
   PHASE_TWO_CONTEXT_MESSAGE_LIMIT,
   PHASE_TWO_NEW_MESSAGE_LIMIT,
   UNANSWERED_ASK_MIN_AGE_MS,
+  isUnansweredAskEligible,
   isUnansweredAskRecheckDue,
   nextUnansweredAskRecheck,
   phaseTwoDedupeKey,
@@ -683,6 +684,71 @@ ${formatMessages(input)}`,
     (candidate) =>
       candidateMessageIds.has(candidate.sourceMessageId) &&
       (!input.isUnansweredAskRecheck || candidate.detector === 'unanswered_ask'),
+  )
+}
+
+export function isPhaseTwoPrimaryCandidateEligible(input: {
+  candidate: PhaseTwoPrimaryCandidate
+  source: { createdAt: Date; senderId: string } | undefined
+  hasDirectReply: boolean
+  now: Date
+}): boolean {
+  if (input.candidate.detector !== 'unanswered_ask') return true
+  return (
+    input.source !== undefined &&
+    isUnansweredAskEligible({
+      messageCreatedAt: input.source.createdAt,
+      hasDirectReply: input.hasDirectReply,
+      now: input.now,
+    })
+  )
+}
+
+// 一次候補のうち未回答質問だけは、LLM精査へ渡す前に年齢と直接返信をDBで再確認する。
+// ここで除外しないと、配信時に破棄される候補が候補枠だけを占有して後続候補を飢餓化させる。
+export async function excludeIneligiblePhaseTwoPrimaryCandidates(
+  input: PhaseTwoChannelInput,
+  candidates: PhaseTwoPrimaryCandidate[],
+  now = new Date(),
+): Promise<PhaseTwoPrimaryCandidate[]> {
+  const unansweredAskIds = candidates
+    .filter((candidate) => candidate.detector === 'unanswered_ask')
+    .map((candidate) => candidate.sourceMessageId)
+  if (unansweredAskIds.length === 0) return candidates
+
+  const sources = await db
+    .select({ id: messages.id, createdAt: messages.createdAt, senderId: messages.senderId })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.channelId, input.channelId),
+        inArray(messages.id, unansweredAskIds),
+        isNull(messages.deletedAt),
+      ),
+    )
+  const directReplies = await db
+    .select({ parentMessageId: messages.parentMessageId, senderId: messages.senderId })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.channelId, input.channelId),
+        inArray(messages.parentMessageId, unansweredAskIds),
+        isNull(messages.deletedAt),
+      ),
+    )
+  const sourceById = new Map(sources.map((source) => [source.id, source]))
+
+  return candidates.filter((candidate) =>
+    isPhaseTwoPrimaryCandidateEligible({
+      candidate,
+      source: sourceById.get(candidate.sourceMessageId),
+      hasDirectReply: directReplies.some(
+        (reply) =>
+          reply.parentMessageId === candidate.sourceMessageId &&
+          reply.senderId !== sourceById.get(candidate.sourceMessageId)?.senderId,
+      ),
+      now,
+    }),
   )
 }
 

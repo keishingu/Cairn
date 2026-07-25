@@ -975,10 +975,17 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
         const primaryCandidateFilter = await step.run(
           `exclude-delivered-candidates-${channel.channelId}-${scanKind}`,
           async () => {
+            const { excludeIneligiblePhaseTwoPrimaryCandidates } = await import(
+              '@/lib/ai-nudges/llm-nudge-scan'
+            )
             const { excludeDeliveredPhaseTwoPrimaryCandidates } = await import(
               '@/lib/ai-nudges/llm-nudge-scan'
             )
-            return excludeDeliveredPhaseTwoPrimaryCandidates(input, primaryCandidates)
+            const eligibleCandidates = await excludeIneligiblePhaseTwoPrimaryCandidates(
+              input,
+              primaryCandidates,
+            )
+            return excludeDeliveredPhaseTwoPrimaryCandidates(input, eligibleCandidates)
           },
         )
         const refinedCandidates: PhaseTwoNudgeCandidate[] = []
