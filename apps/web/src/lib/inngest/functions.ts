@@ -974,7 +974,11 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
         )
         if (primaryCandidates.fundingBlocked) {
           // 予算読込後に家賃・別配信で残高が尽きた場合は、未評価差分を飛ばさない。
-          results.push({ input: { ...input, advancesCursor: false }, candidates: [] })
+          results.push({
+            input: { ...input, advancesCursor: false },
+            candidates: [],
+            fundingBlocked: true,
+          })
           continue
         }
         const primaryCandidateFilter = await step.run(

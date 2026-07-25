@@ -31,6 +31,14 @@ export interface PhaseTwoScanResult {
   input: PhaseTwoChannelInput
   candidates: PhaseTwoNudgeCandidate[]
   preservedActiveRiskTargets?: string[]
+  fundingBlocked?: boolean
+}
+
+export function shouldReconcilePhaseTwoRisk(result: {
+  input: Pick<PhaseTwoChannelInput, 'isUnansweredAskRecheck'>
+  fundingBlocked?: boolean
+}): boolean {
+  return !result.input.isUnansweredAskRecheck && !result.fundingBlocked
 }
 
 function notificationData(candidate: PhaseTwoNudgeCandidate, nudgeId: string) {
@@ -114,7 +122,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
     const scannedChannelIds = [...new Set(enabledResults.map((result) => result.input.channelId))]
     const evaluatedRiskMessages = new Set(
       enabledResults
-        .filter((result) => !result.input.isUnansweredAskRecheck)
+        .filter(shouldReconcilePhaseTwoRisk)
         .flatMap((result) =>
           result.input.newMessageIds.map((messageId) => `${result.input.channelId}:${messageId}`),
         ),
