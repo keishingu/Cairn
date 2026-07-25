@@ -24,7 +24,7 @@ export async function GET() {
 
   try {
     const { db, galleryItems, files, projects } = await import('@cairn/db')
-    const { eq, and, isNotNull, inArray, sql } = await import('drizzle-orm')
+    const { eq, and, inArray, sql } = await import('drizzle-orm')
 
     // ゲストは参加プロジェクトのギャラリーのみ閲覧可
     const role = ctx.role
@@ -39,6 +39,7 @@ export async function GET() {
         id: galleryItems.id,
         fileId: galleryItems.fileId,
         storagePath: files.storagePath,
+        derivedStoragePath: files.derivedStoragePath,
         takenAt: galleryItems.takenAt,
         createdAt: galleryItems.createdAt,
         projectId: projects.id,
@@ -49,7 +50,7 @@ export async function GET() {
       .innerJoin(projects, eq(galleryItems.projectId, projects.id))
       .where(and(
         eq(projects.workspaceId, ctx.workspaceId),
-        isNotNull(files.storagePath),
+        sql`coalesce(${files.derivedStoragePath}, ${files.storagePath}) is not null`,
         ...(guestProjectIds ? [inArray(projects.id, guestProjectIds)] : []),
       ))
       .orderBy(sql`${galleryItems.takenAt} DESC NULLS LAST`, sql`${galleryItems.createdAt} DESC`)
@@ -58,7 +59,10 @@ export async function GET() {
     const result: WorkspaceGalleryItemDto[] = rows.map((r: typeof rows[number]) => ({
       id: r.id,
       fileId: r.fileId,
-      publicUrl: supabase.storage.from(GALLERY_BUCKET).getPublicUrl(r.storagePath!).data.publicUrl,
+      publicUrl: supabase
+        .storage
+        .from(GALLERY_BUCKET)
+        .getPublicUrl(r.derivedStoragePath ?? r.storagePath!).data.publicUrl,
       takenAt: r.takenAt?.toISOString() ?? null,
       createdAt: r.createdAt.toISOString(),
       projectId: r.projectId,

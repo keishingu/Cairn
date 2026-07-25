@@ -17,10 +17,15 @@ export const files = pgTable(
     uploadedBy: uuid('uploaded_by')
       .notNull()
       .references(() => profiles.id),
+    // storagePath は家賃対象の原本。既存行は圧縮済みの唯一の実体をここへ保持する。
     storagePath: text('storage_path'),
+    // 表示・風化時のフォールバックに使う圧縮派生。家賃対象外。
+    derivedStoragePath: text('derived_storage_path'),
     fileName: text('file_name').notNull(),
     mimeType: text('mime_type'),
+    derivedMimeType: text('derived_mime_type'),
     fileSize: bigint('file_size', { mode: 'number' }),
+    derivedFileSize: bigint('derived_file_size', { mode: 'number' }),
     fileType: fileTypeEnum('file_type').notNull().default('document'),
     version: integer('version').notNull().default(1),
     metadata: jsonb('metadata').notNull().default({}),

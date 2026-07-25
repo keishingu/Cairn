@@ -62,3 +62,21 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'reaction',
   'ai',
 ])
+
+// 課金プランの UI 名はブランド変更に備えてここへ持ち込まない。
+// individual は個人購読、workspace は将来のワークスペース定額を表す。
+export const billingPlanEnum = pgEnum('billing_plan', ['individual', 'workspace'])
+
+export const subscriptionStatusEnum = pgEnum('subscription_status', [
+  'active',
+  'past_due',
+  'canceled',
+])
+
+export const creditLedgerReasonEnum = pgEnum('credit_ledger_reason', [
+  'subscription_grant',
+  'pack_purchase',
+  'ai_consumption',
+  'storage_rent',
+  'adjustment',
+])

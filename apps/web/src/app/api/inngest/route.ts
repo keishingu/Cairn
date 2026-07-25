@@ -5,6 +5,7 @@ import { serve } from 'inngest/next'
 import { inngest } from '@/lib/inngest/client'
 import {
   backfillThumbnails,
+  cleanupExpiredUploadRequests,
   deleteStorageObjects,
   indexFileChunks,
   indexProjectChunks,
@@ -13,6 +14,7 @@ import {
   onMessageCreated,
   onTaskAssigned,
   reconcileAiNudgesHeartbeat,
+  reconcileWorkspaceStorageUsageDaily,
   scanAiNudgesPhaseTwo,
 } from '@/lib/inngest/functions'
 
@@ -26,6 +28,7 @@ function resolveServeHost(): string | undefined {
 
 const fns = [
   backfillThumbnails,
+  cleanupExpiredUploadRequests,
   deleteStorageObjects,
   indexFileChunks,
   indexProjectChunks,
@@ -34,6 +37,7 @@ const fns = [
   onMessageCreated,
   onTaskAssigned,
   reconcileAiNudgesHeartbeat,
+  reconcileWorkspaceStorageUsageDaily,
   scanAiNudgesPhaseTwo,
 ]
 const host = resolveServeHost()
