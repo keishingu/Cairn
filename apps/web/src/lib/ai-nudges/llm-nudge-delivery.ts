@@ -22,6 +22,7 @@ import {
   nextJstDeliveryTime,
   passesPhaseTwoConfidence,
   PHASE_TWO_DAILY_LIMIT,
+  shouldAdvancePhaseTwoScanCursor,
   shouldResolveDueLlmRiskReminder,
 } from './llm-nudge-rules'
 import type { PhaseTwoChannelInput, PhaseTwoNudgeCandidate } from './llm-nudge-scan'
@@ -104,6 +105,10 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
     let created = 0
     let reactivated = 0
     let discarded = 0
+    // 同じHeartbeat内で期限リマインダーが先に残高を使い切ることがある。
+    // その結果、新規候補の課金だけ失敗したチャンネルはカーソルを保持し、
+    // 買い増し後に同じ差分を再評価できるようにする。
+    const creditBlockedChannelIds = new Set<string>()
 
     // 直接返信はLLMに委ねず、未回答条件が解消した事実として決定論的にresolveする。
     const scannedChannelIds = [...new Set(enabledResults.map((result) => result.input.channelId))]
@@ -558,6 +563,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
             refId: `heartbeat:${existing.id}:${now.toISOString()}`,
           }))
         ) {
+          creditBlockedChannelIds.add(candidate.channelId)
           discarded += 1
           continue
         }
@@ -639,6 +645,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         }))
       ) {
         await tx.delete(aiNudges).where(eq(aiNudges.id, inserted.id))
+        creditBlockedChannelIds.add(candidate.channelId)
         discarded += 1
         continue
       }
@@ -669,7 +676,12 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         : new Set<string>()
     for (const { input } of enabledResults) {
       if (!existingChannelIds.has(input.channelId)) continue
-      if (!input.advancesCursor) {
+      if (
+        !shouldAdvancePhaseTwoScanCursor({
+          inputAllowsAdvance: input.advancesCursor,
+          creditBlocked: creditBlockedChannelIds.has(input.channelId),
+        })
+      ) {
         const nextCheckAt = input.nextUnansweredAskCheckAt
           ? new Date(input.nextUnansweredAskCheckAt)
           : null
@@ -732,6 +744,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       created,
       reactivated,
       discarded,
+      creditBlockedChannels: creditBlockedChannelIds.size,
     }
   })
 }

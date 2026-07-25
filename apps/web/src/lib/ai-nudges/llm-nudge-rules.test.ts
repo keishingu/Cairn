@@ -8,6 +8,7 @@ import {
   nextJstDeliveryTime,
   passesPhaseTwoConfidence,
   phaseTwoDedupeKey,
+  shouldAdvancePhaseTwoScanCursor,
   shouldResolveDueLlmRiskReminder,
 } from './llm-nudge-rules'
 
@@ -22,6 +23,15 @@ describe('Phase 2 AIナッジの決定論的な発話ゲート', () => {
     expect(isPhaseTwoDetector('unanswered_ask')).toBe(true)
     expect(isPhaseTwoDetector('llm_risk')).toBe(true)
     expect(isPhaseTwoDetector('task_overdue')).toBe(false)
+  })
+
+  test('クレジット不足で候補を落としたチャンネルはカーソルを保持する', () => {
+    expect(
+      shouldAdvancePhaseTwoScanCursor({ inputAllowsAdvance: true, creditBlocked: true }),
+    ).toBe(false)
+    expect(
+      shouldAdvancePhaseTwoScanCursor({ inputAllowsAdvance: true, creditBlocked: false }),
+    ).toBe(true)
   })
 
   test('検知器と根拠メッセージでdedupe keyを作る', () => {
