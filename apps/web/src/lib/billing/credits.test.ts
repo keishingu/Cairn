@@ -98,4 +98,13 @@ describe('consumeCreditsForPassiveBenefit', () => {
     expect(tx.execute).toHaveBeenCalled()
     expect(insert).toHaveBeenCalled()
   })
+
+  it('複数ワークスペースの残高ロックは重複を除いて安定順にする', async () => {
+    const { sortWorkspaceCreditLockIds } = await import('./credits')
+
+    expect(sortWorkspaceCreditLockIds(['workspace-b', 'workspace-a', 'workspace-b'])).toEqual([
+      'workspace-a',
+      'workspace-b',
+    ])
+  })
 })

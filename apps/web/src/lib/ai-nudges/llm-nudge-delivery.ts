@@ -14,7 +14,7 @@ import {
 } from '@cairn/db'
 import { BILLING_CONFIG } from '@cairn/core/billing'
 import { and, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm'
-import { consumeCreditsForPassiveBenefit } from '@/lib/billing/credits'
+import { consumeCreditsForPassiveBenefit, lockWorkspaceCreditBalances } from '@/lib/billing/credits'
 import { startOfJstDay } from './rules'
 import {
   isUnansweredAskEligible,
@@ -259,6 +259,11 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           or(isNull(aiNudges.remindAfter), lte(aiNudges.remindAfter, now)),
         ),
       )
+
+    await lockWorkspaceCreditBalances(tx, [
+      ...dueReminders.map((reminder) => reminder.workspaceId),
+      ...candidates.map((candidate) => candidate.workspaceId),
+    ])
 
     for (const reminder of dueReminders) {
       const delivered = deliveriesToday.get(reminder.userId) ?? 0

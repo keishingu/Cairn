@@ -15,7 +15,7 @@ import {
 } from '@cairn/db'
 import { BILLING_CONFIG } from '@cairn/core/billing'
 import { and, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
-import { consumeCreditsForPassiveBenefit } from '@/lib/billing/credits'
+import { consumeCreditsForPassiveBenefit, lockWorkspaceCreditBalances } from '@/lib/billing/credits'
 import {
   AI_NUDGE_DAILY_LIMIT,
   cooldownTargetKey,
@@ -110,6 +110,10 @@ export async function reconcilePhaseOneAiNudges(now = new Date()) {
       if (!row.assigneeId) return []
       return detectTaskNudges({ ...row, assigneeId: row.assigneeId }, now)
     })
+    await lockWorkspaceCreditBalances(
+      tx,
+      candidates.map((candidate) => candidate.workspaceId),
+    )
     const candidateByConcern = new Map(
       candidates.map((candidate) => [concernKey(candidate.userId, candidate.dedupeKey), candidate]),
     )

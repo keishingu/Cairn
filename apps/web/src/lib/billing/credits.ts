@@ -13,6 +13,22 @@ export async function lockWorkspaceCreditBalance(tx: BillingTransaction, workspa
   )
 }
 
+export function sortWorkspaceCreditLockIds(workspaceIds: string[]): string[] {
+  return [...new Set(workspaceIds)].sort((a, b) => a.localeCompare(b))
+}
+
+// 複数ワークスペースを一つのトランザクションで配信するHeartbeatは、候補順ではなく
+// 安定した順番で全残高ロックを先取りする。Phase間の逆順待ちによるデッドロックを防ぐ。
+export async function lockWorkspaceCreditBalances(
+  tx: BillingTransaction,
+  workspaceIds: string[],
+) {
+  if (!isBillingEnabled()) return
+  for (const workspaceId of sortWorkspaceCreditLockIds(workspaceIds)) {
+    await lockWorkspaceCreditBalance(tx, workspaceId)
+  }
+}
+
 export async function getWorkspaceCreditBalance(workspaceId: string): Promise<number> {
   const [row] = await db
     .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
