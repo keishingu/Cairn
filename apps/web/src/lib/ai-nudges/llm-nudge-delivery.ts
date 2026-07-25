@@ -30,6 +30,7 @@ import type { PhaseTwoChannelInput, PhaseTwoNudgeCandidate } from './llm-nudge-s
 export interface PhaseTwoScanResult {
   input: PhaseTwoChannelInput
   candidates: PhaseTwoNudgeCandidate[]
+  preservedActiveRiskTargets?: string[]
 }
 
 function notificationData(candidate: PhaseTwoNudgeCandidate, nudgeId: string) {
@@ -96,11 +97,10 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         if (a.detector !== b.detector) return a.detector === 'unanswered_ask' ? -1 : 1
         return b.confidence - a.confidence
       })
-    const proposedTargets = new Set(
-      candidates.map(
-        (candidate) => `${candidate.detector}:${candidate.messageId}:${candidate.userId}`,
-      ),
-    )
+    const proposedTargets = new Set([
+      ...candidates.map((candidate) => `${candidate.detector}:${candidate.messageId}:${candidate.userId}`),
+      ...enabledResults.flatMap((result) => result.preservedActiveRiskTargets ?? []),
+    ])
 
     let created = 0
     let reactivated = 0

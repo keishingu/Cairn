@@ -130,6 +130,11 @@ const refinedProposalSchema = z.object({
 
 export type PhaseTwoPrimaryCandidate = z.infer<typeof primaryCandidateSchema>['candidates'][number]
 
+export interface PhaseTwoPrimaryCandidateFilterResult {
+  candidates: PhaseTwoPrimaryCandidate[]
+  preservedActiveRiskTargets: string[]
+}
+
 function isAfterCursor(
   createdAt: Date,
   id: string,
@@ -168,14 +173,15 @@ export function blocksPhaseTwoCandidateRefinement(
 export async function excludeDeliveredPhaseTwoPrimaryCandidates(
   input: PhaseTwoChannelInput,
   candidates: PhaseTwoPrimaryCandidate[],
-): Promise<PhaseTwoPrimaryCandidate[]> {
-  if (candidates.length === 0) return []
+): Promise<PhaseTwoPrimaryCandidateFilterResult> {
+  if (candidates.length === 0) return { candidates: [], preservedActiveRiskTargets: [] }
   const messageIds = [...new Set(candidates.map((candidate) => candidate.sourceMessageId))]
   const now = new Date()
   const existing = await db
     .select({
       detector: aiNudges.detector,
       messageId: aiNudges.messageId,
+      userId: aiNudges.userId,
       status: aiNudges.status,
       remindAfter: aiNudges.remindAfter,
     })
@@ -199,9 +205,25 @@ export async function excludeDeliveredPhaseTwoPrimaryCandidates(
         : [],
     ),
   )
-  return candidates.filter(
-    (candidate) => !blockedTargets.has(`${candidate.detector}:${candidate.sourceMessageId}`),
+  // 再巡回で既存の active risk を精査対象から外しても、同じ根拠が再び提案された事実は
+  // 解消判定に渡す。これがないと既存カードを誤って resolved にしてしまう。
+  const proposedPrimaryTargets = new Set(
+    candidates.map((candidate) => `${candidate.detector}:${candidate.sourceMessageId}`),
   )
+  const preservedActiveRiskTargets = existing.flatMap((candidate) =>
+    candidate.status === 'active' &&
+    candidate.detector === 'llm_risk' &&
+    candidate.messageId &&
+    proposedPrimaryTargets.has(`${candidate.detector}:${candidate.messageId}`)
+      ? [`${candidate.detector}:${candidate.messageId}:${candidate.userId}`]
+      : [],
+  )
+  return {
+    candidates: candidates.filter(
+      (candidate) => !blockedTargets.has(`${candidate.detector}:${candidate.sourceMessageId}`),
+    ),
+    preservedActiveRiskTargets,
+  }
 }
 
 export async function getPhaseTwoScanCandidateBudget(workspaceId: string): Promise<number> {

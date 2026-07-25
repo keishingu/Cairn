@@ -11,6 +11,7 @@ import { hasReadMessage } from '@/lib/push/suppress'
 import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
 import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
+import { passesPhaseTwoConfidence } from '@/lib/ai-nudges/llm-nudge-rules'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
@@ -971,7 +972,7 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
             return screenPhaseTwoCandidates(input)
           },
         )
-        const undeliveredPrimaryCandidates = await step.run(
+        const primaryCandidateFilter = await step.run(
           `exclude-delivered-candidates-${channel.channelId}-${scanKind}`,
           async () => {
             const { excludeDeliveredPhaseTwoPrimaryCandidates } = await import(
@@ -984,7 +985,7 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
         let attemptedPrimaryCandidates = 0
         // false positiveを飛ばしつつ、残りの配信枠が埋まった時点で精査を止める。
         // 未試行候補が残る場合だけカーソルを保持して次回へ回す。
-        for (const [index, candidate] of undeliveredPrimaryCandidates.entries()) {
+        for (const [index, candidate] of primaryCandidateFilter.candidates.entries()) {
           if (refinedCandidates.length >= budget) break
           attemptedPrimaryCandidates += 1
           const refined = await step.run(
@@ -994,12 +995,13 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
               return refinePhaseTwoCandidate(input, candidate)
             },
           )
-          if (refined) refinedCandidates.push(refined)
+          // 配信時と同じ信頼度ゲートをここでも適用し、低信頼候補で枠を使い切らない。
+          if (refined && passesPhaseTwoConfidence(refined.confidence)) refinedCandidates.push(refined)
         }
         const acceptedCandidates = refinedCandidates
         remainingCandidateBudget.set(input.workspaceId, budget - acceptedCandidates.length)
         const hasDeferredCandidates =
-          attemptedPrimaryCandidates < undeliveredPrimaryCandidates.length
+          attemptedPrimaryCandidates < primaryCandidateFilter.candidates.length
         // 残高枠で未試行候補が残った入力は、買い増し後に同じ差分を再評価する。
         results.push({
           input:
@@ -1007,6 +1009,7 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
               ? { ...input, advancesCursor: false }
               : input,
           candidates: acceptedCandidates,
+          preservedActiveRiskTargets: primaryCandidateFilter.preservedActiveRiskTargets,
         })
       }
     }
