@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE, normalizeMimeType, resolveStorageExtension } from '@/lib/attachments'
+import { ALLOWED_MIME_TYPES, FREE_ATTACHMENT_MAX_FILE_SIZE, MAX_FILE_SIZE, normalizeMimeType, resolveStorageExtension } from '@/lib/attachments'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
@@ -45,6 +46,14 @@ export async function POST(req: Request) {
 
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
+
+  const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+  if (fileSize > FREE_ATTACHMENT_MAX_FILE_SIZE && !entitlements.rights.canUploadLargeFile) {
+    return NextResponse.json(
+      { error: '5MBを超えるファイルをアップロードするには、残高のある有効な支援が必要です' },
+      { status: 403 },
+    )
+  }
 
   const ext = resolveStorageExtension(fileName, normalizedMime)
   const storagePath = `${ctx.workspaceId}/${channelId}/${crypto.randomUUID()}.${ext}`

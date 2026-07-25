@@ -393,22 +393,74 @@ export const deleteStorageObjects = inngest.createFunction(
   { id: 'delete-storage-objects' },
   { event: 'storage/objects.delete' },
   async ({ event, step }) => {
-    const { bucket, paths } = event.data as { bucket: string; paths: string[] }
-
-    if (paths.length === 0) return { deleted: 0 }
+    const data = event.data as
+      | { bucket: string; paths: string[] }
+      | { targets: Array<{ bucket: string; paths: string[] }> }
+    const targets = 'targets' in data ? data.targets : [{ bucket: data.bucket, paths: data.paths }]
 
     let deleted = 0
-    for (let i = 0; i < paths.length; i += BATCH_SIZE) {
-      const batch = paths.slice(i, i + BATCH_SIZE)
-      await step.run(`delete-batch-${i}`, async () => {
-        const supabase = createServiceRoleClient()
-        const { data, error } = await supabase.storage.from(bucket).remove(batch)
-        if (error) throw error
-        deleted += data?.length ?? 0
-      })
+    for (const { bucket, paths } of targets) {
+      for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+        const batch = paths.slice(i, i + BATCH_SIZE)
+        await step.run(`delete-${bucket}-batch-${i}`, async () => {
+          const supabase = createServiceRoleClient()
+          const { data, error } = await supabase.storage.from(bucket).remove(batch)
+          if (error) throw error
+          deleted += data?.length ?? 0
+        })
+      }
     }
 
     return { deleted }
+  },
+)
+
+export const runStorageDeletionJob = inngest.createFunction(
+  { id: 'run-storage-deletion-job' },
+  { event: 'storage/deletion.requested' },
+  async ({ event, step }) => {
+    const { jobId } = event.data as { jobId: string }
+    const { db, storageDeletionJobs } = await import('@cairn/db')
+    const { eq } = await import('drizzle-orm')
+    const [job] = await db
+      .select({ targets: storageDeletionJobs.targets })
+      .from(storageDeletionJobs)
+      .where(eq(storageDeletionJobs.id, jobId))
+      .limit(1)
+    if (!job) return { deleted: 0 }
+
+    let deleted = 0
+    for (const { bucket, paths } of job.targets) {
+      for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+        const batch = paths.slice(i, i + BATCH_SIZE)
+        await step.run(`delete-${bucket}-batch-${i}`, async () => {
+          const supabase = createServiceRoleClient()
+          const { data, error } = await supabase.storage.from(bucket).remove(batch)
+          if (error) throw error
+          deleted += data?.length ?? 0
+        })
+      }
+    }
+    await db.delete(storageDeletionJobs).where(eq(storageDeletionJobs.id, jobId))
+    return { deleted }
+  },
+)
+
+export const requeueStorageDeletionJobs = inngest.createFunction(
+  { id: 'requeue-storage-deletion-jobs' },
+  { cron: 'TZ=Asia/Tokyo */15 * * * *' },
+  async () => {
+    const { db, storageDeletionJobs } = await import('@cairn/db')
+    const rows = await db
+      .select({ id: storageDeletionJobs.id })
+      .from(storageDeletionJobs)
+      .limit(100)
+    if (rows.length > 0) {
+      await inngest.send(
+        rows.map((row) => ({ name: 'storage/deletion.requested', data: { jobId: row.id } })),
+      )
+    }
+    return { enqueued: rows.length }
   },
 )
 
@@ -955,6 +1007,25 @@ export const reconcileWorkspaceStorageUsageDaily = inngest.createFunction(
     }
 
     return { reconciled: results.length, drifted: drifted.length }
+  },
+)
+
+// JST の日次家賃。使用量 reconciliation の直後に同じカウンタを入力として記帳する。
+export const chargeStorageRentDaily = inngest.createFunction(
+  { id: 'charge-storage-rent', concurrency: { limit: 1 } },
+  { cron: 'TZ=Asia/Tokyo 20 3 * * *' },
+  async ({ step }) => {
+    return step.run('charge-storage-rent', async () => {
+      const { isBillingEnabled } = await import('@/lib/billing/is-billing-enabled')
+      if (!isBillingEnabled()) {
+        const { advanceAllWorkspaceStorageRentCursors } = await import('@/lib/billing/storage-rent')
+        return { skipped: true, advanced: await advanceAllWorkspaceStorageRentCursors() }
+      }
+
+      const { chargeAllWorkspaceStorageRent } = await import('@/lib/billing/storage-rent')
+      const results = await chargeAllWorkspaceStorageRent()
+      return { skipped: false, charged: results.length, advanced: 0 }
+    })
   },
 )
 

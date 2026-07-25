@@ -7,14 +7,21 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const CHANNEL_ID = '20000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockRequireChannelAccess, mockCreateSignedUploadUrl } = vi.hoisted(() => ({
+const {
+  mockGetAuthContext,
+  mockRequireChannelAccess,
+  mockResolveUploadEntitlements,
+  mockCreateSignedUploadUrl,
+} = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
+  mockResolveUploadEntitlements: vi.fn(),
   mockCreateSignedUploadUrl: vi.fn().mockResolvedValue({ data: { token: 'tok', path: 'p' }, error: null }),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({ requireChannelAccess: mockRequireChannelAccess }))
+vi.mock('@/lib/billing/entitlements', () => ({ resolveUploadEntitlements: mockResolveUploadEntitlements }))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
     storage: { from: () => ({ createSignedUploadUrl: mockCreateSignedUploadUrl }) },
@@ -32,6 +39,7 @@ describe('/api/attachments/upload-url', () => {
       error: null,
     })
     mockRequireChannelAccess.mockResolvedValue(null)
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: true } })
   })
 
   afterEach(() => {
@@ -44,7 +52,7 @@ describe('/api/attachments/upload-url', () => {
     )
 
     const { POST } = await import('./route')
-    const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'a.pdf', mimeType: 'application/pdf', fileSize: 100 }))
+    const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'a.pdf', mimeType: 'application/pdf', fileSize: 6 * 1024 * 1024 }))
 
     expect(res.status).toBe(403)
     expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
@@ -63,6 +71,16 @@ describe('/api/attachments/upload-url', () => {
     const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'a.exe', mimeType: 'application/x-msdownload', fileSize: 100 }))
 
     expect(res.status).toBe(400)
+    expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
+  })
+
+  it('原本保存の権利が無い場合は署名付きURLを発行しない', async () => {
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadLargeFile: false } })
+
+    const { POST } = await import('./route')
+    const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'a.pdf', mimeType: 'application/pdf', fileSize: 6 * 1024 * 1024 }))
+
+    expect(res.status).toBe(403)
     expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
   })
 

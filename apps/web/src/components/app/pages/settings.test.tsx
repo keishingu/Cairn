@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { SettingsSectionContent } from './settings'
+import { getSettingsNavGroups, isSettingsSection, SettingsSectionContent } from './settings'
 
 const { fetchWithAuth, processImageForUpload } = vi.hoisted(() => ({
   fetchWithAuth: vi.fn(),
@@ -209,5 +209,16 @@ describe('SettingsSectionContent', () => {
 
     expect(processImageForUpload).not.toHaveBeenCalled()
     expect(fetchWithAuth).not.toHaveBeenCalledWith('/api/me/avatar', expect.anything())
+  })
+})
+
+describe('モバイル設定のセクション', () => {
+  it('請求を一覧にも直接URLにも公開しない', () => {
+    const ids = getSettingsNavGroups(false, { isMobile: true })
+      .flatMap(group => group.items.map(item => item.id))
+
+    expect(ids).not.toContain('billing')
+    expect(isSettingsSection('billing', false, { isMobile: true })).toBe(false)
+    expect(isSettingsSection('billing', false)).toBe(true)
   })
 })

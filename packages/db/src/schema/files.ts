@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { bigint, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { bigint, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { fileTypeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
@@ -36,5 +36,7 @@ export const files = pgTable(
     // ストレージ使用量の workspace 単位集約（SUM(file_size)）用。
     // 詳細: docs/billing-implementation-design.md #4
     index('idx_files_workspace').on(t.workspaceId),
+    // 同じストレージオブジェクトを再試行で二重に確定しない。
+    uniqueIndex('files_workspace_storage_path_unique').on(t.workspaceId, t.storagePath),
   ],
 )

@@ -6,6 +6,7 @@ import { inngest } from '@/lib/inngest/client'
 import {
   backfillThumbnails,
   cleanupExpiredUploadRequests,
+  chargeStorageRentDaily,
   deleteStorageObjects,
   indexFileChunks,
   indexProjectChunks,
@@ -15,6 +16,8 @@ import {
   onTaskAssigned,
   reconcileAiNudgesHeartbeat,
   reconcileWorkspaceStorageUsageDaily,
+  requeueStorageDeletionJobs,
+  runStorageDeletionJob,
   scanAiNudgesPhaseTwo,
 } from '@/lib/inngest/functions'
 
@@ -29,6 +32,7 @@ function resolveServeHost(): string | undefined {
 const fns = [
   backfillThumbnails,
   cleanupExpiredUploadRequests,
+  chargeStorageRentDaily,
   deleteStorageObjects,
   indexFileChunks,
   indexProjectChunks,
@@ -38,6 +42,8 @@ const fns = [
   onTaskAssigned,
   reconcileAiNudgesHeartbeat,
   reconcileWorkspaceStorageUsageDaily,
+  requeueStorageDeletionJobs,
+  runStorageDeletionJob,
   scanAiNudgesPhaseTwo,
 ]
 const host = resolveServeHost()
