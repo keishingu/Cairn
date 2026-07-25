@@ -16,6 +16,7 @@ import {
   tasks,
   workspaces,
 } from '@cairn/db'
+import { BILLING_CONFIG } from '@cairn/core/billing'
 import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import { generateObject } from 'ai'
 import { z } from 'zod'
@@ -139,6 +140,10 @@ function toISOString(value: Date | string): string {
   return (typeof value === 'string' ? new Date(value) : value).toISOString()
 }
 
+export function hasCreditsForPhaseTwoScan(creditBalance: number): boolean {
+  return creditBalance >= BILLING_CONFIG.heartbeatAiDeliveryCredits
+}
+
 // チャンネル一覧取得からLLM実行までの間にownerがOFFへ切り替えた場合も、
 // トークンを消費しないよう各LLM stepの直前に再確認する。
 async function isPhaseTwoEnabled(workspaceId: string): Promise<boolean> {
@@ -154,7 +159,7 @@ async function isPhaseTwoEnabled(workspaceId: string): Promise<boolean> {
     .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
     .from(creditLedger)
     .where(eq(creditLedger.workspaceId, workspaceId))
-  return Number(balance?.value ?? 0) > 0
+  return hasCreditsForPhaseTwoScan(Number(balance?.value ?? 0))
 }
 
 export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> {
