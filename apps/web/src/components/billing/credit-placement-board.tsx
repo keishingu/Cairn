@@ -300,12 +300,14 @@ function StoneThumbnail({
   weathered,
   dark,
   disabled,
+  onClick,
   onPointerDown,
 }: {
   ledgerId: string
   weathered: boolean
   dark: boolean
   disabled: boolean
+  onClick: () => void
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -320,6 +322,7 @@ function StoneThumbnail({
       aria-label="つまんで積む"
       className="credit-placement-board__tray-stone"
       disabled={disabled}
+      onClick={onClick}
       onPointerDown={onPointerDown}
       type="button"
     >
@@ -354,7 +357,7 @@ export function CreditPlacementBoard({
   const activeRef = useRef<ActivePlacement | null>(null)
   const isSavingRef = useRef(false)
   const startFromTrayRef = useRef<
-    ((pending: PendingCreditDto, event: ReactPointerEvent<HTMLButtonElement>) => void) | null
+    ((pending: PendingCreditDto, event?: ReactPointerEvent<HTMLButtonElement>) => void) | null
   >(null)
   const weatheredRef = useRef(workspaceState === 'weathered')
   const darkRef = useRef(false)
@@ -645,12 +648,12 @@ export function CreditPlacementBoard({
 
     const startFromTray = (
       pending: PendingCreditDto,
-      event: ReactPointerEvent<HTMLButtonElement>,
+      event?: ReactPointerEvent<HTMLButtonElement>,
     ) => {
       if (activeRef.current || isSavingRef.current) return
-      event.preventDefault()
+      event?.preventDefault()
       ensureAudio()
-      const point = positionForEvent(event)
+      const point = event ? positionForEvent(event) : { x: width / 2, y: 30 }
       const body = createStoneBody(stoneSpecForLedgerId(pending.ledgerId), point.x, point.y, false)
       body.plugin.ledgerId = pending.ledgerId
       Matter.Composite.add(engine.world, body)
@@ -662,7 +665,8 @@ export function CreditPlacementBoard({
       }
       setIsHolding(true)
       setActionError(null)
-      grab(body, point.x, point.y, event.pointerId)
+      if (event) grab(body, point.x, point.y, event.pointerId)
+      else Matter.Body.setVelocity(body, { x: 0, y: 2 })
     }
 
     startFromTrayRef.current = startFromTray
@@ -897,7 +901,7 @@ export function CreditPlacementBoard({
   const weathered = workspaceState === 'weathered'
   const startFromTray = (
     pendingItem: PendingCreditDto,
-    event: ReactPointerEvent<HTMLButtonElement>,
+    event?: ReactPointerEvent<HTMLButtonElement>,
   ) => {
     startFromTrayRef.current?.(pendingItem, event)
   }
@@ -991,6 +995,7 @@ export function CreditPlacementBoard({
                     disabled={isHolding || isSaving}
                     key={pendingItem.ledgerId}
                     ledgerId={pendingItem.ledgerId}
+                    onClick={() => startFromTray(pendingItem)}
                     onPointerDown={(event) => startFromTray(pendingItem, event)}
                     weathered={weathered}
                   />
