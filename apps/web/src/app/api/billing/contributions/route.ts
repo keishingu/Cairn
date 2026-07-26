@@ -14,7 +14,8 @@ export interface CreditPlacementDto {
   x: number
   y: number
   rotation: number
-  shape: 'regular'
+  // regular は初期ボードが保存した互換用の形状。organic は現行の石積みボード。
+  shape: 'regular' | 'organic'
   placedAt: string
 }
 
@@ -33,8 +34,12 @@ const createPlacementSchema = z.object({
   ledgerId: z.string().uuid(),
   x: z.number().finite().min(0.03).max(0.97),
   y: z.number().finite().min(0.03).max(0.97),
-  rotation: z.number().finite().min(-Math.PI * 2).max(Math.PI * 2),
-  shape: z.literal('regular'),
+  rotation: z
+    .number()
+    .finite()
+    .min(-Math.PI * 2)
+    .max(Math.PI * 2),
+  shape: z.enum(['regular', 'organic']),
 })
 
 function placementDto(row: {
@@ -52,7 +57,7 @@ function placementDto(row: {
     x: Number(row.x),
     y: Number(row.y),
     rotation: Number(row.rotation),
-    shape: row.shape === 'regular' ? 'regular' : 'regular',
+    shape: row.shape === 'organic' ? 'organic' : 'regular',
     placedAt: row.placedAt.toISOString(),
   }
 }

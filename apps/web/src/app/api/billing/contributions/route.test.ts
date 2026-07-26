@@ -60,7 +60,11 @@ describe('/api/billing/contributions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: '4e623381-66e0-4a69-b17d-12ef3dc7f75f', workspaceId: 'workspace-1', role: 'member' },
+      ctx: {
+        userId: '4e623381-66e0-4a69-b17d-12ef3dc7f75f',
+        workspaceId: 'workspace-1',
+        role: 'member',
+      },
       error: null,
     })
     mockTransaction.mockImplementation(async (callback) =>
@@ -91,7 +95,10 @@ describe('/api/billing/contributions', () => {
         },
       ])
       .mockResolvedValueOnce([
-        { id: '6b4913e7-36f2-4cb7-8d36-8afd99fbc19d', createdAt: new Date('2026-07-26T00:00:00.000Z') },
+        {
+          id: '6b4913e7-36f2-4cb7-8d36-8afd99fbc19d',
+          createdAt: new Date('2026-07-26T00:00:00.000Z'),
+        },
       ])
 
     const { GET } = await import('./route')
@@ -111,7 +118,9 @@ describe('/api/billing/contributions', () => {
           placedAt: '2026-07-25T00:00:00.000Z',
         },
       ],
-      pending: [{ ledgerId: '6b4913e7-36f2-4cb7-8d36-8afd99fbc19d', createdAt: '2026-07-26T00:00:00.000Z' }],
+      pending: [
+        { ledgerId: '6b4913e7-36f2-4cb7-8d36-8afd99fbc19d', createdAt: '2026-07-26T00:00:00.000Z' },
+      ],
     })
   })
 
@@ -127,7 +136,7 @@ describe('/api/billing/contributions', () => {
           x: 0.5,
           y: 0.75,
           rotation: 0,
-          shape: 'regular',
+          shape: 'organic',
         }),
       }),
     )
@@ -149,7 +158,7 @@ describe('/api/billing/contributions', () => {
           x: 0.5,
           y: 0.75,
           rotation: 0,
-          shape: 'regular',
+          shape: 'organic',
         }),
       }),
     )
