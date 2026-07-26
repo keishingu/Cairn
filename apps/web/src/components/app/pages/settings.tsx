@@ -24,7 +24,10 @@ import type { AccentId } from '@cairn/shared'
 import { FEATURE_FLAGS } from '@cairn/shared'
 
 const CreditPlacementBoard = dynamic(
-  () => import('@/components/billing/credit-placement-board').then((module) => module.CreditPlacementBoard),
+  () =>
+    import('@/components/billing/credit-placement-board').then(
+      (module) => module.CreditPlacementBoard,
+    ),
   { ssr: false },
 )
 
@@ -2141,8 +2144,7 @@ const SettingsBilling = () => {
         fulfilled: query.state.data?.creditPackFulfilled,
         startedAt: creditPackPollingStartedAt.current,
         now: Date.now(),
-      })
-        === 'polling'
+      }) === 'polling'
         ? 2_000
         : false,
   })
@@ -2288,7 +2290,9 @@ const SettingsBilling = () => {
         </section>
       ) : null}
 
-      {billingQuery.data?.billingEnabled && <CreditPlacementBoard />}
+      {billingQuery.data?.billingEnabled && (
+        <CreditPlacementBoard workspaceState={billingQuery.data.workspaceState} />
+      )}
 
       {billingActionError && (
         <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
@@ -2304,7 +2308,8 @@ const SettingsBilling = () => {
 
       {creditPackFulfillmentState === 'timed_out' && (
         <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
-          ⚠ 決済の反映を確認できませんでした。数分後に再読み込みし、解消しない場合はサポートへお問い合わせください。
+          ⚠
+          決済の反映を確認できませんでした。数分後に再読み込みし、解消しない場合はサポートへお問い合わせください。
         </div>
       )}
 
@@ -2361,11 +2366,13 @@ const SettingsContributions = () => {
     return <div style={{ color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
   }
   if (billingQuery.isError) {
-    return <div style={{ color: 'var(--red-text)', fontSize: 13 }}>⚠ ケルンを取得できませんでした</div>
+    return (
+      <div style={{ color: 'var(--red-text)', fontSize: 13 }}>⚠ ケルンを取得できませんでした</div>
+    )
   }
   if (!billingQuery.data?.billingEnabled) return null
 
-  return <CreditPlacementBoard />
+  return <CreditPlacementBoard workspaceState={billingQuery.data.workspaceState} />
 }
 
 // ─── Developer ────────────────────────────────────────────────────
