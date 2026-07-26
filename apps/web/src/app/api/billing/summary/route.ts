@@ -44,57 +44,57 @@ export async function GET(request: Request) {
     const creditPackSessionId = new URL(request.url).searchParams.get('credit_pack_session_id')
     const [[balance], [usage], [subscription], [creditPackSubscription], creditPackFulfillments] =
       await Promise.all([
-      db
-        .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
-        .from(creditLedger)
-        .where(eq(creditLedger.workspaceId, ctx.workspaceId)),
-      db
-        .select({
-          originalBytes: workspaceStorageUsage.originalBytes,
-          derivedBytes: workspaceStorageUsage.derivedBytes,
-        })
-        .from(workspaceStorageUsage)
-        .where(eq(workspaceStorageUsage.workspaceId, ctx.workspaceId))
-        .limit(1),
-      db
-        .select({ id: subscriptions.id })
-        .from(subscriptions)
-        .where(
-          and(
-            eq(subscriptions.workspaceId, ctx.workspaceId),
-            eq(subscriptions.supporterUserId, ctx.userId),
-            eq(subscriptions.plan, 'individual'),
-            inArray(subscriptions.status, ['active', 'past_due']),
-          ),
-        )
-        .limit(1),
-      db
-        .select({ id: subscriptions.id })
-        .from(subscriptions)
-        .where(
-          and(
-            eq(subscriptions.workspaceId, ctx.workspaceId),
-            eq(subscriptions.supporterUserId, ctx.userId),
-            eq(subscriptions.plan, 'individual'),
-            eq(subscriptions.status, 'active'),
-            gt(subscriptions.currentPeriodEnd, new Date()),
-          ),
-        )
-        .limit(1),
-      creditPackSessionId
-        ? db
-            .select({ id: creditLedger.id })
-            .from(creditLedger)
-            .where(
-              and(
-                eq(creditLedger.workspaceId, ctx.workspaceId),
-                eq(creditLedger.reason, 'pack_purchase'),
-                eq(creditLedger.refId, creditPackSessionId),
-              ),
-            )
-            .limit(1)
-        : Promise.resolve([]),
-    ])
+        db
+          .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
+          .from(creditLedger)
+          .where(eq(creditLedger.workspaceId, ctx.workspaceId)),
+        db
+          .select({
+            originalBytes: workspaceStorageUsage.originalBytes,
+            derivedBytes: workspaceStorageUsage.derivedBytes,
+          })
+          .from(workspaceStorageUsage)
+          .where(eq(workspaceStorageUsage.workspaceId, ctx.workspaceId))
+          .limit(1),
+        db
+          .select({ id: subscriptions.id })
+          .from(subscriptions)
+          .where(
+            and(
+              eq(subscriptions.workspaceId, ctx.workspaceId),
+              eq(subscriptions.supporterUserId, ctx.userId),
+              inArray(subscriptions.plan, ['individual', 'workspace']),
+              inArray(subscriptions.status, ['active', 'past_due']),
+            ),
+          )
+          .limit(1),
+        db
+          .select({ id: subscriptions.id })
+          .from(subscriptions)
+          .where(
+            and(
+              eq(subscriptions.workspaceId, ctx.workspaceId),
+              eq(subscriptions.supporterUserId, ctx.userId),
+              inArray(subscriptions.plan, ['individual', 'workspace']),
+              eq(subscriptions.status, 'active'),
+              gt(subscriptions.currentPeriodEnd, new Date()),
+            ),
+          )
+          .limit(1),
+        creditPackSessionId
+          ? db
+              .select({ id: creditLedger.id })
+              .from(creditLedger)
+              .where(
+                and(
+                  eq(creditLedger.workspaceId, ctx.workspaceId),
+                  eq(creditLedger.reason, 'pack_purchase'),
+                  eq(creditLedger.refId, creditPackSessionId),
+                ),
+              )
+              .limit(1)
+          : Promise.resolve([]),
+      ])
     const creditBalance = Number(balance?.value ?? 0)
     return NextResponse.json({
       billingEnabled: true,

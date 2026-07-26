@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'リクエスト形式が不正です' }, { status: 400 })
   }
   const plan = body.plan === 'workspace' ? 'workspace' : 'individual'
-  const quantity = plan === 'workspace' ? 1 : (body.quantity === undefined ? 1 : body.quantity)
+  const quantity = plan === 'workspace' ? 1 : body.quantity === undefined ? 1 : body.quantity
   if (
     typeof quantity !== 'number' ||
     !Number.isInteger(quantity) ||
@@ -46,7 +46,10 @@ export async function POST(request: Request) {
   if (!role)
     return NextResponse.json({ error: 'ワークスペースへのアクセス権がありません' }, { status: 403 })
   if (plan === 'workspace' && !isWorkspaceOwner(role)) {
-    return NextResponse.json({ error: 'Teamプランの契約にはオーナー権限が必要です' }, { status: 403 })
+    return NextResponse.json(
+      { error: 'Teamプランの契約にはオーナー権限が必要です' },
+      { status: 403 },
+    )
   }
 
   try {
@@ -101,15 +104,17 @@ export async function POST(request: Request) {
         .limit(1)
       if (existingSubscription) return { error: '既存の購読は請求管理画面から変更してください' }
 
-      const openSessions = await stripe.checkout.sessions.list({
-        customer: customerId,
-        status: 'open',
-        limit: 100,
-      })
+      // Team は複数 owner が開始できるため、owner 個人の Customer に限定せず
+      // ワークスペース単位で未完了 Checkout を探索する。
+      const openSessions = await stripe.checkout.sessions.list(
+        plan === 'workspace'
+          ? { status: 'open', limit: 100 }
+          : { customer: customerId, status: 'open', limit: 100 },
+      )
       const openSession = openSessions.data.find(
         (session) =>
           session.metadata?.['workspaceId'] === ctx.workspaceId &&
-          session.metadata?.['supporterUserId'] === ctx.userId &&
+          (plan === 'workspace' || session.metadata?.['supporterUserId'] === ctx.userId) &&
           session.metadata?.['plan'] === plan,
       )
       if (openSession?.url) return { url: openSession.url }
@@ -117,15 +122,15 @@ export async function POST(request: Request) {
 
       // Checkout が complete になった直後は、Webhook が subscriptions を同期する前でも
       // Stripe 側には購読が存在する。この間に2件目の Checkout を作らない。
-      const stripeSubscriptions = await stripe.subscriptions.list({
-        customer: customerId,
-        status: 'all',
-        limit: 100,
-      })
+      const stripeSubscriptions = await stripe.subscriptions.list(
+        plan === 'workspace'
+          ? { status: 'all', limit: 100 }
+          : { customer: customerId, status: 'all', limit: 100 },
+      )
       const pendingSubscription = stripeSubscriptions.data.find(
         (subscription) =>
           subscription.metadata?.['workspaceId'] === ctx.workspaceId &&
-          subscription.metadata?.['supporterUserId'] === ctx.userId &&
+          (plan === 'workspace' || subscription.metadata?.['supporterUserId'] === ctx.userId) &&
           subscription.metadata?.['plan'] === plan &&
           subscription.status !== 'canceled' &&
           subscription.status !== 'incomplete_expired',
@@ -139,7 +144,15 @@ export async function POST(request: Request) {
         mode: 'subscription',
         customer: customerId,
         client_reference_id: ctx.userId,
-        line_items: [{ price: plan === 'workspace' ? getWorkspaceSubscriptionPriceId() : getIndividualSubscriptionPriceId(), quantity }],
+        line_items: [
+          {
+            price:
+              plan === 'workspace'
+                ? getWorkspaceSubscriptionPriceId()
+                : getIndividualSubscriptionPriceId(),
+            quantity,
+          },
+        ],
         success_url: `${appUrl}/settings/billing?checkout=success`,
         cancel_url: `${appUrl}/settings/billing?checkout=cancel`,
         metadata: { workspaceId: ctx.workspaceId, supporterUserId: ctx.userId, plan },

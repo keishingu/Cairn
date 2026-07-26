@@ -2111,6 +2111,7 @@ export function resolveCreditPackFulfillmentPolling(input: {
 }
 
 const SettingsBilling = () => {
+  const { isOwner } = useWorkspacePermissions()
   const [billingAction, setBillingAction] = React.useState<
     'checkout' | 'workspace-checkout' | 'credit-pack' | 'portal' | null
   >(null)
@@ -2296,13 +2297,29 @@ const SettingsBilling = () => {
               </div>
             ) : (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="btn btn-primary" style={{ height: 32, fontSize: 12.5 }} onClick={() => void beginCheckout()} disabled={billingAction !== null}>
+                <button
+                  className="btn btn-primary"
+                  style={{ height: 32, fontSize: 12.5 }}
+                  onClick={() => void beginCheckout()}
+                  disabled={billingAction !== null}
+                >
                   {billingAction === 'checkout' ? '移動中…' : 'Solo（月額 ¥300）'}
                 </button>
-                <button className="btn" style={{ height: 32, fontSize: 12.5 }} onClick={() => void beginWorkspaceCheckout()} disabled={billingAction !== null}>
-                  {billingAction === 'workspace-checkout' ? '移動中…' : `Team（月額 ¥${BILLING_CONFIG.workspaceSubscriptionPriceJpy.toLocaleString()}）`}
-                </button>
-                <span style={{ alignSelf: 'center', fontSize: 12, color: 'var(--text-3)' }}>Expedition は年契約・導入支援をご相談ください。</span>
+                {isOwner && (
+                  <button
+                    className="btn"
+                    style={{ height: 32, fontSize: 12.5 }}
+                    onClick={() => void beginWorkspaceCheckout()}
+                    disabled={billingAction !== null}
+                  >
+                    {billingAction === 'workspace-checkout'
+                      ? '移動中…'
+                      : `Team（月額 ¥${BILLING_CONFIG.workspaceSubscriptionPriceJpy.toLocaleString()}）`}
+                  </button>
+                )}
+                <span style={{ alignSelf: 'center', fontSize: 12, color: 'var(--text-3)' }}>
+                  Expedition は年契約・導入支援をご相談ください。
+                </span>
               </div>
             )}
           </div>
