@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   shouldRefreshContributionsAfterError,
   stoneSpecForLedgerId,
+  toWorldPoint,
 } from './credit-placement-board'
 
 describe('shouldRefreshContributionsAfterError', () => {
@@ -29,5 +30,12 @@ describe('stoneSpecForLedgerId', () => {
     expect(stoneSpecForLedgerId('11111111-1111-4111-8111-111111111111')).not.toEqual(
       stoneSpecForLedgerId('22222222-2222-4222-8222-222222222222'),
     )
+  })
+})
+
+describe('toWorldPoint', () => {
+  it('表示サイズが変わっても同じ相対位置を同じ物理座標へ変換する', () => {
+    expect(toWorldPoint({ x: 320, y: 180, width: 640, height: 360 })).toEqual({ x: 320, y: 180 })
+    expect(toWorldPoint({ x: 640, y: 310, width: 1280, height: 620 })).toEqual({ x: 320, y: 180 })
   })
 })

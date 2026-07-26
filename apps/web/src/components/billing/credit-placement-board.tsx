@@ -25,6 +25,8 @@ const PHYSICS = {
 
 const STAGE_MIN_HEIGHT = 360
 const STAGE_MAX_HEIGHT = 620
+const WORLD_WIDTH = 640
+const WORLD_HEIGHT = 360
 
 type WorkspaceState = 'funded' | 'weathered' | 'unlimited'
 type StoneKind = 'stone' | 'flat'
@@ -236,6 +238,13 @@ function clampCoordinate(value: number): number {
   return Math.max(0.03, Math.min(0.97, value))
 }
 
+export function toWorldPoint(input: { x: number; y: number; width: number; height: number }) {
+  return {
+    x: (input.x / input.width) * WORLD_WIDTH,
+    y: (input.y / input.height) * WORLD_HEIGHT,
+  }
+}
+
 function drawStone(
   context: CanvasRenderingContext2D,
   spec: StoneSpec,
@@ -391,17 +400,18 @@ export function CreditPlacementBoard({
 
     const engine = Matter.Engine.create({ gravity: { x: 0, y: PHYSICS.gravity } })
     const runner = Matter.Runner.create()
-    const placementBodies: Array<{ body: Matter.Body; placement: CreditPlacementDto }> = []
     let floor: Matter.Body | null = null
     let base: Matter.Body | null = null
     let leftWall: Matter.Body | null = null
     let rightWall: Matter.Body | null = null
     let held: HeldStone | null = null
     let particles: Particle[] = []
-    let scenery = buildScenery(640, stageHeightRef.current, stageHeightRef.current - 46)
-    let width = 640
-    let height = stageHeightRef.current
-    let groundY = height - 46
+    const width = WORLD_WIDTH
+    const height = WORLD_HEIGHT
+    const groundY = height - 46
+    let viewportWidth = WORLD_WIDTH
+    let viewportHeight = stageHeightRef.current
+    const scenery = buildScenery(width, height, groundY)
     let weatheredAmount = weatheredRef.current ? 1 : 0
     let shakeAmplitude = 0
     let frameId = 0
@@ -509,27 +519,21 @@ export function CreditPlacementBoard({
         STAGE_MIN_HEIGHT,
         Math.min(STAGE_MAX_HEIGHT, Math.round(nextWidth * 0.5)),
       )
-      width = nextWidth
-      height = nextHeight
-      groundY = height - 46
+      viewportWidth = nextWidth
+      viewportHeight = nextHeight
       if (stageHeightRef.current !== nextHeight) {
         stageHeightRef.current = nextHeight
         setStageHeight(nextHeight)
       }
       const devicePixelRatio = Math.min(2, window.devicePixelRatio || 1)
-      canvas.width = width * devicePixelRatio
-      canvas.height = height * devicePixelRatio
-      canvas.style.width = `${width}px`
-      canvas.style.height = `${height}px`
-      scenery = buildScenery(width, height, groundY)
-      placeGround()
-      for (const { body, placement } of placementBodies) {
-        Matter.Body.setPosition(body, { x: placement.x * width, y: placement.y * height })
-      }
-      updateHud()
+      canvas.width = viewportWidth * devicePixelRatio
+      canvas.height = viewportHeight * devicePixelRatio
+      canvas.style.width = `${viewportWidth}px`
+      canvas.style.height = `${viewportHeight}px`
     }
 
     resize()
+    placeGround()
     for (const placement of data.placements) {
       const body = createStoneBody(
         stoneSpecForLedgerId(placement.ledgerId),
@@ -540,7 +544,6 @@ export function CreditPlacementBoard({
       Matter.Body.setAngle(body, placement.rotation)
       body.plugin.ledgerId = placement.ledgerId
       body.plugin.settled = true
-      placementBodies.push({ body, placement })
       Matter.Composite.add(engine.world, body)
     }
     updateHud()
@@ -555,8 +558,8 @@ export function CreditPlacementBoard({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ledgerId,
-            x: clampCoordinate(body.position.x / width),
-            y: clampCoordinate(body.position.y / height),
+            x: clampCoordinate(body.position.x / WORLD_WIDTH),
+            y: clampCoordinate(body.position.y / WORLD_HEIGHT),
             rotation: body.angle,
             shape: 'regular',
           }),
@@ -611,7 +614,12 @@ export function CreditPlacementBoard({
 
     const positionForEvent = (event: PointerEvent | ReactPointerEvent<HTMLElement>) => {
       const rect = canvas.getBoundingClientRect()
-      return { x: event.clientX - rect.left, y: event.clientY - rect.top }
+      return toWorldPoint({
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+      })
     }
 
     const onCanvasPointerDown = (event: PointerEvent) => {
@@ -713,7 +721,14 @@ export function CreditPlacementBoard({
       const context = canvas.getContext('2d')
       if (!context) return
       const devicePixelRatio = Math.min(2, window.devicePixelRatio || 1)
-      context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)
+      context.setTransform(
+        devicePixelRatio * (viewportWidth / WORLD_WIDTH),
+        0,
+        0,
+        devicePixelRatio * (viewportHeight / WORLD_HEIGHT),
+        0,
+        0,
+      )
       if (shakeAmplitude > 0.1) {
         context.translate(
           (Math.random() - 0.5) * shakeAmplitude,
