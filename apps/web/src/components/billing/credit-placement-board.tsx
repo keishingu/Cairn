@@ -682,6 +682,8 @@ export function CreditPlacementBoard({
     }
 
     const onCanvasPointerDown = (event: PointerEvent) => {
+      // 二本目以降のポインタで既存の拘束を上書きしない。
+      if (held) return
       ensureAudio()
       const point = positionForEvent(event)
       const [hit] = Matter.Query.point(activeStones(), point)
