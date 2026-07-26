@@ -440,7 +440,9 @@ export function CreditPlacementBoard({
     let particles: Particle[] = []
     const width = WORLD_WIDTH
     const height = WORLD_HEIGHT
-    const groundY = height - 46
+    const hasLegacyPlacements = data.placements.some((placement) => placement.shape === 'regular')
+    // 初期ボードの床上端は y=326。既存の静的石と接触関係を保つため維持する。
+    const groundY = hasLegacyPlacements ? 326 : height - 46
     let viewportWidth = WORLD_WIDTH
     let viewportHeight = stageHeightRef.current
     const scenery = buildScenery(width, height, groundY)
@@ -527,10 +529,17 @@ export function CreditPlacementBoard({
 
     const placeGround = (includePedestal: boolean) => {
       removeBoundaries()
-      floor = Matter.Bodies.rectangle(width / 2, groundY + 30, width * 3, 60, {
-        isStatic: true,
-        friction: 1,
-      })
+      const floorHeight = includePedestal ? 60 : 34
+      floor = Matter.Bodies.rectangle(
+        width / 2,
+        groundY + floorHeight / 2,
+        width * 3,
+        floorHeight,
+        {
+          isStatic: true,
+          friction: 1,
+        },
+      )
       if (includePedestal) {
         base = createStoneBody(
           { kind: 'flat', r: 56, seed: 4.2, hue: 32, sat: 16 },
@@ -570,7 +579,7 @@ export function CreditPlacementBoard({
     resize()
     // 初期ボードの石は床だけを前提に保存されている。後から台座を差し込むと
     // 静的な既存石と重なって衝突形状を壊すため、legacy stack には台座を追加しない。
-    placeGround(!data.placements.some((placement) => placement.shape === 'regular'))
+    placeGround(!hasLegacyPlacements)
     for (const placement of data.placements) {
       const body =
         placement.shape === 'regular'
@@ -659,12 +668,17 @@ export function CreditPlacementBoard({
 
     const positionForEvent = (event: PointerEvent | ReactPointerEvent<HTMLElement>) => {
       const rect = canvas.getBoundingClientRect()
-      return toWorldPoint({
+      const point = toWorldPoint({
         x: event.clientX - rect.left,
         y: event.clientY - rect.top,
         width: rect.width,
         height: rect.height,
       })
+      // レターボックス内の手元の石から始めても、床の下へ生成・拘束しない。
+      return {
+        x: Math.max(18, Math.min(width - 18, point.x)),
+        y: Math.max(18, Math.min(groundY - 40, point.y)),
+      }
     }
 
     const onCanvasPointerDown = (event: PointerEvent) => {
