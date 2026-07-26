@@ -186,6 +186,32 @@ function createStoneBody(spec: StoneSpec, x: number, y: number, isStatic: boolea
   return body
 }
 
+function createLegacyStoneBody(
+  ledgerId: string,
+  x: number,
+  y: number,
+  rotation: number,
+): Matter.Body {
+  // shape=regular は初期ボードが半径29の正多角形として保存した配置。
+  // 新しい有機形状に置き換えると静的な既存スタックの接触関係が壊れるため、
+  // 衝突形状をそのまま再現する。
+  const sides = 5 + (ledgerId.charCodeAt(0) % 3)
+  const spec: StoneSpec = { kind: 'stone', r: 29, seed: 0, hue: 34, sat: 20 }
+  const body = Matter.Bodies.polygon(x, y, spec.r, sides, {
+    isStatic: true,
+    restitution: PHYSICS.restitution,
+    friction: 0.95,
+    frictionAir: 0.025,
+    chamfer: { radius: 6 },
+  })
+  Matter.Body.setAngle(body, rotation)
+  body.plugin.spec = spec
+  body.plugin.still = 0
+  body.plugin.settled = true
+  body.plugin.lastThud = 0
+  return body
+}
+
 function buildScenery(width: number, height: number, groundY: number): ScenicState {
   const ridgePaths: ScenicState['ridgePaths'] = []
   for (let layer = 0; layer < 3; layer += 1) {
@@ -538,13 +564,21 @@ export function CreditPlacementBoard({
     resize()
     placeGround()
     for (const placement of data.placements) {
-      const body = createStoneBody(
-        stoneSpecForLedgerId(placement.ledgerId),
-        placement.x * width,
-        placement.y * height,
-        true,
-      )
-      Matter.Body.setAngle(body, placement.rotation)
+      const body =
+        placement.shape === 'regular'
+          ? createLegacyStoneBody(
+              placement.ledgerId,
+              placement.x * width,
+              placement.y * height,
+              placement.rotation,
+            )
+          : createStoneBody(
+              stoneSpecForLedgerId(placement.ledgerId),
+              placement.x * width,
+              placement.y * height,
+              true,
+            )
+      if (placement.shape === 'organic') Matter.Body.setAngle(body, placement.rotation)
       body.plugin.ledgerId = placement.ledgerId
       body.plugin.settled = true
       Matter.Composite.add(engine.world, body)
@@ -564,7 +598,7 @@ export function CreditPlacementBoard({
             x: clampCoordinate(body.position.x / WORLD_WIDTH),
             y: clampCoordinate(body.position.y / WORLD_HEIGHT),
             rotation: body.angle,
-            shape: 'regular',
+            shape: 'organic',
           }),
         })
         const result = (await response.json().catch(() => ({}))) as CreditPlacementDto & {
