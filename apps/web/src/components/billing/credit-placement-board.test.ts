@@ -36,6 +36,13 @@ describe('stoneSpecForLedgerId', () => {
 describe('toWorldPoint', () => {
   it('表示サイズが変わっても同じ相対位置を同じ物理座標へ変換する', () => {
     expect(toWorldPoint({ x: 320, y: 180, width: 640, height: 360 })).toEqual({ x: 320, y: 180 })
-    expect(toWorldPoint({ x: 640, y: 310, width: 1280, height: 620 })).toEqual({ x: 320, y: 180 })
+    expect(toWorldPoint({ x: 640, y: 310, width: 1280, height: 620 })).toMatchObject({
+      x: expect.closeTo(320),
+      y: expect.closeTo(180),
+    })
+    expect(toWorldPoint({ x: 164, y: 180, width: 328, height: 360 })).toMatchObject({
+      x: expect.closeTo(320),
+      y: expect.closeTo(180),
+    })
   })
 })

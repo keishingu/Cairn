@@ -265,9 +265,12 @@ function clampCoordinate(value: number): number {
 }
 
 export function toWorldPoint(input: { x: number; y: number; width: number; height: number }) {
+  const scale = Math.min(input.width / WORLD_WIDTH, input.height / WORLD_HEIGHT)
+  const offsetX = (input.width - WORLD_WIDTH * scale) / 2
+  const offsetY = (input.height - WORLD_HEIGHT * scale) / 2
   return {
-    x: (input.x / input.width) * WORLD_WIDTH,
-    y: (input.y / input.height) * WORLD_HEIGHT,
+    x: (input.x - offsetX) / scale,
+    y: (input.y - offsetY) / scale,
   }
 }
 
@@ -522,24 +525,27 @@ export function CreditPlacementBoard({
       }
     }
 
-    const placeGround = () => {
+    const placeGround = (includePedestal: boolean) => {
       removeBoundaries()
       floor = Matter.Bodies.rectangle(width / 2, groundY + 30, width * 3, 60, {
         isStatic: true,
         friction: 1,
       })
-      base = createStoneBody(
-        { kind: 'flat', r: 56, seed: 4.2, hue: 32, sat: 16 },
-        width / 2,
-        groundY - 14,
-        true,
-      )
-      base.plugin.isBase = true
+      if (includePedestal) {
+        base = createStoneBody(
+          { kind: 'flat', r: 56, seed: 4.2, hue: 32, sat: 16 },
+          width / 2,
+          groundY - 14,
+          true,
+        )
+        base.plugin.isBase = true
+      }
       leftWall = Matter.Bodies.rectangle(-14, height / 2, 28, height * 2, { isStatic: true })
       rightWall = Matter.Bodies.rectangle(width + 14, height / 2, 28, height * 2, {
         isStatic: true,
       })
-      Matter.Composite.add(engine.world, [floor, base, leftWall, rightWall])
+      Matter.Composite.add(engine.world, [floor, leftWall, rightWall])
+      if (base) Matter.Composite.add(engine.world, base)
     }
 
     const resize = () => {
@@ -562,7 +568,9 @@ export function CreditPlacementBoard({
     }
 
     resize()
-    placeGround()
+    // 初期ボードの石は床だけを前提に保存されている。後から台座を差し込むと
+    // 静的な既存石と重なって衝突形状を壊すため、legacy stack には台座を追加しない。
+    placeGround(!data.placements.some((placement) => placement.shape === 'regular'))
     for (const placement of data.placements) {
       const body =
         placement.shape === 'regular'
@@ -759,13 +767,20 @@ export function CreditPlacementBoard({
       const context = canvas.getContext('2d')
       if (!context) return
       const devicePixelRatio = Math.min(2, window.devicePixelRatio || 1)
+      const scene = darkRef.current ? SCENES.night : SCENES.day
+      const scale = Math.min(viewportWidth / WORLD_WIDTH, viewportHeight / WORLD_HEIGHT)
+      const offsetX = (viewportWidth - WORLD_WIDTH * scale) / 2
+      const offsetY = (viewportHeight - WORLD_HEIGHT * scale) / 2
+      context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)
+      context.fillStyle = scene.skyTop
+      context.fillRect(0, 0, viewportWidth, viewportHeight)
       context.setTransform(
-        devicePixelRatio * (viewportWidth / WORLD_WIDTH),
+        devicePixelRatio * scale,
         0,
         0,
-        devicePixelRatio * (viewportHeight / WORLD_HEIGHT),
-        0,
-        0,
+        devicePixelRatio * scale,
+        devicePixelRatio * offsetX,
+        devicePixelRatio * offsetY,
       )
       if (shakeAmplitude > 0.1) {
         context.translate(
@@ -774,7 +789,6 @@ export function CreditPlacementBoard({
         )
         shakeAmplitude *= 0.86
       }
-      const scene = darkRef.current ? SCENES.night : SCENES.day
       weatheredAmount += ((weatheredRef.current ? 1 : 0) - weatheredAmount) * 0.06
       const sky = context.createLinearGradient(0, 0, 0, groundY)
       sky.addColorStop(0, scene.skyTop)
