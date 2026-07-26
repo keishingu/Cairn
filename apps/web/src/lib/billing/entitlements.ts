@@ -42,15 +42,14 @@ export async function resolveUploadEntitlements(
       .from(creditLedger)
       .where(eq(creditLedger.workspaceId, workspaceId)),
     db
-      .select({ id: subscriptions.id })
+      .select({ id: subscriptions.id, plan: subscriptions.plan })
       .from(subscriptions)
       .where(
         and(
           eq(subscriptions.workspaceId, workspaceId),
-          eq(subscriptions.supporterUserId, userId),
-          eq(subscriptions.plan, 'individual'),
           eq(subscriptions.status, 'active'),
           gt(subscriptions.currentPeriodEnd, new Date()),
+          sql`(${subscriptions.plan} = 'workspace' OR (${subscriptions.plan} = 'individual' AND ${subscriptions.supporterUserId} = ${userId}))`,
         ),
       )
       .limit(1),

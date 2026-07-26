@@ -3,16 +3,18 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceRole } from '@/lib/access/membership'
+import { getWorkspaceRole, isWorkspaceOwner } from '@/lib/access/membership'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import {
   getIndividualSubscriptionPriceId,
+  getWorkspaceSubscriptionPriceId,
   getStripeClient,
   resolveApplicationUrl,
 } from '@/lib/billing/stripe'
 
 interface CheckoutBody {
   quantity?: unknown
+  plan?: unknown
 }
 
 export async function POST(request: Request) {
@@ -28,7 +30,8 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: 'リクエスト形式が不正です' }, { status: 400 })
   }
-  const quantity = body.quantity === undefined ? 1 : body.quantity
+  const plan = body.plan === 'workspace' ? 'workspace' : 'individual'
+  const quantity = plan === 'workspace' ? 1 : (body.quantity === undefined ? 1 : body.quantity)
   if (
     typeof quantity !== 'number' ||
     !Number.isInteger(quantity) ||
@@ -42,6 +45,9 @@ export async function POST(request: Request) {
   const role = await getWorkspaceRole(ctx.workspaceId, ctx.userId)
   if (!role)
     return NextResponse.json({ error: 'ワークスペースへのアクセス権がありません' }, { status: 403 })
+  if (plan === 'workspace' && !isWorkspaceOwner(role)) {
+    return NextResponse.json({ error: 'Teamプランの契約にはオーナー権限が必要です' }, { status: 403 })
+  }
 
   try {
     const { billingCustomers, db, subscriptions } = await import('@cairn/db')
@@ -78,7 +84,7 @@ export async function POST(request: Request) {
     const checkout = await db.transaction(async (tx) => {
       // Webhook 到着前には subscriptions に行がないため、同じ支援者・ワークスペースの
       // Checkout 作成を直列化し、Stripe 上の未完了セッションも確認する。
-      const lockKey = `checkout:${ctx.workspaceId}:${ctx.userId}:individual`
+      const lockKey = `checkout:${ctx.workspaceId}:${plan === 'workspace' ? 'workspace' : ctx.userId}:${plan}`
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`)
 
       const [existingSubscription] = await tx
@@ -87,8 +93,8 @@ export async function POST(request: Request) {
         .where(
           and(
             eq(subscriptions.workspaceId, ctx.workspaceId),
-            eq(subscriptions.supporterUserId, ctx.userId),
-            eq(subscriptions.plan, 'individual'),
+            eq(subscriptions.plan, plan),
+            ...(plan === 'workspace' ? [] : [eq(subscriptions.supporterUserId, ctx.userId)]),
             inArray(subscriptions.status, ['active', 'past_due']),
           ),
         )
@@ -104,7 +110,7 @@ export async function POST(request: Request) {
         (session) =>
           session.metadata?.['workspaceId'] === ctx.workspaceId &&
           session.metadata?.['supporterUserId'] === ctx.userId &&
-          session.metadata?.['plan'] === 'individual',
+          session.metadata?.['plan'] === plan,
       )
       if (openSession?.url) return { url: openSession.url }
       if (openSession) return { error: '決済画面の準備中です。少し待ってから再試行してください' }
@@ -120,7 +126,7 @@ export async function POST(request: Request) {
         (subscription) =>
           subscription.metadata?.['workspaceId'] === ctx.workspaceId &&
           subscription.metadata?.['supporterUserId'] === ctx.userId &&
-          subscription.metadata?.['plan'] === 'individual' &&
+          subscription.metadata?.['plan'] === plan &&
           subscription.status !== 'canceled' &&
           subscription.status !== 'incomplete_expired',
       )
@@ -133,12 +139,12 @@ export async function POST(request: Request) {
         mode: 'subscription',
         customer: customerId,
         client_reference_id: ctx.userId,
-        line_items: [{ price: getIndividualSubscriptionPriceId(), quantity }],
+        line_items: [{ price: plan === 'workspace' ? getWorkspaceSubscriptionPriceId() : getIndividualSubscriptionPriceId(), quantity }],
         success_url: `${appUrl}/settings/billing?checkout=success`,
         cancel_url: `${appUrl}/settings/billing?checkout=cancel`,
-        metadata: { workspaceId: ctx.workspaceId, supporterUserId: ctx.userId, plan: 'individual' },
+        metadata: { workspaceId: ctx.workspaceId, supporterUserId: ctx.userId, plan },
         subscription_data: {
-          metadata: { workspaceId: ctx.workspaceId, supporterUserId: ctx.userId, plan: 'individual' },
+          metadata: { workspaceId: ctx.workspaceId, supporterUserId: ctx.userId, plan },
         },
       })
       if (!session.url) throw new Error('Stripe Checkout session did not include a URL')

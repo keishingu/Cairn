@@ -4,6 +4,9 @@
 export const BILLING_CONFIG = {
   individualSubscriptionPriceJpy: 300,
   monthlyCreditGrant: 300,
+  workspaceSubscriptionPriceJpy: 3000,
+  workspaceMonthlyCreditGrantPerActiveMember: 300,
+  workspaceMonthlyCreditGrantMinimum: 900,
   creditPackPriceJpy: 500,
   creditPackCredits: 400,
   activeAiRequestCredits: 10,

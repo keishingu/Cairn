@@ -5,7 +5,8 @@ import { BILLING_CONFIG } from '@cairn/core/billing'
 import type Stripe from 'stripe'
 import { creditLedger, db, stripeEvents, subscriptions } from '@cairn/db'
 import { sql } from 'drizzle-orm'
-import { getIndividualSubscriptionPriceId, getStripeClient, stripeId } from './stripe'
+import { getIndividualSubscriptionPriceId, getStripeClient, getWorkspaceSubscriptionPriceId, stripeId } from './stripe'
+import { listActiveMemberIds } from '@/lib/access/membership'
 import { resolveSubscriptionGrantQuantity } from './subscription-grant'
 import { asStripeSubscriptionRecord, type StripeSubscriptionRecord } from './stripe-subscription'
 
@@ -96,7 +97,8 @@ async function asInvoiceRecord(
   const billingReason = value.billing_reason ?? null
   let invoiceQuantity: number | null = null
   if (billingReason === 'subscription_create' || billingReason === 'subscription_cycle') {
-    const subscriptionPriceId = getIndividualSubscriptionPriceId()
+    const plan = (value.parent?.subscription_details as { metadata?: Record<string, string> } | undefined)?.metadata?.['plan']
+    const subscriptionPriceId = plan === 'workspace' ? getWorkspaceSubscriptionPriceId() : getIndividualSubscriptionPriceId()
     const lines: Array<{ quantity?: number | null; priceId?: string | null }> = []
     // invoice.lines は先頭ページだけの場合があるため、Stripe のページングを最後まで辿る。
     for await (const line of stripe.invoices.listLineItems(value.id, { limit: 100 })) {
@@ -123,7 +125,8 @@ async function syncSubscription(
 ) {
   const workspaceId = subscription.metadata['workspaceId']
   const supporterUserId = subscription.metadata['supporterUserId']
-  if (!workspaceId || !supporterUserId || subscription.metadata['plan'] !== 'individual') {
+  const plan = subscription.metadata['plan']
+  if (!workspaceId || !supporterUserId || (plan !== 'individual' && plan !== 'workspace')) {
     throw new Error(`Subscription ${subscription.id} is missing billing metadata`)
   }
 
@@ -132,9 +135,9 @@ async function syncSubscription(
     .values({
       workspaceId,
       supporterUserId,
-      plan: 'individual',
+      plan,
       stripeSubscriptionId: subscription.id,
-      quantity: subscription.quantity,
+      quantity: plan === 'workspace' ? 1 : subscription.quantity,
       status: toSubscriptionStatus(subscription.status),
       currentPeriodEnd: new Date(subscription.currentPeriodEnd * 1000),
       updatedAt: new Date(),
@@ -216,11 +219,18 @@ export async function processStripeWebhookEvent(
       const workspaceId = subscription.metadata['workspaceId']
       if (!workspaceId)
         throw new Error(`Invoice ${invoiceId} subscription has no workspace metadata`)
+      const plan = subscription.metadata['plan']
+      const grant = plan === 'workspace'
+        ? Math.max(
+            BILLING_CONFIG.workspaceMonthlyCreditGrantMinimum,
+            (await listActiveMemberIds(workspaceId)).length * BILLING_CONFIG.workspaceMonthlyCreditGrantPerActiveMember,
+          )
+        : BILLING_CONFIG.monthlyCreditGrant * invoiceQuantity
       await tx
         .insert(creditLedger)
         .values({
           workspaceId,
-          delta: BILLING_CONFIG.monthlyCreditGrant * invoiceQuantity,
+          delta: grant,
           reason: 'subscription_grant',
           refId: invoiceId,
         })

@@ -15,6 +15,12 @@ export function getIndividualSubscriptionPriceId(): string {
   return priceId
 }
 
+export function getWorkspaceSubscriptionPriceId(): string {
+  const priceId = process.env['STRIPE_WORKSPACE_PRICE_ID']
+  if (!priceId) throw new Error('STRIPE_WORKSPACE_PRICE_ID is not configured')
+  return priceId
+}
+
 export function getCreditPackPriceId(): string {
   const priceId = process.env['STRIPE_CREDIT_PACK_PRICE_ID']
   if (!priceId) throw new Error('STRIPE_CREDIT_PACK_PRICE_ID is not configured')

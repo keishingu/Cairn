@@ -2112,7 +2112,7 @@ export function resolveCreditPackFulfillmentPolling(input: {
 
 const SettingsBilling = () => {
   const [billingAction, setBillingAction] = React.useState<
-    'checkout' | 'credit-pack' | 'portal' | null
+    'checkout' | 'workspace-checkout' | 'credit-pack' | 'portal' | null
   >(null)
   const [billingActionError, setBillingActionError] = React.useState<string | null>(null)
   const searchParams = useSearchParams()
@@ -2164,6 +2164,24 @@ const SettingsBilling = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ quantity: 1 }),
+      })
+      const result = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
+      if (!res.ok || !result.url) throw new Error(result.error ?? '決済画面を開けませんでした')
+      window.location.assign(result.url)
+    } catch (err) {
+      setBillingAction(null)
+      setBillingActionError(err instanceof Error ? err.message : '決済画面を開けませんでした')
+    }
+  }
+
+  const beginWorkspaceCheckout = async () => {
+    setBillingAction('workspace-checkout')
+    setBillingActionError(null)
+    try {
+      const res = await fetchWithAuth('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: 'workspace' }),
       })
       const result = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
       if (!res.ok || !result.url) throw new Error(result.error ?? '決済画面を開けませんでした')
@@ -2277,14 +2295,15 @@ const SettingsBilling = () => {
                 </button>
               </div>
             ) : (
-              <button
-                className="btn btn-primary"
-                style={{ height: 32, fontSize: 12.5 }}
-                onClick={() => void beginCheckout()}
-                disabled={billingAction !== null}
-              >
-                {billingAction === 'checkout' ? '移動中…' : '石を積む（月額 ¥300）'}
-              </button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn-primary" style={{ height: 32, fontSize: 12.5 }} onClick={() => void beginCheckout()} disabled={billingAction !== null}>
+                  {billingAction === 'checkout' ? '移動中…' : 'Solo（月額 ¥300）'}
+                </button>
+                <button className="btn" style={{ height: 32, fontSize: 12.5 }} onClick={() => void beginWorkspaceCheckout()} disabled={billingAction !== null}>
+                  {billingAction === 'workspace-checkout' ? '移動中…' : `Team（月額 ¥${BILLING_CONFIG.workspaceSubscriptionPriceJpy.toLocaleString()}）`}
+                </button>
+                <span style={{ alignSelf: 'center', fontSize: 12, color: 'var(--text-3)' }}>Expedition は年契約・導入支援をご相談ください。</span>
+              </div>
             )}
           </div>
         </section>
