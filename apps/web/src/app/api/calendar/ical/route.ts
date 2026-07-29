@@ -36,13 +36,25 @@ interface MilestoneRow {
 }
 
 function foldIcalLine(line: string): string {
-  if (line.length <= 75) return line
-  const result: string[] = [line.slice(0, 75)]
-  let pos = 75
-  while (pos < line.length) {
-    result.push(' ' + line.slice(pos, pos + 74))
-    pos += 74
+  const encoder = new TextEncoder()
+  const result: string[] = []
+  let current = ''
+  let currentBytes = 0
+
+  // RFC 5545 の75オクテット制限に合わせ、コードポイント境界を保ったまま折り返す
+  for (const char of line) {
+    const charBytes = encoder.encode(char).length
+    if (currentBytes + charBytes > 75) {
+      result.push(current)
+      current = ` ${char}`
+      currentBytes = 1 + charBytes
+    } else {
+      current += char
+      currentBytes += charBytes
+    }
   }
+
+  result.push(current)
   return result.join('\r\n')
 }
 
@@ -89,7 +101,7 @@ function buildIcal(
       `UID:project-${p.id}@cairn`,
       `DTSTART;VALUE=DATE:${dtstart}`,
       `DTEND;VALUE=DATE:${dtend}`,
-      `SUMMARY:${escapeIcal(p.title)}`,
+      foldIcalLine(`SUMMARY:${escapeIcal(p.title)}`),
       `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
     ]
     if (baseUrl) {

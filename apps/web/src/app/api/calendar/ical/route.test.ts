@@ -262,6 +262,55 @@ describe('GET /api/calendar/ical', () => {
     expect(body).not.toContain('DTSTART;VALUE=DATE:20260609')
   })
 
+  it('日本語と絵文字をUTF-8で75オクテット以内に折り返す', async () => {
+    const projectTitle = `長いプロジェクト名${'計画'.repeat(15)}🚀`
+    const milestoneTitle = `長いマイルストーン名${'確認'.repeat(15)}🎉`
+    const description = `${'説明'.repeat(30)}✅`
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: USER_ID }]))
+      .mockReturnValueOnce(chain([{ workspaceId: WS_ID, role: 'admin' }]))
+      .mockReturnValueOnce(
+        chain([
+          {
+            id: 'proj-long',
+            title: `${projectTitle} / ${milestoneTitle}`,
+            startDate: '2026-06-10',
+            endDate: null,
+          },
+        ]),
+      )
+      .mockReturnValueOnce(
+        chain([
+          {
+            id: 'milestone-long',
+            projectId: 'proj-long',
+            projectTitle,
+            title: milestoneTitle,
+            description,
+            startDate: '2026-06-10',
+            endDate: null,
+            startTime: null,
+            endTime: null,
+          },
+        ]),
+      )
+
+    const { GET } = await import('./route')
+    const res = await GET(buildRequest('workspace'))
+    const body = await res.text()
+    const unfolded = body.replace(/\r\n /g, '')
+    const encoder = new TextEncoder()
+
+    expect(res.status).toBe(200)
+    expect(unfolded).toContain(`SUMMARY:${projectTitle} / ${milestoneTitle}`)
+    expect(unfolded).toContain(
+      `DESCRIPTION:${description}\\nhttps://cairn.example/projects/proj-long`,
+    )
+    for (const line of body.split('\r\n')) {
+      expect(encoder.encode(line).length).toBeLessThanOrEqual(75)
+    }
+  })
+
   it('workspaceId で membership を絞り込む', async () => {
     mockDb.select.mockReturnValueOnce(chain([{ id: USER_ID }])).mockReturnValueOnce(chain([]))
 
