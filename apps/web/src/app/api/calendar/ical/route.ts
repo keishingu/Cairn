@@ -113,10 +113,12 @@ function buildIcal(
       `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
     ]
 
-    if (milestone.startTime) {
-      const dtstart = formatUtcDateTime(startDate, milestone.startTime)
+    if (milestone.startTime || milestone.endTime) {
+      const eventStartDate = milestone.startTime ? startDate : endDate
+      const eventStartTime = milestone.startTime ?? milestone.endTime!
+      const dtstart = formatUtcDateTime(eventStartDate, eventStartTime)
       vevent.push(`DTSTART:${dtstart}`)
-      if (milestone.endTime) {
+      if (milestone.startTime && milestone.endTime) {
         const dtend = formatUtcDateTime(endDate, milestone.endTime)
         if (dtend > dtstart) vevent.push(`DTEND:${dtend}`)
       }

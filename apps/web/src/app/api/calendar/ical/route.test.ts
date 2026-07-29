@@ -232,6 +232,36 @@ describe('GET /api/calendar/ical', () => {
     expect(body).toContain('SUMMARY:新機能 / リリース判定')
   })
 
+  it('終了時刻だけのマイルストーンを終了日の時刻付き予定として出力する', async () => {
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: USER_ID }]))
+      .mockReturnValueOnce(chain([{ workspaceId: WS_ID, role: 'admin' }]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(
+        chain([
+          {
+            id: 'milestone-end-time',
+            projectId: 'proj-1',
+            projectTitle: '新機能',
+            title: '提出期限',
+            description: null,
+            startDate: '2026-06-09',
+            endDate: '2026-06-10',
+            startTime: null,
+            endTime: '17:00',
+          },
+        ]),
+      )
+
+    const { GET } = await import('./route')
+    const res = await GET(buildRequest('workspace'))
+    const body = await res.text()
+
+    expect(res.status).toBe(200)
+    expect(body).toContain('DTSTART:20260610T080000Z')
+    expect(body).not.toContain('DTSTART;VALUE=DATE:20260609')
+  })
+
   it('workspaceId で membership を絞り込む', async () => {
     mockDb.select.mockReturnValueOnce(chain([{ id: USER_ID }])).mockReturnValueOnce(chain([]))
 
