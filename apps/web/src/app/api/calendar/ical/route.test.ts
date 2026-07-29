@@ -262,6 +262,54 @@ describe('GET /api/calendar/ical', () => {
     expect(body).not.toContain('DTSTART;VALUE=DATE:20260609')
   })
 
+  it.each([
+    {
+      label: '終了時刻が開始時刻より前',
+      startTime: '22:00',
+      endTime: '02:00',
+      expectedStart: 'DTSTART:20260610T130000Z',
+      expectedEnd: 'DTEND:20260610T170000Z',
+    },
+    {
+      label: '開始時刻と終了時刻が同じ',
+      startTime: '10:00',
+      endTime: '10:00',
+      expectedStart: 'DTSTART:20260610T010000Z',
+      expectedEnd: 'DTEND:20260611T010000Z',
+    },
+  ])(
+    '$labelなら終了時刻を翌日として出力する',
+    async ({ startTime, endTime, expectedStart, expectedEnd }) => {
+      mockDb.select
+        .mockReturnValueOnce(chain([{ id: USER_ID }]))
+        .mockReturnValueOnce(chain([{ workspaceId: WS_ID, role: 'admin' }]))
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(
+          chain([
+            {
+              id: 'milestone-overnight',
+              projectId: 'proj-1',
+              projectTitle: '新機能',
+              title: '夜間作業',
+              description: null,
+              startDate: '2026-06-10',
+              endDate: '2026-06-10',
+              startTime,
+              endTime,
+            },
+          ]),
+        )
+
+      const { GET } = await import('./route')
+      const res = await GET(buildRequest('workspace'))
+      const body = await res.text()
+
+      expect(res.status).toBe(200)
+      expect(body).toContain(expectedStart)
+      expect(body).toContain(expectedEnd)
+    },
+  )
+
   it('日本語と絵文字をUTF-8で75オクテット以内に折り返す', async () => {
     const projectTitle = `長いプロジェクト名${'計画'.repeat(15)}🚀`
     const milestoneTitle = `長いマイルストーン名${'確認'.repeat(15)}🎉`

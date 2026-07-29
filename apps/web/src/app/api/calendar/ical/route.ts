@@ -131,8 +131,13 @@ function buildIcal(
       const dtstart = formatUtcDateTime(eventStartDate, eventStartTime)
       vevent.push(`DTSTART:${dtstart}`)
       if (milestone.startTime && milestone.endTime) {
-        const dtend = formatUtcDateTime(endDate, milestone.endTime)
-        if (dtend > dtstart) vevent.push(`DTEND:${dtend}`)
+        let dtend = formatUtcDateTime(endDate, milestone.endTime)
+        if (dtend <= dtstart) {
+          const nextEndDate = new Date(`${endDate}T00:00:00Z`)
+          nextEndDate.setUTCDate(nextEndDate.getUTCDate() + 1)
+          dtend = formatUtcDateTime(nextEndDate.toISOString().slice(0, 10), milestone.endTime)
+        }
+        vevent.push(`DTEND:${dtend}`)
       }
     } else {
       const exclusiveEnd = new Date(endDate)
