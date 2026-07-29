@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { fieldInputStyle } from './primitives'
+import { TaskAssigneeField } from './task-assignee-field'
 import type { TaskDto } from '@/app/api/tasks/route'
 
 interface TaskFormFieldsProps {
@@ -13,6 +14,13 @@ interface TaskFormFieldsProps {
   onDueDateChange: (value: string) => void
   titlePlaceholder?: string
   afterTitle?: React.ReactNode
+  // 担当者フィールド（onAssigneeChange を渡したときだけ表示する）
+  assigneeId?: string | null
+  onAssigneeChange?: (userId: string | null) => void
+  assigneeProjectId?: string | null
+  currentAssignee?: { userId: string; displayName: string; avatarUrl: string | null } | null
+  // タイトル欄の直下に出す注記（チャット由来タスクの逆同期警告など）
+  titleNote?: React.ReactNode
 }
 
 const labelStyle: React.CSSProperties = {
@@ -32,6 +40,11 @@ export const TaskFormFields = ({
   onDueDateChange,
   titlePlaceholder,
   afterTitle,
+  assigneeId,
+  onAssigneeChange,
+  assigneeProjectId,
+  currentAssignee,
+  titleNote,
 }: TaskFormFieldsProps) => (
   <>
     <div>
@@ -48,9 +61,19 @@ export const TaskFormFields = ({
         autoFocus
         style={fieldInputStyle(false)}
       />
+      {titleNote}
     </div>
 
     {afterTitle}
+
+    {onAssigneeChange && (
+      <TaskAssigneeField
+        value={assigneeId ?? null}
+        onChange={onAssigneeChange}
+        projectId={assigneeProjectId ?? null}
+        currentAssignee={currentAssignee ?? null}
+      />
+    )}
 
     <div style={{ display: 'flex', gap: 12 }}>
       <div style={{ flex: 1 }}>

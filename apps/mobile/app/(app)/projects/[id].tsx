@@ -1,7 +1,15 @@
-import { useLocalSearchParams } from 'expo-router'
-import { AppWebView } from '../../../components/app-webview'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import { NativeWebViewScreen } from '../../../components/native-webview-screen'
 
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
-  return <AppWebView path={`/projects?open=${id}`} />
+  const router = useRouter()
+
+  return (
+    <NativeWebViewScreen
+      path={`/projects?open=${id}`}
+      title="プロジェクト"
+      onBack={() => router.replace('/(app)/projects')}
+    />
+  )
 }

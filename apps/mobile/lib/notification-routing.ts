@@ -16,6 +16,10 @@ export function routeFromNotification(item: NotificationRouteInput): string {
   if (url?.startsWith('/settings')) return '/(app)/settings'
 
   const channelId = item.data?.['channelId']
+  if (item.type === 'ai') {
+    if (item.data?.['taskId']) return '/(app)/tasks'
+    if (channelId) return '/(app)/chats'
+  }
   if ((item.type === 'mention' || item.type === 'dm' || item.type === 'file' || item.type === 'reaction') && channelId) {
     return '/(app)/chats'
   }

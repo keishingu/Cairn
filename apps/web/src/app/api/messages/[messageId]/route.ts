@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { editMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess } from '@/lib/permissions'
 import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
 
@@ -36,7 +37,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
     // 送信者・ワークスペース・削除済み除外をすべて確認してから更新
     const [target] = await db
-      .select({ id: messages.id, content: messages.content })
+      .select({ id: messages.id, content: messages.content, channelId: messages.channelId })
       .from(messages)
       .innerJoin(channels, eq(messages.channelId, channels.id))
       .where(and(
@@ -50,6 +51,9 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     if (!target) {
       return NextResponse.json({ error: 'メッセージが見つからないか編集権限がありません' }, { status: 404 })
     }
+
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId, ctx.role)
+    if (forbidden) return forbidden
 
     const [updated] = await db
       .update(messages)
@@ -89,6 +93,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         if (newToInsert.length > 0) {
           await db.insert(tasks).values(
             newToInsert.map(nb => ({
+              workspaceId: ctx.workspaceId,
               projectId,
               title: nb.text,
               status: (nb.checked ? 'done' : 'todo') as 'done' | 'todo',
@@ -134,12 +139,12 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages, channels } = await import('@cairn/db')
+    const { messages, channels, tasks } = await import('@cairn/db')
     const { eq, and, isNull } = await import('drizzle-orm')
 
     // 送信者・ワークスペーススコープを確認してからソフトデリート
     const [target] = await db
-      .select({ id: messages.id })
+      .select({ id: messages.id, channelId: messages.channelId })
       .from(messages)
       .innerJoin(channels, eq(messages.channelId, channels.id))
       .where(and(
@@ -154,10 +159,20 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'メッセージが見つからないか削除権限がありません' }, { status: 404 })
     }
 
-    await db
-      .update(messages)
-      .set({ deletedAt: new Date() })
-      .where(eq(messages.id, messageId))
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId, ctx.role)
+    if (forbidden) return forbidden
+
+    // メッセージのソフトデリートと、そのチェックボックス由来タスクの削除を1トランザクションにする。
+    // 片方だけ成功すると、メッセージは非表示なのにチャット由来タスク（単体削除不可）が
+    // 消せないまま残る不整合になるため、両方まとめて成功/失敗させる。
+    await db.transaction(async (tx) => {
+      await tx
+        .update(messages)
+        .set({ deletedAt: new Date() })
+        .where(eq(messages.id, messageId))
+
+      await tx.delete(tasks).where(eq(tasks.sourceMessageId, messageId))
+    })
 
     return new NextResponse(null, { status: 204 })
   } catch (err) {

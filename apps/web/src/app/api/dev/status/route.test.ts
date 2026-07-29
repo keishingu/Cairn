@@ -109,7 +109,14 @@ describe('dev/status API の認可と手動診断', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(fetch).toHaveBeenCalledWith(
       'https://api.openai.com/v1/chat/completions',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          model: 'gpt-5-mini',
+          messages: [{ role: 'user', content: 'hi' }],
+          max_completion_tokens: 1,
+        }),
+      }),
     )
     expect(body.openai.status).toBe('ok')
     expect(body.openai.detail).toBe('クレジット有効・API 正常')

@@ -62,7 +62,7 @@ supabase stop
 
 ## モバイル（Expo）
 
-WebView で Web 版（`apps/web`）を表示するラッパー + ネイティブチャット。Web 側の開発サーバーが必要なため、まず上記の Web 環境を起動しておく。
+WebView で Web 版（`apps/web`）を表示するラッパー + ネイティブチャット。アプリ共通ヘッダーと通知スライドインは React Native が描画し、WebView 内のモバイルヘッダーはタイトル・サブタイトル・戻る操作だけを bridge でネイティブへ委譲する。Web 側の開発サーバーが必要なため、まず上記の Web 環境を起動しておく。
 
 開発は **expo-dev-client（単体アプリとしてインストールされる開発ビルド）** を基本とする。Expo Go は不要。
 
@@ -83,9 +83,13 @@ pnpm dev
 
 ネイティブビルドのやり直しが必要なのは、ネイティブモジュールの追加や `app.json` のネイティブ設定変更時のみ。JS の変更は Metro のホットリロードで反映される。
 
+ネイティブチャットの本文・返信は、初回POSTより前に端末内のユーザー別キューへ保存され、保存完了後に即時送信される。失敗時は8秒間隔またはアプリの前面復帰時に自動再送し、クライアント生成UUIDによって応答欠落後の再送も二重投稿にならない。アップロード完了済みの添付IDはキューへ含められるが、完全オフラインで選んだローカル画像・ファイル自体の後送は未対応。詳細と検証記録は [`docs/mobile-chat-parity-checklist.md`](docs/mobile-chat-parity-checklist.md) を参照。
+
 `expo run:ios` / `run:android` が生成する `ios/` `android/` ディレクトリは `app.json` から再生成できる成果物のため、コミットしない（`apps/mobile/.gitignore` で除外済み）。また、ネイティブプロジェクトが存在すると runtime version のポリシー（`appVersion` 等）が使えないため、`app.json` の `runtimeVersion` は固定文字列で管理する。**ネイティブモジュールを追加・更新したら `runtimeVersion` を手動で上げる**こと（古いネイティブビルドに非互換な EAS Update が配信されるのを防ぐため）。
 
-実機で使う場合は `pnpm dev` で表示される QR コードを読み込む（開発クライアントがインストール済みであること）。Xcode / Android Studio がないメンバーには、EAS の development プロファイル（`eas build --profile development`）でビルド済み開発クライアントを配布できる（iOS シミュレータ向けビルドにも対応済み）。
+`app.config.ts` のアプリ名・bundle/package ID や config plugin を変更した後、既存の生成済み native project は `expo run:*` だけでは全設定が更新されないことがある。`apps/mobile` で `pnpm exec expo prebuild --clean --platform ios` または `--platform android` を実行してから再ビルドする。
+
+実機で使う場合は `pnpm dev` で表示される QR コードを読み込む（開発クライアントがインストール済みであること）。Xcode / Android Studio がないメンバーには、EAS の `development`（iOS シミュレータ）または `development-device`（実機）プロファイルでビルド済み開発クライアントを配布できる。接続先を内蔵して単体動作する検証版は `preview` の Internal Distribution を使う。配布手順は [`docs/mobile-internal-distribution.md`](docs/mobile-internal-distribution.md) を参照。
 
 > **接続先 URL は自動導出される（IP の手動設定は不要）**
 >
@@ -105,26 +109,34 @@ pnpm dev
 
 ## モバイルプレビュー（EAS Update）
 
-`apps/mobile` に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。Expo Go でスキャンするだけで、ローカル環境を起動せずに実機確認ができる。
+`apps/mobile`、`packages/shared`、またはモバイルの依存関係に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。互換性のある Cairn Development Build で QR を開けば、ローカル環境を起動せずに確認できる（Expo Go は使用しない）。同じ revision は `preview` channel にも配信され、Internal Distribution build は次回起動時に取得する。
 
-- 対象パスを `apps/mobile/**` に限定し、無関係な変更では発行しない（EAS の無料枠を消費しないため）
-- プレビューが見にいく Web / Supabase は固定の検証用環境（Vercel の固定プレビューデプロイ + 共有の Supabase プレビュー DB）を指す。ローカル開発用の LAN IP 設定とは無関係
+| 起動方法                                    | JavaScript の配信元                      | Web / API 接続先                       | Supabase 接続先                         |
+| ------------------------------------------- | ---------------------------------------- | -------------------------------------- | --------------------------------------- |
+| Development Build からローカル Metro を開く | 開発 PC の Metro                         | 未設定時は `http://<Metroホスト>:3128` | 未設定時は `http://<Metroホスト>:54321` |
+| PR コメントの QR を開く                     | PR ごとの EAS Update                     | `https://develop.oss-cairn.com`        | 共有の Supabase Preview                 |
+| `eas build --profile preview`               | ビルド内蔵 bundle + `preview` channel    | EAS の `preview` 環境                  | EAS の `preview` 環境                   |
+| `eas build --profile production`            | ビルド内蔵 bundle + `production` channel | EAS の `production` 環境               | EAS の `production` 環境                |
+
+PR Preview の workflow は、Vercel Deployment Protection のログイン画面へ遷移しないよう、初回から `https://develop.oss-cairn.com` を Web / API URL に使う。この URL と共有 Supabase の設定を EAS の `preview` 環境へ作成または上書きしてから、PR 固有 branch と Internal Distribution 用 `preview` channel の両方へ EAS Update を発行する。ローカルの `.env.local` は EAS Update に混入しない。EAS の `preview` 環境と channel は共有状態のため、同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで順番に処理する。Internal Distribution では最後に成功した Mobile Preview が最新版になる。
+
+Internal Distribution は `apps/mobile` で `pnpm build:internal:android` / `pnpm build:internal:ios` を実行するか、GitHub Actions の `Mobile Internal Distribution` を手動実行する。Android はインストール可能な APK、iOS は登録済み端末用の Ad Hoc build が生成される。GitHub Actions で `ios` / `all` を選ぶと、EAS に登録済みの端末を provisioning profile へ反映してから build する。`Cairn Dev` / `Cairn Preview` / `Cairn` は別の URL scheme と bundle/package ID を使うため、同じ端末へ共存できる。
 
 ### 初回セットアップ（リポジトリ管理者）
 
-1. Expo アカウントを作成し、`apps/mobile` で `eas init` を実行してプロジェクトを作成（`EXPO_PUBLIC_EAS_PROJECT_ID` が発行される）
+1. Expo アカウントを作成し、`apps/mobile` で `eas init` を実行してプロジェクトを作成し、`app.json` の `extra.eas.projectId` を設定する
 2. `eas update:configure` を実行し、`app.json` に `updates` / `runtimeVersion` の設定を追加する
 3. Expo のアクセストークンを発行し、GitHub リポジトリの Secrets に `EXPO_TOKEN` として登録する
-4. Vercel で `apps/web` の固定プレビュー環境を用意し、共有 Supabase プレビュー DB を指す環境変数を設定する（URL は取得済みの `oss-cairn.com` のサブドメインを割り当てる想定）
-5. GitHub リポジトリの Variables / Secrets に以下を登録する
+4. Vercel の PR Preview と共有 Supabase Preview を用意する
+5. GitHub リポジトリの Variables / Secrets に以下を登録する。EAS の `preview` 環境変数は workflow が初回実行時にも作成するため、事前登録は不要
 
-| 種別 | 名前 | 値 |
-|---|---|---|
-| Variable | `MOBILE_PREVIEW_EAS_PROJECT_ID` | `eas init` で発行されたプロジェクト ID |
-| Variable | `MOBILE_PREVIEW_API_BASE_URL` | Vercel 固定プレビューの URL |
-| Variable | `MOBILE_PREVIEW_SUPABASE_URL` | 共有 Supabase プレビュー DB の URL |
-| Secret | `MOBILE_PREVIEW_SUPABASE_ANON_KEY` | 共有 Supabase プレビュー DB の anon key |
-| Secret | `EXPO_TOKEN` | Expo のアクセストークン |
+| 種別     | 名前                               | 値                                      |
+| -------- | ---------------------------------- | --------------------------------------- |
+| Variable | `MOBILE_PREVIEW_SUPABASE_URL`      | 共有 Supabase プレビュー DB の URL      |
+| Secret   | `MOBILE_PREVIEW_SUPABASE_ANON_KEY` | 共有 Supabase プレビュー DB の anon key |
+| Secret   | `EXPO_TOKEN`                       | Expo のアクセストークン                 |
+
+`preview` / `production` のネイティブビルドは `apps/mobile/eas.json` の `environment` と同名の EAS Environment を使用する。本番ビルド前には EAS の `production` 環境へ `EXPO_PUBLIC_API_BASE_URL`、`EXPO_PUBLIC_SUPABASE_URL`、`EXPO_PUBLIC_SUPABASE_ANON_KEY` を設定すること。`expo-sqlite` / `expo-network` を含む最初の互換 runtime は `1.1.0`。それ以前の Development Build では `1.1.0` 向け EAS Update を開けないため、一度ネイティブビルドを更新する。
 
 ---
 
@@ -187,6 +199,7 @@ npx web-push generate-vapid-keys
 ```
 
 出力例：
+
 ```
 Public Key: BxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxA
 Private Key: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
@@ -194,11 +207,11 @@ Private Key: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
 
 ### 環境変数
 
-| 変数名 | 説明 |
-|---|---|
-| `VAPID_PUBLIC_KEY` | 生成した公開鍵 |
-| `VAPID_PRIVATE_KEY` | 生成した秘密鍵（機密情報） |
-| `VAPID_SUBJECT` | 管理者連絡先。`mailto:admin@example.com` 形式推奨 |
+| 変数名              | 説明                                              |
+| ------------------- | ------------------------------------------------- |
+| `VAPID_PUBLIC_KEY`  | 生成した公開鍵                                    |
+| `VAPID_PRIVATE_KEY` | 生成した秘密鍵（機密情報）                        |
+| `VAPID_SUBJECT`     | 管理者連絡先。`mailto:admin@example.com` 形式推奨 |
 
 **ローカル**: `apps/web/.env.local` に追記  
 **Vercel**: Dashboard → Project → Settings → Environment Variables で追加（`VAPID_PRIVATE_KEY` は Sensitive にチェック）
@@ -231,8 +244,6 @@ Private Key: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
 
 ---
 
-
-
 アクセントカラー（7色）× テーマ（ライト/ダーク）の組み合わせで PWA アイコンを事前生成している。
 設定画面でカラーやテーマを変えると、ホーム画面アイコンに自動反映される。
 
@@ -244,12 +255,12 @@ node scripts/generate-icons.mjs
 
 `apps/web/public/` に以下のファイルを生成する:
 
-| ファイル名パターン | 用途 |
-|---|---|
-| `icon-{color}-{theme}-192.png` | Android manifest (192×192) |
-| `icon-{color}-{theme}-512.png` | Android manifest (512×512) |
-| `apple-touch-icon-{color}-{theme}.png` | iOS ホーム画面アイコン (180×180) |
-| `icon-192.png` / `icon-512.png` / `apple-touch-icon.png` | cookie 未設定時のフォールバック |
+| ファイル名パターン                                       | 用途                             |
+| -------------------------------------------------------- | -------------------------------- |
+| `icon-{color}-{theme}-192.png`                           | Android manifest (192×192)       |
+| `icon-{color}-{theme}-512.png`                           | Android manifest (512×512)       |
+| `apple-touch-icon-{color}-{theme}.png`                   | iOS ホーム画面アイコン (180×180) |
+| `icon-192.png` / `icon-512.png` / `apple-touch-icon.png` | cookie 未設定時のフォールバック  |
 
 `{color}`: `emerald` / `blue` / `violet` / `rose` / `pink` / `amber` / `cyan`  
 `{theme}`: `light` / `dark`
@@ -272,10 +283,10 @@ Chromium ベースのため `PushManager` / Web Push API をフルサポート�
 
 ### 接続先 URL とアイコン（環境別）
 
-| 環境 | URL | アイコン |
-|---|---|---|
-| prod | `https://oss-cairn.com` | `icon-emerald-dark-512.png`（濃紺 + 緑） |
-| dev | `https://develop.oss-cairn.com` | `icon-blue-light-512.png`（白 + 青） |
+| 環境 | URL                             | アイコン                                 |
+| ---- | ------------------------------- | ---------------------------------------- |
+| prod | `https://oss-cairn.com`         | `icon-emerald-dark-512.png`（濃紺 + 緑） |
+| dev  | `https://develop.oss-cairn.com` | `icon-blue-light-512.png`（白 + 青）     |
 
 ### コマンド
 

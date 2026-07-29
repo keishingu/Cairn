@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { FEATURE_FLAGS } from '@cairn/shared'
+
+const originalDmFlag = FEATURE_FLAGS.dm
 
 const {
   queryResults,
@@ -86,11 +89,12 @@ function pushResults(...results: unknown[][]) {
 describe('permissions', () => {
   beforeEach(() => {
     queryResults.length = 0
+    ;(FEATURE_FLAGS as { dm: boolean }).dm = true
   })
 
   afterEach(() => {
     vi.clearAllMocks()
-    vi.resetModules()
+    ;(FEATURE_FLAGS as { dm: boolean }).dm = originalDmFlag
   })
 
   it('requireWorkspaceOwner は owner のみ許可する', async () => {
@@ -149,6 +153,18 @@ describe('permissions', () => {
 
     expect(denied?.status).toBe(403)
     await expect(denied?.json()).resolves.toEqual({ error: 'このチャンネルにアクセスする権限がありません' })
+  })
+
+  it('requireChannelAccess は feature flag が無効な DM を 404 にする', async () => {
+    ;(FEATURE_FLAGS as { dm: boolean }).dm = false
+    pushResults([{ isPrivate: false, type: 'dm', projectId: null, effectiveWorkspaceId: 'ws-1' }])
+    const { requireChannelAccess } = await import('./permissions')
+
+    const denied = await requireChannelAccess('ws-1', 'user-1', 'dm-1')
+
+    expect(denied?.status).toBe(404)
+    await expect(denied?.json()).resolves.toEqual({ error: 'DM機能は現在利用できません' })
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
   })
 
   it('requireChannelAccess は guest の参加外プロジェクトチャンネルを 403 にする', async () => {

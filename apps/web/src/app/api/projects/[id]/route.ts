@@ -6,19 +6,25 @@ import { patchProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 
-export async function DELETE(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = await params
 
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
 
   try {
-    const { db, projects, files, channels, messages, messageAttachments } = await import('@cairn/db')
-    const { eq, and, or } = await import('drizzle-orm')
-    const { inngest } = await import('@/lib/inngest/client')
+    const {
+      db,
+      projects,
+      files,
+      channels,
+      messages,
+      messageAttachments,
+      galleryItems,
+      storageDeletionJobs,
+      uploadRequests,
+    } = await import('@cairn/db')
+    const { eq, and, inArray, isNull, ne, or } = await import('drizzle-orm')
 
     const [project] = await db
       .select({ id: projects.id })
@@ -33,41 +39,179 @@ export async function DELETE(
     const forbidden = requireRole(ctx.role, 'admin')
     if (forbidden) return forbidden
 
-    // CASCADE 前にストレージパスを収集する
-    // - files.projectId = projectId（直接紐付き）
-    // - プロジェクトチャンネル経由でアップロードされたファイル（projectId が未設定の旧データ含む）
-    const filePaths = await db
-      .selectDistinct({ storagePath: files.storagePath, metadata: files.metadata })
-      .from(files)
-      .leftJoin(messageAttachments, eq(messageAttachments.fileId, files.id))
-      .leftJoin(messages, eq(messages.id, messageAttachments.messageId))
-      .leftJoin(channels, eq(channels.id, messages.channelId))
-      .where(
-        or(
-          eq(files.projectId, projectId),
-          eq(channels.projectId, projectId),
-        ),
+    const deleted = await db.transaction(async (tx) => {
+      let deletionJobId: string | null = null
+      // CASCADE の直前にプロジェクトをロックし、同じトランザクションで対象ファイルを
+      // 集計・家賃精算する。日次 reconciliation まで古い使用量を請求し続けない。
+      const [lockedProject] = await tx
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
+        .for('update')
+        .limit(1)
+      if (!lockedProject) return null
+
+      // CASCADE 前にストレージパスを収集する。
+      const filePaths = await tx
+        .selectDistinct({
+          storagePath: files.storagePath,
+          derivedStoragePath: files.derivedStoragePath,
+          id: files.id,
+          projectId: files.projectId,
+          fileSize: files.fileSize,
+          derivedFileSize: files.derivedFileSize,
+          metadata: files.metadata,
+          galleryItemId: galleryItems.id,
+        })
+        .from(files)
+        .leftJoin(messageAttachments, eq(messageAttachments.fileId, files.id))
+        .leftJoin(messages, eq(messages.id, messageAttachments.messageId))
+        .leftJoin(channels, eq(channels.id, messages.channelId))
+        .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
+        .where(or(eq(files.projectId, projectId), eq(channels.projectId, projectId)))
+
+      // 未確定アップロードは files に現れないため、CASCADE 前に別途回収する。
+      const pendingUploadPaths = await tx
+        .select({
+          derivedStoragePath: uploadRequests.derivedStoragePath,
+          originalStoragePath: uploadRequests.originalStoragePath,
+        })
+        .from(uploadRequests)
+        .where(and(eq(uploadRequests.projectId, projectId), isNull(uploadRequests.finalizedAt)))
+
+      // DB を削除する前に、全バケットを1つの Inngest event として永続キューへ送る。
+      // enqueue が失敗すればこのトランザクション全体をロールバックするため、プロジェクトと
+      // パス一覧が残り、クライアント再試行でクリーンアップを再送できる。
+      const attachmentPaths = filePaths
+        .filter((file) => !file.galleryItemId)
+        .flatMap((file) => {
+          const metadata = (file.metadata ?? {}) as Record<string, unknown>
+          const thumbnailPath =
+            typeof metadata['thumbnailPath'] === 'string' ? metadata['thumbnailPath'] : null
+          return [file.storagePath, thumbnailPath].filter((path): path is string => path !== null)
+        })
+      const galleryDerivedPaths = [
+        ...filePaths
+          .filter((file) => file.galleryItemId)
+          .flatMap((file) =>
+            [file.derivedStoragePath].filter((path): path is string => path !== null),
+          ),
+        ...pendingUploadPaths.map((request) => request.derivedStoragePath),
+      ]
+      const galleryOriginalPaths = [
+        ...filePaths
+          .filter((file) => file.galleryItemId)
+          .flatMap((file) => [file.storagePath].filter((path): path is string => path !== null)),
+        ...pendingUploadPaths
+          .map((request) => request.originalStoragePath)
+          .filter((path): path is string => path !== null),
+      ]
+      let deletionTargets = [
+        attachmentPaths.length > 0 ? { bucket: 'chat-attachments', paths: attachmentPaths } : null,
+        galleryDerivedPaths.length > 0 ? { bucket: 'gallery', paths: galleryDerivedPaths } : null,
+        galleryOriginalPaths.length > 0
+          ? { bucket: 'gallery-originals', paths: galleryOriginalPaths }
+          : null,
+      ].filter((target): target is { bucket: string; paths: string[] } => target !== null)
+
+      // gallery_items とのJOINで同じ files 行が複数現れ得るため、削除対象は file ID ごとに
+      // 一度だけ扱う。先に明示削除して、競合した個別削除があった場合は実際に消えた行だけを
+      // 使用量へ反映する（プロジェクトCASCADEに任せるとこの差分を確定できない）。
+      const uniqueFiles = [...new Map(filePaths.map((file) => [file.id, file])).values()]
+      const fileIds = uniqueFiles.map((file) => file.id)
+      const sharedFileIds =
+        fileIds.length > 0
+          ? new Set(
+              (
+                await tx
+                  .selectDistinct({ id: files.id })
+                  .from(files)
+                  .innerJoin(messageAttachments, eq(messageAttachments.fileId, files.id))
+                  .innerJoin(messages, eq(messages.id, messageAttachments.messageId))
+                  .innerJoin(channels, eq(channels.id, messages.channelId))
+                  .where(
+                    and(
+                      inArray(files.id, fileIds),
+                      or(ne(channels.projectId, projectId), isNull(channels.projectId)),
+                    ),
+                  )
+              ).map((file) => file.id),
+            )
+          : new Set<string>()
+      const removableFileIds = fileIds.filter((id) => !sharedFileIds.has(id))
+      // 削除対象プロジェクトを指す共有ファイルは project_id を外してCASCADEから保護する。
+      if (sharedFileIds.size > 0) {
+        await tx
+          .update(files)
+          .set({ projectId: null })
+          .where(and(inArray(files.id, [...sharedFileIds]), eq(files.projectId, projectId)))
+      }
+      // 共有ファイルは外部プロジェクトに残すため、outbox の削除対象からも外す。
+      deletionTargets = deletionTargets
+        .map((target) => ({
+          ...target,
+          paths: target.paths.filter(
+            (path) =>
+              !uniqueFiles.some(
+                (file) =>
+                  sharedFileIds.has(file.id) &&
+                  (file.storagePath === path || file.derivedStoragePath === path),
+              ),
+          ),
+        }))
+        .filter((target) => target.paths.length > 0)
+      if (deletionTargets.length > 0) {
+        const [job] = await tx
+          .insert(storageDeletionJobs)
+          .values({ targets: deletionTargets })
+          .returning({ id: storageDeletionJobs.id })
+        if (!job) throw new Error('storage deletion outbox insert returned no rows')
+        deletionJobId = job.id
+      }
+      const removedFiles =
+        removableFileIds.length > 0
+          ? await tx
+              .delete(files)
+              .where(inArray(files.id, removableFileIds))
+              .returning({ fileSize: files.fileSize, derivedFileSize: files.derivedFileSize })
+          : []
+      const { recordStorageUsageDelta } = await import('@/lib/billing/storage-usage')
+      await recordStorageUsageDelta(
+        ctx.workspaceId,
+        {
+          originalBytes: -removedFiles.reduce((total, file) => total + (file.fileSize ?? 0), 0),
+          derivedBytes: -removedFiles.reduce(
+            (total, file) => total + (file.derivedFileSize ?? 0),
+            0,
+          ),
+        },
+        tx,
       )
 
-    if (filePaths.length > 0) {
-      // オリジナルに加えて、生成済みのサムネ(metadata.thumbnailPath)も削除対象に含める
-      const paths = filePaths.flatMap(f => {
-        const meta = (f.metadata ?? {}) as Record<string, unknown>
-        const thumbnailPath = typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
-        return thumbnailPath ? [f.storagePath, thumbnailPath] : [f.storagePath]
-      })
-      await inngest.send({
-        name: 'storage/objects.delete',
-        data: {
-          bucket: 'chat-attachments',
-          paths,
-        },
-      })
-    }
+      const [removedProject] = await tx
+        .delete(projects)
+        .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
+        .returning({ id: projects.id })
+      if (!removedProject) return null
 
-    await db
-      .delete(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
+      return { deletionJobId }
+    })
+
+    if (!deleted) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+
+    if (deleted.deletionJobId) {
+      try {
+        const { inngest } = await import('@/lib/inngest/client')
+        await inngest.send({
+          name: 'storage/deletion.requested',
+          data: { jobId: deleted.deletionJobId },
+        })
+      } catch (sendError) {
+        // ジョブはコミット済みのため、cron が再送する。削除済みプロジェクトを 500 にしても
+        // クライアント再試行では回復できないため、成功として返す。
+        console.error('[DELETE /api/projects/[id]] storage deletion enqueue failed:', sendError)
+      }
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {
@@ -76,10 +220,7 @@ export async function DELETE(
   }
 }
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
   const { ctx, error: authError } = await getAuthContext()
@@ -195,7 +336,13 @@ export async function PATCH(
         const [channel] = await db
           .select({ id: channels.id })
           .from(channels)
-          .where(and(eq(channels.projectId, id), eq(channels.type, 'project'), isNull(channels.milestoneId)))
+          .where(
+            and(
+              eq(channels.projectId, id),
+              eq(channels.type, 'project'),
+              isNull(channels.milestoneId),
+            ),
+          )
           .limit(1)
         if (channel) {
           const [actor] = await db

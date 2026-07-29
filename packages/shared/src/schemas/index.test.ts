@@ -4,9 +4,21 @@ import {
   createProjectSchema,
   createTaskSchema,
   patchMilestoneSchema,
+  patchMeSchema,
+  patchWorkspaceSettingsSchema,
   postMessageSchema,
   uploadGalleryItemSchema,
 } from './index'
+
+describe('patchMeSchema', () => {
+  it('テーマとハイライトカラーの許可値を受け入れる', () => {
+    expect(patchMeSchema.safeParse({ theme: 'dark', accentId: 'violet' }).success).toBe(true)
+  })
+
+  it('未定義のハイライトカラーを拒否する', () => {
+    expect(patchMeSchema.safeParse({ accentId: 'unknown' }).success).toBe(false)
+  })
+})
 
 describe('createProjectSchema', () => {
   it('有効なデータを受け入れる', () => {
@@ -152,7 +164,27 @@ describe('patchMilestoneSchema', () => {
   })
 })
 
+describe('ワークスペース設定更新スキーマ', () => {
+  it('空のプロジェクト名称を既定値へ戻すため null に正規化する', () => {
+    const result = patchWorkspaceSettingsSchema.safeParse({ projectLabel: '   ' })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.projectLabel).toBeNull()
+    }
+  })
+})
+
 describe('postMessageSchema', () => {
+  it('オフライン再送用のclientMessageIdを受け付ける', () => {
+    expect(
+      postMessageSchema.safeParse({
+        channelId: '10000000-0000-4000-8000-000000000001',
+        clientMessageId: '20000000-0000-4000-8000-000000000001',
+        content: '圏外から送信',
+      }).success,
+    ).toBe(true)
+  })
+
   it('デフォルトの messageType は text になる', () => {
     const result = postMessageSchema.safeParse({
       channelId: '00000000-0000-0000-0000-000000000001',

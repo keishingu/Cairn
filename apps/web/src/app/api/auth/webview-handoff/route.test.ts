@@ -53,7 +53,7 @@ describe('POST /api/auth/webview-handoff', () => {
     expect(mockGenerateLink).not.toHaveBeenCalled()
   })
 
-  it('認証済みユーザーの email で magiclink を発行し tokenHash を返す', async () => {
+  it('認証済みユーザーの email で magiclink を発行し tokenHash と workspaceId を返す', async () => {
     authed()
     mockGetUserById.mockResolvedValue({
       data: { user: { id: 'user-1', email: 'me@example.com' } },
@@ -68,7 +68,10 @@ describe('POST /api/auth/webview-handoff', () => {
     const res = await POST()
 
     expect(res.status).toBe(200)
-    await expect(res.json()).resolves.toEqual({ tokenHash: 'hashed-abc' })
+    await expect(res.json()).resolves.toEqual({
+      tokenHash: 'hashed-abc',
+      workspaceId: 'ws-1',
+    })
     // email はリクエストではなく認証済みユーザーから解決すること
     expect(mockGetUserById).toHaveBeenCalledWith('user-1')
     expect(mockGenerateLink).toHaveBeenCalledWith({ type: 'magiclink', email: 'me@example.com' })
@@ -76,7 +79,10 @@ describe('POST /api/auth/webview-handoff', () => {
 
   it('ユーザーの email が取得できない場合は 500 を返し、リンク発行を行わない', async () => {
     authed()
-    mockGetUserById.mockResolvedValue({ data: { user: { id: 'user-1', email: null } }, error: null })
+    mockGetUserById.mockResolvedValue({
+      data: { user: { id: 'user-1', email: null } },
+      error: null,
+    })
 
     const { POST } = await import('./route')
     const res = await POST()

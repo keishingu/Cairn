@@ -6,7 +6,12 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { SettingsSectionContent } from './settings'
+import {
+  getSettingsNavGroups,
+  isSettingsSection,
+  resolveCreditPackFulfillmentPolling,
+  SettingsSectionContent,
+} from './settings'
 
 const { fetchWithAuth, processImageForUpload } = vi.hoisted(() => ({
   fetchWithAuth: vi.fn(),
@@ -209,5 +214,50 @@ describe('SettingsSectionContent', () => {
 
     expect(processImageForUpload).not.toHaveBeenCalled()
     expect(fetchWithAuth).not.toHaveBeenCalledWith('/api/me/avatar', expect.anything())
+  })
+})
+
+describe('クレジットパック購入後の確認', () => {
+  it('Checkoutの返却時は台帳記帳を確認できるまで残高を再取得する', () => {
+    expect(
+      resolveCreditPackFulfillmentPolling({
+        isCreditPackReturn: true,
+        sessionId: 'cs_credit_pack',
+        fulfilled: false,
+        startedAt: 0,
+        now: 1,
+      }),
+    ).toBe('polling')
+    expect(
+      resolveCreditPackFulfillmentPolling({
+        isCreditPackReturn: true,
+        sessionId: 'cs_credit_pack',
+        fulfilled: true,
+        startedAt: 0,
+        now: 1,
+      }),
+    ).toBe('fulfilled')
+    expect(
+      resolveCreditPackFulfillmentPolling({
+        isCreditPackReturn: true,
+        sessionId: 'cs_credit_pack',
+        fulfilled: false,
+        startedAt: 0,
+        now: 60_000,
+      }),
+    ).toBe('timed_out')
+  })
+})
+
+describe('モバイル設定のセクション', () => {
+  it('請求を公開せず、決済を含まないケルン画面だけを公開する', () => {
+    const ids = getSettingsNavGroups(false, { isMobile: true })
+      .flatMap(group => group.items.map(item => item.id))
+
+    expect(ids).not.toContain('billing')
+    expect(ids).toContain('contributions')
+    expect(isSettingsSection('billing', false, { isMobile: true })).toBe(false)
+    expect(isSettingsSection('contributions', false, { isMobile: true })).toBe(true)
+    expect(isSettingsSection('billing', false)).toBe(true)
   })
 })

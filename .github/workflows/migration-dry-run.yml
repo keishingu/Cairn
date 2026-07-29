@@ -1,0 +1,108 @@
+name: Migration Dry-run
+
+# main 宛 PR（リリースPR）で、本番DBへのマイグレーション適用可否を事前検証する。
+# - 本番DBに接続して dry-run し、適用予定のマイグレーション一覧をジョブサマリーに出す
+# - 接続不可・マイグレーション履歴の不整合はここで検出され、PR チェックが fail する
+# - リリースPRが open の間に develop へ push が積まれても、synchronize で再検証される
+# - SQL は実行しない（dry-run）。実適用時のエラーは develop 側の DB Migrate
+#   ワークフロー（preview DB への実適用）で先に検出される想定
+#
+# セキュリティ: pull_request イベントは同一リポジトリのブランチからの PR には
+# secrets を渡す（fork からの PR のみ渡されない）。main 宛 PR は develop→main の
+# リリースPRのみを想定しているが、それ以外の同一リポジトリブランチから main 宛に
+# PR を作られると、そのブランチの内容でこのワークフローが実行され
+# SUPABASE_DB_URL_PRODUCTION が渡ってしまう。head branch が develop かつ fork
+# ではない場合のみ実行するよう制限し、他ブランチから main への PR では
+# 本番 Secret が使われないようにする。
+#
+# SUPABASE_DB_URL_PRODUCTION は production Environment の Secret としてのみ
+# 存在する（リポジトリ Secret は削除済み想定）ため、このジョブも
+# environment: production を宣言する必要がある。ただし pull_request イベントの
+# Deployment branch policy は refs/pull/<番号>/merge に対して評価され、
+# ブランチ名では判定できないため、production Environment 側で
+# refs/pull/*/merge をブランチポリシーに追加しておくこと（詳細は
+# docs/production-deployment.md）。その場合このジョブに対する実質的な保護は
+# 上記の if（head branch == develop）のみになる点に注意。
+#
+# リリースPRが open のまま develop に新しいコミットが積まれると、このワークフローは
+# synchronize で再実行される。dry-run は SQL を実行しないため、その新しい develop
+# HEAD で preview への実適用（migrate.yml）が本当に成功したかは別途確認する必要が
+# ある（release.yml の同名チェックは PR 作成時にしか走らないため、synchronize による
+# 再検証はここでカバーする）。
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: migration-dry-run-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dry-run:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check develop DB Migrate status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          RUN_JSON=$(gh api "repos/${REPO}/actions/workflows/migrate.yml/runs?head_sha=${SHA}&branch=develop" --jq '.workflow_runs[0] // empty')
+          if [ -z "$RUN_JSON" ]; then
+            echo "::error::develop (${SHA}) に対する DB Migrate ワークフローの実行が見つかりません。push 直後で未起動の可能性があるため、数分待ってから再実行してください。"
+            exit 1
+          fi
+          STATUS=$(printf '%s' "$RUN_JSON" | jq -r '.status')
+          if [ "$STATUS" != "completed" ]; then
+            echo "::error::develop の DB Migrate ワークフローがまだ実行中です（status=${STATUS}）。完了を待ってから再実行してください。"
+            exit 1
+          fi
+          CONCLUSION=$(printf '%s' "$RUN_JSON" | jq -r '.conclusion')
+          if [ "$CONCLUSION" != "success" ]; then
+            HTML_URL=$(printf '%s' "$RUN_JSON" | jq -r '.html_url')
+            echo "::error::develop への DB Migrate が失敗しています（conclusion=${CONCLUSION}）。preview DB への適用に失敗した状態のままリリースすると本番でも同じ失敗が起きるため中断します。${HTML_URL} を確認して修正してください。"
+            exit 1
+          fi
+          echo "::notice::develop の DB Migrate 実行（${SHA}）は成功しています。"
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Dry-run against production
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::error::Secret SUPABASE_DB_URL_PRODUCTION が未設定です。Settings → Secrets に Session Pooler の接続文字列を登録してください。"
+            exit 1
+          fi
+          set +e
+          OUTPUT=$(supabase db push --include-all --dry-run --db-url "$DB_URL" 2>&1)
+          STATUS=$?
+          set -e
+          printf '%s\n' "$OUTPUT"
+          {
+            echo "## 本番DB マイグレーション dry-run"
+            echo ""
+            echo '```'
+            printf '%s\n' "$OUTPUT"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error::本番DBへの migration dry-run に失敗しました。接続設定またはマイグレーション履歴の不整合を確認してください。"
+            exit "$STATUS"
+          fi

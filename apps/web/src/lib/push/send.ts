@@ -24,6 +24,15 @@ export interface PushPayload {
   url?: string
 }
 
+/** Service Worker に送る、バッジ数を含めた実際の Web Push ペイロード */
+interface PushMessage extends PushPayload {
+  /**
+   * OS のアプリアイコンに表示する未読数（Badging API 用）。
+   * 集計に失敗した場合は省略し、Service Worker 側はバッジ更新をスキップする
+   */
+  badgeCount?: number
+}
+
 interface Subscription {
   id: string
   deviceType: string
@@ -55,12 +64,26 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
     const webSubs = subs.filter(s => s.deviceType === 'web' && s.endpoint && s.keys?.p256dh && s.keys?.auth)
     const expiredIds: string[] = []
 
+    // ホーム画面 PWA のアイコンに出す未読バッジ数（badgeCount は Web Push 専用）。
+    // Push 送信時点で通知行は既に作成済みのため、この件数に新着分も含まれる。
+    // best-effort: 集計に失敗しても通知本体（と後段の Expo push）は送る
+    let badgeCount: number | undefined
+    if (webSubs.length > 0) {
+      try {
+        const { getUnreadNotificationCount } = await import('@/lib/notifications/badge')
+        badgeCount = await getUnreadNotificationCount(userId)
+      } catch (err) {
+        console.error('[sendPushToUser] badge count query failed', { message: (err as Error).message })
+      }
+    }
+    const message: PushMessage = { ...payload, ...(badgeCount !== undefined ? { badgeCount } : {}) }
+
     await Promise.allSettled(
       webSubs.map(async (s) => {
         try {
           await webpush.sendNotification(
             { endpoint: s.endpoint!, keys: s.keys! as { p256dh: string; auth: string } },
-            JSON.stringify(payload),
+            JSON.stringify(message),
           )
         } catch (err: unknown) {
           const status = (err as { statusCode?: number }).statusCode
@@ -80,6 +103,9 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
   }
 
   // Expo Push
+  // 注: ネイティブ（Expo）アプリのランチャーバッジ（setBadgeCountAsync）は
+  // 既読時に減算・クリアする同期経路が apps/mobile 側に必要になるため、本 PR では
+  // 付与しない（Web PWA バッジに範囲を限定）。Expo バッジ対応は別ブランチで行う。
   const expoSubs = subs.filter(s => s.deviceType === 'expo' && s.expoToken)
   if (expoSubs.length > 0) {
     const messages = expoSubs.map(s => {

@@ -5,6 +5,10 @@ import { headers } from 'next/headers'
 import { PCShell } from './_shells/pc-shell'
 import { MobileShell } from './_shells/mobile-shell'
 import { RealtimeProvider } from '@/components/realtime/realtime-provider'
+import { FocusWarmup } from '@/components/app/focus-warmup'
+import { AppBadgeSync } from '@/components/app/app-badge-sync'
+import { PostHogUserIdentity } from '@/components/posthog-user-identity'
+import { AppearanceDbSync } from '@/components/app/appearance-db-sync'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const headersList = await headers()
@@ -13,7 +17,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <RealtimeProvider>
-      {isMobile ? <MobileShell hideNav={isWebView} /> : <PCShell>{children}</PCShell>}
+      <PostHogUserIdentity />
+      <AppearanceDbSync />
+      <FocusWarmup />
+      <AppBadgeSync />
+      {isMobile ? (
+        <MobileShell hideNav={isWebView} webView={isWebView} />
+      ) : (
+        <PCShell>{children}</PCShell>
+      )}
     </RealtimeProvider>
   )
 }

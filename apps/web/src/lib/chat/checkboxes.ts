@@ -31,3 +31,15 @@ export function toggleCheckboxAt(content: string, checkboxIndex: number, checked
     return `${before}${isTarget ? (checked ? 'x' : ' ') : _state}${after}`
   })
 }
+
+// 指定インデックスのチェックボックスの文言だけを差し替える（チェック状態は保持する）。
+// タスク側でタイトルを変更したとき、紐付く元メッセージのチェックボックス行へ逆同期するために使う。
+export function replaceCheckboxLabelAt(content: string, checkboxIndex: number, newLabel: string): string {
+  let current = 0
+  return content.replace(CHECKBOX_RE, (whole, before, state) => {
+    const isTarget = current === checkboxIndex
+    current++
+    if (!isTarget) return whole
+    return `${before}${state}] ${newLabel}`
+  })
+}

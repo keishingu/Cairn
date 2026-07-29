@@ -1,0 +1,109 @@
+name: Mobile Internal Distribution
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Build platform
+        required: true
+        default: android
+        type: choice
+        options:
+          - android
+          - ios
+          - all
+
+jobs:
+  build:
+    name: Build preview for ${{ inputs.platform }}
+    runs-on: ubuntu-latest
+    environment: Preview
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check required settings
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          MOBILE_PREVIEW_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
+          MOBILE_PREVIEW_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "GitHub Actions secret EXPO_TOKEN is required."
+            exit 1
+          fi
+          if [ -z "$MOBILE_PREVIEW_SUPABASE_URL" ]; then
+            echo "GitHub Actions variable MOBILE_PREVIEW_SUPABASE_URL is required."
+            exit 1
+          fi
+          if [ -z "$MOBILE_PREVIEW_SUPABASE_ANON_KEY" ]; then
+            echo "GitHub Actions secret MOBILE_PREVIEW_SUPABASE_ANON_KEY is required."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Sync EAS preview environment
+        working-directory: apps/mobile
+        env:
+          MOBILE_PREVIEW_API_BASE_URL: https://develop.oss-cairn.com
+          MOBILE_PREVIEW_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
+          MOBILE_PREVIEW_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
+        run: |
+          eas env:set preview \
+            --name EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV \
+            --value preview \
+            --visibility plaintext \
+            --scope project \
+            --non-interactive
+          eas env:set preview \
+            --name EXPO_PUBLIC_API_BASE_URL \
+            --value "$MOBILE_PREVIEW_API_BASE_URL" \
+            --visibility plaintext \
+            --scope project \
+            --non-interactive
+          eas env:set preview \
+            --name EXPO_PUBLIC_SUPABASE_URL \
+            --value "$MOBILE_PREVIEW_SUPABASE_URL" \
+            --visibility plaintext \
+            --scope project \
+            --non-interactive
+          eas env:set preview \
+            --name EXPO_PUBLIC_SUPABASE_ANON_KEY \
+            --value "$MOBILE_PREVIEW_SUPABASE_ANON_KEY" \
+            --visibility sensitive \
+            --scope project \
+            --non-interactive
+
+      - name: Queue Internal Distribution build
+        working-directory: apps/mobile
+        run: |
+          if [ "${{ inputs.platform }}" = "android" ]; then
+            eas build --platform android --profile preview --non-interactive --no-wait
+          else
+            eas build \
+              --platform "${{ inputs.platform }}" \
+              --profile preview \
+              --non-interactive \
+              --refresh-ad-hoc-provisioning-profile \
+              --no-wait
+          fi
