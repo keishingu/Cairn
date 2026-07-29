@@ -17,7 +17,7 @@ function notification(overrides: Partial<{
   }
 }
 
-describe('routeFromNotification', () => {
+describe('通知からの画面遷移', () => {
   it('channelId 付きのチャネル系通知は chats へ送る', () => {
     expect(routeFromNotification(notification({
       type: 'mention',
@@ -27,6 +27,20 @@ describe('routeFromNotification', () => {
 
   it('task 通知は url がなくても tasks へ送る', () => {
     expect(routeFromNotification(notification({ type: 'task' }))).toBe('/(app)/tasks')
+  })
+
+  it('taskId 付きの AI 通知はネイティブにカードがないため tasks へ送る', () => {
+    expect(routeFromNotification(notification({
+      type: 'ai',
+      data: { channelId: 'ch-1', taskId: 'task-1' },
+    }))).toBe('/(app)/tasks')
+  })
+
+  it('taskId のない AI 通知は channelId があれば chats へ送る', () => {
+    expect(routeFromNotification(notification({
+      type: 'ai',
+      data: { channelId: 'ch-1' },
+    }))).toBe('/(app)/chats')
   })
 
   it('url があれば対応するトップレベル画面を優先する', () => {

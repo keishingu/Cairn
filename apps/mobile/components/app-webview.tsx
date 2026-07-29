@@ -1,47 +1,68 @@
 import React from 'react'
-import { Platform, View, Text, Pressable, StyleSheet, useColorScheme } from 'react-native'
+import { Linking, Platform, View, Text, Pressable, StyleSheet } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
-import type { WebViewNavigation, WebViewMessageEvent } from 'react-native-webview'
+import type {
+  WebViewProps,
+  WebViewNavigation,
+  WebViewMessageEvent,
+} from 'react-native-webview'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/api-fetch'
 import { API_BASE_URL as WEB_BASE } from '../lib/env'
 import { webPath } from '../lib/webview-path'
+import { isAccentId, isAppearanceTheme } from '@cairn/shared'
+import { useAppAppearance } from './appearance-provider'
+import {
+  NATIVE_HEADER_BACK_SCRIPT,
+  parseNativeHeaderDescriptor,
+  type NativeHeaderDescriptor,
+} from '../lib/native-header-bridge'
+import {
+  decideWebViewNavigation,
+  WEBVIEW_ORIGIN_WHITELIST,
+} from '../lib/webview-navigation'
 
-// Web 側の globals.css --bg と揃える
-const BG_DARK = '#0B0F14'
-const BG_LIGHT = '#F8FAFC'
+type ShouldStartLoadRequest = Parameters<
+  NonNullable<WebViewProps['onShouldStartLoadWithRequest']>
+>[0]
 
 export interface AppWebViewHandle {
   injectJavaScript: (script: string) => void
+  triggerNativeHeaderBack: () => void
 }
 
-interface Props {
+export interface AppWebViewProps {
   path: string
   onLoadEnd?: () => void
+  allowChatRoutes?: boolean
+  includeSafeAreaTop?: boolean
+  onNativeHeaderChange?: (header: NativeHeaderDescriptor) => void
 }
 
 export function webUrl(path: string): string {
   return `${WEB_BASE}${webPath(path)}`
 }
 
-export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function AppWebView(
-  { path, onLoadEnd },
+export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(function AppWebView(
+  { path, onLoadEnd, allowChatRoutes = false, includeSafeAreaTop = true, onNativeHeaderChange },
   ref,
 ) {
   const webViewRef = React.useRef<WebView>(null)
   const [uri, setUri] = React.useState<string | null>(null)
   const [error, setError] = React.useState(false)
   const insets = useSafeAreaInsets()
-  const colorScheme = useColorScheme()
-  const bg = colorScheme === 'dark' ? BG_DARK : BG_LIGHT
+  const { palette, updateAppearance } = useAppAppearance()
+  const bg = palette.bg
   const router = useRouter()
 
   React.useImperativeHandle(
     ref,
     () => ({
       injectJavaScript: (script) => webViewRef.current?.injectJavaScript(script),
+      triggerNativeHeaderBack: () =>
+        webViewRef.current?.injectJavaScript(NATIVE_HEADER_BACK_SCRIPT),
     }),
     [],
   )
@@ -81,17 +102,29 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
         const res = await apiFetch('/api/auth/webview-handoff', {
           method: 'POST',
         })
-        if (!res.ok) throw new Error(`handoff failed: ${res.status}`)
-        const data = (await res.json()) as { tokenHash?: string }
-        if (!data.tokenHash) throw new Error('handoff response missing tokenHash')
+        if (!res.ok) {
+          if (res.status === 401) {
+            await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined)
+            router.replace('/(auth)/login')
+            return
+          }
+          throw new Error(`handoff failed: ${res.status}`)
+        }
+        const data = (await res.json()) as { tokenHash?: string; workspaceId?: string }
+        if (!data.tokenHash || !data.workspaceId) {
+          throw new Error('handoff response missing tokenHash or workspaceId')
+        }
 
         const redirect = encodeURIComponent(webPath(targetPath))
         const th = encodeURIComponent(data.tokenHash)
+        const workspaceId = encodeURIComponent(data.workspaceId)
         initialPathRef.current = targetPath
         loadedRef.current = false
         // トークンは URL フラグメント（#th=...）で渡す。
         // フラグメントはサーバーに送信されないためアクセスログに残らない。
-        setUri(`${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}#th=${th}`)
+        setUri(
+          `${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}&workspaceId=${workspaceId}#th=${th}`,
+        )
       } catch (err) {
         // 失敗理由が Metro ログで追えるように必ず出力する
         console.error('[AppWebView] ハンドオフに失敗:', err)
@@ -152,9 +185,23 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
   }
 
   function handleMessage(event: WebViewMessageEvent) {
-    let msg: { type?: string } | null = null
+    let msg: {
+      type?: string
+      theme?: unknown
+      accentId?: unknown
+      title?: unknown
+      subtitle?: unknown
+      canGoBack?: unknown
+    } | null = null
     try {
-      msg = JSON.parse(event.nativeEvent.data) as { type?: string }
+      msg = JSON.parse(event.nativeEvent.data) as {
+        type?: string
+        theme?: unknown
+        accentId?: unknown
+        title?: unknown
+        subtitle?: unknown
+        canGoBack?: unknown
+      }
     } catch {
       return
     }
@@ -163,6 +210,17 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
     }
     if (msg?.type === 'open-chats') {
       router.push('/(app)/chats')
+    }
+    if (msg?.type === 'native-header') {
+      const descriptor = parseNativeHeaderDescriptor(msg)
+      if (descriptor) onNativeHeaderChange?.(descriptor)
+    }
+    if (
+      msg?.type === 'appearance-changed' &&
+      isAppearanceTheme(msg.theme) &&
+      isAccentId(msg.accentId)
+    ) {
+      updateAppearance({ theme: msg.theme, accentId: msg.accentId })
     }
   }
 
@@ -178,25 +236,42 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
   }
 
   // WebView 内のチャット導線は、Web ではなくネイティブのチャットタブへ委譲する。
-  function handleShouldStartLoadWithRequest(request: WebViewNavigation) {
-    const url = request.url
-    // about:blank など内部リソースは通す
-    if (url === 'about:blank' || url.startsWith('about:')) return true
-    const chatsPath = `${trustedOrigin}/chats`
-    if (url === chatsPath || url.startsWith(`${chatsPath}/`) || url.startsWith(`${chatsPath}?`)) {
+  function handleShouldStartLoadWithRequest(request: ShouldStartLoadRequest) {
+    const decision = decideWebViewNavigation({
+      url: request.url,
+      trustedOrigin,
+      allowChatRoutes,
+      isTopFrame: request.isTopFrame,
+      isAndroid: Platform.OS === 'android',
+    })
+    if (decision === 'open-native-chat') {
       router.push('/(app)/chats')
       return false
     }
-    // 信頼済みオリジンの HTTPS のみ許可
-    return url.startsWith(`${trustedOrigin}/`) || url === trustedOrigin
+    if (decision === 'open-external') {
+      void Linking.openURL(request.url).catch((err) => {
+        console.error('[AppWebView] 外部URLを開けませんでした:', err)
+      })
+      return false
+    }
+    return decision === 'allow'
   }
 
   if (error) {
     return (
-      <View style={[styles.fill, styles.center, { backgroundColor: bg, paddingTop: insets.top }]}>
-        <Text style={styles.errorText}>読み込みに失敗しました</Text>
-        <Pressable style={styles.retryButton} onPress={() => void performHandoff(pathRef.current)}>
-          <Text style={styles.retryLabel}>再試行</Text>
+      <View
+        style={[
+          styles.fill,
+          styles.center,
+          { backgroundColor: bg, paddingTop: includeSafeAreaTop ? insets.top : 0 },
+        ]}
+      >
+        <Text style={[styles.errorText, { color: palette.text3 }]}>読み込みに失敗しました</Text>
+        <Pressable
+          style={[styles.retryButton, { backgroundColor: palette.accent }]}
+          onPress={() => void performHandoff(pathRef.current)}
+        >
+          <Text style={[styles.retryLabel, { color: palette.onAccent }]}>再試行</Text>
         </Pressable>
       </View>
     )
@@ -205,12 +280,19 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, Props>(function App
   if (!uri) return <View style={[styles.fill, { backgroundColor: bg }]} />
 
   return (
-    <View style={[styles.fill, { backgroundColor: bg, paddingTop: insets.top }]}>
+    <View
+      style={[
+        styles.fill,
+        { backgroundColor: bg, paddingTop: includeSafeAreaTop ? insets.top : 0 },
+      ]}
+    >
       <WebView
         ref={webViewRef}
         source={{ uri }}
         style={styles.webview}
-        originWhitelist={[trustedOrigin, `${trustedOrigin}/*`, 'about:*']}
+        // originWhitelist 外のURLはreact-native-webviewがOSへ直接渡すため、
+        // HTTP(S)はここで受け、上の信頼済みオリジン判定で許可・拒否する。
+        originWhitelist={WEBVIEW_ORIGIN_WHITELIST}
         onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
         setSupportMultipleWindows={false}
         javaScriptCanOpenWindowsAutomatically={false}
@@ -228,12 +310,11 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center', gap: 16 },
   webview: { flex: 1 },
-  errorText: { fontSize: 15, color: '#94A3B8' },
+  errorText: { fontSize: 15 },
   retryButton: {
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: '#2563EB',
   },
-  retryLabel: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  retryLabel: { fontSize: 15, fontWeight: '600' },
 })

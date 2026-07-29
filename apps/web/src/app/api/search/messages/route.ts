@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
@@ -38,9 +39,13 @@ export async function GET(req: Request) {
       .select({ one: sql<number>`1` })
       .from(projectMembers)
       .where(and(eq(projectMembers.projectId, channels.projectId), eq(projectMembers.userId, ctx.userId)))
-    const accessCondition = role === 'guest'
+    const roleAccessCondition = role === 'guest'
       ? or(exists(memberSubquery), exists(guestProjectAccess))
       : or(and(eq(channels.isPrivate, false), ne(channels.type, 'dm')), exists(memberSubquery))
+    const accessCondition = and(
+      FEATURE_FLAGS.dm ? undefined : ne(channels.type, 'dm'),
+      roleAccessCondition,
+    )
 
     const rows = await db
       .select({

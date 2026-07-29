@@ -1,5 +1,5 @@
-import { AppWebView } from '../../../components/app-webview'
+import { NativeWebViewScreen } from '../../../components/native-webview-screen'
 
 export default function FilesScreen() {
-  return <AppWebView path="/files" />
+  return <NativeWebViewScreen path="/files" title="ファイル" />
 }

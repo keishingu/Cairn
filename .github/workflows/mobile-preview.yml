@@ -1,33 +1,60 @@
 name: Mobile Preview
 
-# apps/mobile に変更があった PR でのみ EAS Update を発行し、
-# Expo Go で読み込める QR コード付きのプレビューリンクを PR にコメントする。
-# EAS の無料枠を消費しすぎないよう、対象パスを apps/mobile 配下に限定している。
 on:
   pull_request:
     paths:
       - 'apps/mobile/**'
+      - 'packages/shared/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/mobile-preview.yml'
+      - '.github/scripts/mobile-preview-queue.cjs'
 
+# 同じ PR の古い実行だけを止める。異なる PR は EAS 同期直前の FIFO ゲートで直列化する。
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: mobile-preview-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   preview:
-    name: Publish EAS Update preview
+    name: Publish Mobile EAS Update preview
     runs-on: ubuntu-latest
     environment: Preview
-    permissions:
-      contents: read
-      deployments: read
-      pull-requests: write
     if: github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check required settings
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          MOBILE_PREVIEW_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
+          MOBILE_PREVIEW_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "GitHub Actions secret EXPO_TOKEN is required."
+            exit 1
+          fi
+          if [ -z "$MOBILE_PREVIEW_SUPABASE_URL" ]; then
+            echo "GitHub Actions variable MOBILE_PREVIEW_SUPABASE_URL is required."
+            exit 1
+          fi
+          if [ -z "$MOBILE_PREVIEW_SUPABASE_ANON_KEY" ]; then
+            echo "GitHub Actions secret MOBILE_PREVIEW_SUPABASE_ANON_KEY is required."
+            exit 1
+          fi
 
-      - uses: pnpm/action-setup@v4
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
-      - uses: actions/setup-node@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: pnpm
@@ -35,59 +62,104 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - uses: expo/expo-github-action@v8
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Resolve Vercel Preview URL for this commit
-        id: vercel-preview
-        uses: actions/github-script@v7
+      - name: Wait for earlier Mobile Preview runs
+        uses: actions/github-script@v8
         with:
           script: |
-            const sha = context.payload.pull_request.head.sha
-            const deadline = Date.now() + 5 * 60 * 1000
+            const { findEarlierActiveRuns } = require(
+              `${process.env.GITHUB_WORKSPACE}/.github/scripts/mobile-preview-queue.cjs`,
+            )
+            const deadline = Date.now() + 60 * 60 * 1000
 
             while (Date.now() < deadline) {
-              const { data: deployments } = await github.rest.repos.listDeployments({
+              const response = await github.rest.actions.listWorkflowRuns({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                sha,
+                workflow_id: 'mobile-preview.yml',
                 per_page: 100,
               })
 
-              for (const deployment of deployments) {
-                const { data: statuses } = await github.rest.repos.listDeploymentStatuses({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  deployment_id: deployment.id,
-                  per_page: 100,
-                })
-                const ready = statuses.find((status) =>
-                  status.state === 'success' && Boolean(status.environment_url),
-                )
-
-                if (ready?.environment_url) {
-                  const url = ready.environment_url.replace(/\/$/, '')
-                  core.setOutput('url', url)
-                  core.info(`Using Vercel Preview: ${url}`)
-                  return
-                }
+              let earlierRuns
+              try {
+                earlierRuns = findEarlierActiveRuns(response.data.workflow_runs, context.runId)
+              } catch (error) {
+                core.info(`${error.message}; retrying in 10 seconds.`)
+                await new Promise((resolve) => setTimeout(resolve, 10_000))
+                continue
               }
 
-              core.info(`Waiting for Vercel Preview deployment of ${sha}…`)
+              if (earlierRuns.length === 0) {
+                core.info('No earlier Mobile Preview run is active; entering the EAS update section.')
+                return
+              }
+
+              const waitingFor = earlierRuns
+                .map((run) => `#${run.run_number} (${run.status})`)
+                .join(', ')
+              core.info(`Waiting for earlier Mobile Preview runs: ${waitingFor}`)
               await new Promise((resolve) => setTimeout(resolve, 10_000))
             }
 
-            core.setFailed('Vercel Preview URL was not ready within 5 minutes')
+            core.setFailed('Timed out waiting for earlier Mobile Preview runs.')
 
-      - name: Publish preview update and comment on PR
+      - name: Sync EAS preview environment
+        working-directory: apps/mobile
+        env:
+          # PR 固有の *.vercel.app は Deployment Protection で Vercel 認証へ
+          # リダイレクトされ得るため、モバイル WebView は公開済みの固定ドメインを使う。
+          MOBILE_PREVIEW_API_BASE_URL: https://develop.oss-cairn.com
+          MOBILE_PREVIEW_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
+          MOBILE_PREVIEW_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
+        run: |
+          eas env:set preview \
+            --name EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV \
+            --value preview \
+            --visibility plaintext \
+            --scope project \
+            --non-interactive
+          eas env:set preview \
+            --name EXPO_PUBLIC_API_BASE_URL \
+            --value "$MOBILE_PREVIEW_API_BASE_URL" \
+            --visibility plaintext \
+            --scope project \
+            --non-interactive
+          eas env:set preview \
+            --name EXPO_PUBLIC_SUPABASE_URL \
+            --value "$MOBILE_PREVIEW_SUPABASE_URL" \
+            --visibility plaintext \
+            --scope project \
+            --non-interactive
+          eas env:set preview \
+            --name EXPO_PUBLIC_SUPABASE_ANON_KEY \
+            --value "$MOBILE_PREVIEW_SUPABASE_ANON_KEY" \
+            --visibility sensitive \
+            --scope project \
+            --non-interactive
+
+      - name: Publish EAS Update
         uses: expo/expo-github-action/preview@v8
+        env:
+          # EAS CLI は --environment preview の値を内部で読み込むが、Action が
+          # PR コメント用の Expo config を再評価するときにも同じvariantを使わせる。
+          EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV: preview
         with:
           working-directory: apps/mobile
-          command: eas update --auto --branch pr-${{ github.event.number }}
-        env:
-          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.MOBILE_PREVIEW_EAS_PROJECT_ID }}
-          EXPO_PUBLIC_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
-          EXPO_PUBLIC_API_BASE_URL: ${{ steps.vercel-preview.outputs.url }}
+          command: eas update --auto --branch pr-${{ github.event.number }} --environment preview --non-interactive
+
+      # PR固有QRとは別に、Internal Distribution buildが購読するpreviewチャネルへも
+      # 同じrevisionを配信する。異なるPRは上のFIFOゲートで直列化され、最後に成功した
+      # Mobile Previewが検証端末の最新版になる。
+      - name: Publish Internal Distribution EAS Update
+        working-directory: apps/mobile
+        run: |
+          eas update \
+            --channel preview \
+            --message "PR #${{ github.event.number }} ${{ github.event.pull_request.head.sha }}" \
+            --environment preview \
+            --non-interactive

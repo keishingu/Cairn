@@ -9,6 +9,7 @@ import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { GalleryItemDto } from '@/app/api/projects/[id]/gallery/route'
 import { processImageForUpload } from '@/lib/process-image'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { createClient } from '@/lib/supabase/client'
 
 interface UploadState {
   total: number
@@ -17,15 +18,60 @@ interface UploadState {
 }
 
 async function uploadFile(projectId: string, original: File): Promise<void> {
-  const { file, takenAt, latitude, longitude } = await processImageForUpload(original)
-  const fd = new FormData()
-  fd.append('file', file)
-  if (takenAt) fd.append('takenAt', takenAt.toISOString())
-  if (latitude !== null) fd.append('latitude', String(latitude))
-  if (longitude !== null) fd.append('longitude', String(longitude))
-  const res = await fetchWithAuth(`/api/projects/${projectId}/gallery`, { method: 'POST', body: fd })
+  const {
+    file: derivedFile,
+    originalFile,
+    takenAt,
+    latitude,
+    longitude,
+  } = await processImageForUpload(original)
+  const urlRes = await fetchWithAuth(`/api/projects/${projectId}/gallery/upload-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      original: { fileName: originalFile.name, mimeType: originalFile.type },
+      derived: { fileName: derivedFile.name, mimeType: derivedFile.type },
+    }),
+  })
+  if (!urlRes.ok) {
+    const data = (await urlRes.json().catch(() => ({}))) as { error?: string }
+    throw new Error(data.error ?? `${original.name} のアップロード準備に失敗しました`)
+  }
+
+  const signed = (await urlRes.json()) as {
+    uploadId: string
+    derived: { bucket: string; token: string; path: string; storagePath: string }
+    original: { bucket: string; token: string; path: string; storagePath: string } | null
+  }
+  const supabase = createClient()
+  const uploads = [
+    supabase.storage
+      .from(signed.derived.bucket)
+      .uploadToSignedUrl(signed.derived.path, signed.derived.token, derivedFile),
+    ...(signed.original
+      ? [
+          supabase.storage
+            .from(signed.original.bucket)
+            .uploadToSignedUrl(signed.original.path, signed.original.token, originalFile),
+        ]
+      : []),
+  ]
+  const uploadResults = await Promise.all(uploads)
+  const uploadError = uploadResults.find((result) => result.error)?.error
+  if (uploadError) throw new Error(`${original.name} のアップロードに失敗しました`)
+
+  const res = await fetchWithAuth(`/api/projects/${projectId}/gallery/finalize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      uploadId: signed.uploadId,
+      takenAt: takenAt?.toISOString() ?? null,
+      latitude: latitude === null ? null : String(latitude),
+      longitude: longitude === null ? null : String(longitude),
+    }),
+  })
   if (!res.ok) {
-    const data = await res.json().catch(() => ({})) as { error?: string }
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
     throw new Error(data.error ?? `${original.name} のアップロードに失敗しました`)
   }
 }
@@ -37,7 +83,11 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
   const [uploadState, setUploadState] = React.useState<UploadState | null>(null)
   const [deleteTargetId, setDeleteTargetId] = React.useState<string | null>(null)
 
-  const { data: items = [], isLoading, isError } = useQuery<GalleryItemDto[]>({
+  const {
+    data: items = [],
+    isLoading,
+    isError,
+  } = useQuery<GalleryItemDto[]>({
     queryKey: ['project-gallery', projectId],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/projects/${projectId}/gallery`)
@@ -54,18 +104,18 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
     setUploadState({ total: files.length, done: 0, errors: [] })
 
     const results = await Promise.allSettled(
-      files.map(file =>
+      files.map((file) =>
         uploadFile(projectId, file).then(() => {
-          setUploadState(s => s ? { ...s, done: s.done + 1 } : s)
-        })
-      )
+          setUploadState((s) => (s ? { ...s, done: s.done + 1 } : s))
+        }),
+      ),
     )
 
     const errors = results
       .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-      .map(r => r.reason instanceof Error ? r.reason.message : 'アップロードに失敗しました')
+      .map((r) => (r.reason instanceof Error ? r.reason.message : 'アップロードに失敗しました'))
 
-    setUploadState(s => s ? { ...s, errors } : s)
+    setUploadState((s) => (s ? { ...s, errors } : s))
     void queryClient.invalidateQueries({ queryKey: ['project-gallery', projectId] })
 
     if (errors.length === 0) {
@@ -74,21 +124,36 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
   }
 
   const deleteItem = async (itemId: string) => {
-    const res = await fetchWithAuth(`/api/projects/${projectId}/gallery/${itemId}`, { method: 'DELETE' })
+    const res = await fetchWithAuth(`/api/projects/${projectId}/gallery/${itemId}`, {
+      method: 'DELETE',
+    })
     if (!res.ok) throw new Error('削除に失敗しました')
     void queryClient.invalidateQueries({ queryKey: ['project-gallery', projectId] })
   }
 
   const isUploading = uploadState !== null && uploadState.done < uploadState.total
 
-  const lightboxImages = React.useMemo<LightboxImage[]>(() => items.map(it => ({
-    key: it.id,
-    src: it.publicUrl,
-  })), [items])
+  const lightboxImages = React.useMemo<LightboxImage[]>(
+    () =>
+      items.map((it) => ({
+        key: it.id,
+        src: it.originalUrl ?? it.publicUrl,
+      })),
+    [items],
+  )
 
   if (isLoading) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text-4)',
+          fontSize: 13,
+        }}
+      >
         読み込み中...
       </div>
     )
@@ -96,7 +161,16 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
 
   if (isError) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red-text)', fontSize: 13 }}>
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--red-text)',
+          fontSize: 13,
+        }}
+      >
         ギャラリーの取得に失敗しました
       </div>
     )
@@ -119,15 +193,21 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '5px 10px', borderRadius: 7,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '5px 10px',
+              borderRadius: 7,
               border: '1px solid var(--border)',
-              background: 'var(--card)', color: 'var(--text-2)',
-              fontSize: 12, cursor: isUploading ? 'default' : 'pointer',
-              fontFamily: 'inherit', opacity: isUploading ? 0.6 : 1,
+              background: 'var(--card)',
+              color: 'var(--text-2)',
+              fontSize: 12,
+              cursor: isUploading ? 'default' : 'pointer',
+              fontFamily: 'inherit',
+              opacity: isUploading ? 0.6 : 1,
             }}
           >
-            <Icon name="plus" size={13}/>
+            <Icon name="plus" size={13} />
             {isUploading
               ? `${uploadState.done}/${uploadState.total} 枚アップロード中...`
               : '写真を追加'}
@@ -135,11 +215,35 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
         </div>
 
         {uploadState?.errors && uploadState.errors.length > 0 && (
-          <div style={{ marginBottom: 8, padding: '6px 10px', borderRadius: 6, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {uploadState.errors.map((err, i) => <span key={i}>{err}</span>)}
+          <div
+            style={{
+              marginBottom: 8,
+              padding: '6px 10px',
+              borderRadius: 6,
+              background: 'var(--red-soft)',
+              color: 'var(--red-text)',
+              fontSize: 12,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+            }}
+          >
+            {uploadState.errors.map((err, i) => (
+              <span key={i}>{err}</span>
+            ))}
             <button
               onClick={() => setUploadState(null)}
-              style={{ alignSelf: 'flex-end', marginTop: 4, fontSize: 11, background: 'none', border: 'none', color: 'var(--red-text)', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}
+              style={{
+                alignSelf: 'flex-end',
+                marginTop: 4,
+                fontSize: 11,
+                background: 'none',
+                border: 'none',
+                color: 'var(--red-text)',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                fontFamily: 'inherit',
+              }}
             >
               閉じる
             </button>
@@ -147,16 +251,33 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
         )}
 
         {items.length === 0 && !isUploading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '40px 0', color: 'var(--text-4)' }}>
-            <Icon name="image" size={28}/>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              padding: '40px 0',
+              color: 'var(--text-4)',
+            }}
+          >
+            <Icon name="image" size={28} />
             <span style={{ fontSize: 13 }}>まだ写真がありません</span>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
-            {items.map(item => (
+            {items.map((item) => (
               <div
                 key={item.id}
-                style={{ position: 'relative', aspectRatio: '1/1', borderRadius: 5, overflow: 'hidden', cursor: 'pointer', background: 'var(--card-2)' }}
+                style={{
+                  position: 'relative',
+                  aspectRatio: '1/1',
+                  borderRadius: 5,
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                  background: 'var(--card-2)',
+                }}
                 onClick={() => setLightboxIndex(items.indexOf(item))}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -166,11 +287,26 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   loading="lazy"
                 />
-                <div style={{ position: 'absolute', top: 4, right: 4 }} onClick={e => e.stopPropagation()}>
+                <div
+                  style={{ position: 'absolute', top: 4, right: 4 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <RowActionMenu
-                    triggerStyle={{ width: 24, height: 24, padding: 0, borderRadius: 6, background: 'rgba(0,0,0,0.55)', color: '#fff' }}
+                    triggerStyle={{
+                      width: 24,
+                      height: 24,
+                      padding: 0,
+                      borderRadius: 6,
+                      background: 'rgba(0,0,0,0.55)',
+                      color: '#fff',
+                    }}
                     actions={[
-                      { icon: 'trash', label: '削除', danger: true, onSelect: () => setDeleteTargetId(item.id) },
+                      {
+                        icon: 'trash',
+                        label: '削除',
+                        danger: true,
+                        onSelect: () => setDeleteTargetId(item.id),
+                      },
                     ]}
                   />
                 </div>
@@ -184,7 +320,9 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
         open={deleteTargetId !== null}
         title="写真を削除"
         message="この写真を削除しますか？この操作は取り消せません。"
-        onConfirm={async () => { if (deleteTargetId) await deleteItem(deleteTargetId) }}
+        onConfirm={async () => {
+          if (deleteTargetId) await deleteItem(deleteTargetId)
+        }}
         onClose={() => setDeleteTargetId(null)}
       />
 

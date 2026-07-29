@@ -12,6 +12,7 @@ import type { MessageDto } from './dto'
 
 type PostMessageInput = {
   attachmentFileIds?: string[] | undefined
+  clientMessageId?: string | undefined
   content: string
   messageType?: MessageDto['messageType'] | undefined
   parentMessageId?: string | null | undefined
@@ -25,12 +26,75 @@ type PostMessageArgs = {
   role: WorkspaceRole
 }
 
-export async function postMessage({ channelId, payload, userId, workspaceId, role }: PostMessageArgs) {
+export async function postMessage({
+  channelId,
+  payload,
+  userId,
+  workspaceId,
+  role,
+}: PostMessageArgs) {
   try {
     const { db } = await import('@cairn/db')
     const { messages, profiles, messageAttachments, files, channels, tasks, workspaceMembers } =
       await import('@cairn/db')
     const { eq, and, isNull, inArray } = await import('drizzle-orm')
+
+    // モバイルのオフラインキューは最初の送信から同じ UUID を使い続ける。
+    // 応答が端末へ届く前に回線が切れて再送されても、既存行を返して二重投稿を防ぐ。
+    if (payload.clientMessageId) {
+      const [existing] = await db
+        .select({
+          id: messages.id,
+          channelId: messages.channelId,
+          content: messages.content,
+          messageType: messages.messageType,
+          senderId: messages.senderId,
+          createdAt: messages.createdAt,
+          parentMessageId: messages.parentMessageId,
+        })
+        .from(messages)
+        .where(eq(messages.id, payload.clientMessageId))
+        .limit(1)
+
+      if (existing) {
+        if (existing.channelId !== channelId || existing.senderId !== userId) {
+          return NextResponse.json({ error: 'clientMessageId が競合しています' }, { status: 409 })
+        }
+        const [existingProfile] = await db
+          .select({
+            displayName: workspaceMemberDisplayName(
+              workspaceMembers.displayName,
+              profiles.displayName,
+            ),
+            avatarUrl: workspaceMembers.avatarUrl,
+          })
+          .from(profiles)
+          .leftJoin(
+            workspaceMembers,
+            and(
+              eq(workspaceMembers.userId, profiles.id),
+              eq(workspaceMembers.workspaceId, workspaceId),
+            ),
+          )
+          .where(eq(profiles.id, existing.senderId))
+
+        return NextResponse.json({
+          id: existing.id,
+          content: existing.content,
+          messageType: existing.messageType,
+          senderId: existing.senderId,
+          senderName: existingProfile?.displayName ?? '不明',
+          senderAvatarUrl: existingProfile?.avatarUrl ?? null,
+          createdAt: existing.createdAt.toISOString(),
+          isEdited: false,
+          reactions: [],
+          attachments: [],
+          parentMessageId: existing.parentMessageId,
+          replyTo: null,
+          bookmarked: false,
+        } satisfies MessageDto)
+      }
+    }
 
     // 引用返信の親は、同一チャンネルの未削除メッセージに限定する。
     // 他チャンネルの ID を親に偽装して内容を引用バーに漏らす攻撃を防ぐ
@@ -96,6 +160,7 @@ export async function postMessage({ channelId, payload, userId, workspaceId, rol
       const [message] = await tx
         .insert(messages)
         .values({
+          ...(payload.clientMessageId ? { id: payload.clientMessageId } : {}),
           channelId,
           senderId: userId,
           content,
@@ -127,6 +192,7 @@ export async function postMessage({ channelId, payload, userId, workspaceId, rol
         const projectId = channel.projectId
         await tx.insert(tasks).values(
           checkboxes.map((checkbox) => ({
+            workspaceId,
             projectId,
             title: checkbox.text,
             status: (checkbox.checked ? 'done' : 'todo') as 'done' | 'todo',

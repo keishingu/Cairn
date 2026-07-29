@@ -1,0 +1,83 @@
+name: Desktop Build
+
+# main への push（apps/desktop 変更時）で Desktop（Electron）アプリの本番インストーラを
+# ビルドし、GitHub Release（ローリングタグ desktop-latest）へ添付して一般公開する。
+# develop 向けの限定配布ビルドは行わない（開発中は各自ローカルで `pnpm --filter @cairn/desktop dev` する）。
+#
+# desktop-latest は「常に main の最新」を指すローリングリリース。push のたびに
+# 既存アセットを削除して同じタグへ上書きし、ダウンロードURLを固定に保つ。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/desktop/**'
+      - '.github/workflows/desktop-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-build-main
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact_glob: apps/desktop/dist/*.dmg
+          - os: windows-latest
+            artifact_glob: apps/desktop/dist/*.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build desktop app (prod)
+        # コード署名証明書は未設定。mac で署名を自動探索して失敗しないよう無効化する
+        # （未署名ビルド。配布先で Gatekeeper/SmartScreen の警告が出る）。
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: pnpm --filter @cairn/desktop build:prod
+
+      - name: Upload build artifact (CI 確認用)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cairn-desktop-${{ runner.os }}
+          path: ${{ matrix.artifact_glob }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish to rolling release (desktop-latest)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Windows runner の run: 既定シェルは pwsh。このスクリプトは
+        # set -euo pipefail 等の bash 構文なので明示しないと Windows で失敗する
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="desktop-latest"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Cairn Desktop（最新ビルド）" \
+              --notes "main の最新コミットからビルドした Desktop アプリです。push のたびに上書きされます。未署名のため、初回起動時に OS の警告が出る場合があります。" \
+              --latest=false
+          fi
+          # 同じ OS 分の古いアセットだけ消して、他 OS のアセットは残す
+          for f in ${{ matrix.artifact_glob }}; do
+            NAME="$(basename "$f")"
+            gh release delete-asset "$TAG" "$NAME" --yes 2>/dev/null || true
+          done
+          gh release upload "$TAG" ${{ matrix.artifact_glob }} --clobber

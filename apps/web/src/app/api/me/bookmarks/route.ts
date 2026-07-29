@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
@@ -71,6 +72,7 @@ export async function GET(_req: Request) {
       .where(and(
         eq(messageBookmarks.userId, ctx.userId),
         eq(channels.workspaceId, ctx.workspaceId),
+        FEATURE_FLAGS.dm ? undefined : sql`${channels.type} <> 'dm'`,
         isNull(messages.deletedAt),
         or(
           nonPrivateVisible,

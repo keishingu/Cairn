@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { Icon, Avatar, AvatarStack, UnreadBadge } from '../primitives'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
@@ -294,17 +295,19 @@ export const ChannelList = ({
         <ChatSidebarItem key={c.id} active={channelId === c.id} onClick={() => onSelectChannel(c.id)} prefix={c.isPrivate ? 'lock' : '#'} label={c.name ?? ''} badge={c.unreadCount} mobile={isMobile} memberNames={c.memberNames} memberCount={c.memberCount}/>
       ))}
     </ChatSidebarSection>
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span>ダイレクトメッセージ</span>
-        <DmPicker members={members} onStartDm={onStartDm}/>
+    {FEATURE_FLAGS.dm && (
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>ダイレクトメッセージ</span>
+          <DmPicker members={members} onStartDm={onStartDm}/>
+        </div>
+        <div>
+          {dms.map(d => (
+            <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => onSelectChannel(d.id)} avatar={d.participantName} {...(d.participantAvatarUrl ? { avatarUrl: d.participantAvatarUrl } : {})} label={d.participantName} badge={d.unreadCount} mobile={isMobile}/>
+          ))}
+        </div>
       </div>
-      <div>
-        {dms.map(d => (
-          <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => onSelectChannel(d.id)} avatar={d.participantName} {...(d.participantAvatarUrl ? { avatarUrl: d.participantAvatarUrl } : {})} label={d.participantName} badge={d.unreadCount} mobile={isMobile}/>
-        ))}
-      </div>
-    </div>
+    )}
     <ChatSidebarSection title="アプリ">
       <ChatSidebarItem prefix="✨" label="AIアシスタント" mobile={isMobile}/>
     </ChatSidebarSection>

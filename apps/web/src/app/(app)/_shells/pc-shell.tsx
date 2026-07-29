@@ -28,6 +28,14 @@ function isValidView(v: string | null | undefined): v is ProjectsView {
   return v === 'list' || v === 'calendar' || v === 'kanban'
 }
 
+// PageId から遷移先パスへの対応。calendar / kanban は一覧と同じ /projects で、
+// ビューの出し分けは localStorage で行う（CLAUDE.md「プロジェクトビューは localStorage で管理」）。
+// navigate と prefetch で同じ対応表を使うために切り出す。
+function pagePath(p: PageId): string {
+  if (p === 'calendar' || p === 'kanban' || p === 'projects') return '/projects'
+  return `/${p}`
+}
+
 function loadStoredView(): ProjectsView {
   if (typeof window === 'undefined') return 'list'
   const saved = localStorage.getItem(PC_STORAGE_KEY)
@@ -90,11 +98,18 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
   }, [pathnameSection])
 
   const navigate = React.useCallback((p: PageId) => {
-    if (p === 'calendar') { setProjectsView('calendar'); router.push('/projects') }
-    else if (p === 'kanban') { setProjectsView('kanban'); router.push('/projects') }
-    else if (p === 'projects') { setProjectsView('list'); router.push('/projects') }
-    else router.push(`/${p}`)
+    if (p === 'calendar') setProjectsView('calendar')
+    else if (p === 'kanban') setProjectsView('kanban')
+    else if (p === 'projects') setProjectsView('list')
+    router.push(pagePath(p))
   }, [router, setProjectsView])
+
+  // コールドスタート対策 A-1: サイドバー hover 時に遷移先ルートを先読みし、
+  // RSC ペイロードとサーバーレス関数を温めてクリック時の初回遷移を速くする。
+  // router.prefetch は同一ルートの重複呼び出しを内部でデデュープするため hover 連打は無害。
+  const prefetchPage = React.useCallback((p: PageId) => {
+    router.prefetch(pagePath(p))
+  }, [router])
 
   // Esc=閉じる: 最前面のオーバーレイ（通知 → 詳細パネル）を1つ閉じる。
   // Modal（ConfirmDialog や各種作成モーダル）が前面にある時は介入しない。
@@ -132,6 +147,7 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
       openPanel,
       openMember,
       openNotif: () => setNotifOpen(true),
+      isWebView: false,
       projectsView,
       setProjectsView,
       crossSearchNonce,
@@ -140,7 +156,7 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
       <div className="app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
         <NavigationProgress />
         <div className="app" style={{ width: '100%', height: '100%', display: 'flex', background: 'var(--bg)', overflow: 'hidden' }}>
-          <Sidebar page={page} setPage={navigate} openPanel={openPanel} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar}/>
+          <Sidebar page={page} setPage={navigate} prefetchPage={prefetchPage} openPanel={openPanel} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar}/>
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, position: 'relative' }}>
             <div style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0, position: 'relative' }}>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>

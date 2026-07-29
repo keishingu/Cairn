@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
@@ -27,7 +28,7 @@ export async function GET() {
     if (error) return error
 
     const { db, files, profiles, projects, projectMembers, messageAttachments, messages, channels, channelMembers, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')
-    const { eq, and, desc, isNull, isNotNull, inArray, sql, exists, or, ne } = await import('drizzle-orm')
+    const { eq, and, desc, isNull, isNotNull, inArray, sql, exists, not, or, ne } = await import('drizzle-orm')
     const { isIndexable } = await import('@/lib/ai/extract-text')
 
     const role = ctx.role
@@ -88,6 +89,64 @@ export async function GET() {
         channelAccessCondition,
       ))
 
+    // DM 停止中は、参加者本人やアップロード者本人であっても DM 由来のファイルを
+    // グローバルファイル一覧へ露出させない。添付と metadata の両経路を対象にする。
+    const dmAttachedFileSq = db
+      .select({ one: sql<number>`1` })
+      .from(messageAttachments)
+      .innerJoin(messages, eq(messageAttachments.messageId, messages.id))
+      .innerJoin(channels, eq(messages.channelId, channels.id))
+      .where(and(
+        eq(messageAttachments.fileId, files.id),
+        eq(channels.type, 'dm'),
+      ))
+
+    const dmMetadataFileSq = db
+      .select({ one: sql<number>`1` })
+      .from(channels)
+      .where(and(
+        eq(channels.type, 'dm'),
+        sql`(
+          ${channels.id}::text = ${files.metadata}->>'channelId'
+          or ${files.metadata}->'channelIds' @> jsonb_build_array(${channels.id}::text)
+        )`,
+      ))
+
+    const visibleNonDmAttachedFileSq = db
+      .select({ one: sql<number>`1` })
+      .from(messageAttachments)
+      .innerJoin(messages, eq(messageAttachments.messageId, messages.id))
+      .innerJoin(channels, eq(messages.channelId, channels.id))
+      .where(and(
+        eq(messageAttachments.fileId, files.id),
+        ne(channels.type, 'dm'),
+        channelAccessCondition,
+      ))
+
+    const visibleNonDmMetadataFileSq = db
+      .select({ one: sql<number>`1` })
+      .from(channels)
+      .where(and(
+        ne(channels.type, 'dm'),
+        sql`(
+          ${channels.id}::text = ${files.metadata}->>'channelId'
+          or ${files.metadata}->'channelIds' @> jsonb_build_array(${channels.id}::text)
+        )`,
+        channelAccessCondition,
+      ))
+
+    const visibleNonDmFileCondition = role === 'guest'
+      ? or(
+          exists(fileProjectMemberSq),
+          exists(visibleNonDmAttachedFileSq),
+          exists(visibleNonDmMetadataFileSq),
+        )
+      : or(
+          isNotNull(files.projectId),
+          exists(visibleNonDmAttachedFileSq),
+          exists(visibleNonDmMetadataFileSq),
+        )
+
     const visibleFileCondition = role === 'guest'
       ? or(
           eq(files.uploadedBy, ctx.userId),
@@ -133,6 +192,12 @@ export async function GET() {
       .where(and(
         eq(files.workspaceId, ctx.workspaceId),
         isNull(galleryItems.id),
+        FEATURE_FLAGS.dm
+          ? undefined
+          : or(
+              and(not(exists(dmAttachedFileSq)), not(exists(dmMetadataFileSq))),
+              visibleNonDmFileCondition,
+            ),
         visibleFileCondition,
       ))
       .orderBy(desc(files.createdAt))

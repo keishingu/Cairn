@@ -74,9 +74,10 @@ async function checkOpenAI(): Promise<ServiceStatus> {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         messages: [{ role: 'user', content: 'hi' }],
-        max_tokens: 1,
+        // GPT-5 系は max_tokens を受け付けないため、Chat Completions の後継パラメータを使う。
+        max_completion_tokens: 1,
       }),
     })
     const latencyMs = Date.now() - t

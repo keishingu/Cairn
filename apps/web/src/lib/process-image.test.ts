@@ -81,6 +81,7 @@ describe('processImageForUpload', () => {
     })
     expect(result.file.name).toBe('avatar.jpg')
     expect(result.file.type).toBe('image/jpeg')
+    expect(result.originalFile).toBe(original)
   })
 
   it('透過 PNG は PNG のまま維持する', async () => {

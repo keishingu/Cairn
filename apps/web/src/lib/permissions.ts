@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { db, channels, channelMembers, projects, projectMembers, messages, messageAttachments } from '@cairn/db'
 import { eq, and, sql, inArray } from 'drizzle-orm'
 import { getWorkspaceRole, isWorkspaceMember, type WorkspaceRole } from './access/membership'
@@ -101,6 +102,10 @@ export async function requireChannelAccess(
 
   if (!channel || channel.effectiveWorkspaceId !== workspaceId) {
     return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+  }
+
+  if (channel.type === 'dm' && !FEATURE_FLAGS.dm) {
+    return NextResponse.json({ error: 'DM機能は現在利用できません' }, { status: 404 })
   }
 
   const membersOnly = channel.isPrivate || channel.type === 'dm'
@@ -221,7 +226,9 @@ async function canAccessViaAnyChannel(
     .leftJoin(projects, eq(channels.projectId, projects.id))
     .where(inArray(channels.id, channelIds))
 
-  const wsChannels = channelRows.filter(c => c.effectiveWorkspaceId === workspaceId)
+  const wsChannels = channelRows.filter(c =>
+    c.effectiveWorkspaceId === workspaceId && (FEATURE_FLAGS.dm || c.type !== 'dm'),
+  )
   if (wsChannels.length === 0) return false
 
   const isGuest = role === 'guest'

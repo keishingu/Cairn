@@ -1,25 +1,36 @@
 # 本番デプロイ・運用リファレンス
 
-> ステータス: **現行リファレンス** ／ 最終更新: 2026-07-18
+> ステータス: **現行リファレンス** ／ 最終更新: 2026-07-22
 >
 > 本番環境（Vercel + Supabase）の構成・残タスク・将来の一般公開に向けた設定をまとめる。
 > 実装・設定が変わったら本ファイルを更新すること。
 
 ## 環境構成
 
-| 環境 | Supabase | Vercel | ドメイン | デプロイ契機 |
-|---|---|---|---|---|
-| 本番 | `cairn-production`（Pro / Tokyo / ref: `bmhcgjqisqnyvbrrvqug`） | Production | `https://oss-cairn.com` | `main` への merge |
-| 検証 | `cairn-preview`（Free / Tokyo） | Preview | `https://develop.oss-cairn.com` | `develop` への merge |
-| PR プレビュー | `cairn-preview`（Free / Tokyo） | Preview | （Vercel 自動採番 preview ドメイン） | PR 作成・更新 |
+| 環境          | Supabase                                                        | Vercel     | ドメイン                             | デプロイ契機                               |
+| ------------- | --------------------------------------------------------------- | ---------- | ------------------------------------ | ------------------------------------------ |
+| 本番          | `cairn-production`（Pro / Tokyo / ref: `bmhcgjqisqnyvbrrvqug`） | Production | `https://oss-cairn.com`              | `main` への merge                          |
+| 検証          | `cairn-preview`（Free / Tokyo）                                 | Preview    | `https://develop.oss-cairn.com`      | `develop` への merge                       |
+| PR プレビュー | `cairn-preview`（Free / Tokyo）                                 | Preview    | （Vercel 自動採番 preview ドメイン） | PR 作成、または `@vercel preview` コメント |
 
 ## デプロイパイプライン
 
-Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側はデプロイを行わず、CI（typecheck / lint / test）のみを担当する。
+Vercel の Git 連携（GitHub）で常設環境をデプロイする。PR Previewは GitHub Actions からVercel CLIでデプロイする。
 
 - **`main` への merge → 本番デプロイ**: Vercel の **Production Branch = `main`**。Production 環境変数で `https://oss-cairn.com` にリリースされる。
 - **`develop` への merge → 検証デプロイ**: `develop` は Vercel の Preview デプロイ。**`develop.oss-cairn.com` を `develop` ブランチに割り当て**ており、**環境変数は Preview と共通**（PR プレビューと同じ `cairn-preview` を指す）。
-- **PR → プレビューデプロイ**: 各 PR は Vercel 自動採番の Preview URL にデプロイされる（環境変数は Preview）。
+- **PR → プレビューデプロイ**: PR作成時に `.github/workflows/vercel-preview.yml` がVercel自動採番の Preview URLへデプロイする。以降のpushはスキップし、最新SHAの確認が必要になったら権限のあるメンバーがPRへ `@vercel preview` とコメントする。
+
+### PR更新時のビルドスキップ
+
+Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で、Git連携によるPRの自動buildをスキップする。Production、`develop`、`main` は常にbuildし、実行コンテキストが判定できない場合も安全側に倒してbuildする。
+
+- Vercel ProjectのRoot Directoryは `apps/web` のため、`vercel.json` も同ディレクトリに置き、ignore commandはそこを起点にrepository rootの判定scriptを参照する
+- `.github/workflows/vercel-preview.yml` は同一repository内のPR作成、または完全一致の `@vercel preview` コメントを受け、openなPRの最新SHAをデプロイする
+- CLI deployの結果は同じSHAのGitHub Preview Deploymentへ記録し、Mobile Previewが成功URLを取得できるようにする
+- 公開repositoryから任意のbuildを起動されないよう、コメント投稿者は `OWNER` / `MEMBER` / `COLLABORATOR` に限定し、fork PRは拒否する
+- GitHubの `Preview` environmentに、`VERCEL_TOKEN`をsecret、`VERCEL_ORG_ID`と`VERCEL_PROJECT_ID`をvariablesとして登録する
+- Mobile PreviewはPR作成時からWebView / API接続先に `https://develop.oss-cairn.com` を使う。PR固有の `*.vercel.app` はDeployment Protectionのログイン画面へ遷移し得るため、モバイル接続先には使わない
 
 ### DBマイグレーションの自動適用（GitHub Actions）
 
@@ -66,12 +77,23 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
 
 ### 接続・キーの方針
 
+- **PostHog**: Vercel の **Production のみ**に `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` と `NEXT_PUBLIC_POSTHOG_HOST` を設定する。ローカルと Preview には設定せず、SDK を初期化しない。これはデプロイ環境の接続設定として扱い、事業判断による公開制御用の Feature Flag には含めない。
 - **アプリ実行時 `DATABASE_URL`（Vercel）**: Transaction pooler の **Shared Pooler / IPv4**（ホスト `aws-X-ap-northeast-1.pooler.supabase.com:6543`、ユーザー `postgres.<ref>`）。
   - Direct connection（`db.<ref>.supabase.co`）は **IPv6 専用で Vercel(IPv4) から繋がらない**ため使わない。
 - **マイグレーション `supabase db push`**: GitHub Actions（`migrate.yml`）が **Session Pooler（5432）** 経由で自動適用する（前述）。手動で適用する場合も `--db-url` を明示して Session Pooler（IPv6 環境なら Direct も可）で実行する（CLI の link は preview のまま）。
 - **`SUPABASE_SERVICE_ROLE_KEY`**: **Legacy service_role JWT（`eyJ...`）** を使う。
   - 新形式 `sb_secret_...` は **Storage が JWT を要求するため `Invalid Compact JWS` で失敗**する。
 - **`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`**: 新形式 `sb_publishable_...`（Auth は新形式で動作）。
+
+### 環境設定と Feature Flag の境界
+
+環境ごとの外部サービス接続や認証情報は、Vercel / EAS の環境変数スコープで制御する。Feature Flag は、システムとして提供可能な機能について「市場へいつ・誰に公開するか」を事業判断で制御するために使う。
+
+- **環境変数を使うもの**: production 専用の外部サービス、接続先 URL、API token、環境別 project ID など。対象環境に値が存在すること自体を有効化条件にする
+- **Feature Flag を使うもの**: 実装と運用準備は完了しているが、Go-to-Market、段階公開、契約・届出、ユーザーセグメント等の理由で公開を制御する機能
+- **併用する場合**: 外部サービスへの接続可否は環境変数、ユーザーへの機能公開可否は Feature Flag と、責務を分ける。接続情報の有無を Feature Flag で代用しない
+
+PostHog は production の利用状況を収集するインフラ接続なので前者に該当する。Vercel Production のみに project token を設定し、独立した Feature Flag は設けない。
 
 ## リリース手順（develop → main）
 
@@ -117,6 +139,7 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
 現在は **限定公開（自分たち中心 / テストユーザー）で運用可能**。広く一般に開放する際は以下が必要になる。
 
 ### 1. Google OAuth 同意画面の公開・検証
+
 - 同意画面を **「テスト」→「本番環境に公開」** にする（テストモードは利用者がテストユーザー登録した人に限られ、最大 100 人）。
 - **ログイン用スコープ（`openid`/`email`/`profile`）は非機密** → ブランド検証（ロゴ・ドメイン確認）程度で済む。
 - **カレンダー用スコープ（`calendar.readonly`）は機密スコープ** → **Google の審査（verification）が必要**。
@@ -124,22 +147,27 @@ Vercel の Git 連携（GitHub）でデプロイする。GitHub Actions 側は�
   - 未審査のままだと「未確認アプリ」警告 + 100 ユーザー上限。
 
 ### 2. Supabase Custom Domain（任意・信頼性向上）
+
 - Google ログイン/同意画面に出る `bmhcgjqisqnyvbrrvqug.supabase.co` を自前ドメイン（例 `auth.oss-cairn.com`）に置き換える。
 - **Custom Domains アドオン（~$10/月）**。機能には影響しないため限定公開中は不要。
 - 切替時の追従: DNS に Supabase 指定 CNAME 追加 / Google の承認済みリダイレクト URI を新ホストに変更 / Vercel の `NEXT_PUBLIC_SUPABASE_URL`・`SUPABASE_URL` を新ホストに変更して再デプロイ。
 
 ### 3. 本番用 SMTP（メール送信）
+
 - Supabase のデフォルト SMTP は**本番不可レベルのレート制限**（数通/時）。
 - サインアップ確認・パスワードリセット等を不特定多数に送るなら、**カスタム SMTP（SendGrid / Resend / SES 等）** を Auth に設定。
 - メールテンプレート内 URL が本番ドメインで動くか確認。
 
 ### 4. プライバシーポリシー・利用規約ページ
+
 - `oss-cairn.com` 上に公開ページを用意（Google 審査・同意画面・ユーザー信頼の前提）。
 
 ### 5. 不正対策・スケール
+
 - Supabase Auth の **Attack Protection / CAPTCHA（hCaptcha・Turnstile）**、レート制限の見直し。
 - **Compute スケール**: 初期は Micro。負荷が上がったら拡張（コネクション数・RAM/CPU）。
 - **バックアップ**: 重要度が上がったら PITR（Point-in-Time Recovery）アドオンを検討。
 
 ### 6. （任意）OAuth クライアントの環境分離
+
 - 本番 / プレビューで Google OAuth クライアントを分離し、鍵のローテーション・影響範囲を分離。

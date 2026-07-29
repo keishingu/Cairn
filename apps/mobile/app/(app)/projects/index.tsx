@@ -1,5 +1,6 @@
 import React from 'react'
-import { AppWebView, type AppWebViewHandle } from '../../../components/app-webview'
+import type { AppWebViewHandle } from '../../../components/app-webview'
+import { NativeWebViewScreen } from '../../../components/native-webview-screen'
 import { projectsViewInjection, useProjectsView } from '../../../components/projects-view-context'
 
 export default function ProjectsScreen() {
@@ -14,5 +15,7 @@ export default function ProjectsScreen() {
     syncView()
   }, [syncView])
 
-  return <AppWebView ref={ref} path="/projects" onLoadEnd={syncView} />
+  return (
+    <NativeWebViewScreen ref={ref} path="/projects" title="プロジェクト一覧" onLoadEnd={syncView} />
+  )
 }
