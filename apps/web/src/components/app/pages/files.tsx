@@ -75,6 +75,10 @@ function isPreviewableTextFile(file: FileDto): boolean {
   return isMarkdownFile(file) || isPlainTextFile(file)
 }
 
+function openFileTarget(url: string) {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 function matchesFilter(file: FileDto, filter: FilterKey): boolean {
   if (filter === 'all') return true
   if (filter === 'pdf') return file.mimeType === 'application/pdf'
@@ -110,6 +114,14 @@ const FileRow = ({
   const metaParts = [projectLabel, sizeStr, dateStr].filter(Boolean).join(' · ')
   const isImage = isImageFile(file)
   const isPreviewableText = isPreviewableTextFile(file)
+  const fileHref = file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`
+  const primaryAction = file.fileType === 'link'
+    ? { icon: 'external', label: 'リンクを開く', onSelect: () => openFileTarget(fileHref) }
+    : isImage
+      ? { icon: 'image', label: 'プレビュー', onSelect: () => onImageClick(file.id) }
+      : isPreviewableText
+        ? { icon: 'eye', label: 'プレビュー', onSelect: () => onTextPreviewClick(file) }
+        : { icon: 'download', label: 'ダウンロード', onSelect: () => openFileTarget(fileHref) }
 
   return (
     <div
@@ -130,7 +142,7 @@ const FileRow = ({
       }}
     >
       <a
-        href={file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`}
+        href={fileHref}
         target="_blank"
         rel="noopener noreferrer"
         onClick={
@@ -194,6 +206,7 @@ const FileRow = ({
       <Avatar name={file.uploaderName} url={file.uploaderAvatarUrl} size={22} />
       <RowActionMenu
         actions={[
+          primaryAction,
           ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
             ? [{ icon: 'refresh', label: '再インデックス', onSelect: () => onReindex(file.id) }]
             : []),
