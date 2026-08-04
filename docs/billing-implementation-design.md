@@ -169,7 +169,7 @@ Team（WS 定額）は「**全メンバーがオリジナルをアップロー�
 - Webhook は Vercel 上で同期処理できる軽さに保つ。重い後続処理は Inngest に流す
 - 初期パックは **¥500 / 400 クレジット**。Stripe の単発 Price ID は `STRIPE_CREDIT_PACK_PRICE_ID` に設定する
 - Stripeの環境変数は `STRIPE_INDIVIDUAL_PRICE_ID`（Solo月額）、`STRIPE_WORKSPACE_PRICE_ID`（Team月額）、`STRIPE_CREDIT_PACK_PRICE_ID`（単発パック）を使用する
-- Stripe Customer Portalは `STRIPE_OWNER_BILLING_PORTAL_CONFIGURATION_ID`（Solo / Teamの変更可）と `STRIPE_MEMBER_BILLING_PORTAL_CONFIGURATION_ID`（Soloのみ）を分ける。Portalのsubscription更新は常に対象ワークスペースの購読へスコープする。SoloとTeamが併存する場合は、重複するプランへの変更を防ぐため両購読を解約専用にする。購入者が非活性のTeamも、後任ownerは解約専用で管理する
+- Stripe Customer Portalは `STRIPE_MEMBER_BILLING_PORTAL_CONFIGURATION_ID`（memberのSolo更新用）、`STRIPE_OWNER_INDIVIDUAL_BILLING_PORTAL_CONFIGURATION_ID`（ownerのSolo更新用）、`STRIPE_OWNER_WORKSPACE_BILLING_PORTAL_CONFIGURATION_ID`（ownerのTeam更新用）を分ける。各更新用Configurationは対象プランだけを許可し、発行後に状態が変わった古いPortal Sessionから別プランへ変更できないようにする。`STRIPE_OWNER_BILLING_PORTAL_CONFIGURATION_ID` はownerの解約専用フローに使用する。Portalのsubscription更新は常に対象ワークスペースの購読へスコープする。SoloとTeamが併存する場合は、重複するプランへの変更を防ぐため両購読を解約専用にする。購入者が非活性のTeamも、後任ownerは解約専用で管理する
 - Preview / develop で決済なしの検証クレジットを有効にする場合だけ `BILLING_TEST_MODE=true` を設定する。Production ではこの値にかかわらず無効化する
 
 ## 9. packages/core への配置（CQRS 命名）

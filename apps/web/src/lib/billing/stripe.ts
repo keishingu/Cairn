@@ -39,6 +39,22 @@ export function getMemberBillingPortalConfigurationId(): string {
   return configurationId
 }
 
+export function getOwnerIndividualBillingPortalConfigurationId(): string {
+  const configurationId = process.env['STRIPE_OWNER_INDIVIDUAL_BILLING_PORTAL_CONFIGURATION_ID']
+  if (!configurationId) {
+    throw new Error('STRIPE_OWNER_INDIVIDUAL_BILLING_PORTAL_CONFIGURATION_ID is not configured')
+  }
+  return configurationId
+}
+
+export function getOwnerWorkspaceBillingPortalConfigurationId(): string {
+  const configurationId = process.env['STRIPE_OWNER_WORKSPACE_BILLING_PORTAL_CONFIGURATION_ID']
+  if (!configurationId) {
+    throw new Error('STRIPE_OWNER_WORKSPACE_BILLING_PORTAL_CONFIGURATION_ID is not configured')
+  }
+  return configurationId
+}
+
 export function resolveApplicationUrl(request: Request): string {
   if (process.env['APP_URL']) return process.env['APP_URL'].replace(/\/$/, '')
   return new URL(request.url).origin

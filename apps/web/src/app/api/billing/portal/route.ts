@@ -8,6 +8,8 @@ import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import {
   getMemberBillingPortalConfigurationId,
   getOwnerBillingPortalConfigurationId,
+  getOwnerIndividualBillingPortalConfigurationId,
+  getOwnerWorkspaceBillingPortalConfigurationId,
   getStripeClient,
   resolveApplicationUrl,
 } from '@/lib/billing/stripe'
@@ -83,8 +85,8 @@ export async function POST(request: Request) {
     }
 
     // Customerは複数ワークスペースの購読を持ち得るため、Customer全体のPortalを開かない。
-    // このワークスペースで選択したsubscriptionだけを更新する。member用Configurationは
-    // Solo Priceだけを許可し、Teamへ変更できるのはowner用Configurationだけにする。
+    // このワークスペースで選択したsubscriptionだけを更新する。更新用Configurationは
+    // 対象プランを固定し、Solo / Teamの相互変更をCustomer Portalへ委譲しない。
     const isInheritedWorkspaceSubscription =
       subscription.plan === 'workspace' && subscription.supporterUserId !== ctx.userId
     const isCancellationOnly = isInheritedWorkspaceSubscription || conflictingSubscription !== undefined
@@ -92,9 +94,18 @@ export async function POST(request: Request) {
     const session = await getStripeClient().billingPortal.sessions.create({
       customer: customer.stripeCustomerId,
       return_url: returnUrl,
-      configuration: isWorkspaceOwner(ctx.role)
-        ? getOwnerBillingPortalConfigurationId()
-        : getMemberBillingPortalConfigurationId(),
+      // Solo / Team の相互変更を許すConfigurationは使わない。Portal Sessionは
+      // 発行後に古くなり得るため、発行時のDBチェックだけでは二重Teamを防げない。
+      // 更新用Configurationをプラン別に固定し、別プランへ変更できないようにする。
+      configuration: isCancellationOnly
+        ? isWorkspaceOwner(ctx.role)
+          ? getOwnerBillingPortalConfigurationId()
+          : getMemberBillingPortalConfigurationId()
+        : subscription.plan === 'individual'
+          ? isWorkspaceOwner(ctx.role)
+            ? getOwnerIndividualBillingPortalConfigurationId()
+            : getMemberBillingPortalConfigurationId()
+          : getOwnerWorkspaceBillingPortalConfigurationId(),
       flow_data: isCancellationOnly
         ? {
             // 購入者が非活性化したTeamをSoloへ変更すると、購入者に紐付いたSoloが
