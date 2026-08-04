@@ -7,15 +7,20 @@ import { creditLedger, db, stripeEvents, subscriptions } from '@cairn/db'
 import { sql } from 'drizzle-orm'
 import { getIndividualSubscriptionPriceId, getStripeClient, getWorkspaceSubscriptionPriceId, stripeId } from './stripe'
 import { listActiveMemberIds } from '@/lib/access/membership'
-import { resolveSubscriptionGrantQuantity } from './subscription-grant'
+import {
+  resolveSubscriptionGrantQuantity,
+  type SubscriptionInvoiceLine,
+} from './subscription-grant'
 import { asStripeSubscriptionRecord, type StripeSubscriptionRecord } from './stripe-subscription'
 
 type StripeInvoiceRecord = {
   id: string
   billingReason: string | null
   subscriptionId: string | null
-  invoiceQuantity: number | null
+  lines: SubscriptionInvoiceLine[]
 }
+
+type BillingPlan = 'individual' | 'workspace'
 
 export interface CreditPackFulfillment {
   workspaceId: string
@@ -95,11 +100,8 @@ async function asInvoiceRecord(
     } | null
   }
   const billingReason = value.billing_reason ?? null
-  let invoiceQuantity: number | null = null
+  const lines: SubscriptionInvoiceLine[] = []
   if (billingReason === 'subscription_create' || billingReason === 'subscription_cycle') {
-    const plan = (value.parent?.subscription_details as { metadata?: Record<string, string> } | undefined)?.metadata?.['plan']
-    const subscriptionPriceId = plan === 'workspace' ? getWorkspaceSubscriptionPriceId() : getIndividualSubscriptionPriceId()
-    const lines: Array<{ quantity?: number | null; priceId?: string | null }> = []
     // invoice.lines は先頭ページだけの場合があるため、Stripe のページングを最後まで辿る。
     for await (const line of stripe.invoices.listLineItems(value.id, { limit: 100 })) {
       lines.push({
@@ -107,7 +109,6 @@ async function asInvoiceRecord(
         priceId: stripeId(line.pricing?.price_details?.price),
       })
     }
-    invoiceQuantity = resolveSubscriptionGrantQuantity(billingReason, lines, subscriptionPriceId)
   }
 
   return {
@@ -115,8 +116,38 @@ async function asInvoiceRecord(
     billingReason,
     subscriptionId:
       stripeId(value.subscription) ?? stripeId(value.parent?.subscription_details?.subscription),
-    invoiceQuantity,
+    lines,
   }
+}
+
+export function resolveMonthlyCreditGrant(
+  billingReason: string | null,
+  lines: SubscriptionInvoiceLine[],
+  plan: BillingPlan,
+  activeMemberCount: number,
+): number | null {
+  const subscriptionPriceId =
+    plan === 'workspace' ? getWorkspaceSubscriptionPriceId() : getIndividualSubscriptionPriceId()
+  const quantity = resolveSubscriptionGrantQuantity(billingReason, lines, subscriptionPriceId)
+  if (!quantity) return null
+
+  if (plan === 'workspace') {
+    return Math.max(
+      BILLING_CONFIG.workspaceMonthlyCreditGrantMinimum,
+      activeMemberCount * BILLING_CONFIG.workspaceMonthlyCreditGrantPerActiveMember,
+    )
+  }
+  return BILLING_CONFIG.monthlyCreditGrant * quantity
+}
+
+function resolveBillingSubscriptionMetadata(
+  metadata: Record<string, string> | null | undefined,
+): Record<string, string> | null {
+  const workspaceId = metadata?.['workspaceId']
+  const supporterUserId = metadata?.['supporterUserId']
+  const plan = metadata?.['plan']
+  if (!workspaceId || !supporterUserId || (plan !== 'individual' && plan !== 'workspace')) return null
+  return { workspaceId, supporterUserId, plan }
 }
 
 async function syncSubscription(
@@ -158,8 +189,9 @@ export async function processStripeWebhookEvent(
 ): Promise<{ duplicate: boolean }> {
   const stripe = getStripeClient()
   let invoiceId: string | null = null
-  let invoiceQuantity: number | null = null
+  let invoice: StripeInvoiceRecord | null = null
   let subscriptionId: string | null = null
+  let checkoutSubscriptionMetadata: Record<string, string> | null = null
   let creditPackFulfillment: CreditPackFulfillment | null = null
 
   if (
@@ -169,13 +201,13 @@ export async function processStripeWebhookEvent(
     const session = event.data.object as Stripe.Checkout.Session
     subscriptionId = stripeId(session.subscription)
     creditPackFulfillment = resolveCreditPackFulfillment(session)
+    checkoutSubscriptionMetadata = resolveBillingSubscriptionMetadata(session.metadata)
     if (creditPackFulfillment) await validateCreditPackLineItem(stripe, creditPackFulfillment)
   }
   if (event.type === 'invoice.paid') {
-    const invoice = await asInvoiceRecord(stripe, event.data.object as Stripe.Invoice)
+    invoice = await asInvoiceRecord(stripe, event.data.object as Stripe.Invoice)
     subscriptionId = invoice.subscriptionId
     invoiceId = invoice.id
-    invoiceQuantity = invoice.invoiceQuantity
   }
   if (
     event.type === 'customer.subscription.updated' ||
@@ -202,6 +234,16 @@ export async function processStripeWebhookEvent(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`stripe-subscription:${subscriptionId}`}, 0))`,
       )
       subscription = asStripeSubscriptionRecord(await stripe.subscriptions.retrieve(subscriptionId))
+      // Checkout Session のメタデータが購読に届かない場合でも、初回Webhookで正規化する。
+      // これにより後続の invoice.paid でもワークスペースとプランを解決できる。
+      if (
+        checkoutSubscriptionMetadata &&
+        !resolveBillingSubscriptionMetadata(subscription.metadata)
+      ) {
+        subscription = asStripeSubscriptionRecord(
+          await stripe.subscriptions.update(subscriptionId, { metadata: checkoutSubscriptionMetadata }),
+        )
+      }
     }
     if (subscription) await syncSubscription(tx, subscription)
     if (creditPackFulfillment) {
@@ -215,17 +257,21 @@ export async function processStripeWebhookEvent(
         })
         .onConflictDoNothing()
     }
-    if (event.type === 'invoice.paid' && subscription && invoiceId && invoiceQuantity) {
+    if (event.type === 'invoice.paid' && subscription && invoiceId && invoice) {
       const workspaceId = subscription.metadata['workspaceId']
       if (!workspaceId)
         throw new Error(`Invoice ${invoiceId} subscription has no workspace metadata`)
       const plan = subscription.metadata['plan']
-      const grant = plan === 'workspace'
-        ? Math.max(
-            BILLING_CONFIG.workspaceMonthlyCreditGrantMinimum,
-            (await listActiveMemberIds(workspaceId)).length * BILLING_CONFIG.workspaceMonthlyCreditGrantPerActiveMember,
-          )
-        : BILLING_CONFIG.monthlyCreditGrant * invoiceQuantity
+      if (plan !== 'individual' && plan !== 'workspace') {
+        throw new Error(`Subscription ${subscription.id} has invalid billing plan`)
+      }
+      const grant = resolveMonthlyCreditGrant(
+        invoice.billingReason,
+        invoice.lines,
+        plan,
+        plan === 'workspace' ? (await listActiveMemberIds(workspaceId)).length : 0,
+      )
+      if (!grant) return { duplicate: false }
       await tx
         .insert(creditLedger)
         .values({
