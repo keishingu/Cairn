@@ -181,6 +181,7 @@ async function syncSubscription(
     .onConflictDoUpdate({
       target: subscriptions.stripeSubscriptionId,
       set: {
+        plan,
         quantity: subscription.quantity,
         status: toSubscriptionStatus(subscription.status),
         currentPeriodEnd: new Date(subscription.currentPeriodEnd * 1000),

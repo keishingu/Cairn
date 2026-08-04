@@ -18,9 +18,13 @@ export async function POST(request: Request) {
     const { billingCustomers, db, subscriptions } = await import('@cairn/db')
     const { and, eq, inArray } = await import('drizzle-orm')
     let customerUserId = ctx.userId
+    let inheritedTeamSubscriptionId: string | null = null
     if (isWorkspaceOwner(ctx.role)) {
       const [workspaceSubscription] = await db
-        .select({ supporterUserId: subscriptions.supporterUserId })
+        .select({
+          supporterUserId: subscriptions.supporterUserId,
+          stripeSubscriptionId: subscriptions.stripeSubscriptionId,
+        })
         .from(subscriptions)
         .where(
           and(
@@ -32,6 +36,9 @@ export async function POST(request: Request) {
         .limit(1)
       if (workspaceSubscription) {
         customerUserId = workspaceSubscription.supporterUserId
+        if (customerUserId !== ctx.userId) {
+          inheritedTeamSubscriptionId = workspaceSubscription.stripeSubscriptionId
+        }
       }
     }
     if (customerUserId === ctx.userId) {
@@ -63,6 +70,15 @@ export async function POST(request: Request) {
     const session = await getStripeClient().billingPortal.sessions.create({
       customer: customer.stripeCustomerId,
       return_url: `${resolveApplicationUrl(request)}/settings/billing`,
+      ...(inheritedTeamSubscriptionId
+        ? {
+            // 継承ownerには購入者Customer全体ではなく、対象Team購読だけを操作させる。
+            flow_data: {
+              type: 'subscription_update' as const,
+              subscription_update: { subscription: inheritedTeamSubscriptionId },
+            },
+          }
+        : {}),
     })
     return NextResponse.json({ url: session.url })
   } catch (err) {
