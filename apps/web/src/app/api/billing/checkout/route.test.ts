@@ -35,6 +35,7 @@ vi.mock('@/lib/access/membership', () => ({
 vi.mock('@/lib/billing/is-billing-enabled', () => ({ isBillingEnabled: () => true }))
 vi.mock('@/lib/billing/stripe', () => ({
   getIndividualSubscriptionPriceId: () => 'price_individual',
+  getWorkspaceSubscriptionPriceId: () => 'price_workspace',
   getStripeClient: () => ({
     customers: { create: mockStripeCustomersCreate },
     checkout: { sessions: { create: mockStripeSessionsCreate, list: mockStripeSessionsList } },
@@ -164,6 +165,7 @@ describe('POST /api/billing/checkout', () => {
       {
         status: 'active',
         metadata: { workspaceId: 'workspace-1', supporterUserId: 'user-1', plan: 'individual' },
+        items: { data: [{ price: { id: 'price_individual' } }] },
       },
     ]))
 
@@ -171,6 +173,29 @@ describe('POST /api/billing/checkout', () => {
     const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
       method: 'POST',
       body: JSON.stringify({ quantity: 1 }),
+    }))
+
+    expect(res.status).toBe(409)
+    expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
+  })
+
+  it('PortalでTeamへ変更済みの購読は古いmetadataでもPrice IDから検出する', async () => {
+    mockGetWorkspaceRole.mockResolvedValue('owner')
+    mockSelectLimit
+      .mockResolvedValueOnce([{ stripeCustomerId: 'cus-existing' }])
+      .mockResolvedValueOnce([])
+    mockStripeSubscriptionsList.mockReturnValue(stripeList([
+      {
+        status: 'active',
+        metadata: { workspaceId: 'workspace-1', supporterUserId: 'user-1', plan: 'individual' },
+        items: { data: [{ price: { id: 'price_workspace' } }] },
+      },
+    ]))
+
+    const { POST } = await import('./route')
+    const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ plan: 'workspace' }),
     }))
 
     expect(res.status).toBe(409)

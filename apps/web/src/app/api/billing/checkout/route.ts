@@ -17,6 +17,16 @@ interface CheckoutBody {
   plan?: unknown
 }
 
+function resolveStripeSubscriptionPlan(subscription: {
+  items: { data: Array<{ price?: string | { id: string } }> }
+}): 'individual' | 'workspace' | null {
+  const price = subscription.items.data[0]?.price
+  const priceId = typeof price === 'string' ? price : price?.id
+  if (priceId === getIndividualSubscriptionPriceId()) return 'individual'
+  if (priceId === getWorkspaceSubscriptionPriceId()) return 'workspace'
+  return null
+}
+
 export async function POST(request: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -147,7 +157,7 @@ export async function POST(request: Request) {
         if (
           subscription.metadata?.['workspaceId'] === ctx.workspaceId &&
           (plan === 'workspace' || subscription.metadata?.['supporterUserId'] === ctx.userId) &&
-          subscription.metadata?.['plan'] === plan &&
+          resolveStripeSubscriptionPlan(subscription) === plan &&
           subscription.status !== 'canceled' &&
           subscription.status !== 'incomplete_expired'
         ) {

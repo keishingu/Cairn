@@ -13,27 +13,15 @@ export async function POST(request: Request) {
   if (!isBillingEnabled()) {
     return NextResponse.json({ error: 'この環境では請求機能を利用できません' }, { status: 404 })
   }
+  // Customer Portalの設定でSolo↔Teamの切替を許可しているため、
+  // Teamへ昇格できる経路はownerに統一する。
+  if (!isWorkspaceOwner(ctx.role)) {
+    return NextResponse.json({ error: '請求管理にはオーナー権限が必要です' }, { status: 403 })
+  }
 
   try {
     const { billingCustomers, db, subscriptions } = await import('@cairn/db')
     const { and, eq, inArray } = await import('drizzle-orm')
-    if (!isWorkspaceOwner(ctx.role)) {
-      const [ownedWorkspaceSubscription] = await db
-        .select({ id: subscriptions.id })
-        .from(subscriptions)
-        .where(
-          and(
-            eq(subscriptions.workspaceId, ctx.workspaceId),
-            eq(subscriptions.supporterUserId, ctx.userId),
-            eq(subscriptions.plan, 'workspace'),
-            inArray(subscriptions.status, ['active', 'past_due']),
-          ),
-        )
-        .limit(1)
-      if (ownedWorkspaceSubscription) {
-        return NextResponse.json({ error: 'Teamプランの管理にはオーナー権限が必要です' }, { status: 403 })
-      }
-    }
     let customerUserId = ctx.userId
     let inheritedTeamSubscriptionId: string | null = null
     if (isWorkspaceOwner(ctx.role)) {
