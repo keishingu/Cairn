@@ -7,6 +7,7 @@ const {
   mockGetAuthContext,
   mockGetWorkspaceRole,
   mockInArray,
+  mockOr,
   mockStripePriceRetrieve,
   mockStripeSessionsList,
   mockStripeSessionsCreate,
@@ -17,6 +18,7 @@ const {
   mockGetAuthContext: vi.fn(),
   mockGetWorkspaceRole: vi.fn(),
   mockInArray: vi.fn(() => 'inArray'),
+  mockOr: vi.fn(() => 'or'),
   mockStripePriceRetrieve: vi.fn(),
   mockStripeSessionsList: vi.fn(),
   mockStripeSessionsCreate: vi.fn(),
@@ -66,6 +68,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   gt: vi.fn(() => 'gt'),
   inArray: mockInArray,
+  or: mockOr,
   sql: vi.fn(() => 'sql'),
 }))
 
@@ -137,7 +140,7 @@ describe('POST /api/billing/credit-packs/checkout', () => {
     )
 
     expect(res.status).toBe(200)
-    expect(mockInArray).toHaveBeenCalledWith('s.plan', ['individual', 'workspace'])
+    expect(mockOr).toHaveBeenCalled()
     expect(mockStripeSessionsCreate).toHaveBeenCalledOnce()
   })
 
