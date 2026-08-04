@@ -126,6 +126,24 @@ describe('get-auth-context', () => {
     expect(mockDb.select).not.toHaveBeenCalled()
   })
 
+  it('PATはMCPの検証済み実行コンテキスト外では許可ルートでも拒否する', async () => {
+    mockHeaders.mockResolvedValue(
+      new Headers({ Authorization: 'Bearer cairn_pat_not-a-real-token' }),
+    )
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext({
+      allowApiToken: true,
+      requiredApiTokenScope: 'read',
+    })
+
+    expect(result.ctx).toBeNull()
+    expect(result.error?.status).toBe(401)
+    expect(mockSupabase.auth.getClaims).not.toHaveBeenCalled()
+    expect(mockDb.select).not.toHaveBeenCalled()
+  })
+
   it('getAuthUser も Cookie 認証で getClaims() を使う', async () => {
     mockHeaders.mockResolvedValue(new Headers())
     mockSupabase.auth.getClaims.mockResolvedValue(okClaims)

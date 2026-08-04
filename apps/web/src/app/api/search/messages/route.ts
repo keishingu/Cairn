@@ -14,7 +14,10 @@ export interface MessageSearchResultDto extends MessageDto {
 }
 
 export async function GET(req: Request) {
-  const { ctx, error: authError } = await getAuthContext()
+  const { ctx, error: authError } = await getAuthContext({
+    allowApiToken: true,
+    requiredApiTokenScope: 'read',
+  })
   if (authError) return authError
 
   const q = new URL(req.url).searchParams.get('q')?.trim() ?? ''

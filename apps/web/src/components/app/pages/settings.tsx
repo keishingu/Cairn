@@ -20,6 +20,7 @@ import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { processImageForUpload } from '@/lib/process-image'
 import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
+import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { AccentId } from '@cairn/shared'
 import { FEATURE_FLAGS } from '@cairn/shared'
 
@@ -1544,6 +1545,200 @@ const SettingsWorkspaceGeneral = () => {
   )
 }
 
+const ApiTokenSettings = () => {
+  const queryClient = useQueryClient()
+  const { isGuest } = useWorkspacePermissions()
+  const [name, setName] = React.useState('MCP client')
+  const [scope, setScope] = React.useState<'read' | 'write'>('read')
+  const [expiresInDays, setExpiresInDays] = React.useState(90)
+  const [issuedToken, setIssuedToken] = React.useState<string | null>(null)
+  const [copied, setCopied] = React.useState(false)
+
+  const { data: tokens = [], isLoading } = useQuery<ApiTokenDto[]>({
+    queryKey: ['api-tokens'],
+    queryFn: async () => {
+      const response = await fetchWithAuth('/api/api-tokens')
+      if (!response.ok) throw new Error('APIトークンの取得に失敗しました')
+      return response.json()
+    },
+  })
+  const issue = useMutation({
+    mutationFn: async () => {
+      const response = await fetchWithAuth('/api/api-tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, scope, expiresInDays }),
+      })
+      const body = (await response.json()) as { token?: string; error?: string }
+      if (!response.ok || !body.token)
+        throw new Error(body.error ?? 'APIトークンの発行に失敗しました')
+      return body.token
+    },
+    onSuccess: (token) => {
+      setIssuedToken(token)
+      void queryClient.invalidateQueries({ queryKey: ['api-tokens'] })
+    },
+  })
+  const revoke = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetchWithAuth(`/api/api-tokens/${id}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('APIトークンの取り消しに失敗しました')
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['api-tokens'] }),
+  })
+
+  const copyToken = () => {
+    if (!issuedToken) return
+    void navigator.clipboard.writeText(issuedToken)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <section style={{ marginBottom: 32 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>MCP / APIトークン</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
+        ChatGPT や Claude から、あなた本人としてこのワークスペースの Cairn を操作します。
+      </p>
+
+      {issuedToken && (
+        <div
+          className="card"
+          style={{ padding: 16, marginBottom: 12, borderColor: 'var(--accent)' }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
+            トークンを今すぐ保存してください
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 10 }}>
+            この値は閉じると二度と表示できません。
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <code
+              style={{
+                flex: 1,
+                minWidth: 0,
+                padding: '8px 10px',
+                overflow: 'auto',
+                borderRadius: 7,
+                background: 'var(--card-2)',
+                fontSize: 11.5,
+              }}
+            >
+              {issuedToken}
+            </code>
+            <button type="button" className="btn btn-primary" onClick={copyToken}>
+              {copied ? 'コピー済み' : 'コピー'}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => setIssuedToken(null)}>
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="card" style={{ padding: 16 }}>
+        {isGuest ? (
+          <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
+            ゲストはAPIトークンを発行できません。
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              aria-label="トークン名"
+              maxLength={100}
+              placeholder="トークン名"
+              style={{ flex: '1 1 180px' }}
+            />
+            <select
+              value={scope}
+              onChange={(event) => setScope(event.target.value as 'read' | 'write')}
+            >
+              <option value="read">読み取り</option>
+              <option value="write">読み書き</option>
+            </select>
+            <select
+              value={expiresInDays}
+              onChange={(event) => setExpiresInDays(Number(event.target.value))}
+              aria-label="有効期間"
+            >
+              <option value={30}>30日</option>
+              <option value={90}>90日</option>
+              <option value={365}>1年</option>
+            </select>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!name.trim() || issue.isPending}
+              onClick={() => issue.mutate()}
+            >
+              {issue.isPending ? '発行中…' : '発行'}
+            </button>
+          </div>
+        )}
+
+        {issue.isError && (
+          <div style={{ color: 'var(--red-text)', fontSize: 12, marginBottom: 10 }}>
+            {(issue.error as Error).message}
+          </div>
+        )}
+        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 10 }}>
+          読み書き権限は読み取りを含みます。既定90日・最長1年、1トークンあたり毎分120リクエストです。
+        </div>
+        {isLoading ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>読み込み中…</div>
+        ) : tokens.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>発行済みトークンはありません。</div>
+        ) : (
+          tokens.map((token) => {
+            const inactive = token.revokedAt !== null || new Date(token.expiresAt) <= new Date()
+            return (
+              <div
+                key={token.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 0',
+                  borderTop: '1px solid var(--divider)',
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{token.name}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                    <code>{token.prefix}…</code> ・{' '}
+                    {token.scope === 'write' ? '読み書き' : '読み取り'} ・ 有効期限{' '}
+                    {new Date(token.expiresAt).toLocaleDateString('ja-JP')}
+                    {token.lastUsedAt
+                      ? ` ・ 最終利用 ${new Date(token.lastUsedAt).toLocaleDateString('ja-JP')}`
+                      : ''}
+                    {inactive ? ' ・ 無効' : ''}
+                  </div>
+                </div>
+                {!inactive && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ color: 'var(--red-text)' }}
+                    disabled={revoke.isPending}
+                    onClick={() => {
+                      if (window.confirm(`「${token.name}」を取り消しますか？`))
+                        revoke.mutate(token.id)
+                    }}
+                  >
+                    取り消す
+                  </button>
+                )}
+              </div>
+            )
+          })
+        )}
+      </div>
+    </section>
+  )
+}
+
 const SettingsIntegrations = () => {
   // ── iCal 出力 ──────────────────────────────────────────────────────
   const { data: ws } = useQuery<WorkspaceDto>({
@@ -1686,6 +1881,8 @@ const SettingsIntegrations = () => {
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
         外部サービスとの連携を設定します。
       </p>
+
+      <ApiTokenSettings />
 
       {/* ── iCal 出力セクション ───────────────────────────────────── */}
       <section style={{ marginBottom: 32 }}>
