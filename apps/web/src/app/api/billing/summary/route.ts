@@ -173,6 +173,9 @@ export async function GET(request: Request) {
       }
     }
     const manageableSubscriptions = [...manageableSubscriptionMap.values()]
+    const paymentMethodSubscription = ownSubscriptions.find(
+      (subscription) => subscription.plan === 'individual',
+    ) ?? (isWorkspaceOwner(ctx.role) ? ownSubscriptions.find((subscription) => subscription.plan === 'workspace') : undefined)
     return NextResponse.json({
       billingEnabled: true,
       creditBalance,
@@ -182,7 +185,7 @@ export async function GET(request: Request) {
       hasManageableSubscription: manageableSubscriptions.length > 0,
       hasActiveWorkspaceSubscription: workspaceSubscriptions.length > 0,
       manageableSubscriptions,
-      paymentMethodSubscriptionId: ownSubscriptions[0]?.id ?? null,
+      paymentMethodSubscriptionId: paymentMethodSubscription?.id ?? null,
       canPurchaseCreditPack: creditPackSubscription !== undefined,
       creditPackFulfilled: creditPackSessionId ? creditPackFulfillments.length > 0 : null,
     } satisfies BillingSummaryDto)
