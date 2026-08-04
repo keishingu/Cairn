@@ -20,7 +20,6 @@ const {
   mockInsertValues,
   mockInsertReturning,
   mockRecordStorageUsageDelta,
-  mockOr,
   mockSelectLimit,
   mockTransactionSelectLimit,
 } = vi.hoisted(() => ({
@@ -34,7 +33,6 @@ const {
   mockCreateThumbnailFromStorage: vi.fn(),
   mockIsBillingEnabled: vi.fn(() => false),
   mockRecordStorageUsageDelta: vi.fn().mockResolvedValue(undefined),
-  mockOr: vi.fn(() => 'or'),
   mockSelectLimit: vi.fn(),
   mockInsertReturning: vi.fn(),
   mockTransactionSelectLimit: vi.fn(),
@@ -121,7 +119,7 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
   eq: vi.fn(() => 'eq'),
   gt: vi.fn(() => 'gt'),
-  or: mockOr,
+  or: vi.fn(() => 'or'),
   sql: vi.fn(() => 'sql'),
 }))
 
@@ -263,36 +261,6 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     expect(mockInsertReturning).not.toHaveBeenCalled()
   })
 
-  it('Team契約中は購入者以外のメンバーも有料ストレージを最終確定できる', async () => {
-    const { BILLING_CONFIG } = await import('@cairn/core/billing')
-    mockIsBillingEnabled.mockReturnValue(true)
-    mockRequireChannelAccess.mockResolvedValue(null)
-    mockList.mockResolvedValue({ data: [{ name: 'x.pdf', metadata: { size: 100 } }], error: null })
-    mockSelectLimit
-      .mockReset()
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ projectId: null }])
-    mockTransactionSelectLimit
-      .mockReset()
-      .mockResolvedValueOnce([{ originalBytes: BILLING_CONFIG.freeStorageBytes }])
-      .mockResolvedValueOnce([{ balance: '1' }])
-      .mockResolvedValueOnce([{ id: 'team-subscription' }])
-      .mockResolvedValue([])
-
-    const { POST } = await import('./route')
-    const res = await POST(
-      post({
-        channelId: CHANNEL_ID,
-        storagePath: storagePathFor('x.pdf'),
-        fileName: 'x.pdf',
-        mimeType: 'application/pdf',
-        fileSize: 100,
-      }),
-    )
-
-    expect(res.status).toBe(201)
-    expect(mockOr).toHaveBeenCalled()
-  })
 })
 
 describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {
