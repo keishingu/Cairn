@@ -49,6 +49,7 @@ export async function GET(request: Request) {
       [balance],
       [usage],
       [subscription],
+      [ownedWorkspaceSubscription],
       [workspaceSubscription],
       [creditPackSubscription],
       creditPackFulfillments,
@@ -67,13 +68,25 @@ export async function GET(request: Request) {
           .where(eq(workspaceStorageUsage.workspaceId, ctx.workspaceId))
           .limit(1),
         db
-          .select({ id: subscriptions.id })
+          .select({ id: subscriptions.id, plan: subscriptions.plan })
           .from(subscriptions)
           .where(
             and(
               eq(subscriptions.workspaceId, ctx.workspaceId),
               eq(subscriptions.supporterUserId, ctx.userId),
               inArray(subscriptions.plan, ['individual', 'workspace']),
+              inArray(subscriptions.status, ['active', 'past_due']),
+            ),
+          )
+          .limit(1),
+        db
+          .select({ id: subscriptions.id })
+          .from(subscriptions)
+          .where(
+            and(
+              eq(subscriptions.workspaceId, ctx.workspaceId),
+              eq(subscriptions.supporterUserId, ctx.userId),
+              eq(subscriptions.plan, 'workspace'),
               inArray(subscriptions.status, ['active', 'past_due']),
             ),
           )
@@ -124,7 +137,9 @@ export async function GET(request: Request) {
       originalBytes: usage?.originalBytes ?? 0,
       derivedBytes: usage?.derivedBytes ?? 0,
       hasManageableSubscription:
-        subscription !== undefined ||
+        (subscription !== undefined &&
+          ((subscription.plan !== 'workspace' || isWorkspaceOwner(ctx.role)) &&
+            (ownedWorkspaceSubscription === undefined || isWorkspaceOwner(ctx.role)))) ||
         (isWorkspaceOwner(ctx.role) && workspaceSubscription !== undefined),
       hasActiveWorkspaceSubscription: workspaceSubscription !== undefined,
       canPurchaseCreditPack: creditPackSubscription !== undefined,

@@ -17,6 +17,23 @@ export async function POST(request: Request) {
   try {
     const { billingCustomers, db, subscriptions } = await import('@cairn/db')
     const { and, eq, inArray } = await import('drizzle-orm')
+    if (!isWorkspaceOwner(ctx.role)) {
+      const [ownedWorkspaceSubscription] = await db
+        .select({ id: subscriptions.id })
+        .from(subscriptions)
+        .where(
+          and(
+            eq(subscriptions.workspaceId, ctx.workspaceId),
+            eq(subscriptions.supporterUserId, ctx.userId),
+            eq(subscriptions.plan, 'workspace'),
+            inArray(subscriptions.status, ['active', 'past_due']),
+          ),
+        )
+        .limit(1)
+      if (ownedWorkspaceSubscription) {
+        return NextResponse.json({ error: 'Teamプランの管理にはオーナー権限が必要です' }, { status: 403 })
+      }
+    }
     let customerUserId = ctx.userId
     let inheritedTeamSubscriptionId: string | null = null
     if (isWorkspaceOwner(ctx.role)) {
@@ -43,7 +60,7 @@ export async function POST(request: Request) {
     }
     if (customerUserId === ctx.userId) {
       const [ownSubscription] = await db
-        .select({ id: subscriptions.id })
+        .select({ id: subscriptions.id, plan: subscriptions.plan })
         .from(subscriptions)
         .where(
           and(
@@ -54,7 +71,7 @@ export async function POST(request: Request) {
           ),
         )
         .limit(1)
-      if (!ownSubscription) {
+      if (!ownSubscription || (ownSubscription.plan === 'workspace' && !isWorkspaceOwner(ctx.role))) {
         return NextResponse.json({ error: '管理できる購読が見つかりません' }, { status: 404 })
       }
     }
@@ -74,8 +91,14 @@ export async function POST(request: Request) {
         ? {
             // 継承ownerには購入者Customer全体ではなく、対象Team購読だけを操作させる。
             flow_data: {
-              type: 'subscription_update' as const,
-              subscription_update: { subscription: inheritedTeamSubscriptionId },
+              // 請求者が不在の状態でSoloへ変えると購読の管理者が不在になるため、
+              // 継承ownerには解約だけを許可する。
+              type: 'subscription_cancel' as const,
+              subscription_cancel: { subscription: inheritedTeamSubscriptionId },
+              after_completion: {
+                type: 'redirect' as const,
+                redirect: { return_url: `${resolveApplicationUrl(request)}/settings/billing` },
+              },
             },
           }
         : {}),
