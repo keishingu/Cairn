@@ -49,7 +49,7 @@ export async function GET(request: Request) {
 
   try {
     const { creditLedger, db, subscriptions, workspaceStorageUsage } = await import('@cairn/db')
-    const { and, eq, gt, inArray, sql } = await import('drizzle-orm')
+    const { and, eq, gt, inArray, or, sql } = await import('drizzle-orm')
     const creditPackSessionId = new URL(request.url).searchParams.get('credit_pack_session_id')
     const [
       [balance],
@@ -106,10 +106,15 @@ export async function GET(request: Request) {
           .where(
             and(
               eq(subscriptions.workspaceId, ctx.workspaceId),
-              eq(subscriptions.supporterUserId, ctx.userId),
-              inArray(subscriptions.plan, ['individual', 'workspace']),
               eq(subscriptions.status, 'active'),
               gt(subscriptions.currentPeriodEnd, new Date()),
+              or(
+                and(
+                  eq(subscriptions.plan, 'individual'),
+                  eq(subscriptions.supporterUserId, ctx.userId),
+                ),
+                eq(subscriptions.plan, 'workspace'),
+              ),
             ),
           )
           .limit(1),
