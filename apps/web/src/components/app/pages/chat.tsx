@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { usePathname, useRouter } from 'next/navigation'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MobileHeader } from '../mobile/header'
@@ -57,7 +58,6 @@ function highlightMatch(rawText: string, query: string) {
     </>
   )
 }
-
 function formatSearchDate(iso: string) {
   const d = new Date(iso)
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -327,8 +327,23 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // useSearchParams は Suspense 境界を要求するため、クライアント側で location から読む
   React.useEffect(() => {
     if (typeof window === 'undefined') return
-    const m = new URLSearchParams(window.location.search).get('m')
+    const params = new URLSearchParams(window.location.search)
+    const m = params.get('m')
     if (m) setTargetMessageId(m)
+    switch (params.get('panel')) {
+      case 'search':
+        setSearchOpen(true)
+        break
+      case 'info':
+        setShowInfo(true)
+        break
+      case 'global-search':
+        setGlobalSearchOpen(true)
+        break
+      case 'bookmarks':
+        setBookmarksOpen(true)
+        break
+    }
   }, [pathname])
 
   // ブラウザの戻る/進むでURLが変わったとき状態を同期
@@ -364,7 +379,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     ],
     [projectChannels, workspaceChannels, dms],
   )
-  const hasResolvedInitialChannelLists = isProjectChannelsFetched && isWorkspaceChannelsFetched && isDmsFetched
+  const hasResolvedInitialChannelLists = isProjectChannelsFetched && isWorkspaceChannelsFetched && (isDmsFetched || !FEATURE_FLAGS.dm)
 
   React.useEffect(() => {
     if (channelId) setLastVisitedChatChannelId(channelId)

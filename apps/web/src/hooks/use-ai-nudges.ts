@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
@@ -17,7 +18,7 @@ export function useAiNudges(channelId: string | null) {
   return useQuery({
     queryKey: aiNudgeQueryKey(channelId),
     queryFn: () => fetchAiNudges(channelId!),
-    enabled: channelId !== null,
+    enabled: FEATURE_FLAGS.aiPmo && channelId !== null,
   })
 }
 

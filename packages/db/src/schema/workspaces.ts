@@ -1,8 +1,8 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, integer, jsonb, pgTable, pgView, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
-import { eq } from 'drizzle-orm'
+import { bigint, boolean, check, integer, jsonb, pgTable, pgView, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { eq, sql } from 'drizzle-orm'
 import { memberStatusEnum, userStatusEnum, workspaceRoleEnum } from './enums'
 
 export interface WorkspaceCoverPhoto {
@@ -17,15 +17,27 @@ export interface WorkspaceSettings {
   coverPhotos?: WorkspaceCoverPhoto[]
 }
 
-export const profiles = pgTable('profiles', {
-  id: uuid('id').primaryKey(),
-  displayName: text('display_name').notNull(),
-  bio: text('bio'),
-  icalToken: text('ical_token').unique(),
-  aiNudgesEnabled: boolean('ai_nudges_enabled').notNull().default(true),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+export const profiles = pgTable(
+  'profiles',
+  {
+    id: uuid('id').primaryKey(),
+    displayName: text('display_name').notNull(),
+    bio: text('bio'),
+    icalToken: text('ical_token').unique(),
+    aiNudgesEnabled: boolean('ai_nudges_enabled').notNull().default(true),
+    theme: text('theme').notNull().default('system'),
+    accentId: text('accent_id').notNull().default('emerald'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('profiles_theme_check', sql`${t.theme} in ('light', 'system', 'dark')`),
+    check(
+      'profiles_accent_id_check',
+      sql`${t.accentId} in ('emerald', 'blue', 'violet', 'rose', 'pink', 'amber', 'cyan')`,
+    ),
+  ],
+)
 
 export const workspaces = pgTable('workspaces', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -34,6 +46,15 @@ export const workspaces = pgTable('workspaces', {
   description: text('description'),
   logoUrl: text('logo_url'),
   settings: jsonb('settings').$type<WorkspaceSettings>(),
+  // Phase 1 は構造化タスクを使う決定論的なリマインダー、Phase 2 は LLM 巡回である。
+  // workspace 単位で明示的に分けることで、LLM の利用開始は owner の opt-in にする。
+  aiNudgesPhaseOneEnabled: boolean('ai_nudges_phase_one_enabled').notNull().default(true),
+  aiNudgesPhaseTwoEnabled: boolean('ai_nudges_phase_two_enabled').notNull().default(false),
+  // Phase 2 の実際の利用量。月次請求額の推定ではなく、OpenAI が返したトークン数の累計を保持する。
+  aiNudgesPhaseTwoInputTokens: bigint('ai_nudges_phase_two_input_tokens', { mode: 'number' }).notNull().default(0),
+  aiNudgesPhaseTwoOutputTokens: bigint('ai_nudges_phase_two_output_tokens', { mode: 'number' }).notNull().default(0),
+  aiNudgesPhaseTwoTotalTokens: bigint('ai_nudges_phase_two_total_tokens', { mode: 'number' }).notNull().default(0),
+  aiNudgesPhaseTwoRequestCount: bigint('ai_nudges_phase_two_request_count', { mode: 'number' }).notNull().default(0),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => profiles.id),

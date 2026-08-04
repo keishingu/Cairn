@@ -5,6 +5,8 @@ import { serve } from 'inngest/next'
 import { inngest } from '@/lib/inngest/client'
 import {
   backfillThumbnails,
+  cleanupExpiredUploadRequests,
+  chargeStorageRentDaily,
   deleteStorageObjects,
   indexFileChunks,
   indexProjectChunks,
@@ -13,6 +15,10 @@ import {
   onMessageCreated,
   onTaskAssigned,
   reconcileAiNudgesHeartbeat,
+  reconcileWorkspaceStorageUsageDaily,
+  requeueStorageDeletionJobs,
+  runStorageDeletionJob,
+  scanAiNudgesPhaseTwo,
 } from '@/lib/inngest/functions'
 
 // デプロイ環境ごとに URL が変わる場合（Vercel preview など）に対応。
@@ -25,6 +31,8 @@ function resolveServeHost(): string | undefined {
 
 const fns = [
   backfillThumbnails,
+  cleanupExpiredUploadRequests,
+  chargeStorageRentDaily,
   deleteStorageObjects,
   indexFileChunks,
   indexProjectChunks,
@@ -33,6 +41,10 @@ const fns = [
   onMessageCreated,
   onTaskAssigned,
   reconcileAiNudgesHeartbeat,
+  reconcileWorkspaceStorageUsageDaily,
+  requeueStorageDeletionJobs,
+  runStorageDeletionJob,
+  scanAiNudgesPhaseTwo,
 ]
 const host = resolveServeHost()
 

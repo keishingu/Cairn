@@ -1,8 +1,24 @@
 import { useRouter } from 'expo-router'
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useMarkNotificationsRead, useNotifications, type NotificationDto } from '../../../hooks/use-notifications'
+import { Ionicons } from '@expo/vector-icons'
+import {
+  useMarkNotificationsRead,
+  useNotifications,
+  useUnreadNotificationCount,
+  type NotificationDto,
+} from '../../../hooks/use-notifications'
 import { routeFromNotification } from '../../../lib/notification-routing'
+import { useAppAppearance } from '../../../components/appearance-provider'
+import type { ThemePalette } from '../../../lib/theme'
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('ja-JP', {
@@ -16,21 +32,34 @@ function formatDate(value: string) {
 function NotificationCard({
   item,
   onPress,
+  palette,
 }: {
   item: NotificationDto
   onPress: (item: NotificationDto) => void
+  palette: ThemePalette
 }) {
   return (
     <Pressable
       onPress={() => onPress(item)}
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed, !item.readAt && styles.cardUnread]}
+      style={({ pressed }) => [
+        styles.card,
+        {
+          backgroundColor: palette.card,
+          borderColor: item.readAt ? palette.border : palette.accent,
+        },
+        pressed && styles.cardPressed,
+      ]}
     >
       <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>{item.title}</Text>
-        <Text style={styles.cardDate}>{formatDate(item.createdAt)}</Text>
+        <Text style={[styles.cardTitle, { color: palette.text }]}>{item.title}</Text>
+        <Text style={[styles.cardDate, { color: palette.text4 }]}>
+          {formatDate(item.createdAt)}
+        </Text>
       </View>
-      <Text style={styles.cardBody}>{item.body}</Text>
-      {!item.readAt ? <Text style={styles.unreadBadge}>未読</Text> : null}
+      <Text style={[styles.cardBody, { color: palette.text2 }]}>{item.body}</Text>
+      {!item.readAt ? (
+        <Text style={[styles.unreadBadge, { color: palette.accentText }]}>未読</Text>
+      ) : null}
     </Pressable>
   )
 }
@@ -38,9 +67,16 @@ function NotificationCard({
 export default function NotificationsScreen() {
   const router = useRouter()
   const notificationsQuery = useNotifications()
+  const unreadCountQuery = useUnreadNotificationCount()
   const markRead = useMarkNotificationsRead()
+  const { palette } = useAppAppearance()
   const notifications = notificationsQuery.data ?? []
-  const errorMessage = notificationsQuery.error instanceof Error ? notificationsQuery.error.message : '通知の取得に失敗しました'
+  const unreadCount =
+    unreadCountQuery.data ?? notifications.filter((item) => item.readAt === null).length
+  const errorMessage =
+    notificationsQuery.error instanceof Error
+      ? notificationsQuery.error.message
+      : '通知の取得に失敗しました'
 
   function handlePress(item: NotificationDto) {
     if (!item.readAt) {
@@ -51,23 +87,29 @@ export default function NotificationsScreen() {
 
   if (notificationsQuery.isLoading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color="#2563EB" />
+      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: palette.bg }]}>
+        <ActivityIndicator size="small" color={palette.accent} />
       </SafeAreaView>
     )
   }
 
   if (notificationsQuery.error) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
+      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: palette.bg }]}>
         <View style={styles.errorState}>
-          <Text style={styles.errorTitle}>通知を読み込めませんでした</Text>
-          <Text style={styles.errorBody}>{errorMessage}</Text>
+          <Text style={[styles.errorTitle, { color: palette.text }]}>
+            通知を読み込めませんでした
+          </Text>
+          <Text style={[styles.errorBody, { color: palette.text3 }]}>{errorMessage}</Text>
           <Pressable
             onPress={() => void notificationsQuery.refetch()}
-            style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
+            style={({ pressed }) => [
+              styles.retryButton,
+              { backgroundColor: palette.accent },
+              pressed && styles.retryButtonPressed,
+            ]}
           >
-            <Text style={styles.retryLabel}>再読み込み</Text>
+            <Text style={[styles.retryLabel, { color: palette.onAccent }]}>再読み込み</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -75,15 +117,36 @@ export default function NotificationsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['left', 'right']}>
-      <View style={styles.header}>
-        <Text style={styles.heading}>通知</Text>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: palette.bg }]}
+      edges={['top', 'left', 'right']}
+    >
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: palette.card, borderBottomColor: palette.border },
+        ]}
+      >
         <Pressable
-          disabled={markRead.isPending || notifications.every((item) => item.readAt)}
-          onPress={() => markRead.mutate(null)}
-          style={({ pressed }) => [styles.markAllButton, pressed && styles.markAllButtonPressed]}
+          accessibilityRole="button"
+          accessibilityLabel="チャットへ戻る"
+          onPress={() => router.replace('/(app)/chats')}
+          style={styles.backButton}
+          hitSlop={8}
         >
-          <Text style={styles.markAllLabel}>すべて既読</Text>
+          <Ionicons name="chevron-back" size={22} color={palette.accent} />
+        </Pressable>
+        <Text style={[styles.heading, { color: palette.text }]}>通知</Text>
+        <Pressable
+          disabled={markRead.isPending || unreadCount === 0}
+          onPress={() => markRead.mutate(null)}
+          style={({ pressed }) => [
+            styles.markAllButton,
+            { backgroundColor: palette.accentSoft },
+            pressed && styles.markAllButtonPressed,
+          ]}
+        >
+          <Text style={[styles.markAllLabel, { color: palette.accentText }]}>すべて既読</Text>
         </Pressable>
       </View>
       <FlatList
@@ -92,16 +155,22 @@ export default function NotificationsScreen() {
         contentContainerStyle={notifications.length === 0 ? styles.emptyList : styles.list}
         refreshControl={
           <RefreshControl
-            refreshing={notificationsQuery.isRefetching}
-            onRefresh={() => void notificationsQuery.refetch()}
-            tintColor="#2563EB"
+            refreshing={notificationsQuery.isRefetching || unreadCountQuery.isRefetching}
+            onRefresh={() =>
+              void Promise.all([notificationsQuery.refetch(), unreadCountQuery.refetch()])
+            }
+            tintColor={palette.accent}
           />
         }
-        renderItem={({ item }) => <NotificationCard item={item} onPress={handlePress} />}
+        renderItem={({ item }) => (
+          <NotificationCard item={item} onPress={handlePress} palette={palette} />
+        )}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>通知はまだありません</Text>
-            <Text style={styles.emptyBody}>メンションや更新が届くとここに表示されます。</Text>
+            <Text style={[styles.emptyTitle, { color: palette.text }]}>通知はまだありません</Text>
+            <Text style={[styles.emptyBody, { color: palette.text3 }]}>
+              メンションや更新が届くとここに表示されます。
+            </Text>
           </View>
         }
       />
@@ -111,16 +180,23 @@ export default function NotificationsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 16,
+    minHeight: 51,
+    borderBottomWidth: 1,
     paddingBottom: 12,
   },
-  heading: { fontSize: 24, fontWeight: '700', color: '#0F172A' },
+  backButton: { padding: 4 },
+  heading: { flex: 1, fontSize: 17, fontWeight: '700' },
   markAllButton: {
     borderRadius: 999,
     backgroundColor: '#DBEAFE',
@@ -141,7 +217,12 @@ const styles = StyleSheet.create({
   },
   cardPressed: { opacity: 0.9 },
   cardUnread: { borderColor: '#93C5FD', backgroundColor: '#F8FBFF' },
-  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
   cardTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: '#0F172A' },
   cardDate: { fontSize: 12, color: '#64748B' },
   cardBody: { fontSize: 14, lineHeight: 20, color: '#334155' },

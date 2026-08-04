@@ -68,6 +68,8 @@ const STUB_ME: CurrentUserDto = {
   statusMessage: null,
   wsRole: 'owner',
   aiNudgesEnabled: true,
+  theme: 'system',
+  accentId: 'emerald',
 }
 
 describe('useSidebar data hooks', () => {

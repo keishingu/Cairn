@@ -134,14 +134,19 @@ function MobilePage({ page, projectsView, initialMemberId, settingsSection }: { 
   )
 }
 
-function MobileShellInner({ hideNav }: { hideNav: boolean }) {
+function MobileShellInner({ hideNav, webView }: { hideNav: boolean; webView: boolean }) {
   const pathname = usePathname()
   const router = useRouter()
   const page = pageFromPathname(pathname)
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const settingsSection = pathname.startsWith('/settings/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
-  const [isWebView] = React.useState(loadWebViewMode)
+  const [isWebView] = React.useState(() => webView || loadWebViewMode())
+  const [isNativeChatAux] = React.useState(
+    () =>
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('nativeAux') === '1',
+  )
   const [notifOpen, setNotifOpen] = React.useState(false)
 
   React.useEffect(() => {
@@ -151,10 +156,10 @@ function MobileShellInner({ hideNav }: { hideNav: boolean }) {
   }, [])
 
   React.useEffect(() => {
-    if (!isWebView || page !== 'chats') return
+    if (!isWebView || page !== 'chats' || isNativeChatAux) return
     window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'open-chats' }))
     router.back()
-  }, [isWebView, page, router])
+  }, [isNativeChatAux, isWebView, page, router])
 
   const { panelState, panelProject, panelMember, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
 
@@ -169,7 +174,7 @@ function MobileShellInner({ hideNav }: { hideNav: boolean }) {
   }, [openProjectById])
 
   return (
-    <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), projectsView, setProjectsView, crossSearchNonce: 0, consumeCrossSearch: () => {} }}>
+    <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), isWebView, projectsView, setProjectsView, crossSearchNonce: 0, consumeCrossSearch: () => {} }}>
       <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
         <NavigationProgress />
         {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)} isMobile/>}
@@ -207,6 +212,6 @@ function MobileShellInner({ hideNav }: { hideNav: boolean }) {
   )
 }
 
-export function MobileShell({ hideNav = false }: { hideNav?: boolean }) {
-  return <MobileShellInner hideNav={hideNav} />
+export function MobileShell({ hideNav = false, webView = false }: { hideNav?: boolean; webView?: boolean }) {
+  return <MobileShellInner hideNav={hideNav} webView={webView} />
 }

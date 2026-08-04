@@ -2,6 +2,64 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- Seed data for local development
 
+-- Local development login
+-- Email: dev@cairn.test
+-- Password: cairn-local-dev
+--
+-- The user id intentionally matches the first profile below so the seeded
+-- workspace, projects, and chat data are available immediately after login.
+INSERT INTO auth.users (
+  instance_id,
+  id,
+  aud,
+  role,
+  email,
+  encrypted_password,
+  email_confirmed_at,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  created_at,
+  updated_at
+) VALUES (
+  '00000000-0000-0000-0000-000000000000',
+  '00000000-0000-0000-0000-000000000001',
+  'authenticated',
+  'authenticated',
+  'dev@cairn.test',
+  crypt('cairn-local-dev', gen_salt('bf')),
+  now(),
+  '',
+  '',
+  '',
+  '',
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{"sub":"00000000-0000-0000-0000-000000000001","email":"dev@cairn.test","display_name":"山田 太郎","email_verified":true,"phone_verified":false}'::jsonb,
+  now(),
+  now()
+);
+
+INSERT INTO auth.identities (
+  provider_id,
+  user_id,
+  identity_data,
+  provider,
+  last_sign_in_at,
+  created_at,
+  updated_at
+) VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  '00000000-0000-0000-0000-000000000001',
+  '{"sub":"00000000-0000-0000-0000-000000000001","email":"dev@cairn.test","display_name":"山田 太郎","email_verified":true,"phone_verified":false}'::jsonb,
+  'email',
+  now(),
+  now(),
+  now()
+);
+
 -- Profiles (8 members)
 INSERT INTO profiles (id, display_name) VALUES
   ('00000000-0000-0000-0000-000000000001', '山田 太郎'),

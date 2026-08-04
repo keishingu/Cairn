@@ -1,6 +1,8 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import type { AccentId } from '@cairn/shared'
+
 export type AccentColors = {
   accent: string
   accentHover: string
@@ -13,7 +15,7 @@ export type AccentColors = {
 }
 
 export type AccentPreset = {
-  id: string
+  id: AccentId
   label: string
   swatch: string
   light: AccentColors

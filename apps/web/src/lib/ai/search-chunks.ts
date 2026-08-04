@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { embed } from 'ai'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { openai, EMBEDDING_MODEL } from './client'
 
 export interface ChunkMatch {
@@ -44,6 +45,63 @@ export async function searchChunks(
       })()
     : sql``
 
+  // DM 停止中は、既存のDM専用ファイルから生成済みのチャンクも検索対象から外す。
+  // プロジェクトまたは非DMチャンネルでも共有されたファイルは通常の情報として保持する。
+  const dmFileScope = FEATURE_FLAGS.dm
+    ? sql``
+    : sql`AND (
+        source_type <> 'file'
+        OR NOT EXISTS (
+          SELECT 1
+          FROM files dm_file
+          WHERE dm_file.id = document_chunks.source_id
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM message_attachments dm_attachment
+                INNER JOIN messages dm_message ON dm_message.id = dm_attachment.message_id
+                INNER JOIN channels dm_channel ON dm_channel.id = dm_message.channel_id
+                WHERE dm_attachment.file_id = dm_file.id
+                  AND dm_channel.type = 'dm'
+              )
+              OR EXISTS (
+                SELECT 1
+                FROM channels dm_channel
+                WHERE dm_channel.type = 'dm'
+                  AND (
+                    dm_channel.id::text = dm_file.metadata->>'channelId'
+                    OR dm_file.metadata->'channelIds' @> jsonb_build_array(dm_channel.id::text)
+                  )
+              )
+            )
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM files non_dm_file
+          WHERE non_dm_file.id = document_chunks.source_id
+            AND (
+              non_dm_file.project_id IS NOT NULL
+              OR EXISTS (
+                SELECT 1
+                FROM message_attachments non_dm_attachment
+                INNER JOIN messages non_dm_message ON non_dm_message.id = non_dm_attachment.message_id
+                INNER JOIN channels non_dm_channel ON non_dm_channel.id = non_dm_message.channel_id
+                WHERE non_dm_attachment.file_id = non_dm_file.id
+                  AND non_dm_channel.type <> 'dm'
+              )
+              OR EXISTS (
+                SELECT 1
+                FROM channels non_dm_channel
+                WHERE non_dm_channel.type <> 'dm'
+                  AND (
+                    non_dm_channel.id::text = non_dm_file.metadata->>'channelId'
+                    OR non_dm_file.metadata->'channelIds' @> jsonb_build_array(non_dm_channel.id::text)
+                  )
+              )
+            )
+        )
+      )`
+
   const rows = await db.execute<{
     source_type: string
     source_id: string
@@ -57,6 +115,7 @@ export async function searchChunks(
       AND embedding IS NOT NULL
       AND 1 - (embedding <=> ${vectorStr}::vector) >= ${minSimilarity}
       ${projectScope}
+      ${dmFileScope}
     ORDER BY embedding <=> ${vectorStr}::vector
     LIMIT ${limit}
   `)

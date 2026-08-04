@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess, requireProjectAccess } from '@/lib/permissions'
@@ -13,6 +14,7 @@ const feedbackSchema = z.object({
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
+  if (!FEATURE_FLAGS.aiPmo) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const { id } = await params
 
   let body: unknown

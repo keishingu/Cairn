@@ -1,5 +1,5 @@
-import { AppWebView } from '../../../components/app-webview'
+import { NativeWebViewScreen } from '../../../components/native-webview-screen'
 
 export default function GalleryScreen() {
-  return <AppWebView path="/gallery" />
+  return <NativeWebViewScreen path="/gallery" title="ギャラリー" />
 }

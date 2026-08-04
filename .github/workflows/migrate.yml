@@ -1,0 +1,88 @@
+name: DB Migrate
+
+# develop / main への push 時に、未適用の Supabase マイグレーションを自動適用する。
+# - develop への push → cairn-preview / main への push → cairn-production
+# - このワークフローと Vercel の Git 連携デプロイは同じ push イベントに反応する
+#   独立したトリガーであり、こちらが先に完了する順序を仕組みとして保証してはいない
+#   （実運用では db push が数秒、Vercel ビルドが数分のため先に終わることが多いが、
+#   Actions のキュー詰まり等で崩れうる。厳密な保証には Vercel 自動デプロイを無効化し
+#   Deploy Hook 経由に変更する必要があり、未対応）。
+#   また旧コードが新スキーマに当たる期間がビルド完了まで生じるため、
+#   マイグレーションは後方互換（カラム追加等）を基本とする。破壊的変更
+#   （カラム削除・リネーム等）は2段階リリースで行う。詳細は docs/production-deployment.md
+# - DB URL は Session Pooler（ポート5432、ユーザー postgres.<ref>）を使うこと。
+#   GitHub-hosted runner は IPv4 のみのため、Direct connection（IPv6専用）には繋がらない
+#
+# セキュリティ: SUPABASE_DB_URL_PRODUCTION / SUPABASE_DB_URL_PREVIEW はリポジトリ
+# Secret ではなく GitHub Environment（production / preview）の Secret として登録する
+# こと。workflow_dispatch は任意ブランチから実行でき、そのブランチ上で改変された
+# workflow ファイル（例: case文のガードを削除したもの）がそのまま動いてしまうため、
+# ジョブ内の if 文や case 文だけでは Secret 漏洩を防げない。Environment の
+# Deployment branch policy（このジョブが実際に実行されている GITHUB_REF を
+# GitHub 側で検証する。ワークフローファイルの内容では改変できない）で
+# main / develop 以外のブランチには Secret 自体が渡らないようにする。
+# 設定手順は docs/production-deployment.md を参照。
+on:
+  push:
+    branches: [main, develop]
+  # 初回セットアップ後の手動適用や、失敗後のリトライ用（main / develop でのみ実行可。
+  # 他ブランチからの実行は Environment の Deployment branch policy でブロックされる）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同一ブランチへの連続 push で db push が並走しないよう直列化する
+concurrency:
+  group: migrate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # main → production Environment（Secret: SUPABASE_DB_URL_PRODUCTION）
+    # develop → preview Environment（Secret: SUPABASE_DB_URL_PREVIEW）
+    # main / develop 以外のブランチでは、Deployment branch policy によりどちらの
+    # Environment にも入れずジョブが失敗する（＝ Secret が渡らない）
+    environment: ${{ github.ref_name == 'main' && 'production' || 'preview' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Push migrations
+        env:
+          BRANCH: ${{ github.ref_name }}
+          DB_URL_PRODUCTION: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          DB_URL_PREVIEW: ${{ secrets.SUPABASE_DB_URL_PREVIEW }}
+        run: |
+          set -euo pipefail
+          case "$BRANCH" in
+            main)
+              DB_URL="${DB_URL_PRODUCTION:-}"
+              SECRET_NAME="SUPABASE_DB_URL_PRODUCTION"
+              TARGET="本番 (cairn-production)"
+              ;;
+            develop)
+              DB_URL="${DB_URL_PREVIEW:-}"
+              SECRET_NAME="SUPABASE_DB_URL_PREVIEW"
+              TARGET="検証 (cairn-preview)"
+              ;;
+            *)
+              echo "::error::このワークフローは main / develop でのみ実行できます（現在: $BRANCH）。"
+              exit 1
+              ;;
+          esac
+          if [ -z "$DB_URL" ]; then
+            echo "::error::Secret $SECRET_NAME が未設定です。対応する GitHub Environment（production / preview）に Session Pooler の接続文字列（postgresql://postgres.<ref>:<password>@aws-X-ap-northeast-1.pooler.supabase.com:5432/postgres）を登録してください。"
+            exit 1
+          fi
+          echo "::notice::$TARGET へマイグレーションを適用します。"
+          # --include-all: マージ順とタイムスタンプ順が前後しても、remote 履歴に無い
+          # マイグレーションをすべて適用する（適用済みは履歴テーブルで除外され再適用されない）
+          supabase db push --include-all --db-url "$DB_URL"

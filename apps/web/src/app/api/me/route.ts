@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { patchMeSchema } from '@cairn/shared'
+import { FEATURE_FLAGS, patchMeSchema } from '@cairn/shared'
+import type { AccentId, AppearanceTheme } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { UserStatus } from '@/lib/user-status'
@@ -17,6 +18,8 @@ export interface CurrentUserDto {
   statusMessage: string | null
   wsRole: 'owner' | 'admin' | 'member' | 'guest'
   aiNudgesEnabled: boolean
+  theme: AppearanceTheme
+  accentId: AccentId
 }
 
 export async function GET() {
@@ -42,6 +45,8 @@ export async function GET() {
         avatarUrl: workspaceMembers.avatarUrl,
         bio: profiles.bio,
         aiNudgesEnabled: profiles.aiNudgesEnabled,
+        theme: profiles.theme,
+        accentId: profiles.accentId,
         status: workspaceMembers.status,
         statusMessage: workspaceMembers.statusMessage,
         wsRole: workspaceMembers.role,
@@ -67,6 +72,8 @@ export async function GET() {
       statusMessage: row.statusMessage ?? null,
       wsRole: row.wsRole ?? 'member',
       aiNudgesEnabled: row.aiNudgesEnabled,
+      theme: row.theme as AppearanceTheme,
+      accentId: row.accentId as AccentId,
     } satisfies CurrentUserDto)
   } catch (err) {
     console.error('[/api/me] DB query failed:', err)
@@ -90,6 +97,9 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
   const b = parsed.data
+  if (!FEATURE_FLAGS.aiPmo && b.aiNudgesEnabled !== undefined) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
 
   const hasBio = 'bio' in b
   const hasStatusMessage = 'statusMessage' in b
@@ -98,13 +108,26 @@ export async function PATCH(req: Request) {
     const { db, aiNudges, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    if (hasBio || b.aiNudgesEnabled !== undefined) {
+    if (
+      hasBio
+      || b.aiNudgesEnabled !== undefined
+      || b.theme !== undefined
+      || b.accentId !== undefined
+    ) {
       await db.transaction(async (tx) => {
-        const profileUpdate: { bio?: string | null; aiNudgesEnabled?: boolean; updatedAt: Date } = {
+        const profileUpdate: {
+          bio?: string | null
+          aiNudgesEnabled?: boolean
+          theme?: AppearanceTheme
+          accentId?: AccentId
+          updatedAt: Date
+        } = {
           updatedAt: new Date(),
         }
         if (hasBio) profileUpdate.bio = b.bio ?? null
         if (b.aiNudgesEnabled !== undefined) profileUpdate.aiNudgesEnabled = b.aiNudgesEnabled
+        if (b.theme !== undefined) profileUpdate.theme = b.theme
+        if (b.accentId !== undefined) profileUpdate.accentId = b.accentId
 
         await tx
           .update(profiles)
@@ -150,7 +173,11 @@ export async function PATCH(req: Request) {
         .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
     }
 
-    return NextResponse.json({ id: ctx.userId })
+    return NextResponse.json({
+      id: ctx.userId,
+      ...(b.theme !== undefined ? { theme: b.theme } : {}),
+      ...(b.accentId !== undefined ? { accentId: b.accentId } : {}),
+    })
   } catch (err) {
     console.error('[PATCH /api/me]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
