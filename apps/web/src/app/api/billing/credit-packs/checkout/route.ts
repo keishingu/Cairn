@@ -23,7 +23,7 @@ export async function POST(request: Request) {
 
   try {
     const { billingCustomers, db, subscriptions } = await import('@cairn/db')
-    const { and, eq, gt, sql } = await import('drizzle-orm')
+    const { and, eq, gt, inArray, sql } = await import('drizzle-orm')
     const stripe = getStripeClient()
     const [existingCustomer] = await db
       .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
           and(
             eq(subscriptions.workspaceId, ctx.workspaceId),
             eq(subscriptions.supporterUserId, ctx.userId),
-            eq(subscriptions.plan, 'individual'),
+            inArray(subscriptions.plan, ['individual', 'workspace']),
             eq(subscriptions.status, 'active'),
             gt(subscriptions.currentPeriodEnd, new Date()),
           ),
