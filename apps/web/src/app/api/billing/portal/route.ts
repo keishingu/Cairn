@@ -53,6 +53,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'このSoloプランを管理する権限がありません' }, { status: 403 })
     }
 
+    const [conflictingSubscription] = isWorkspaceOwner(ctx.role)
+      ? await db
+          .select({ id: subscriptions.id })
+          .from(subscriptions)
+          .where(
+            subscription.plan === 'individual'
+              ? and(
+                  eq(subscriptions.workspaceId, ctx.workspaceId),
+                  eq(subscriptions.plan, 'workspace'),
+                  inArray(subscriptions.status, ['active', 'past_due']),
+                )
+              : and(
+                  eq(subscriptions.workspaceId, ctx.workspaceId),
+                  eq(subscriptions.plan, 'individual'),
+                  eq(subscriptions.supporterUserId, subscription.supporterUserId),
+                  inArray(subscriptions.status, ['active', 'past_due']),
+                ),
+          )
+          .limit(1)
+      : []
     const [customer] = await db
       .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
       .from(billingCustomers)
@@ -67,6 +87,7 @@ export async function POST(request: Request) {
     // Solo Priceだけを許可し、Teamへ変更できるのはowner用Configurationだけにする。
     const isInheritedWorkspaceSubscription =
       subscription.plan === 'workspace' && subscription.supporterUserId !== ctx.userId
+    const isCancellationOnly = isInheritedWorkspaceSubscription || conflictingSubscription !== undefined
     const returnUrl = `${resolveApplicationUrl(request)}/settings/billing`
     const session = await getStripeClient().billingPortal.sessions.create({
       customer: customer.stripeCustomerId,
@@ -74,7 +95,7 @@ export async function POST(request: Request) {
       configuration: isWorkspaceOwner(ctx.role)
         ? getOwnerBillingPortalConfigurationId()
         : getMemberBillingPortalConfigurationId(),
-      flow_data: isInheritedWorkspaceSubscription
+      flow_data: isCancellationOnly
         ? {
             // 購入者が非活性化したTeamをSoloへ変更すると、購入者に紐付いたSoloが
             // 誰からも管理できなくなる。後任ownerには解約だけを許可する。

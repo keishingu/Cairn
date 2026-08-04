@@ -2291,10 +2291,12 @@ const SettingsBilling = () => {
                 {billingQuery.data.manageableSubscriptions.map((subscription) => {
                   const actionKey = `portal:${subscription.id}`
                   const label =
-                    subscription.plan === 'individual'
-                      ? 'Soloを管理'
-                      : subscription.action === 'cancel'
-                        ? 'Teamを解約'
+                    subscription.action === 'cancel'
+                      ? subscription.plan === 'individual'
+                        ? 'Soloを解約'
+                        : 'Teamを解約'
+                      : subscription.plan === 'individual'
+                        ? 'Soloを管理'
                         : 'Teamを管理'
                   return (
                     <button

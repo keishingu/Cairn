@@ -132,12 +132,22 @@ export async function GET(request: Request) {
       string,
       { id: string; plan: 'individual' | 'workspace'; action: 'update' | 'cancel' }
     >()
+    const hasOwnIndividualSubscription = ownSubscriptions.some(
+      (subscription) => subscription.plan === 'individual',
+    )
     for (const subscription of ownSubscriptions) {
       if (subscription.plan === 'individual' || isWorkspaceOwner(ctx.role)) {
         manageableSubscriptionMap.set(subscription.id, {
           id: subscription.id,
           plan: subscription.plan,
-          action: 'update',
+          // owner用PortalはSolo / Teamの両方へ変更できる。Teamが既に存在する
+          // 状態でSoloを変更すると、二重のTeam契約を作れてしまうため解約だけにする。
+          action:
+            subscription.plan === 'individual' &&
+            isWorkspaceOwner(ctx.role) &&
+            workspaceSubscriptions.length > 0
+              ? 'cancel'
+              : 'update',
         })
       }
     }
@@ -148,7 +158,10 @@ export async function GET(request: Request) {
           plan: 'workspace',
           // 購入者が非活性化したTeamは、後任ownerが解約だけを行える。Soloへの
           // 変更を許すと、非活性の購入者に紐付いたSolo購読が管理不能になる。
-          action: subscription.supporterUserId === ctx.userId ? 'update' : 'cancel',
+          action:
+            subscription.supporterUserId === ctx.userId && !hasOwnIndividualSubscription
+              ? 'update'
+              : 'cancel',
         })
       }
     }
