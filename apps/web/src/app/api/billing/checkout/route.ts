@@ -30,7 +30,10 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: 'リクエスト形式が不正です' }, { status: 400 })
   }
-  const plan = body.plan === 'workspace' ? 'workspace' : 'individual'
+  if (body.plan !== undefined && body.plan !== 'individual' && body.plan !== 'workspace') {
+    return NextResponse.json({ error: 'プランはindividualまたはworkspaceで指定してください' }, { status: 400 })
+  }
+  const plan = body.plan ?? 'individual'
   const quantity = plan === 'workspace' ? 1 : body.quantity === undefined ? 1 : body.quantity
   if (
     typeof quantity !== 'number' ||

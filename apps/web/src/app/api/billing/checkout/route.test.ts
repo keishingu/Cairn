@@ -122,6 +122,18 @@ describe('POST /api/billing/checkout', () => {
     }))
   })
 
+  it('未対応のプラン値はSoloへフォールバックせず拒否する', async () => {
+    const { POST } = await import('./route')
+    const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ plan: 'workspcae' }),
+    }))
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'プランはindividualまたはworkspaceで指定してください' })
+    expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
+  })
+
   it('Stripe上の同一ワークスペースの未完了Checkoutを再利用する', async () => {
     mockSelectLimit
       .mockResolvedValueOnce([{ stripeCustomerId: 'cus-existing' }])

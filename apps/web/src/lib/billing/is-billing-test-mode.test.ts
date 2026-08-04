@@ -34,4 +34,12 @@ describe('isBillingTestMode', () => {
 
     expect(isBillingTestMode()).toBe(false)
   })
+
+  it('Vercel Previewではproduction buildでも有効にする', () => {
+    env['NODE_ENV'] = 'production'
+    env['VERCEL_ENV'] = 'preview'
+    env['BILLING_TEST_MODE'] = 'true'
+
+    expect(isBillingTestMode()).toBe(true)
+  })
 })
