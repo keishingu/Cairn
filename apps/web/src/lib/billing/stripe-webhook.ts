@@ -3,10 +3,9 @@
 
 import { BILLING_CONFIG } from '@cairn/core/billing'
 import type Stripe from 'stripe'
-import { creditLedger, db, stripeEvents, subscriptions } from '@cairn/db'
-import { sql } from 'drizzle-orm'
+import { activeWorkspaceMembers, creditLedger, db, stripeEvents, subscriptions } from '@cairn/db'
+import { eq, sql } from 'drizzle-orm'
 import { getIndividualSubscriptionPriceId, getStripeClient, getWorkspaceSubscriptionPriceId, stripeId } from './stripe'
-import { listActiveMemberIds } from '@/lib/access/membership'
 import {
   resolveSubscriptionGrantQuantity,
   type SubscriptionInvoiceLine,
@@ -269,7 +268,14 @@ export async function processStripeWebhookEvent(
         invoice.billingReason,
         invoice.lines,
         plan,
-        plan === 'workspace' ? (await listActiveMemberIds(workspaceId)).length : 0,
+        plan === 'workspace'
+          ? (
+              await tx
+                .select({ userId: activeWorkspaceMembers.userId })
+                .from(activeWorkspaceMembers)
+                .where(eq(activeWorkspaceMembers.workspaceId, workspaceId))
+            ).length
+          : 0,
       )
       if (!grant) return { duplicate: false }
       await tx

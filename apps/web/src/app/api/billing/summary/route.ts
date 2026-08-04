@@ -84,8 +84,7 @@ export async function GET(request: Request) {
             and(
               eq(subscriptions.workspaceId, ctx.workspaceId),
               eq(subscriptions.plan, 'workspace'),
-              eq(subscriptions.status, 'active'),
-              gt(subscriptions.currentPeriodEnd, new Date()),
+              inArray(subscriptions.status, ['active', 'past_due']),
             ),
           )
           .limit(1),
