@@ -74,7 +74,7 @@ export async function POST(req: Request) {
 
   const { creditLedger, db, files, subscriptions, workspaceStorageUsage } =
     await import('@cairn/db')
-  const { and, eq, gt, sql } = await import('drizzle-orm')
+  const { and, eq, gt, or, sql } = await import('drizzle-orm')
 
   // 応答喪失後の再試行は、現在の支援・残高が失効していても既に確定済みの
   // オブジェクトを消してはならない。冪等に既存の登録結果を返す。
@@ -244,10 +244,15 @@ export async function POST(req: Request) {
               .where(
                 and(
                   eq(subscriptions.workspaceId, ctx.workspaceId),
-                  eq(subscriptions.supporterUserId, ctx.userId),
-                  eq(subscriptions.plan, 'individual'),
                   eq(subscriptions.status, 'active'),
                   gt(subscriptions.currentPeriodEnd, new Date()),
+                  or(
+                    and(
+                      eq(subscriptions.plan, 'individual'),
+                      eq(subscriptions.supporterUserId, ctx.userId),
+                    ),
+                    eq(subscriptions.plan, 'workspace'),
+                  ),
                 ),
               )
               .limit(1),

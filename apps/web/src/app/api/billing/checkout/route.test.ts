@@ -67,6 +67,15 @@ vi.mock('drizzle-orm', () => ({
   sql: vi.fn(() => 'sql'),
 }))
 
+function stripeList<T>(data: T[]) {
+  return {
+    data,
+    async *[Symbol.asyncIterator]() {
+      yield* data
+    },
+  }
+}
+
 describe('POST /api/billing/checkout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -76,8 +85,8 @@ describe('POST /api/billing/checkout', () => {
     })
     mockGetWorkspaceRole.mockResolvedValue('member')
     mockStripeCustomersCreate.mockResolvedValue({ id: 'cus-created' })
-    mockStripeSessionsList.mockResolvedValue({ data: [] })
-    mockStripeSubscriptionsList.mockResolvedValue({ data: [] })
+    mockStripeSessionsList.mockReturnValue(stripeList([]))
+    mockStripeSubscriptionsList.mockReturnValue(stripeList([]))
     mockStripeSessionsCreate.mockResolvedValue({ url: 'https://checkout.stripe.test/session' })
     mockTransaction.mockImplementation(async (callback) => callback({
       execute: vi.fn().mockResolvedValue(undefined),
@@ -112,12 +121,12 @@ describe('POST /api/billing/checkout', () => {
     mockSelectLimit
       .mockResolvedValueOnce([{ stripeCustomerId: 'cus-existing' }])
       .mockResolvedValueOnce([])
-    mockStripeSessionsList.mockResolvedValue({
-      data: [{
+    mockStripeSessionsList.mockReturnValue(stripeList([
+      {
         url: 'https://checkout.stripe.test/open-session',
         metadata: { workspaceId: 'workspace-1', supporterUserId: 'user-1', plan: 'individual' },
-      }],
-    })
+      },
+    ]))
 
     const { POST } = await import('./route')
     const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
@@ -134,12 +143,12 @@ describe('POST /api/billing/checkout', () => {
     mockSelectLimit
       .mockResolvedValueOnce([{ stripeCustomerId: 'cus-existing' }])
       .mockResolvedValueOnce([])
-    mockStripeSubscriptionsList.mockResolvedValue({
-      data: [{
+    mockStripeSubscriptionsList.mockReturnValue(stripeList([
+      {
         status: 'active',
         metadata: { workspaceId: 'workspace-1', supporterUserId: 'user-1', plan: 'individual' },
-      }],
-    })
+      },
+    ]))
 
     const { POST } = await import('./route')
     const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
@@ -148,6 +157,55 @@ describe('POST /api/billing/checkout', () => {
     }))
 
     expect(res.status).toBe(409)
+    expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
+  })
+
+  it('別ownerの未完了Team Checkoutは再利用せず競合として扱う', async () => {
+    mockGetWorkspaceRole.mockResolvedValue('owner')
+    mockSelectLimit
+      .mockResolvedValueOnce([{ stripeCustomerId: 'cus-owner-b' }])
+      .mockResolvedValueOnce([])
+    mockStripeSessionsList.mockReturnValue(stripeList([
+      {
+        url: 'https://checkout.stripe.test/owner-a-session',
+        metadata: { workspaceId: 'workspace-1', supporterUserId: 'user-a', plan: 'workspace' },
+      },
+    ]))
+
+    const { POST } = await import('./route')
+    const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ plan: 'workspace' }),
+    }))
+
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({
+      error: '別のオーナーがTeamプランの決済を進めています。完了後に請求管理画面を確認してください',
+    })
+    expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
+  })
+
+  it('ページをまたぐ未完了Team Checkoutを検出する', async () => {
+    mockGetWorkspaceRole.mockResolvedValue('owner')
+    mockSelectLimit
+      .mockResolvedValueOnce([{ stripeCustomerId: 'cus-owner' }])
+      .mockResolvedValueOnce([])
+    mockStripeSessionsList.mockReturnValue(stripeList([
+      ...Array.from({ length: 100 }, () => ({ metadata: {} })),
+      {
+        url: 'https://checkout.stripe.test/own-session',
+        metadata: { workspaceId: 'workspace-1', supporterUserId: 'user-1', plan: 'workspace' },
+      },
+    ]))
+
+    const { POST } = await import('./route')
+    const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ plan: 'workspace' }),
+    }))
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ url: 'https://checkout.stripe.test/own-session' })
     expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
   })
 })

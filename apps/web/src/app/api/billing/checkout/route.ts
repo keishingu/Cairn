@@ -106,35 +106,52 @@ export async function POST(request: Request) {
 
       // Team は複数 owner が開始できるため、owner 個人の Customer に限定せず
       // ワークスペース単位で未完了 Checkout を探索する。
-      const openSessions = await stripe.checkout.sessions.list(
+      let openSession:
+        | Awaited<ReturnType<typeof stripe.checkout.sessions.list>>['data'][number]
+        | undefined
+      for await (const session of stripe.checkout.sessions.list(
         plan === 'workspace'
           ? { status: 'open', limit: 100 }
           : { customer: customerId, status: 'open', limit: 100 },
-      )
-      const openSession = openSessions.data.find(
-        (session) =>
+      )) {
+        if (
           session.metadata?.['workspaceId'] === ctx.workspaceId &&
           (plan === 'workspace' || session.metadata?.['supporterUserId'] === ctx.userId) &&
-          session.metadata?.['plan'] === plan,
-      )
-      if (openSession?.url) return { url: openSession.url }
-      if (openSession) return { error: '決済画面の準備中です。少し待ってから再試行してください' }
+          session.metadata?.['plan'] === plan
+        ) {
+          openSession = session
+          break
+        }
+      }
+      if (openSession) {
+        if (plan === 'workspace' && openSession.metadata?.['supporterUserId'] !== ctx.userId) {
+          return { error: '別のオーナーがTeamプランの決済を進めています。完了後に請求管理画面を確認してください' }
+        }
+        if (openSession.url) return { url: openSession.url }
+        return { error: '決済画面の準備中です。少し待ってから再試行してください' }
+      }
 
       // Checkout が complete になった直後は、Webhook が subscriptions を同期する前でも
       // Stripe 側には購読が存在する。この間に2件目の Checkout を作らない。
-      const stripeSubscriptions = await stripe.subscriptions.list(
+      let pendingSubscription:
+        | Awaited<ReturnType<typeof stripe.subscriptions.list>>['data'][number]
+        | undefined
+      for await (const subscription of stripe.subscriptions.list(
         plan === 'workspace'
           ? { status: 'all', limit: 100 }
           : { customer: customerId, status: 'all', limit: 100 },
-      )
-      const pendingSubscription = stripeSubscriptions.data.find(
-        (subscription) =>
+      )) {
+        if (
           subscription.metadata?.['workspaceId'] === ctx.workspaceId &&
           (plan === 'workspace' || subscription.metadata?.['supporterUserId'] === ctx.userId) &&
           subscription.metadata?.['plan'] === plan &&
           subscription.status !== 'canceled' &&
-          subscription.status !== 'incomplete_expired',
-      )
+          subscription.status !== 'incomplete_expired'
+        ) {
+          pendingSubscription = subscription
+          break
+        }
+      }
       if (pendingSubscription) {
         return { error: '既存の購読を処理中です。少し待ってから請求管理画面を確認してください' }
       }
