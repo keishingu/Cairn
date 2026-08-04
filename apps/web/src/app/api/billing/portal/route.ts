@@ -22,49 +22,35 @@ export async function POST(request: Request) {
   try {
     const { billingCustomers, db, subscriptions } = await import('@cairn/db')
     const { and, eq, inArray } = await import('drizzle-orm')
-
-    // Teamはワークスペース契約なので、ownerにはTeamを優先して選ばせる。
-    // それ以外は、現在のユーザー自身がこのワークスペースで購入した購読だけを対象にする。
-    const [workspaceSubscription] = isWorkspaceOwner(ctx.role)
-      ? await db
-          .select({
-            supporterUserId: subscriptions.supporterUserId,
-            stripeSubscriptionId: subscriptions.stripeSubscriptionId,
-          })
-          .from(subscriptions)
-          .where(
-            and(
-              eq(subscriptions.workspaceId, ctx.workspaceId),
-              eq(subscriptions.plan, 'workspace'),
-              inArray(subscriptions.status, ['active', 'past_due']),
-            ),
-          )
-          .limit(1)
-      : []
-    const [ownSubscription] = workspaceSubscription
-      ? []
-      : await db
-          .select({
-            supporterUserId: subscriptions.supporterUserId,
-            stripeSubscriptionId: subscriptions.stripeSubscriptionId,
-            plan: subscriptions.plan,
-          })
-          .from(subscriptions)
-          .where(
-            and(
-              eq(subscriptions.workspaceId, ctx.workspaceId),
-              eq(subscriptions.supporterUserId, ctx.userId),
-              inArray(subscriptions.plan, ['individual', 'workspace']),
-              inArray(subscriptions.status, ['active', 'past_due']),
-            ),
-          )
-          .limit(1)
-    if (ownSubscription?.plan === 'workspace' && !isWorkspaceOwner(ctx.role)) {
-      return NextResponse.json({ error: 'Teamプランの管理にはオーナー権限が必要です' }, { status: 403 })
+    const body = (await request.json().catch(() => null)) as { subscriptionId?: unknown } | null
+    const subscriptionId = body?.subscriptionId
+    if (typeof subscriptionId !== 'string' || subscriptionId.length === 0) {
+      return NextResponse.json({ error: '管理する購読を指定してください' }, { status: 400 })
     }
-    const subscription = workspaceSubscription ?? ownSubscription
+
+    const [subscription] = await db
+      .select({
+        supporterUserId: subscriptions.supporterUserId,
+        stripeSubscriptionId: subscriptions.stripeSubscriptionId,
+        plan: subscriptions.plan,
+      })
+      .from(subscriptions)
+      .where(
+        and(
+          eq(subscriptions.id, subscriptionId),
+          eq(subscriptions.workspaceId, ctx.workspaceId),
+          inArray(subscriptions.status, ['active', 'past_due']),
+        ),
+      )
+      .limit(1)
     if (!subscription) {
       return NextResponse.json({ error: '管理できる購読が見つかりません' }, { status: 404 })
+    }
+    if (subscription.plan === 'workspace' && !isWorkspaceOwner(ctx.role)) {
+      return NextResponse.json({ error: 'Teamプランの管理にはオーナー権限が必要です' }, { status: 403 })
+    }
+    if (subscription.plan === 'individual' && subscription.supporterUserId !== ctx.userId) {
+      return NextResponse.json({ error: 'このSoloプランを管理する権限がありません' }, { status: 403 })
     }
 
     const [customer] = await db
@@ -79,6 +65,8 @@ export async function POST(request: Request) {
     // Customerは複数ワークスペースの購読を持ち得るため、Customer全体のPortalを開かない。
     // このワークスペースで選択したsubscriptionだけを更新する。member用Configurationは
     // Solo Priceだけを許可し、Teamへ変更できるのはowner用Configurationだけにする。
+    const isInheritedWorkspaceSubscription =
+      subscription.plan === 'workspace' && subscription.supporterUserId !== ctx.userId
     const returnUrl = `${resolveApplicationUrl(request)}/settings/billing`
     const session = await getStripeClient().billingPortal.sessions.create({
       customer: customer.stripeCustomerId,
@@ -86,11 +74,19 @@ export async function POST(request: Request) {
       configuration: isWorkspaceOwner(ctx.role)
         ? getOwnerBillingPortalConfigurationId()
         : getMemberBillingPortalConfigurationId(),
-      flow_data: {
-        type: 'subscription_update',
-        subscription_update: { subscription: subscription.stripeSubscriptionId },
-        after_completion: { type: 'redirect', redirect: { return_url: returnUrl } },
-      },
+      flow_data: isInheritedWorkspaceSubscription
+        ? {
+            // 購入者が非活性化したTeamをSoloへ変更すると、購入者に紐付いたSoloが
+            // 誰からも管理できなくなる。後任ownerには解約だけを許可する。
+            type: 'subscription_cancel',
+            subscription_cancel: { subscription: subscription.stripeSubscriptionId },
+            after_completion: { type: 'redirect', redirect: { return_url: returnUrl } },
+          }
+        : {
+            type: 'subscription_update',
+            subscription_update: { subscription: subscription.stripeSubscriptionId },
+            after_completion: { type: 'redirect', redirect: { return_url: returnUrl } },
+          },
     })
     return NextResponse.json({ url: session.url })
   } catch (err) {

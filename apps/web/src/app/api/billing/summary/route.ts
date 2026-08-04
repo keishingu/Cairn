@@ -16,6 +16,11 @@ export interface BillingSummaryDto {
   derivedBytes: number
   hasManageableSubscription: boolean
   hasActiveWorkspaceSubscription: boolean
+  manageableSubscriptions: Array<{
+    id: string
+    plan: 'individual' | 'workspace'
+    action: 'update' | 'cancel'
+  }>
   canPurchaseCreditPack: boolean
   creditPackFulfilled: boolean | null
 }
@@ -36,6 +41,7 @@ export async function GET(request: Request) {
       derivedBytes: 0,
       hasManageableSubscription: false,
       hasActiveWorkspaceSubscription: false,
+      manageableSubscriptions: [],
       canPurchaseCreditPack: false,
       creditPackFulfilled: null,
     } satisfies BillingSummaryDto)
@@ -48,9 +54,8 @@ export async function GET(request: Request) {
     const [
       [balance],
       [usage],
-      [subscription],
-      [ownedWorkspaceSubscription],
-      [workspaceSubscription],
+      ownSubscriptions,
+      workspaceSubscriptions,
       [creditPackSubscription],
       creditPackFulfillments,
     ] =
@@ -68,7 +73,11 @@ export async function GET(request: Request) {
           .where(eq(workspaceStorageUsage.workspaceId, ctx.workspaceId))
           .limit(1),
         db
-          .select({ id: subscriptions.id, plan: subscriptions.plan })
+          .select({
+            id: subscriptions.id,
+            plan: subscriptions.plan,
+            supporterUserId: subscriptions.supporterUserId,
+          })
           .from(subscriptions)
           .where(
             and(
@@ -77,22 +86,12 @@ export async function GET(request: Request) {
               inArray(subscriptions.plan, ['individual', 'workspace']),
               inArray(subscriptions.status, ['active', 'past_due']),
             ),
-          )
-          .limit(1),
+          ),
         db
-          .select({ id: subscriptions.id })
-          .from(subscriptions)
-          .where(
-            and(
-              eq(subscriptions.workspaceId, ctx.workspaceId),
-              eq(subscriptions.supporterUserId, ctx.userId),
-              eq(subscriptions.plan, 'workspace'),
-              inArray(subscriptions.status, ['active', 'past_due']),
-            ),
-          )
-          .limit(1),
-        db
-          .select({ id: subscriptions.id })
+          .select({
+            id: subscriptions.id,
+            supporterUserId: subscriptions.supporterUserId,
+          })
           .from(subscriptions)
           .where(
             and(
@@ -100,8 +99,7 @@ export async function GET(request: Request) {
               eq(subscriptions.plan, 'workspace'),
               inArray(subscriptions.status, ['active', 'past_due']),
             ),
-          )
-          .limit(1),
+          ),
         db
           .select({ id: subscriptions.id })
           .from(subscriptions)
@@ -130,18 +128,40 @@ export async function GET(request: Request) {
           : Promise.resolve([]),
       ])
     const creditBalance = Number(balance?.value ?? 0)
+    const manageableSubscriptionMap = new Map<
+      string,
+      { id: string; plan: 'individual' | 'workspace'; action: 'update' | 'cancel' }
+    >()
+    for (const subscription of ownSubscriptions) {
+      if (subscription.plan === 'individual' || isWorkspaceOwner(ctx.role)) {
+        manageableSubscriptionMap.set(subscription.id, {
+          id: subscription.id,
+          plan: subscription.plan,
+          action: 'update',
+        })
+      }
+    }
+    if (isWorkspaceOwner(ctx.role)) {
+      for (const subscription of workspaceSubscriptions) {
+        manageableSubscriptionMap.set(subscription.id, {
+          id: subscription.id,
+          plan: 'workspace',
+          // 購入者が非活性化したTeamは、後任ownerが解約だけを行える。Soloへの
+          // 変更を許すと、非活性の購入者に紐付いたSolo購読が管理不能になる。
+          action: subscription.supporterUserId === ctx.userId ? 'update' : 'cancel',
+        })
+      }
+    }
+    const manageableSubscriptions = [...manageableSubscriptionMap.values()]
     return NextResponse.json({
       billingEnabled: true,
       creditBalance,
       workspaceState: resolveWorkspaceState(creditBalance, true),
       originalBytes: usage?.originalBytes ?? 0,
       derivedBytes: usage?.derivedBytes ?? 0,
-      hasManageableSubscription:
-        (subscription !== undefined &&
-          ((subscription.plan !== 'workspace' || isWorkspaceOwner(ctx.role)) &&
-            (ownedWorkspaceSubscription === undefined || isWorkspaceOwner(ctx.role)))) ||
-        (isWorkspaceOwner(ctx.role) && workspaceSubscription !== undefined),
-      hasActiveWorkspaceSubscription: workspaceSubscription !== undefined,
+      hasManageableSubscription: manageableSubscriptions.length > 0,
+      hasActiveWorkspaceSubscription: workspaceSubscriptions.length > 0,
+      manageableSubscriptions,
       canPurchaseCreditPack: creditPackSubscription !== undefined,
       creditPackFulfilled: creditPackSessionId ? creditPackFulfillments.length > 0 : null,
     } satisfies BillingSummaryDto)

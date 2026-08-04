@@ -2112,9 +2112,7 @@ export function resolveCreditPackFulfillmentPolling(input: {
 
 const SettingsBilling = () => {
   const { isOwner } = useWorkspacePermissions()
-  const [billingAction, setBillingAction] = React.useState<
-    'checkout' | 'workspace-checkout' | 'credit-pack' | 'portal' | null
-  >(null)
+  const [billingAction, setBillingAction] = React.useState<string | null>(null)
   const [billingActionError, setBillingActionError] = React.useState<string | null>(null)
   const searchParams = useSearchParams()
   const creditPackSessionId = searchParams.get('credit_pack_session_id')
@@ -2193,11 +2191,15 @@ const SettingsBilling = () => {
     }
   }
 
-  const openPortal = async () => {
-    setBillingAction('portal')
+  const openPortal = async (subscriptionId: string) => {
+    setBillingAction(`portal:${subscriptionId}`)
     setBillingActionError(null)
     try {
-      const res = await fetchWithAuth('/api/billing/portal', { method: 'POST' })
+      const res = await fetchWithAuth('/api/billing/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriptionId }),
+      })
       const result = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
       if (!res.ok || !result.url) throw new Error(result.error ?? '請求管理画面を開けませんでした')
       window.location.assign(result.url)
@@ -2286,14 +2288,26 @@ const SettingsBilling = () => {
                       : `石を追加（¥${BILLING_CONFIG.creditPackPriceJpy} / ${BILLING_CONFIG.creditPackCredits} 石）`}
                   </button>
                 )}
-                <button
-                  className="btn"
-                  style={{ height: 32, fontSize: 12.5 }}
-                  onClick={() => void openPortal()}
-                  disabled={billingAction !== null}
-                >
-                  {billingAction === 'portal' ? '移動中…' : '購読を管理'}
-                </button>
+                {billingQuery.data.manageableSubscriptions.map((subscription) => {
+                  const actionKey = `portal:${subscription.id}`
+                  const label =
+                    subscription.plan === 'individual'
+                      ? 'Soloを管理'
+                      : subscription.action === 'cancel'
+                        ? 'Teamを解約'
+                        : 'Teamを管理'
+                  return (
+                    <button
+                      key={subscription.id}
+                      className="btn"
+                      style={{ height: 32, fontSize: 12.5 }}
+                      onClick={() => void openPortal(subscription.id)}
+                      disabled={billingAction !== null}
+                    >
+                      {billingAction === actionKey ? '移動中…' : label}
+                    </button>
+                  )
+                })}
               </div>
             ) : (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

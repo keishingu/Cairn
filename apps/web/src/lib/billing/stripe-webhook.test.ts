@@ -3,7 +3,12 @@
 
 import { afterEach, describe, expect, it } from 'vitest'
 import type Stripe from 'stripe'
-import { resolveCreditPackFulfillment, resolveInvoicePlan, resolveMonthlyCreditGrant } from './stripe-webhook'
+import {
+  isMonthlyGrantInvoice,
+  resolveCreditPackFulfillment,
+  resolveInvoicePlan,
+  resolveMonthlyCreditGrant,
+} from './stripe-webhook'
 
 const originalIndividualPriceId = process.env['STRIPE_INDIVIDUAL_PRICE_ID']
 const originalWorkspacePriceId = process.env['STRIPE_WORKSPACE_PRICE_ID']
@@ -119,5 +124,13 @@ describe('resolveInvoicePlan', () => {
 
     expect(resolveInvoicePlan([{ quantity: 1, priceId: 'price_individual' }])).toBe('individual')
     expect(resolveInvoicePlan([{ quantity: 1, priceId: 'price_workspace' }])).toBe('workspace')
+  })
+})
+
+describe('isMonthlyGrantInvoice', () => {
+  it('プラン変更の請求書は月次付与・プラン判定の対象にしない', () => {
+    expect(isMonthlyGrantInvoice('subscription_update')).toBe(false)
+    expect(isMonthlyGrantInvoice('subscription_create')).toBe(true)
+    expect(isMonthlyGrantInvoice('subscription_cycle')).toBe(true)
   })
 })

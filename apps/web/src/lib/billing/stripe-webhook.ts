@@ -166,6 +166,10 @@ export function resolveInvoicePlan(lines: SubscriptionInvoiceLine[]): BillingPla
   return hasWorkspace ? 'workspace' : 'individual'
 }
 
+export function isMonthlyGrantInvoice(billingReason: string | null): boolean {
+  return billingReason === 'subscription_create' || billingReason === 'subscription_cycle'
+}
+
 async function syncSubscription(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   subscription: StripeSubscriptionRecord,
@@ -274,7 +278,10 @@ export async function processStripeWebhookEvent(
         })
         .onConflictDoNothing()
     }
-    if (event.type === 'invoice.paid' && subscription && invoiceId && invoice) {
+    // プラン変更・日割りの請求書には購読の請求行を展開していない。月次付与の対象外なので、
+    // 先に除外して購読状態の同期だけを確定する。
+    const isGrantInvoice = isMonthlyGrantInvoice(invoice?.billingReason ?? null)
+    if (event.type === 'invoice.paid' && subscription && invoiceId && invoice && isGrantInvoice) {
       const workspaceId = subscription.metadata['workspaceId']
       if (!workspaceId)
         throw new Error(`Invoice ${invoiceId} subscription has no workspace metadata`)
