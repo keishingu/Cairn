@@ -2305,7 +2305,7 @@ const SettingsBilling = () => {
                 >
                   {billingAction === 'checkout' ? '移動中…' : 'Solo（月額 ¥300）'}
                 </button>
-                {isOwner && (
+                {isOwner && !billingQuery.data.hasActiveWorkspaceSubscription && (
                   <button
                     className="btn"
                     style={{ height: 32, fontSize: 12.5 }}
@@ -2316,6 +2316,11 @@ const SettingsBilling = () => {
                       ? '移動中…'
                       : `Team（月額 ¥${BILLING_CONFIG.workspaceSubscriptionPriceJpy.toLocaleString()}）`}
                   </button>
+                )}
+                {isOwner && billingQuery.data.hasActiveWorkspaceSubscription && (
+                  <span style={{ alignSelf: 'center', fontSize: 12, color: 'var(--text-3)' }}>
+                    このワークスペースはTeamプランを利用中です。
+                  </span>
                 )}
                 <span style={{ alignSelf: 'center', fontSize: 12, color: 'var(--text-3)' }}>
                   Expedition は年契約・導入支援をご相談ください。

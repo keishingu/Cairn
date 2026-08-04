@@ -14,6 +14,7 @@ export interface BillingSummaryDto {
   originalBytes: number
   derivedBytes: number
   hasManageableSubscription: boolean
+  hasActiveWorkspaceSubscription: boolean
   canPurchaseCreditPack: boolean
   creditPackFulfilled: boolean | null
 }
@@ -33,6 +34,7 @@ export async function GET(request: Request) {
       originalBytes: 0,
       derivedBytes: 0,
       hasManageableSubscription: false,
+      hasActiveWorkspaceSubscription: false,
       canPurchaseCreditPack: false,
       creditPackFulfilled: null,
     } satisfies BillingSummaryDto)
@@ -42,7 +44,14 @@ export async function GET(request: Request) {
     const { creditLedger, db, subscriptions, workspaceStorageUsage } = await import('@cairn/db')
     const { and, eq, gt, inArray, sql } = await import('drizzle-orm')
     const creditPackSessionId = new URL(request.url).searchParams.get('credit_pack_session_id')
-    const [[balance], [usage], [subscription], [creditPackSubscription], creditPackFulfillments] =
+    const [
+      [balance],
+      [usage],
+      [subscription],
+      [workspaceSubscription],
+      [creditPackSubscription],
+      creditPackFulfillments,
+    ] =
       await Promise.all([
         db
           .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
@@ -65,6 +74,18 @@ export async function GET(request: Request) {
               eq(subscriptions.supporterUserId, ctx.userId),
               inArray(subscriptions.plan, ['individual', 'workspace']),
               inArray(subscriptions.status, ['active', 'past_due']),
+            ),
+          )
+          .limit(1),
+        db
+          .select({ id: subscriptions.id })
+          .from(subscriptions)
+          .where(
+            and(
+              eq(subscriptions.workspaceId, ctx.workspaceId),
+              eq(subscriptions.plan, 'workspace'),
+              eq(subscriptions.status, 'active'),
+              gt(subscriptions.currentPeriodEnd, new Date()),
             ),
           )
           .limit(1),
@@ -103,6 +124,7 @@ export async function GET(request: Request) {
       originalBytes: usage?.originalBytes ?? 0,
       derivedBytes: usage?.derivedBytes ?? 0,
       hasManageableSubscription: subscription !== undefined,
+      hasActiveWorkspaceSubscription: workspaceSubscription !== undefined,
       canPurchaseCreditPack: creditPackSubscription !== undefined,
       creditPackFulfilled: creditPackSessionId ? creditPackFulfillments.length > 0 : null,
     } satisfies BillingSummaryDto)
