@@ -169,6 +169,7 @@ Team（WS 定額）は「**全メンバーがオリジナルをアップロー�
 - Webhook は Vercel 上で同期処理できる軽さに保つ。重い後続処理は Inngest に流す
 - 初期パックは **¥500 / 400 クレジット**。Stripe の単発 Price ID は `STRIPE_CREDIT_PACK_PRICE_ID` に設定する
 - Stripeの環境変数は `STRIPE_INDIVIDUAL_PRICE_ID`（Solo月額）、`STRIPE_WORKSPACE_PRICE_ID`（Team月額）、`STRIPE_CREDIT_PACK_PRICE_ID`（単発パック）を使用する
+- Preview / develop で決済なしの検証クレジットを有効にする場合だけ `BILLING_TEST_MODE=true` を設定する。Production ではこの値にかかわらず無効化する
 
 ## 9. packages/core への配置（CQRS 命名）
 
