@@ -21,6 +21,7 @@ export interface BillingSummaryDto {
     plan: 'individual' | 'workspace'
     action: 'update' | 'cancel'
   }>
+  paymentMethodSubscriptionId: string | null
   canPurchaseCreditPack: boolean
   creditPackFulfilled: boolean | null
 }
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
       hasManageableSubscription: false,
       hasActiveWorkspaceSubscription: false,
       manageableSubscriptions: [],
+      paymentMethodSubscriptionId: null,
       canPurchaseCreditPack: false,
       creditPackFulfilled: null,
     } satisfies BillingSummaryDto)
@@ -180,6 +182,7 @@ export async function GET(request: Request) {
       hasManageableSubscription: manageableSubscriptions.length > 0,
       hasActiveWorkspaceSubscription: workspaceSubscriptions.length > 0,
       manageableSubscriptions,
+      paymentMethodSubscriptionId: ownSubscriptions[0]?.id ?? null,
       canPurchaseCreditPack: creditPackSubscription !== undefined,
       creditPackFulfilled: creditPackSessionId ? creditPackFulfillments.length > 0 : null,
     } satisfies BillingSummaryDto)

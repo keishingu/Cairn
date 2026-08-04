@@ -24,10 +24,13 @@ export async function POST(request: Request) {
   try {
     const { billingCustomers, db, subscriptions } = await import('@cairn/db')
     const { and, eq, inArray } = await import('drizzle-orm')
-    const body = (await request.json().catch(() => null)) as { subscriptionId?: unknown } | null
+    const body = (await request.json().catch(() => null)) as { subscriptionId?: unknown; action?: unknown } | null
     const subscriptionId = body?.subscriptionId
     if (typeof subscriptionId !== 'string' || subscriptionId.length === 0) {
       return NextResponse.json({ error: '管理する購読を指定してください' }, { status: 400 })
+    }
+    if (body?.action !== undefined && body.action !== 'payment_method') {
+      return NextResponse.json({ error: '請求管理の操作が不正です' }, { status: 400 })
     }
 
     const [subscription] = await db
@@ -53,6 +56,10 @@ export async function POST(request: Request) {
     }
     if (subscription.plan === 'individual' && subscription.supporterUserId !== ctx.userId) {
       return NextResponse.json({ error: 'このSoloプランを管理する権限がありません' }, { status: 403 })
+    }
+    const isPaymentMethodUpdate = body?.action === 'payment_method'
+    if (isPaymentMethodUpdate && subscription.supporterUserId !== ctx.userId) {
+      return NextResponse.json({ error: '支払い方法を管理する権限がありません' }, { status: 403 })
     }
 
     const [conflictingSubscription] = isWorkspaceOwner(ctx.role)
@@ -97,7 +104,7 @@ export async function POST(request: Request) {
       // Solo / Team の相互変更を許すConfigurationは使わない。Portal Sessionは
       // 発行後に古くなり得るため、発行時のDBチェックだけでは二重Teamを防げない。
       // 更新用Configurationをプラン別に固定し、別プランへ変更できないようにする。
-      configuration: isCancellationOnly
+      configuration: isPaymentMethodUpdate || isCancellationOnly
         ? isWorkspaceOwner(ctx.role)
           ? getOwnerBillingPortalConfigurationId()
           : getMemberBillingPortalConfigurationId()
@@ -106,7 +113,9 @@ export async function POST(request: Request) {
             ? getOwnerIndividualBillingPortalConfigurationId()
             : getMemberBillingPortalConfigurationId()
           : getOwnerWorkspaceBillingPortalConfigurationId(),
-      flow_data: isCancellationOnly
+      flow_data: isPaymentMethodUpdate
+        ? { type: 'payment_method_update', after_completion: { type: 'redirect', redirect: { return_url: returnUrl } } }
+        : isCancellationOnly
         ? {
             // 購入者が非活性化したTeamをSoloへ変更すると、購入者に紐付いたSoloが
             // 誰からも管理できなくなる。後任ownerには解約だけを許可する。

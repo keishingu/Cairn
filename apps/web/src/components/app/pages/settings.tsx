@@ -2191,14 +2191,14 @@ const SettingsBilling = () => {
     }
   }
 
-  const openPortal = async (subscriptionId: string) => {
-    setBillingAction(`portal:${subscriptionId}`)
+  const openPortal = async (subscriptionId: string, action?: 'payment_method') => {
+    setBillingAction(`portal:${action ?? 'subscription'}:${subscriptionId}`)
     setBillingActionError(null)
     try {
       const res = await fetchWithAuth('/api/billing/portal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscriptionId }),
+        body: JSON.stringify(action ? { subscriptionId, action } : { subscriptionId }),
       })
       const result = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
       if (!res.ok || !result.url) throw new Error(result.error ?? '請求管理画面を開けませんでした')
@@ -2289,7 +2289,7 @@ const SettingsBilling = () => {
                   </button>
                 )}
                 {billingQuery.data.manageableSubscriptions.map((subscription) => {
-                  const actionKey = `portal:${subscription.id}`
+                  const actionKey = `portal:subscription:${subscription.id}`
                   const label =
                     subscription.action === 'cancel'
                       ? subscription.plan === 'individual'
@@ -2310,9 +2310,20 @@ const SettingsBilling = () => {
                     </button>
                   )
                 })}
+                {billingQuery.data.paymentMethodSubscriptionId && (
+                  <button className="btn" style={{ height: 32, fontSize: 12.5 }} onClick={() => void openPortal(billingQuery.data.paymentMethodSubscriptionId!, 'payment_method')} disabled={billingAction !== null}>
+                    {billingAction === `portal:payment_method:${billingQuery.data.paymentMethodSubscriptionId}` ? '移動中…' : '支払い方法を管理'}
+                  </button>
+                )}
               </div>
             ) : (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {billingQuery.data.canPurchaseCreditPack && (
+                  <button className="btn btn-primary" style={{ height: 32, fontSize: 12.5 }} onClick={() => void beginCreditPackCheckout()} disabled={billingAction !== null}>
+                    {billingAction === 'credit-pack' ? '移動中…' : `石を追加（¥${BILLING_CONFIG.creditPackPriceJpy} / ${BILLING_CONFIG.creditPackCredits} 石）`}
+                  </button>
+                )}
+                {!billingQuery.data.hasActiveWorkspaceSubscription && (
                 <button
                   className="btn btn-primary"
                   style={{ height: 32, fontSize: 12.5 }}
@@ -2321,6 +2332,7 @@ const SettingsBilling = () => {
                 >
                   {billingAction === 'checkout' ? '移動中…' : 'Solo（月額 ¥300）'}
                 </button>
+                )}
                 {isOwner && !billingQuery.data.hasActiveWorkspaceSubscription && (
                   <button
                     className="btn"
