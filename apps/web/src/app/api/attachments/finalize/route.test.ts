@@ -269,6 +269,7 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     mockRequireChannelAccess.mockResolvedValue(null)
     mockList.mockResolvedValue({ data: [{ name: 'x.pdf', metadata: { size: 100 } }], error: null })
     mockTransactionSelectLimit
+      .mockReset()
       .mockResolvedValueOnce([{ originalBytes: BILLING_CONFIG.freeStorageBytes }])
       .mockResolvedValueOnce([{ balance: '1' }])
       .mockResolvedValueOnce([{ id: 'team-subscription' }])

@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   mockGetAuthContext,
   mockGetWorkspaceRole,
+  mockIsWorkspaceOwner,
   mockStripeCustomersCreate,
   mockStripeSessionsList,
   mockStripeSubscriptionsList,
@@ -16,6 +17,7 @@ const {
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockGetWorkspaceRole: vi.fn(),
+  mockIsWorkspaceOwner: vi.fn((role: string) => role === 'owner'),
   mockStripeCustomersCreate: vi.fn(),
   mockStripeSessionsList: vi.fn(),
   mockStripeSubscriptionsList: vi.fn(),
@@ -26,7 +28,10 @@ const {
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/access/membership', () => ({ getWorkspaceRole: mockGetWorkspaceRole }))
+vi.mock('@/lib/access/membership', () => ({
+  getWorkspaceRole: mockGetWorkspaceRole,
+  isWorkspaceOwner: mockIsWorkspaceOwner,
+}))
 vi.mock('@/lib/billing/is-billing-enabled', () => ({ isBillingEnabled: () => true }))
 vi.mock('@/lib/billing/stripe', () => ({
   getIndividualSubscriptionPriceId: () => 'price_individual',
