@@ -268,11 +268,16 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     mockIsBillingEnabled.mockReturnValue(true)
     mockRequireChannelAccess.mockResolvedValue(null)
     mockList.mockResolvedValue({ data: [{ name: 'x.pdf', metadata: { size: 100 } }], error: null })
+    mockSelectLimit
+      .mockReset()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ projectId: null }])
     mockTransactionSelectLimit
       .mockReset()
       .mockResolvedValueOnce([{ originalBytes: BILLING_CONFIG.freeStorageBytes }])
       .mockResolvedValueOnce([{ balance: '1' }])
       .mockResolvedValueOnce([{ id: 'team-subscription' }])
+      .mockResolvedValue([])
 
     const { POST } = await import('./route')
     const res = await POST(
