@@ -26,4 +26,5 @@ export function enabledOutsideProduction(
 export const FEATURE_FLAGS = {
   dm: enabledOutsideProduction(),
   aiPmo: enabledOutsideProduction(),
+  billing: enabledOutsideProduction(),
 } as const

@@ -26,4 +26,8 @@ describe('isBillingEnabled', () => {
 
     expect(isBillingEnabled()).toBe(true)
   })
+
+  it('Production用feature flagが無効ならStripeキーがあっても課金を無効にする', () => {
+    expect(isBillingEnabled('sk_live_example', false)).toBe(false)
+  })
 })

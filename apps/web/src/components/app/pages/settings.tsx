@@ -2721,10 +2721,10 @@ export function getSettingsNavGroups(
     { id: 'ai', label: 'AIエージェント', icon: 'sparkles' },
     { id: 'members', label: 'メンバー', icon: 'users' },
     { id: 'integrations', label: '連携', icon: 'layers' },
-    ...(options.isMobile
+    ...(options.isMobile && FEATURE_FLAGS.billing
       ? [{ id: 'contributions', label: 'ケルン', icon: 'layers' } satisfies SettingsSectionMeta]
       : []),
-    ...(!options.isMobile
+    ...(!options.isMobile && FEATURE_FLAGS.billing
       ? [{ id: 'billing', label: '請求', icon: 'archive' } satisfies SettingsSectionMeta]
       : []),
   ]
