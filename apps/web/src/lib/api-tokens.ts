@@ -3,6 +3,7 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { sql, type SQLWrapper } from 'drizzle-orm'
 import type { WorkspaceRole } from '@/lib/access/membership'
 
 export const API_TOKEN_PREFIX = 'cairn_pat_'
@@ -60,6 +61,25 @@ export function apiTokenAllows(actual: ApiTokenScope, required: ApiTokenScope): 
   return actual === 'write' || required === 'read'
 }
 
+export function buildApiTokenRateLimitUpdate(columns: {
+  rateLimitWindowStartedAt: SQLWrapper
+  rateLimitCount: SQLWrapper
+}) {
+  return {
+    rateLimitWindowStartedAt: sql`case
+      when ${columns.rateLimitWindowStartedAt} < current_timestamp - interval '1 minute'
+      then current_timestamp
+      else ${columns.rateLimitWindowStartedAt}
+    end`,
+    rateLimitCount: sql`case
+      when ${columns.rateLimitWindowStartedAt} < current_timestamp - interval '1 minute'
+      then 1
+      else ${columns.rateLimitCount} + 1
+    end`,
+    lastUsedAt: sql`current_timestamp`,
+  }
+}
+
 /**
  * PAT の workspace と role は毎回 DB で再照合する。メンバーが無効化された場合や
  * guest に変更された場合、既存 PAT も即座に利用不可になる。
@@ -73,7 +93,7 @@ export async function verifyApiToken(
   }
 
   const { db, apiTokens, activeWorkspaceMembers } = await import('@cairn/db')
-  const { and, eq, gt, isNull, sql } = await import('drizzle-orm')
+  const { and, eq, gt, isNull } = await import('drizzle-orm')
   const now = new Date()
   const [row] = await db
     .select({
@@ -108,22 +128,9 @@ export async function verifyApiToken(
   }
 
   if (options.consumeRateLimit) {
-    const windowThreshold = new Date(now.getTime() - 60_000)
     const [usage] = await db
       .update(apiTokens)
-      .set({
-        rateLimitWindowStartedAt: sql`case
-          when ${apiTokens.rateLimitWindowStartedAt} < ${windowThreshold}
-          then ${now}
-          else ${apiTokens.rateLimitWindowStartedAt}
-        end`,
-        rateLimitCount: sql`case
-          when ${apiTokens.rateLimitWindowStartedAt} < ${windowThreshold}
-          then 1
-          else ${apiTokens.rateLimitCount} + 1
-        end`,
-        lastUsedAt: now,
-      })
+      .set(buildApiTokenRateLimitUpdate(apiTokens))
       .where(eq(apiTokens.id, row.id))
       .returning({ count: apiTokens.rateLimitCount })
 

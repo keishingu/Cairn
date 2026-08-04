@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
+import { integer, PgDialect, pgTable, timestamp } from 'drizzle-orm/pg-core'
 import {
   API_TOKEN_PREFIX,
   apiTokenAllows,
+  buildApiTokenRateLimitUpdate,
   createApiToken,
   hashApiToken,
   isApiTokenAccessEnabled,
@@ -30,6 +32,23 @@ describe('APIトークン', () => {
     expect(apiTokenAllows('read', 'write')).toBe(false)
     expect(apiTokenAllows('write', 'read')).toBe(true)
     expect(apiTokenAllows('write', 'write')).toBe(true)
+  })
+
+  it('レート制限更新SQLはJavaScriptのDateをバインドせずDB時刻で計算する', () => {
+    const table = pgTable('api_tokens', {
+      rateLimitWindowStartedAt: timestamp('rate_limit_window_started_at', {
+        withTimezone: true,
+      }).notNull(),
+      rateLimitCount: integer('rate_limit_count').notNull(),
+    })
+    const dialect = new PgDialect()
+    const update = buildApiTokenRateLimitUpdate(table)
+
+    for (const value of Object.values(update)) {
+      const query = dialect.sqlToQuery(value)
+      expect(query.params).toEqual([])
+      expect(query.sql).toContain('current_timestamp')
+    }
   })
 
   it('PAT利用許可を検証済みMCPリクエストの非同期コンテキスト内だけへ限定する', async () => {
