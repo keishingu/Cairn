@@ -17,23 +17,8 @@ export async function POST(request: Request) {
   try {
     const { billingCustomers, db, subscriptions } = await import('@cairn/db')
     const { and, eq, inArray } = await import('drizzle-orm')
-    const [ownSubscription] = await db
-      .select({ id: subscriptions.id })
-      .from(subscriptions)
-      .where(
-        and(
-          eq(subscriptions.workspaceId, ctx.workspaceId),
-          eq(subscriptions.supporterUserId, ctx.userId),
-          inArray(subscriptions.plan, ['individual', 'workspace']),
-          inArray(subscriptions.status, ['active', 'past_due']),
-        ),
-      )
-      .limit(1)
     let customerUserId = ctx.userId
-    if (!ownSubscription) {
-      if (!isWorkspaceOwner(ctx.role)) {
-        return NextResponse.json({ error: '管理できる購読が見つかりません' }, { status: 404 })
-      }
+    if (isWorkspaceOwner(ctx.role)) {
       const [workspaceSubscription] = await db
         .select({ supporterUserId: subscriptions.supporterUserId })
         .from(subscriptions)
@@ -45,10 +30,26 @@ export async function POST(request: Request) {
           ),
         )
         .limit(1)
-      if (!workspaceSubscription) {
+      if (workspaceSubscription) {
+        customerUserId = workspaceSubscription.supporterUserId
+      }
+    }
+    if (customerUserId === ctx.userId) {
+      const [ownSubscription] = await db
+        .select({ id: subscriptions.id })
+        .from(subscriptions)
+        .where(
+          and(
+            eq(subscriptions.workspaceId, ctx.workspaceId),
+            eq(subscriptions.supporterUserId, ctx.userId),
+            inArray(subscriptions.plan, ['individual', 'workspace']),
+            inArray(subscriptions.status, ['active', 'past_due']),
+          ),
+        )
+        .limit(1)
+      if (!ownSubscription) {
         return NextResponse.json({ error: '管理できる購読が見つかりません' }, { status: 404 })
       }
-      customerUserId = workspaceSubscription.supporterUserId
     }
     const [customer] = await db
       .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
