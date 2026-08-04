@@ -5,7 +5,12 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { isWorkspaceOwner } from '@/lib/access/membership'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
-import { getStripeClient, resolveApplicationUrl } from '@/lib/billing/stripe'
+import {
+  getMemberBillingPortalConfigurationId,
+  getOwnerBillingPortalConfigurationId,
+  getStripeClient,
+  resolveApplicationUrl,
+} from '@/lib/billing/stripe'
 
 export async function POST(request: Request) {
   const { ctx, error } = await getAuthContext()
@@ -72,14 +77,18 @@ export async function POST(request: Request) {
     }
 
     // Customerは複数ワークスペースの購読を持ち得るため、Customer全体のPortalを開かない。
-    // このワークスペースで選択したsubscriptionの解約フローだけへ限定する。
+    // このワークスペースで選択したsubscriptionだけを更新する。member用Configurationは
+    // Solo Priceだけを許可し、Teamへ変更できるのはowner用Configurationだけにする。
     const returnUrl = `${resolveApplicationUrl(request)}/settings/billing`
     const session = await getStripeClient().billingPortal.sessions.create({
       customer: customer.stripeCustomerId,
       return_url: returnUrl,
+      configuration: isWorkspaceOwner(ctx.role)
+        ? getOwnerBillingPortalConfigurationId()
+        : getMemberBillingPortalConfigurationId(),
       flow_data: {
-        type: 'subscription_cancel',
-        subscription_cancel: { subscription: subscription.stripeSubscriptionId },
+        type: 'subscription_update',
+        subscription_update: { subscription: subscription.stripeSubscriptionId },
         after_completion: { type: 'redirect', redirect: { return_url: returnUrl } },
       },
     })

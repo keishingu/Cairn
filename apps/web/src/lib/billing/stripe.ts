@@ -27,6 +27,18 @@ export function getCreditPackPriceId(): string {
   return priceId
 }
 
+export function getOwnerBillingPortalConfigurationId(): string {
+  const configurationId = process.env['STRIPE_OWNER_BILLING_PORTAL_CONFIGURATION_ID']
+  if (!configurationId) throw new Error('STRIPE_OWNER_BILLING_PORTAL_CONFIGURATION_ID is not configured')
+  return configurationId
+}
+
+export function getMemberBillingPortalConfigurationId(): string {
+  const configurationId = process.env['STRIPE_MEMBER_BILLING_PORTAL_CONFIGURATION_ID']
+  if (!configurationId) throw new Error('STRIPE_MEMBER_BILLING_PORTAL_CONFIGURATION_ID is not configured')
+  return configurationId
+}
+
 export function resolveApplicationUrl(request: Request): string {
   if (process.env['APP_URL']) return process.env['APP_URL'].replace(/\/$/, '')
   return new URL(request.url).origin

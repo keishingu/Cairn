@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest'
 import type Stripe from 'stripe'
-import { resolveCreditPackFulfillment, resolveMonthlyCreditGrant } from './stripe-webhook'
+import { resolveCreditPackFulfillment, resolveInvoicePlan, resolveMonthlyCreditGrant } from './stripe-webhook'
 
 const originalIndividualPriceId = process.env['STRIPE_INDIVIDUAL_PRICE_ID']
 const originalWorkspacePriceId = process.env['STRIPE_WORKSPACE_PRICE_ID']
@@ -109,5 +109,15 @@ describe('resolveMonthlyCreditGrant', () => {
         0,
       ),
     ).toBe(600)
+  })
+})
+
+describe('resolveInvoicePlan', () => {
+  it('最新のsubscription価格ではなく請求行の価格からプランを判定する', () => {
+    process.env['STRIPE_INDIVIDUAL_PRICE_ID'] = 'price_individual'
+    process.env['STRIPE_WORKSPACE_PRICE_ID'] = 'price_workspace'
+
+    expect(resolveInvoicePlan([{ quantity: 1, priceId: 'price_individual' }])).toBe('individual')
+    expect(resolveInvoicePlan([{ quantity: 1, priceId: 'price_workspace' }])).toBe('workspace')
   })
 })

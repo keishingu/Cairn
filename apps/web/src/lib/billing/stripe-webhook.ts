@@ -155,6 +155,17 @@ export function resolveSubscriptionPlan(subscription: StripeSubscriptionRecord):
   throw new Error(`Subscription ${subscription.id} has an unsupported billing price`)
 }
 
+export function resolveInvoicePlan(lines: SubscriptionInvoiceLine[]): BillingPlan {
+  const individualPriceId = getIndividualSubscriptionPriceId()
+  const workspacePriceId = getWorkspaceSubscriptionPriceId()
+  const hasIndividual = lines.some((line) => line.priceId === individualPriceId)
+  const hasWorkspace = lines.some((line) => line.priceId === workspacePriceId)
+  if (hasIndividual === hasWorkspace) {
+    throw new Error('Invoice has no unambiguous billing plan')
+  }
+  return hasWorkspace ? 'workspace' : 'individual'
+}
+
 async function syncSubscription(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   subscription: StripeSubscriptionRecord,
@@ -267,7 +278,7 @@ export async function processStripeWebhookEvent(
       const workspaceId = subscription.metadata['workspaceId']
       if (!workspaceId)
         throw new Error(`Invoice ${invoiceId} subscription has no workspace metadata`)
-      const plan = resolveSubscriptionPlan(subscription)
+      const plan = resolveInvoicePlan(invoice.lines)
       const grant = resolveMonthlyCreditGrant(
         invoice.billingReason,
         invoice.lines,
