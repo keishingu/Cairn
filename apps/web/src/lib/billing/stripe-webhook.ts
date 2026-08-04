@@ -149,16 +149,22 @@ function resolveBillingSubscriptionMetadata(
   return { workspaceId, supporterUserId, plan }
 }
 
+export function resolveSubscriptionPlan(subscription: StripeSubscriptionRecord): BillingPlan {
+  if (subscription.priceId === getIndividualSubscriptionPriceId()) return 'individual'
+  if (subscription.priceId === getWorkspaceSubscriptionPriceId()) return 'workspace'
+  throw new Error(`Subscription ${subscription.id} has an unsupported billing price`)
+}
+
 async function syncSubscription(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   subscription: StripeSubscriptionRecord,
 ) {
   const workspaceId = subscription.metadata['workspaceId']
   const supporterUserId = subscription.metadata['supporterUserId']
-  const plan = subscription.metadata['plan']
-  if (!workspaceId || !supporterUserId || (plan !== 'individual' && plan !== 'workspace')) {
+  if (!workspaceId || !supporterUserId) {
     throw new Error(`Subscription ${subscription.id} is missing billing metadata`)
   }
+  const plan = resolveSubscriptionPlan(subscription)
 
   await tx
     .insert(subscriptions)
@@ -260,10 +266,7 @@ export async function processStripeWebhookEvent(
       const workspaceId = subscription.metadata['workspaceId']
       if (!workspaceId)
         throw new Error(`Invoice ${invoiceId} subscription has no workspace metadata`)
-      const plan = subscription.metadata['plan']
-      if (plan !== 'individual' && plan !== 'workspace') {
-        throw new Error(`Subscription ${subscription.id} has invalid billing plan`)
-      }
+      const plan = resolveSubscriptionPlan(subscription)
       const grant = resolveMonthlyCreditGrant(
         invoice.billingReason,
         invoice.lines,

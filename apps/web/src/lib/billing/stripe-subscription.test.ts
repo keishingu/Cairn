@@ -11,12 +11,15 @@ describe('asStripeSubscriptionRecord', () => {
       id: 'sub_1',
       status: 'active',
       metadata: { workspaceId: 'workspace-1' },
-      items: { data: [{ quantity: 2, current_period_end: 1_800_000_000 }] },
+      items: {
+        data: [{ quantity: 2, current_period_end: 1_800_000_000, price: { id: 'price_1' } }],
+      },
     } as unknown as Stripe.Subscription
 
     expect(asStripeSubscriptionRecord(subscription)).toMatchObject({
       quantity: 2,
       currentPeriodEnd: 1_800_000_000,
+      priceId: 'price_1',
     })
   })
 

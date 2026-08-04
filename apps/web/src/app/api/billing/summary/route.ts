@@ -6,6 +6,7 @@ import { resolveWorkspaceState } from '@cairn/core/billing'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
+import { isWorkspaceOwner } from '@/lib/access/membership'
 
 export interface BillingSummaryDto {
   billingEnabled: boolean
@@ -122,7 +123,9 @@ export async function GET(request: Request) {
       workspaceState: resolveWorkspaceState(creditBalance, true),
       originalBytes: usage?.originalBytes ?? 0,
       derivedBytes: usage?.derivedBytes ?? 0,
-      hasManageableSubscription: subscription !== undefined,
+      hasManageableSubscription:
+        subscription !== undefined ||
+        (isWorkspaceOwner(ctx.role) && workspaceSubscription !== undefined),
       hasActiveWorkspaceSubscription: workspaceSubscription !== undefined,
       canPurchaseCreditPack: creditPackSubscription !== undefined,
       creditPackFulfilled: creditPackSessionId ? creditPackFulfillments.length > 0 : null,

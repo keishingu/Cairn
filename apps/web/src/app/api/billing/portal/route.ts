@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { isWorkspaceOwner } from '@/lib/access/membership'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { getStripeClient, resolveApplicationUrl } from '@/lib/billing/stripe'
 
@@ -14,12 +15,45 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { billingCustomers, db } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { billingCustomers, db, subscriptions } = await import('@cairn/db')
+    const { and, eq, inArray } = await import('drizzle-orm')
+    const [ownSubscription] = await db
+      .select({ id: subscriptions.id })
+      .from(subscriptions)
+      .where(
+        and(
+          eq(subscriptions.workspaceId, ctx.workspaceId),
+          eq(subscriptions.supporterUserId, ctx.userId),
+          inArray(subscriptions.plan, ['individual', 'workspace']),
+          inArray(subscriptions.status, ['active', 'past_due']),
+        ),
+      )
+      .limit(1)
+    let customerUserId = ctx.userId
+    if (!ownSubscription) {
+      if (!isWorkspaceOwner(ctx.role)) {
+        return NextResponse.json({ error: '管理できる購読が見つかりません' }, { status: 404 })
+      }
+      const [workspaceSubscription] = await db
+        .select({ supporterUserId: subscriptions.supporterUserId })
+        .from(subscriptions)
+        .where(
+          and(
+            eq(subscriptions.workspaceId, ctx.workspaceId),
+            eq(subscriptions.plan, 'workspace'),
+            inArray(subscriptions.status, ['active', 'past_due']),
+          ),
+        )
+        .limit(1)
+      if (!workspaceSubscription) {
+        return NextResponse.json({ error: '管理できる購読が見つかりません' }, { status: 404 })
+      }
+      customerUserId = workspaceSubscription.supporterUserId
+    }
     const [customer] = await db
       .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
       .from(billingCustomers)
-      .where(eq(billingCustomers.userId, ctx.userId))
+      .where(eq(billingCustomers.userId, customerUserId))
       .limit(1)
     if (!customer) {
       return NextResponse.json({ error: '管理できる購読が見つかりません' }, { status: 404 })
