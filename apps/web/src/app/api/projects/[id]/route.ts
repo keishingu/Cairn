@@ -19,7 +19,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   try {
     const { db, channels, projects, projectStatuses } = await import('@cairn/db')
-    const { and, eq } = await import('drizzle-orm')
+    const { and, eq, isNull } = await import('drizzle-orm')
     const [project] = await db
       .select({
         id: projects.id,
@@ -37,7 +37,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       })
       .from(projects)
       .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
-      .leftJoin(channels, and(eq(channels.projectId, projects.id), eq(channels.type, 'project')))
+      .leftJoin(
+        channels,
+        and(
+          eq(channels.projectId, projects.id),
+          eq(channels.type, 'project'),
+          isNull(channels.milestoneId),
+        ),
+      )
       .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
       .limit(1)
 
