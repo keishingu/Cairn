@@ -6,7 +6,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { MarkdownContent } from './markdown-content'
 
-describe('MarkdownContent', () => {
+describe('Markdownコンテンツ', () => {
   it('見出し、リスト、リンクをMarkdownとして表示する', () => {
     render(<MarkdownContent content={'### 検出したリスク\n\n- 期限超過\n\n[プロジェクトを開く](/projects?open=project-1)'} />)
 
