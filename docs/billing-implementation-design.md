@@ -50,7 +50,7 @@
 
 アバター・ワークスペースロゴ・カバー写真（`me/avatar`, `workspaces/logo`, `workspaces/cover-photos`）は**家賃対象外**（サイズ上限の個別チェックのみ。プロフィール設定が課金で詰まる体験を避けるため）。
 
-AI能動利用の執行ポイントは `apps/web/src/app/api/ai/conversations/[id]/messages/route.ts`。依頼前にクレジットを予約し、応答保存と同じトランザクションで消費を確定する。AI PMOは Inngest と `apps/web/src/lib/ai-nudges/` の別経路で配信予算を確認し、Phase 1/2 ともナッジ配信時に消費を記帳する。将来のAIメンバーも発話経路は別になり得るが、残高解決と台帳記帳の共通サービスを利用する。
+AI能動利用の執行ポイントは `apps/web/src/app/api/ai/conversations/[id]/messages/route.ts`。モデル呼び出し前に独立したトランザクションでクレジットを予約（`ai_consumption` のデビットを記帳）し、生成・ストリーム・応答保存に失敗した場合は `adjustment` で冪等に返金する。AI PMOは Inngest と `apps/web/src/lib/ai-nudges/` の別経路で配信予算を確認し、Phase 1/2 ともナッジ配信時に消費を記帳する。将来のAIメンバーも発話経路は別になり得るが、残高解決と台帳記帳の共通サービスを利用する。
 
 ## 4. データモデル（`packages/db/src/schema/billing.ts` 新設）
 
@@ -136,7 +136,7 @@ Team（WS 定額）は「**全メンバーがオリジナルをアップロー�
 
 ### AI 能動消費
 
-- `/ai` はリクエスト前にクレジットを予約し、応答保存と同一トランザクションで `ai_consumption`（負）を確定する。応答を保存できなかった場合は予約を返金する
+- `/ai` はモデル呼び出し前に独立したトランザクションで `ai_consumption`（負）を記帳してクレジットを予約する。生成・ストリーム・応答保存に失敗した場合は、別の `adjustment`（正）を冪等に記帳して返金する。応答保存とデビットは同一トランザクションではない
 - 単位: 「1依頼 / 1配信 = N クレジット」を基本とし、内部でモデル別係数と実測原価へ対応できるようにする。**消費しないもの**: AI PMO Phase 1 のルール巡回、RAG の embedding 検索。**消費するもの**: `/ai` の応答生成、ツール実行、HTMLテンプレート生成、AI PMO Phase 1/2 のナッジ配信
 - 初期仮値は能動AI 1依頼・Heartbeat 1配信ともに **10 クレジット**。`packages/core/src/domain/billing-config.ts` の定数だけを参照し、原価計測後に見直す
 
