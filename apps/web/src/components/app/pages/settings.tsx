@@ -18,6 +18,7 @@ import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { processImageForUpload } from '@/lib/process-image'
+import { toast } from '@/lib/toast'
 import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
@@ -1554,7 +1555,11 @@ const ApiTokenSettings = () => {
   const [issuedToken, setIssuedToken] = React.useState<string | null>(null)
   const [copied, setCopied] = React.useState(false)
 
-  const { data: tokens = [], isLoading } = useQuery<ApiTokenDto[]>({
+  const {
+    data: tokens = [],
+    isLoading,
+    error: tokensError,
+  } = useQuery<ApiTokenDto[]>({
     queryKey: ['api-tokens'],
     queryFn: async () => {
       const response = await fetchWithAuth('/api/api-tokens')
@@ -1584,14 +1589,24 @@ const ApiTokenSettings = () => {
       const response = await fetchWithAuth(`/api/api-tokens/${id}`, { method: 'DELETE' })
       if (!response.ok) throw new Error('APIトークンの取り消しに失敗しました')
     },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['api-tokens'] }),
+    onSuccess: () => {
+      toast.success('APIトークンを取り消しました')
+      void queryClient.invalidateQueries({ queryKey: ['api-tokens'] })
+    },
+    onError: (error) => toast.error((error as Error).message),
   })
 
-  const copyToken = () => {
+  const copyToken = async () => {
     if (!issuedToken) return
-    void navigator.clipboard.writeText(issuedToken)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(issuedToken)
+      setCopied(true)
+      toast.success('APIトークンをコピーしました')
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+      toast.error('APIトークンをコピーできませんでした')
+    }
   }
 
   return (
@@ -1626,7 +1641,7 @@ const ApiTokenSettings = () => {
             >
               {issuedToken}
             </code>
-            <button type="button" className="btn btn-primary" onClick={copyToken}>
+            <button type="button" className="btn btn-primary" onClick={() => void copyToken()}>
               {copied ? 'コピー済み' : 'コピー'}
             </button>
             <button type="button" className="btn btn-ghost" onClick={() => setIssuedToken(null)}>
@@ -1688,6 +1703,10 @@ const ApiTokenSettings = () => {
         </div>
         {isLoading ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>読み込み中…</div>
+        ) : tokensError ? (
+          <div style={{ fontSize: 12, color: 'var(--red-text)' }}>
+            ⚠ {(tokensError as Error).message}
+          </div>
         ) : tokens.length === 0 ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>発行済みトークンはありません。</div>
         ) : (
