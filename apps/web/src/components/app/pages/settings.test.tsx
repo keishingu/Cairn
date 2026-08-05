@@ -307,6 +307,46 @@ describe('MCP / APIトークン設定', () => {
     expect(screen.queryByText('発行済みトークンはありません。')).not.toBeInTheDocument()
   })
 
+  it('発行フォームの入力欄と選択欄へ共通スタイルを適用する', async () => {
+    mockIntegrationsFetch()
+    renderIntegrationsSection()
+
+    expect(await screen.findByLabelText('トークン名')).toHaveClass('form-control')
+    expect(screen.getByRole('combobox', { name: '権限' })).toHaveClass('form-control')
+    expect(screen.getByRole('combobox', { name: '有効期間' })).toHaveClass('form-control')
+  })
+
+  it('取り消し済みのトークンを一覧に表示しない', async () => {
+    mockIntegrationsFetch({
+      apiTokens: [
+        {
+          id: 'active-token',
+          name: 'Codex',
+          prefix: 'cairn_pat_active',
+          scope: 'read',
+          expiresAt: '2027-08-05T00:00:00.000Z',
+          revokedAt: null,
+          lastUsedAt: null,
+          createdAt: '2026-08-05T00:00:00.000Z',
+        },
+        {
+          id: 'revoked-token',
+          name: '取り消し済み',
+          prefix: 'cairn_pat_revoked',
+          scope: 'read',
+          expiresAt: '2027-08-05T00:00:00.000Z',
+          revokedAt: '2026-08-05T01:00:00.000Z',
+          lastUsedAt: null,
+          createdAt: '2026-08-05T00:00:00.000Z',
+        },
+      ],
+    })
+    renderIntegrationsSection()
+
+    expect(await screen.findByText('Codex')).toBeInTheDocument()
+    expect(screen.queryByText('取り消し済み')).not.toBeInTheDocument()
+  })
+
   it('トークンの取り消し失敗を通知する', async () => {
     mockIntegrationsFetch({
       apiTokens: [

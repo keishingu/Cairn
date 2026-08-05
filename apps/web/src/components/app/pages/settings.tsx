@@ -1567,6 +1567,7 @@ const ApiTokenSettings = () => {
       return response.json()
     },
   })
+  const visibleTokens = tokens.filter((token) => token.revokedAt === null)
   const issue = useMutation({
     mutationFn: async () => {
       const response = await fetchWithAuth('/api/api-tokens', {
@@ -1589,8 +1590,11 @@ const ApiTokenSettings = () => {
       const response = await fetchWithAuth(`/api/api-tokens/${id}`, { method: 'DELETE' })
       if (!response.ok) throw new Error('APIトークンの取り消しに失敗しました')
     },
-    onSuccess: () => {
+    onSuccess: (_data, revokedId) => {
       toast.success('APIトークンを取り消しました')
+      queryClient.setQueryData<ApiTokenDto[]>(['api-tokens'], (current) =>
+        current?.filter((token) => token.id !== revokedId),
+      )
       void queryClient.invalidateQueries({ queryKey: ['api-tokens'] })
     },
     onError: (error) => toast.error((error as Error).message),
@@ -1659,24 +1663,30 @@ const ApiTokenSettings = () => {
         ) : (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
             <input
+              className="form-control"
               value={name}
               onChange={(event) => setName(event.target.value)}
               aria-label="トークン名"
               maxLength={100}
               placeholder="トークン名"
-              style={{ flex: '1 1 180px' }}
+              style={{ flex: '1 1 240px', minWidth: 0 }}
             />
             <select
+              className="form-control"
               value={scope}
               onChange={(event) => setScope(event.target.value as 'read' | 'write')}
+              aria-label="権限"
+              style={{ minWidth: 104, cursor: 'pointer' }}
             >
               <option value="read">読み取り</option>
               <option value="write">読み書き</option>
             </select>
             <select
+              className="form-control"
               value={expiresInDays}
               onChange={(event) => setExpiresInDays(Number(event.target.value))}
               aria-label="有効期間"
+              style={{ minWidth: 84, cursor: 'pointer' }}
             >
               <option value={30}>30日</option>
               <option value={90}>90日</option>
@@ -1707,11 +1717,11 @@ const ApiTokenSettings = () => {
           <div style={{ fontSize: 12, color: 'var(--red-text)' }}>
             ⚠ {(tokensError as Error).message}
           </div>
-        ) : tokens.length === 0 ? (
+        ) : visibleTokens.length === 0 ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>発行済みトークンはありません。</div>
         ) : (
-          tokens.map((token) => {
-            const inactive = token.revokedAt !== null || new Date(token.expiresAt) <= new Date()
+          visibleTokens.map((token) => {
+            const inactive = new Date(token.expiresAt) <= new Date()
             return (
               <div
                 key={token.id}

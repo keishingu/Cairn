@@ -61,6 +61,8 @@ bearer_token_env_var = "CAIRN_TOKEN"
 | ----------------- | -------- | ----------------------------------------- | ------------------------------- |
 | `list_projects`   | read     | `GET /api/projects`                       | 見えるプロジェクト一覧          |
 | `get_project`     | read     | `GET /api/projects/[id]`                  | プロジェクトと投稿先 channel ID |
+| `list_files`      | read     | `GET /api/files` / project files API      | 閲覧可能なファイル一覧          |
+| `read_file`       | read     | `GET /api/files/[id]/content`             | 抽出済みファイル本文の取得      |
 | `list_my_tasks`   | read     | `GET /api/tasks?assignee=me`              | 自分の担当タスク                |
 | `create_task`     | write    | `POST /api/tasks`                         | タスク作成                      |
 | `complete_task`   | write    | `PATCH /api/tasks/[id]`                   | タスク完了                      |
@@ -72,6 +74,11 @@ MVP の「成果物の投稿」はメッセージ本文と外部 URL まで。Ca
 
 MCP 層は薄いプロトコル変換に徹し、各ツールは既存 Route Handler を呼ぶ。これにより通常 UI と
 同じ workspace / project / channel 認可、入力検証、通知・タスク連携が適用される。
+
+`read_file` は Storage の元バイナリを返さず、内部RAGと同じ `document_chunks` の抽出済み本文を
+最大10チャンクずつ返す。レスポンスの `nextStartChunk` が null でなければ、その値を次の
+`startChunk` に指定して続きを取得する。ファイル行へ `canAccessFile` を適用してからチャンクを
+読むため、workspace が一致するだけではプライベートチャンネル等の資料を参照できない。
 
 ## 5. セキュリティ境界
 

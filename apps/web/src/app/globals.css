@@ -149,6 +149,11 @@
 .app .btn-ghost:hover { background: var(--card-hover); }
 .app .btn-danger { background: var(--red); border-color: var(--red); color:#fff; font-weight:600; }
 .app .btn-danger:hover { background: #DC2626; border-color: #DC2626; }
+.app .form-control { height:34px; padding:0 10px; border:1px solid var(--border); border-radius:8px; background:var(--card-2); color:var(--text); font-size:13px; font-family:inherit; outline:none; transition:background .12s, border-color .12s, box-shadow .12s; }
+.app .form-control:hover { border-color:var(--border-2); }
+.app .form-control:focus-visible { border-color:var(--accent); box-shadow:var(--ring); }
+.app .form-control:disabled { color:var(--text-4); cursor:not-allowed; opacity:.65; }
+.app .form-control::placeholder { color:var(--text-3); }
 .app .chip { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:600; letter-spacing:0.01em; }
 .app .card { background: var(--card); border:1px solid var(--border); border-radius:12px; }
 .app .kbd { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; border-radius:4px; font-size:10.5px; font-weight:600; background:var(--bg-elev); color:var(--text-3); border:1px solid var(--border); font-family:'SF Mono', ui-monospace, monospace; }

@@ -5,6 +5,9 @@ import { createMcpHandler, withMcpAuth } from 'mcp-handler'
 import { z } from 'zod4'
 import { GET as listProjectsRoute } from '@/app/api/projects/route'
 import { GET as getProjectRoute } from '@/app/api/projects/[id]/route'
+import { GET as listFilesRoute } from '@/app/api/files/route'
+import { GET as listProjectFilesRoute } from '@/app/api/projects/[id]/files/route'
+import { GET as readFileRoute } from '@/app/api/files/[id]/content/route'
 import { GET as listTasksRoute, POST as createTaskRoute } from '@/app/api/tasks/route'
 import { PATCH as updateTaskRoute } from '@/app/api/tasks/[id]/route'
 import { POST as postMessageRoute } from '@/app/api/channels/[channelId]/messages/route'
@@ -59,6 +62,49 @@ const mcpHandler = createMcpHandler(
             params: Promise.resolve({ id: projectId }),
           }),
         ),
+    )
+
+    server.registerTool(
+      'list_files',
+      {
+        title: 'List files',
+        description:
+          'List files visible to the current Cairn user, optionally limited to one project.',
+        inputSchema: z.object({ projectId: z.uuid().optional() }),
+        annotations: { readOnlyHint: true },
+      },
+      async ({ projectId }) =>
+        projectId
+          ? routeResult(
+              listProjectFilesRoute(
+                new Request(`http://cairn.local/api/projects/${projectId}/files`),
+                { params: Promise.resolve({ id: projectId }) },
+              ),
+            )
+          : routeResult(listFilesRoute()),
+    )
+
+    server.registerTool(
+      'read_file',
+      {
+        title: 'Read file',
+        description:
+          'Read indexed text extracted from a visible Cairn file. Continue with nextStartChunk when present.',
+        inputSchema: z.object({
+          fileId: z.uuid(),
+          startChunk: z.number().int().min(0).default(0),
+          limit: z.number().int().min(1).max(10).default(5),
+        }),
+        annotations: { readOnlyHint: true },
+      },
+      async ({ fileId, startChunk, limit }) => {
+        const url = new URL(`http://cairn.local/api/files/${fileId}/content`)
+        url.searchParams.set('startChunk', String(startChunk))
+        url.searchParams.set('limit', String(limit))
+        return routeResult(
+          readFileRoute(new Request(url), { params: Promise.resolve({ id: fileId }) }),
+        )
+      },
     )
 
     server.registerTool(
@@ -166,7 +212,7 @@ const mcpHandler = createMcpHandler(
     )
   },
   {
-    serverInfo: { name: 'cairn', version: '0.1.0' },
+    serverInfo: { name: 'cairn', version: '0.2.0' },
     instructions:
       'These tools act on behalf of the human Cairn user who issued the API token. Read and write access is limited to that token’s fixed workspace.',
   },
