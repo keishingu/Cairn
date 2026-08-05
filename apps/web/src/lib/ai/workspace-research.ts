@@ -376,6 +376,11 @@ export async function getResearchRiskSnapshot(
   const dueSoon = new Date(`${today}T00:00:00Z`)
   dueSoon.setUTCDate(dueSoon.getUTCDate() + DUE_SOON_DAYS)
   const stalledBefore = new Date(now.getTime() - STALLED_DAYS * 86_400_000)
+  const criticalOverdueBefore = new Date(`${today}T00:00:00Z`)
+  criticalOverdueBefore.setUTCDate(criticalOverdueBefore.getUTCDate() - 7)
+  const highStalledBefore = new Date(now.getTime() - 14 * 86_400_000)
+  const highDueSoon = new Date(`${today}T00:00:00Z`)
+  highDueSoon.setUTCDate(highDueSoon.getUTCDate() + 1)
   const taskRows = await db
     .select({
       id: tasks.id,
@@ -406,7 +411,17 @@ export async function getResearchRiskSnapshot(
         ),
       ),
     )
-    .orderBy(sql`${tasks.dueDate} asc nulls last`, tasks.updatedAt)
+    .orderBy(
+      sql`case
+        when ${tasks.dueDate} < ${criticalOverdueBefore.toISOString().slice(0, 10)} then 0
+        when ${tasks.dueDate} < ${today} then 1
+        when ${tasks.status} = 'in_progress' and ${tasks.updatedAt} <= ${highStalledBefore} then 1
+        when ${tasks.status} = 'todo' and ${tasks.dueDate} <= ${highDueSoon.toISOString().slice(0, 10)} then 1
+        else 2
+      end`,
+      sql`${tasks.dueDate} asc nulls last`,
+      tasks.updatedAt,
+    )
     .limit(AI_RESEARCH_LIMITS.risks + 1)
 
   const taskRisks = taskRows
