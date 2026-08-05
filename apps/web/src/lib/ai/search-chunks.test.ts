@@ -91,4 +91,17 @@ describe('searchChunks', () => {
     expect(query).toContain('FROM project_members source_pm')
     expect(query).toContain('FROM channel_members source_cm')
   })
+
+  it('参加プロジェクトがないguestも参加チャンネルで見えるファイルを検索できる', async () => {
+    await searchChunks('検索語', '11111111-1111-1111-1111-111111111111', {
+      userId: '22222222-2222-2222-2222-222222222222',
+      role: 'guest',
+      allowedProjectIds: [],
+    })
+
+    expect(mockExecute).toHaveBeenCalledTimes(1)
+    const query = String(mockExecute.mock.calls[0]?.[0])
+    expect(query).toContain('AND source_type = \'file\'')
+    expect(query).toContain('FROM channel_members source_cm')
+  })
 })

@@ -28,5 +28,6 @@ describe('/ai横断調査とAI PMO・課金の分離', () => {
     expect(source).toContain('gte(tasks.dueDate, today)')
     expect(source).toContain('criticalOverdueBefore')
     expect(source).toContain("\${tasks.status} = 'in_progress'")
+    expect(source).toContain("\${tasks.priority} = 'high' and \${tasks.assigneeId} is null")
   })
 })

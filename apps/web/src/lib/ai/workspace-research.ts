@@ -417,6 +417,7 @@ export async function getResearchRiskSnapshot(
         when ${tasks.dueDate} < ${today} then 1
         when ${tasks.status} = 'in_progress' and ${tasks.updatedAt} <= ${highStalledBefore} then 1
         when ${tasks.status} = 'todo' and ${tasks.dueDate} <= ${highDueSoon.toISOString().slice(0, 10)} then 1
+        when ${tasks.priority} = 'high' and ${tasks.assigneeId} is null then 1
         else 2
       end`,
       sql`${tasks.dueDate} asc nulls last`,

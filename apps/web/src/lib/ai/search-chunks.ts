@@ -26,10 +26,6 @@ export async function searchChunks(
 ): Promise<ChunkMatch[]> {
   const { limit = 5, minSimilarity = 0.5, allowedProjectIds = null } = opts
 
-  // ゲストはアクセス可能なプロジェクトのチャンクのみ参照させる。プロジェクトが無ければ何も返さない。
-  // （source_type='member' のチャンクはプロジェクトに紐づかないためゲストには返さない）
-  if (allowedProjectIds != null && allowedProjectIds.length === 0) return []
-
   const { embedding } = await embed({
     model: openai.embedding(EMBEDDING_MODEL),
     value: query,
@@ -41,15 +37,15 @@ export async function searchChunks(
   const vectorStr = `[${embedding.join(',')}]`
 
   const projectScope = allowedProjectIds != null
-    ? (() => {
+    ? allowedProjectIds.length > 0
+      ? (() => {
         const idList = sql.join(allowedProjectIds.map(id => sql`${id}::uuid`), sql`, `)
         return sql`AND (
           (source_type = 'project' AND source_id IN (${idList}))
-          OR (source_type = 'file' AND source_id IN (
-            SELECT id FROM files WHERE project_id IN (${idList})
-          ))
+          OR source_type = 'file'
         )`
       })()
+      : sql`AND source_type = 'file'`
     : sql``
 
   // file chunks must obey the same visibility as the normal file UI. Project files are visible
