@@ -3,6 +3,7 @@
 
 import { embed } from 'ai'
 import { FEATURE_FLAGS } from '@cairn/shared'
+import type { WorkspaceRole } from '@/lib/access/membership'
 import { openai, EMBEDDING_MODEL } from './client'
 
 export interface ChunkMatch {
@@ -15,7 +16,13 @@ export interface ChunkMatch {
 export async function searchChunks(
   query: string,
   workspaceId: string,
-  opts: { limit?: number; minSimilarity?: number; allowedProjectIds?: string[] | null } = {},
+  opts: {
+    userId: string
+    role: WorkspaceRole
+    limit?: number
+    minSimilarity?: number
+    allowedProjectIds?: string[] | null
+  },
 ): Promise<ChunkMatch[]> {
   const { limit = 5, minSimilarity = 0.5, allowedProjectIds = null } = opts
 
@@ -44,6 +51,93 @@ export async function searchChunks(
         )`
       })()
     : sql``
+
+  // file chunks must obey the same visibility as the normal file UI. Project files are visible
+  // through project access; unscoped files require uploader ownership or an accessible channel.
+  // This condition runs before vector LIMIT so inaccessible hits cannot crowd out visible results.
+  const channelAccess = opts.role === 'guest'
+    ? sql`(
+        (source_channel.type = 'project'
+          AND EXISTS (
+            SELECT 1 FROM project_members source_pm
+            WHERE source_pm.project_id = source_channel.project_id
+              AND source_pm.user_id = ${opts.userId}::uuid
+          )
+          AND (
+            source_channel.is_private = false
+            OR EXISTS (
+              SELECT 1 FROM channel_members source_cm
+              WHERE source_cm.channel_id = source_channel.id
+                AND source_cm.user_id = ${opts.userId}::uuid
+            )
+          )
+        )
+        OR (source_channel.type = 'workspace'
+          AND EXISTS (
+            SELECT 1 FROM channel_members source_cm
+            WHERE source_cm.channel_id = source_channel.id
+              AND source_cm.user_id = ${opts.userId}::uuid
+          )
+        )
+        OR (source_channel.type = 'dm'
+          AND EXISTS (
+            SELECT 1 FROM channel_members source_cm
+            WHERE source_cm.channel_id = source_channel.id
+              AND source_cm.user_id = ${opts.userId}::uuid
+          )
+        )
+      )`
+    : sql`(
+        (source_channel.type <> 'dm' AND source_channel.is_private = false)
+        OR EXISTS (
+          SELECT 1 FROM channel_members source_cm
+          WHERE source_cm.channel_id = source_channel.id
+            AND source_cm.user_id = ${opts.userId}::uuid
+        )
+      )`
+
+  const fileAccessScope = sql`AND (
+    source_type <> 'file'
+    OR EXISTS (
+      SELECT 1
+      FROM files source_file
+      WHERE source_file.id = document_chunks.source_id
+        AND source_file.workspace_id = ${workspaceId}::uuid
+        AND (
+          source_file.uploaded_by = ${opts.userId}::uuid
+          OR (
+            source_file.project_id IS NOT NULL
+            ${opts.role === 'guest'
+              ? sql`AND source_file.project_id IN (
+                  SELECT source_pm.project_id FROM project_members source_pm
+                  WHERE source_pm.user_id = ${opts.userId}::uuid
+                )`
+              : sql``}
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM message_attachments source_attachment
+            INNER JOIN messages source_message ON source_message.id = source_attachment.message_id
+            INNER JOIN channels source_channel ON source_channel.id = source_message.channel_id
+            LEFT JOIN projects source_project ON source_project.id = source_channel.project_id
+            WHERE source_attachment.file_id = source_file.id
+              AND coalesce(source_channel.workspace_id, source_project.workspace_id) = ${workspaceId}::uuid
+              AND ${channelAccess}
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM channels source_channel
+            LEFT JOIN projects source_project ON source_project.id = source_channel.project_id
+            WHERE coalesce(source_channel.workspace_id, source_project.workspace_id) = ${workspaceId}::uuid
+              AND (
+                source_channel.id::text = source_file.metadata->>'channelId'
+                OR source_file.metadata->'channelIds' @> jsonb_build_array(source_channel.id::text)
+              )
+              AND ${channelAccess}
+          )
+        )
+    )
+  )`
 
   // DM 停止中は、既存のDM専用ファイルから生成済みのチャンクも検索対象から外す。
   // プロジェクトまたは非DMチャンネルでも共有されたファイルは通常の情報として保持する。
@@ -115,6 +209,7 @@ export async function searchChunks(
       AND embedding IS NOT NULL
       AND 1 - (embedding <=> ${vectorStr}::vector) >= ${minSimilarity}
       ${projectScope}
+      ${fileAccessScope}
       ${dmFileScope}
     ORDER BY embedding <=> ${vectorStr}::vector
     LIMIT ${limit}

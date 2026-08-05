@@ -45,7 +45,10 @@ describe('searchChunks', () => {
   it('DMが無効なとき、DM専用ファイルのチャンクを検索条件から除外する', async () => {
     ;(FEATURE_FLAGS as { dm: boolean }).dm = false
 
-    await searchChunks('検索語', '11111111-1111-1111-1111-111111111111')
+    await searchChunks('検索語', '11111111-1111-1111-1111-111111111111', {
+      userId: '22222222-2222-2222-2222-222222222222',
+      role: 'member',
+    })
 
     const query = String(mockExecute.mock.calls[0]?.[0])
     expect(query).toContain("dm_channel.type = 'dm'")
@@ -56,9 +59,36 @@ describe('searchChunks', () => {
   it('DMが有効なとき、DMファイルの追加条件を適用しない', async () => {
     ;(FEATURE_FLAGS as { dm: boolean }).dm = true
 
-    await searchChunks('検索語', '11111111-1111-1111-1111-111111111111')
+    await searchChunks('検索語', '11111111-1111-1111-1111-111111111111', {
+      userId: '22222222-2222-2222-2222-222222222222',
+      role: 'member',
+    })
 
     const query = String(mockExecute.mock.calls[0]?.[0])
     expect(query).not.toContain("dm_channel.type = 'dm'")
+  })
+
+  it('memberのファイルチャンクは公開チャンネルまたは現在参加中のチャンネルに限定する', async () => {
+    await searchChunks('検索語', '11111111-1111-1111-1111-111111111111', {
+      userId: '22222222-2222-2222-2222-222222222222',
+      role: 'member',
+    })
+
+    const query = String(mockExecute.mock.calls[0]?.[0])
+    expect(query).toContain("source_channel.type <> 'dm' AND source_channel.is_private = false")
+    expect(query).toContain('FROM channel_members source_cm')
+    expect(query).toContain('source_file.uploaded_by')
+  })
+
+  it('guestのファイルチャンクは参加プロジェクトと参加チャンネルに限定する', async () => {
+    await searchChunks('検索語', '11111111-1111-1111-1111-111111111111', {
+      userId: '22222222-2222-2222-2222-222222222222',
+      role: 'guest',
+      allowedProjectIds: ['33333333-3333-3333-3333-333333333333'],
+    })
+
+    const query = String(mockExecute.mock.calls[0]?.[0])
+    expect(query).toContain('FROM project_members source_pm')
+    expect(query).toContain('FROM channel_members source_cm')
   })
 })
