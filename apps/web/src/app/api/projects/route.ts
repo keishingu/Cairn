@@ -36,7 +36,10 @@ function coverPhotoIdxFromId(id: string): number {
 }
 
 export async function GET() {
-  const { ctx, error: authError } = await getAuthContext()
+  const { ctx, error: authError } = await getAuthContext({
+    allowApiToken: true,
+    requiredApiTokenScope: 'read',
+  })
   if (authError) return authError
 
   try {

@@ -4,7 +4,62 @@
 import { NextResponse } from 'next/server'
 import { patchProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireRole } from '@/lib/permissions'
+import { requireProjectAccess, requireRole } from '@/lib/permissions'
+
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const { ctx, error: authError } = await getAuthContext({
+    allowApiToken: true,
+    requiredApiTokenScope: 'read',
+  })
+  if (authError) return authError
+
+  const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, id, ctx.role)
+  if (forbidden) return forbidden
+
+  try {
+    const { db, channels, projects, projectStatuses } = await import('@cairn/db')
+    const { and, eq, isNull } = await import('drizzle-orm')
+    const [project] = await db
+      .select({
+        id: projects.id,
+        title: projects.title,
+        description: projects.description,
+        statusName: projectStatuses.name,
+        statusColor: projectStatuses.color,
+        startDate: projects.startDate,
+        endDate: projects.endDate,
+        archived: projects.archived,
+        channelId: channels.id,
+        coverPhotoUrl: projects.coverPhotoUrl,
+        location: projects.location,
+        placeId: projects.placeId,
+      })
+      .from(projects)
+      .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
+      .leftJoin(
+        channels,
+        and(
+          eq(channels.projectId, projects.id),
+          eq(channels.type, 'project'),
+          isNull(channels.milestoneId),
+        ),
+      )
+      .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
+      .limit(1)
+
+    if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    return NextResponse.json({
+      ...project,
+      statusName: project.statusName ?? null,
+      statusColor: project.statusColor ?? null,
+      channelId: project.channelId ?? null,
+    })
+  } catch (err) {
+    console.error('[GET /api/projects/[id]]', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = await params

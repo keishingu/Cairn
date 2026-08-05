@@ -172,7 +172,7 @@ supabase db reset  # マイグレーションを最初から適用（データ�
 ```
 cairn/
   apps/
-    web/          # Next.js 15 (メインWebアプリ)
+    web/          # Next.js 15 (メインWebアプリ + リモートMCP /api/mcp)
     desktop/
       electron/   # Electron デスクトップアプリ (リモートシェル)
   packages/

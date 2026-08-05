@@ -35,6 +35,8 @@ export const attendanceStatusEnum = pgEnum('attendance_status', [
 
 export const messageTypeEnum = pgEnum('message_type', ['text', 'html', 'system'])
 
+export const apiTokenScopeEnum = pgEnum('api_token_scope', ['read', 'write'])
+
 export const fileTypeEnum = pgEnum('file_type', [
   'document',
   'image',

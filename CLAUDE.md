@@ -41,7 +41,7 @@ packages/config/   tsconfig / ESLint の共有設定
 
 - **Supabase CLI + Docker** を使う。`supabase start` で PostgreSQL / Auth / Storage / Realtime / Studio が一括起動する
 - 環境変数は `apps/web/.env.local.example` をコピーして使う。`supabase start` のデフォルトキーが事前入力済み
-- DBスキーマは `packages/db/src/schema/` で管理（Drizzle が正）→ `pnpm db:generate` で `supabase/migrations/` にSQLを生成 → `supabase migration up` でローカルに差分適用（データを保持したまま未適用マイグレーションだけ実行）。新規 migration ファイル名は `packages/db/drizzle.config.ts` の `migrations.prefix = 'timestamp'` で timestamp 方式に統一する
+- DBスキーマは `packages/db/src/schema/` で管理（Drizzle が正）→ `pnpm db:generate` で `supabase/migrations/` にSQLを生成 → `supabase migration up` でローカルに差分適用（データを保持したまま未適用マイグレーションだけ実行）。新規 migration ファイル名は `packages/db/drizzle.config.ts` の `migrations.prefix = 'timestamp'` で timestamp 方式に統一する。**生成されたランダムな形容詞名はそのまま使わず、timestamp を維持したまま変更内容が分かる英語の snake_case 名へ変更する**（例: `20260804115423_add_api_tokens.sql`）
 - **ブランチ切り替え後は `supabase migration up` を実行する**。未適用マイグレーションがあると enum 不一致や Realtime 認可ポリシー欠如などで API が 500・Realtime が接続不能になるが、原因がマイグレーション未適用だと気づきにくい
 - `supabase db reset` はデータを全削除して再構築するため、CI や初回セットアップ専用
 
@@ -81,6 +81,7 @@ pnpm dev
 - **プロジェクトビューは localStorage で管理**: 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクト済み。ビュー切替（一覧 / カレンダー / カンバン）はURLパラメータを使わず localStorage のみで永続化（`STORAGE_KEYS.projects_view_pc` / `STORAGE_KEYS.projects_view_mob`）。`/projects/[id]` はプロジェクト詳細（現在は `/projects?open={id}` にリダイレクト）
 - **設定セクションは URL 駆動**: 設定の各セクションは `/settings/[section]`（例 `/settings/account` `/settings/integrations`）に対応する。セクション定義（一覧・ラベル・アイコン）とメインカラム本体は `apps/web/src/components/app/pages/settings.tsx` に集約し、`SETTINGS_NAV_GROUPS` / `SettingsSectionContent` を PC とモバイルで共有する。PC はサイドバー + メインカラム、モバイルは設定一覧（`MobileSettings`）→ タップで `/settings/[section]` に遷移し同じメインカラムを全画面表示（`MobileSettingsDetail`）。`/settings` 単体は PC で `account`、モバイルで一覧を表示する。`?tab=` 形式は廃止
 - **API 認証は Bearer トークン（Supabase JWT）**: Web クライアントも Expo も同じ Next.js Route Handlers を呼び出し、`Authorization: Bearer <token>` で認証する。`getAuthContext()` は `Authorization` ヘッダを優先し、なければ Cookie にフォールバックする。Hono API 分離は「Next.js からの独立スケール・デプロイ分離が必要」になった時点で改めて検討する
+- **外部 AI 連携はリモート MCP + workspace 固定 PAT を先行する**: `POST /api/mcp` を Streamable HTTP で公開し、外部クライアントは PAT 発行者本人の代理として動く。PAT は `read` / `write`（write は read を包含）、既定90日・最長365日、guest 発行・利用不可、毎分120 MCPリクエスト。PAT は `/api/mcp` だけで受け付け、通常 REST API の代替資格情報にはしない。stdio/npm 版は後続。詳細は [`docs/mcp-server-design.md`](docs/mcp-server-design.md)
 - **WebView 認証はワンタイムトークンハンドオフ方式**: ネイティブ（Expo）の `refresh_token` を WebView に渡して `setSession()` するのは禁止。同一 refresh_token を 2 クライアントが共有すると rotation と衝突してセッションが突然失効する。ネイティブは `POST /api/auth/webview-handoff` で本人の使い捨て magiclink（`hashed_token`）を発行させ、WebView 側は `verifyOtp` で独立したセッションを確立する。詳細は [`docs/mobile-webview-auth-handoff.md`](docs/mobile-webview-auth-handoff.md)
 - **メール機能はアプリが持たない**: ログイン確認・パスワードリセット等のトランザクショナルメールは Supabase Auth が管理する。招待はリンク共有（30日有効）で行い、アプリ側にメール送信ロジックは実装しない。将来的に通知メール等の要望が出た場合は Resend 等を検討する
 - **権限モデルはワークスペースロールのみで決定する**（プロジェクトロールは業務上の役割であり、システム権限に影響させない）
