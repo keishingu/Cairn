@@ -18,15 +18,15 @@
 
 OpenClaw の整理（[cron vs heartbeat](https://docs.openclaw.ai/automation/cron-vs-heartbeat)）に沿って、2つを明確に分ける。
 
-| | **cron（本書）** | **heartbeat（別物・将来）** |
+| | **cron（本書・未実装）** | **AI PMO heartbeat（別機能・実装済み）** |
 |---|---|---|
 | 目的 | 正確なタイミングで確実に実行する定型ジョブ | 近似タイミングの自発的な気づき・監視 |
-| 起動 | スケジュール（毎月15日 09:00 等）で**必ず**発火 | 一定間隔で起こされ、LLM が「今やるべきか」を毎回判断 |
-| 発言 | 期日が来たら実行する（宣言的） | 何か対応が要るときだけ喋る（沈黙がデフォルト） |
-| 実行記録 | run を**必ず**残す（監査・冪等性） | 記録を残さない |
-| Cairn での担当 | **本書の定期ジョブ** | [`10_ai_member_design.md`](./10_ai_member_design.md) Stage 3「心拍」（計画書の催促等） |
+| 起動 | スケジュール（毎月15日 09:00 等）で**必ず**発火 | 一定間隔で起こされ、ルールまたはLLMが対応要否を判断 |
+| 発言 | 期日が来たら実行する（宣言的） | 高確信度の気づきだけ本人へ配信（沈黙がデフォルト） |
+| 実行記録 | run を**必ず**残す（監査・冪等性） | `ai_nudges` に現在状態と根拠、`ai_scan_states` に差分カーソルを保持 |
+| Cairn での担当 | **本書の定期ジョブ** | [`ai-pmo-design.md`](./ai-pmo-design.md) のプライベートナッジ |
 
-→ 登山本部決めは「正確なタイミング・確実な実行」なので **cron**。Stage 3 の heartbeat（異常検知して催促）とは独立して併存する。
+→ 登山本部決めは「正確なタイミング・確実な実行」なので **cron**。実装済みの AI PMO heartbeat（異常検知して本人へ知らせる）とは独立して併存する。AI PMOのInngest cronを、ユーザー定義ジョブの汎用基盤として流用しない。
 
 ### 本書の用語
 
@@ -121,7 +121,7 @@ OpenClaw の heartbeat は「発火ごとに LLM がタスク表を読んで“�
 この分担が cron 的に正しい理由:
 
 - **確実性**: 発火を LLM 判定に委ねると、解釈ブレで実行漏れ・重複が起きる。cron 比較なら必ず・1回だけ走る。
-- **コスト**: [`10_ai_member_design.md`](./10_ai_member_design.md) でも「巡回 × ワークスペース数」の LLM コストがリスク。発火判定で LLM を回さない。
+- **コスト**: [`ai-pmo-design.md`](./ai-pmo-design.md) でも「巡回 × ワークスペース数」の LLM コストがリスク。発火判定で LLM を回さない。
 - **プレビュー可能**: 保存時に構造が確定するので、設定画面で「次回 7/15 09:00 に実行」と確定表示できる。
 
 **自然言語は捨てない**: `rawInstruction` を正として保持し、設定画面ではユーザーが書いた文をそのまま見せて編集させる。
@@ -368,7 +368,8 @@ CLAUDE.md「設定セクションは URL 駆動」に従い、`/settings/schedul
 
 ## 参考
 
-- [`docs/10_ai_member_design.md`](./10_ai_member_design.md) — AIメンバー設計（Stage 2 ツール / Stage 3 心拍＝本書とは別物の heartbeat）
+- [`docs/10_ai_member_design.md`](./10_ai_member_design.md) — `/ai`・AI PMO・AIメンバーの責務境界と、Stage 2 の承認付きツール
+- [`docs/ai-pmo-design.md`](./ai-pmo-design.md) — 本書とは別物の、実装済みAI PMO heartbeat
 - [`docs/notification-ux-redesign.md`](./notification-ux-redesign.md) — Realtime（Broadcast from Database）方針
 - OpenClaw の cron と heartbeat の使い分け（cron=正確・確実・独立 / heartbeat=近似・自発監視）:
   [Cron vs heartbeat · OpenClaw](https://docs.openclaw.ai/automation/cron-vs-heartbeat)
