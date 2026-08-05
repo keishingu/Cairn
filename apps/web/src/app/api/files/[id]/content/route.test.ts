@@ -100,6 +100,16 @@ describe('GET /api/files/[id]/content', () => {
     vi.clearAllMocks()
   })
 
+  it('MCP内部の読み取りPATを許可する認証設定を使用する', async () => {
+    const response = await GET(request(), routeParams())
+
+    expect(response.status).toBe(409)
+    expect(mockGetAuthContext).toHaveBeenCalledWith({
+      allowApiToken: true,
+      requiredApiTokenScope: 'read',
+    })
+  })
+
   it('閲覧権限がないファイルの本文を返さない', async () => {
     mockCanAccessFile.mockResolvedValue(false)
 
