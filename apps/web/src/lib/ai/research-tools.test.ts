@@ -34,15 +34,41 @@ describe('AI横断調査toolの信頼境界', () => {
     const parsed = tools.list_projects.parameters.parse({
       workspaceId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
       userId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+      includeArchived: null,
       limit: 1,
     })
-    expect(parsed).toEqual({ limit: 1 })
+    expect(parsed).toEqual({ includeArchived: null, limit: 1 })
 
     await tools.list_projects.execute?.(parsed, {
       toolCallId: 'tool-1',
       messages: [],
     })
-    expect(mockListResearchProjects).toHaveBeenCalledWith(CTX, { limit: 1 })
+    expect(mockListResearchProjects).toHaveBeenCalledWith(CTX, {
+      includeArchived: undefined,
+      limit: 1,
+    })
+  })
+
+  test('OpenAI strict schema向けに任意入力もrequiredかつnull許容にする', async () => {
+    const { createResearchTools } = await import('./research-tools')
+    const tools = createResearchTools(CTX)
+
+    expect(() => tools.list_projects.parameters.parse({ limit: 1 })).toThrow()
+    expect(
+      tools.search_channel_messages.parameters.parse({
+        query: null,
+        projectId: null,
+        channelId: null,
+        lookbackDays: null,
+        limit: null,
+      }),
+    ).toEqual({
+      query: null,
+      projectId: null,
+      channelId: null,
+      lookbackDays: null,
+      limit: null,
+    })
   })
 
   test('推奨された5つの読み取り専用toolだけを構成する', async () => {

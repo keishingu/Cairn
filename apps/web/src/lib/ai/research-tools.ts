@@ -38,8 +38,9 @@ const requestedLimit = z
   .number()
   .int()
   .positive()
-  .optional()
   .describe('希望件数。サーバー側の上限を超えた値は自動的に切り詰めます')
+
+const nullableRequestedLimit = requestedLimit.nullable()
 
 export function createResearchTools(ctx: AuthContext) {
   return {
@@ -47,10 +48,16 @@ export function createResearchTools(ctx: AuthContext) {
       description:
         '権限内のプロジェクトを列挙し、期限・メンバー数・未完了/期限超過タスク数を確認します。横断調査では最初に使用してください。',
       parameters: z.object({
-        includeArchived: z.boolean().optional().describe('アーカイブ済みを含めるか。既定はfalse'),
-        limit: requestedLimit,
+        includeArchived: z.boolean().nullable().describe('アーカイブ済みを含めるか。既定はfalse。指定しない場合はnull'),
+        limit: nullableRequestedLimit.describe('指定しない場合はnull'),
       }),
-      execute: (input) => safely(() => listResearchProjects(ctx, input)),
+      execute: ({ includeArchived, limit }) =>
+        safely(() =>
+          listResearchProjects(ctx, {
+            includeArchived: includeArchived ?? undefined,
+            limit: limit ?? undefined,
+          }),
+        ),
     }),
 
     list_project_tasks: tool({
@@ -60,38 +67,55 @@ export function createResearchTools(ctx: AuthContext) {
         projectId: z.string().uuid().describe('list_projects等で取得したプロジェクトID'),
         filters: z
           .array(z.enum(['overdue', 'due_soon', 'stalled', 'unassigned']))
-          .optional()
-          .describe('複数指定はOR。未指定なら全タスク'),
-        limit: requestedLimit,
+          .nullable()
+          .describe('複数指定はOR。未指定ならnull'),
+        limit: nullableRequestedLimit.describe('指定しない場合はnull'),
       }),
-      execute: (input) => safely(() => listResearchProjectTasks(ctx, input)),
+      execute: ({ projectId, filters, limit }) =>
+        safely(() =>
+          listResearchProjectTasks(ctx, {
+            projectId,
+            filters: filters ?? undefined,
+            limit: limit ?? undefined,
+          }),
+        ),
     }),
 
     get_project_risk_snapshot: tool({
       description:
         '権限内の構造化データから期限超過、期限間近の未着手、7日超の停滞、未アサイン、終了間近の未完了多数を決定論的に一括検出します。',
       parameters: z.object({
-        includeArchived: z.boolean().optional().describe('アーカイブ済みを含めるか。既定はfalse'),
+        includeArchived: z.boolean().nullable().describe('アーカイブ済みを含めるか。既定はfalse。指定しない場合はnull'),
       }),
-      execute: (input) => safely(() => getResearchRiskSnapshot(ctx, input)),
+      execute: ({ includeArchived }) =>
+        safely(() => getResearchRiskSnapshot(ctx, { includeArchived: includeArchived ?? undefined })),
     }),
 
     search_channel_messages: tool({
       description:
         '権限内の非DMチャンネルを時系列で検索します。未回答依頼、未決議論、認識齟齬、スコープ膨張の根拠が必要な場合だけ使用してください。',
       parameters: z.object({
-        query: z.string().trim().max(200).optional().describe('任意の部分一致検索語。未指定なら期間内の最近の会話'),
-        projectId: z.string().uuid().optional().describe('対象プロジェクトを限定'),
-        channelId: z.string().uuid().optional().describe('対象チャンネルを限定'),
+        query: z.string().trim().max(200).nullable().describe('任意の部分一致検索語。未指定ならnull'),
+        projectId: z.string().uuid().nullable().describe('対象プロジェクトを限定。未指定ならnull'),
+        channelId: z.string().uuid().nullable().describe('対象チャンネルを限定。未指定ならnull'),
         lookbackDays: z
           .number()
           .int()
           .positive()
-          .optional()
-          .describe('遡る日数。既定30日、サーバー上限90日'),
-        limit: requestedLimit,
+          .nullable()
+          .describe('遡る日数。既定30日、サーバー上限90日。未指定ならnull'),
+        limit: nullableRequestedLimit.describe('指定しない場合はnull'),
       }),
-      execute: (input) => safely(() => searchResearchChannelMessages(ctx, input)),
+      execute: ({ query, projectId, channelId, lookbackDays, limit }) =>
+        safely(() =>
+          searchResearchChannelMessages(ctx, {
+            query: query || undefined,
+            projectId: projectId ?? undefined,
+            channelId: channelId ?? undefined,
+            lookbackDays: lookbackDays ?? undefined,
+            limit: limit ?? undefined,
+          }),
+        ),
     }),
 
     search_workspace_documents: tool({
@@ -99,9 +123,10 @@ export function createResearchTools(ctx: AuthContext) {
         '既存RAGを追加の検索語で再検索し、権限内のファイル・プロジェクト・メンバー情報を根拠付きで取得します。必要な場合だけ使用してください。',
       parameters: z.object({
         query: z.string().trim().min(1).max(500).describe('追加で調べる検索語'),
-        limit: requestedLimit,
+        limit: nullableRequestedLimit.describe('指定しない場合はnull'),
       }),
-      execute: (input) => safely(() => searchResearchDocuments(ctx, input)),
+      execute: ({ query, limit }) =>
+        safely(() => searchResearchDocuments(ctx, { query, limit: limit ?? undefined })),
     }),
   }
 }
