@@ -53,7 +53,7 @@ export default async function OAuthAuthorizePage({
     ) ?? memberships.find((membership) => membership.role !== 'guest')
 
   return (
-    <main style={pageStyle}>
+    <main className="app app-root" style={pageStyle}>
       <div className="card" style={cardStyle}>
         <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.03em' }}>Cairn</div>
         <p style={{ color: 'var(--text-3)', fontSize: 13, margin: '4px 0 24px' }}>MCP接続の認可</p>
@@ -146,7 +146,7 @@ export default async function OAuthAuthorizePage({
 
 function AuthorizationError({ message }: { message: string }) {
   return (
-    <main style={pageStyle}>
+    <main className="app app-root" style={pageStyle}>
       <div className="card" style={cardStyle}>
         <h1 style={{ fontSize: 18, margin: 0 }}>OAuthリクエストを確認できません</h1>
         <p style={{ color: 'var(--red-text)', fontSize: 13 }}>{message}</p>
