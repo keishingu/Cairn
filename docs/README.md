@@ -25,7 +25,7 @@
 | マイルストーン（未実装・設計のみ） | `milestone-design.md`（差分分析・実装計画） | `07_notifications_and_unread.md`（エンティティ=チャンネル思想） |
 | AI メンバー・定期ジョブ（未実装・設計のみ） | `10_ai_member_design.md` / `scheduled-jobs-design.md` | `ai-self-improvement-loop.md` |
 | AI常駐PMO・プライベートナッジ（未実装・設計のみ） | `ai-pmo-design.md` | `ai-era-pm-strategy.md`（戦略背景）、`10_ai_member_design.md`（Stage 3 との関係） |
-| MCP サーバ・外部エージェント連携 | `mcp-server-design.md`（リモート MCP + PAT の現行仕様） | `ai-era-pm-strategy.md`（座取りの合意） |
+| MCP サーバ・外部エージェント連携 | `mcp-server-design.md`（リモート MCP + PAT / OAuth の現行仕様） | `ai-era-pm-strategy.md`（座取りの合意） |
 | LP・マーケティング | `lp-content-redesign.md` | `landing-page-routing-design.md`、`lp-soul-page-copy.md` |
 
 ## 現行リファレンス
@@ -41,7 +41,7 @@
 | [`mobile-internal-distribution.md`](./mobile-internal-distribution.md) | Expo Internal Distribution とオフライン基盤の運用手順 | 2026-07-23 |
 | [`10_ai_member_design.md`](./10_ai_member_design.md) | AIメンバー設計（構想段階の現行合意。実装着手時に更新する） | 2026-06-11 |
 | [`ai-pmo-design.md`](./ai-pmo-design.md) | AI常駐PMO設計（ハートビート巡回 + 本人だけに見えるプライベートナッジ。実装未着手） | 2026-07-17 |
-| [`mcp-server-design.md`](./mcp-server-design.md) | リモート MCP + PAT の現行仕様（stdio/npm 版は後続） | 2026-08-04 |
+| [`mcp-server-design.md`](./mcp-server-design.md) | リモート MCP + PAT / OAuth の現行仕様（stdio/npm 版は後続） | 2026-08-05 |
 | [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) | 定期ジョブ（cron・自然言語で定義）+ アプリ内投票機能の設計（構想段階） | 2026-06-25 |
 | [`milestone-design.md`](./milestone-design.md) | マイルストーン機能の実装設計（現実装との差分分析・DB/API/UI 設計・フェーズ計画。実装未着手） | 2026-07-09 |
 | [`production-deployment.md`](./production-deployment.md) | 本番環境構成・残タスク・一般公開に向けた設定 | 2026-06-21 |

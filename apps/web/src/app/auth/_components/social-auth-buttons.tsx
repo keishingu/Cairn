@@ -8,21 +8,22 @@ import { createClient } from '@/lib/supabase/client'
 
 interface Props {
   inviteToken?: string | null
+  nextPath?: string | null
 }
 
-export function SocialAuthButtons({ inviteToken }: Props) {
+export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
   const [loadingProvider, setLoadingProvider] = React.useState<'google' | 'apple' | null>(null)
 
   async function handleOAuth(provider: 'google' | 'apple') {
     setLoadingProvider(provider)
     const supabase = createClient()
-    const callbackUrl = inviteToken
-      ? `${window.location.origin}/api/auth/callback?invite=${inviteToken}`
-      : `${window.location.origin}/api/auth/callback`
+    const callbackUrl = new URL('/api/auth/callback', window.location.origin)
+    if (inviteToken) callbackUrl.searchParams.set('invite', inviteToken)
+    if (nextPath) callbackUrl.searchParams.set('next', nextPath)
 
     await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: callbackUrl },
+      options: { redirectTo: callbackUrl.toString() },
     })
     // リダイレクトするのでローディングはリセットしない
   }
