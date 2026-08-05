@@ -144,6 +144,76 @@ describe('get-auth-context', () => {
     expect(mockDb.select).not.toHaveBeenCalled()
   })
 
+  it('OAuth access tokenは通常RESTの認証情報として受け付けない', async () => {
+    mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer cairn_oauth_at_test' }))
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext({ allowApiToken: true, requiredApiTokenScope: 'read' })
+
+    expect(result.ctx).toBeNull()
+    expect(result.error?.status).toBe(401)
+    expect(mockSupabase.auth.getClaims).not.toHaveBeenCalled()
+    expect(mockDb.select).not.toHaveBeenCalled()
+  })
+
+  it('検証済みMCPリクエスト内ではOAuth write tokenをread/write両方に使える', async () => {
+    mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer cairn_oauth_at_test' }))
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+
+    const { runWithVerifiedMcpRequest } = await import('./mcp-request-context')
+    const { getAuthContext } = await import('./get-auth-context')
+    const credential = {
+      rawToken: 'cairn_oauth_at_test',
+      tokenId: 'token-1',
+      clientId: 'client-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      role: 'member' as const,
+      scope: 'write' as const,
+      expiresAt: new Date(Date.now() + 60_000),
+    }
+
+    await runWithVerifiedMcpRequest(credential, async () => {
+      await expect(
+        getAuthContext({ allowApiToken: true, requiredApiTokenScope: 'read' }),
+      ).resolves.toEqual({
+        ctx: { userId: 'user-1', workspaceId: 'workspace-1', role: 'member' },
+        error: null,
+      })
+      await expect(
+        getAuthContext({ allowApiToken: true, requiredApiTokenScope: 'write' }),
+      ).resolves.toEqual({
+        ctx: { userId: 'user-1', workspaceId: 'workspace-1', role: 'member' },
+        error: null,
+      })
+    })
+  })
+
+  it('検証済みOAuth read tokenによるwrite操作を拒否する', async () => {
+    mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer cairn_oauth_at_read' }))
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+
+    const { runWithVerifiedMcpRequest } = await import('./mcp-request-context')
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await runWithVerifiedMcpRequest(
+      {
+        rawToken: 'cairn_oauth_at_read',
+        tokenId: 'token-1',
+        clientId: 'client-1',
+        userId: 'user-1',
+        workspaceId: 'workspace-1',
+        role: 'member',
+        scope: 'read',
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+      () => getAuthContext({ allowApiToken: true, requiredApiTokenScope: 'write' }),
+    )
+
+    expect(result.ctx).toBeNull()
+    expect(result.error?.status).toBe(403)
+  })
+
   it('getAuthUser も Cookie 認証で getClaims() を使う', async () => {
     mockHeaders.mockResolvedValue(new Headers())
     mockSupabase.auth.getClaims.mockResolvedValue(okClaims)

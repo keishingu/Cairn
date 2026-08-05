@@ -10,10 +10,13 @@ import { WORKSPACE_COOKIE } from './workspace-cookie'
 import {
   API_TOKEN_PREFIX,
   ApiTokenError,
+  apiTokenAllows,
   isApiTokenAccessEnabled,
   verifyApiToken,
   type ApiTokenScope,
 } from './api-tokens'
+import { OAUTH_ACCESS_TOKEN_PREFIX } from './mcp-oauth'
+import { getVerifiedMcpRequest } from './mcp-request-context'
 
 export { WORKSPACE_COOKIE } from './workspace-cookie'
 
@@ -76,6 +79,35 @@ export async function getAuthContext(options?: {
   const authorization = headersList.get('Authorization')
 
   const bearerToken = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null
+  if (bearerToken?.startsWith(OAUTH_ACCESS_TOKEN_PREFIX)) {
+    const verified = getVerifiedMcpRequest()
+    if (
+      !options?.allowApiToken ||
+      !verified ||
+      verified.rawToken !== bearerToken ||
+      verified.expiresAt <= new Date()
+    ) {
+      return { ctx: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+    }
+    if (!apiTokenAllows(verified.scope, options.requiredApiTokenScope ?? 'read')) {
+      return {
+        ctx: null,
+        error: NextResponse.json(
+          { error: 'OAuth token does not have the required scope' },
+          { status: 403 },
+        ),
+      }
+    }
+    return {
+      ctx: {
+        userId: verified.userId,
+        workspaceId: verified.workspaceId,
+        role: verified.role,
+      },
+      error: null,
+    }
+  }
+
   if (bearerToken?.startsWith(API_TOKEN_PREFIX)) {
     if (!options?.allowApiToken || !isApiTokenAccessEnabled()) {
       return { ctx: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }

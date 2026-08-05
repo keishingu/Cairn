@@ -79,6 +79,8 @@ function mockIntegrationsFetch(options?: {
   apiTokens?: unknown[]
   apiTokenListError?: boolean
   revokeError?: boolean
+  oauthConnections?: unknown[]
+  oauthRevokeError?: boolean
 }) {
   fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
     if (input === '/api/me' && !init) {
@@ -88,6 +90,14 @@ function mockIntegrationsFetch(options?: {
       return options?.apiTokenListError
         ? new Response(JSON.stringify({ error: 'failed' }), { status: 500 })
         : new Response(JSON.stringify(options?.apiTokens ?? []))
+    }
+    if (input === '/api/oauth/connections' && !init) {
+      return new Response(JSON.stringify(options?.oauthConnections ?? []))
+    }
+    if (input.startsWith('/api/oauth/connections/') && init?.method === 'DELETE') {
+      return options?.oauthRevokeError
+        ? new Response(JSON.stringify({ error: 'failed' }), { status: 500 })
+        : new Response(null, { status: 204 })
     }
     if (input === '/api/api-tokens' && init?.method === 'POST') {
       return new Response(JSON.stringify({ token: 'cairn_pat_secret' }), { status: 201 })
@@ -179,13 +189,16 @@ describe('SettingsSectionContent', () => {
 
     await waitFor(() => {
       expect(processImageForUpload).toHaveBeenCalledWith(originalFile)
-      expect(fetchWithAuth).toHaveBeenCalledWith('/api/me/avatar', expect.objectContaining({
-        method: 'POST',
-        body: expect.any(FormData),
-      }))
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/me/avatar',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.any(FormData),
+        }),
+      )
     })
 
-    const avatarCall = fetchWithAuth.mock.calls.find(call => call[0] === '/api/me/avatar')
+    const avatarCall = fetchWithAuth.mock.calls.find((call) => call[0] === '/api/me/avatar')
     expect(avatarCall).toBeTruthy()
     const [, requestInit] = avatarCall as [string, RequestInit]
     const uploadedFile = (requestInit.body as FormData).get('file')
@@ -209,7 +222,11 @@ describe('SettingsSectionContent', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText('⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください')).toBeInTheDocument()
+      expect(
+        screen.getByText(
+          '⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
+        ),
+      ).toBeInTheDocument()
     })
 
     expect(processImageForUpload).not.toHaveBeenCalled()
@@ -218,14 +235,8 @@ describe('SettingsSectionContent', () => {
 
   it('animated WebP アバターはアップロード前に弾く', async () => {
     const webpBytes = new Uint8Array([
-      0x52, 0x49, 0x46, 0x46,
-      0x1e, 0x00, 0x00, 0x00,
-      0x57, 0x45, 0x42, 0x50,
-      0x56, 0x50, 0x38, 0x58,
-      0x0a, 0x00, 0x00, 0x00,
-      0x02, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x00,
-      0x00, 0x00,
+      0x52, 0x49, 0x46, 0x46, 0x1e, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38,
+      0x58, 0x0a, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ])
     const animatedWebp = defineArrayBuffer(
       new File([webpBytes], 'avatar.webp', { type: 'image/webp' }),
@@ -245,7 +256,11 @@ describe('SettingsSectionContent', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText('⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください')).toBeInTheDocument()
+      expect(
+        screen.getByText(
+          '⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
+        ),
+      ).toBeInTheDocument()
     })
 
     expect(processImageForUpload).not.toHaveBeenCalled()
@@ -254,12 +269,8 @@ describe('SettingsSectionContent', () => {
 
   it('APNG アバターはアップロード前に弾く', async () => {
     const apngBytes = new Uint8Array([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-      0x00, 0x00, 0x00, 0x08,
-      0x61, 0x63, 0x54, 0x4c,
-      0x00, 0x00, 0x00, 0x02,
-      0x00, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x00,
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x08, 0x61, 0x63, 0x54,
+      0x4c, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ])
     const apng = defineArrayBuffer(
       new File([apngBytes], 'avatar.png', { type: 'image/png' }),
@@ -279,7 +290,11 @@ describe('SettingsSectionContent', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText('⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください')).toBeInTheDocument()
+      expect(
+        screen.getByText(
+          '⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
+        ),
+      ).toBeInTheDocument()
     })
 
     expect(processImageForUpload).not.toHaveBeenCalled()
@@ -305,6 +320,29 @@ describe('MCP / APIトークン設定', () => {
 
     expect(await screen.findByText('⚠ APIトークンの取得に失敗しました')).toBeInTheDocument()
     expect(screen.queryByText('発行済みトークンはありません。')).not.toBeInTheDocument()
+  })
+
+  it('OAuth接続を一覧表示し、取り消し後に非表示にする', async () => {
+    mockIntegrationsFetch({
+      oauthConnections: [
+        {
+          id: 'connection-1',
+          clientName: 'Claude',
+          scope: 'write',
+          createdAt: '2026-08-05T00:00:00.000Z',
+        },
+      ],
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const user = userEvent.setup()
+    renderIntegrationsSection()
+
+    expect(await screen.findByText('Claude')).toBeInTheDocument()
+    expect(screen.getByText(/読み取り・書き込み/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '取り消す' }))
+
+    await waitFor(() => expect(screen.queryByText('Claude')).not.toBeInTheDocument())
+    expect(toastSuccess).toHaveBeenCalledWith('OAuth接続を取り消しました')
   })
 
   it('発行フォームの入力欄と選択欄へ共通スタイルを適用する', async () => {
@@ -454,8 +492,9 @@ describe('クレジットパック購入後の確認', () => {
 
 describe('モバイル設定のセクション', () => {
   it('請求を公開せず、決済を含まないケルン画面だけを公開する', () => {
-    const ids = getSettingsNavGroups(false, { isMobile: true })
-      .flatMap(group => group.items.map(item => item.id))
+    const ids = getSettingsNavGroups(false, { isMobile: true }).flatMap((group) =>
+      group.items.map((item) => item.id),
+    )
 
     expect(ids).not.toContain('billing')
     expect(ids).toContain('contributions')

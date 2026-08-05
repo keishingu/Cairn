@@ -54,17 +54,32 @@ export async function middleware(request: NextRequest) {
     pathname === '/og-image.svg'
   const isSeoRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
   // 未ログインでもアクセスできるパブリックルート（LP と関連静的アセットを含む）
-  const isPublicRoute = pathname.startsWith('/invite') || isLandingRoute || isLandingAsset || isSeoRoute
+  const isPublicRoute =
+    pathname.startsWith('/invite') ||
+    pathname.startsWith('/.well-known/') ||
+    isLandingRoute ||
+    isLandingAsset ||
+    isSeoRoute
   // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
   const isOnboardingRoute = pathname.startsWith('/onboarding')
 
   if (!userId && !isAuthRoute && !isPublicRoute) {
-    return NextResponse.redirect(new URL('/auth/login', request.url))
+    const loginUrl = new URL('/auth/login', request.url)
+    if (pathname === '/oauth/authorize') {
+      loginUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`)
+    }
+    return NextResponse.redirect(loginUrl)
   }
   if (userId && isLandingRoute) {
     return NextResponse.redirect(new URL('/projects', request.url))
   }
-  if (userId && isAuthRoute && !isOnboardingRoute && !isMobileHandoffRoute && !isMobileSignoutRoute) {
+  if (
+    userId &&
+    isAuthRoute &&
+    !isOnboardingRoute &&
+    !isMobileHandoffRoute &&
+    !isMobileSignoutRoute
+  ) {
     return NextResponse.redirect(new URL('/projects', request.url))
   }
 

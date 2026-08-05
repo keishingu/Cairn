@@ -22,6 +22,7 @@ import { toast } from '@/lib/toast'
 import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
+import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import type { AccentId } from '@cairn/shared'
 import { FEATURE_FLAGS } from '@cairn/shared'
 
@@ -1768,6 +1769,92 @@ const ApiTokenSettings = () => {
   )
 }
 
+const McpOAuthConnectionSettings = () => {
+  const queryClient = useQueryClient()
+  const [mcpUrl, setMcpUrl] = React.useState('/api/mcp')
+  React.useEffect(() => setMcpUrl(`${window.location.origin}/api/mcp`), [])
+  const {
+    data: connections = [],
+    isLoading,
+    error,
+  } = useQuery<McpOAuthConnectionDto[]>({
+    queryKey: ['mcp-oauth-connections'],
+    queryFn: async () => {
+      const response = await fetchWithAuth('/api/oauth/connections')
+      if (!response.ok) throw new Error('OAuth接続の取得に失敗しました')
+      return response.json()
+    },
+  })
+  const revoke = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetchWithAuth(`/api/oauth/connections/${id}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('OAuth接続の取り消しに失敗しました')
+    },
+    onSuccess: (_data, revokedId) => {
+      toast.success('OAuth接続を取り消しました')
+      queryClient.setQueryData<McpOAuthConnectionDto[]>(['mcp-oauth-connections'], (current) =>
+        current?.filter((connection) => connection.id !== revokedId),
+      )
+    },
+    onError: (mutationError) => toast.error((mutationError as Error).message),
+  })
+
+  return (
+    <section style={{ marginBottom: 32 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>MCP OAuth接続</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
+        Claude Web／Desktopには次のURLだけを登録し、Cairnで接続を許可します。
+      </p>
+      <div className="card" style={{ padding: 16 }}>
+        <code style={{ display: 'block', overflow: 'auto', fontSize: 11.5, marginBottom: 14 }}>
+          {mcpUrl}
+        </code>
+        {isLoading ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>読み込み中…</div>
+        ) : error ? (
+          <div style={{ fontSize: 12, color: 'var(--red-text)' }}>⚠ {(error as Error).message}</div>
+        ) : connections.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>有効なOAuth接続はありません。</div>
+        ) : (
+          connections.map((connection) => (
+            <div
+              key={connection.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '10px 0',
+                borderTop: '1px solid var(--divider)',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{connection.clientName}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                  {connection.scope === 'write' ? '読み取り・書き込み' : '読み取り'} ・ 接続日{' '}
+                  {new Date(connection.createdAt).toLocaleDateString('ja-JP')}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ color: 'var(--red-text)' }}
+                disabled={revoke.isPending}
+                onClick={() => {
+                  if (window.confirm(`「${connection.clientName}」との接続を取り消しますか？`)) {
+                    revoke.mutate(connection.id)
+                  }
+                }}
+              >
+                取り消す
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  )
+}
+
 const SettingsIntegrations = () => {
   // ── iCal 出力 ──────────────────────────────────────────────────────
   const { data: ws } = useQuery<WorkspaceDto>({
@@ -1911,6 +1998,7 @@ const SettingsIntegrations = () => {
         外部サービスとの連携を設定します。
       </p>
 
+      <McpOAuthConnectionSettings />
       <ApiTokenSettings />
 
       {/* ── iCal 出力セクション ───────────────────────────────────── */}

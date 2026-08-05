@@ -18,6 +18,15 @@ import {
   verifyApiToken,
   type VerifiedApiToken,
 } from '@/lib/api-tokens'
+import {
+  getMcpResource,
+  getProtectedResourceMetadataUrl,
+  McpOAuthError,
+  OAUTH_ACCESS_TOKEN_PREFIX,
+  verifyMcpOAuthAccessToken,
+  type VerifiedMcpOAuthToken,
+} from '@/lib/mcp-oauth'
+import { runWithVerifiedMcpRequest } from '@/lib/mcp-request-context'
 
 export const runtime = 'nodejs'
 
@@ -214,11 +223,13 @@ const mcpHandler = createMcpHandler(
   {
     serverInfo: { name: 'cairn', version: '0.2.0' },
     instructions:
-      'These tools act on behalf of the human Cairn user who issued the API token. Read and write access is limited to that token’s fixed workspace.',
+      'These tools act on behalf of the human Cairn user who authorized the credential. Read and write access is limited to its fixed workspace.',
   },
 )
 
-const verifiedRequests = new WeakMap<Request, VerifiedApiToken>()
+type VerifiedMcpCredential = (VerifiedApiToken & { kind: 'pat' }) | VerifiedMcpOAuthToken
+
+const verifiedRequests = new WeakMap<Request, VerifiedMcpCredential>()
 const authenticatedMcpHandler = withMcpAuth(
   mcpHandler,
   async (req, bearerToken) => {
@@ -226,35 +237,82 @@ const authenticatedMcpHandler = withMcpAuth(
     if (!verified || !bearerToken) return undefined
     return {
       token: bearerToken,
-      clientId: `cairn-pat:${verified.id}`,
+      clientId: verified.kind === 'oauth' ? verified.clientId : `cairn-pat:${verified.id}`,
       scopes: verified.scope === 'write' ? ['read', 'write'] : ['read'],
       expiresAt: Math.floor(verified.expiresAt.getTime() / 1000),
       extra: {
         userId: verified.userId,
         workspaceId: verified.workspaceId,
         tokenId: verified.id,
+        credentialType: verified.kind === 'oauth' ? 'oauth' : 'pat',
       },
     }
   },
-  { required: true },
+  { required: true, resourceMetadataPath: '/.well-known/oauth-protected-resource' },
 )
+
+function unauthorized(req: Request, message: string, error?: string): Response {
+  const parameters = [
+    'realm="cairn-mcp"',
+    `resource_metadata="${getProtectedResourceMetadataUrl(req)}"`,
+    ...(error ? [`error="${error}"`] : []),
+  ]
+  return Response.json(
+    { error: message },
+    { status: 401, headers: { 'WWW-Authenticate': `Bearer ${parameters.join(', ')}` } },
+  )
+}
 
 async function handler(req: Request): Promise<Response> {
   const authorization = req.headers.get('authorization')
   const bearerToken = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null
   if (!bearerToken) {
-    return Response.json({ error: 'Bearer API token required' }, { status: 401 })
+    return unauthorized(req, 'Bearer token required')
   }
 
   try {
-    const verified = await verifyApiToken(bearerToken, {
-      requiredScope: 'read',
-      consumeRateLimit: true,
-    })
+    const verified: VerifiedMcpCredential = bearerToken.startsWith(OAUTH_ACCESS_TOKEN_PREFIX)
+      ? await verifyMcpOAuthAccessToken(bearerToken, {
+          requiredScope: 'read',
+          resource: getMcpResource(req),
+          consumeRateLimit: true,
+        })
+      : {
+          kind: 'pat',
+          ...(await verifyApiToken(bearerToken, {
+            requiredScope: 'read',
+            consumeRateLimit: true,
+          })),
+        }
     verifiedRequests.set(req, verified)
-    return runWithApiTokenAccess(() => authenticatedMcpHandler(req))
+    return runWithApiTokenAccess(() =>
+      runWithVerifiedMcpRequest(
+        {
+          rawToken: bearerToken,
+          tokenId: verified.id,
+          clientId: verified.kind === 'oauth' ? verified.clientId : `cairn-pat:${verified.id}`,
+          userId: verified.userId,
+          workspaceId: verified.workspaceId,
+          role: verified.role,
+          scope: verified.scope,
+          expiresAt: verified.expiresAt,
+        },
+        () => authenticatedMcpHandler(req),
+      ),
+    )
   } catch (error) {
     if (error instanceof ApiTokenError) {
+      if (error.status === 401) return unauthorized(req, error.message, 'invalid_token')
+      return Response.json(
+        { error: error.message },
+        {
+          status: error.status,
+          ...(error.status === 429 ? { headers: { 'Retry-After': '60' } } : {}),
+        },
+      )
+    }
+    if (error instanceof McpOAuthError) {
+      if (error.status === 401) return unauthorized(req, error.message, error.code)
       return Response.json(
         { error: error.message },
         {
