@@ -102,6 +102,8 @@ Cairn の AI 体験を、単一の「AI機能」にまとめず、利用者と�
 
 認証済みの `workspaceId` / `userId` はtool inputに含めない。各toolの読み取り境界で `active_workspace_members` を再確認し、guestは参加プロジェクト、private channelは現在の参加者に限定する。根拠リンクはサーバーが `project` / `task` / `message` / `file` / `member` のevidence DTOとして生成し、既存のRAG source表示と同じ回答下部のチップで表示する。
 
+`/ai` の会話一覧・会話本文・メッセージ送信は、ワークスペース一致に加えて会話の `created_by` が認証済み利用者と一致する場合だけ許可する。private channelや参加限定文書の調査結果を含む会話を、同じワークスペースの別メンバーが開くことはできない。
+
 ### 2.4 AI PMOと共有できるもの・できないもの
 
 共有してよいもの:

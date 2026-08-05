@@ -16,12 +16,17 @@ export async function GET() {
 
   try {
     const { db, aiConversations } = await import('@cairn/db')
-    const { eq, desc } = await import('drizzle-orm')
+    const { and, eq, desc } = await import('drizzle-orm')
 
     const rows = await db
       .select({ id: aiConversations.id, title: aiConversations.title, createdAt: aiConversations.createdAt })
       .from(aiConversations)
-      .where(eq(aiConversations.workspaceId, ctx.workspaceId))
+      .where(
+        and(
+          eq(aiConversations.workspaceId, ctx.workspaceId),
+          eq(aiConversations.createdBy, ctx.userId),
+        ),
+      )
       .orderBy(desc(aiConversations.createdAt))
 
     return NextResponse.json(

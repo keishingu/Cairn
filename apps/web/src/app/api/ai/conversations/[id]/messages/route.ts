@@ -56,6 +56,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         and(
           eq(aiConversations.id, conversationId),
           eq(aiConversations.workspaceId, ctx.workspaceId),
+          eq(aiConversations.createdBy, ctx.userId),
         ),
       )
       .limit(1)
@@ -179,6 +180,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         and(
           eq(aiConversations.id, conversationId),
           eq(aiConversations.workspaceId, ctx.workspaceId),
+          eq(aiConversations.createdBy, ctx.userId),
         ),
       )
       .limit(1)
@@ -373,7 +375,13 @@ export async function POST(req: Request, { params }: RouteContext) {
               await db
                 .update(aiConversations)
                 .set({ title: lastUserContent.slice(0, 40) })
-                .where(and(eq(aiConversations.id, conversationId), isNull(aiConversations.title)))
+                .where(
+                  and(
+                    eq(aiConversations.id, conversationId),
+                    eq(aiConversations.createdBy, ctx.userId),
+                    isNull(aiConversations.title),
+                  ),
+                )
             } catch (e) {
               await refundPendingActiveCredit()
               console.error('[AI chat] onFinish DB save failed:', e)
