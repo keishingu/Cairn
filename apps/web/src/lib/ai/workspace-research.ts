@@ -344,28 +344,25 @@ export async function getResearchRiskSnapshot(
   input: { includeArchived?: boolean | undefined } = {},
   now = new Date(),
 ) {
-  const projectsResult = await listResearchProjects(ctx, {
-    limit: AI_RESEARCH_LIMITS.projects,
-    includeArchived: input.includeArchived,
-  })
-  const projects = projectsResult.items
-  const projectIds = projects.map((project) => project.id)
-  if (projectIds.length === 0) {
+  const scope = await resolveScope(ctx)
+  const includeArchived = input.includeArchived ?? false
+  if (scope.guestProjectIds?.length === 0) {
     return {
       ok: true as const,
       risks: [] satisfies ResearchRisk[],
       returnedCount: 0,
-      truncated: projectsResult.truncated,
+      truncated: false,
       coverage: {
         projectsChecked: 0,
-        totalVisibleProjects: projectsResult.totalCount,
+        totalVisibleProjects: 0,
         totalTasksConsidered: 0,
         asOf: now.toISOString(),
+        includeArchived,
       },
     }
   }
 
-  const { db, tasks } = await import('@cairn/db')
+  const { db, projects, tasks } = await import('@cairn/db')
   const { and, eq, gte, inArray, isNull, lt, lte, ne, or, sql } = await import('drizzle-orm')
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Tokyo',
@@ -381,38 +378,46 @@ export async function getResearchRiskSnapshot(
   const highStalledBefore = new Date(now.getTime() - 14 * 86_400_000)
   const highDueSoon = new Date(`${today}T00:00:00Z`)
   highDueSoon.setUTCDate(highDueSoon.getUTCDate() + 1)
-  const taskRows = await db
-    .select({
-      id: tasks.id,
-      projectId: tasks.projectId,
-      title: tasks.title,
-      status: tasks.status,
-      priority: tasks.priority,
-      assigneeId: tasks.assigneeId,
-      dueDate: tasks.dueDate,
-      updatedAt: tasks.updatedAt,
-      totalCount: sql<number>`count(*) over()`,
-    })
-    .from(tasks)
-    .where(
-      and(
-        eq(tasks.workspaceId, ctx.workspaceId),
-        inArray(tasks.projectId, projectIds),
-        ne(tasks.status, 'done'),
-        or(
-          lt(tasks.dueDate, today),
-          and(
-            eq(tasks.status, 'todo'),
-            gte(tasks.dueDate, today),
-            lte(tasks.dueDate, dueSoon.toISOString().slice(0, 10)),
+  const projectConditions = [eq(projects.workspaceId, ctx.workspaceId)]
+  if (!includeArchived) projectConditions.push(eq(projects.archived, false))
+  if (scope.guestProjectIds) projectConditions.push(inArray(projects.id, scope.guestProjectIds))
+
+  // `list_projects` はモデルへ返すデータを50件に制限する。一方スナップショットは
+  // 古いプロジェクトの重大リスクも比較する必要があるため、内部集計では同じ認可範囲を全件走査する。
+  const [taskRows, projectRows] = await Promise.all([
+    db
+      .select({
+        id: tasks.id,
+        projectId: tasks.projectId,
+        title: tasks.title,
+        status: tasks.status,
+        priority: tasks.priority,
+        assigneeId: tasks.assigneeId,
+        dueDate: tasks.dueDate,
+        updatedAt: tasks.updatedAt,
+        totalCount: sql<number>`count(*) over()`,
+      })
+      .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
+      .where(
+        and(
+          eq(tasks.workspaceId, ctx.workspaceId),
+          ...projectConditions,
+          ne(tasks.status, 'done'),
+          or(
+            lt(tasks.dueDate, today),
+            and(
+              eq(tasks.status, 'todo'),
+              gte(tasks.dueDate, today),
+              lte(tasks.dueDate, dueSoon.toISOString().slice(0, 10)),
+            ),
+            and(eq(tasks.status, 'in_progress'), lte(tasks.updatedAt, stalledBefore)),
+            isNull(tasks.assigneeId),
           ),
-          and(eq(tasks.status, 'in_progress'), lte(tasks.updatedAt, stalledBefore)),
-          isNull(tasks.assigneeId),
         ),
-      ),
-    )
-    .orderBy(
-      sql`case
+      )
+      .orderBy(
+        sql`case
         when ${tasks.dueDate} < ${criticalOverdueBefore.toISOString().slice(0, 10)} then 0
         when ${tasks.dueDate} < ${today} then 1
         when ${tasks.status} = 'in_progress' and ${tasks.updatedAt} <= ${highStalledBefore} then 1
@@ -420,37 +425,53 @@ export async function getResearchRiskSnapshot(
         when ${tasks.priority} = 'high' and ${tasks.assigneeId} is null then 1
         else 2
       end`,
-      sql`${tasks.dueDate} asc nulls last`,
-      tasks.updatedAt,
-    )
-    .limit(AI_RESEARCH_LIMITS.risks + 1)
+        sql`${tasks.dueDate} asc nulls last`,
+        tasks.updatedAt,
+      )
+      .limit(AI_RESEARCH_LIMITS.risks + 1),
+    db
+      .select({
+        id: projects.id,
+        title: projects.title,
+        endDate: projects.endDate,
+        archived: projects.archived,
+        updatedAt: projects.updatedAt,
+        incompleteTaskCount: sql<number>`count(*) filter (where ${tasks.status} <> 'done')`,
+        totalTaskCount: sql<number>`count(${tasks.id})`,
+      })
+      .from(projects)
+      .leftJoin(
+        tasks,
+        and(eq(tasks.projectId, projects.id), eq(tasks.workspaceId, ctx.workspaceId)),
+      )
+      .where(and(...projectConditions))
+      .groupBy(projects.id),
+  ])
 
-  const taskRisks = taskRows
-    .slice(0, AI_RESEARCH_LIMITS.risks)
-    .flatMap((task) =>
-      task.projectId
-        ? detectResearchTaskRisks(
-            {
-              id: task.id,
-              projectId: task.projectId,
-              title: task.title,
-              status: task.status,
-              priority: task.priority,
-              assigneeId: task.assigneeId,
-              dueDate: task.dueDate,
-              updatedAt: task.updatedAt,
-            },
-            now,
-          )
-        : [],
-    )
-  const projectRisks = projects.flatMap((project) => {
+  const taskRisks = taskRows.slice(0, AI_RESEARCH_LIMITS.risks).flatMap((task) =>
+    task.projectId
+      ? detectResearchTaskRisks(
+          {
+            id: task.id,
+            projectId: task.projectId,
+            title: task.title,
+            status: task.status,
+            priority: task.priority,
+            assigneeId: task.assigneeId,
+            dueDate: task.dueDate,
+            updatedAt: task.updatedAt,
+          },
+          now,
+        )
+      : [],
+  )
+  const projectRisks = projectRows.flatMap((project) => {
     const risk = detectProjectDeadlineRisk({
       id: project.id,
       title: project.title,
       endDate: project.endDate,
-      incompleteTaskCount: project.incompleteTaskCount,
-      totalTaskCount: project.totalTaskCount,
+      incompleteTaskCount: Number(project.incompleteTaskCount),
+      totalTaskCount: Number(project.totalTaskCount),
       archived: project.archived,
       updatedAt: new Date(project.updatedAt),
       now,
@@ -460,23 +481,23 @@ export async function getResearchRiskSnapshot(
   const allRisks = sortResearchRisks([...taskRisks, ...projectRisks])
   const risks = allRisks.slice(0, AI_RESEARCH_LIMITS.risks)
   const candidateTaskTotal = Number(taskRows[0]?.totalCount ?? 0)
-  const totalTasksConsidered = projects.reduce((sum, project) => sum + project.totalTaskCount, 0)
+  const totalTasksConsidered = projectRows.reduce(
+    (sum, project) => sum + Number(project.totalTaskCount),
+    0,
+  )
 
   return {
     ok: true as const,
     risks,
     returnedCount: risks.length,
-    truncated:
-      projectsResult.truncated ||
-      candidateTaskTotal > AI_RESEARCH_LIMITS.risks ||
-      allRisks.length > risks.length,
+    truncated: candidateTaskTotal > AI_RESEARCH_LIMITS.risks || allRisks.length > risks.length,
     coverage: {
-      projectsChecked: projects.length,
-      totalVisibleProjects: projectsResult.totalCount,
+      projectsChecked: projectRows.length,
+      totalVisibleProjects: projectRows.length,
       totalTasksConsidered,
       candidateTasksEvaluated: Math.min(taskRows.length, AI_RESEARCH_LIMITS.risks),
       asOf: now.toISOString(),
-      includeArchived: input.includeArchived ?? false,
+      includeArchived,
     },
   }
 }

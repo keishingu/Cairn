@@ -24,11 +24,33 @@ vi.mock('@cairn/db', () => ({
     id: 'projects.id',
     workspaceId: 'projects.workspaceId',
     title: 'projects.title',
+    endDate: 'projects.endDate',
+    archived: 'projects.archived',
+    updatedAt: 'projects.updatedAt',
+  },
+  tasks: {
+    id: 'tasks.id',
+    workspaceId: 'tasks.workspaceId',
+    projectId: 'tasks.projectId',
+    title: 'tasks.title',
+    status: 'tasks.status',
+    priority: 'tasks.priority',
+    assigneeId: 'tasks.assigneeId',
+    dueDate: 'tasks.dueDate',
+    updatedAt: 'tasks.updatedAt',
   },
 }))
 vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
   eq: vi.fn(() => 'eq'),
+  gte: vi.fn(() => 'gte'),
+  inArray: vi.fn(() => 'inArray'),
+  isNull: vi.fn(() => 'isNull'),
+  lt: vi.fn(() => 'lt'),
+  lte: vi.fn(() => 'lte'),
+  ne: vi.fn(() => 'ne'),
+  or: vi.fn(() => 'or'),
+  sql: vi.fn(() => 'sql'),
 }))
 
 function chain(result: unknown[]) {
@@ -38,7 +60,7 @@ function chain(result: unknown[]) {
     catch: promise.catch.bind(promise),
     finally: promise.finally.bind(promise),
   }
-  for (const method of ['from', 'where', 'limit']) value[method] = vi.fn(() => value)
+  for (const method of ['from', 'innerJoin', 'leftJoin', 'where', 'orderBy', 'groupBy', 'limit']) value[method] = vi.fn(() => value)
   return value
 }
 
@@ -78,6 +100,43 @@ describe('AI横断調査の認可', () => {
       listResearchProjectTasks(ctx(), { projectId: PROJECT_ID }),
     ).rejects.toBeInstanceOf(ResearchAccessError)
     expect(mockDbSelect).toHaveBeenCalledTimes(1)
+  })
+
+  test('リスクスナップショットは50件を超えるプロジェクトの候補も集計する', async () => {
+    const oldProjectId = '30000000-0000-4000-8000-000000000099'
+    const projectRows = Array.from({ length: 51 }, (_, index) => ({
+      id:
+        index === 50 ? oldProjectId : `30000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      title: `プロジェクト${index + 1}`,
+      endDate: null,
+      archived: false,
+      updatedAt: new Date('2026-07-01T00:00:00.000Z'),
+      incompleteTaskCount: 0,
+      totalTaskCount: index === 50 ? 1 : 0,
+    }))
+    mockDbSelect
+      .mockReturnValueOnce(
+        chain([
+          {
+            id: 'task-old-project',
+            projectId: oldProjectId,
+            title: '古いプロジェクトの期限超過タスク',
+            status: 'todo',
+            priority: 'high',
+            assigneeId: 'assignee-1',
+            dueDate: '2026-07-01',
+            updatedAt: new Date('2026-07-01T00:00:00.000Z'),
+            totalCount: 1,
+          },
+        ]),
+      )
+      .mockReturnValueOnce(chain(projectRows))
+
+    const { getResearchRiskSnapshot } = await import('./workspace-research')
+    const result = await getResearchRiskSnapshot(ctx(), {}, new Date('2026-08-05T00:00:00.000Z'))
+
+    expect(result.coverage.projectsChecked).toBe(51)
+    expect(result.risks.some((risk) => risk.taskId === 'task-old-project')).toBe(true)
   })
 
   test('private channelは現在の参加者だけが取得対象になる', async () => {
