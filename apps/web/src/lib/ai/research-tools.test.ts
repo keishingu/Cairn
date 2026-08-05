@@ -86,7 +86,10 @@ describe('AI横断調査toolの信頼境界', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     mockListResearchProjects.mockRejectedValue(new Error('database unavailable'))
     const { createResearchTools } = await import('./research-tools')
-    const result = await createResearchTools(CTX).list_projects.execute?.({}, {
+    const result = await createResearchTools(CTX).list_projects.execute?.({
+      includeArchived: null,
+      limit: null,
+    }, {
       toolCallId: 'tool-2',
       messages: [],
     })
