@@ -222,7 +222,10 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
       <nav style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
         background: 'var(--card)', borderTop: '1px solid var(--border)',
-        display: 'flex', paddingBottom: 'env(safe-area-inset-bottom)',
+        display: 'flex',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+        paddingLeft: 'env(safe-area-inset-left)',
+        paddingRight: 'env(safe-area-inset-right)',
       }}>
         {TABS.map(tab => {
           const active =
