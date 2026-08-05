@@ -19,4 +19,12 @@ describe('/ai横断調査とAI PMO・課金の分離', () => {
       expect(source).not.toContain(forbidden)
     }
   })
+
+  test('リスク候補の事前取得は実際に検出対象となる期限条件だけを含める', () => {
+    const source = readFileSync('src/lib/ai/workspace-research.ts', 'utf8')
+
+    expect(source).toContain('lt(tasks.dueDate, today)')
+    expect(source).toContain("eq(tasks.status, 'todo')")
+    expect(source).toContain('gte(tasks.dueDate, today)')
+  })
 })

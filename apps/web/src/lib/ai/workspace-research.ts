@@ -366,7 +366,7 @@ export async function getResearchRiskSnapshot(
   }
 
   const { db, tasks } = await import('@cairn/db')
-  const { and, eq, inArray, isNull, lte, ne, or, sql } = await import('drizzle-orm')
+  const { and, eq, gte, inArray, isNull, lt, lte, ne, or, sql } = await import('drizzle-orm')
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Tokyo',
     year: 'numeric',
@@ -395,7 +395,12 @@ export async function getResearchRiskSnapshot(
         inArray(tasks.projectId, projectIds),
         ne(tasks.status, 'done'),
         or(
-          lte(tasks.dueDate, dueSoon.toISOString().slice(0, 10)),
+          lt(tasks.dueDate, today),
+          and(
+            eq(tasks.status, 'todo'),
+            gte(tasks.dueDate, today),
+            lte(tasks.dueDate, dueSoon.toISOString().slice(0, 10)),
+          ),
           and(eq(tasks.status, 'in_progress'), lte(tasks.updatedAt, stalledBefore)),
           isNull(tasks.assigneeId),
         ),
