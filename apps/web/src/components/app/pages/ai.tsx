@@ -6,6 +6,7 @@ import type { JSONValue, ToolInvocation } from 'ai'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, TypingDots } from '../primitives'
 import { MobileHeader } from '../mobile/header'
+import { MarkdownContent } from '../markdown-content'
 import { TopBar } from '../sidebar'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
@@ -304,7 +305,9 @@ function ChatView({
                 <Icon name="sparkles" size={14} color="#fff"/>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                <div style={{ fontSize: 13.5, color: 'var(--text)' }}>
+                  <MarkdownContent content={m.content} lineHeight={1.7}/>
+                </div>
                 <MessageSources annotations={m.annotations as unknown[]} toolInvocations={m.toolInvocations}/>
                 <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
                   <button
