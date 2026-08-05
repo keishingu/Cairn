@@ -55,7 +55,11 @@ export async function middleware(request: NextRequest) {
   const isSeoRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
   // 未ログインでもアクセスできるパブリックルート（LP と関連静的アセットを含む）
   const isPublicRoute =
-    pathname.startsWith('/invite') || isLandingRoute || isLandingAsset || isSeoRoute
+    pathname.startsWith('/invite') ||
+    pathname.startsWith('/.well-known/') ||
+    isLandingRoute ||
+    isLandingAsset ||
+    isSeoRoute
   // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
   const isOnboardingRoute = pathname.startsWith('/onboarding')
 
