@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { postgresClientOptions } from './client-options'
+import { nodePostgresPoolOptions } from './client-options'
 
-describe('postgresClientOptions', () => {
-  it('Supavisor のクライアント接続をサーバーレス向けに制限する', () => {
-    expect(postgresClientOptions).toEqual({
-      prepare: false,
+describe('nodePostgresPoolOptions', () => {
+  it('Supavisor の接続とクエリ待機をサーバーレス向けに制限する', () => {
+    expect(nodePostgresPoolOptions).toEqual({
       max: 1,
-      idle_timeout: 20,
-      connect_timeout: 10,
+      idleTimeoutMillis: 20_000,
+      connectionTimeoutMillis: 10_000,
+      query_timeout: 30_000,
     })
   })
 })

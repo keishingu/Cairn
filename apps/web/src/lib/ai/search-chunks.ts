@@ -192,7 +192,7 @@ export async function searchChunks(
         )
       )`
 
-  const rows = await db.execute<{
+  const result = await db.execute<{
     source_type: string
     source_id: string
     content: string
@@ -211,7 +211,7 @@ export async function searchChunks(
     LIMIT ${limit}
   `)
 
-  return rows.map(r => ({
+  return result.rows.map(r => ({
     sourceType: r.source_type,
     sourceId: r.source_id,
     content: r.content,

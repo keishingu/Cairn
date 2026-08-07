@@ -80,7 +80,7 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
 - **PostHog**: Vercel の **Production のみ**に `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` と `NEXT_PUBLIC_POSTHOG_HOST` を設定する。ローカルと Preview には設定せず、SDK を初期化しない。これはデプロイ環境の接続設定として扱い、事業判断による公開制御用の Feature Flag には含めない。
 - **アプリ実行時 `DATABASE_URL`（Vercel）**: Transaction pooler の **Shared Pooler / IPv4**（ホスト `aws-X-ap-northeast-1.pooler.supabase.com:6543`、ユーザー `postgres.<ref>`）。
   - Direct connection（`db.<ref>.supabase.co`）は **IPv6 専用で Vercel(IPv4) から繋がらない**ため使わない。
-  - `postgres.js` は `prepare: false`、`max: 1`、`idle_timeout: 20`、`connect_timeout: 10` で接続する。warm な Function が Supavisor のクライアント枠を保持し続けないよう、アイドル接続を解放する。
+  - Drizzle のドライバには `node-postgres` を使う。pool は `max: 1`、`idleTimeoutMillis: 20000`、`connectionTimeoutMillis: 10000`、`query_timeout: 30000` とし、クエリを1接続上で直列化する。`postgres.js` の pipelining は Supavisor Transaction mode で応答が失われる場合があるため使わない。
 - **マイグレーション `supabase db push`**: GitHub Actions（`migrate.yml`）が **Session Pooler（5432）** 経由で自動適用する（前述）。手動で適用する場合も `--db-url` を明示して Session Pooler（IPv6 環境なら Direct も可）で実行する（CLI の link は preview のまま）。
 - **`SUPABASE_SERVICE_ROLE_KEY`**: **Legacy service_role JWT（`eyJ...`）** を使う。
   - 新形式 `sb_secret_...` は **Storage が JWT を要求するため `Invalid Compact JWS` で失敗**する。
