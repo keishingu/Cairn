@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FEATURE_FLAGS } from '@cairn/shared'
 
 const { mockExecute, mockSql } = vi.hoisted(() => {
-  const mockExecute = vi.fn().mockResolvedValue([])
+  const mockExecute = vi.fn().mockResolvedValue({ rows: [] })
   const mockSql = Object.assign(
     (strings: TemplateStringsArray, ...values: unknown[]) => strings.reduce(
       (query, part, index) => query + part + (index < values.length ? String(values[index]) : ''),
@@ -39,7 +39,7 @@ describe('searchChunks', () => {
   afterEach(() => {
     ;(FEATURE_FLAGS as { dm: boolean }).dm = originalDmFlag
     vi.clearAllMocks()
-    mockExecute.mockResolvedValue([])
+    mockExecute.mockResolvedValue({ rows: [] })
   })
 
   it('DMが無効なとき、DM専用ファイルのチャンクを検索条件から除外する', async () => {
@@ -103,5 +103,32 @@ describe('searchChunks', () => {
     const query = String(mockExecute.mock.calls[0]?.[0])
     expect(query).toContain('AND source_type = \'file\'')
     expect(query).toContain('FROM channel_members source_cm')
+  })
+
+  it('node-postgresのrowsから検索結果を返す', async () => {
+    mockExecute.mockResolvedValueOnce({
+      rows: [
+        {
+          source_type: 'file',
+          source_id: '33333333-3333-3333-3333-333333333333',
+          content: '検索結果',
+          similarity: '0.75',
+        },
+      ],
+    })
+
+    const result = await searchChunks('検索語', '11111111-1111-1111-1111-111111111111', {
+      userId: '22222222-2222-2222-2222-222222222222',
+      role: 'member',
+    })
+
+    expect(result).toEqual([
+      {
+        sourceType: 'file',
+        sourceId: '33333333-3333-3333-3333-333333333333',
+        content: '検索結果',
+        similarity: 0.75,
+      },
+    ])
   })
 })
