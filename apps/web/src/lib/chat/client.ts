@@ -17,6 +17,7 @@ export const chatQueryKeys = {
   workspaceChannels: ['workspace-channels'] as const,
   workspaceMembers: ['workspace-members', 'active'] as const,
   dms: ['dms'] as const,
+  messagesRoot: ['messages'] as const,
   messages: (channelId: string | null) => ['messages', channelId] as const,
   currentUser: ['current-user'] as const,
 }

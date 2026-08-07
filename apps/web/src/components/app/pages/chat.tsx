@@ -320,7 +320,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
   const [bookmarksOpen, setBookmarksOpen] = React.useState(false)
-  const [targetMessageId, setTargetMessageId] = React.useState<string | null>(null)
+  const [targetMessage, setTargetMessage] = React.useState<{ id: string } | null>(null)
   const [detailOpen, setDetailOpen] = React.useState(true)
 
   // パーマリンク (/chats/<channelId>?m=<messageId>) で開いたとき、該当メッセージへジャンプする。
@@ -329,7 +329,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const m = params.get('m')
-    if (m) setTargetMessageId(m)
+    if (m) setTargetMessage({ id: m })
     switch (params.get('panel')) {
       case 'search':
         setSearchOpen(true)
@@ -354,7 +354,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // 全チャンネル横断ジャンプで設定されたpendingJumpを消費
   React.useEffect(() => {
     if (_pendingJump && _pendingJump.channelId === channelId) {
-      setTargetMessageId(_pendingJump.messageId)
+      setTargetMessage({ id: _pendingJump.messageId })
       _pendingJump = null
     }
   }, [channelId])
@@ -406,14 +406,17 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setSearchOpen(false)
     setGlobalSearchOpen(false)
     setBookmarksOpen(false)
-    setTargetMessageId(null)
+    setTargetMessage(null)
     router.push('/chats/' + id)
     markChannelRead.mutate(id)
   }
 
   const jumpToMessage = (messageId: string) => {
     setSearchOpen(false)
-    setTargetMessageId(messageId)
+    setGlobalSearchOpen(false)
+    setBookmarksOpen(false)
+    // 同じメッセージへの再ジャンプでも新しいオブジェクトにして、ChatThread の effect を再実行する。
+    setTargetMessage({ id: messageId })
   }
 
   // ⌥N 新規チャンネル / ⌥S 検索 / ⌥D 詳細パネル（PC のみ）
@@ -452,9 +455,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setGlobalSearchOpen(false)
     setBookmarksOpen(false)
     // 既に開いているチャンネルへのジャンプは channelId が変化しないため、
-    // _pendingJump 消費用 effect（[channelId] 依存）が発火しない。その場合は直接 targetMessageId を設定する
+    // _pendingJump 消費用 effect（[channelId] 依存）が発火しない。その場合は直接ジャンプ先を設定する
     if (chanId === channelId) {
-      setTargetMessageId(messageId)
+      setTargetMessage({ id: messageId })
     } else {
       _pendingJump = { channelId: chanId, messageId }
       setChannelId(chanId)
@@ -620,7 +623,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         />
         {searchOpen && channelId
           ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-          : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
+          : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessage={targetMessage}/>
         }
         {showMemberInvite && channelId && (
           <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
@@ -644,6 +647,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             onCloseMemberInvite={() => setShowMemberInvite(false)}
             onOpenProject={handleOpenProject}
             onOpenMember={handleOpenMember}
+            onJumpToMessage={(messageId) => { setShowInfo(false); jumpToMessage(messageId) }}
           />
         )}
       </div>
@@ -711,7 +715,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                 ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
                 : searchOpen && channelId
                   ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-                  : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
+                  : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessage={targetMessage}/>
             }
           </main>
 
@@ -731,6 +735,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             onCloseMemberInvite={() => setShowMemberInvite(false)}
             onOpenProject={handleOpenProject}
             onOpenMember={handleOpenMember}
+            onJumpToMessage={jumpToMessage}
           />}
         </div>
       </div>

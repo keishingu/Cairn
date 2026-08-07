@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
 import { RowActionMenu } from '../row-action-menu'
+import { InlineFileNameEditor } from '../inline-file-name-editor'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import { MarkdownContent } from '../markdown-content'
@@ -12,6 +13,7 @@ import type { FileDto } from '@/app/api/files/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
+import { useRenameFile } from '@/hooks/use-rename-file'
 
 type FilterKey = 'all' | 'pdf' | 'img' | 'doc'
 
@@ -92,6 +94,7 @@ const FileRow = ({
   onReindex,
   onImageClick,
   onTextPreviewClick,
+  onRename,
   selected,
   index,
 }: {
@@ -101,15 +104,41 @@ const FileRow = ({
   onReindex: (id: string) => void
   onImageClick: (id: string) => void
   onTextPreviewClick: (file: FileDto) => void
+  onRename: (fileId: string, fileName: string) => Promise<unknown>
   selected?: boolean
   index?: number
 }) => {
+  const [isRenaming, setIsRenaming] = React.useState(false)
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
   const projectLabel = file.projectTitle ?? file.channelName ?? 'チャット'
   const metaParts = [projectLabel, sizeStr, dateStr].filter(Boolean).join(' · ')
   const isImage = isImageFile(file)
   const isPreviewableText = isPreviewableTextFile(file)
+  const fileIcon = (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      {file.fileType === 'link' && file.externalUrl ? (
+        <GoogleDocsIcon url={file.externalUrl} />
+      ) : (
+        <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id} />
+      )}
+      <IndexDot status={file.indexingStatus} />
+    </div>
+  )
+  const fileMeta = (
+    <div
+      style={{
+        fontSize: 11,
+        color: 'var(--text-3)',
+        marginTop: 2,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {metaParts}
+    </div>
+  )
 
   return (
     <div
@@ -129,82 +158,81 @@ const FileRow = ({
         if (!selected) (e.currentTarget as HTMLElement).style.background = 'transparent'
       }}
     >
-      <a
-        href={file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={
-          isImage
-            ? (e) => {
-                e.preventDefault()
-                onImageClick(file.id)
-              }
-            : isPreviewableText
+      {isRenaming ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+          {fileIcon}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <InlineFileNameEditor
+              fileName={file.fileName}
+              onSave={fileName => onRename(file.id, fileName)}
+              onCancel={() => setIsRenaming(false)}
+            />
+            {fileMeta}
+          </div>
+        </div>
+      ) : (
+        <a
+          href={file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={
+            isImage
               ? (e) => {
                   e.preventDefault()
-                  onTextPreviewClick(file)
+                  onImageClick(file.id)
                 }
-              : undefined
-        }
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          flex: 1,
-          minWidth: 0,
-          textDecoration: 'none',
-          cursor: 'pointer',
-        }}
-      >
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          {file.fileType === 'link' && file.externalUrl ? (
-            <GoogleDocsIcon url={file.externalUrl} />
-          ) : (
-            <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id} />
-          )}
-          <IndexDot status={file.indexingStatus} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: 'var(--text)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {file.fileName}
+              : isPreviewableText
+                ? (e) => {
+                    e.preventDefault()
+                    onTextPreviewClick(file)
+                  }
+                : undefined
+          }
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            flex: 1,
+            minWidth: 0,
+            textDecoration: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          {fileIcon}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: 'var(--text)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {file.fileName}
+            </div>
+            {fileMeta}
           </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: 'var(--text-3)',
-              marginTop: 2,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {metaParts}
-          </div>
-        </div>
-      </a>
+        </a>
+      )}
       <Avatar name={file.uploaderName} url={file.uploaderAvatarUrl} size={22} />
-      <RowActionMenu
-        actions={[
-          ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
-            ? [{ icon: 'refresh', label: '再インデックス', onSelect: () => onReindex(file.id) }]
-            : []),
-          {
-            icon: 'trash',
-            label: '削除',
-            danger: true,
-            onSelect: () => onDelete(file.id, file.fileName),
-          },
-        ]}
-      />
+      {!isRenaming && (
+        <RowActionMenu
+          actions={[
+            { icon: 'edit', label: '名前を変更', onSelect: () => setIsRenaming(true) },
+            ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
+              ? [{ icon: 'refresh', label: '再インデックス', onSelect: () => onReindex(file.id) }]
+              : []),
+            {
+              icon: 'trash',
+              label: '削除',
+              danger: true,
+              onSelect: () => onDelete(file.id, file.fileName),
+            },
+          ]}
+        />
+      )}
     </div>
   )
 }
@@ -256,6 +284,7 @@ export const PageFiles = ({
   externalSearch?: string
 }) => {
   const queryClient = useQueryClient()
+  const renameFile = useRenameFile()
   const [filter, setFilter] = React.useState<FilterKey>('all')
   const [search, setSearch] = React.useState('')
   const effectiveSearch = isMobile ? search : (externalSearch ?? search)
@@ -564,6 +593,7 @@ export const PageFiles = ({
                 onReindex={handleReindex}
                 onImageClick={openLightbox}
                 onTextPreviewClick={setTextPreviewFile}
+                onRename={(fileId, fileName) => renameFile.mutateAsync({ fileId, fileName })}
                 selected={i === navIdx}
                 index={i}
               />

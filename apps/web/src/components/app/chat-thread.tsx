@@ -42,14 +42,8 @@ import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
 import { GENERIC_MIME_TYPES, resolveAttachmentMimeType } from '@/lib/attachments'
+import { extractGoogleDocsUrls } from '@/lib/google-docs-url'
 import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
-
-const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
-
-function extractGoogleDocsUrls(text: string): string[] {
-  const matches = text.match(GOOGLE_DOCS_URL_RE) ?? []
-  return [...new Set(matches.map(u => u.replace(/[.,;:!?)>]+$/, '')))]
-}
 
 // MIME タイプに加えて拡張子も列挙する。OS が拡張子→MIME のマッピングを持たない
 // 環境ではファイルピッカーが MIME 指定だけだと PDF 等を選択不可にしてしまうため。
@@ -937,13 +931,13 @@ const AiNudgeCard = ({
 
 // ─── ChatThread ───────────────────────────────────────────────────
 
-export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile, targetMessageId }: {
+export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile, targetMessage }: {
   channelId: string | null
   channelName?: string
   isPrivate?: boolean
   compact?: boolean
   isMobile?: boolean
-  targetMessageId?: string | null
+  targetMessage?: { id: string } | null
 }) => {
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
@@ -1261,15 +1255,15 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     setHighlightId(null)
   }, [channelId])
 
-  // 親（PageChat）からの targetMessageId（パーマリンク・ブックマーク・検索）を内部のハイライト状態へ取り込む。
+  // 親（PageChat）からの targetMessage（パーマリンク・ブックマーク・検索）を内部のハイライト状態へ取り込む。
   // 直近100件の外にある古いメッセージの場合は、前後ウィンドウを取得してキャッシュへマージする
   React.useEffect(() => {
-    if (!targetMessageId) return
-    setHighlightId(targetMessageId)
-    void ensureMessageLoaded(targetMessageId)
-  }, [targetMessageId, ensureMessageLoaded])
+    if (!targetMessage) return
+    setHighlightId(targetMessage.id)
+    void ensureMessageLoaded(targetMessage.id)
+  }, [targetMessage, ensureMessageLoaded])
 
-  // 引用バー（返信先プレビュー）クリックでのジャンプ。targetMessageId 同様、
+  // 引用バー（返信先プレビュー）クリックでのジャンプ。targetMessage 同様、
   // 直近100件の外にある古い親メッセージの場合は前後ウィンドウを取得してから表示する
   const jumpToMessage = React.useCallback((messageId: string) => {
     setHighlightId(messageId)
