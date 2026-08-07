@@ -178,6 +178,8 @@ export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee 
     setQuery('')
   }
 
+  const portalHost = containerRef.current?.closest<HTMLElement>('.app-root')
+
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <label style={labelStyle}>担当者</label>
@@ -207,7 +209,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee 
         <Icon name="chevDown" size={13} color="var(--text-3)" />
       </button>
 
-      {open && menuPosition && typeof document !== 'undefined' && createPortal(
+      {open && menuPosition && portalHost && createPortal(
         <div
           ref={menuRef}
           style={{
@@ -271,7 +273,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee 
             )}
           </div>
         </div>,
-        document.body,
+        portalHost,
       )}
     </div>
   )

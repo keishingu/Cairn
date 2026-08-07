@@ -21,8 +21,13 @@ describe('TaskAssigneeField', () => {
   it('画面下の空きが足りない場合は、ダイアログの外へ上向きに候補を表示する', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    const { container } = render(<TaskAssigneeField value={null} onChange={onChange} />)
+    render(
+      <div className="app-root">
+        <TaskAssigneeField value={null} onChange={onChange} />
+      </div>,
+    )
     const trigger = screen.getByRole('button', { name: /担当者を選択/ })
+    const field = trigger.parentElement
 
     vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
       x: 100,
@@ -41,7 +46,8 @@ describe('TaskAssigneeField', () => {
     const searchInput = screen.getByPlaceholderText('メンバーを検索...')
     const menu = searchInput.parentElement?.parentElement
     if (!menu) throw new Error('担当者メニューが表示されていません')
-    expect(container.contains(menu)).toBe(false)
+    expect(field?.contains(menu)).toBe(false)
+    expect(menu.parentElement).toHaveClass('app-root')
     expect(menu).toHaveStyle({ position: 'fixed', bottom: '112px', width: '320px' })
 
     await user.click(screen.getByRole('button', { name: /山田太郎/ }))
