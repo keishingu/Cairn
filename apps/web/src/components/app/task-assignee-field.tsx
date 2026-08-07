@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { createPortal } from 'react-dom'
 import { Avatar, Icon, fieldInputStyle } from './primitives'
 import { useWorkspaceMembers, useProjectMembers } from '@/hooks/use-project-members'
 
@@ -37,7 +38,16 @@ const labelStyle: React.CSSProperties = {
 export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee }: TaskAssigneeFieldProps) => {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
+  const [menuPosition, setMenuPosition] = React.useState<{
+    left: number
+    top?: number
+    bottom?: number
+    width: number
+    maxListHeight: number
+  } | null>(null)
   const containerRef = React.useRef<HTMLDivElement>(null)
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
+  const menuRef = React.useRef<HTMLDivElement>(null)
 
   const { data: workspaceMembers = [] } = useWorkspaceMembers()
   const projectMembersQuery = useProjectMembers(projectId ?? null)
@@ -104,13 +114,63 @@ export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee 
   React.useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        !menuRef.current?.contains(target)
+      ) {
         setOpen(false)
       }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
+
+  const updateMenuPosition = React.useCallback(() => {
+    const trigger = triggerRef.current
+    if (!trigger) return
+
+    const rect = trigger.getBoundingClientRect()
+    const viewportMargin = 8
+    const menuGap = 4
+    const menuChromeHeight = 53
+    const desiredListHeight = 220
+    const desiredMenuHeight = menuChromeHeight + desiredListHeight
+    const availableBelow = window.innerHeight - rect.bottom - viewportMargin - menuGap
+    const availableAbove = rect.top - viewportMargin - menuGap
+    const openAbove = availableBelow < desiredMenuHeight && availableAbove > availableBelow
+    const availableHeight = Math.max(0, openAbove ? availableAbove : availableBelow)
+    const width = Math.min(rect.width, window.innerWidth - viewportMargin * 2)
+    const left = Math.min(
+      Math.max(viewportMargin, rect.left),
+      Math.max(viewportMargin, window.innerWidth - viewportMargin - width),
+    )
+
+    setMenuPosition({
+      left,
+      ...(openAbove
+        ? { bottom: window.innerHeight - rect.top + menuGap }
+        : { top: rect.bottom + menuGap }),
+      width,
+      maxListHeight: Math.max(80, Math.min(desiredListHeight, availableHeight - menuChromeHeight)),
+    })
+  }, [])
+
+  React.useLayoutEffect(() => {
+    if (!open) {
+      setMenuPosition(null)
+      return
+    }
+
+    updateMenuPosition()
+    window.addEventListener('resize', updateMenuPosition)
+    window.addEventListener('scroll', updateMenuPosition, true)
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition)
+      window.removeEventListener('scroll', updateMenuPosition, true)
+    }
+  }, [open, updateMenuPosition])
 
   const handleSelect = (userId: string | null) => {
     onChange(userId)
@@ -122,6 +182,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee 
     <div ref={containerRef} style={{ position: 'relative' }}>
       <label style={labelStyle}>担当者</label>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(o => !o)}
         style={{
@@ -146,15 +207,16 @@ export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee 
         <Icon name="chevDown" size={13} color="var(--text-3)" />
       </button>
 
-      {open && (
+      {open && menuPosition && typeof document !== 'undefined' && createPortal(
         <div
+          ref={menuRef}
           style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            marginTop: 4,
-            zIndex: 50,
+            position: 'fixed',
+            left: menuPosition.left,
+            ...(menuPosition.top != null ? { top: menuPosition.top } : {}),
+            ...(menuPosition.bottom != null ? { bottom: menuPosition.bottom } : {}),
+            width: menuPosition.width,
+            zIndex: 1100,
             background: 'var(--card)',
             border: '1px solid var(--border)',
             borderRadius: 10,
@@ -173,7 +235,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee 
               style={{ ...fieldInputStyle(false), padding: '7px 10px' }}
             />
           </div>
-          <div style={{ maxHeight: 220, overflow: 'auto', padding: 4 }}>
+          <div style={{ maxHeight: menuPosition.maxListHeight, overflow: 'auto', padding: 4 }}>
             <button
               type="button"
               onClick={() => handleSelect(null)}
@@ -208,7 +270,8 @@ export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee 
               ))
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
