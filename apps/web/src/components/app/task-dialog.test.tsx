@@ -12,6 +12,7 @@ describe('TaskDialog', () => {
         submitLabel="追加"
         submittingLabel="追加中..."
         isSubmitting={false}
+        errorMessage="タスクの作成に失敗しました"
       >
         <div>入力欄</div>
       </TaskDialog>,
@@ -20,10 +21,13 @@ describe('TaskDialog', () => {
     const dialog = screen.getByRole('dialog', { name: 'タスクを追加' })
     const body = dialog.querySelector<HTMLElement>('[data-task-dialog-body]')
     const actions = dialog.querySelector<HTMLElement>('[data-task-dialog-actions]')
+    const alert = screen.getByRole('alert')
 
     expect(dialog).toHaveStyle({ maxHeight: 'calc(100dvh - 48px)' })
     expect(body).toHaveStyle({ overflowY: 'auto', minHeight: '0' })
     expect(actions).toHaveStyle({ flexShrink: '0' })
+    expect(body?.contains(alert)).toBe(false)
+    expect(dialog.contains(alert)).toBe(true)
     expect(screen.getByRole('button', { name: '追加' })).toBeVisible()
   })
 })

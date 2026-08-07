@@ -81,18 +81,23 @@ export const TaskDialog = ({
             }}
           >
             {children}
-            {errorMessage && (
-              <div style={{
+          </div>
+          {errorMessage && (
+            <div
+              role="alert"
+              style={{
                 fontSize: 12.5,
                 color: 'var(--red-text)',
                 background: 'var(--red-soft)',
                 padding: '8px 12px',
+                margin: '0 20px 12px',
                 borderRadius: 6,
-              }}>
-                {errorMessage}
-              </div>
-            )}
-          </div>
+                flexShrink: 0,
+              }}
+            >
+              {errorMessage}
+            </div>
+          )}
           <div
             data-task-dialog-actions
             style={{
