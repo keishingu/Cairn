@@ -55,6 +55,11 @@ function formatDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+function localDate(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function isImageFile(file: FileDto): boolean {
   return file.fileType !== 'link' && (file.mimeType?.startsWith('image/') ?? false)
 }
@@ -425,8 +430,8 @@ export const PageFiles = ({
             ? f.projectId === null
             : f.projectId === conditions.projectId)) &&
         (conditions.uploaderId === 'all' || f.uploaderId === conditions.uploaderId) &&
-        (!conditions.createdFrom || f.createdAt.slice(0, 10) >= conditions.createdFrom) &&
-        (!conditions.createdTo || f.createdAt.slice(0, 10) <= conditions.createdTo) &&
+        (!conditions.createdFrom || localDate(f.createdAt) >= conditions.createdFrom) &&
+        (!conditions.createdTo || localDate(f.createdAt) <= conditions.createdTo) &&
         (!q ||
           f.fileName.toLowerCase().includes(q) ||
           (f.projectTitle ?? f.channelName ?? '').toLowerCase().includes(q)) &&

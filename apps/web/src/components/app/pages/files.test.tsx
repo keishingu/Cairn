@@ -5,13 +5,15 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PageFiles } from './files'
 import type { FileDto } from '@/app/api/files/route'
 
 const { fetchWithAuthMock } = vi.hoisted(() => ({
   fetchWithAuthMock: vi.fn(),
 }))
+
+const originalTimeZone = process.env['TZ']
 
 vi.mock('@/lib/fetch-with-auth', () => ({
   fetchWithAuth: fetchWithAuthMock,
@@ -46,7 +48,7 @@ const FILES_FIXTURE: FileDto[] = [
     uploaderId: 'user-2',
     uploaderName: '佐藤 花子',
     uploaderAvatarUrl: null,
-    createdAt: '2026-06-28T09:00:00Z',
+    createdAt: '2026-08-07T16:00:00Z',
     projectTitle: null,
     channelName: '雑談',
     projectId: null,
@@ -78,6 +80,7 @@ function renderPageFiles() {
 
 describe('ファイル一覧ページ', () => {
   beforeEach(() => {
+    process.env['TZ'] = 'Asia/Tokyo'
     fetchWithAuthMock.mockReset()
     fetchWithAuthMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
@@ -122,6 +125,10 @@ describe('ファイル一覧ページ', () => {
     vi.stubGlobal('IntersectionObserver', createIntersectionObserverStub())
   })
 
+  afterEach(() => {
+    process.env['TZ'] = originalTimeZone
+  })
+
   it('txtファイルをプレーンテキストとしてプレビューする', async () => {
     renderPageFiles()
 
@@ -155,6 +162,16 @@ describe('ファイル一覧ページ', () => {
       ),
     )
     expect(await screen.findByRole('button', { name: '計画書' })).toBeInTheDocument()
+  })
+
+  it('アップロード日時をローカル日付で絞り込む', async () => {
+    renderPageFiles()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'フィルター' }))
+    await userEvent.type(screen.getByLabelText('開始日'), '2026-08-08')
+
+    expect(await screen.findByText('general.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('notes.txt')).toBeNull()
   })
 
   it('操作メニューからファイル名をインライン変更する', async () => {
