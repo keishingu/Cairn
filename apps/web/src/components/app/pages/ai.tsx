@@ -6,16 +6,55 @@ import type { JSONValue, ToolInvocation } from 'ai'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, TypingDots } from '../primitives'
 import { MobileHeader } from '../mobile/header'
+import { MarkdownContent } from '../markdown-content'
 import { TopBar } from '../sidebar'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useCommand } from '@/lib/command-registry'
+import { buildAiRequestBody } from './ai-request-body'
 
 // ---- ソースチップ ----
 
-type RagSource = { sourceType: string; sourceId: string; name: string; fileType?: string; externalUrl?: string }
+type RagSource = { sourceType: string; sourceId: string; name: string; fileType?: string; externalUrl?: string; href?: string }
+type ToolEvidence = { type: string; id: string; label: string; href: string }
+
+function isSafeHref(value: unknown): value is string {
+  return typeof value === 'string' && (
+    value.startsWith('/') || value.startsWith('https://') || value.startsWith('http://')
+  )
+}
+
+function isToolEvidence(value: unknown): value is ToolEvidence {
+  if (typeof value !== 'object' || value === null) return false
+  const item = value as Record<string, unknown>
+  return (
+    typeof item['type'] === 'string' &&
+    typeof item['id'] === 'string' &&
+    typeof item['label'] === 'string' &&
+    isSafeHref(item['href'])
+  )
+}
+
+function evidenceFromTools(toolInvocations: ToolInvocation[]): ToolEvidence[] {
+  const evidence: ToolEvidence[] = []
+  for (const invocation of toolInvocations) {
+    if (invocation.state !== 'result' || typeof invocation.result !== 'object' || invocation.result === null) continue
+    const result = invocation.result as Record<string, unknown>
+    const records = [
+      ...(Array.isArray(result['items']) ? result['items'] : []),
+      ...(Array.isArray(result['risks']) ? result['risks'] : []),
+    ]
+    for (const record of records) {
+      if (typeof record !== 'object' || record === null) continue
+      const value = (record as Record<string, unknown>)['evidence']
+      const candidates = Array.isArray(value) ? value : [value]
+      for (const candidate of candidates) if (isToolEvidence(candidate)) evidence.push(candidate)
+    }
+  }
+  return evidence
+}
 
 function MessageSources({ annotations, toolInvocations }: {
   annotations?: unknown[] | undefined
@@ -25,30 +64,52 @@ function MessageSources({ annotations, toolInvocations }: {
     (a): a is { type: string; sources: RagSource[] } =>
       typeof a === 'object' && a !== null && (a as { type?: unknown }).type === 'rag-sources',
   )
-  const sources: RagSource[] = (ragAnnotation as { sources?: RagSource[] })?.sources ?? []
+  const ragSources: RagSource[] = (ragAnnotation as { sources?: RagSource[] })?.sources ?? []
+  const toolSources = evidenceFromTools(toolInvocations ?? [])
+  const seen = new Set<string>()
+  const sources = [
+    ...ragSources.map(src => ({
+      type: src.sourceType,
+      id: src.sourceId,
+      label: src.name,
+      href: (isSafeHref(src.href) ? src.href : undefined) ?? (
+        src.sourceType === 'file'
+          ? (src.fileType === 'link' && isSafeHref(src.externalUrl) ? src.externalUrl : `/api/attachments/${src.sourceId}`)
+          : src.sourceType === 'project'
+            ? `/projects?open=project-${src.sourceId}`
+            : `/members/${src.sourceId}`
+      ),
+    })),
+    ...toolSources,
+  ].filter(src => {
+    const key = `${src.type}:${src.id}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  const visibleSources = sources.slice(0, 24)
   const searches = (toolInvocations ?? []).filter(t => t.toolName === 'webSearch' && (t.state === 'call' || t.state === 'result'))
 
   if (sources.length === 0 && searches.length === 0) return null
 
   return (
     <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-      {sources.map(src => {
-        const icon = src.sourceType === 'file' ? 'file' : src.sourceType === 'project' ? 'folder' : 'users'
-        const href =
-          src.sourceType === 'file'
-            ? (src.fileType === 'link' && src.externalUrl ? src.externalUrl : `/api/attachments/${src.sourceId}`)
-            : src.sourceType === 'project'
-            ? `/projects?open=${src.sourceId}`
-            : `/members/${src.sourceId}`
-        const isExternal = src.sourceType === 'file' && src.fileType === 'link'
+      {visibleSources.map(src => {
+        const icon = src.type === 'file' ? 'file' : src.type === 'project' ? 'folder' : src.type === 'task' ? 'check' : src.type === 'message' ? 'chat' : 'users'
+        const isExternal = src.href.startsWith('https://') || src.href.startsWith('http://')
         return (
-          <a key={`${src.sourceType}:${src.sourceId}`} href={href}
+          <a key={`${src.type}:${src.id}`} href={src.href}
             target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11, textDecoration: 'none', cursor: 'pointer' }}>
-            <Icon name={icon} size={10} strokeWidth={2}/>{src.name}
+            <Icon name={icon} size={10} strokeWidth={2}/>{src.label}
           </a>
         )
       })}
+      {sources.length > visibleSources.length && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11 }}>
+          他 {sources.length - visibleSources.length} 件
+        </span>
+      )}
       {searches.map(t => {
         const query = String((t.args as { query?: string }).query ?? 'Web検索')
         const firstUrl = t.state === 'result' ? ((t.result as { results?: Array<{ url: string }> })?.results?.[0]?.url) : undefined
@@ -198,6 +259,7 @@ function ChatView({
       ...(m.annotations ? { annotations: m.annotations as JSONValue[] } : {}),
       ...(m.toolInvocations ? { toolInvocations: m.toolInvocations as ToolInvocation[] } : {}),
     })),
+    experimental_prepareRequestBody: ({ messages }) => buildAiRequestBody(messages),
     onFinish: () => {
       void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
     },
@@ -243,7 +305,9 @@ function ChatView({
                 <Icon name="sparkles" size={14} color="#fff"/>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                <div style={{ fontSize: 13.5, color: 'var(--text)' }}>
+                  <MarkdownContent content={m.content} lineHeight={1.7}/>
+                </div>
                 <MessageSources annotations={m.annotations as unknown[]} toolInvocations={m.toolInvocations}/>
                 <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
                   <button

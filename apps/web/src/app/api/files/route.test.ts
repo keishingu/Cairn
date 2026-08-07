@@ -97,6 +97,15 @@ describe('GET /api/files', () => {
     vi.clearAllMocks()
   })
 
+  it('MCP内部の読み取りPATを許可する認証設定を使用する', async () => {
+    await GET()
+
+    expect(mockGetAuthContext).toHaveBeenCalledWith({
+      allowApiToken: true,
+      requiredApiTokenScope: 'read',
+    })
+  })
+
   it('DMが無効なとき、添付とmetadataのDM関連ファイルを除外する', async () => {
     ;(FEATURE_FLAGS as { dm: boolean }).dm = false
 

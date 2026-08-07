@@ -60,3 +60,16 @@ describe('POST /api/tasks のゲストアクセス制御', () => {
     expect(mockRequireProjectAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, PROJECT_ID, 'guest')
   })
 })
+
+describe('GET /api/tasks の担当者フィルター', () => {
+  afterEach(() => vi.clearAllMocks())
+
+  it('assigneeはme以外を受け付けない', async () => {
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/tasks?assignee=another-user'))
+
+    expect(res.status).toBe(422)
+    await expect(res.json()).resolves.toEqual({ error: 'assignee must be "me"' })
+    expect(mockGetAuthContext).not.toHaveBeenCalled()
+  })
+})

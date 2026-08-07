@@ -31,6 +31,9 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
+  // iOS PWA でノッチ・ホームインジケータの領域まで描画し、
+  // env(safe-area-inset-*) を使って各UI側で安全な余白を確保する
+  viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#4F8EF7' },
     { media: '(prefers-color-scheme: dark)', color: '#0B1622' },

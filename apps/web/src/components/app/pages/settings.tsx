@@ -18,8 +18,11 @@ import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { processImageForUpload } from '@/lib/process-image'
+import { toast } from '@/lib/toast'
 import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
+import type { ApiTokenDto } from '@/app/api/api-tokens/route'
+import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import type { AccentId } from '@cairn/shared'
 import { FEATURE_FLAGS } from '@cairn/shared'
 
@@ -1544,6 +1547,314 @@ const SettingsWorkspaceGeneral = () => {
   )
 }
 
+const ApiTokenSettings = () => {
+  const queryClient = useQueryClient()
+  const { isGuest } = useWorkspacePermissions()
+  const [name, setName] = React.useState('MCP client')
+  const [scope, setScope] = React.useState<'read' | 'write'>('read')
+  const [expiresInDays, setExpiresInDays] = React.useState(90)
+  const [issuedToken, setIssuedToken] = React.useState<string | null>(null)
+  const [copied, setCopied] = React.useState(false)
+
+  const {
+    data: tokens = [],
+    isLoading,
+    error: tokensError,
+  } = useQuery<ApiTokenDto[]>({
+    queryKey: ['api-tokens'],
+    queryFn: async () => {
+      const response = await fetchWithAuth('/api/api-tokens')
+      if (!response.ok) throw new Error('APIトークンの取得に失敗しました')
+      return response.json()
+    },
+  })
+  const visibleTokens = tokens.filter((token) => token.revokedAt === null)
+  const issue = useMutation({
+    mutationFn: async () => {
+      const response = await fetchWithAuth('/api/api-tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, scope, expiresInDays }),
+      })
+      const body = (await response.json()) as { token?: string; error?: string }
+      if (!response.ok || !body.token)
+        throw new Error(body.error ?? 'APIトークンの発行に失敗しました')
+      return body.token
+    },
+    onSuccess: (token) => {
+      setIssuedToken(token)
+      void queryClient.invalidateQueries({ queryKey: ['api-tokens'] })
+    },
+  })
+  const revoke = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetchWithAuth(`/api/api-tokens/${id}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('APIトークンの取り消しに失敗しました')
+    },
+    onSuccess: (_data, revokedId) => {
+      toast.success('APIトークンを取り消しました')
+      queryClient.setQueryData<ApiTokenDto[]>(['api-tokens'], (current) =>
+        current?.filter((token) => token.id !== revokedId),
+      )
+      void queryClient.invalidateQueries({ queryKey: ['api-tokens'] })
+    },
+    onError: (error) => toast.error((error as Error).message),
+  })
+
+  const copyToken = async () => {
+    if (!issuedToken) return
+    try {
+      await navigator.clipboard.writeText(issuedToken)
+      setCopied(true)
+      toast.success('APIトークンをコピーしました')
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+      toast.error('APIトークンをコピーできませんでした')
+    }
+  }
+
+  return (
+    <section style={{ marginBottom: 32 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>MCP / APIトークン</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
+        ChatGPT や Claude から、あなた本人としてこのワークスペースの Cairn を操作します。
+      </p>
+
+      {issuedToken && (
+        <div
+          className="card"
+          style={{ padding: 16, marginBottom: 12, borderColor: 'var(--accent)' }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
+            トークンを今すぐ保存してください
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 10 }}>
+            この値は閉じると二度と表示できません。
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <code
+              style={{
+                flex: 1,
+                minWidth: 0,
+                padding: '8px 10px',
+                overflow: 'auto',
+                borderRadius: 7,
+                background: 'var(--card-2)',
+                fontSize: 11.5,
+              }}
+            >
+              {issuedToken}
+            </code>
+            <button type="button" className="btn btn-primary" onClick={() => void copyToken()}>
+              {copied ? 'コピー済み' : 'コピー'}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => setIssuedToken(null)}>
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="card" style={{ padding: 16 }}>
+        {isGuest ? (
+          <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
+            ゲストはAPIトークンを発行できません。
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            <input
+              className="form-control"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              aria-label="トークン名"
+              maxLength={100}
+              placeholder="トークン名"
+              style={{ flex: '1 1 240px', minWidth: 0 }}
+            />
+            <select
+              className="form-control"
+              value={scope}
+              onChange={(event) => setScope(event.target.value as 'read' | 'write')}
+              aria-label="権限"
+              style={{ minWidth: 104, cursor: 'pointer' }}
+            >
+              <option value="read">読み取り</option>
+              <option value="write">読み書き</option>
+            </select>
+            <select
+              className="form-control"
+              value={expiresInDays}
+              onChange={(event) => setExpiresInDays(Number(event.target.value))}
+              aria-label="有効期間"
+              style={{ minWidth: 84, cursor: 'pointer' }}
+            >
+              <option value={30}>30日</option>
+              <option value={90}>90日</option>
+              <option value={365}>1年</option>
+            </select>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!name.trim() || issue.isPending}
+              onClick={() => issue.mutate()}
+            >
+              {issue.isPending ? '発行中…' : '発行'}
+            </button>
+          </div>
+        )}
+
+        {issue.isError && (
+          <div style={{ color: 'var(--red-text)', fontSize: 12, marginBottom: 10 }}>
+            {(issue.error as Error).message}
+          </div>
+        )}
+        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 10 }}>
+          読み書き権限は読み取りを含みます。既定90日・最長1年、1トークンあたり毎分120リクエストです。
+        </div>
+        {isLoading ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>読み込み中…</div>
+        ) : tokensError ? (
+          <div style={{ fontSize: 12, color: 'var(--red-text)' }}>
+            ⚠ {(tokensError as Error).message}
+          </div>
+        ) : visibleTokens.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>発行済みトークンはありません。</div>
+        ) : (
+          visibleTokens.map((token) => {
+            const inactive = new Date(token.expiresAt) <= new Date()
+            return (
+              <div
+                key={token.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 0',
+                  borderTop: '1px solid var(--divider)',
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{token.name}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                    <code>{token.prefix}…</code> ・{' '}
+                    {token.scope === 'write' ? '読み書き' : '読み取り'} ・ 有効期限{' '}
+                    {new Date(token.expiresAt).toLocaleDateString('ja-JP')}
+                    {token.lastUsedAt
+                      ? ` ・ 最終利用 ${new Date(token.lastUsedAt).toLocaleDateString('ja-JP')}`
+                      : ''}
+                    {inactive ? ' ・ 無効' : ''}
+                  </div>
+                </div>
+                {!inactive && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ color: 'var(--red-text)' }}
+                    disabled={revoke.isPending}
+                    onClick={() => {
+                      if (window.confirm(`「${token.name}」を取り消しますか？`))
+                        revoke.mutate(token.id)
+                    }}
+                  >
+                    取り消す
+                  </button>
+                )}
+              </div>
+            )
+          })
+        )}
+      </div>
+    </section>
+  )
+}
+
+const McpOAuthConnectionSettings = () => {
+  const queryClient = useQueryClient()
+  const [mcpUrl, setMcpUrl] = React.useState('/api/mcp')
+  React.useEffect(() => setMcpUrl(`${window.location.origin}/api/mcp`), [])
+  const {
+    data: connections = [],
+    isLoading,
+    error,
+  } = useQuery<McpOAuthConnectionDto[]>({
+    queryKey: ['mcp-oauth-connections'],
+    queryFn: async () => {
+      const response = await fetchWithAuth('/api/oauth/connections')
+      if (!response.ok) throw new Error('OAuth接続の取得に失敗しました')
+      return response.json()
+    },
+  })
+  const revoke = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetchWithAuth(`/api/oauth/connections/${id}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('OAuth接続の取り消しに失敗しました')
+    },
+    onSuccess: (_data, revokedId) => {
+      toast.success('OAuth接続を取り消しました')
+      queryClient.setQueryData<McpOAuthConnectionDto[]>(['mcp-oauth-connections'], (current) =>
+        current?.filter((connection) => connection.id !== revokedId),
+      )
+    },
+    onError: (mutationError) => toast.error((mutationError as Error).message),
+  })
+
+  return (
+    <section style={{ marginBottom: 32 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>MCP OAuth接続</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
+        Claude Web／Desktopには次のURLだけを登録し、Cairnで接続を許可します。
+      </p>
+      <div className="card" style={{ padding: 16 }}>
+        <code style={{ display: 'block', overflow: 'auto', fontSize: 11.5, marginBottom: 14 }}>
+          {mcpUrl}
+        </code>
+        {isLoading ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>読み込み中…</div>
+        ) : error ? (
+          <div style={{ fontSize: 12, color: 'var(--red-text)' }}>⚠ {(error as Error).message}</div>
+        ) : connections.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>有効なOAuth接続はありません。</div>
+        ) : (
+          connections.map((connection) => (
+            <div
+              key={connection.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '10px 0',
+                borderTop: '1px solid var(--divider)',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{connection.clientName}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                  {connection.scope === 'write' ? '読み取り・書き込み' : '読み取り'} ・ 接続日{' '}
+                  {new Date(connection.createdAt).toLocaleDateString('ja-JP')}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ color: 'var(--red-text)' }}
+                disabled={revoke.isPending}
+                onClick={() => {
+                  if (window.confirm(`「${connection.clientName}」との接続を取り消しますか？`)) {
+                    revoke.mutate(connection.id)
+                  }
+                }}
+              >
+                取り消す
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  )
+}
+
 const SettingsIntegrations = () => {
   // ── iCal 出力 ──────────────────────────────────────────────────────
   const { data: ws } = useQuery<WorkspaceDto>({
@@ -1686,6 +1997,9 @@ const SettingsIntegrations = () => {
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
         外部サービスとの連携を設定します。
       </p>
+
+      <McpOAuthConnectionSettings />
+      <ApiTokenSettings />
 
       {/* ── iCal 出力セクション ───────────────────────────────────── */}
       <section style={{ marginBottom: 32 }}>

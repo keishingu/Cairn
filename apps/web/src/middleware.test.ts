@@ -84,6 +84,20 @@ describe('middleware', () => {
     }
   })
 
+  it('未認証でもOAuth discovery metadataへアクセスできる', async () => {
+    getClaims.mockResolvedValue(unauthed())
+    const { middleware } = await import('./middleware')
+
+    for (const path of [
+      '/.well-known/oauth-protected-resource',
+      '/.well-known/oauth-protected-resource/api/mcp',
+      '/.well-known/oauth-authorization-server',
+    ]) {
+      const res = await middleware(makeRequest(path))
+      expect(res.headers.get('location')).toBeNull()
+    }
+  })
+
   it('未認証で保護ルートにアクセスすると /auth/login にリダイレクトされる', async () => {
     getClaims.mockResolvedValue(unauthed())
     const { middleware } = await import('./middleware')

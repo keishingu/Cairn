@@ -24,7 +24,10 @@ export interface FileDto {
 
 export async function GET() {
   try {
-    const { ctx, error } = await getAuthContext()
+    const { ctx, error } = await getAuthContext({
+      allowApiToken: true,
+      requiredApiTokenScope: 'read',
+    })
     if (error) return error
 
     const { db, files, profiles, projects, projectMembers, messageAttachments, messages, channels, channelMembers, galleryItems, documentChunks, workspaceMembers } = await import('@cairn/db')

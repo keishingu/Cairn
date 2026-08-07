@@ -29,7 +29,10 @@ export async function GET(req: Request, { params }: RouteContext) {
 
 export async function POST(req: Request, { params }: RouteContext) {
   const { channelId } = await params
-  const { ctx, error: authError } = await getAuthContext()
+  const { ctx, error: authError } = await getAuthContext({
+    allowApiToken: true,
+    requiredApiTokenScope: 'write',
+  })
   if (authError) return authError
 
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)

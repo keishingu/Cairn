@@ -31,7 +31,10 @@ export async function PATCH(
     const { eq, and } = await import('drizzle-orm')
     const { getAuthContext } = await import('@/lib/get-auth-context')
 
-    const { ctx, error } = await getAuthContext()
+    const { ctx, error } = await getAuthContext({
+      allowApiToken: true,
+      requiredApiTokenScope: 'write',
+    })
     if (error) return error
 
     // タスクが自ワークスペースに属するか確認（IDOR対策）。project 未所属もあるため projects は leftJoin。

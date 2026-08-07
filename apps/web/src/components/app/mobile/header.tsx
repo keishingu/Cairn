@@ -83,6 +83,8 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
     <header style={{
       display: 'flex', alignItems: 'center', gap: 8,
       padding: '10px 16px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+      paddingLeft: 'calc(16px + env(safe-area-inset-left))',
+      paddingRight: 'calc(16px + env(safe-area-inset-right))',
       background: 'var(--card)', borderBottom: '1px solid var(--border)',
       position: 'sticky', top: 0, zIndex: 20,
     }}>
