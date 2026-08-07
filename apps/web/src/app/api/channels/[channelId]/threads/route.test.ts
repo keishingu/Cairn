@@ -37,10 +37,19 @@ vi.mock('@cairn/db', () => ({
 vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
   eq: vi.fn(() => 'eq'),
-  isNull: vi.fn(() => 'isNull'),
+  sql: vi.fn(() => 'sql'),
 }))
 
 const routeContext = { params: Promise.resolve({ channelId: 'channel-1' }) }
+
+const parentRow = (overrides: Record<string, unknown> = {}) => ({
+  id: 'channel-1',
+  workspaceId: 'workspace-1',
+  isPrivate: false,
+  parentChannelId: null,
+  parentColumnReady: true,
+  ...overrides,
+})
 
 function request(name = 'リリース準備') {
   return new Request('http://localhost/api/channels/channel-1/threads', {
@@ -105,7 +114,7 @@ describe('POST /api/channels/[channelId]/threads', () => {
   })
 
   it('通常チャンネルの直下に公開スレッドを作成する', async () => {
-    selectResult([{ id: 'channel-1', workspaceId: 'workspace-1', isPrivate: false }])
+    selectResult([parentRow()])
     const { childInsert } = setupTransaction()
     const { POST } = await import('./route')
 
@@ -119,7 +128,7 @@ describe('POST /api/channels/[channelId]/threads', () => {
   })
 
   it('公開チャンネルでも親の参加メンバーをスレッドへ引き継ぐ', async () => {
-    selectResult([{ id: 'channel-1', workspaceId: 'workspace-1', isPrivate: false }])
+    selectResult([parentRow()])
     const { memberInsert } = setupTransaction([{ userId: 'guest-1' }])
     const { POST } = await import('./route')
 
@@ -132,7 +141,7 @@ describe('POST /api/channels/[channelId]/threads', () => {
   })
 
   it('プライベートチャンネルでは親のメンバーをスレッドへ引き継ぐ', async () => {
-    selectResult([{ id: 'channel-1', workspaceId: 'workspace-1', isPrivate: true }])
+    selectResult([parentRow({ isPrivate: true })])
     const { memberInsert } = setupTransaction([{ userId: 'user-1' }, { userId: 'user-2' }])
     const { POST } = await import('./route')
 
@@ -156,12 +165,22 @@ describe('POST /api/channels/[channelId]/threads', () => {
   })
 
   it('スレッドの下にさらにスレッドを作成できない', async () => {
-    selectResult([])
+    selectResult([parentRow({ parentChannelId: 'parent-channel' })])
     const { POST } = await import('./route')
 
     const response = await POST(request(), routeContext)
 
     expect(response.status).toBe(404)
+    expect(mockDbTransaction).not.toHaveBeenCalled()
+  })
+
+  it('migration適用前は既存チャンネルを壊さず503を返す', async () => {
+    selectResult([parentRow({ parentColumnReady: false })])
+    const { POST } = await import('./route')
+
+    const response = await POST(request(), routeContext)
+
+    expect(response.status).toBe(503)
     expect(mockDbTransaction).not.toHaveBeenCalled()
   })
 })

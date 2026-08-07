@@ -34,25 +34,30 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   try {
     const { db, channels, channelMembers } = await import('@cairn/db')
-    const { and, eq, isNull } = await import('drizzle-orm')
+    const { and, eq, sql } = await import('drizzle-orm')
+    const parentChannelId = sql<string | null>`to_jsonb(${channels})->>'parent_channel_id'`
 
     const [parent] = await db
       .select({
         id: channels.id,
         workspaceId: channels.workspaceId,
         isPrivate: channels.isPrivate,
+        parentChannelId,
+        parentColumnReady: sql<boolean>`to_jsonb(${channels}) ? 'parent_channel_id'`,
       })
       .from(channels)
       .where(and(
         eq(channels.id, channelId),
         eq(channels.workspaceId, ctx.workspaceId),
         eq(channels.type, 'workspace'),
-        isNull(channels.parentChannelId),
       ))
       .limit(1)
 
-    if (!parent) {
+    if (!parent || parent.parentChannelId !== null) {
       return NextResponse.json({ error: '親チャンネルが見つかりません' }, { status: 404 })
+    }
+    if (!parent.parentColumnReady) {
+      return NextResponse.json({ error: 'スレッド機能を準備中です。しばらくしてから再度お試しください' }, { status: 503 })
     }
 
     const threadId = await db.transaction(async tx => {

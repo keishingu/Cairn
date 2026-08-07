@@ -25,10 +25,12 @@ export async function GET() {
   try {
     const { db } = await import('@cairn/db')
     const { channels, channelMembers, profiles, activeWorkspaceMembers } = await import('@cairn/db')
-    const { and, eq, inArray } = await import('drizzle-orm')
+    const { and, eq, inArray, sql } = await import('drizzle-orm')
+    // デプロイがmigrationより先でも既存チャンネル一覧を壊さない。
+    const parentChannelId = sql<string | null>`to_jsonb(${channels})->>'parent_channel_id'`
 
     const allChannelRows = await db
-      .select({ id: channels.id, name: channels.name, parentChannelId: channels.parentChannelId, isPrivate: channels.isPrivate })
+      .select({ id: channels.id, name: channels.name, parentChannelId, isPrivate: channels.isPrivate })
       .from(channels)
       .where(and(eq(channels.workspaceId, ctx.workspaceId), eq(channels.type, 'workspace')))
       .orderBy(channels.createdAt)
@@ -78,7 +80,7 @@ export async function GET() {
 
     const channelIds = channelRows.map(c => c.id)
     const { channelReadStates, messages } = await import('@cairn/db')
-    const { isNull, gt, count, sql, ne } = await import('drizzle-orm')
+    const { isNull, gt, count, ne } = await import('drizzle-orm')
 
     const [unreadRows, mentionRows] = await Promise.all([
       channelIds.length > 0
@@ -159,7 +161,7 @@ export async function POST(req: Request) {
         name,
         isPrivate,
       })
-      .returning({ id: channels.id, name: channels.name, parentChannelId: channels.parentChannelId, isPrivate: channels.isPrivate })
+      .returning({ id: channels.id, name: channels.name, isPrivate: channels.isPrivate })
 
     const inserted = rows[0]
     if (!inserted) throw new Error('insert returned no rows')
@@ -170,7 +172,7 @@ export async function POST(req: Request) {
     }
 
     const memberCount = isPrivate ? 1 : 0
-    const result: WorkspaceChannelDto = { ...inserted, memberCount, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
+    const result: WorkspaceChannelDto = { ...inserted, parentChannelId: null, memberCount, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('[/api/workspaces/channels POST] DB error:', err)

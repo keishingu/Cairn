@@ -20,6 +20,7 @@ const {
   mockEq,
   mockAnd,
   mockOr,
+  mockSql,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -32,6 +33,7 @@ const {
   mockEq: vi.fn(() => Symbol('eq')),
   mockAnd: vi.fn(() => Symbol('and')),
   mockOr: vi.fn(() => Symbol('or')),
+  mockSql: vi.fn(() => Symbol('sql')),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -55,6 +57,7 @@ vi.mock('drizzle-orm', () => ({
   eq: mockEq,
   and: mockAnd,
   or: mockOr,
+  sql: mockSql,
 }))
 
 function ctxRouteParams() {

@@ -72,7 +72,8 @@ export async function POST(
   try {
     const { db } = await import('@cairn/db')
     const { channels, channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
-    const { eq, and, or } = await import('drizzle-orm')
+    const { eq, and, or, sql } = await import('drizzle-orm')
+    const parentChannelId = sql<string | null>`to_jsonb(${channels})->>'parent_channel_id'`
 
     // 自ワークスペースの active メンバー以外を追加できないようにする（不正な channel_members 行や
     // 非活性メンバーの追加を防ぐ）
@@ -87,7 +88,7 @@ export async function POST(
     }
 
     const [targetChannel] = await db
-      .select({ id: channels.id, parentChannelId: channels.parentChannelId })
+      .select({ id: channels.id, parentChannelId })
       .from(channels)
       .where(eq(channels.id, channelId))
       .limit(1)
@@ -109,7 +110,7 @@ export async function POST(
       const relatedChannels = await tx
         .select({ id: channels.id })
         .from(channels)
-        .where(or(eq(channels.id, rootChannelId), eq(channels.parentChannelId, rootChannelId)))
+        .where(or(eq(channels.id, rootChannelId), eq(parentChannelId, rootChannelId)))
       const relatedChannelIds = relatedChannels.map(channel => channel.id)
 
       await tx
