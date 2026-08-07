@@ -13,4 +13,8 @@ const pool = new Pool({
   ...nodePostgresPoolOptions,
 })
 
+pool.on('error', error => {
+  console.error('Unexpected error on idle PostgreSQL client', error)
+})
+
 export const db = drizzle(pool, { schema })
