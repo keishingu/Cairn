@@ -21,6 +21,12 @@ export interface ChannelFileDto {
 
 type RouteContext = { params: Promise<{ channelId: string }> }
 
+const URL_TOKEN_RE = /https?:\/\/[^\s<>"']+/g
+
+function extractUrlTokens(content: string): string[] {
+  return (content.match(URL_TOKEN_RE) ?? []).map(url => url.replace(/[\])},.!?;:、。]+$/u, ''))
+}
+
 export async function GET(_req: Request, { params }: RouteContext) {
   const { channelId } = await params
   const { ctx, error } = await getAuthContext()
@@ -126,8 +132,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
         .orderBy(desc(messages.createdAt))
 
       for (const message of linkMessages) {
+        const messageUrls = new Set(extractUrlTokens(message.content))
         for (const link of externalLinks) {
-          if (!sourceMessageIdByFileId.has(link.fileId) && message.content.includes(link.externalUrl)) {
+          if (!sourceMessageIdByFileId.has(link.fileId) && messageUrls.has(link.externalUrl)) {
             sourceMessageIdByFileId.set(link.fileId, message.id)
           }
         }

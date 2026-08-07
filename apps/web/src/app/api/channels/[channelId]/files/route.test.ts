@@ -103,4 +103,39 @@ describe('/api/channels/[channelId]/files', () => {
       expect.objectContaining({ id: 'link-1', sourceMessageId: 'message-link', externalUrl }),
     ])
   })
+
+  it('似たURLを部分一致させず、それぞれの共有元メッセージを付ける', async () => {
+    const baseUrl = 'https://docs.google.com/document/d/doc-1'
+    const editUrl = `${baseUrl}/edit`
+    const selectResults = [
+      [],
+      [
+        {
+          id: 'link-base', fileName: 'base', mimeType: null, fileSize: null,
+          fileType: 'link', uploaderName: '山田 太郎', createdAt: new Date('2026-08-07T03:45:00.000Z'), metadata: { externalUrl: baseUrl },
+        },
+        {
+          id: 'link-edit', fileName: 'edit', mimeType: null, fileSize: null,
+          fileType: 'link', uploaderName: '山田 太郎', createdAt: new Date('2026-08-07T03:44:00.000Z'), metadata: { externalUrl: editUrl },
+        },
+      ],
+      [],
+      [
+        { id: 'message-edit', content: `新しい共有 ${editUrl}` },
+        { id: 'message-base', content: `元の共有 [資料](${baseUrl})` },
+      ],
+    ]
+    mockDbSelect.mockImplementation(() => queryResult(selectResults.shift() ?? []))
+
+    const { GET } = await import('./route')
+    const response = await GET(new Request('http://localhost'), {
+      params: Promise.resolve({ channelId: 'channel-1' }),
+    })
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual([
+      expect.objectContaining({ id: 'link-base', sourceMessageId: 'message-base' }),
+      expect.objectContaining({ id: 'link-edit', sourceMessageId: 'message-edit' }),
+    ])
+  })
 })

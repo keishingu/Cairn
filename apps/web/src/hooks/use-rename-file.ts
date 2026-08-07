@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { toast } from '@/lib/toast'
+import { chatQueryKeys } from '@/lib/chat/client'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 
 interface RenameFileInput {
@@ -41,7 +42,7 @@ export function useRenameFile() {
       queryClient.setQueriesData<FileNameDto[]>({ queryKey: ['files'] }, updateFileList)
       queryClient.setQueriesData<FileNameDto[]>({ queryKey: ['project-files'] }, updateFileList)
       queryClient.setQueriesData<FileNameDto[]>({ queryKey: ['channel-files'] }, updateFileList)
-      queryClient.setQueriesData<MessageDto[]>({ queryKey: ['channel-messages'] }, current =>
+      queryClient.setQueriesData<MessageDto[]>({ queryKey: chatQueryKeys.messagesRoot }, current =>
         current?.map(message => ({
           ...message,
           attachments: message.attachments.map(attachment =>
