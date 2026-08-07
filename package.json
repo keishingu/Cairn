@@ -12,7 +12,8 @@
     "desktop:dev": "pnpm --filter @cairn/desktop dev",
     "desktop:build:prod": "pnpm --filter @cairn/desktop build:prod",
     "desktop:build:dev": "pnpm --filter @cairn/desktop build:dev",
-    "setup:mobile-lan": "node scripts/setup-mobile-lan.mjs"
+    "setup:mobile-lan": "node scripts/setup-mobile-lan.mjs",
+    "gen:test-spec": "node scripts/gen-test-spec.mjs"
   },
   "devDependencies": {
     "prettier": "^3.4.2",
