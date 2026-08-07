@@ -99,6 +99,8 @@ alter table channels add column milestone_id       uuid references milestones(id
 
 `channel_read_states` はチャンネル ID に対して動作するため、マイルストーンチャンネルが追加されても変更不要。
 
+> 実装後メモ（2026-08-07）: `parent_channel_id` はワークスペースチャンネル → スレッドの親子関係として実装済み。マイルストーンは `project_id` + `milestone_id` で親プロジェクトを辿るため、`parent_channel_id` は使用しない。
+
 ---
 
 ## 3. 通知生成フロー

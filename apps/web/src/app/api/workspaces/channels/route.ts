@@ -9,6 +9,7 @@ import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 export interface WorkspaceChannelDto {
   id: string
   name: string | null
+  parentChannelId: string | null
   isPrivate: boolean
   memberCount: number
   memberNames: string[]
@@ -27,7 +28,7 @@ export async function GET() {
     const { and, eq, inArray } = await import('drizzle-orm')
 
     const allChannelRows = await db
-      .select({ id: channels.id, name: channels.name, isPrivate: channels.isPrivate })
+      .select({ id: channels.id, name: channels.name, parentChannelId: channels.parentChannelId, isPrivate: channels.isPrivate })
       .from(channels)
       .where(and(eq(channels.workspaceId, ctx.workspaceId), eq(channels.type, 'workspace')))
       .orderBy(channels.createdAt)
@@ -103,7 +104,7 @@ export async function GET() {
       const members = membersByChannel.get(c.id) ?? []
       const top4 = members.slice(0, 4)
       return {
-        id: c.id, name: c.name, isPrivate: c.isPrivate,
+        id: c.id, name: c.name, parentChannelId: c.parentChannelId, isPrivate: c.isPrivate,
         memberCount: members.length,
         memberNames: top4.map(m => m.name),
         memberAvatarUrls: top4.map(m => m.avatarUrl),
@@ -158,7 +159,7 @@ export async function POST(req: Request) {
         name,
         isPrivate,
       })
-      .returning({ id: channels.id, name: channels.name, isPrivate: channels.isPrivate })
+      .returning({ id: channels.id, name: channels.name, parentChannelId: channels.parentChannelId, isPrivate: channels.isPrivate })
 
     const inserted = rows[0]
     if (!inserted) throw new Error('insert returned no rows')

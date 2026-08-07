@@ -5,6 +5,7 @@ import { apiFetch } from '../lib/api-fetch'
 export interface WorkspaceChannelDto {
   id: string
   name: string | null
+  parentChannelId: string | null
   isPrivate: boolean
   memberCount: number
   memberNames: string[]

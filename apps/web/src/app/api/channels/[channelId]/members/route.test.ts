@@ -15,6 +15,7 @@ const {
   mockDbInsert,
   mockEq,
   mockAnd,
+  mockOr,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -22,6 +23,7 @@ const {
   mockDbInsert: vi.fn(),
   mockEq: vi.fn(() => Symbol('eq')),
   mockAnd: vi.fn(() => Symbol('and')),
+  mockOr: vi.fn(() => Symbol('or')),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -38,11 +40,13 @@ vi.mock('@cairn/db', () => ({
   channelReadStates: { userId: 'channelReadStates.userId', channelId: 'channelReadStates.channelId', lastReadAt: 'channelReadStates.lastReadAt' },
   workspaceMembers: { userId: 'workspaceMembers.userId', workspaceId: 'workspaceMembers.workspaceId' },
   activeWorkspaceMembers: { userId: 'activeWorkspaceMembers.userId', workspaceId: 'activeWorkspaceMembers.workspaceId' },
+  channels: { id: 'channels.id', parentChannelId: 'channels.parentChannelId' },
 }))
 
 vi.mock('drizzle-orm', () => ({
   eq: mockEq,
   and: mockAnd,
+  or: mockOr,
 }))
 
 function ctxRouteParams() {
@@ -136,7 +140,11 @@ describe('/api/channels/[channelId]/members のアクセス制御', () => {
 
   it('自ワークスペースのメンバーは正常にチャンネルへ追加できる', async () => {
     mockRequireChannelAccess.mockResolvedValue(null)
-    mockSelectResults([{ userId: TARGET_USER_ID }])
+    mockSelectResults(
+      [{ userId: TARGET_USER_ID }],
+      [{ id: CHANNEL_ID, parentChannelId: null }],
+      [{ id: CHANNEL_ID }, { id: 'thread-1' }],
+    )
     mockInsertChain()
     const { POST } = await import('./route')
     const res = await POST(postRequest({ userId: TARGET_USER_ID }), ctxRouteParams())

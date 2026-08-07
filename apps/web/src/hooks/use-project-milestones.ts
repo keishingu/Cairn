@@ -27,9 +27,32 @@ async function parseError(res: Response, fallback: string) {
   return new Error(data.error ?? fallback)
 }
 
+export function useCreateProjectMilestone(projectId: string) {
+  const queryClient = useQueryClient()
+  const queryKey = ['project-milestones', projectId] as const
+
+  return useMutation({
+    mutationFn: async (input: CreateMilestoneInput) => {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/milestones`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!res.ok) throw await parseError(res, 'マイルストーンの作成に失敗しました')
+      return res.json() as Promise<MilestoneDto>
+    },
+    onSuccess: (created) => {
+      queryClient.setQueryData<MilestoneDto[]>(queryKey, old => old ? [...old, created] : [created])
+      void queryClient.invalidateQueries({ queryKey })
+      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
+    },
+  })
+}
+
 export function useProjectMilestones(projectId: string) {
   const queryClient = useQueryClient()
   const queryKey = ['project-milestones', projectId] as const
+  const createMutation = useCreateProjectMilestone(projectId)
 
   const query = useQuery<MilestoneDto[]>({
     queryKey,
@@ -44,22 +67,6 @@ export function useProjectMilestones(projectId: string) {
     void queryClient.invalidateQueries({ queryKey })
     void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
   }
-
-  const createMutation = useMutation({
-    mutationFn: async (input: CreateMilestoneInput) => {
-      const res = await fetchWithAuth(`/api/projects/${projectId}/milestones`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      if (!res.ok) throw await parseError(res, 'マイルストーンの作成に失敗しました')
-      return res.json() as Promise<MilestoneDto>
-    },
-    onSuccess: (created) => {
-      queryClient.setQueryData<MilestoneDto[]>(queryKey, old => old ? [...old, created] : [created])
-      invalidate()
-    },
-  })
 
   const patchMutation = useMutation({
     mutationFn: async ({ id, input }: { id: string; input: PatchMilestoneInput }) => {

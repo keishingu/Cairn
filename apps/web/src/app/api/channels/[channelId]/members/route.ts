@@ -71,8 +71,8 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { channels, channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
+    const { eq, and, or } = await import('drizzle-orm')
 
     // 自ワークスペースの active メンバー以外を追加できないようにする（不正な channel_members 行や
     // 非活性メンバーの追加を防ぐ）
@@ -86,15 +86,32 @@ export async function POST(
       return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
     }
 
+    const [targetChannel] = await db
+      .select({ id: channels.id, parentChannelId: channels.parentChannelId })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1)
+
+    if (!targetChannel) {
+      return NextResponse.json({ error: 'チャンネルが見つかりません' }, { status: 404 })
+    }
+
+    const rootChannelId = targetChannel.parentChannelId ?? targetChannel.id
+    const relatedChannels = await db
+      .select({ id: channels.id })
+      .from(channels)
+      .where(or(eq(channels.id, rootChannelId), eq(channels.parentChannelId, rootChannelId)))
+    const relatedChannelIds = relatedChannels.map(channel => channel.id)
+
     await db
       .insert(channelMembers)
-      .values({ channelId, userId })
+      .values(relatedChannelIds.map(id => ({ channelId: id, userId })))
       .onConflictDoNothing()
 
     // 参加時点を既読の起点にする。これがないと参加直後に過去メッセージ全件が未読として表示される
     await db
       .insert(channelReadStates)
-      .values({ userId, channelId, lastReadAt: new Date() })
+      .values(relatedChannelIds.map(id => ({ userId, channelId: id, lastReadAt: new Date() })))
       .onConflictDoNothing()
 
     return NextResponse.json({ userId, channelId } satisfies ChannelMemberDto, { status: 201 })

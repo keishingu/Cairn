@@ -2,7 +2,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
-import { useProjectMilestones } from './use-project-milestones'
+import { useCreateProjectMilestone, useProjectMilestones } from './use-project-milestones'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
 
@@ -69,6 +69,23 @@ describe('useProjectMilestones', () => {
     )
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['project-milestones', 'p1'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['project-channels'] })
+  })
+
+  it('作成専用フックは既存マイルストーン一覧を取得しない', async () => {
+    const created: MilestoneDto = { ...STUB_MILESTONES[0]!, id: 'm2', channelId: 'c2', title: '登頂日' }
+    mockFetch.mockResolvedValue(new Response(JSON.stringify(created), { status: 201 }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useCreateProjectMilestone('p1'), { wrapper })
+
+    await act(async () => {
+      await result.current.mutateAsync({ title: '登頂日' })
+    })
+
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/projects/p1/milestones',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 
   it('patchMutation が更新後にキャッシュを差し替える', async () => {

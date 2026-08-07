@@ -99,13 +99,13 @@ function ChannelItem({ channel, milestone = false }: ChannelItemProps) {
   )
 }
 
-function WorkspaceChannelItem({ channel }: { channel: WorkspaceChannelDto }) {
+function WorkspaceChannelItem({ channel, thread = false }: { channel: WorkspaceChannelDto; thread?: boolean }) {
   const router = useRouter()
   const { palette } = useAppAppearance()
   const privateChannel = channel.isPrivate
   return (
     <TouchableOpacity
-      style={[styles.channelRow, { borderBottomColor: palette.divider }]}
+      style={[styles.channelRow, thread && styles.threadRow, { borderBottomColor: palette.divider }]}
       onPress={() =>
         router.push({
           pathname: '/chats/[channelId]',
@@ -120,7 +120,9 @@ function WorkspaceChannelItem({ channel }: { channel: WorkspaceChannelDto }) {
           { backgroundColor: privateChannel ? palette.card2 : palette.accentSoft },
         ]}
       >
-        {privateChannel ? (
+        {thread ? (
+          <Text style={[styles.channelIconText, { color: palette.text3 }]}>┗</Text>
+        ) : privateChannel ? (
           <Ionicons name="lock-closed-outline" size={17} color={palette.text3} />
         ) : (
           <Text style={[styles.channelIconText, { color: palette.accentText }]}>#</Text>
@@ -216,6 +218,15 @@ export default function ChatsScreen() {
         ),
       }))
   }, [channels])
+  const workspaceChannelGroups = React.useMemo(() => {
+    const allChannels = workspaceChannelsQuery.data ?? []
+    return allChannels
+      .filter((channel) => channel.parentChannelId === null)
+      .map((channel) => ({
+        channel,
+        threads: allChannels.filter((candidate) => candidate.parentChannelId === channel.id),
+      }))
+  }, [workspaceChannelsQuery.data])
 
   if (isLoading || workspaceChannelsQuery.isLoading || dmsQuery.isLoading) {
     return (
@@ -318,8 +329,13 @@ export default function ChatsScreen() {
         ListFooterComponent={
           <>
             <Text style={[styles.sectionTitle, { color: palette.text4 }]}>チャンネル</Text>
-            {(workspaceChannelsQuery.data ?? []).map((channel) => (
-              <WorkspaceChannelItem key={channel.id} channel={channel} />
+            {workspaceChannelGroups.map(({ channel, threads }) => (
+              <React.Fragment key={channel.id}>
+                <WorkspaceChannelItem channel={channel} />
+                {threads.map((thread) => (
+                  <WorkspaceChannelItem key={thread.id} channel={thread} thread />
+                ))}
+              </React.Fragment>
             ))}
             {FEATURE_FLAGS.dm && (
               <>
@@ -639,6 +655,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderBottomWidth: 1,
   },
+  threadRow: { paddingLeft: 34 },
   channelIcon: {
     width: 36,
     height: 36,
