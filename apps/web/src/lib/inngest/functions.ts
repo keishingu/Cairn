@@ -617,6 +617,50 @@ export const indexFileChunks = inngest.createFunction(
   },
 )
 
+// PDF内の写真スクショ(PNG貼り付け)らしき画像だけをJPEG再圧縮してファイルサイズを縮める。
+// indexFileChunks とは独立した function として同じイベントを購読し、
+// どちらかが失敗してももう一方に影響しないようにする
+export const compressUploadedPdf = inngest.createFunction(
+  { id: 'compress-uploaded-pdf' },
+  { event: 'file/uploaded' },
+  async ({ event, step }) => {
+    const { fileId, mimeType, storagePath } = event.data as {
+      fileId: string
+      mimeType: string
+      storagePath: string
+    }
+
+    if (mimeType !== 'application/pdf') {
+      return { skipped: true, reason: 'not a PDF' }
+    }
+
+    return step.run('compress-and-replace', async () => {
+      const supabase = createServiceRoleClient()
+      const { data, error } = await supabase.storage.from('chat-attachments').download(storagePath)
+      if (error || !data) throw new Error(`Storage download failed: ${error?.message}`)
+
+      const original = Buffer.from(await data.arrayBuffer())
+      const { compressPdfImages } = await import('@/lib/pdf/compress-images')
+      const compressed = await compressPdfImages(original)
+
+      if (compressed.byteLength >= original.byteLength) {
+        return { compressed: false, originalSize: original.byteLength }
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from('chat-attachments')
+        .upload(storagePath, compressed, { contentType: 'application/pdf', upsert: true })
+      if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`)
+
+      const { db, files } = await import('@cairn/db')
+      const { eq } = await import('drizzle-orm')
+      await db.update(files).set({ fileSize: compressed.byteLength }).where(eq(files.id, fileId))
+
+      return { compressed: true, originalSize: original.byteLength, newSize: compressed.byteLength }
+    })
+  },
+)
+
 export const indexProjectChunks = inngest.createFunction(
   { id: 'index-project-chunks' },
   { event: 'project/upserted' },

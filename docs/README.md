@@ -65,6 +65,7 @@
 | [`07_notifications_and_unread.md`](./07_notifications_and_unread.md) | 通知・未読の設計検討 → 現行仕様は `notification-design.md` | 2026-05-27 |
 | [`user-deactivation-design.md`](./user-deactivation-design.md) | ユーザー非活性化・退会設計（卒業生対応・GDPR 消去権の整理・匿名化）。スキーマのみ実装済み、遮断・API・UI は未着手 | 2026-06-22 |
 | [`08_expo_roadmap.md`](./08_expo_roadmap.md) | Expo ネイティブ化ロードマップ（WebView 化・Push まで実施済み） | 2026-05-27 |
+| [`pdf-image-compression-design.md`](./pdf-image-compression-design.md) | PDF添付ファイルの画像圧縮の設計判断記録（エンジン比較・AGPLライセンス論点） | 2026-07-03 |
 | [`ai-self-improvement-loop.md`](./ai-self-improvement-loop.md) | AI 自己改善ループ（提案 → issue → AI 実装 → SOUL 審査 → 人間 merge）の設計メモ（実装前） | 2026-07-03 |
 | [`lp-soul-page-copy.md`](./lp-soul-page-copy.md) | Soul ページ（Open Soul Software / SOUL.md）のコピー案ドラフト（ページ未実装） | 2026-07-03 |
 
