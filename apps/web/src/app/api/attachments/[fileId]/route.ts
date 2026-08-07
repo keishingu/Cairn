@@ -8,6 +8,11 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 
 type RouteContext = { params: Promise<{ fileId: string }> }
 
+function extensionOf(fileName: string): string {
+  const dotIndex = fileName.lastIndexOf('.')
+  return dotIndex > 0 ? fileName.slice(dotIndex).toLowerCase() : ''
+}
+
 function resolveResponseContentType(fileName: string, mimeType: string | null) {
   const normalizedMimeType = mimeType?.toLowerCase() ?? ''
   const normalizedFileName = fileName.toLowerCase()
@@ -144,6 +149,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         workspaceId: files.workspaceId,
         projectId: files.projectId,
         uploadedBy: files.uploadedBy,
+        fileName: files.fileName,
+        fileType: files.fileType,
         metadata: files.metadata,
       })
       .from(files)
@@ -155,6 +162,9 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     if (!canAccess) return new NextResponse(null, { status: 403 })
 
     if (fileName) {
+      if (file.fileType !== 'link' && extensionOf(fileName) !== extensionOf(file.fileName)) {
+        return NextResponse.json({ error: 'ファイルの拡張子は変更できません' }, { status: 400 })
+      }
       await db.update(files).set({ fileName }).where(eq(files.id, fileId))
       return NextResponse.json({ success: true, fileName })
     }

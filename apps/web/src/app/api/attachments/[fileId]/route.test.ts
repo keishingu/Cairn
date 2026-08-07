@@ -159,6 +159,21 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     await expect(res.json()).resolves.toEqual({ success: true, fileName: 'renamed.pdf' })
   })
 
+  it('アップロード済みファイルの拡張子変更は拒否する', async () => {
+    const { PATCH } = await import('./route')
+    const req = new Request('http://localhost/', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName: 'renamed.txt' }),
+    })
+
+    const res = await PATCH(req, routeParams())
+
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'ファイルの拡張子は変更できません' })
+    expect(mockUpdateSet).not.toHaveBeenCalled()
+  })
+
   it('空のファイル名は拒否する', async () => {
     const { PATCH } = await import('./route')
     const req = new Request('http://localhost/', {
