@@ -221,7 +221,7 @@ export default function ChatsScreen() {
   const workspaceChannelGroups = React.useMemo(() => {
     const allChannels = workspaceChannelsQuery.data ?? []
     return allChannels
-      .filter((channel) => channel.parentChannelId === null)
+      .filter((channel) => channel.parentChannelId == null)
       .map((channel) => ({
         channel,
         threads: allChannels.filter((candidate) => candidate.parentChannelId === channel.id),
