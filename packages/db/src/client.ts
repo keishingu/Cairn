@@ -3,11 +3,11 @@
 
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
+import { postgresClientOptions } from './client-options'
 import * as schema from './schema/index'
 
 const connectionString = process.env['DATABASE_URL']!
 
-// max: 1 でサーバーレス関数インスタンスあたりの接続数を抑制
-const client = postgres(connectionString, { prepare: false, max: 1 })
+const client = postgres(connectionString, postgresClientOptions)
 
 export const db = drizzle(client, { schema })
