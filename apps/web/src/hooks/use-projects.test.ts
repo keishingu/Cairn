@@ -59,6 +59,14 @@ describe('useProjects', () => {
     expect(mockFetch).toHaveBeenCalledWith('/api/projects')
   })
 
+  it('enabled=false のときフェッチしない', () => {
+    const { wrapper } = makeWrapper()
+
+    renderHook(() => useProjects({ enabled: false }), { wrapper })
+
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
   it('キャッシュが fresh なら再フェッチしない', () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
