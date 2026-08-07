@@ -94,6 +94,25 @@ describe('チャット詳細サイドバーのファイル一覧', () => {
     )
   })
 
+  it('外部リンクは中継せず直接開く', async () => {
+    const externalUrl = 'https://docs.google.com/document/d/doc-1/edit'
+    mockUseChannelFiles.mockReturnValue({
+      data: [{
+        id: 'link-1', sourceMessageId: 'message-1', fileName: 'Google ドキュメント',
+        mimeType: null, fileSize: null, fileType: 'link', uploaderName: '山田 太郎',
+        createdAt: '2026-08-07T03:45:00.000Z', externalUrl,
+      }],
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useChannelFiles>)
+    renderSidebar()
+
+    await userEvent.click(screen.getByTitle('操作'))
+    await userEvent.click(screen.getByRole('button', { name: 'ファイルを開く' }))
+
+    expect(window.open).toHaveBeenCalledWith(externalUrl, '_blank', 'noopener,noreferrer')
+  })
+
   it('操作メニューからファイル名をインライン変更する', async () => {
     renderSidebar()
 

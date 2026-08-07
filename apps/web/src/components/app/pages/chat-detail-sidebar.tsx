@@ -248,6 +248,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
             const meta = isLink ? '外部リンク' : [sizeStr, formatFileTimestamp(f.createdAt)].filter(Boolean).join(' · ')
             const canJump = f.sourceMessageId !== null
             const isRenaming = renamingFileId === f.id
+            const openUrl = isLink && f.externalUrl ? f.externalUrl : `/api/attachments/${f.id}`
             const fileIcon = isLink && f.externalUrl
               ? <GoogleDocsIcon url={f.externalUrl} width={26} height={30}/>
               : <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName} fileId={f.id} width={26} height={30}/>
@@ -295,7 +296,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
                   <RowActionMenu
                     triggerStyle={{ padding: '3px 4px' }}
                     actions={[
-                      { icon: 'eye', label: 'ファイルを開く', onSelect: () => window.open(`/api/attachments/${f.id}`, '_blank', 'noopener,noreferrer') },
+                      { icon: 'eye', label: 'ファイルを開く', onSelect: () => window.open(openUrl, '_blank', 'noopener,noreferrer') },
                       { icon: 'edit', label: '名前を変更', onSelect: () => setRenamingFileId(f.id) },
                     ]}
                   />
