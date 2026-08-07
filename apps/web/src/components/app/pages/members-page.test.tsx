@@ -9,6 +9,15 @@ import React from 'react'
 import { PageMembers } from './members-page'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 
+const mockFetchWithAuth = vi.fn()
+const mockUseWorkspacePermissions = vi.fn(() => ({
+  wsRole: 'admin',
+  isOwner: false,
+  isAdmin: true,
+  isMember: true,
+  isGuest: false,
+}))
+
 // ─── next/navigation モック ────────────────────────────────────────
 
 const mockPush = vi.fn()
@@ -16,6 +25,18 @@ const mockPush = vi.fn()
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
 }))
+
+vi.mock('@/lib/fetch-with-auth', () => ({
+  fetchWithAuth: (...args: unknown[]) => mockFetchWithAuth(...args),
+}))
+
+vi.mock('@/hooks/use-current-user', async () => {
+  const actual = await vi.importActual<typeof import('@/hooks/use-current-user')>('@/hooks/use-current-user')
+  return {
+    ...actual,
+    useWorkspacePermissions: () => mockUseWorkspacePermissions(),
+  }
+})
 
 // ─── 子コンポーネントモック ────────────────────────────────────────
 
@@ -66,10 +87,58 @@ function renderMobile(initialUserId?: string) {
   )
 }
 
+function renderDesktop() {
+  return render(
+    <QueryClientProvider client={makeQC()}>
+      <PageMembers />
+    </QueryClientProvider>,
+  )
+}
+
+function mockPageFetch(options?: {
+  members?: WorkspaceMemberDto[]
+  invites?: Array<Record<string, unknown>>
+  createInviteUrl?: string
+  pendingInvite?: Promise<{ ok: boolean; json: () => Promise<{ url: string }> }>
+}) {
+  const members = options?.members ?? [STUB_MEMBER]
+  const invites = options?.invites ?? []
+  const createInviteUrl = options?.createInviteUrl ?? 'https://example.com/invite/token'
+
+  mockFetchWithAuth.mockImplementation((input: string, init?: RequestInit) => {
+    if (input.startsWith('/api/workspaces/members')) {
+      return Promise.resolve({ ok: true, json: async () => members })
+    }
+    if (input === '/api/workspaces/invites' && init?.method === 'POST') {
+      if (options?.pendingInvite) return options.pendingInvite
+      return Promise.resolve({ ok: true, json: async () => ({ url: createInviteUrl }) })
+    }
+    if (input === '/api/workspaces/invites') {
+      return Promise.resolve({ ok: true, json: async () => ({ invites }) })
+    }
+    return Promise.resolve({ ok: true, json: async () => ({}) })
+  })
+}
+
+function expectInviteCreateCall(body: { expiresIn: '1h' | '30d' | 'never'; role: 'member' | 'guest' }) {
+  expect(mockFetchWithAuth.mock.calls).toContainEqual([
+    '/api/workspaces/invites',
+    expect.objectContaining({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  ])
+}
+
 // ─── テスト ────────────────────────────────────────────────────────
 
 describe('PageMembers (モバイル) — カードタップの URL 更新', () => {
-  beforeEach(() => mockPush.mockClear())
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockFetchWithAuth.mockReset()
+    mockFetchWithAuth.mockResolvedValue({ json: async () => [STUB_MEMBER] })
+  })
 
   it('メンバーカードをタップすると /members/{userId} に router.push する', async () => {
     renderMobile()
@@ -85,7 +154,11 @@ describe('PageMembers (モバイル) — カードタップの URL 更新', () =
 })
 
 describe('PageMembers (モバイル) — パネルを閉じたときの URL 更新', () => {
-  beforeEach(() => mockPush.mockClear())
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockFetchWithAuth.mockReset()
+    mockFetchWithAuth.mockResolvedValue({ json: async () => [STUB_MEMBER] })
+  })
 
   it('パネルの閉じるボタンは /members に router.push する', async () => {
     renderMobile()
@@ -103,7 +176,11 @@ describe('PageMembers (モバイル) — パネルを閉じたときの URL 更�
 })
 
 describe('PageMembers (モバイル) — initialUserId によるパネル復元', () => {
-  beforeEach(() => mockPush.mockClear())
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockFetchWithAuth.mockReset()
+    mockFetchWithAuth.mockResolvedValue({ json: async () => [STUB_MEMBER] })
+  })
 
   it('initialUserId が渡されたとき、メンバーが読み込まれ次第パネルを開く', async () => {
     renderMobile('user-1')
@@ -124,6 +201,72 @@ describe('PageMembers — email tooltip', () => {
   })
 })
 
+describe('InviteModal', () => {
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockFetchWithAuth.mockReset()
+  })
+
+  it('招待リンク生成時に選択した role=guest を送る', async () => {
+    mockPageFetch({
+      invites: [{ token: 'guest-token', url: 'https://example.com/invite/guest-token', expiresAt: null, maxUses: null, useCount: 0, role: 'guest', id: '1', createdAt: '2026-01-01', createdByName: 'Admin' }],
+      createInviteUrl: 'https://example.com/invite/guest-token',
+    })
+
+    renderDesktop()
+    await userEvent.click(screen.getByRole('button', { name: 'メンバーを招待' }))
+    await userEvent.click(screen.getByRole('button', { name: 'ゲスト 閲覧中心の外部参加向け' }))
+    await userEvent.click(screen.getByRole('button', { name: '招待リンクを生成' }))
+
+    expectInviteCreateCall({ expiresIn: '1h', role: 'guest' })
+  })
+
+  it('role を変更しなければ member のまま送る', async () => {
+    mockPageFetch({
+      invites: [{ token: 'member-token', url: 'https://example.com/invite/member-token', expiresAt: null, maxUses: null, useCount: 0, role: 'member', id: '1', createdAt: '2026-01-01', createdByName: 'Admin' }],
+      createInviteUrl: 'https://example.com/invite/member-token',
+    })
+
+    renderDesktop()
+    await userEvent.click(screen.getByRole('button', { name: 'メンバーを招待' }))
+    await userEvent.click(screen.getByRole('button', { name: '招待リンクを生成' }))
+
+    expectInviteCreateCall({ expiresIn: '1h', role: 'member' })
+  })
+
+  it('生成中は role を切り替えられない', async () => {
+    let resolveInvite!: (value: { ok: boolean; json: () => Promise<{ url: string }> }) => void
+    const pendingInvite = new Promise<{ ok: boolean; json: () => Promise<{ url: string }> }>(resolve => {
+      resolveInvite = resolve
+    })
+    mockPageFetch({
+      invites: [{ token: 'member-token', url: 'https://example.com/invite/member-token', expiresAt: null, maxUses: null, useCount: 0, role: 'member', id: '1', createdAt: '2026-01-01', createdByName: 'Admin' }],
+      pendingInvite,
+    })
+
+    renderDesktop()
+    await userEvent.click(screen.getByRole('button', { name: 'メンバーを招待' }))
+
+    const memberButton = screen.getByRole('button', { name: 'メンバー 通常メンバーとして参加' })
+    const guestButton = screen.getByRole('button', { name: 'ゲスト 閲覧中心の外部参加向け' })
+    await userEvent.click(screen.getByRole('button', { name: '招待リンクを生成' }))
+
+    expect(memberButton).toBeDisabled()
+    expect(guestButton).toBeDisabled()
+
+    await userEvent.click(guestButton)
+
+    expectInviteCreateCall({ expiresIn: '1h', role: 'member' })
+
+    resolveInvite({
+      ok: true,
+      json: async () => ({ url: 'https://example.com/invite/member-token' }),
+    })
+
+    expect(await screen.findByText('コピー')).toBeInTheDocument()
+  })
+})
+
 describe('PageMembers — アーカイブ導線（admin）', () => {
   const ARCHIVED_MEMBER: WorkspaceMemberDto = {
     userId: 'user-2',
@@ -137,6 +280,8 @@ describe('PageMembers — アーカイブ導線（admin）', () => {
   }
 
   function renderAsAdmin(members: WorkspaceMemberDto[]) {
+    mockFetchWithAuth.mockReset()
+    mockPageFetch({ members })
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     qc.setQueryData(['workspace-members', 'all'], members)
     qc.setQueryData(['me'], { id: 'admin-1', wsRole: 'admin' })
@@ -157,7 +302,7 @@ describe('PageMembers — アーカイブ導線（admin）', () => {
     // 既定は現役のみ
     expect(screen.queryByText('佐藤 花子')).toBeNull()
     await userEvent.click(screen.getByText('アーカイブ済み (1)'))
-    expect(screen.getByText('佐藤 花子')).toBeInTheDocument()
+    expect(await screen.findByText('佐藤 花子')).toBeInTheDocument()
   })
 
   it('操作メニューを開くと非活性メンバーには「アーカイブを解除」が出る', async () => {

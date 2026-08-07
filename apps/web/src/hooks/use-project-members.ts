@@ -21,6 +21,7 @@ interface WorkspaceInvitesResponse {
 
 interface CreateWorkspaceInviteInput {
   expiresIn: '1h' | '30d' | 'never'
+  role?: 'member' | 'guest'
 }
 
 interface CreateWorkspaceInviteResponse {
@@ -75,11 +76,11 @@ export function useWorkspaceInvites(enabled = true) {
 export function useCreateWorkspaceInvite() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ expiresIn }: CreateWorkspaceInviteInput) => {
+    mutationFn: async ({ expiresIn, role }: CreateWorkspaceInviteInput) => {
       const res = await fetchWithAuth('/api/workspaces/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ expiresIn }),
+        body: JSON.stringify({ expiresIn, role }),
       })
       const data = await res.json().catch(() => ({})) as Partial<CreateWorkspaceInviteResponse> & { error?: string }
       if (!res.ok || !data.url) {
