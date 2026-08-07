@@ -97,22 +97,32 @@ export async function POST(
     }
 
     const rootChannelId = targetChannel.parentChannelId ?? targetChannel.id
-    const relatedChannels = await db
-      .select({ id: channels.id })
-      .from(channels)
-      .where(or(eq(channels.id, rootChannelId), eq(channels.parentChannelId, rootChannelId)))
-    const relatedChannelIds = relatedChannels.map(channel => channel.id)
+    await db.transaction(async tx => {
+      // 子スレッド作成とメンバー追加を同じ親行で直列化し、参加者の取りこぼしを防ぐ。
+      await tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(eq(channels.id, rootChannelId))
+        .for('update')
+        .limit(1)
 
-    await db
-      .insert(channelMembers)
-      .values(relatedChannelIds.map(id => ({ channelId: id, userId })))
-      .onConflictDoNothing()
+      const relatedChannels = await tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(or(eq(channels.id, rootChannelId), eq(channels.parentChannelId, rootChannelId)))
+      const relatedChannelIds = relatedChannels.map(channel => channel.id)
 
-    // 参加時点を既読の起点にする。これがないと参加直後に過去メッセージ全件が未読として表示される
-    await db
-      .insert(channelReadStates)
-      .values(relatedChannelIds.map(id => ({ userId, channelId: id, lastReadAt: new Date() })))
-      .onConflictDoNothing()
+      await tx
+        .insert(channelMembers)
+        .values(relatedChannelIds.map(id => ({ channelId: id, userId })))
+        .onConflictDoNothing()
+
+      // 参加時点を既読の起点にする。これがないと参加直後に過去メッセージ全件が未読として表示される
+      await tx
+        .insert(channelReadStates)
+        .values(relatedChannelIds.map(id => ({ userId, channelId: id, lastReadAt: new Date() })))
+        .onConflictDoNothing()
+    })
 
     return NextResponse.json({ userId, channelId } satisfies ChannelMemberDto, { status: 201 })
   } catch (err) {

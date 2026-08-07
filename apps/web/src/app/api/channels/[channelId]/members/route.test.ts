@@ -13,6 +13,10 @@ const {
   mockRequireChannelAccess,
   mockDbSelect,
   mockDbInsert,
+  mockDbTransaction,
+  mockTxSelect,
+  mockTxInsert,
+  mockForUpdate,
   mockEq,
   mockAnd,
   mockOr,
@@ -21,6 +25,10 @@ const {
   mockRequireChannelAccess: vi.fn(),
   mockDbSelect: vi.fn(),
   mockDbInsert: vi.fn(),
+  mockDbTransaction: vi.fn(),
+  mockTxSelect: vi.fn(),
+  mockTxInsert: vi.fn(),
+  mockForUpdate: vi.fn(),
   mockEq: vi.fn(() => Symbol('eq')),
   mockAnd: vi.fn(() => Symbol('and')),
   mockOr: vi.fn(() => Symbol('or')),
@@ -35,7 +43,7 @@ vi.mock('@/lib/permissions', () => ({
 }))
 
 vi.mock('@cairn/db', () => ({
-  db: { select: mockDbSelect, insert: mockDbInsert },
+  db: { select: mockDbSelect, insert: mockDbInsert, transaction: mockDbTransaction },
   channelMembers: { userId: 'channelMembers.userId', channelId: 'channelMembers.channelId' },
   channelReadStates: { userId: 'channelReadStates.userId', channelId: 'channelReadStates.channelId', lastReadAt: 'channelReadStates.lastReadAt' },
   workspaceMembers: { userId: 'workspaceMembers.userId', workspaceId: 'workspaceMembers.workspaceId' },
@@ -68,12 +76,26 @@ function mockSelectResults(...results: unknown[]) {
   })
 }
 
-function mockInsertChain() {
-  const builder = {
-    values: () => builder,
-    onConflictDoNothing: () => Promise.resolve(undefined),
+function mockTransaction(relatedChannels: { id: string }[]) {
+  const selectResults = [[{ id: CHANNEL_ID }], relatedChannels]
+  mockTxSelect.mockImplementation(() => {
+    const result = selectResults.shift() ?? []
+    const builder = {
+      from: () => builder,
+      where: () => builder,
+      for: () => { mockForUpdate(); return builder },
+      limit: () => builder,
+      then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
+        Promise.resolve(result).then(resolve, reject),
+    }
+    return builder
+  })
+  const insertBuilder = {
+    values: vi.fn().mockReturnThis(),
+    onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
   }
-  mockDbInsert.mockReturnValue(builder)
+  mockTxInsert.mockReturnValue(insertBuilder)
+  mockDbTransaction.mockImplementation(async callback => callback({ select: mockTxSelect, insert: mockTxInsert }))
 }
 
 function postRequest(body: unknown) {
@@ -143,12 +165,12 @@ describe('/api/channels/[channelId]/members のアクセス制御', () => {
     mockSelectResults(
       [{ userId: TARGET_USER_ID }],
       [{ id: CHANNEL_ID, parentChannelId: null }],
-      [{ id: CHANNEL_ID }, { id: 'thread-1' }],
     )
-    mockInsertChain()
+    mockTransaction([{ id: CHANNEL_ID }, { id: 'thread-1' }])
     const { POST } = await import('./route')
     const res = await POST(postRequest({ userId: TARGET_USER_ID }), ctxRouteParams())
     expect(res.status).toBe(201)
     await expect(res.json()).resolves.toEqual({ userId: TARGET_USER_ID, channelId: CHANNEL_ID })
+    expect(mockForUpdate).toHaveBeenCalledOnce()
   })
 })

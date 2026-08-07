@@ -72,9 +72,18 @@ function setupTransaction(memberRows: { userId: string }[] = []) {
     onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
   }
   mockTxInsert.mockReturnValueOnce(childInsert).mockReturnValueOnce(memberInsert)
-  mockTxSelect.mockReturnValue({
-    from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockResolvedValue(memberRows),
+  const selectResults = [[{ id: 'channel-1' }], memberRows]
+  mockTxSelect.mockImplementation(() => {
+    const result = selectResults.shift() ?? []
+    const builder = {
+      from: vi.fn(() => builder),
+      where: vi.fn(() => builder),
+      for: vi.fn(() => builder),
+      limit: vi.fn(() => builder),
+      then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
+        Promise.resolve(result).then(resolve, reject),
+    }
+    return builder
   })
   mockDbTransaction.mockImplementation(async callback => callback({ insert: mockTxInsert, select: mockTxSelect }))
   return { childInsert, memberInsert }
@@ -107,6 +116,19 @@ describe('POST /api/channels/[channelId]/threads', () => {
     expect(childInsert.values).toHaveBeenCalledWith(expect.objectContaining({
       parentChannelId: 'channel-1', name: 'リリース準備', isPrivate: false,
     }))
+  })
+
+  it('公開チャンネルでも親の参加メンバーをスレッドへ引き継ぐ', async () => {
+    selectResult([{ id: 'channel-1', workspaceId: 'workspace-1', isPrivate: false }])
+    const { memberInsert } = setupTransaction([{ userId: 'guest-1' }])
+    const { POST } = await import('./route')
+
+    const response = await POST(request(), routeContext)
+
+    expect(response.status).toBe(201)
+    expect(memberInsert.values).toHaveBeenCalledWith([
+      { channelId: 'thread-1', userId: 'guest-1' },
+    ])
   })
 
   it('プライベートチャンネルでは親のメンバーをスレッドへ引き継ぐ', async () => {

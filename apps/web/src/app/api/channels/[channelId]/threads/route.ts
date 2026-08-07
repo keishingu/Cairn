@@ -56,6 +56,14 @@ export async function POST(req: Request, { params }: RouteContext) {
     }
 
     const threadId = await db.transaction(async tx => {
+      // メンバー追加と子スレッド作成を同じ親行で直列化し、参加者の取りこぼしを防ぐ。
+      await tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(eq(channels.id, parent.id))
+        .for('update')
+        .limit(1)
+
       const [thread] = await tx
         .insert(channels)
         .values({
@@ -69,18 +77,16 @@ export async function POST(req: Request, { params }: RouteContext) {
 
       if (!thread) throw new Error('thread insert returned no rows')
 
-      if (parent.isPrivate) {
-        const members = await tx
-          .select({ userId: channelMembers.userId })
-          .from(channelMembers)
-          .where(eq(channelMembers.channelId, parent.id))
+      const members = await tx
+        .select({ userId: channelMembers.userId })
+        .from(channelMembers)
+        .where(eq(channelMembers.channelId, parent.id))
 
-        if (members.length > 0) {
-          await tx
-            .insert(channelMembers)
-            .values(members.map(member => ({ channelId: thread.id, userId: member.userId })))
-            .onConflictDoNothing()
-        }
+      if (members.length > 0) {
+        await tx
+          .insert(channelMembers)
+          .values(members.map(member => ({ channelId: thread.id, userId: member.userId })))
+          .onConflictDoNothing()
       }
 
       return thread.id
