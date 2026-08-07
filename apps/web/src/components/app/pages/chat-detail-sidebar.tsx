@@ -4,9 +4,11 @@ import React from 'react'
 import { Icon, Avatar, StatusChip } from '../primitives'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 import { FileTypeIcon, GoogleDocsIcon } from '../file-type-icon'
-import { ImageLightbox, type LightboxImage } from '../image-lightbox'
+import { InlineFileNameEditor } from '../inline-file-name-editor'
+import { RowActionMenu } from '../row-action-menu'
 import { useProjectTasks } from '@/hooks/use-project-tasks'
 import { useChannelFiles } from '@/hooks/use-channel-files'
+import { useRenameFile } from '@/hooks/use-rename-file'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
@@ -40,6 +42,8 @@ export interface ChatDetailSidebarProps {
   onOpenProject: () => void
   /** メンバーのプロフィールを開く */
   onOpenMember: (userId: string) => void
+  /** ファイルが共有されたメッセージへジャンプする */
+  onJumpToMessage: (messageId: string) => void
 }
 
 const SECTION_LABEL: React.CSSProperties = {
@@ -212,31 +216,20 @@ const TaskChecklist = ({ project }: { project: ProjectDto }) => {
   )
 }
 
-function isImageChannelFile(f: ChannelFileDto): boolean {
-  return f.fileType !== 'link' && (f.mimeType?.startsWith('image/') ?? false)
-}
-
 // チャンネル内でアップロード・共有されたファイルの一覧。3件を超える分は「すべて表示」で展開する。
-// クリック時の挙動はチャット本文の添付と揃える: 画像はライトボックス、それ以外は /api/attachments を新規タブで開く
-const ChannelFilesSection = ({ channelId }: { channelId: string | null }) => {
+// クリックすると、ファイル自体ではなく共有元のメッセージへジャンプする。
+const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
+  channelId: string | null
+  onJumpToMessage: (messageId: string) => void
+}) => {
   const { data: files = [], isLoading, isError } = useChannelFiles(channelId)
+  const renameFile = useRenameFile()
   const [expanded, setExpanded] = React.useState(false)
-  const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
+  const [renamingFileId, setRenamingFileId] = React.useState<string | null>(null)
 
   const VISIBLE_COUNT = 3
   const visibleFiles = expanded ? files : files.slice(0, VISIBLE_COUNT)
   const hasMore = files.length > VISIBLE_COUNT
-
-  const imageFiles = React.useMemo(() => files.filter(isImageChannelFile), [files])
-  const lightboxImages = React.useMemo<LightboxImage[]>(() => imageFiles.map(f => ({
-    key: f.id,
-    src: `/api/attachments/${f.id}`,
-    caption: f.fileName,
-  })), [imageFiles])
-  const openLightbox = React.useCallback((fileId: string) => {
-    const idx = imageFiles.findIndex(f => f.id === fileId)
-    if (idx >= 0) setLightboxIndex(idx)
-  }, [imageFiles])
 
   return (
     <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
@@ -251,33 +244,63 @@ const ChannelFilesSection = ({ channelId }: { channelId: string | null }) => {
         <div>
           {visibleFiles.map((f: ChannelFileDto) => {
             const isLink = f.fileType === 'link'
-            const isImage = isImageChannelFile(f)
-            const linkHref = isLink ? f.externalUrl : `/api/attachments/${f.id}`
             const sizeStr = formatFileSize(f.fileSize)
             const meta = isLink ? '外部リンク' : [sizeStr, formatFileTimestamp(f.createdAt)].filter(Boolean).join(' · ')
+            const canJump = f.sourceMessageId !== null
+            const isRenaming = renamingFileId === f.id
+            const fileIcon = isLink && f.externalUrl
+              ? <GoogleDocsIcon url={f.externalUrl} width={26} height={30}/>
+              : <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName} fileId={f.id} width={26} height={30}/>
+            const fileMeta = <div style={{ fontSize: 10.5, color: 'var(--text-4)' }}>{meta}</div>
 
             return (
-              <a
+              <div
                 key={f.id}
-                href={linkHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={isImage ? (e => { e.preventDefault(); openLightbox(f.id) }) : undefined}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', margin: '0 -6px', borderRadius: 7, textDecoration: 'none', cursor: 'pointer' }}
+                style={{ width: 'calc(100% + 12px)', display: 'flex', alignItems: 'center', gap: 2, padding: '5px 2px 5px 6px', margin: '0 -6px', borderRadius: 7 }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
               >
-                {isLink && f.externalUrl
-                  ? <GoogleDocsIcon url={f.externalUrl} width={26} height={30}/>
-                  : <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName} fileId={f.id} width={26} height={30}/>
-                }
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {f.fileName}
+                {isRenaming ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                    {fileIcon}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <InlineFileNameEditor
+                        fileName={f.fileName}
+                        fontSize={12}
+                        onSave={fileName => renameFile.mutateAsync({ fileId: f.id, fileName })}
+                        onCancel={() => setRenamingFileId(null)}
+                      />
+                      {fileMeta}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 10.5, color: 'var(--text-4)' }}>{meta}</div>
-                </div>
-              </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => f.sourceMessageId && onJumpToMessage(f.sourceMessageId)}
+                    disabled={!canJump}
+                    title={canJump ? '共有されたメッセージへ移動' : '共有元のメッセージが見つかりません'}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit', cursor: canJump ? 'pointer' : 'default' }}
+                  >
+                    {fileIcon}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {f.fileName}
+                      </div>
+                      {fileMeta}
+                    </div>
+                    <Icon name="chat" size={12} color={canJump ? 'var(--text-4)' : 'var(--border-2)'}/>
+                  </button>
+                )}
+                {!isRenaming && (
+                  <RowActionMenu
+                    triggerStyle={{ padding: '3px 4px' }}
+                    actions={[
+                      { icon: 'eye', label: 'ファイルを開く', onSelect: () => window.open(`/api/attachments/${f.id}`, '_blank', 'noopener,noreferrer') },
+                      { icon: 'edit', label: '名前を変更', onSelect: () => setRenamingFileId(f.id) },
+                    ]}
+                  />
+                )}
+              </div>
             )
           })}
           {hasMore && (
@@ -289,15 +312,6 @@ const ChannelFilesSection = ({ channelId }: { channelId: string | null }) => {
             </button>
           )}
         </div>
-      )}
-
-      {lightboxIndex !== null && lightboxImages.length > 0 && (
-        <ImageLightbox
-          images={lightboxImages}
-          index={Math.min(lightboxIndex, lightboxImages.length - 1)}
-          onIndexChange={setLightboxIndex}
-          onClose={() => setLightboxIndex(null)}
-        />
       )}
     </div>
   )
@@ -325,7 +339,7 @@ const ChatDetailContent = ({
   isProject, isDm, isPrivate, channelName,
   currentDmAvatarUrl, dmParticipantId, project, channelMembers, memberLabel,
   channelId, showMemberInvite, onInviteMember, onCloseMemberInvite,
-  onOpenProject, onOpenMember,
+  onOpenProject, onOpenMember, onJumpToMessage,
 }: ChatDetailSidebarProps) => (
   <>
     {isProject ? (
@@ -407,7 +421,7 @@ const ChatDetailContent = ({
 
     {isProject && project && <ProjectOverview project={project}/>}
 
-    <ChannelFilesSection channelId={channelId}/>
+    <ChannelFilesSection channelId={channelId} onJumpToMessage={onJumpToMessage}/>
 
     {memberLabel && (
     <div style={{ padding: '12px 16px' }}>

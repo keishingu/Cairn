@@ -12,6 +12,8 @@ const {
   mockCanAccessFile,
   mockDownload,
   mockDeleteWhere,
+  mockUpdateSet,
+  mockUpdateWhere,
   mockTransaction,
   mockTransactionSelectLimit,
   mockRecordStorageUsageDelta,
@@ -21,6 +23,8 @@ const {
   mockCanAccessFile: vi.fn(),
   mockDownload: vi.fn(),
   mockDeleteWhere: vi.fn().mockResolvedValue(undefined),
+  mockUpdateSet: vi.fn(),
+  mockUpdateWhere: vi.fn().mockResolvedValue(undefined),
   mockTransaction: vi.fn(),
   mockTransactionSelectLimit: vi.fn(),
   mockRecordStorageUsageDelta: vi.fn().mockResolvedValue(undefined),
@@ -57,6 +61,12 @@ vi.mock('@cairn/db', () => {
   return {
     db: {
       select: () => selectBuilder,
+      update: () => ({
+        set: (values: unknown) => {
+          mockUpdateSet(values)
+          return { where: mockUpdateWhere }
+        },
+      }),
       delete: () => ({ where: mockDeleteWhere }),
       transaction: mockTransaction,
     },
@@ -132,6 +142,35 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     })
     const res = await PATCH(req, routeParams())
     expect(res.status).toBe(403)
+  })
+
+  it('ファイル名を変更する', async () => {
+    const { PATCH } = await import('./route')
+    const req = new Request('http://localhost/', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName: 'renamed.pdf' }),
+    })
+
+    const res = await PATCH(req, routeParams())
+
+    expect(res.status).toBe(200)
+    expect(mockUpdateSet).toHaveBeenCalledWith({ fileName: 'renamed.pdf' })
+    await expect(res.json()).resolves.toEqual({ success: true, fileName: 'renamed.pdf' })
+  })
+
+  it('空のファイル名は拒否する', async () => {
+    const { PATCH } = await import('./route')
+    const req = new Request('http://localhost/', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName: '   ' }),
+    })
+
+    const res = await PATCH(req, routeParams())
+
+    expect(res.status).toBe(400)
+    expect(mockUpdateSet).not.toHaveBeenCalled()
   })
 
   it('閲覧権限が無いファイルは DELETE が 403 を返す', async () => {

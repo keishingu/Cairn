@@ -413,6 +413,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
 
   const jumpToMessage = (messageId: string) => {
     setSearchOpen(false)
+    setGlobalSearchOpen(false)
+    setBookmarksOpen(false)
     setTargetMessageId(messageId)
   }
 
@@ -644,6 +646,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             onCloseMemberInvite={() => setShowMemberInvite(false)}
             onOpenProject={handleOpenProject}
             onOpenMember={handleOpenMember}
+            onJumpToMessage={(messageId) => { setShowInfo(false); jumpToMessage(messageId) }}
           />
         )}
       </div>
@@ -731,6 +734,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             onCloseMemberInvite={() => setShowMemberInvite(false)}
             onOpenProject={handleOpenProject}
             onOpenMember={handleOpenMember}
+            onJumpToMessage={jumpToMessage}
           />}
         </div>
       </div>
