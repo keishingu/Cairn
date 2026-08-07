@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { extractGoogleDocsUrls, normalizeGoogleDocsUrl } from '@/lib/google-docs-url'
 
 export interface ChannelFileDto {
   id: string
@@ -20,12 +21,6 @@ export interface ChannelFileDto {
 }
 
 type RouteContext = { params: Promise<{ channelId: string }> }
-
-const URL_TOKEN_RE = /https?:\/\/[^\s<>"']+/g
-
-function extractUrlTokens(content: string): string[] {
-  return (content.match(URL_TOKEN_RE) ?? []).map(url => url.replace(/[\])},.!?;:、。]+$/u, ''))
-}
 
 export async function GET(_req: Request, { params }: RouteContext) {
   const { channelId } = await params
@@ -118,7 +113,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const externalLinks = rows.flatMap(r => {
       if (r.fileType !== 'link') return []
       const externalUrl = ((r.metadata ?? {}) as Record<string, unknown>)['externalUrl']
-      return typeof externalUrl === 'string' ? [{ fileId: r.id, externalUrl }] : []
+      return typeof externalUrl === 'string'
+        ? [{ fileId: r.id, externalUrl: normalizeGoogleDocsUrl(externalUrl) }]
+        : []
     })
     if (externalLinks.length > 0) {
       const linkMessages = await db
@@ -132,7 +129,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         .orderBy(desc(messages.createdAt))
 
       for (const message of linkMessages) {
-        const messageUrls = new Set(extractUrlTokens(message.content))
+        const messageUrls = new Set(extractGoogleDocsUrls(message.content))
         for (const link of externalLinks) {
           if (!sourceMessageIdByFileId.has(link.fileId) && messageUrls.has(link.externalUrl)) {
             sourceMessageIdByFileId.set(link.fileId, message.id)
@@ -163,7 +160,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
           fileType: r.fileType,
           uploaderName: r.uploaderName,
           createdAt: r.createdAt.toISOString(),
-          ...(typeof externalUrl === 'string' ? { externalUrl } : {}),
+          ...(typeof externalUrl === 'string' ? { externalUrl: normalizeGoogleDocsUrl(externalUrl) } : {}),
           ...(indexingStatus !== undefined ? { indexingStatus } : {}),
         }
       }) satisfies ChannelFileDto[],
