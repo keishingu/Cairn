@@ -1,6 +1,7 @@
-const { app, BrowserWindow, Menu, session, ipcMain, nativeImage } = require('electron')
+const { app, BrowserWindow, Menu, session, ipcMain, nativeImage, shell } = require('electron')
 const path = require('path')
 const pkg = require('../package.json')
+const { registerExternalNavigation } = require('./external-navigation')
 
 const APP_URL = process.env.DESKTOP_APP_URL || pkg.config?.appUrl || 'https://develop.oss-cairn.com'
 const isDev = process.env.NODE_ENV === 'development'
@@ -99,6 +100,7 @@ function createWindow() {
     },
   })
 
+  registerExternalNavigation(win.webContents, APP_URL, url => shell.openExternal(url))
   win.loadURL(APP_URL)
 
   // Desktop 特権: ブラウザがタブ切替に使う Ctrl+Tab / Ctrl+Shift+Tab を横取りし、
