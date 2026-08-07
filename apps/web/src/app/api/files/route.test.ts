@@ -9,27 +9,32 @@ const {
   mockNot,
   mockOr,
   mockDb,
+  mockRows,
 } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn()
   const mockNot = vi.fn((condition: unknown) => ({ not: condition }))
   const mockOr = vi.fn((...conditions: unknown[]) => ({ or: conditions }))
 
-  function makeQuery() {
+  const mockRows: unknown[] = []
+
+  function makeQuery(result: unknown[] = []) {
     return {
       from: vi.fn().mockReturnThis(),
       innerJoin: vi.fn().mockReturnThis(),
       leftJoin: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
-      orderBy: vi.fn().mockResolvedValue([]),
+      orderBy: vi.fn().mockResolvedValue(result),
+      then: (resolve: (value: unknown[]) => unknown, reject?: (reason: unknown) => unknown) =>
+        Promise.resolve(result).then(resolve, reject),
     }
   }
 
   const mockDb = {
-    select: vi.fn(() => makeQuery()),
+    select: vi.fn((selection?: Record<string, unknown>) => makeQuery(selection?.['fileName'] ? mockRows : [])),
     selectDistinct: vi.fn(() => makeQuery()),
   }
 
-  return { mockGetAuthContext, mockNot, mockOr, mockDb }
+  return { mockGetAuthContext, mockNot, mockOr, mockDb, mockRows }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -55,7 +60,7 @@ vi.mock('@cairn/db', () => ({
   messages: { id: 'messages.id', channelId: 'messages.channelId' },
   channels: {
     id: 'channels.id', projectId: 'channels.projectId', workspaceId: 'channels.workspaceId',
-    isPrivate: 'channels.isPrivate', type: 'channels.type',
+    isPrivate: 'channels.isPrivate', type: 'channels.type', name: 'channels.name',
   },
   channelMembers: { channelId: 'channelMembers.channelId', userId: 'channelMembers.userId' },
   galleryItems: { id: 'galleryItems.id', fileId: 'galleryItems.fileId' },
@@ -86,6 +91,7 @@ const originalDmFlag = FEATURE_FLAGS.dm
 
 describe('GET /api/files', () => {
   beforeEach(() => {
+    mockRows.length = 0
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: 'user-1', workspaceId: 'workspace-1', role: 'member' },
       error: null,
@@ -133,5 +139,33 @@ describe('GET /api/files', () => {
     await GET()
 
     expect(mockNot).not.toHaveBeenCalled()
+  })
+
+  it('共有元のチャンネルとメッセージIDを返す', async () => {
+    mockRows.push({
+      id: 'file-1',
+      chatSource: { channelId: 'channel-1', messageId: 'message-1', channelName: '全体' },
+      metadataChannelId: null,
+      projectId: null,
+      projectTitle: null,
+      fileName: 'guide.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 1024,
+      fileType: 'document',
+      metadata: {},
+      uploaderName: '山田 太郎',
+      uploaderAvatarUrl: null,
+      createdAt: new Date('2026-08-08T00:00:00.000Z'),
+    })
+
+    const response = await GET()
+
+    await expect(response.json()).resolves.toEqual([
+      expect.objectContaining({
+        id: 'file-1',
+        sourceChannelId: 'channel-1',
+        sourceMessageId: 'message-1',
+      }),
+    ])
   })
 })

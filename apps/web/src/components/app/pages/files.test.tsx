@@ -9,8 +9,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PageFiles } from './files'
 import type { FileDto } from '@/app/api/files/route'
 
-const { fetchWithAuthMock } = vi.hoisted(() => ({
+const { fetchWithAuthMock, routerPushMock } = vi.hoisted(() => ({
   fetchWithAuthMock: vi.fn(),
+  routerPushMock: vi.fn(),
+}))
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: routerPushMock }),
 }))
 
 vi.mock('@/lib/fetch-with-auth', () => ({
@@ -24,6 +29,8 @@ vi.mock('@/lib/command-registry', () => ({
 const FILES_FIXTURE: FileDto[] = [
   {
     id: 'file-1',
+    sourceChannelId: 'channel-1',
+    sourceMessageId: 'message-1',
     fileName: 'notes.txt',
     mimeType: 'text/markdown',
     fileSize: 24,
@@ -64,6 +71,7 @@ function renderPageFiles() {
 describe('ファイル一覧ページ', () => {
   beforeEach(() => {
     fetchWithAuthMock.mockReset()
+    routerPushMock.mockReset()
     fetchWithAuthMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       if (url === '/api/files') {
@@ -119,5 +127,14 @@ describe('ファイル一覧ページ', () => {
       }),
     ))
     expect(await screen.findByText('minutes.txt')).toBeInTheDocument()
+  })
+
+  it('操作メニューから共有元のチャットへ移動する', async () => {
+    renderPageFiles()
+
+    await userEvent.click(await screen.findByTitle('操作'))
+    await userEvent.click(screen.getByRole('button', { name: 'チャットに移動' }))
+
+    expect(routerPushMock).toHaveBeenCalledWith('/chats/channel-1?m=message-1')
   })
 })

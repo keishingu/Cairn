@@ -8,6 +8,8 @@ import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface FileDto {
   id: string
+  sourceChannelId: string | null
+  sourceMessageId: string | null
   projectId: string | null
   projectTitle: string | null
   channelName: string | null
@@ -69,6 +71,10 @@ export async function GET() {
           ),
           exists(channelMemberSq),
         )
+
+    const navigableChannelCondition = FEATURE_FLAGS.dm
+      ? channelAccessCondition
+      : and(ne(channels.type, 'dm'), channelAccessCondition)
 
     const attachedChannelAccessSq = db
       .select({ one: sql<number>`1` })
@@ -170,12 +176,29 @@ export async function GET() {
         projectId: files.projectId,
         projectTitle: projects.title,
         workspaceId: files.workspaceId,
-        channelName: sql<string | null>`(
-          SELECT ch.name
+        chatSource: sql<{ channelId: string; messageId: string; channelName: string } | null>`(
+          SELECT jsonb_build_object(
+            'channelId', msg.channel_id,
+            'messageId', msg.id,
+            'channelName', channels.name
+          )
           FROM message_attachments ma
           INNER JOIN messages msg ON msg.id = ma.message_id
-          INNER JOIN channels ch ON ch.id = msg.channel_id
+          INNER JOIN channels ON channels.id = msg.channel_id
           WHERE ma.file_id = ${files.id}
+            AND msg.deleted_at IS NULL
+            AND ${navigableChannelCondition}
+          ORDER BY msg.created_at DESC
+          LIMIT 1
+        )`,
+        metadataChannelId: sql<string | null>`(
+          SELECT channels.id::text
+          FROM channels
+          WHERE (
+            channels.id::text = ${files.metadata}->>'channelId'
+            OR ${files.metadata}->'channelIds' @> jsonb_build_array(channels.id::text)
+          )
+            AND ${navigableChannelCondition}
           LIMIT 1
         )`,
         fileName: files.fileName,
@@ -233,9 +256,11 @@ export async function GET() {
 
         return {
           id: r.id,
+          sourceChannelId: r.chatSource?.channelId ?? r.metadataChannelId ?? null,
+          sourceMessageId: r.chatSource?.messageId ?? null,
           projectId: r.projectId ?? null,
           projectTitle: r.projectTitle ?? null,
-          channelName: r.channelName ?? null,
+          channelName: r.chatSource?.channelName ?? null,
           fileName: r.fileName,
           mimeType: r.mimeType,
           fileSize: r.fileSize,
