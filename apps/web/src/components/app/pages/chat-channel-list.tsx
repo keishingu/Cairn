@@ -116,7 +116,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
   memberNames?: string[]; memberCount?: number
   action?: React.ReactNode
 }) => (
-  <div style={{ position: 'relative' }}>
+  <div className="chat-sidebar-item" style={{ position: 'relative' }}>
     <button onClick={onClick} style={{
       display: 'flex', alignItems: 'center', gap: 8, width: '100%',
       padding: mobile ? `11px ${action ? 72 : 16}px 11px 16px` : `6px ${action ? 38 : 10}px 6px 10px`,
@@ -167,19 +167,28 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       {mobile && <Icon name="chevRight" size={16} color="var(--text-4)"/>}
     </button>
     {action && (
-      <div style={{ position: 'absolute', top: '50%', right: mobile ? 40 : 5, transform: 'translateY(-50%)', display: 'flex', zIndex: 1 }}>
+      <div
+        className="chat-sidebar-item-action"
+        data-always-visible={mobile || undefined}
+        style={{ position: 'absolute', top: '50%', right: mobile ? 40 : 5, transform: 'translateY(-50%)', display: 'flex', zIndex: 1 }}
+      >
         {action}
       </div>
     )}
   </div>
 )
 
-const SidebarCreateMenu = ({ ownerLabel, actionLabel, actionIcon, isMobile, onSelect }: {
-  ownerLabel: string
-  actionLabel: string
-  actionIcon: string
-  isMobile: boolean
+interface SidebarMenuAction {
+  label: string
+  icon: string
   onSelect: () => void
+  restoreFocus?: boolean
+}
+
+const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
+  ownerLabel: string
+  actions: SidebarMenuAction[]
+  isMobile: boolean
 }) => {
   const [open, setOpen] = React.useState(false)
   const [position, setPosition] = React.useState({ top: 0, left: 0 })
@@ -219,8 +228,8 @@ const SidebarCreateMenu = ({ ownerLabel, actionLabel, actionIcon, isMobile, onSe
     }
     const rect = buttonRef.current?.getBoundingClientRect()
     if (rect) {
-      const menuWidth = 190
-      const menuHeight = 42
+      const menuWidth = 240
+      const menuHeight = actions.length * 34 + 8
       setPosition({
         left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
         top: rect.bottom + menuHeight + 8 > window.innerHeight ? rect.top - menuHeight - 4 : rect.bottom + 4,
@@ -265,33 +274,41 @@ const SidebarCreateMenu = ({ ownerLabel, actionLabel, actionIcon, isMobile, onSe
             position: 'fixed',
             top: position.top,
             left: position.left,
-            width: 190,
+            width: 240,
             padding: 4,
             background: 'var(--card)',
-            border: '1px solid var(--border)',
+            border: '1px solid var(--border-2)',
             borderRadius: 8,
-            boxShadow: 'var(--shadow-md)',
-            zIndex: 100,
+            boxShadow: 'var(--shadow-pop)',
+            zIndex: 300,
           }}
         >
-          <button
-            type="button"
-            role="menuitem"
-            autoFocus
-            onClick={() => { close(); onSelect() }}
-            style={{
-              width: '100%', height: 34, display: 'flex', alignItems: 'center', gap: 8,
-              border: 'none', borderRadius: 6, background: 'transparent', color: 'var(--text-2)',
-              cursor: 'pointer', padding: '0 9px', fontFamily: 'inherit', fontSize: 12.5, textAlign: 'left',
-            }}
-            onMouseEnter={event => { event.currentTarget.style.background = 'var(--card-2)' }}
-            onMouseLeave={event => { event.currentTarget.style.background = 'transparent' }}
-          >
-            <Icon name={actionIcon} size={14}/>
-            {actionLabel}
-          </button>
+          {actions.map((action, index) => (
+            <button
+              key={action.label}
+              type="button"
+              role="menuitem"
+              autoFocus={index === 0}
+              onClick={() => {
+                close()
+                action.onSelect()
+                if (action.restoreFocus) buttonRef.current?.focus()
+              }}
+              style={{
+                width: '100%', height: 34, display: 'flex', alignItems: 'center', gap: 8,
+                border: 'none', borderRadius: 6, background: 'transparent', color: 'var(--text-2)',
+                cursor: 'pointer', padding: '0 9px', fontFamily: 'inherit', fontSize: 12.5, textAlign: 'left',
+                whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={event => { event.currentTarget.style.background = 'var(--card-2)' }}
+              onMouseLeave={event => { event.currentTarget.style.background = 'transparent' }}
+            >
+              <Icon name={action.icon} size={14}/>
+              {action.label}
+            </button>
+          ))}
         </div>,
-        document.body,
+        buttonRef.current?.closest('.app') ?? buttonRef.current?.closest('.app-root') ?? document.body,
       )}
     </>
   )
@@ -339,15 +356,17 @@ const WorkspaceThreadItem = ({ channel, active, onSelectChannel, isMobile }: {
   </div>
 )
 
-const ProjectCompletedMilestones = ({ projectId, channels, channelId, onSelectChannel, isMobile }: {
-  projectId: string
-  channels: ProjectChannelDto[]
+const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, channelId, onSelectChannel, onCreateMilestone, isMobile }: {
+  general: ProjectChannelDto
+  activeMilestones: ProjectChannelDto[]
+  completedMilestones: ProjectChannelDto[]
   channelId: string | null
   onSelectChannel: (id: string) => void
+  onCreateMilestone?: (project: { id: string; title: string }) => void
   isMobile: boolean
 }) => {
-  const storageKey = chatCompletedMilestonesCollapsedKey(projectId)
-  const containsActiveChannel = channels.some(channel => channel.channelId === channelId)
+  const storageKey = chatCompletedMilestonesCollapsedKey(general.projectId)
+  const containsActiveChannel = completedMilestones.some(channel => channel.channelId === channelId)
   const [collapsed, setCollapsed] = React.useState(true)
 
   React.useEffect(() => {
@@ -365,29 +384,49 @@ const ProjectCompletedMilestones = ({ projectId, channels, channelId, onSelectCh
     return next
   })
 
+  const actions: SidebarMenuAction[] = []
+  if (onCreateMilestone) {
+    actions.push({
+      label: 'マイルストーンを作成',
+      icon: 'flag',
+      onSelect: () => onCreateMilestone({ id: general.projectId, title: general.projectTitle }),
+    })
+  }
+  if (completedMilestones.length > 0) {
+    actions.push({
+      label: `完了済みマイルストーンを${collapsed ? '表示' : '非表示'}`,
+      icon: collapsed ? 'eye' : 'eye-off',
+      onSelect: toggle,
+      restoreFocus: true,
+    })
+  }
+
+  const period = formatChannelPeriod(general.startDate, general.endDate, general.startTime, general.endTime)
+
   return (
     <>
-      <div style={{ paddingLeft: isMobile ? 0 : 18 }}>
-        <button
-          type="button"
-          onClick={toggle}
-          aria-expanded={!collapsed}
-          style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 6,
-            padding: isMobile ? '11px 16px' : '6px 10px',
-            border: 'none', borderBottom: isMobile ? '1px solid var(--divider)' : 'none',
-            borderRadius: isMobile ? 0 : 6, background: 'transparent', color: 'var(--text-4)',
-            cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-          }}
-          onMouseEnter={event => { if (!isMobile) event.currentTarget.style.background = 'var(--card)' }}
-          onMouseLeave={event => { if (!isMobile) event.currentTarget.style.background = 'transparent' }}
-        >
-          <Icon name="chevRight" size={isMobile ? 16 : 12} style={{ transform: collapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform .12s ease-out' }}/>
-          <span style={{ flex: 1, minWidth: 0, fontSize: isMobile ? 14 : 11.5, fontWeight: 600 }}>完了済みマイルストーン</span>
-          <span style={{ fontSize: isMobile ? 12 : 10.5, fontWeight: 600 }}>{channels.length}</span>
-        </button>
-      </div>
-      {!collapsed && channels.map(channel => (
+      <ChatSidebarItem
+        active={channelId === general.channelId}
+        onClick={() => onSelectChannel(general.channelId)}
+        prefix="#"
+        label={general.projectTitle}
+        {...(period ? { dateMeta: period } : {})}
+        badge={general.unreadCount}
+        mobile={isMobile}
+        action={actions.length > 0 ? (
+          <SidebarCreateMenu ownerLabel={general.projectTitle} actions={actions} isMobile={isMobile} />
+        ) : undefined}
+      />
+      {activeMilestones.map(channel => (
+        <ProjectMilestoneItem
+          key={channel.channelId}
+          channel={channel}
+          active={channelId === channel.channelId}
+          onSelectChannel={onSelectChannel}
+          isMobile={isMobile}
+        />
+      ))}
+      {!collapsed && completedMilestones.map(channel => (
         <ProjectMilestoneItem
           key={channel.channelId}
           channel={channel}
@@ -485,43 +524,18 @@ export const ChannelList = ({
   return (
   <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
     <ChatSidebarSection title="プロジェクト">
-      {projectGroups.map(({ general, activeMilestones, completedMilestones }) => {
-        const period = formatChannelPeriod(general.startDate, general.endDate, general.startTime, general.endTime)
-        return (
-          <React.Fragment key={general.channelId}>
-            <ChatSidebarItem
-              active={channelId === general.channelId}
-              onClick={() => onSelectChannel(general.channelId)}
-              prefix="#"
-              label={general.projectTitle}
-              {...(period ? { dateMeta: period } : {})}
-              badge={general.unreadCount}
-              mobile={isMobile}
-              action={onCreateMilestone ? (
-                <SidebarCreateMenu
-                  ownerLabel={general.projectTitle}
-                  actionLabel="マイルストーンを作成"
-                  actionIcon="flag"
-                  isMobile={isMobile}
-                  onSelect={() => onCreateMilestone({ id: general.projectId, title: general.projectTitle })}
-                />
-              ) : undefined}
-            />
-            {activeMilestones.map(c => (
-              <ProjectMilestoneItem key={c.channelId} channel={c} active={channelId === c.channelId} onSelectChannel={onSelectChannel} isMobile={isMobile} />
-            ))}
-            {completedMilestones.length > 0 && (
-              <ProjectCompletedMilestones
-                projectId={general.projectId}
-                channels={completedMilestones}
-                channelId={channelId}
-                onSelectChannel={onSelectChannel}
-                isMobile={isMobile}
-              />
-            )}
-          </React.Fragment>
-        )
-      })}
+      {projectGroups.map(({ general, activeMilestones, completedMilestones }) => (
+        <ProjectChannelGroup
+          key={general.channelId}
+          general={general}
+          activeMilestones={activeMilestones}
+          completedMilestones={completedMilestones}
+          channelId={channelId}
+          onSelectChannel={onSelectChannel}
+          {...(onCreateMilestone ? { onCreateMilestone } : {})}
+          isMobile={isMobile}
+        />
+      ))}
     </ChatSidebarSection>
     {archivedProjectChannels.length > 0 && (
       <ChatSidebarCollapsibleSection title="アーカイブ済み" count={archivedProjectChannels.length}>
@@ -545,10 +559,12 @@ export const ChannelList = ({
             action={onCreateThread && channel.name ? (
               <SidebarCreateMenu
                 ownerLabel={channel.name}
-                actionLabel="スレッドを作成"
-                actionIcon="chat"
+                actions={[{
+                  label: 'スレッドを作成',
+                  icon: 'chat',
+                  onSelect: () => onCreateThread({ id: channel.id, name: channel.name! }),
+                }]}
                 isMobile={isMobile}
-                onSelect={() => onCreateThread({ id: channel.id, name: channel.name! })}
               />
             ) : undefined}
           />
