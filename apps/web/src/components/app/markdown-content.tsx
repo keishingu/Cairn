@@ -12,6 +12,9 @@ import { UNKNOWN_MENTION_NAME } from '@/lib/chat/mentions'
 // 構造化メンション。canonical な `<@userId>` と旧形式 `<@userId|displayName>` の両方を受理する
 const STRUCTURED_MENTION_RE = /<@([^|>\s]+)(?:\|([^>\n]+))?>/g
 const URL_RE = /https?:\/\/[^\s<>"']+/g
+// AI の過去回答に Markdown 化されず残っている内部パスも遷移可能にする。
+// 対象はアプリが evidence.href として返す画面・添付ファイルのパスに限定する。
+const INTERNAL_HREF_RE = /\/(?:projects|tasks)(?:\?[^\s<>"']+)?|\/(?:chats|members|api\/attachments)\/[^\s<>"']+/g
 
 // 長いURL（クエリパラメータ付きなど）は短縮URLにせず見た目だけ「…」で省略する。リンク先(href)は元のまま
 const URL_DISPLAY_MAX = 50
@@ -19,11 +22,19 @@ function truncateUrlForDisplay(url: string): string {
   return url.length > URL_DISPLAY_MAX ? `${url.slice(0, URL_DISPLAY_MAX)}…` : url
 }
 
+function internalHrefLabel(href: string): string {
+  if (href.startsWith('/projects')) return 'プロジェクトを開く'
+  if (href.startsWith('/tasks')) return 'タスクを開く'
+  if (href.startsWith('/chats')) return 'メッセージを開く'
+  if (href.startsWith('/members')) return 'メンバーを開く'
+  return 'ファイルを開く'
+}
+
 function renderInlineText(text: string, mentionNames?: Map<string, string>): React.ReactNode {
   const nodes: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
-  const re = new RegExp(`${STRUCTURED_MENTION_RE.source}|${URL_RE.source}`, 'g')
+  const re = new RegExp(`${STRUCTURED_MENTION_RE.source}|${URL_RE.source}|${INTERNAL_HREF_RE.source}`, 'g')
   while ((match = re.exec(text)) !== null) {
     if (match.index > last) nodes.push(text.slice(last, match.index))
     const token = match[0]!
@@ -38,13 +49,17 @@ function renderInlineText(text: string, mentionNames?: Map<string, string>): Rea
         </span>,
       )
     } else {
-      const url = token.replace(/[.,;:!?)>\]]+$/, '')
+      const url = token.replace(/[.,;:!?)>\]。、，；：！？）〉》】］]+$/, '')
+      const isInternal = url.startsWith('/')
       nodes.push(
-        <a key={match.index} href={url} target="_blank" rel="noopener noreferrer"
+        <a key={match.index} href={url}
+          target={isInternal ? undefined : '_blank'} rel={isInternal ? undefined : 'noopener noreferrer'}
           style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>
-          {truncateUrlForDisplay(url)}
+          {isInternal ? internalHrefLabel(url) : truncateUrlForDisplay(url)}
         </a>,
       )
+      const trailingPunctuation = token.slice(url.length)
+      if (trailingPunctuation) nodes.push(trailingPunctuation)
     }
     last = match.index + token.length
   }
@@ -152,9 +167,13 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
             : Array.isArray(children) && children.length === 1 && typeof children[0] === 'string'
               ? children[0]
               : null
-          const display = linkText !== null && linkText === href ? truncateUrlForDisplay(linkText) : children
+          const isInternal = href?.startsWith('/') ?? false
+          const display = linkText !== null && linkText === href
+            ? (isInternal ? internalHrefLabel(linkText) : truncateUrlForDisplay(linkText))
+            : children
           return (
-            <a href={href} target="_blank" rel="noopener noreferrer"
+            <a href={href}
+              target={isInternal ? undefined : '_blank'} rel={isInternal ? undefined : 'noopener noreferrer'}
               style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>
               {display}
             </a>
