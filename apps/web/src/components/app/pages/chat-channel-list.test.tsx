@@ -47,7 +47,7 @@ describe('formatChannelPeriod', () => {
 describe('ChannelList', () => {
   beforeEach(() => localStorage.clear())
 
-  it('完了済みマイルストーンをプロジェクトごとに折りたたむ', () => {
+  it('プロジェクトメニューから完了済みマイルストーンを個別に表示・非表示にする', () => {
     render(
       <ChannelList
         channelId={null}
@@ -69,30 +69,50 @@ describe('ChannelList', () => {
     expect(screen.queryByText('完了A')).not.toBeInTheDocument()
     expect(screen.queryByText('完了B')).not.toBeInTheDocument()
 
-    const completedToggles = screen.getAllByRole('button', { name: /完了済みマイルストーン/ })
-    fireEvent.click(completedToggles[0]!)
+    fireEvent.click(screen.getByRole('button', { name: 'プロジェクトAのメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '完了済みマイルストーンを表示' }))
 
     expect(screen.getByText('完了A')).toBeInTheDocument()
     expect(screen.queryByText('完了B')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'プロジェクトBのメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '完了済みマイルストーンを表示' }))
+
+    expect(screen.getByText('完了A')).toBeInTheDocument()
+    expect(screen.getByText('完了B')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'プロジェクトAのメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '完了済みマイルストーンを非表示' }))
+
+    expect(screen.queryByText('完了A')).not.toBeInTheDocument()
+    expect(screen.getByText('完了B')).toBeInTheDocument()
   })
 
   it('プロジェクトメニューから対象プロジェクトのマイルストーン作成を開始する', () => {
     const onCreateMilestone = vi.fn()
     render(
-      <ChannelList
-        channelId={null}
-        onSelectChannel={vi.fn()}
-        projectChannels={[projectChannel({})]}
-        workspaceChannels={[]}
-        dms={[]}
-        members={[]}
-        onAddChannel={vi.fn()}
-        onStartDm={vi.fn()}
-        onCreateMilestone={onCreateMilestone}
-      />,
+      <div className="app app-root">
+        <ChannelList
+          channelId={null}
+          onSelectChannel={vi.fn()}
+          projectChannels={[projectChannel({})]}
+          workspaceChannels={[]}
+          dms={[]}
+          members={[]}
+          onAddChannel={vi.fn()}
+          onStartDm={vi.fn()}
+          onCreateMilestone={onCreateMilestone}
+        />
+      </div>,
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'プロジェクトAのメニュー' }))
+    const menu = screen.getByRole('menu', { name: 'プロジェクトAの操作' })
+
+    expect(menu.parentElement).toHaveClass('app-root')
+    expect(menu.style.background).toBe('var(--card)')
+    expect(menu.style.boxShadow).toBe('var(--shadow-pop)')
+
     fireEvent.click(screen.getByRole('menuitem', { name: 'マイルストーンを作成' }))
 
     expect(onCreateMilestone).toHaveBeenCalledWith({ id: 'project-1', title: 'プロジェクトA' })
