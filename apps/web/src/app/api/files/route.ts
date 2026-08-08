@@ -17,6 +17,7 @@ export interface FileDto {
   mimeType: string | null
   fileSize: number | null
   fileType: string
+  uploaderId: string
   uploaderName: string
   uploaderAvatarUrl: string | null
   createdAt: string
@@ -205,6 +206,7 @@ export async function GET() {
         mimeType: files.mimeType,
         fileSize: files.fileSize,
         fileType: files.fileType,
+        uploaderId: files.uploadedBy,
         metadata: files.metadata,
         uploaderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         uploaderAvatarUrl: workspaceMembers.avatarUrl,
@@ -265,6 +267,7 @@ export async function GET() {
           mimeType: r.mimeType,
           fileSize: r.fileSize,
           fileType: r.fileType,
+          uploaderId: r.uploaderId,
           uploaderName: r.uploaderName,
           uploaderAvatarUrl: r.uploaderAvatarUrl ?? null,
           createdAt: r.createdAt.toISOString(),
