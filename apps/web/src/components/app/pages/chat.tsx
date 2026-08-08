@@ -25,6 +25,8 @@ import {
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 import { CreateChannelModal } from './create-channel-modal'
+import { CreateMilestoneModal } from './create-milestone-modal'
+import { CreateChannelThreadModal } from './create-channel-thread-modal'
 import { BellButton } from '../sidebar'
 import { useDebounce } from '@/hooks/use-debounce'
 import { ChannelList } from './chat-channel-list'
@@ -322,6 +324,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [bookmarksOpen, setBookmarksOpen] = React.useState(false)
   const [targetMessage, setTargetMessage] = React.useState<{ id: string } | null>(null)
   const [detailOpen, setDetailOpen] = React.useState(true)
+  const [milestoneProject, setMilestoneProject] = React.useState<{ id: string; title: string } | null>(null)
+  const [threadChannel, setThreadChannel] = React.useState<{ id: string; name: string } | null>(null)
 
   // パーマリンク (/chats/<channelId>?m=<messageId>) で開いたとき、該当メッセージへジャンプする。
   // useSearchParams は Suspense 境界を要求するため、クライアント側で location から読む
@@ -486,6 +490,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const currentChannelMemberCount = currentGeneral?.memberCount
 
   const { data: currentUser } = useCurrentUser()
+  const canCreateChildChannel = currentUser != null && currentUser.wsRole !== 'guest'
   // 非公開チャンネルのみ「チャンネル参加者」を表示するためメンバーを取得する
   const { data: channelMemberIds = [] } = useChannelMembers(isPrivate ? channelId : null)
 
@@ -563,6 +568,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       isMobile={isMobile}
       onAddChannel={() => setShowCreateChannel(true)}
       onStartDm={handleStartDm}
+      {...(canCreateChildChannel ? { onCreateMilestone: setMilestoneProject } : {})}
+      {...(canCreateChildChannel ? { onCreateThread: setThreadChannel } : {})}
     />
   )
 
@@ -570,6 +577,24 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     isMobile
       ? <CreateChannelSheet onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
       : <CreateChannelModal onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
+  )
+
+  const createMilestoneUI = milestoneProject && (
+    <CreateMilestoneModal
+      projectId={milestoneProject.id}
+      projectTitle={milestoneProject.title}
+      onClose={() => setMilestoneProject(null)}
+      onCreated={milestone => selectChannel(milestone.channelId)}
+    />
+  )
+
+  const createThreadUI = threadChannel && (
+    <CreateChannelThreadModal
+      channelId={threadChannel.id}
+      channelName={threadChannel.name}
+      onClose={() => setThreadChannel(null)}
+      onCreated={selectChannel}
+    />
   )
 
   // ─── モバイル ─────────────────────────────────────────────────
@@ -598,6 +623,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
               : channelListNode
           }
           {createChannelUI}
+          {createMilestoneUI}
+          {createThreadUI}
         </div>
       )
     }
@@ -658,6 +685,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       {createChannelUI}
+      {createMilestoneUI}
+      {createThreadUI}
       <aside style={{ width: 240, background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>チャット</h2>

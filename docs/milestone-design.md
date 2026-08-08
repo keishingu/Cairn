@@ -20,6 +20,15 @@
 
 ドラフトの「スレッド」は Slack の返信スレッドではなく、**プロジェクト内の話題別チャットルーム = チャンネル**を指す。現実装の `messages.parent_message_id`（メッセージへの返信）とは別概念であり、本機能では `channels` テーブルの行としてマイルストーンスレッドを表現する。以降、本書では「マイルストーンチャンネル」と呼ぶ。
 
+現在のチャット階層は、次の2つを同じ親子モデルとして扱う。
+
+| 親 | 子 | DB上の表現 |
+|---|---|---|
+| プロジェクト | マイルストーン | 親の General と子の専用チャットはいずれも `channels`。子は `milestone_id` で識別 |
+| ワークスペースチャンネル | スレッド | 親と子はいずれも `channels`。子は `parent_channel_id` で親を参照 |
+
+どちらの子も独立したチャンネルIDを持ち、未読・通知・Realtime・検索を既存チャンネル基盤で共通処理する。`messages.parent_message_id` で表すメッセージ返信スレッドとは別概念である。
+
 ---
 
 ## 2. 現実装との適合点（そのまま活きる部分）
@@ -68,7 +77,7 @@
   - `can_access_channel()` SQL 関数（migration 0033、RLS と Realtime 認可の両方が依存。enum 変更 + 関数更新の migration が必要になる）
 - `'project'` 流用なら **enum 変更も権限コードの変更も一切不要**で、API 側のゲスト制限・メンションフィルタがそのまま正しく動く（Realtime/RLS 側の `can_access_channel()` にはゲスト制限の既存ギャップがあり、type の選択にかかわらず修正が必要。§3.9）
 
-`07_notifications_and_unread.md` は設計時スナップショットであり、この点は本書の判断を正とする。同ドキュメント記載の `parent_channel_id` も追加しない（`project_id` で General と辿れるため冗長）。
+`07_notifications_and_unread.md` は設計時スナップショットであり、この点は本書の判断を正とする。`parent_channel_id` はマイルストーンの親子関係には使わない（`project_id` で General と辿れるため冗長）が、ワークスペースチャンネル → スレッドの親子関係には使用する。
 
 ### 3.3 マイルストーンの実体が存在しない（完全新規）
 
@@ -192,6 +201,15 @@ milestoneId: uuid('milestone_id').references(() => milestones.id, { onDelete: 'c
 - **`channels.name` にはマイルストーンタイトルを複製しない**。表示名は API 側で `milestones` を JOIN して返す（リネーム時の同期漏れを構造的に防ぐ）
 - migration は `pnpm db:generate`（timestamp prefix）→ `supabase migration up`
 
+### 4.3 ワークスペースチャンネルのスレッド
+
+`channels.parent_channel_id` は、通常のワークスペースチャンネル配下に作る話題別チャットルームを表す。
+
+- 親・子ともに `type = 'workspace'`
+- 子は親の `workspace_id` / `is_private` / メンバー構成を継承する
+- 初期実装は1階層のみ（スレッド配下への再ネストは禁止）
+- 親削除時は `on delete cascade` で子スレッドと会話も削除する
+
 ---
 
 ## 5. API 設計
@@ -293,6 +311,7 @@ export interface ProjectChannelDto {
   - その直下にインデント付きでマイルストーンスレッド行（タイトル + 期間 + 未読バッジ）
 - `completed: true` のスレッドは「アーカイブ済みプロジェクト」と同様に折りたたみ（`ChatSidebarCollapsibleSection` を流用）
 - モバイル Web シェルも同一コンポーネントのため同時に対応される
+- ワークスペースチャンネル行の「…」からスレッドを作成し、親チャンネル直下へインデント表示する
 
 ### 6.3 General チャンネル解決の修正 — Phase 1 で必須（クライアント・サーバー両方）
 

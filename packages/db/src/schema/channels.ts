@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { sql } from 'drizzle-orm'
-import { boolean, index, integer, pgTable, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, check, index, integer, pgTable, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { channelTypeEnum, messageTypeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
@@ -16,6 +17,7 @@ export const channels = pgTable(
     workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     milestoneId: uuid('milestone_id').references(() => milestones.id, { onDelete: 'cascade' }),
+    parentChannelId: uuid('parent_channel_id').references((): AnyPgColumn => channels.id, { onDelete: 'cascade' }),
     type: channelTypeEnum('type').notNull().default('project'),
     name: text('name'),
     isPrivate: boolean('is_private').notNull().default(false),
@@ -24,7 +26,9 @@ export const channels = pgTable(
   (t) => [
     index('idx_channels_workspace_type').on(t.workspaceId, t.type),
     index('idx_channels_project').on(t.projectId),
+    index('idx_channels_parent').on(t.parentChannelId),
     uniqueIndex('idx_channels_milestone_unique').on(t.milestoneId),
+    check('channels_parent_not_self', sql`${t.parentChannelId} is null or ${t.parentChannelId} <> ${t.id}`),
   ],
 )
 

@@ -71,8 +71,9 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { channels, channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
+    const { eq, and, or, sql } = await import('drizzle-orm')
+    const parentChannelId = sql<string | null>`to_jsonb(${channels})->>'parent_channel_id'`
 
     // 自ワークスペースの active メンバー以外を追加できないようにする（不正な channel_members 行や
     // 非活性メンバーの追加を防ぐ）
@@ -86,16 +87,43 @@ export async function POST(
       return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
     }
 
-    await db
-      .insert(channelMembers)
-      .values({ channelId, userId })
-      .onConflictDoNothing()
+    const [targetChannel] = await db
+      .select({ id: channels.id, parentChannelId })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1)
 
-    // 参加時点を既読の起点にする。これがないと参加直後に過去メッセージ全件が未読として表示される
-    await db
-      .insert(channelReadStates)
-      .values({ userId, channelId, lastReadAt: new Date() })
-      .onConflictDoNothing()
+    if (!targetChannel) {
+      return NextResponse.json({ error: 'チャンネルが見つかりません' }, { status: 404 })
+    }
+
+    const rootChannelId = targetChannel.parentChannelId ?? targetChannel.id
+    await db.transaction(async tx => {
+      // 子スレッド作成とメンバー追加を同じ親行で直列化し、参加者の取りこぼしを防ぐ。
+      await tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(eq(channels.id, rootChannelId))
+        .for('update')
+        .limit(1)
+
+      const relatedChannels = await tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(or(eq(channels.id, rootChannelId), eq(parentChannelId, rootChannelId)))
+      const relatedChannelIds = relatedChannels.map(channel => channel.id)
+
+      await tx
+        .insert(channelMembers)
+        .values(relatedChannelIds.map(id => ({ channelId: id, userId })))
+        .onConflictDoNothing()
+
+      // 参加時点を既読の起点にする。これがないと参加直後に過去メッセージ全件が未読として表示される
+      await tx
+        .insert(channelReadStates)
+        .values(relatedChannelIds.map(id => ({ userId, channelId: id, lastReadAt: new Date() })))
+        .onConflictDoNothing()
+    })
 
     return NextResponse.json({ userId, channelId } satisfies ChannelMemberDto, { status: 201 })
   } catch (err) {

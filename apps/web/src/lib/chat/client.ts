@@ -95,6 +95,19 @@ async function createWorkspaceChannel(body: { name: string; isPrivate: boolean }
   return res.json()
 }
 
+async function createChannelThread(channelId: string, name: string): Promise<{ id: string }> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}/threads`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? 'スレッドの作成に失敗しました')
+  }
+  return res.json()
+}
+
 async function createDm(targetUserId: string): Promise<{ id: string }> {
   const res = await fetchWithAuth('/api/workspaces/dms', {
     method: 'POST',
@@ -259,6 +272,16 @@ export function useCreateChannel() {
         chatQueryKeys.workspaceChannels,
         (old) => [...(old ?? []), channel],
       )
+    },
+  })
+}
+
+export function useCreateChannelThread() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ channelId, name }: { channelId: string; name: string }) => createChannelThread(channelId, name),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.workspaceChannels })
     },
   })
 }
