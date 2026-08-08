@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
@@ -147,7 +147,7 @@ describe('ファイル一覧ページ', () => {
     expect(screen.getByRole('button', { name: /プロジェクトなし.*1/ })).toBeInTheDocument()
   })
 
-  it('現在の条件に名前を付けて保存する', async () => {
+  it('現在の条件に名前を付けてタイプフィルターと同じ列に保存する', async () => {
     renderPageFiles()
 
     await userEvent.click(await screen.findByRole('button', { name: 'フィルター' }))
@@ -161,7 +161,18 @@ describe('ファイル一覧ページ', () => {
         expect.objectContaining({ method: 'POST' }),
       ),
     )
-    expect(await screen.findByRole('button', { name: '計画書' })).toBeInTheDocument()
+    const filterGroup = screen.getByRole('group', { name: 'ファイル表示フィルター' })
+    const savedFilter = await within(filterGroup).findByRole('button', { name: '計画書' })
+    expect(savedFilter).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText('保存済み')).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'クリア' }))
+    expect(await screen.findByText('general.pdf')).toBeInTheDocument()
+
+    await userEvent.click(savedFilter)
+    expect(savedFilter).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('notes.txt')).toBeInTheDocument()
+    expect(screen.queryByText('general.pdf')).toBeNull()
   })
 
   it('アップロード日時をローカル日付で絞り込む', async () => {
