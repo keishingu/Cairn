@@ -144,28 +144,87 @@ export function FileFilterToolbar({
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <div
+          role="group"
+          aria-label="ファイル表示フィルター"
           style={{ display: 'flex', alignItems: 'center', gap: 2, overflowX: 'auto', minWidth: 0 }}
         >
-          {typeFilters.map((filter) => (
-            <button
-              key={filter.id}
-              onClick={() => update('type', filter.id)}
-              style={{
-                padding: isMobile ? '6px 8px' : '6px 10px',
-                borderRadius: 6,
-                border: 'none',
-                background: conditions.type === filter.id ? 'var(--card-hover)' : 'transparent',
-                color: conditions.type === filter.id ? 'var(--text)' : 'var(--text-3)',
-                fontSize: isMobile ? 12 : 12.5,
-                fontWeight: conditions.type === filter.id ? 600 : 500,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {filter.label} ({counts[filter.id]})
-            </button>
-          ))}
+          {typeFilters.map((filter) => {
+            const active = activeSavedFilterId === null && conditions.type === filter.id
+            return (
+              <button
+                key={filter.id}
+                onClick={() => update('type', filter.id)}
+                aria-pressed={active}
+                style={{
+                  padding: isMobile ? '6px 8px' : '6px 10px',
+                  borderRadius: 6,
+                  border: 'none',
+                  background: active ? 'var(--card-hover)' : 'transparent',
+                  color: active ? 'var(--text)' : 'var(--text-3)',
+                  fontSize: isMobile ? 12 : 12.5,
+                  fontWeight: active ? 600 : 500,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {filter.label} ({counts[filter.id]})
+              </button>
+            )
+          })}
+          {savedFilters.map((filter) => {
+            const active = activeSavedFilterId === filter.id
+            return (
+              <div
+                key={filter.id}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  borderRadius: 6,
+                  background: active ? 'var(--card-hover)' : 'transparent',
+                  color: active ? 'var(--text)' : 'var(--text-3)',
+                  flexShrink: 0,
+                }}
+              >
+                <button
+                  onClick={() => onApplySavedFilter(filter)}
+                  aria-pressed={active}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    padding: isMobile ? '6px 3px 6px 8px' : '6px 3px 6px 10px',
+                    color: 'inherit',
+                    fontSize: isMobile ? 12 : 12.5,
+                    fontWeight: active ? 600 : 500,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {filter.name}
+                </button>
+                <button
+                  onClick={() => onDeleteSavedFilter(filter.id)}
+                  aria-label={`保存済みフィルター「${filter.name}」を削除`}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    padding: isMobile ? '6px 5px 6px 2px' : '6px 6px 6px 2px',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                    display: 'flex',
+                  }}
+                >
+                  <Icon name="close" size={10} />
+                </button>
+              </div>
+            )
+          })}
+          {isLoadingSavedFilters && (
+            <span style={{ fontSize: 11.5, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
+              読み込み中…
+            </span>
+          )}
         </div>
         <button
           className="btn"
@@ -201,70 +260,10 @@ export function FileFilterToolbar({
         </button>
       </div>
 
-      {(isLoadingSavedFilters || savedFilters.length > 0 || savedFiltersError) && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            overflowX: 'auto',
-            minHeight: 26,
-          }}
-        >
-          <span style={{ fontSize: 11.5, color: 'var(--text-3)', flexShrink: 0 }}>保存済み</span>
-          {isLoadingSavedFilters && (
-            <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>読み込み中…</span>
-          )}
-          {savedFiltersError && (
-            <span style={{ fontSize: 11.5, color: 'var(--red-text)' }}>読み込めませんでした</span>
-          )}
-          {savedFilters.map((filter) => {
-            const active = activeSavedFilterId === filter.id
-            return (
-              <div
-                key={filter.id}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  borderRadius: 6,
-                  background: active ? 'var(--accent-soft)' : 'var(--card-2)',
-                  border: `1px solid ${active ? 'var(--accent-border)' : 'var(--border)'}`,
-                  flexShrink: 0,
-                }}
-              >
-                <button
-                  onClick={() => onApplySavedFilter(filter)}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    padding: '4px 7px 4px 8px',
-                    color: active ? 'var(--accent-text)' : 'var(--text-2)',
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                  }}
-                >
-                  {filter.name}
-                </button>
-                <button
-                  onClick={() => onDeleteSavedFilter(filter.id)}
-                  aria-label={`保存済みフィルター「${filter.name}」を削除`}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    padding: '4px 6px 4px 2px',
-                    color: 'var(--text-3)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                  }}
-                >
-                  <Icon name="close" size={10} />
-                </button>
-              </div>
-            )
-          })}
-        </div>
+      {savedFiltersError && (
+        <span role="alert" style={{ fontSize: 11.5, color: 'var(--red-text)' }}>
+          保存フィルターを読み込めませんでした
+        </span>
       )}
 
       {filterOpen && (
