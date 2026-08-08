@@ -74,6 +74,7 @@ describe('ChannelList', () => {
 
     expect(screen.getByText('完了A')).toBeInTheDocument()
     expect(screen.queryByText('完了B')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'プロジェクトAのメニュー' })).toHaveFocus()
 
     fireEvent.click(screen.getByRole('button', { name: 'プロジェクトBのメニュー' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '完了済みマイルストーンを表示' }))

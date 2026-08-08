@@ -182,6 +182,7 @@ interface SidebarMenuAction {
   label: string
   icon: string
   onSelect: () => void
+  restoreFocus?: boolean
 }
 
 const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
@@ -288,7 +289,11 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
               type="button"
               role="menuitem"
               autoFocus={index === 0}
-              onClick={() => { close(); action.onSelect() }}
+              onClick={() => {
+                close()
+                action.onSelect()
+                if (action.restoreFocus) buttonRef.current?.focus()
+              }}
               style={{
                 width: '100%', height: 34, display: 'flex', alignItems: 'center', gap: 8,
                 border: 'none', borderRadius: 6, background: 'transparent', color: 'var(--text-2)',
@@ -392,6 +397,7 @@ const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, c
       label: `完了済みマイルストーンを${collapsed ? '表示' : '非表示'}`,
       icon: collapsed ? 'eye' : 'eye-off',
       onSelect: toggle,
+      restoreFocus: true,
     })
   }
 
