@@ -11,7 +11,7 @@ import {
   onBlurRing,
   onFocusRing,
 } from '../primitives'
-import { useCreateProjectMilestone } from '@/hooks/use-project-milestones'
+import { useCreateProjectMilestone, useProjectMilestones } from '@/hooks/use-project-milestones'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
 
 interface CreateMilestoneModalProps {
@@ -21,17 +21,54 @@ interface CreateMilestoneModalProps {
   onCreated: (milestone: MilestoneDto) => void
 }
 
-export function CreateMilestoneModal({ projectId, projectTitle, onClose, onCreated }: CreateMilestoneModalProps) {
-  const [title, setTitle] = React.useState('')
-  const [description, setDescription] = React.useState('')
-  const [startDate, setStartDate] = React.useState('')
-  const [endDate, setEndDate] = React.useState('')
-  const [startTime, setStartTime] = React.useState('')
-  const [endTime, setEndTime] = React.useState('')
+interface EditMilestoneModalProps {
+  projectId: string
+  projectTitle: string
+  milestoneId: string
+  onClose: () => void
+}
+
+interface MilestoneFormValues {
+  title: string
+  description: string
+  startDate: string
+  endDate: string
+  startTime: string
+  endTime: string
+}
+
+interface MilestoneFormModalProps {
+  projectTitle: string
+  initialMilestone?: MilestoneDto
+  pending: boolean
+  onClose: () => void
+  onSubmit: (values: MilestoneFormValues, onError: (message: string) => void) => void
+}
+
+const modalCardStyle: React.CSSProperties = {
+  position: 'relative',
+  width: '100%',
+  maxWidth: 500,
+  maxHeight: 'calc(100vh - 48px)',
+  background: 'var(--card)',
+  borderRadius: 14,
+  boxShadow: 'var(--shadow-lg)',
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+}
+
+function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, onSubmit }: MilestoneFormModalProps) {
+  const editing = initialMilestone != null
+  const [title, setTitle] = React.useState(initialMilestone?.title ?? '')
+  const [description, setDescription] = React.useState(initialMilestone?.description ?? '')
+  const [startDate, setStartDate] = React.useState(initialMilestone?.startDate ?? '')
+  const [endDate, setEndDate] = React.useState(initialMilestone?.endDate ?? '')
+  const [startTime, setStartTime] = React.useState(initialMilestone?.startTime?.slice(0, 5) ?? '')
+  const [endTime, setEndTime] = React.useState(initialMilestone?.endTime?.slice(0, 5) ?? '')
   const [titleError, setTitleError] = React.useState('')
   const [endDateError, setEndDateError] = React.useState('')
   const titleRef = React.useRef<HTMLInputElement>(null)
-  const createMilestone = useCreateProjectMilestone(projectId)
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => titleRef.current?.focus(), 80)
@@ -62,47 +99,18 @@ export function CreateMilestoneModal({ projectId, projectTitle, onClose, onCreat
 
     if (invalid) return
 
-    createMilestone.mutate(
-      {
-        title: trimmedTitle,
-        ...(description.trim() ? { description: description.trim() } : {}),
-        ...(startDate ? { startDate } : {}),
-        ...(endDate ? { endDate } : {}),
-        ...(startTime ? { startTime } : {}),
-        ...(endTime ? { endTime } : {}),
-      },
-      {
-        onSuccess: milestone => {
-          onCreated(milestone)
-          onClose()
-        },
-        onError: error => setTitleError(error.message),
-      },
-    )
+    onSubmit({ title: trimmedTitle, description: description.trim(), startDate, endDate, startTime, endTime }, setTitleError)
   }
-
-  const pending = createMilestone.isPending
 
   return (
     <Modal onClose={() => { if (!pending) onClose() }}>
       <form
         onSubmit={handleSubmit}
-        style={{
-          position: 'relative',
-          width: '100%',
-          maxWidth: 500,
-          maxHeight: 'calc(100vh - 48px)',
-          background: 'var(--card)',
-          borderRadius: 14,
-          boxShadow: 'var(--shadow-lg)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}
+        style={modalCardStyle}
       >
         <ModalHeader
           icon="flag"
-          title="マイルストーンを作成"
+          title={editing ? 'マイルストーンを編集' : 'マイルストーンを作成'}
           subtitle={projectTitle}
           onClose={() => { if (!pending) onClose() }}
         />
@@ -188,17 +196,103 @@ export function CreateMilestoneModal({ projectId, projectTitle, onClose, onCreat
         </div>
 
         <footer style={{ padding: '12px 20px', borderTop: '1px solid var(--divider)', background: 'var(--card-2)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}>
-            <Icon name="chat" size={12}/>
-            専用チャットも作成されます
-          </span>
+          {!editing && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}>
+              <Icon name="chat" size={12}/>
+              専用チャットも作成されます
+            </span>
+          )}
           <div style={{ flex: 1 }}/>
           <button type="button" className="btn" onClick={onClose} disabled={pending}>キャンセル</button>
           <button type="submit" className="btn btn-primary" disabled={pending} style={{ opacity: pending ? 0.7 : 1 }}>
-            {pending ? '作成中…' : '作成する'}
+            {pending ? (editing ? '保存中…' : '作成中…') : (editing ? '保存する' : '作成する')}
           </button>
         </footer>
       </form>
     </Modal>
+  )
+}
+
+export function CreateMilestoneModal({ projectId, projectTitle, onClose, onCreated }: CreateMilestoneModalProps) {
+  const createMilestone = useCreateProjectMilestone(projectId)
+
+  return (
+    <MilestoneFormModal
+      projectTitle={projectTitle}
+      pending={createMilestone.isPending}
+      onClose={onClose}
+      onSubmit={(values, onError) => createMilestone.mutate(
+        {
+          title: values.title,
+          ...(values.description ? { description: values.description } : {}),
+          ...(values.startDate ? { startDate: values.startDate } : {}),
+          ...(values.endDate ? { endDate: values.endDate } : {}),
+          ...(values.startTime ? { startTime: values.startTime } : {}),
+          ...(values.endTime ? { endTime: values.endTime } : {}),
+        },
+        {
+          onSuccess: milestone => {
+            onCreated(milestone)
+            onClose()
+          },
+          onError: error => onError(error.message),
+        },
+      )}
+    />
+  )
+}
+
+export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClose }: EditMilestoneModalProps) {
+  const milestones = useProjectMilestones(projectId)
+  const milestone = milestones.data?.find(item => item.id === milestoneId)
+
+  if (milestones.isLoading) {
+    return (
+      <Modal onClose={onClose}>
+        <div style={modalCardStyle}>
+          <ModalHeader icon="flag" title="マイルストーンを編集" subtitle={projectTitle} onClose={onClose}/>
+          <div style={{ padding: '32px 22px', color: 'var(--text-3)', fontSize: 13, textAlign: 'center' }}>読み込み中…</div>
+        </div>
+      </Modal>
+    )
+  }
+
+  if (milestones.isError || !milestone) {
+    return (
+      <Modal onClose={onClose}>
+        <div style={modalCardStyle}>
+          <ModalHeader icon="flag" title="マイルストーンを編集" subtitle={projectTitle} onClose={onClose}/>
+          <div style={{ padding: '32px 22px', color: 'var(--danger)', fontSize: 13, textAlign: 'center' }}>
+            マイルストーンを読み込めませんでした
+          </div>
+        </div>
+      </Modal>
+    )
+  }
+
+  return (
+    <MilestoneFormModal
+      projectTitle={projectTitle}
+      initialMilestone={milestone}
+      pending={milestones.patchMutation.isPending}
+      onClose={onClose}
+      onSubmit={(values, onError) => milestones.patchMutation.mutate(
+        {
+          id: milestoneId,
+          input: {
+            title: values.title,
+            description: values.description || null,
+            startDate: values.startDate || null,
+            endDate: values.endDate || null,
+            startTime: values.startTime || null,
+            endTime: values.endTime || null,
+          },
+        },
+        {
+          onSuccess: onClose,
+          onError: error => onError(error.message),
+        },
+      )}
+    />
   )
 }
