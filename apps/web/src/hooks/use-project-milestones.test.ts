@@ -2,7 +2,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
-import { useCreateProjectMilestone, useProjectMilestones } from './use-project-milestones'
+import { useCreateProjectMilestone, usePatchProjectMilestone, useProjectMilestones } from './use-project-milestones'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
 
@@ -109,6 +109,26 @@ describe('useProjectMilestones', () => {
       '/api/projects/p1/milestones/m1',
       expect.objectContaining({ method: 'PATCH' }),
     )
+  })
+
+  it('単一の更新Hookで対象プロジェクトの完了状態を切り替える', async () => {
+    const updated: MilestoneDto = { ...STUB_MILESTONES[0]!, completed: true }
+    mockFetch.mockResolvedValue(new Response(JSON.stringify(updated), { status: 200 }))
+    const { wrapper, queryClient } = makeWrapper()
+    queryClient.setQueryData(['project-milestones', 'p1'], STUB_MILESTONES)
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const { result } = renderHook(() => usePatchProjectMilestone(), { wrapper })
+
+    await act(async () => {
+      await result.current.mutateAsync({ projectId: 'p1', id: 'm1', input: { completed: true } })
+    })
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/projects/p1/milestones/m1',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ completed: true }) }),
+    )
+    expect(queryClient.getQueryData<MilestoneDto[]>(['project-milestones', 'p1'])?.[0]?.completed).toBe(true)
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['project-channels'] })
   })
 
   it('deleteMutation が削除後にキャッシュから取り除く', async () => {

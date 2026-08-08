@@ -314,13 +314,32 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
   )
 }
 
-const ProjectMilestoneItem = ({ channel, active, onSelectChannel, isMobile }: {
+const ProjectMilestoneItem = ({ channel, active, onSelectChannel, onEditMilestone, onSetMilestoneCompleted, isMobile }: {
   channel: ProjectChannelDto
   active: boolean
   onSelectChannel: (id: string) => void
+  onEditMilestone?: (milestone: ProjectChannelDto) => void
+  onSetMilestoneCompleted?: (milestone: ProjectChannelDto, completed: boolean) => void
   isMobile: boolean
 }) => {
   const period = formatChannelPeriod(channel.startDate, channel.endDate, channel.startTime, channel.endTime)
+  const completed = channel.milestoneCompleted === true
+  const actions: SidebarMenuAction[] = []
+  if (!completed && onEditMilestone) {
+    actions.push({
+      label: '編集',
+      icon: 'edit',
+      onSelect: () => onEditMilestone(channel),
+    })
+  }
+  if (onSetMilestoneCompleted) {
+    actions.push({
+      label: completed ? '未完了にする' : '完了にする',
+      icon: completed ? 'refresh' : 'check',
+      onSelect: () => onSetMilestoneCompleted(channel, !completed),
+      restoreFocus: true,
+    })
+  }
   return (
     <div style={{ paddingLeft: isMobile ? 0 : 18 }}>
       <ChatSidebarItem
@@ -331,6 +350,9 @@ const ProjectMilestoneItem = ({ channel, active, onSelectChannel, isMobile }: {
         {...(period ? { dateMeta: period } : {})}
         badge={channel.unreadCount}
         mobile={isMobile}
+        action={actions.length > 0 ? (
+          <SidebarCreateMenu ownerLabel={channel.channelName} actions={actions} isMobile={isMobile} />
+        ) : undefined}
       />
     </div>
   )
@@ -356,13 +378,15 @@ const WorkspaceThreadItem = ({ channel, active, onSelectChannel, isMobile }: {
   </div>
 )
 
-const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, channelId, onSelectChannel, onCreateMilestone, isMobile }: {
+const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, channelId, onSelectChannel, onCreateMilestone, onEditMilestone, onSetMilestoneCompleted, isMobile }: {
   general: ProjectChannelDto
   activeMilestones: ProjectChannelDto[]
   completedMilestones: ProjectChannelDto[]
   channelId: string | null
   onSelectChannel: (id: string) => void
   onCreateMilestone?: (project: { id: string; title: string }) => void
+  onEditMilestone?: (milestone: ProjectChannelDto) => void
+  onSetMilestoneCompleted?: (milestone: ProjectChannelDto, completed: boolean) => void
   isMobile: boolean
 }) => {
   const storageKey = chatCompletedMilestonesCollapsedKey(general.projectId)
@@ -423,6 +447,8 @@ const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, c
           channel={channel}
           active={channelId === channel.channelId}
           onSelectChannel={onSelectChannel}
+          {...(onEditMilestone ? { onEditMilestone } : {})}
+          {...(onSetMilestoneCompleted ? { onSetMilestoneCompleted } : {})}
           isMobile={isMobile}
         />
       ))}
@@ -432,6 +458,7 @@ const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, c
           channel={channel}
           active={channelId === channel.channelId}
           onSelectChannel={onSelectChannel}
+          {...(onSetMilestoneCompleted ? { onSetMilestoneCompleted } : {})}
           isMobile={isMobile}
         />
       ))}
@@ -496,12 +523,15 @@ export interface ChannelListProps {
   onAddChannel: () => void
   onStartDm: (userId: string) => void
   onCreateMilestone?: (project: { id: string; title: string }) => void
+  onEditMilestone?: (milestone: ProjectChannelDto) => void
+  onSetMilestoneCompleted?: (milestone: ProjectChannelDto, completed: boolean) => void
   onCreateThread?: (channel: { id: string; name: string }) => void
 }
 
 export const ChannelList = ({
   channelId, onSelectChannel, projectChannels, workspaceChannels,
-  dms, members, isMobile = false, onAddChannel, onStartDm, onCreateMilestone, onCreateThread,
+  dms, members, isMobile = false, onAddChannel, onStartDm, onCreateMilestone, onEditMilestone,
+  onSetMilestoneCompleted, onCreateThread,
 }: ChannelListProps) => {
   const activeProjectChannels = projectChannels.filter(c => !c.archived)
   const archivedProjectChannels = projectChannels.filter(c => c.archived && c.milestoneId === null)
@@ -533,6 +563,8 @@ export const ChannelList = ({
           channelId={channelId}
           onSelectChannel={onSelectChannel}
           {...(onCreateMilestone ? { onCreateMilestone } : {})}
+          {...(onEditMilestone ? { onEditMilestone } : {})}
+          {...(onSetMilestoneCompleted ? { onSetMilestoneCompleted } : {})}
           isMobile={isMobile}
         />
       ))}

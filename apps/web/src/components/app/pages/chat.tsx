@@ -25,7 +25,7 @@ import {
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 import { CreateChannelModal } from './create-channel-modal'
-import { CreateMilestoneModal } from './create-milestone-modal'
+import { CreateMilestoneModal, EditMilestoneModal } from './create-milestone-modal'
 import { CreateChannelThreadModal } from './create-channel-thread-modal'
 import { BellButton } from '../sidebar'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -33,7 +33,10 @@ import { ChannelList } from './chat-channel-list'
 import { ChatDetailSidebar, ChatInfoDrawer, type ChatDetailMember } from './chat-detail-sidebar'
 import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
+import { usePatchProjectMilestone } from '@/hooks/use-project-milestones'
+import { toast } from '@/lib/toast'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import { useCommand } from '@/lib/command-registry'
 import {
@@ -325,7 +328,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [targetMessage, setTargetMessage] = React.useState<{ id: string } | null>(null)
   const [detailOpen, setDetailOpen] = React.useState(true)
   const [milestoneProject, setMilestoneProject] = React.useState<{ id: string; title: string } | null>(null)
+  const [editingMilestone, setEditingMilestone] = React.useState<ProjectChannelDto | null>(null)
   const [threadChannel, setThreadChannel] = React.useState<{ id: string; name: string } | null>(null)
+  const patchMilestone = usePatchProjectMilestone()
 
   // パーマリンク (/chats/<channelId>?m=<messageId>) で開いたとき、該当メッセージへジャンプする。
   // useSearchParams は Suspense 境界を要求するため、クライアント側で location から読む
@@ -476,6 +481,17 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     })
   }
 
+  const handleSetMilestoneCompleted = (milestone: ProjectChannelDto, completed: boolean) => {
+    if (!milestone.milestoneId || patchMilestone.isPending) return
+    patchMilestone.mutate(
+      { projectId: milestone.projectId, id: milestone.milestoneId, input: { completed } },
+      {
+        onSuccess: () => toast.success(completed ? 'マイルストーンを完了にしました' : 'マイルストーンを未完了に戻しました'),
+        onError: error => toast.error(error.message),
+      },
+    )
+  }
+
   const currentChannel = projectChannels.find(c => c.channelId === channelId)
   const currentGeneral = workspaceChannels.find(c => c.id === channelId)
   const currentDm = dms.find(d => d.id === channelId)
@@ -569,6 +585,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       onAddChannel={() => setShowCreateChannel(true)}
       onStartDm={handleStartDm}
       {...(canCreateChildChannel ? { onCreateMilestone: setMilestoneProject } : {})}
+      {...(canCreateChildChannel ? { onEditMilestone: setEditingMilestone } : {})}
+      {...(canCreateChildChannel ? { onSetMilestoneCompleted: handleSetMilestoneCompleted } : {})}
       {...(canCreateChildChannel ? { onCreateThread: setThreadChannel } : {})}
     />
   )
@@ -594,6 +612,15 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       channelName={threadChannel.name}
       onClose={() => setThreadChannel(null)}
       onCreated={selectChannel}
+    />
+  )
+
+  const editMilestoneUI = editingMilestone?.milestoneId && (
+    <EditMilestoneModal
+      projectId={editingMilestone.projectId}
+      projectTitle={editingMilestone.projectTitle}
+      milestoneId={editingMilestone.milestoneId}
+      onClose={() => setEditingMilestone(null)}
     />
   )
 
@@ -624,6 +651,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           }
           {createChannelUI}
           {createMilestoneUI}
+          {editMilestoneUI}
           {createThreadUI}
         </div>
       )
@@ -686,6 +714,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       {createChannelUI}
       {createMilestoneUI}
+      {editMilestoneUI}
       {createThreadUI}
       <aside style={{ width: 240, background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

@@ -119,6 +119,54 @@ describe('ChannelList', () => {
     expect(onCreateMilestone).toHaveBeenCalledWith({ id: 'project-1', title: 'プロジェクトA' })
   })
 
+  it('マイルストーンの状態に応じた編集・完了メニューを表示する', () => {
+    const onEditMilestone = vi.fn()
+    const onSetMilestoneCompleted = vi.fn()
+    const activeMilestone = projectChannel({
+      channelId: 'active-channel',
+      channelName: '進行中',
+      milestoneId: 'active-milestone',
+      milestoneCompleted: false,
+    })
+    const completedMilestone = projectChannel({
+      channelId: 'completed-channel',
+      channelName: '完了済み',
+      milestoneId: 'completed-milestone',
+      milestoneCompleted: true,
+    })
+
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[projectChannel({}), activeMilestone, completedMilestone]}
+        workspaceChannels={[]}
+        dms={[]}
+        members={[]}
+        onAddChannel={vi.fn()}
+        onStartDm={vi.fn()}
+        onEditMilestone={onEditMilestone}
+        onSetMilestoneCompleted={onSetMilestoneCompleted}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '進行中のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '編集' }))
+    expect(onEditMilestone).toHaveBeenCalledWith(activeMilestone)
+
+    fireEvent.click(screen.getByRole('button', { name: '進行中のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '完了にする' }))
+    expect(onSetMilestoneCompleted).toHaveBeenCalledWith(activeMilestone, true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'プロジェクトAのメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '完了済みマイルストーンを表示' }))
+    fireEvent.click(screen.getByRole('button', { name: '完了済みのメニュー' }))
+
+    expect(screen.queryByRole('menuitem', { name: '編集' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: '未完了にする' }))
+    expect(onSetMilestoneCompleted).toHaveBeenCalledWith(completedMilestone, false)
+  })
+
   it('行アクションはPCでホバー表示対象にし、モバイルでは常時表示にする', () => {
     const props = {
       channelId: null,
