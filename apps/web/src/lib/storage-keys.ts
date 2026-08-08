@@ -24,6 +24,7 @@ export const STORAGE_KEYS = {
   kanban_member_filter:      'cairn:kanban_member_filter',
   kanban_scope:              'cairn:kanban_scope',
   sidebar_collapsed:         'cairn:sidebar_collapsed',
+  project_detail_tab:        'cairn:project_detail_tab',
   projects_list_view:        'cairn:projects_list_view',
   projects_table_sort:       'cairn:projects_table_sort',
   webview_mode:              'cairn:webview_mode',
