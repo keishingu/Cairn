@@ -30,9 +30,17 @@ describe('Markdownコンテンツ', () => {
     expect(projectLink).not.toHaveTextContent('/projects')
   })
 
+  it('未対応の内部パスは一部だけをリンク化しない', () => {
+    render(<MarkdownContent content={'/projects/archive/readme'} />)
+
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.getByText('/projects/archive/readme')).toBeInTheDocument()
+  })
+
   it('外部リンクは新しいタブで開く', () => {
-    render(<MarkdownContent content={'[外部サイト](https://example.com/docs)'} />)
+    render(<MarkdownContent content={'[外部サイト](https://example.com/docs) [プロトコル相対URL](//example.com/docs)'} />)
 
     expect(screen.getByRole('link', { name: '外部サイト' })).toHaveAttribute('target', '_blank')
+    expect(screen.getByRole('link', { name: 'プロトコル相対URL' })).toHaveAttribute('target', '_blank')
   })
 })

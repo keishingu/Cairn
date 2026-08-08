@@ -14,7 +14,7 @@ const STRUCTURED_MENTION_RE = /<@([^|>\s]+)(?:\|([^>\n]+))?>/g
 const URL_RE = /https?:\/\/[^\s<>"']+/g
 // AI の過去回答に Markdown 化されず残っている内部パスも遷移可能にする。
 // 対象はアプリが evidence.href として返す画面・添付ファイルのパスに限定する。
-const INTERNAL_HREF_RE = /\/(?:projects|tasks)(?:\?[^\s<>"']+)?|\/(?:chats|members|api\/attachments)\/[^\s<>"']+/g
+const INTERNAL_HREF_RE = /\/(?:projects\?open=|tasks\?taskId=)[^\s<>"']+|\/(?:chats|members|api\/attachments)\/[^\s<>"']+/g
 
 // 長いURL（クエリパラメータ付きなど）は短縮URLにせず見た目だけ「…」で省略する。リンク先(href)は元のまま
 const URL_DISPLAY_MAX = 50
@@ -28,6 +28,10 @@ function internalHrefLabel(href: string): string {
   if (href.startsWith('/chats')) return 'メッセージを開く'
   if (href.startsWith('/members')) return 'メンバーを開く'
   return 'ファイルを開く'
+}
+
+function isInternalHref(href: string | undefined): boolean {
+  return href?.startsWith('/') === true && !href.startsWith('//')
 }
 
 function renderInlineText(text: string, mentionNames?: Map<string, string>): React.ReactNode {
@@ -50,7 +54,7 @@ function renderInlineText(text: string, mentionNames?: Map<string, string>): Rea
       )
     } else {
       const url = token.replace(/[.,;:!?)>\]。、，；：！？）〉》】］]+$/, '')
-      const isInternal = url.startsWith('/')
+      const isInternal = isInternalHref(url)
       nodes.push(
         <a key={match.index} href={url}
           target={isInternal ? undefined : '_blank'} rel={isInternal ? undefined : 'noopener noreferrer'}
@@ -167,7 +171,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
             : Array.isArray(children) && children.length === 1 && typeof children[0] === 'string'
               ? children[0]
               : null
-          const isInternal = href?.startsWith('/') ?? false
+          const isInternal = isInternalHref(href)
           const display = linkText !== null && linkText === href
             ? (isInternal ? internalHrefLabel(linkText) : truncateUrlForDisplay(linkText))
             : children
