@@ -25,6 +25,30 @@ const milestone: MilestoneDto = {
 describe('EditMilestoneModal', () => {
   beforeEach(() => mockFetch.mockReset())
 
+  it('キャッシュより新しい取得結果を編集フォームの初期値にする', async () => {
+    const freshMilestone = { ...milestone, title: '最新リリース' }
+    mockFetch.mockResolvedValue(new Response(JSON.stringify([freshMilestone]), { status: 200 }))
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    queryClient.setQueryData(['project-milestones', 'project-1'], [{ ...milestone, title: '古いリリース' }])
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <EditMilestoneModal
+          projectId="project-1"
+          projectTitle="プロジェクトA"
+          milestoneId="milestone-1"
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText('読み込み中…')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/マイルストーン名/)).not.toBeInTheDocument()
+    expect(await screen.findByLabelText(/マイルストーン名/)).toHaveValue('最新リリース')
+  })
+
   it('既存値を表示し、空欄にした項目を含めて更新する', async () => {
     const onClose = vi.fn()
     mockFetch.mockImplementation(async (_url, init) => {

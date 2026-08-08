@@ -246,7 +246,7 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
   const milestones = useProjectMilestones(projectId)
   const milestone = milestones.data?.find(item => item.id === milestoneId)
 
-  if (milestones.isLoading) {
+  if (!milestones.isFetchedAfterMount) {
     return (
       <Modal onClose={onClose}>
         <div style={modalCardStyle}>
