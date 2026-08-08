@@ -66,8 +66,15 @@ export async function GET() {
     const channelAccessCondition = role === 'guest'
       ? or(
           guestPublicWorkspaceChannelCondition,
-          exists(channelMemberSq),
-          exists(guestProjectChannelAccessSq),
+          and(
+            exists(channelMemberSq),
+            or(ne(channels.type, 'project'), exists(guestProjectChannelAccessSq)),
+          ),
+          and(
+            eq(channels.type, 'project'),
+            eq(channels.isPrivate, false),
+            exists(guestProjectChannelAccessSq),
+          ),
         )
       : or(
           and(

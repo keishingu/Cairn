@@ -158,6 +158,25 @@ describe('GET /api/files', () => {
     )
   })
 
+  it('ゲストのプライベートプロジェクトチャンネルは両方の参加を要求する', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: 'guest-1', workspaceId: 'workspace-1', role: 'guest' },
+      error: null,
+    })
+
+    await GET()
+
+    expect(mockAnd).toHaveBeenCalledWith(
+      { exists: expect.anything() },
+      {
+        or: [
+          { ne: ['channels.type', 'project'] },
+          { exists: expect.anything() },
+        ],
+      },
+    )
+  })
+
   it('共有元のチャンネルとメッセージIDを返す', async () => {
     mockRows.push({
       id: 'file-1',
