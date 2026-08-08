@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
@@ -115,6 +116,7 @@ const FileRow = ({
   selected?: boolean
   index?: number
 }) => {
+  const router = useRouter()
   const [isRenaming, setIsRenaming] = React.useState(false)
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
@@ -122,6 +124,9 @@ const FileRow = ({
   const metaParts = [projectLabel, sizeStr, dateStr].filter(Boolean).join(' · ')
   const isImage = isImageFile(file)
   const isPreviewableText = isPreviewableTextFile(file)
+  const chatHref = file.sourceChannelId
+    ? `/chats/${encodeURIComponent(file.sourceChannelId)}${file.sourceMessageId ? `?m=${encodeURIComponent(file.sourceMessageId)}` : ''}`
+    : null
   const fileIcon = (
     <div style={{ position: 'relative', flexShrink: 0 }}>
       {file.fileType === 'link' && file.externalUrl ? (
@@ -229,6 +234,9 @@ const FileRow = ({
       {!isRenaming && (
         <RowActionMenu
           actions={[
+            ...(chatHref
+              ? [{ icon: 'chat', label: 'チャットに移動', onSelect: () => router.push(chatHref) }]
+              : []),
             { icon: 'edit', label: '名前を変更', onSelect: () => setIsRenaming(true) },
             ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
               ? [{ icon: 'refresh', label: '再インデックス', onSelect: () => onReindex(file.id) }]
