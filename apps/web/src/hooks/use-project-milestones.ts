@@ -92,6 +92,7 @@ export function useProjectMilestones(projectId: string) {
 
   const query = useQuery<MilestoneDto[]>({
     queryKey,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/projects/${projectId}/milestones`)
       if (!res.ok) throw await parseError(res, 'マイルストーンの取得に失敗しました')

@@ -29,7 +29,7 @@ describe('EditMilestoneModal', () => {
     const freshMilestone = { ...milestone, title: '最新リリース' }
     mockFetch.mockResolvedValue(new Response(JSON.stringify([freshMilestone]), { status: 200 }))
     const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      defaultOptions: { queries: { retry: false, staleTime: 60_000 }, mutations: { retry: false } },
     })
     queryClient.setQueryData(['project-milestones', 'project-1'], [{ ...milestone, title: '古いリリース' }])
 
