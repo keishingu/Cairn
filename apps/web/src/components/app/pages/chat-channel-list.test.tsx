@@ -118,6 +118,31 @@ describe('ChannelList', () => {
     expect(onCreateMilestone).toHaveBeenCalledWith({ id: 'project-1', title: 'プロジェクトA' })
   })
 
+  it('行アクションはPCでホバー表示対象にし、モバイルでは常時表示にする', () => {
+    const props = {
+      channelId: null,
+      onSelectChannel: vi.fn(),
+      projectChannels: [projectChannel({})],
+      workspaceChannels: [],
+      dms: [],
+      members: [],
+      onAddChannel: vi.fn(),
+      onStartDm: vi.fn(),
+      onCreateMilestone: vi.fn(),
+    }
+    const { unmount } = render(<ChannelList {...props} />)
+
+    const desktopAction = screen.getByRole('button', { name: 'プロジェクトAのメニュー' }).closest('.chat-sidebar-item-action')
+    expect(desktopAction).toBeInTheDocument()
+    expect(desktopAction).not.toHaveAttribute('data-always-visible')
+
+    unmount()
+    render(<ChannelList {...props} isMobile />)
+
+    const mobileAction = screen.getByRole('button', { name: 'プロジェクトAのメニュー' }).closest('.chat-sidebar-item-action')
+    expect(mobileAction).toHaveAttribute('data-always-visible', 'true')
+  })
+
   it('チャンネルの直下にスレッドを表示し、メニューから作成を開始する', () => {
     const onCreateThread = vi.fn()
     render(

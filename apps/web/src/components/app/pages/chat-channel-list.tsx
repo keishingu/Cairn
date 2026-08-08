@@ -116,7 +116,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
   memberNames?: string[]; memberCount?: number
   action?: React.ReactNode
 }) => (
-  <div style={{ position: 'relative' }}>
+  <div className="chat-sidebar-item" style={{ position: 'relative' }}>
     <button onClick={onClick} style={{
       display: 'flex', alignItems: 'center', gap: 8, width: '100%',
       padding: mobile ? `11px ${action ? 72 : 16}px 11px 16px` : `6px ${action ? 38 : 10}px 6px 10px`,
@@ -167,7 +167,11 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       {mobile && <Icon name="chevRight" size={16} color="var(--text-4)"/>}
     </button>
     {action && (
-      <div style={{ position: 'absolute', top: '50%', right: mobile ? 40 : 5, transform: 'translateY(-50%)', display: 'flex', zIndex: 1 }}>
+      <div
+        className="chat-sidebar-item-action"
+        data-always-visible={mobile || undefined}
+        style={{ position: 'absolute', top: '50%', right: mobile ? 40 : 5, transform: 'translateY(-50%)', display: 'flex', zIndex: 1 }}
+      >
         {action}
       </div>
     )}
