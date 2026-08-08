@@ -225,14 +225,6 @@ export function FileFilterToolbar({
               読み込み中…
             </span>
           )}
-          {savedFiltersError && (
-            <span
-              role="alert"
-              style={{ fontSize: 11.5, color: 'var(--red-text)', whiteSpace: 'nowrap' }}
-            >
-              保存フィルターを読み込めませんでした
-            </span>
-          )}
         </div>
         <button
           className="btn"
@@ -267,6 +259,12 @@ export function FileFilterToolbar({
           )}
         </button>
       </div>
+
+      {savedFiltersError && (
+        <span role="alert" style={{ fontSize: 11.5, color: 'var(--red-text)' }}>
+          保存フィルターを読み込めませんでした
+        </span>
+      )}
 
       {filterOpen && (
         <form

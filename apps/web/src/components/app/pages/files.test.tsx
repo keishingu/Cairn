@@ -175,6 +175,25 @@ describe('ファイル一覧ページ', () => {
     expect(screen.queryByText('general.pdf')).toBeNull()
   })
 
+  it('保存フィルターの取得エラーをスクロール領域外に表示する', async () => {
+    fetchWithAuthMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/files') return { ok: true, json: async () => FILES_FIXTURE }
+      if (url === '/api/files/filters') {
+        return new Response(JSON.stringify({ error: '取得に失敗しました' }), { status: 500 })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+
+    renderPageFiles()
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('保存フィルターを読み込めませんでした')
+    expect(
+      within(screen.getByRole('group', { name: 'ファイル表示フィルター' })).queryByRole('alert'),
+    ).toBeNull()
+  })
+
   it('アップロード日時をローカル日付で絞り込む', async () => {
     renderPageFiles()
 
