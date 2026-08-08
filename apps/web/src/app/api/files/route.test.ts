@@ -6,12 +6,14 @@ import { FEATURE_FLAGS } from '@cairn/shared'
 
 const {
   mockGetAuthContext,
+  mockAnd,
   mockNot,
   mockOr,
   mockDb,
   mockRows,
 } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn()
+  const mockAnd = vi.fn((...conditions: unknown[]) => ({ and: conditions }))
   const mockNot = vi.fn((condition: unknown) => ({ not: condition }))
   const mockOr = vi.fn((...conditions: unknown[]) => ({ or: conditions }))
 
@@ -34,7 +36,7 @@ const {
     selectDistinct: vi.fn(() => makeQuery()),
   }
 
-  return { mockGetAuthContext, mockNot, mockOr, mockDb, mockRows }
+  return { mockGetAuthContext, mockAnd, mockNot, mockOr, mockDb, mockRows }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -74,7 +76,7 @@ vi.mock('@cairn/db', () => ({
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((left: unknown, right: unknown) => ({ eq: [left, right] })),
   ne: vi.fn((left: unknown, right: unknown) => ({ ne: [left, right] })),
-  and: vi.fn((...conditions: unknown[]) => ({ and: conditions })),
+  and: mockAnd,
   or: mockOr,
   exists: vi.fn((query: unknown) => ({ exists: query })),
   not: mockNot,
@@ -139,6 +141,21 @@ describe('GET /api/files', () => {
     await GET()
 
     expect(mockNot).not.toHaveBeenCalled()
+  })
+
+  it('ゲストも公開ワークスペースチャンネルの共有元へ移動できる条件を含める', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: 'guest-1', workspaceId: 'workspace-1', role: 'guest' },
+      error: null,
+    })
+
+    await GET()
+
+    expect(mockAnd).toHaveBeenCalledWith(
+      { eq: ['channels.type', 'workspace'] },
+      { eq: ['channels.isPrivate', false] },
+      { eq: ['channels.workspaceId', 'workspace-1'] },
+    )
   })
 
   it('共有元のチャンネルとメッセージIDを返す', async () => {

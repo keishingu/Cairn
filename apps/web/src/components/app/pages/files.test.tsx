@@ -48,6 +48,8 @@ const FILES_FIXTURE: FileDto[] = [
   },
   {
     id: 'file-2',
+    sourceChannelId: null,
+    sourceMessageId: null,
     fileName: 'general.pdf',
     mimeType: 'application/pdf',
     fileSize: 48,
@@ -207,7 +209,8 @@ describe('ファイル一覧ページ', () => {
   it('操作メニューから共有元のチャットへ移動する', async () => {
     renderPageFiles()
 
-    await userEvent.click(await screen.findByTitle('操作'))
+    await waitFor(() => expect(screen.getAllByTitle('操作')).toHaveLength(2))
+    await userEvent.click(screen.getAllByTitle('操作')[0]!)
     await userEvent.click(screen.getByRole('button', { name: 'チャットに移動' }))
 
     expect(routerPushMock).toHaveBeenCalledWith('/chats/channel-1?m=message-1')

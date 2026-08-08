@@ -57,8 +57,15 @@ export async function GET() {
       .from(projectMembers)
       .where(and(eq(projectMembers.projectId, channels.projectId), eq(projectMembers.userId, ctx.userId)))
 
+    const guestPublicWorkspaceChannelCondition = and(
+      eq(channels.type, 'workspace'),
+      eq(channels.isPrivate, false),
+      eq(channels.workspaceId, ctx.workspaceId),
+    )
+
     const channelAccessCondition = role === 'guest'
       ? or(
+          guestPublicWorkspaceChannelCondition,
           exists(channelMemberSq),
           exists(guestProjectChannelAccessSq),
         )
