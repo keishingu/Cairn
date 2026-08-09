@@ -7,10 +7,10 @@ import React from 'react'
 import { Icon } from './primitives'
 import { subscribeToasts, dismissToast, type ToastItem, type ToastVariant } from '@/lib/toast'
 
-const VARIANT: Record<ToastVariant, { icon: string; accent: string; iconColor: string }> = {
-  success: { icon: 'check',          accent: 'var(--emerald)', iconColor: 'var(--emerald-text)' },
-  error:   { icon: 'alertTriangle',  accent: 'var(--red)',     iconColor: 'var(--red-text)' },
-  info:    { icon: 'bell',           accent: 'var(--accent)',  iconColor: 'var(--accent-text)' },
+const VARIANT: Record<ToastVariant, { icon: string; iconColor: string }> = {
+  success: { icon: 'check',         iconColor: 'var(--emerald-text)' },
+  error:   { icon: 'alertTriangle', iconColor: 'var(--red-text)' },
+  info:    { icon: 'bell',          iconColor: 'var(--accent-text)' },
 }
 
 const ToastRow = ({ item }: { item: ToastItem }) => {
@@ -24,9 +24,8 @@ const ToastRow = ({ item }: { item: ToastItem }) => {
         padding: '11px 12px 11px 14px',
         background: 'var(--card)',
         border: '1px solid var(--border)',
-        borderLeft: `3px solid ${v.accent}`,
         borderRadius: 10,
-        boxShadow: 'var(--shadow-lg)',
+        boxShadow: 'var(--shadow)',
         pointerEvents: 'auto',
       }}
     >
@@ -63,6 +62,7 @@ export const Toaster = () => {
 
   return (
     <div
+      className="app-root"
       style={{
         position: 'fixed',
         left: '50%',
