@@ -79,6 +79,12 @@ const THEME_OPTIONS: { value: ThemeValue; label: string; icon: string }[] = [
   { value: 'dark', label: 'ダーク', icon: 'moon' },
 ]
 
+const LEGAL_SUPPORT_LINKS = [
+  { label: 'プライバシーポリシー', href: '/privacy' },
+  { label: '利用規約', href: '/terms' },
+  { label: 'サポート・お問い合わせ', href: 'https://github.com/keishingu/Cairn/issues' },
+]
+
 function initials(name: string) {
   return name
     .split(/\s+/)
@@ -453,6 +459,37 @@ const SettingsAccount = () => {
           </div>
         </section>
       )}
+
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>法務・サポート</h2>
+        <div className="card" style={{ padding: 0 }}>
+          {LEGAL_SUPPORT_LINKS.map((item, index, items) => (
+            <a
+              key={item.href}
+              href={item.href}
+              target={item.href.startsWith('http') ? '_blank' : undefined}
+              rel={item.href.startsWith('http') ? 'noreferrer' : undefined}
+              style={{
+                minHeight: 46,
+                padding: '0 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderBottom: index < items.length - 1 ? '1px solid var(--divider)' : undefined,
+                color: 'var(--text)',
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: 'none',
+              }}
+            >
+              {item.label}
+              <span aria-hidden="true" style={{ color: 'var(--text-4)' }}>
+                →
+              </span>
+            </a>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }

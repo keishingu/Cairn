@@ -138,6 +138,10 @@ Internal Distribution は `apps/mobile` で `pnpm build:internal:android` / `pnp
 
 `preview` / `production` のネイティブビルドは `apps/mobile/eas.json` の `environment` と同名の EAS Environment を使用する。本番ビルド前には EAS の `production` 環境へ `EXPO_PUBLIC_API_BASE_URL`、`EXPO_PUBLIC_SUPABASE_URL`、`EXPO_PUBLIC_SUPABASE_ANON_KEY` を設定すること。`expo-sqlite` / `expo-network` を含む最初の互換 runtime は `1.1.0`。それ以前の Development Build では `1.1.0` 向け EAS Update を開けないため、一度ネイティブビルドを更新する。
 
+### iOS App Store / TestFlight
+
+本番iOSビルドは `apps/mobile` で `pnpm build:production:ios`、最新buildの提出は `pnpm submit:ios:latest`、buildからTestFlight提出までの連続実行は `pnpm release:testflight:ios` を使う。App Store Connectの初回設定、メタデータ、審査アカウント、スクリーンショット、確認項目は [`docs/app-store-submission.md`](docs/app-store-submission.md) を参照する。EAS SubmitはTestFlightへのアップロードまでで、App Reviewへの送信と公開は手動で行う。
+
 ---
 
 ## コマンド
