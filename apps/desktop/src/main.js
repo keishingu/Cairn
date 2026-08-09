@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, session, ipcMain, nativeImage, shell } = requi
 const path = require('path')
 const pkg = require('../package.json')
 const { registerExternalNavigation } = require('./external-navigation')
+const { registerPermissionPolicy } = require('./permission-policy')
 
 const APP_URL = process.env.DESKTOP_APP_URL || pkg.config?.appUrl || 'https://develop.oss-cairn.com'
 const isDev = process.env.NODE_ENV === 'development'
@@ -117,10 +118,9 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // Web Push (PushManager) の購読・通知許可ダイアログを許可する
-  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    callback(permission === 'notifications' || permission === 'push')
-  })
+  // Cairn が使用する権限だけを同一オリジンに許可する。
+  // Clipboard API は clipboard-sanitized-write の許可がないと Desktop 版で失敗する。
+  registerPermissionPolicy(session.defaultSession, APP_URL)
 
   registerBadgeBridge()
   buildMenu()

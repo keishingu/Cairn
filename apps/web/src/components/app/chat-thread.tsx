@@ -100,6 +100,17 @@ export async function copyMessageContent(content: string): Promise<boolean> {
   }
 }
 
+export async function copyMessageLink(url: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(url)
+    toast.success('リンクをコピーしました')
+    return true
+  } catch {
+    toast.error('リンクをコピーできませんでした')
+    return false
+  }
+}
+
 interface PendingAttachment {
   fileId: string
   fileName: string
@@ -1313,7 +1324,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const handleCopyLink = React.useCallback((messageId: string) => {
     if (!channelId) return
     const url = `${window.location.origin}/chats/${channelId}?m=${messageId}`
-    void navigator.clipboard?.writeText(url)
+    void copyMessageLink(url)
   }, [channelId])
 
   const uploadFile = async (file: File): Promise<PendingAttachment | null> => {
