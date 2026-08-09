@@ -20,7 +20,7 @@ describe('Toaster', () => {
 
     const status = screen.getByRole('status')
     expect(status.parentElement).toHaveClass('app-root')
-    expect(status.getAttribute('style')).toContain('background: color-mix(in srgb, var(--card) 90%, var(--emerald))')
+    expect(status.getAttribute('style')).toContain('background: var(--card)')
     expect(screen.getByText('コピーしました').getAttribute('style')).toContain('color: var(--text)')
   })
 })

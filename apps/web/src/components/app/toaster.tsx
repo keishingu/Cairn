@@ -7,25 +7,10 @@ import React from 'react'
 import { Icon } from './primitives'
 import { subscribeToasts, dismissToast, type ToastItem, type ToastVariant } from '@/lib/toast'
 
-const VARIANT: Record<ToastVariant, { icon: string; background: string; border: string; iconColor: string }> = {
-  success: {
-    icon: 'check',
-    background: 'color-mix(in srgb, var(--card) 90%, var(--emerald))',
-    border: 'color-mix(in srgb, var(--border) 65%, var(--emerald))',
-    iconColor: 'var(--emerald-text)',
-  },
-  error: {
-    icon: 'alertTriangle',
-    background: 'color-mix(in srgb, var(--card) 90%, var(--red))',
-    border: 'color-mix(in srgb, var(--border) 65%, var(--red))',
-    iconColor: 'var(--red-text)',
-  },
-  info: {
-    icon: 'bell',
-    background: 'color-mix(in srgb, var(--card) 90%, var(--accent))',
-    border: 'color-mix(in srgb, var(--border) 65%, var(--accent))',
-    iconColor: 'var(--accent-text)',
-  },
+const VARIANT: Record<ToastVariant, { icon: string; iconColor: string }> = {
+  success: { icon: 'check',         iconColor: 'var(--emerald-text)' },
+  error:   { icon: 'alertTriangle', iconColor: 'var(--red-text)' },
+  info:    { icon: 'bell',          iconColor: 'var(--accent-text)' },
 }
 
 const ToastRow = ({ item }: { item: ToastItem }) => {
@@ -37,8 +22,8 @@ const ToastRow = ({ item }: { item: ToastItem }) => {
         display: 'flex', alignItems: 'center', gap: 10,
         minWidth: 240, maxWidth: 'min(420px, 90vw)',
         padding: '11px 12px 11px 14px',
-        background: v.background,
-        border: `1px solid ${v.border}`,
+        background: 'var(--card)',
+        border: '1px solid var(--border)',
         borderRadius: 10,
         boxShadow: 'var(--shadow)',
         pointerEvents: 'auto',
