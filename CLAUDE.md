@@ -65,6 +65,7 @@ pnpm dev
 - **AIモデルは OpenAI**（gpt-5 / gpt-5-mini）。Claude は使用しない
 - **Mobile (Expo) は `apps/mobile/`**: チャット以外は WebView で Web 版を表示する方針。ネイティブ化のロードマップは [`docs/08_expo_roadmap.md`](docs/08_expo_roadmap.md) を参照
   - 開発は expo-dev-client を使う。`pnpm ios` / `pnpm android` でローカルビルド（単体アプリとしてインストール）、2回目以降は `pnpm dev` で Metro 起動のみ
+  - App Store / TestFlight は `pnpm build:production:ios` / `pnpm submit:ios:latest` / `pnpm release:testflight:ios` を使う。初回設定、メタデータ、審査アカウント、スクリーンショット、確認項目は [`docs/app-store-submission.md`](docs/app-store-submission.md) を参照
   - ネイティブ側の接続先 URL は `EXPO_PUBLIC_*` 未設定時に Metro の接続先ホストから自動導出する（`apps/mobile/lib/env.ts`）。シミュレータ・実機・Android エミュレータで IP の手動設定は不要
   - PR の Mobile Preview は、Vercel Deployment Protection を避けるため初回から `https://develop.oss-cairn.com` を Web / API 接続先にする。この URL と共有 Supabase Preview 設定を EAS の `preview` 環境へ同期し、PR固有branchへDevelopment Build用QRを発行すると同時に `preview` channelへInternal Distribution用OTAを配信する（`.github/workflows/mobile-preview.yml`）。同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで直列化する。Internal Distributionでは最後に成功したMobile Previewを最新版とする
   - EAS Build profile は `apps/mobile/eas.json` で `development` / `preview` / `production` の同名 EAS Environment へ明示的に対応づける。ローカル `.env.local` をクラウドビルドや EAS Update の接続先として使用しない
