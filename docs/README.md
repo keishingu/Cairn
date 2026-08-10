@@ -24,6 +24,7 @@
 | 課金（Phase 1 実装済み） | `billing-implementation-design.md`（現行の実装・運用） | `pricing-plan-design.md`（プラン意図）、`billing-minigame-design.md`（Phase 3 の石積みミニゲーム）、`prototypes/stone-stacking-sandbox.html`（触感検証モック） |
 | マイルストーン（未実装・設計のみ） | `milestone-design.md`（差分分析・実装計画） | `07_notifications_and_unread.md`（エンティティ=チャンネル思想） |
 | `/ai` 調査ワークベンチ・AIメンバー | `10_ai_member_design.md`（3つのAIサーフェスと責務境界） | `ai-self-improvement-loop.md`、`scheduled-jobs-design.md`（ユーザー定義cron。未実装） |
+| Cairn自体の使い方に関する`/ai`の回答（プロダクトヘルプ） | `product-help/README.md`（静的注入方式・更新ルール） | — |
 | AI常駐PMO・プライベートナッジ（Phase 1/2 実装済み） | `ai-pmo-design.md` | `ai-era-pm-strategy.md`（戦略背景）、`10_ai_member_design.md`（`/ai`・AIメンバーとの関係） |
 | MCP サーバ・外部エージェント連携 | `mcp-server-design.md`（リモート MCP + PAT / OAuth の現行仕様） | `ai-era-pm-strategy.md`（座取りの合意） |
 | LP・マーケティング | `lp-content-redesign.md` | `landing-page-routing-design.md`、`lp-soul-page-copy.md` |
@@ -40,6 +41,7 @@
 | [`mobile-chat-parity-checklist.md`](./mobile-chat-parity-checklist.md) | モバイルWebとExpoネイティブチャットの表示同等性チェックリスト | 2026-07-12 |
 | [`mobile-internal-distribution.md`](./mobile-internal-distribution.md) | Expo Internal Distribution とオフライン基盤の運用手順 | 2026-07-23 |
 | [`10_ai_member_design.md`](./10_ai_member_design.md) | `/ai` 調査ワークベンチ・AI PMO・将来のチャンネル参加型AIメンバーの責務境界とロードマップ | 2026-08-05 |
+| [`product-help/README.md`](./product-help/README.md) | `/ai` がCairn自体の使い方（マイルストーンの使い方等）に答えるための静的ヘルプ文書と実装方式 | 2026-08-10 |
 | [`ai-pmo-design.md`](./ai-pmo-design.md) | AI常駐PMOの現行仕様（Phase 1/2 実装済み、feature flag + workspace設定で段階ロールアウト） | 2026-08-05 |
 | [`mcp-server-design.md`](./mcp-server-design.md) | リモート MCP + PAT / OAuth の現行仕様（stdio/npm 版は後続） | 2026-08-05 |
 | [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) | 定期ジョブ（cron・自然言語で定義）+ アプリ内投票機能の設計（構想段階） | 2026-06-25 |
