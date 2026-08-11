@@ -72,11 +72,8 @@ export async function POST(_req: Request, { params }: RouteContext) {
           .update(channelReadStates)
           .set({
             lastReadAt: sql`greatest(${channelReadStates.lastReadAt}, ${selectedLastReadAt})`,
-            lastReadMessageId: sql`case
-              when ${channelReadStates.lastReadAt} <= ${selectedLastReadAt}
-                then ${latest.id}::uuid
-              else ${channelReadStates.lastReadMessageId}
-            end`,
+            // 時刻が参加時点などで先行していても、実際に開いたスナップショットを記録する。
+            lastReadMessageId: latest.id,
             updatedAt: now,
           })
           .where(and(
