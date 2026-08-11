@@ -7,7 +7,6 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
-import { partitionRecipientsByReadState } from '@/lib/push/suppress'
 import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
 import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
@@ -35,10 +34,10 @@ async function classifyPushRecipients<T extends { userId: string }>(
   if (recipients.length === 0) return { readRecipients: [], unreadRecipients: [] }
 
   const { db, messages, channelReadStates } = await import('@cairn/db')
-  const { eq, and, inArray } = await import('drizzle-orm')
+  const { eq, and, inArray, or, sql } = await import('drizzle-orm')
 
   const [msg] = await db
-    .select({ createdAt: messages.createdAt, deletedAt: messages.deletedAt })
+    .select({ deletedAt: messages.deletedAt })
     .from(messages)
     .where(eq(messages.id, messageId))
     .limit(1)
@@ -46,12 +45,8 @@ async function classifyPushRecipients<T extends { userId: string }>(
   // 猶予中に削除されたメッセージの Push は送らない
   if (!msg || msg.deletedAt) return { readRecipients: [], unreadRecipients: [] }
 
-  const states = await db
-    .select({
-      userId: channelReadStates.userId,
-      lastReadAt: channelReadStates.lastReadAt,
-      lastReadMessageId: channelReadStates.lastReadMessageId,
-    })
+  const readStates = await db
+    .select({ userId: channelReadStates.userId })
     .from(channelReadStates)
     .where(
       and(
@@ -60,13 +55,22 @@ async function classifyPushRecipients<T extends { userId: string }>(
           channelReadStates.userId,
           recipients.map((r) => r.userId),
         ),
+        or(
+          eq(channelReadStates.lastReadMessageId, messageId),
+          sql`${channelReadStates.lastReadAt} >= (
+            select ${messages.createdAt}
+            from ${messages}
+            where ${messages.id} = ${messageId}
+          )`,
+        ),
       ),
     )
 
-  return partitionRecipientsByReadState(recipients, new Map(states.map((s) => [s.userId, s])), {
-    id: messageId,
-    createdAt: msg.createdAt,
-  })
+  const readUserIds = new Set(readStates.map((state) => state.userId))
+  return {
+    readRecipients: recipients.filter((recipient) => readUserIds.has(recipient.userId)),
+    unreadRecipients: recipients.filter((recipient) => !readUserIds.has(recipient.userId)),
+  }
 }
 
 export const onMessageCreated = inngest.createFunction(
@@ -275,7 +279,7 @@ export const onMessageCreated = inngest.createFunction(
         const { and, eq, inArray, sql } = await import('drizzle-orm')
 
         const [message] = await db
-          .select({ createdAt: messages.createdAt })
+          .select({ id: messages.id })
           .from(messages)
           .where(eq(messages.id, messageId))
           .limit(1)
@@ -283,23 +287,19 @@ export const onMessageCreated = inngest.createFunction(
 
         const recipients = [...notifyMentioned].sort((a, b) => a.userId.localeCompare(b.userId))
         await db.transaction(async (tx) => {
-          // 未参加者の初期状態をメッセージ直前に置き、このメンションを未読として扱う。
+          // 未参加者はジョブの実行順にかかわらず、すべてのメンションを未読から始める。
           await tx
             .insert(channelReadStates)
             .values(recipients.map((recipient) => ({
               userId: recipient.userId,
               channelId,
-              lastReadAt: new Date(message.createdAt.getTime() - 1),
+              lastReadAt: sql`'epoch'::timestamptz`,
             })))
             .onConflictDoNothing()
 
           // 既読APIも同じ行を更新するため、通知行とカウンターの確定まで直列化する。
           const states = await tx
-            .select({
-              userId: channelReadStates.userId,
-              lastReadAt: channelReadStates.lastReadAt,
-              lastReadMessageId: channelReadStates.lastReadMessageId,
-            })
+            .select({ userId: channelReadStates.userId })
             .from(channelReadStates)
             .where(and(
               eq(channelReadStates.channelId, channelId),
@@ -308,12 +308,29 @@ export const onMessageCreated = inngest.createFunction(
             .orderBy(channelReadStates.userId)
             .for('update')
 
-          const { readRecipients, unreadRecipients } = partitionRecipientsByReadState(
-            recipients,
-            new Map(states.map((state) => [state.userId, state])),
-            { id: messageId, createdAt: message.createdAt },
+          if (states.length !== recipients.length) {
+            throw new Error('Channel read states were not created')
+          }
+
+          const readStates = await tx
+            .select({ userId: channelReadStates.userId })
+            .from(channelReadStates)
+            .where(and(
+              eq(channelReadStates.channelId, channelId),
+              inArray(channelReadStates.userId, recipients.map((recipient) => recipient.userId)),
+              sql`(
+                ${channelReadStates.lastReadMessageId} = ${messageId}::uuid
+                or ${channelReadStates.lastReadAt} >= (
+                  select ${messages.createdAt}
+                  from ${messages}
+                  where ${messages.id} = ${messageId}
+                )
+              )`,
+            ))
+          const readUserIds = new Set(readStates.map((state) => state.userId))
+          const unreadRecipients = recipients.filter(
+            (recipient) => !readUserIds.has(recipient.userId),
           )
-          const readUserIds = new Set(readRecipients.map((recipient) => recipient.userId))
           const now = new Date()
 
           await tx.insert(notifications).values(recipients.map((recipient) => ({
