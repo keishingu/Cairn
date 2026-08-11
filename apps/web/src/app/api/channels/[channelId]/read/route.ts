@@ -27,7 +27,8 @@ export async function POST(_req: Request, { params }: RouteContext) {
       .orderBy(desc(messages.createdAt))
       .limit(1)
     const now = new Date()
-    const lastReadAt = latest?.createdAt ?? now
+    // 空チャンネルでは未来の最初のメッセージを既読にしない境界から始める。
+    const selectedLastReadAt = latest?.createdAt ?? new Date(0)
 
     await db.transaction(async (tx) => {
       await tx
@@ -35,7 +36,7 @@ export async function POST(_req: Request, { params }: RouteContext) {
         .values({
           userId: ctx.userId,
           channelId,
-          lastReadAt,
+          lastReadAt: selectedLastReadAt,
           lastReadMessageId: latest?.id ?? null,
           unreadMentionCount: 0,
         })
@@ -55,30 +56,36 @@ export async function POST(_req: Request, { params }: RouteContext) {
         .limit(1)
       if (!current) throw new Error('Channel read state was not created')
 
-      const keepCurrent = current.lastReadAt.getTime() > lastReadAt.getTime()
-      const effectiveLastReadAt = keepCurrent ? current.lastReadAt : lastReadAt
+      const keepCurrent = !latest
+        || current.lastReadAt.getTime() > selectedLastReadAt.getTime()
+      const effectiveLastReadAt = keepCurrent ? current.lastReadAt : selectedLastReadAt
       const effectiveLastReadMessageId = keepCurrent
         ? current.lastReadMessageId
         : (latest?.id ?? null)
 
-      if (effectiveLastReadMessageId) {
-        // 取得したメッセージまでを既読にし、スナップショット後の新着通知は残す。
-        await tx
-          .update(notifications)
-          .set({ readAt: now })
-          .where(and(
-            eq(notifications.userId, ctx.userId),
-            isNull(notifications.readAt),
-            inArray(notifications.type, ['mention', 'dm']),
-            sql`${notifications.data}->>'channelId' = ${channelId}`,
-            sql`exists (
-              select 1
-              from ${messages}
-              where ${messages.id}::text = ${notifications.data}->>'messageId'
-                and ${messages.createdAt} <= ${effectiveLastReadAt}
-            )`,
-          ))
-      }
+      // 取得したメッセージまでと、削除済みメッセージ由来の通知を既読にする。
+      // 空チャンネルのスナップショット後に届いた最初のメッセージは残す。
+      await tx
+        .update(notifications)
+        .set({ readAt: now })
+        .where(and(
+          eq(notifications.userId, ctx.userId),
+          isNull(notifications.readAt),
+          inArray(notifications.type, ['mention', 'dm']),
+          sql`${notifications.data}->>'channelId' = ${channelId}`,
+          sql`exists (
+            select 1
+            from ${messages}
+            where ${messages.id}::text = ${notifications.data}->>'messageId'
+              and (
+                ${messages.deletedAt} is not null
+                or (
+                  ${effectiveLastReadMessageId !== null}
+                  and ${messages.createdAt} <= ${effectiveLastReadAt}
+                )
+              )
+          )`,
+        ))
 
       await tx
         .update(channelReadStates)
