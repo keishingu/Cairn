@@ -28,6 +28,7 @@
 - チャンネルを既読にすると、そのチャンネルに紐づく `mention` / `dm` 通知（`data->>'channelId'` で判定）も既読化する。既読状態をチャンネルとベルで分裂させないため
 - メッセージ作成と既読スナップショットはチャンネル行、メンション通知作成とチャンネル既読化は同じ `channel_read_states` 行をロックして、それぞれトランザクションを直列化する。メッセージの `created_at` はチャンネルロック取得後の時刻にし、既読位置とメンションの既読判定は DB のマイクロ秒精度を保ったまま比較する。既読位置は既存値と取得した最新メッセージの新しい方を採用して単調増加させ、その時刻以前と削除済みメッセージ由来の通知だけを既読化した後、残った未読メンション通知行から `unread_mention_count` を再計算する。空チャンネルと未参加者の初期 read state は epoch を起点にし、ジョブの実行順にかかわらず未閲覧のメンションを未読として残す
 - 未読カウントは自分の発言を除外する（`messages.sender_id != userId`）。チャンネル参加時には `channel_read_states` 行を作成し、参加時点を既読起点にする
+- メンション配信が参加前のユーザーに作成した epoch 起点の合成 read state は、後からチャンネルへ参加した時点まで進める。実際の既読履歴がある state は保持する
 - 実装: `apps/web/src/lib/inngest/functions.ts` の `onMessageCreated`、既読化は `apps/web/src/app/api/channels/[channelId]/read/route.ts`
 
 > 通知・未読の全体的な再設計方針は [`docs/notification-ux-redesign.md`](notification-ux-redesign.md) を参照。上記は Phase 3（閲覧状態に応じた Push / バッジ制御）まで反映後の動作。配信は Supabase Realtime（Broadcast from Database）で行う（同 Phase 2）。Phase 4（チャンネル別通知設定・DND）以降は未実装。

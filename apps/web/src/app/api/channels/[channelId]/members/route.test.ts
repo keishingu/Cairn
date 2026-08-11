@@ -16,6 +16,7 @@ const {
   mockDbTransaction,
   mockTxSelect,
   mockTxInsert,
+  mockOnConflictDoUpdate,
   mockForUpdate,
   mockEq,
   mockAnd,
@@ -29,6 +30,7 @@ const {
   mockDbTransaction: vi.fn(),
   mockTxSelect: vi.fn(),
   mockTxInsert: vi.fn(),
+  mockOnConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
   mockForUpdate: vi.fn(),
   mockEq: vi.fn(() => Symbol('eq')),
   mockAnd: vi.fn(() => Symbol('and')),
@@ -47,7 +49,13 @@ vi.mock('@/lib/permissions', () => ({
 vi.mock('@cairn/db', () => ({
   db: { select: mockDbSelect, insert: mockDbInsert, transaction: mockDbTransaction },
   channelMembers: { userId: 'channelMembers.userId', channelId: 'channelMembers.channelId' },
-  channelReadStates: { userId: 'channelReadStates.userId', channelId: 'channelReadStates.channelId', lastReadAt: 'channelReadStates.lastReadAt' },
+  channelReadStates: {
+    userId: 'channelReadStates.userId',
+    channelId: 'channelReadStates.channelId',
+    lastReadAt: 'channelReadStates.lastReadAt',
+    lastReadMessageId: 'channelReadStates.lastReadMessageId',
+    updatedAt: 'channelReadStates.updatedAt',
+  },
   workspaceMembers: { userId: 'workspaceMembers.userId', workspaceId: 'workspaceMembers.workspaceId' },
   activeWorkspaceMembers: { userId: 'activeWorkspaceMembers.userId', workspaceId: 'activeWorkspaceMembers.workspaceId' },
   channels: { id: 'channels.id', parentChannelId: 'channels.parentChannelId' },
@@ -96,6 +104,7 @@ function mockTransaction(relatedChannels: { id: string }[]) {
   const insertBuilder = {
     values: vi.fn().mockReturnThis(),
     onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
+    onConflictDoUpdate: mockOnConflictDoUpdate,
   }
   mockTxInsert.mockReturnValue(insertBuilder)
   mockDbTransaction.mockImplementation(async callback => callback({ select: mockTxSelect, insert: mockTxInsert }))
@@ -175,5 +184,6 @@ describe('/api/channels/[channelId]/members のアクセス制御', () => {
     expect(res.status).toBe(201)
     await expect(res.json()).resolves.toEqual({ userId: TARGET_USER_ID, channelId: CHANNEL_ID })
     expect(mockForUpdate).toHaveBeenCalledOnce()
+    expect(mockOnConflictDoUpdate).toHaveBeenCalledOnce()
   })
 })

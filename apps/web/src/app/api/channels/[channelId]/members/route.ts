@@ -119,10 +119,17 @@ export async function POST(
         .onConflictDoNothing()
 
       // 参加時点を既読の起点にする。これがないと参加直後に過去メッセージ全件が未読として表示される
+      const joinedAt = new Date()
       await tx
         .insert(channelReadStates)
-        .values(relatedChannelIds.map(id => ({ userId, channelId: id, lastReadAt: new Date() })))
-        .onConflictDoNothing()
+        .values(relatedChannelIds.map(id => ({ userId, channelId: id, lastReadAt: joinedAt })))
+        .onConflictDoUpdate({
+          target: [channelReadStates.userId, channelReadStates.channelId],
+          set: { lastReadAt: joinedAt, updatedAt: joinedAt },
+          // メンション配信が作った合成状態だけを進め、実際の既読履歴は保持する。
+          setWhere: sql`${channelReadStates.lastReadAt} = 'epoch'::timestamptz
+            and ${channelReadStates.lastReadMessageId} is null`,
+        })
     })
 
     return NextResponse.json({ userId, channelId } satisfies ChannelMemberDto, { status: 201 })
