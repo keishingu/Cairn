@@ -27,35 +27,37 @@ export async function POST(_req: Request, { params }: RouteContext) {
       .orderBy(desc(messages.createdAt))
       .limit(1)
 
-    await db
-      .insert(channelReadStates)
-      .values({
-        userId: ctx.userId,
-        channelId,
-        lastReadAt: new Date(),
-        lastReadMessageId: latest?.id ?? null,
-        unreadMentionCount: 0,
-      })
-      .onConflictDoUpdate({
-        target: [channelReadStates.userId, channelReadStates.channelId],
-        set: {
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(channelReadStates)
+        .values({
+          userId: ctx.userId,
+          channelId,
           lastReadAt: new Date(),
           lastReadMessageId: latest?.id ?? null,
           unreadMentionCount: 0,
-          updatedAt: new Date(),
-        },
-      })
+        })
+        .onConflictDoUpdate({
+          target: [channelReadStates.userId, channelReadStates.channelId],
+          set: {
+            lastReadAt: new Date(),
+            lastReadMessageId: latest?.id ?? null,
+            unreadMentionCount: 0,
+            updatedAt: new Date(),
+          },
+        })
 
-    // チャンネルを読んだらベルのメンション/DM 通知も既読にする（既読状態を2系統に分裂させない）
-    await db
-      .update(notifications)
-      .set({ readAt: new Date() })
-      .where(and(
-        eq(notifications.userId, ctx.userId),
-        isNull(notifications.readAt),
-        inArray(notifications.type, ['mention', 'dm']),
-        sql`${notifications.data}->>'channelId' = ${channelId}`,
-      ))
+      // read state 行のロックを通知更新まで保持し、後発のメンション作成と直列化する。
+      await tx
+        .update(notifications)
+        .set({ readAt: new Date() })
+        .where(and(
+          eq(notifications.userId, ctx.userId),
+          isNull(notifications.readAt),
+          inArray(notifications.type, ['mention', 'dm']),
+          sql`${notifications.data}->>'channelId' = ${channelId}`,
+        ))
+    })
 
     return NextResponse.json({ ok: true })
   } catch (err) {

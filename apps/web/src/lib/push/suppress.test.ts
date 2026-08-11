@@ -62,6 +62,7 @@ describe('partitionRecipientsByReadState', () => {
     const states = new Map([
       ['read-user', { lastReadAt: null, lastReadMessageId: 'msg-1' }],
       ['unread-user', { lastReadAt: new Date('2026-06-12T00:00:09Z'), lastReadMessageId: null }],
+      ['no-state-user', { lastReadAt: new Date('2026-06-12T00:00:09.999Z'), lastReadMessageId: null }],
     ])
 
     expect(partitionRecipientsByReadState(recipients, states, message)).toEqual({

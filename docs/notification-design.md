@@ -26,7 +26,7 @@
 - DM は `check-dm` ステップで早期リターンするが、Push に加えてアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
 - Push の遷移先 URL は実ルート `/chats/{channelId}` に統一する（DM・メンション共通）
 - チャンネルを既読にすると、そのチャンネルに紐づく `mention` / `dm` 通知（`data->>'channelId'` で判定）も既読化する。既読状態をチャンネルとベルで分裂させないため
-- Realtime のメッセージ反映が通知行作成より先行した場合は、作成直後に `channel_read_states` と照合し、後発のメンション通知と `unread_mention_count` を既読状態へ戻す
+- メンション通知作成とチャンネル既読化は、同じ `channel_read_states` 行をロックするトランザクションで直列化する。未参加者の初期 read state は対象メッセージ直前を起点にし、そのメンションを未読として残す
 - 未読カウントは自分の発言を除外する（`messages.sender_id != userId`）。チャンネル参加時には `channel_read_states` 行を作成し、参加時点を既読起点にする
 - 実装: `apps/web/src/lib/inngest/functions.ts` の `onMessageCreated`、既読化は `apps/web/src/app/api/channels/[channelId]/read/route.ts`
 
