@@ -272,18 +272,21 @@ export const onMessageCreated = inngest.createFunction(
     if (notifyMentioned.length > 0) {
       await step.run('create-mention-notifications', async () => {
         const { db, notifications, channelReadStates } = await import('@cairn/db')
-        const { sql } = await import('drizzle-orm')
+        const { and, eq, inArray, isNull, sql } = await import('drizzle-orm')
 
-        await db.insert(notifications).values(
-          notifyMentioned.map((m) => ({
-            userId: m.userId,
-            workspaceId,
-            type: 'mention' as const,
-            title: `${senderName} があなたをメンションしました`,
-            body: mentionBody.slice(0, 200),
-            data: { messageId, channelId, senderName },
-          })),
-        )
+        const inserted = await db
+          .insert(notifications)
+          .values(
+            notifyMentioned.map((m) => ({
+              userId: m.userId,
+              workspaceId,
+              type: 'mention' as const,
+              title: `${senderName} があなたをメンションしました`,
+              body: mentionBody.slice(0, 200),
+              data: { messageId, channelId, senderName },
+            })),
+          )
+          .returning({ id: notifications.id })
 
         // unread_mention_count をインクリメント（行が無ければ作成）
         await db
@@ -299,6 +302,40 @@ export const onMessageCreated = inngest.createFunction(
             target: [channelReadStates.userId, channelReadStates.channelId],
             set: { unreadMentionCount: sql`${channelReadStates.unreadMentionCount} + 1` },
           })
+
+        // Realtime のメッセージ通知が先に届くと、表示中チャットは通知行の INSERT より
+        // 先に既読化される。今回作成した未読行だけを照合し、後発分を既読へ戻す。
+        const { readRecipients } = await classifyPushRecipients(
+          messageId,
+          channelId,
+          notifyMentioned,
+        )
+        const readUserIds = readRecipients.map((recipient) => recipient.userId)
+        const reconciled =
+          readUserIds.length > 0
+            ? await db
+                .update(notifications)
+                .set({ readAt: new Date() })
+                .where(and(
+                  inArray(notifications.id, inserted.map((row) => row.id)),
+                  inArray(notifications.userId, readUserIds),
+                  isNull(notifications.readAt),
+                ))
+                .returning({ userId: notifications.userId })
+            : []
+
+        if (reconciled.length > 0) {
+          await db
+            .update(channelReadStates)
+            .set({
+              unreadMentionCount: sql`greatest(${channelReadStates.unreadMentionCount} - 1, 0)`,
+              updatedAt: new Date(),
+            })
+            .where(and(
+              eq(channelReadStates.channelId, channelId),
+              inArray(channelReadStates.userId, reconciled.map((row) => row.userId)),
+            ))
+        }
       })
       mentionNotifications = notifyMentioned.length
     }

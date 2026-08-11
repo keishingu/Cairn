@@ -52,7 +52,7 @@ describe('hasReadMessage', () => {
 })
 
 describe('partitionRecipientsByReadState', () => {
-  test('対象メッセージを既読にした受信者と未読の受信者を分ける', () => {
+  test('通知作成より先に対象メッセージを既読にした受信者を既読側へ分ける', () => {
     const message = { id: 'msg-1', createdAt: new Date('2026-06-12T00:00:10Z') }
     const recipients = [
       { userId: 'read-user', displayName: '既読' },
