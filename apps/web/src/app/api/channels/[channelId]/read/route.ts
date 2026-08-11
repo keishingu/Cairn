@@ -39,25 +39,55 @@ export async function POST(_req: Request, { params }: RouteContext) {
           lastReadMessageId: latest?.id ?? null,
           unreadMentionCount: 0,
         })
-        .onConflictDoUpdate({
-          target: [channelReadStates.userId, channelReadStates.channelId],
-          set: {
-            lastReadAt,
-            lastReadMessageId: latest?.id ?? null,
-            unreadMentionCount: 0,
-            updatedAt: now,
-          },
-        })
+        .onConflictDoNothing()
 
-      // read state 行のロックを通知更新まで保持し、後発のメンション作成と直列化する。
       await tx
-        .update(notifications)
-        .set({ readAt: now })
+        .select({ id: channelReadStates.id })
+        .from(channelReadStates)
         .where(and(
-          eq(notifications.userId, ctx.userId),
-          isNull(notifications.readAt),
-          inArray(notifications.type, ['mention', 'dm']),
-          sql`${notifications.data}->>'channelId' = ${channelId}`,
+          eq(channelReadStates.userId, ctx.userId),
+          eq(channelReadStates.channelId, channelId),
+        ))
+        .for('update')
+        .limit(1)
+
+      if (latest) {
+        // 取得したメッセージまでを既読にし、スナップショット後の新着通知は残す。
+        await tx
+          .update(notifications)
+          .set({ readAt: now })
+          .where(and(
+            eq(notifications.userId, ctx.userId),
+            isNull(notifications.readAt),
+            inArray(notifications.type, ['mention', 'dm']),
+            sql`${notifications.data}->>'channelId' = ${channelId}`,
+            sql`exists (
+              select 1
+              from ${messages}
+              where ${messages.id}::text = ${notifications.data}->>'messageId'
+                and ${messages.createdAt} <= ${lastReadAt}
+            )`,
+          ))
+      }
+
+      await tx
+        .update(channelReadStates)
+        .set({
+          lastReadAt,
+          lastReadMessageId: latest?.id ?? null,
+          unreadMentionCount: sql`(
+            select count(*)::integer
+            from ${notifications}
+            where ${notifications.userId} = ${ctx.userId}
+              and ${notifications.type} = 'mention'
+              and ${notifications.readAt} is null
+              and ${notifications.data}->>'channelId' = ${channelId}
+          )`,
+          updatedAt: now,
+        })
+        .where(and(
+          eq(channelReadStates.userId, ctx.userId),
+          eq(channelReadStates.channelId, channelId),
         ))
     })
 
