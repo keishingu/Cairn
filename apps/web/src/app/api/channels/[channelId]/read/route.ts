@@ -21,11 +21,13 @@ export async function POST(_req: Request, { params }: RouteContext) {
     const { eq, and, isNull, desc, inArray, sql } = await import('drizzle-orm')
 
     const [latest] = await db
-      .select({ id: messages.id })
+      .select({ id: messages.id, createdAt: messages.createdAt })
       .from(messages)
       .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
       .orderBy(desc(messages.createdAt))
       .limit(1)
+    const now = new Date()
+    const lastReadAt = latest?.createdAt ?? now
 
     await db.transaction(async (tx) => {
       await tx
@@ -33,24 +35,24 @@ export async function POST(_req: Request, { params }: RouteContext) {
         .values({
           userId: ctx.userId,
           channelId,
-          lastReadAt: new Date(),
+          lastReadAt,
           lastReadMessageId: latest?.id ?? null,
           unreadMentionCount: 0,
         })
         .onConflictDoUpdate({
           target: [channelReadStates.userId, channelReadStates.channelId],
           set: {
-            lastReadAt: new Date(),
+            lastReadAt,
             lastReadMessageId: latest?.id ?? null,
             unreadMentionCount: 0,
-            updatedAt: new Date(),
+            updatedAt: now,
           },
         })
 
       // read state 行のロックを通知更新まで保持し、後発のメンション作成と直列化する。
       await tx
         .update(notifications)
-        .set({ readAt: new Date() })
+        .set({ readAt: now })
         .where(and(
           eq(notifications.userId, ctx.userId),
           isNull(notifications.readAt),

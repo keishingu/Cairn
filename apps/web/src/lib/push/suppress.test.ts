@@ -35,10 +35,10 @@ describe('hasReadMessage', () => {
     ).toBe(true)
   })
 
-  test('last_read_at がメッセージ作成時刻より前なら未読', () => {
+  test('既読取得後に到着したメッセージは未読', () => {
     expect(
       hasReadMessage(
-        { lastReadAt: new Date('2026-06-12T00:00:09Z'), lastReadMessageId: 'older-msg' },
+        { lastReadAt: new Date('2026-06-12T00:00:09Z'), lastReadMessageId: 'latest-at-read' },
         message,
       ),
     ).toBe(false)
