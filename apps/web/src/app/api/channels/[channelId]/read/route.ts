@@ -41,8 +41,11 @@ export async function POST(_req: Request, { params }: RouteContext) {
         })
         .onConflictDoNothing()
 
-      await tx
-        .select({ id: channelReadStates.id })
+      const [current] = await tx
+        .select({
+          lastReadAt: channelReadStates.lastReadAt,
+          lastReadMessageId: channelReadStates.lastReadMessageId,
+        })
         .from(channelReadStates)
         .where(and(
           eq(channelReadStates.userId, ctx.userId),
@@ -50,8 +53,15 @@ export async function POST(_req: Request, { params }: RouteContext) {
         ))
         .for('update')
         .limit(1)
+      if (!current) throw new Error('Channel read state was not created')
 
-      if (latest) {
+      const keepCurrent = current.lastReadAt.getTime() > lastReadAt.getTime()
+      const effectiveLastReadAt = keepCurrent ? current.lastReadAt : lastReadAt
+      const effectiveLastReadMessageId = keepCurrent
+        ? current.lastReadMessageId
+        : (latest?.id ?? null)
+
+      if (effectiveLastReadMessageId) {
         // 取得したメッセージまでを既読にし、スナップショット後の新着通知は残す。
         await tx
           .update(notifications)
@@ -65,7 +75,7 @@ export async function POST(_req: Request, { params }: RouteContext) {
               select 1
               from ${messages}
               where ${messages.id}::text = ${notifications.data}->>'messageId'
-                and ${messages.createdAt} <= ${lastReadAt}
+                and ${messages.createdAt} <= ${effectiveLastReadAt}
             )`,
           ))
       }
@@ -73,8 +83,8 @@ export async function POST(_req: Request, { params }: RouteContext) {
       await tx
         .update(channelReadStates)
         .set({
-          lastReadAt,
-          lastReadMessageId: latest?.id ?? null,
+          lastReadAt: effectiveLastReadAt,
+          lastReadMessageId: effectiveLastReadMessageId,
           unreadMentionCount: sql`(
             select count(*)::integer
             from ${notifications}
