@@ -7,14 +7,14 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
-import { hasReadMessage } from '@/lib/push/suppress'
+import { partitionRecipientsByReadState } from '@/lib/push/suppress'
 import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
 import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
 import { passesPhaseTwoConfidence } from '@/lib/ai-nudges/llm-nudge-rules'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
-// 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
+// DM は Push を抑制し、メンションはバッジ更新なしの Push に切り替えられる。
 const PUSH_GRACE_PERIOD = '10s'
 
 // メンバー一覧から userId → 表示名のリゾルバを作る（通知本文のメンション解決用）
@@ -25,13 +25,14 @@ function nameResolver(
   return (id) => map.get(id)
 }
 
-// 猶予期間中に対象メッセージを既読にした受信者を Push 対象から除外する
-async function filterUnreadRecipients<T extends { userId: string }>(
+// 猶予期間中に対象メッセージを既読にした受信者と未読の受信者を分ける。
+// 猶予中にメッセージが削除された場合は、どちらにも含めない。
+async function classifyPushRecipients<T extends { userId: string }>(
   messageId: string,
   channelId: string,
   recipients: T[],
-): Promise<T[]> {
-  if (recipients.length === 0) return []
+): Promise<{ readRecipients: T[]; unreadRecipients: T[] }> {
+  if (recipients.length === 0) return { readRecipients: [], unreadRecipients: [] }
 
   const { db, messages, channelReadStates } = await import('@cairn/db')
   const { eq, and, inArray } = await import('drizzle-orm')
@@ -43,7 +44,7 @@ async function filterUnreadRecipients<T extends { userId: string }>(
     .limit(1)
 
   // 猶予中に削除されたメッセージの Push は送らない
-  if (!msg || msg.deletedAt) return []
+  if (!msg || msg.deletedAt) return { readRecipients: [], unreadRecipients: [] }
 
   const states = await db
     .select({
@@ -62,10 +63,10 @@ async function filterUnreadRecipients<T extends { userId: string }>(
       ),
     )
 
-  const stateMap = new Map(states.map((s) => [s.userId, s]))
-  return recipients.filter(
-    (r) => !hasReadMessage(stateMap.get(r.userId), { id: messageId, createdAt: msg.createdAt }),
-  )
+  return partitionRecipientsByReadState(recipients, new Map(states.map((s) => [s.userId, s])), {
+    id: messageId,
+    createdAt: msg.createdAt,
+  })
 }
 
 export const onMessageCreated = inngest.createFunction(
@@ -130,13 +131,13 @@ export const onMessageCreated = inngest.createFunction(
       if (members.length > 0) {
         // 閲覧中の相手に Push を出さないため、猶予後に既読を再確認してから送る
         await step.sleep('push-grace', PUSH_GRACE_PERIOD)
-        const unreadMembers = await step.run('filter-dm-push-targets', () =>
-          filterUnreadRecipients(messageId, channelId, members),
+        const { unreadRecipients } = await step.run('filter-dm-push-targets', () =>
+          classifyPushRecipients(messageId, channelId, members),
         )
 
         await step.run('send-dm-push', async () => {
           await Promise.allSettled(
-            unreadMembers.map((m) =>
+            unreadRecipients.map((m) =>
               sendPushToUser(m.userId, {
                 title: senderName,
                 body: dmBody.slice(0, 100),
@@ -333,21 +334,30 @@ export const onMessageCreated = inngest.createFunction(
       fileNotifications = members.length
     }
 
-    // メンション Push は猶予後に既読を再確認してから送る（アプリ内通知・バッジは上で記録済み）
+    // メンション Push は閲覧中でも送る。猶予中に既読になった受信者には、
+    // 表示中チャットのメンションでアプリアイコンバッジを更新しないようにする。
     if (notifyMentioned.length > 0) {
       await step.sleep('push-grace', PUSH_GRACE_PERIOD)
-      const unreadMembers = await step.run('filter-mention-push-targets', () =>
-        filterUnreadRecipients(messageId, channelId, notifyMentioned),
+      const { readRecipients, unreadRecipients } = await step.run(
+        'filter-mention-push-targets',
+        () => classifyPushRecipients(messageId, channelId, notifyMentioned),
       )
 
       await step.run('send-mention-push', async () => {
         await Promise.allSettled(
-          unreadMembers.map((m) =>
-            sendPushToUser(m.userId, {
-              title: `${senderName} があなたをメンションしました`,
-              body: mentionBody.slice(0, 100),
-              url: `/chats/${channelId}`,
-            }),
+          [
+            ...unreadRecipients.map((m) => ({ recipient: m, updateAppBadge: true })),
+            ...readRecipients.map((m) => ({ recipient: m, updateAppBadge: false })),
+          ].map(({ recipient, updateAppBadge }) =>
+            sendPushToUser(
+              recipient.userId,
+              {
+                title: `${senderName} があなたをメンションしました`,
+                body: mentionBody.slice(0, 100),
+                url: `/chats/${channelId}`,
+              },
+              { updateAppBadge },
+            ),
           ),
         )
       })
