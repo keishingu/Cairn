@@ -29,14 +29,20 @@ export async function POST(_req: Request, { params }: RouteContext) {
         .for('update')
 
       const [latest] = await tx
-        .select({ id: messages.id, createdAt: messages.createdAt })
+        .select({ id: messages.id })
         .from(messages)
         .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
         .orderBy(desc(messages.createdAt))
         .limit(1)
       const now = new Date()
       // 空チャンネルでは未来の最初のメッセージを既読にしない境界から始める。
-      const selectedLastReadAt = latest?.createdAt ?? new Date(0)
+      const selectedLastReadAt = latest
+        ? sql<Date>`(
+            select ${messages.createdAt}
+            from ${messages}
+            where ${messages.id} = ${latest.id}
+          )`
+        : sql<Date>`'epoch'::timestamptz`
 
       await tx
         .insert(channelReadStates)
@@ -50,10 +56,7 @@ export async function POST(_req: Request, { params }: RouteContext) {
         .onConflictDoNothing()
 
       const [current] = await tx
-        .select({
-          lastReadAt: channelReadStates.lastReadAt,
-          lastReadMessageId: channelReadStates.lastReadMessageId,
-        })
+        .select({ userId: channelReadStates.userId })
         .from(channelReadStates)
         .where(and(
           eq(channelReadStates.userId, ctx.userId),
@@ -63,12 +66,24 @@ export async function POST(_req: Request, { params }: RouteContext) {
         .limit(1)
       if (!current) throw new Error('Channel read state was not created')
 
-      const keepCurrent = !latest
-        || current.lastReadAt.getTime() > selectedLastReadAt.getTime()
-      const effectiveLastReadAt = keepCurrent ? current.lastReadAt : selectedLastReadAt
-      const effectiveLastReadMessageId = keepCurrent
-        ? current.lastReadMessageId
-        : (latest?.id ?? null)
+      if (latest) {
+        // DB 内のマイクロ秒精度を保ったまま、既読位置を単調増加させる。
+        await tx
+          .update(channelReadStates)
+          .set({
+            lastReadAt: sql`greatest(${channelReadStates.lastReadAt}, ${selectedLastReadAt})`,
+            lastReadMessageId: sql`case
+              when ${channelReadStates.lastReadAt} <= ${selectedLastReadAt}
+                then ${latest.id}::uuid
+              else ${channelReadStates.lastReadMessageId}
+            end`,
+            updatedAt: now,
+          })
+          .where(and(
+            eq(channelReadStates.userId, ctx.userId),
+            eq(channelReadStates.channelId, channelId),
+          ))
+      }
 
       // 取得したメッセージまでと、削除済みメッセージ由来の通知を既読にする。
       // 空チャンネルのスナップショット後に届いた最初のメッセージは残す。
@@ -82,13 +97,15 @@ export async function POST(_req: Request, { params }: RouteContext) {
           sql`${notifications.data}->>'channelId' = ${channelId}`,
           sql`exists (
             select 1
-            from ${messages}
-            where ${messages.id}::text = ${notifications.data}->>'messageId'
+            from ${messages}, ${channelReadStates}
+            where ${channelReadStates.userId} = ${ctx.userId}
+              and ${channelReadStates.channelId} = ${channelId}
+              and ${messages.id}::text = ${notifications.data}->>'messageId'
               and (
                 ${messages.deletedAt} is not null
                 or (
-                  ${effectiveLastReadMessageId !== null}
-                  and ${messages.createdAt} <= ${effectiveLastReadAt}
+                  ${channelReadStates.lastReadMessageId} is not null
+                  and ${messages.createdAt} <= ${channelReadStates.lastReadAt}
                 )
               )
           )`,
@@ -97,8 +114,6 @@ export async function POST(_req: Request, { params }: RouteContext) {
       await tx
         .update(channelReadStates)
         .set({
-          lastReadAt: effectiveLastReadAt,
-          lastReadMessageId: effectiveLastReadMessageId,
           unreadMentionCount: sql`(
             select count(*)::integer
             from ${notifications}
