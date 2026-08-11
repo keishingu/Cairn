@@ -297,7 +297,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { db } = await import('@cairn/db')
     const { projects, projectStatuses } = await import('@cairn/db')
-    const { eq, and, isNull } = await import('drizzle-orm')
+    const { eq, and, isNull, sql } = await import('drizzle-orm')
 
     const [project] = await db
       .select({ id: projects.id })
@@ -405,11 +405,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             .from(profiles)
             .where(eq(profiles.id, ctx.userId))
           const actorName = actor?.displayName ?? '不明'
-          await db.insert(messages).values({
-            channelId: channel.id,
-            senderId: ctx.userId,
-            messageType: 'system',
-            content: `${actorName}さんがプロジェクトを更新しました：${changes.join(' / ')}`,
+          await db.transaction(async (tx) => {
+            await tx
+              .select({ id: channels.id })
+              .from(channels)
+              .where(eq(channels.id, channel.id))
+              .for('update')
+            await tx.insert(messages).values({
+              channelId: channel.id,
+              senderId: ctx.userId,
+              messageType: 'system',
+              content: `${actorName}さんがプロジェクトを更新しました：${changes.join(' / ')}`,
+              createdAt: sql`clock_timestamp()`,
+              updatedAt: sql`clock_timestamp()`,
+            })
           })
         }
       }

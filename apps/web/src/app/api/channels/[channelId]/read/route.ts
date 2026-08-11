@@ -17,20 +17,27 @@ export async function POST(_req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelReadStates, messages, notifications } = await import('@cairn/db')
+    const { channelReadStates, channels, messages, notifications } = await import('@cairn/db')
     const { eq, and, isNull, desc, inArray, sql } = await import('drizzle-orm')
 
-    const [latest] = await db
-      .select({ id: messages.id, createdAt: messages.createdAt })
-      .from(messages)
-      .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
-      .orderBy(desc(messages.createdAt))
-      .limit(1)
-    const now = new Date()
-    // 空チャンネルでは未来の最初のメッセージを既読にしない境界から始める。
-    const selectedLastReadAt = latest?.createdAt ?? new Date(0)
-
     await db.transaction(async (tx) => {
+      // 投稿トランザクションと直列化し、ここで見えたメッセージだけを既読対象にする。
+      await tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(eq(channels.id, channelId))
+        .for('update')
+
+      const [latest] = await tx
+        .select({ id: messages.id, createdAt: messages.createdAt })
+        .from(messages)
+        .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
+        .orderBy(desc(messages.createdAt))
+        .limit(1)
+      const now = new Date()
+      // 空チャンネルでは未来の最初のメッセージを既読にしない境界から始める。
+      const selectedLastReadAt = latest?.createdAt ?? new Date(0)
+
       await tx
         .insert(channelReadStates)
         .values({
