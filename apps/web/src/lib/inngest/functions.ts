@@ -716,61 +716,62 @@ export const indexProjectChunks = inngest.createFunction(
         await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
 
-      const [row] = await db
-        .select({
-          title: projects.title,
-          description: projects.description,
-          startDate: projects.startDate,
-          endDate: projects.endDate,
-          statusName: projectStatuses.name,
+      await db.transaction(async (tx) => {
+        const [row] = await tx
+          .select({
+            title: projects.title,
+            description: projects.description,
+            startDate: projects.startDate,
+            endDate: projects.endDate,
+            statusName: projectStatuses.name,
+          })
+          .from(projects)
+          .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
+          .where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)))
+          .for('share')
+          .limit(1)
+
+        if (!row) return
+
+        const memberRows = await tx
+          .select({ displayName: profiles.displayName })
+          .from(projectMembers)
+          .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
+          .where(eq(projectMembers.projectId, projectId))
+
+        const lines: string[] = [
+          `プロジェクト: ${row.title}`,
+          ...(row.description ? [`説明: ${row.description}`] : []),
+          ...(row.statusName ? [`ステータス: ${row.statusName}`] : []),
+          ...(row.startDate ? [`開始日: ${row.startDate}`] : []),
+          ...(row.endDate ? [`終了日: ${row.endDate}`] : []),
+          ...(memberRows.length > 0
+            ? [`メンバー: ${memberRows.map((m) => m.displayName).join('、')}`]
+            : []),
+        ]
+
+        const content = lines.join('\n')
+
+        const { embed } = await import('ai')
+        const { openai, EMBEDDING_MODEL } = await import('@/lib/ai/client')
+
+        const { embedding } = await embed({
+          model: openai.embedding(EMBEDDING_MODEL),
+          value: content,
         })
-        .from(projects)
-        .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
-        .where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)))
-        .limit(1)
 
-      if (!row) return
-
-      const memberRows = await db
-        .select({ displayName: profiles.displayName })
-        .from(projectMembers)
-        .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
-        .where(eq(projectMembers.projectId, projectId))
-
-      const lines: string[] = [
-        `プロジェクト: ${row.title}`,
-        ...(row.description ? [`説明: ${row.description}`] : []),
-        ...(row.statusName ? [`ステータス: ${row.statusName}`] : []),
-        ...(row.startDate ? [`開始日: ${row.startDate}`] : []),
-        ...(row.endDate ? [`終了日: ${row.endDate}`] : []),
-        ...(memberRows.length > 0
-          ? [`メンバー: ${memberRows.map((m) => m.displayName).join('、')}`]
-          : []),
-      ]
-
-      const content = lines.join('\n')
-
-      const { embed } = await import('ai')
-      const { openai, EMBEDDING_MODEL } = await import('@/lib/ai/client')
-
-      const { embedding } = await embed({
-        model: openai.embedding(EMBEDDING_MODEL),
-        value: content,
-      })
-
-      await db
-        .delete(documentChunks)
-        .where(
+        await tx.delete(documentChunks).where(
           and(eq(documentChunks.sourceType, 'project'), eq(documentChunks.sourceId, projectId)),
         )
 
-      await db.insert(documentChunks).values({
-        workspaceId,
-        sourceType: 'project',
-        sourceId: projectId,
-        chunkIndex: 0,
-        content,
-        embedding,
+        await tx.insert(documentChunks).values({
+          workspaceId,
+          sourceType: 'project',
+          sourceId: projectId,
+          chunkIndex: 0,
+          content,
+          embedding,
+        })
       })
     })
 

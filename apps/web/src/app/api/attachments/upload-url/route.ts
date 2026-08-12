@@ -14,7 +14,11 @@ import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
-import { UPLOAD_REQUEST_EXPIRY_MS } from '@/lib/gallery-upload'
+import {
+  UPLOAD_REQUEST_EXPIRY_MS,
+  UPLOAD_REQUEST_EXPIRY_SAFETY_MS,
+  UPLOAD_REQUEST_FALLBACK_EXPIRY_MS,
+} from '@/lib/gallery-upload'
 import { lockActiveMembership } from '@/lib/access/active-membership-lock'
 import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
 
@@ -97,7 +101,8 @@ export async function POST(req: Request) {
         derivedMimeType: normalizedMime,
         derivedStoragePath: storagePath,
         storageBucket: ATTACHMENTS_BUCKET,
-        expiresAt: new Date(Date.now() + UPLOAD_REQUEST_EXPIRY_MS),
+        // token発行後の期限更新に失敗しても、intentがtokenより先に消えないfallback。
+        expiresAt: new Date(Date.now() + UPLOAD_REQUEST_FALLBACK_EXPIRY_MS),
       })
       .returning({ id: uploadRequests.id })
     if (!request) throw new Error('upload request insert returned no rows')
@@ -118,6 +123,16 @@ export async function POST(req: Request) {
     console.error('[/api/attachments/upload-url] createSignedUploadUrl failed:', signError)
     return NextResponse.json({ error: 'アップロードURLの発行に失敗しました' }, { status: 500 })
   }
+
+  const { eq } = await import('drizzle-orm')
+  await db
+    .update(uploadRequests)
+    .set({
+      expiresAt: new Date(
+        Date.now() + UPLOAD_REQUEST_EXPIRY_MS + UPLOAD_REQUEST_EXPIRY_SAFETY_MS,
+      ),
+    })
+    .where(eq(uploadRequests.id, uploadRequest.id))
 
   return NextResponse.json({
     token: data.token,

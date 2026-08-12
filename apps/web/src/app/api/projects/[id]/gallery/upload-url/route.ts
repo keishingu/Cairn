@@ -11,6 +11,8 @@ import {
   GALLERY_BUCKET,
   GALLERY_ORIGINALS_BUCKET,
   UPLOAD_REQUEST_EXPIRY_MS,
+  UPLOAD_REQUEST_EXPIRY_SAFETY_MS,
+  UPLOAD_REQUEST_FALLBACK_EXPIRY_MS,
   isGalleryImageMimeType,
 } from '@/lib/gallery-upload'
 import { createServiceRoleClient } from '@/lib/supabase/service'
@@ -88,7 +90,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         )
       : null
 
-    const expiresAt = new Date(Date.now() + UPLOAD_REQUEST_EXPIRY_MS)
+    const expiresAt = new Date(Date.now() + UPLOAD_REQUEST_FALLBACK_EXPIRY_MS)
     const [uploadRequest] = await db.transaction(async (tx) => {
       if (!(await lockActiveMembership(tx, ctx.workspaceId, ctx.userId))) return []
       return tx
@@ -133,6 +135,15 @@ export async function POST(req: Request, { params }: RouteContext) {
       })
       return NextResponse.json({ error: 'アップロードURLの発行に失敗しました' }, { status: 500 })
     }
+
+    await db
+      .update(uploadRequests)
+      .set({
+        expiresAt: new Date(
+          Date.now() + UPLOAD_REQUEST_EXPIRY_MS + UPLOAD_REQUEST_EXPIRY_SAFETY_MS,
+        ),
+      })
+      .where(eq(uploadRequests.id, uploadRequest.id))
 
     return NextResponse.json({
       uploadId: uploadRequest.id,

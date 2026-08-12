@@ -5,6 +5,8 @@ export const GALLERY_BUCKET = 'gallery'
 export const GALLERY_ORIGINALS_BUCKET = 'gallery-originals'
 // Supabase の署名付きアップロードURLの有効期間に合わせる。
 export const UPLOAD_REQUEST_EXPIRY_MS = 2 * 60 * 60 * 1000
+export const UPLOAD_REQUEST_EXPIRY_SAFETY_MS = 5 * 60 * 1000
+export const UPLOAD_REQUEST_FALLBACK_EXPIRY_MS = 24 * 60 * 60 * 1000
 
 export const GALLERY_IMAGE_MIME_TYPES = new Set([
   'image/jpeg',

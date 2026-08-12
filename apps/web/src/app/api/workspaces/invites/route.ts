@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
+import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 const createInviteSchema = z.object({
   expiresIn: z.enum(['1h', '30d', 'never']).default('1h'),
@@ -46,24 +47,33 @@ export async function POST(req: Request) {
       expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     }
 
-    const [invite] = await db
-      .insert(workspaceInvites)
-      .values({
-        workspaceId: ctx.workspaceId,
-        token,
-        createdBy: ctx.userId,
-        expiresAt,
-        maxUses: maxUses ?? null,
-        role,
-      })
-      .returning()
+    const invite = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async (tx) => {
+      const [created] = await tx
+        .insert(workspaceInvites)
+        .values({
+          workspaceId: ctx.workspaceId,
+          token,
+          createdBy: ctx.userId,
+          expiresAt,
+          maxUses: maxUses ?? null,
+          role,
+        })
+        .returning()
+      return created!
+    })
+    if (!invite) {
+      return NextResponse.json(
+        { error: 'ワークスペースへのアクセス権がありません' },
+        { status: 403 },
+      )
+    }
 
     const origin = new URL(req.url).origin
     return NextResponse.json({
-      token: invite!.token,
-      url: `${origin}/invite/${invite!.token}`,
-      expiresAt: invite!.expiresAt,
-      role: invite!.role,
+      token: invite.token,
+      url: `${origin}/invite/${invite.token}`,
+      expiresAt: invite.expiresAt,
+      role: invite.role,
     })
   } catch (err) {
     console.error('[/api/workspaces/invites] POST failed:', err)

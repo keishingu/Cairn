@@ -16,6 +16,7 @@ const {
   mockInsertValues,
   mockDeleteWhere,
   mockHasAttachmentUploadRequestSchema,
+  mockUpdateSet,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -27,6 +28,7 @@ const {
   mockInsertValues: vi.fn(),
   mockDeleteWhere: vi.fn(),
   mockHasAttachmentUploadRequestSchema: vi.fn(),
+  mockUpdateSet: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -55,8 +57,9 @@ vi.mock('@cairn/db', () => ({
             return { returning: () => Promise.resolve([{ id: 'upload-1' }]) }
           },
         }),
-      }),
+    }),
     delete: () => ({ where: mockDeleteWhere }),
+    update: () => ({ set: mockUpdateSet }),
   },
   uploadRequests: { id: 'upload_requests.id' },
 }))
@@ -75,6 +78,7 @@ describe('/api/attachments/upload-url', () => {
     })
     mockRequireChannelAccess.mockResolvedValue(null)
     mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: true } })
+    mockUpdateSet.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) })
   })
 
   afterEach(() => {

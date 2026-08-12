@@ -234,6 +234,18 @@ async function anonymizeAndRevoke(
     await tx.delete(aiNudges).where(sql`
       ${aiNudges.messageId} in (select id from messages where sender_id = ${userId})
     `)
+    await tx.execute(sql`
+      select 1 from projects
+      where id in (select project_id from project_members where user_id = ${userId})
+      order by id
+      for update
+    `)
+    await tx.delete(documentChunks).where(sql`
+      ${documentChunks.sourceType} = 'project'
+      and ${documentChunks.sourceId} in (
+        select project_id from project_members where user_id = ${userId}
+      )
+    `)
     await tx.delete(documentChunks).where(sql`
       ${documentChunks.sourceType} = 'file'
       and ${documentChunks.sourceId} in (
