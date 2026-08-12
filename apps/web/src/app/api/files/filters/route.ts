@@ -8,6 +8,7 @@ import {
   savedFileFilterInputSchema,
   type SavedFileFilterDto,
 } from '@/lib/files/saved-file-filter'
+import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 export async function GET() {
   const { ctx, error } = await getAuthContext()
@@ -69,16 +70,26 @@ export async function POST(req: Request) {
   try {
     const { db, savedFileFilters } = await import('@cairn/db')
 
-    const [row] = await db
-      .insert(savedFileFilters)
-      .values({
-        workspaceId: ctx.workspaceId,
-        userId: ctx.userId,
-        name: parsed.data.name,
-        conditions: parsed.data.conditions,
-      })
-      .onConflictDoNothing()
-      .returning()
+    const row = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async (tx) => {
+      const [created] = await tx
+        .insert(savedFileFilters)
+        .values({
+          workspaceId: ctx.workspaceId,
+          userId: ctx.userId,
+          name: parsed.data.name,
+          conditions: parsed.data.conditions,
+        })
+        .onConflictDoNothing()
+        .returning()
+      return created ?? undefined
+    })
+
+    if (row === null) {
+      return NextResponse.json(
+        { error: 'ワークスペースへのアクセス権がありません' },
+        { status: 403 },
+      )
+    }
 
     if (!row) {
       return NextResponse.json({ error: '同じ名前のフィルターがすでにあります' }, { status: 409 })
