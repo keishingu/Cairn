@@ -13,6 +13,7 @@ const {
   mockSelectLimit,
   mockInsertReturning,
   mockTransaction,
+  mockRunForActiveMembership,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockGetWorkspaceRole: vi.fn(),
@@ -23,10 +24,14 @@ const {
   mockSelectLimit: vi.fn(),
   mockInsertReturning: vi.fn(),
   mockTransaction: vi.fn(),
+  mockRunForActiveMembership: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/access/membership', () => ({ getWorkspaceRole: mockGetWorkspaceRole }))
+vi.mock('@/lib/access/active-membership-lock', () => ({
+  runForActiveMembership: mockRunForActiveMembership,
+}))
 vi.mock('@/lib/billing/is-billing-enabled', () => ({ isBillingEnabled: () => true }))
 vi.mock('@/lib/billing/stripe', () => ({
   getIndividualSubscriptionPriceId: () => 'price_individual',
@@ -86,7 +91,15 @@ describe('POST /api/billing/checkout', () => {
           where: () => ({ limit: mockSelectLimit }),
         }),
       }),
+      insert: () => ({
+        values: () => ({
+          onConflictDoNothing: () => ({ returning: mockInsertReturning }),
+        }),
+      }),
     }))
+    mockRunForActiveMembership.mockImplementation((_db, _workspaceId, _userId, callback) =>
+      mockTransaction(callback),
+    )
   })
 
   it('顧客作成の競合時は永続化済みCustomerでCheckoutを作成する', async () => {
@@ -148,6 +161,20 @@ describe('POST /api/billing/checkout', () => {
     }))
 
     expect(res.status).toBe(409)
+    expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
+  })
+
+  it('退会済みならStripe CustomerやCheckoutを作成しない', async () => {
+    mockRunForActiveMembership.mockResolvedValue(null)
+
+    const { POST } = await import('./route')
+    const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ quantity: 1 }),
+    }))
+
+    expect(res.status).toBe(403)
+    expect(mockStripeCustomersCreate).not.toHaveBeenCalled()
     expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
   })
 })

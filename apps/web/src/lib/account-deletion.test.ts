@@ -21,18 +21,12 @@ function createDependencies(): AccountDeletionDependencies & {
       calls.push('owners')
       return []
     }),
-    readContext: vi.fn(async () => {
-      calls.push('context')
-      return {
-        billingCustomerId: 'cus_1',
-      }
-    }),
     deleteBillingCustomer: vi.fn(async () => {
       calls.push('billing')
     }),
-    anonymizeAndRevoke: vi.fn(async (_userId, _now, context, deleteBillingCustomer) => {
+    anonymizeAndRevoke: vi.fn(async (_userId, _now, deleteBillingCustomer) => {
       calls.push('anonymize')
-      await deleteBillingCustomer(context.billingCustomerId)
+      await deleteBillingCustomer('cus_1')
       return 'storage-job-1'
     }),
     enqueueStorageDeletion: vi.fn(async () => {
@@ -52,7 +46,6 @@ describe('アカウント削除', () => {
 
     expect(dependencies.calls).toEqual([
       'owners',
-      'context',
       'anonymize',
       'billing',
       'storage-enqueue',
@@ -73,7 +66,6 @@ describe('アカウント削除', () => {
     )
 
     expect(dependencies.calls).toEqual([])
-    expect(dependencies.readContext).not.toHaveBeenCalled()
   })
 
   it('匿名化に失敗したらStorageやAuthユーザーを削除しない', async () => {

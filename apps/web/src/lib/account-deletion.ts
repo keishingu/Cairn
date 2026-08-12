@@ -67,10 +67,6 @@ interface StorageDeletionTarget {
   paths: string[]
 }
 
-interface DeletionContext {
-  billingCustomerId: string | null
-}
-
 export class LastOwnerAccountDeletionError extends Error {
   constructor(readonly workspaces: BlockingOwnerWorkspace[]) {
     super('最後のオーナーであるワークスペースがあります')
@@ -79,13 +75,11 @@ export class LastOwnerAccountDeletionError extends Error {
 }
 
 export interface AccountDeletionDependencies {
-  readContext(userId: string): Promise<DeletionContext>
   findBlockingOwnerWorkspaces(userId: string): Promise<BlockingOwnerWorkspace[]>
   deleteBillingCustomer(customerId: string | null): Promise<void>
   anonymizeAndRevoke(
     userId: string,
     now: Date,
-    context: DeletionContext,
     deleteBillingCustomer: (customerId: string | null) => Promise<void>,
   ): Promise<string | null>
   enqueueStorageDeletion(jobId: string | null): Promise<void>
@@ -116,18 +110,6 @@ async function findBlockingOwnerWorkspaces(
   `)
 
   return result.rows
-}
-
-async function readContext(userId: string): Promise<DeletionContext> {
-  const [billingCustomer] = await db
-    .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
-    .from(billingCustomers)
-    .where(eq(billingCustomers.userId, userId))
-    .limit(1)
-
-  return {
-    billingCustomerId: billingCustomer?.stripeCustomerId ?? null,
-  }
 }
 
 export function buildStorageDeletionTargets(
@@ -180,7 +162,6 @@ async function deleteBillingCustomer(customerId: string | null): Promise<void> {
 async function anonymizeAndRevoke(
   userId: string,
   now: Date,
-  context: DeletionContext,
   deleteCustomer: (customerId: string | null) => Promise<void>,
 ): Promise<string | null> {
   return db.transaction(async (tx) => {
@@ -203,6 +184,12 @@ async function anonymizeAndRevoke(
     const blocked = await findBlockingOwnerWorkspaces(tx, userId)
     if (blocked.length > 0) throw new LastOwnerAccountDeletionError(blocked)
 
+    const [billingCustomer] = await tx
+      .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
+      .from(billingCustomers)
+      .where(eq(billingCustomers.userId, userId))
+      .limit(1)
+
     // 排他membershipロック取得後に列挙する。先行中のavatar更新は完了まで待ち、
     // 後続の更新は退会commit後にactive再確認で拒否されるため、一覧が陳腐化しない。
     const memberships = await tx
@@ -212,12 +199,17 @@ async function anonymizeAndRevoke(
     const avatarPaths: string[] = []
     const admin = createServiceRoleClient()
     for (const workspaceId of new Set(memberships.map((membership) => membership.workspaceId))) {
-      const { data, error } = await admin.storage.from('avatars').list(workspaceId, {
-        search: userId,
-      })
-      if (error) throw error
-      for (const item of data) {
-        if (item.name.startsWith(`${userId}.`)) avatarPaths.push(`${workspaceId}/${item.name}`)
+      for (let offset = 0; ; offset += 100) {
+        const { data, error } = await admin.storage.from('avatars').list(workspaceId, {
+          search: userId,
+          limit: 100,
+          offset,
+        })
+        if (error) throw error
+        for (const item of data) {
+          if (item.name.startsWith(`${userId}.`)) avatarPaths.push(`${workspaceId}/${item.name}`)
+        }
+        if (data.length < 100) break
       }
     }
 
@@ -393,7 +385,7 @@ async function anonymizeAndRevoke(
     // owner集合をロックしたトランザクション内で課金停止まで完了させる。
     // これによりowner競合でDB処理だけロールバックしたのに課金だけ止まる状態を避ける。
     // Stripe成功後にDB commitが失敗しても、再試行時のresource_missingは成功扱いになる。
-    await deleteCustomer(context.billingCustomerId)
+    await deleteCustomer(billingCustomer?.stripeCustomerId ?? null)
     await tx.delete(billingCustomers).where(eq(billingCustomers.userId, userId))
 
     return storageDeletionJobId
@@ -416,7 +408,6 @@ async function deleteAuthUser(userId: string): Promise<void> {
 }
 
 const defaultDependencies: AccountDeletionDependencies = {
-  readContext,
   findBlockingOwnerWorkspaces: (userId) => findBlockingOwnerWorkspaces(db, userId),
   deleteBillingCustomer,
   anonymizeAndRevoke,
@@ -431,11 +422,9 @@ export async function deleteAccount(
   const blocked = await dependencies.findBlockingOwnerWorkspaces(userId)
   if (blocked.length > 0) throw new LastOwnerAccountDeletionError(blocked)
 
-  const context = await dependencies.readContext(userId)
   const storageDeletionJobId = await dependencies.anonymizeAndRevoke(
     userId,
     new Date(),
-    context,
     dependencies.deleteBillingCustomer,
   )
   await dependencies.enqueueStorageDeletion(storageDeletionJobId)
