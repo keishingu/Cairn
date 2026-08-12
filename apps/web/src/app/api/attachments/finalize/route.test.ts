@@ -22,6 +22,7 @@ const {
   mockRecordStorageUsageDelta,
   mockSelectLimit,
   mockTransactionSelectLimit,
+  mockDeleteWhere,
   mockLockActiveMembership,
   mockHasAttachmentUploadRequestSchema,
 } = vi.hoisted(() => ({
@@ -38,6 +39,7 @@ const {
   mockSelectLimit: vi.fn(),
   mockInsertReturning: vi.fn(),
   mockTransactionSelectLimit: vi.fn(),
+  mockDeleteWhere: vi.fn().mockResolvedValue(undefined),
   mockLockActiveMembership: vi.fn().mockResolvedValue(true),
   mockHasAttachmentUploadRequestSchema: vi.fn().mockResolvedValue(true),
   mockInsertValues: vi.fn((v: Record<string, unknown>) => ({
@@ -106,7 +108,7 @@ vi.mock('@cairn/db', () => ({
         execute: vi.fn().mockResolvedValue(undefined),
         insert: () => ({ values: mockInsertValues }),
         update: () => ({ set: () => ({ where: vi.fn().mockResolvedValue(undefined) }) }),
-        delete: () => ({ where: vi.fn().mockResolvedValue(undefined) }),
+        delete: () => ({ where: mockDeleteWhere }),
         select: () => ({
           from: () => ({
             where: () => {
@@ -245,6 +247,7 @@ describe('/api/attachments/finalize のアクセス制御', () => {
 
     expect(res.status).toBe(403)
     expect(mockRemove).toHaveBeenCalledWith([storagePathFor('x.pdf')])
+    expect(mockDeleteWhere).not.toHaveBeenCalled()
     expect(mockInsertValues).not.toHaveBeenCalled()
   })
 

@@ -152,7 +152,8 @@ export async function POST(req: Request) {
       const { error: removeError } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove(paths)
       if (removeError)
         throw new Error(`Failed to remove rejected attachment: ${removeError.message}`)
-      await tx.delete(uploadRequests).where(eq(uploadRequests.id, uploadRequest.id))
+      // 署名URLは拒否後もしばらく有効なため、意図レコードは期限切れ清掃まで残す。
+      // 後着の PUT でオブジェクトが再作成されても hourly cleanup が回収できる。
       return null
     })
 

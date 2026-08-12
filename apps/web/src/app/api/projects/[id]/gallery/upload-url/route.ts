@@ -17,6 +17,7 @@ import {
 } from '@/lib/gallery-upload'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { lockActiveMembership } from '@/lib/access/active-membership-lock'
+import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -89,6 +90,13 @@ export async function POST(req: Request, { params }: RouteContext) {
           extensionForFile(originalMetadata.fileName, originalMetadata.mimeType),
         )
       : null
+
+    if (!(await hasAttachmentUploadRequestSchema(db))) {
+      return NextResponse.json(
+        { error: 'アップロード機能を更新中です。少し待ってから再試行してください' },
+        { status: 503 },
+      )
+    }
 
     const expiresAt = new Date(Date.now() + UPLOAD_REQUEST_FALLBACK_EXPIRY_MS)
     const [uploadRequest] = await db.transaction(async (tx) => {
