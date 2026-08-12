@@ -69,6 +69,7 @@ interface StorageDeletionTarget {
 interface DeletionContext {
   billingCustomerId: string | null
   avatarPaths: string[]
+  pendingAttachmentPaths: string[]
 }
 
 export class LastOwnerAccountDeletionError extends Error {
@@ -132,6 +133,7 @@ async function readContext(userId: string): Promise<DeletionContext> {
   ])
 
   const avatarPaths: string[] = []
+  const pendingAttachmentPaths: string[] = []
   const admin = createServiceRoleClient()
   for (const workspaceId of new Set(memberships.map((membership) => membership.workspaceId))) {
     const { data, error } = await admin.storage.from('avatars').list(workspaceId, {
@@ -141,11 +143,35 @@ async function readContext(userId: string): Promise<DeletionContext> {
     for (const item of data) {
       if (item.name.startsWith(`${userId}.`)) avatarPaths.push(`${workspaceId}/${item.name}`)
     }
+
+    for (let offset = 0; ; offset += 100) {
+      const { data: channelFolders, error: channelError } = await admin.storage
+        .from(ATTACHMENTS_BUCKET)
+        .list(workspaceId, { limit: 100, offset })
+      if (channelError) throw channelError
+
+      for (const folder of channelFolders) {
+        if (folder.id) continue
+        const prefix = `${workspaceId}/${folder.name}/${userId}`
+        for (let objectOffset = 0; ; objectOffset += 100) {
+          const { data: objects, error: objectError } = await admin.storage
+            .from(ATTACHMENTS_BUCKET)
+            .list(prefix, { limit: 100, offset: objectOffset })
+          if (objectError) throw objectError
+          for (const object of objects) {
+            if (object.id) pendingAttachmentPaths.push(`${prefix}/${object.name}`)
+          }
+          if (objects.length < 100) break
+        }
+      }
+      if (channelFolders.length < 100) break
+    }
   }
 
   return {
     billingCustomerId: billingCustomer?.stripeCustomerId ?? null,
     avatarPaths,
+    pendingAttachmentPaths,
   }
 }
 
@@ -153,6 +179,7 @@ export function buildStorageDeletionTargets(
   avatarPaths: string[],
   storedFiles: StoredFile[],
   pendingUploads: PendingUpload[],
+  pendingAttachmentPaths: string[] = [],
 ): StorageDeletionTarget[] {
   const pathsByBucket = new Map<string, Set<string>>()
   const add = (bucket: string, path: string | null) => {
@@ -176,6 +203,7 @@ export function buildStorageDeletionTargets(
     add(GALLERY_BUCKET, upload.derivedStoragePath)
     add(GALLERY_ORIGINALS_BUCKET, upload.originalStoragePath)
   }
+  for (const path of pendingAttachmentPaths) add(ATTACHMENTS_BUCKET, path)
 
   return [...pathsByBucket].map(([bucket, paths]) => ({ bucket, paths: [...paths] }))
 }
@@ -365,6 +393,7 @@ async function anonymizeAndRevoke(
         isGallery: galleryFileIds.has(file.id),
       })),
       removedUploads,
+      context.pendingAttachmentPaths,
     )
     let storageDeletionJobId: string | null = null
     if (storageTargets.length > 0) {

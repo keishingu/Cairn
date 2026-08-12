@@ -64,7 +64,7 @@ export async function POST(req: Request) {
 
   // storagePath は upload-url が発行した `${workspaceId}/${channelId}/...` 形式のはず。
   // クライアントが任意のパスを渡して他ワークスペースのオブジェクトを登録できないよう検証する
-  const expectedPrefix = `${ctx.workspaceId}/${channelId}/`
+  const expectedPrefix = `${ctx.workspaceId}/${channelId}/${ctx.userId}/`
   if (!storagePath.startsWith(expectedPrefix) || storagePath.includes('..')) {
     return NextResponse.json({ error: '不正な storagePath です' }, { status: 400 })
   }

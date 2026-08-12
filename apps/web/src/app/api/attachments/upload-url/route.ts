@@ -56,7 +56,8 @@ export async function POST(req: Request) {
   }
 
   const ext = resolveStorageExtension(fileName, normalizedMime)
-  const storagePath = `${ctx.workspaceId}/${channelId}/${crypto.randomUUID()}.${ext}`
+  // 未finalizeのオブジェクトも退会時に本人単位で列挙できるよう、userIdで名前空間化する。
+  const storagePath = `${ctx.workspaceId}/${channelId}/${ctx.userId}/${crypto.randomUUID()}.${ext}`
 
   const supabase = createServiceRoleClient()
   const { data, error: signError } = await supabase.storage

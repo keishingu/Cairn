@@ -92,7 +92,7 @@ describe('/api/attachments/upload-url', () => {
     const body = await res.json() as { token: string; storagePath: string; mimeType: string }
     expect(body.token).toBe('tok')
     expect(body.mimeType).toBe('text/csv')
-    expect(body.storagePath.startsWith(`${DEV_WORKSPACE_ID}/${CHANNEL_ID}/`)).toBe(true)
+    expect(body.storagePath.startsWith(`${DEV_WORKSPACE_ID}/${CHANNEL_ID}/${DEV_USER_ID}/`)).toBe(true)
   })
 
   it('拡張子が無いファイル名ではMIMEタイプから保存パスの拡張子を補完する', async () => {
@@ -107,7 +107,7 @@ describe('/api/attachments/upload-url', () => {
     expect(res.status).toBe(200)
     const body = await res.json() as { storagePath: string; mimeType: string }
     expect(body.mimeType).toBe('application/pdf')
-    expect(body.storagePath.startsWith(`${DEV_WORKSPACE_ID}/${CHANNEL_ID}/`)).toBe(true)
+    expect(body.storagePath.startsWith(`${DEV_WORKSPACE_ID}/${CHANNEL_ID}/${DEV_USER_ID}/`)).toBe(true)
     expect(body.storagePath.endsWith('.pdf')).toBe(true)
   })
 })

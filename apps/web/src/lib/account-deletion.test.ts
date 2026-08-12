@@ -26,6 +26,7 @@ function createDependencies(): AccountDeletionDependencies & {
       return {
         billingCustomerId: 'cus_1',
         avatarPaths: [],
+        pendingAttachmentPaths: [],
       }
     }),
     deleteBillingCustomer: vi.fn(async () => {
@@ -112,12 +113,17 @@ describe('アカウント削除', () => {
             derivedStoragePath: 'workspace-1/gallery/pending-derived.jpg',
           },
         ],
+        ['workspace-1/channel-1/user-1/pending.pdf'],
       ),
     ).toEqual([
       { bucket: 'avatars', paths: ['workspace-1/user-1.png'] },
       {
         bucket: 'chat-attachments',
-        paths: ['workspace-1/chat/file.pdf', 'workspace-1/chat/thumb/file.jpg'],
+        paths: [
+          'workspace-1/chat/file.pdf',
+          'workspace-1/chat/thumb/file.jpg',
+          'workspace-1/channel-1/user-1/pending.pdf',
+        ],
       },
       {
         bucket: 'gallery-originals',

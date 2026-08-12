@@ -127,7 +127,7 @@ function post(body: unknown): Request {
 }
 
 function storagePathFor(name: string): string {
-  return `${DEV_WORKSPACE_ID}/${CHANNEL_ID}/${name}`
+  return `${DEV_WORKSPACE_ID}/${CHANNEL_ID}/${DEV_USER_ID}/${name}`
 }
 
 describe('/api/attachments/finalize のアクセス制御', () => {
