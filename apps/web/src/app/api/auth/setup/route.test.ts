@@ -18,6 +18,7 @@ const { mockUser, mockSupabase, mockDb } = vi.hoisted(() => {
   const mockDb = {
     select: vi.fn(),
     insert: vi.fn(),
+    transaction: vi.fn(),
   }
   return { mockUser, mockSupabase, mockDb }
 })
@@ -68,6 +69,10 @@ vi.mock('@/lib/inngest/client', () => ({
   inngest: { send: vi.fn().mockResolvedValue(undefined) },
 }))
 
+vi.mock('@/lib/access/account-lifecycle-lock', () => ({
+  lockUsableAccount: vi.fn().mockResolvedValue(true),
+}))
+
 /** 単一結果を返す select チェーン */
 function selectChain(result: unknown[]) {
   return {
@@ -96,6 +101,9 @@ function insertChainReturning(result: unknown[]) {
 describe('POST /api/auth/setup', () => {
   beforeEach(() => {
     process.env['DATABASE_URL'] = 'postgresql://test'
+    mockDb.transaction.mockImplementation(async (callback: (tx: typeof mockDb) => unknown) =>
+      callback(mockDb),
+    )
   })
 
   afterEach(() => {
@@ -201,5 +209,23 @@ describe('POST /api/auth/setup', () => {
     expect(res.status).toBe(200)
     // profiles も含めて insert が5回（profiles / workspaces / channels / projectStatuses / workspaceMembers）
     expect(mockDb.insert).toHaveBeenCalledTimes(5)
+  })
+
+  it('退会開始済みなら新規ワークスペースを作成しない', async () => {
+    const { lockUsableAccount } = await import('@/lib/access/account-lifecycle-lock')
+    vi.mocked(lockUsableAccount).mockResolvedValueOnce(false)
+    mockDb.select.mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('http://localhost/api/auth/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceName: '復活させない' }),
+      }),
+    )
+
+    expect(res.status).toBe(410)
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 })

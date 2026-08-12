@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/get-auth-context'
+import { lockUsableAccount } from '@/lib/access/account-lifecycle-lock'
 
 export async function POST(
   _req: Request,
@@ -38,6 +39,9 @@ export async function POST(
     }
 
     const result = await db.transaction(async (tx) => {
+      if (!(await lockUsableAccount(tx, userId))) {
+        return { ok: false as const, status: 410, error: 'Account deletion is in progress' }
+      }
       await tx.execute(sql`
         select 1
         from workspace_members

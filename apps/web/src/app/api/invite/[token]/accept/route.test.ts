@@ -88,6 +88,10 @@ vi.mock('@/lib/inngest/client', () => ({
   inngest: { send: vi.fn().mockResolvedValue(undefined) },
 }))
 
+vi.mock('@/lib/access/account-lifecycle-lock', () => ({
+  lockUsableAccount: vi.fn().mockResolvedValue(true),
+}))
+
 const VALID_TOKEN = 'valid-token-abc123'
 const WORKSPACE_ID = 'ws-00000001'
 
@@ -182,6 +186,30 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(body.workspaceId).toBe(WORKSPACE_ID)
     // update は呼ばれないこと（use_count が増えない・再活性化もしない）
     expect(mockDb.update).not.toHaveBeenCalled()
+  })
+
+  it('退会開始済みなら招待をclaimせず所属を作成しない', async () => {
+    const { lockUsableAccount } = await import('@/lib/access/account-lifecycle-lock')
+    vi.mocked(lockUsableAccount).mockResolvedValueOnce(false)
+    const invite = {
+      id: 'inv-delete',
+      workspaceId: WORKSPACE_ID,
+      role: 'member',
+      expiresAt: null,
+      maxUses: null,
+      useCount: 0,
+    }
+    mockDb.select.mockReturnValueOnce(selectChain([invite]))
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request(`http://localhost/api/invite/${VALID_TOKEN}/accept`, { method: 'POST' }),
+      { params: Promise.resolve({ token: VALID_TOKEN }) },
+    )
+
+    expect(res.status).toBe(410)
+    expect(mockDb.update).not.toHaveBeenCalled()
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 
   it('非活性（卒業生）メンバーは claim 後に招待ロールで再活性化される', async () => {

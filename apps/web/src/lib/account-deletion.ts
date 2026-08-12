@@ -165,6 +165,16 @@ async function anonymizeAndRevoke(
   deleteCustomer: (customerId: string | null) => Promise<void>,
 ): Promise<string | null> {
   return db.transaction(async (tx) => {
+    // 所属作成・再活性化処理は同じprofiles行を共有ロックする。退会開始を先に
+    // 排他ロックして記録し、DB匿名化後からAuth削除までの隙間でも復帰を拒否する。
+    await tx.execute(sql`select 1 from profiles where id = ${userId} for update`)
+    await tx
+      .update(profiles)
+      .set({
+        accountDeletionStartedAt: sql`coalesce(${profiles.accountDeletionStartedAt}, ${now})`,
+      })
+      .where(eq(profiles.id, userId))
+
     // 対象membershipと同じworkspaceのactive ownerを決定順でロックし、
     // owner移譲とアカウント削除の競合でowner不在になることを防ぐ。
     await tx.execute(sql`

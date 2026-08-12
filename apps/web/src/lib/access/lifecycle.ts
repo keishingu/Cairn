@@ -8,6 +8,7 @@
 
 import { db, workspaceMembers, activeWorkspaceMembers, documentChunks } from '@cairn/db'
 import { and, count, eq, sql } from 'drizzle-orm'
+import { lockUsableAccount } from './account-lifecycle-lock'
 
 export type LifecycleResult =
   | { ok: true }
@@ -97,18 +98,23 @@ export async function reactivateMembership(
   workspaceId: string,
   targetUserId: string,
 ): Promise<LifecycleResult> {
-  const target = await readMembership(db, workspaceId, targetUserId)
-  if (!target) return { ok: false, status: 404, error: 'Member not found' }
-  if (target.membershipStatus === 'active') {
-    return { ok: false, status: 422, error: 'このメンバーは既に活性です' }
-  }
+  return db.transaction(async (tx): Promise<LifecycleResult> => {
+    if (!(await lockUsableAccount(tx, targetUserId))) {
+      return { ok: false, status: 410, error: 'このアカウントは退会処理中です' }
+    }
+    const target = await readMembership(tx, workspaceId, targetUserId)
+    if (!target) return { ok: false, status: 404, error: 'Member not found' }
+    if (target.membershipStatus === 'active') {
+      return { ok: false, status: 422, error: 'このメンバーは既に活性です' }
+    }
 
-  await db
-    .update(workspaceMembers)
-    .set({ membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null })
-    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, targetUserId)))
+    await tx
+      .update(workspaceMembers)
+      .set({ membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null })
+      .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, targetUserId)))
 
-  return { ok: true }
+    return { ok: true }
+  })
 }
 
 // 招待受け入れ時に既存の非活性メンバーシップがあれば再活性化して同一性を保つ。
@@ -118,15 +124,18 @@ export async function reactivateViaInvite(
   workspaceId: string,
   userId: string,
   role?: 'owner' | 'admin' | 'member' | 'guest',
-): Promise<'reactivated' | 'already-active' | 'none'> {
-  const existing = await readMembership(db, workspaceId, userId)
-  if (!existing) return 'none'
-  if (existing.membershipStatus === 'active') return 'already-active'
+): Promise<'reactivated' | 'already-active' | 'none' | 'account-deleted'> {
+  return db.transaction(async (tx) => {
+    if (!(await lockUsableAccount(tx, userId))) return 'account-deleted'
+    const existing = await readMembership(tx, workspaceId, userId)
+    if (!existing) return 'none'
+    if (existing.membershipStatus === 'active') return 'already-active'
 
-  await db
-    .update(workspaceMembers)
-    .set({ membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null, ...(role ? { role } : {}) })
-    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
+    await tx
+      .update(workspaceMembers)
+      .set({ membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null, ...(role ? { role } : {}) })
+      .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
 
-  return 'reactivated'
+    return 'reactivated'
+  })
 }

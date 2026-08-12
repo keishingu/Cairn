@@ -27,6 +27,7 @@ export const profiles = pgTable(
     aiNudgesEnabled: boolean('ai_nudges_enabled').notNull().default(true),
     theme: text('theme').notNull().default('system'),
     accentId: text('accent_id').notNull().default('emerald'),
+    accountDeletionStartedAt: timestamp('account_deletion_started_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
