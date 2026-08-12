@@ -8,8 +8,12 @@
     "android": "expo run:android",
     "build:internal:android": "eas build --platform android --profile preview",
     "build:internal:ios": "eas build --platform ios --profile preview",
+    "build:production:ios": "eas build --platform ios --profile production",
     "device:register:ios": "eas device:create",
     "ios": "expo run:ios",
+    "release:testflight:ios": "eas build --platform ios --profile production --auto-submit",
+    "submit:ios": "eas submit --platform ios --profile production",
+    "submit:ios:latest": "eas submit --platform ios --profile production --latest",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

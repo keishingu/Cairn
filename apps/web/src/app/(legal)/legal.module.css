@@ -1,0 +1,276 @@
+.page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 50% -10%, rgb(16 185 129 / 10%), transparent 34rem), #f8fafc;
+  color: #172033;
+}
+
+.header {
+  width: min(1080px, calc(100% - 40px));
+  height: 72px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid #dce4ea;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: inherit;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-decoration: none;
+}
+
+.mark {
+  width: 25px;
+  height: 25px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 7px;
+  background: #0b1622;
+}
+
+.mark i {
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: #10b981;
+}
+
+.mark i:nth-child(1) {
+  width: 8px;
+}
+.mark i:nth-child(2) {
+  width: 12px;
+}
+.mark i:nth-child(3) {
+  width: 16px;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 13px;
+}
+
+.nav a,
+.footer a {
+  color: #526071;
+  text-decoration: none;
+}
+
+.nav a:hover,
+.footer a:hover {
+  color: #047857;
+}
+
+.article {
+  width: min(800px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 72px 0 96px;
+}
+
+.hero {
+  padding-bottom: 40px;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #059669;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.hero h1 {
+  margin: 0;
+  color: #111827;
+  font-size: clamp(34px, 7vw, 54px);
+  letter-spacing: -0.045em;
+  line-height: 1.12;
+}
+
+.description {
+  max-width: 42rem;
+  margin: 20px 0 0;
+  color: #536173;
+  font-size: 16px;
+  line-height: 1.9;
+}
+
+.updated {
+  margin: 18px 0 0;
+  color: #7a8796;
+  font-size: 12px;
+}
+
+.toc {
+  margin-bottom: 56px;
+  padding: 24px 28px;
+  border: 1px solid #dce4ea;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 72%);
+}
+
+.toc p {
+  margin: 0 0 12px;
+  color: #667386;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.toc ol {
+  margin: 0;
+  padding-left: 20px;
+  columns: 2;
+  column-gap: 36px;
+}
+
+.toc li {
+  padding: 4px 0;
+  break-inside: avoid;
+  color: #718096;
+  font-size: 13px;
+}
+
+.toc a {
+  color: #344256;
+  text-decoration: none;
+}
+
+.toc a:hover {
+  color: #047857;
+}
+
+.sections section {
+  scroll-margin-top: 28px;
+  padding: 0 0 48px;
+}
+
+.sections h2 {
+  margin: 0 0 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  color: #172033;
+  font-size: 21px;
+  letter-spacing: -0.025em;
+}
+
+.sections h2 span {
+  color: #10b981;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.content {
+  color: #4f5d6d;
+  font-size: 14px;
+  line-height: 1.95;
+}
+
+.content p {
+  margin: 0 0 14px;
+}
+.content p:last-child {
+  margin-bottom: 0;
+}
+
+.content ul,
+.content ol {
+  margin: 12px 0 16px;
+  padding-left: 1.5rem;
+}
+
+.content li {
+  margin: 7px 0;
+}
+.content strong {
+  color: #273449;
+}
+
+.content a {
+  color: #047857;
+  text-underline-offset: 3px;
+}
+
+.footer {
+  width: min(1080px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 28px 0 40px;
+  border-top: 1px solid #dce4ea;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: #7a8796;
+  font-size: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .page {
+    background:
+      radial-gradient(circle at 50% -10%, rgb(16 185 129 / 12%), transparent 34rem), #08111b;
+    color: #e5edf5;
+  }
+
+  .header,
+  .footer {
+    border-color: #223143;
+  }
+  .hero h1,
+  .sections h2 {
+    color: #edf4f8;
+  }
+  .description,
+  .content {
+    color: #aebbc9;
+  }
+  .content strong {
+    color: #d9e4ed;
+  }
+  .nav a,
+  .footer a {
+    color: #9dacba;
+  }
+  .toc {
+    border-color: #223143;
+    background: rgb(14 27 40 / 72%);
+  }
+  .toc a {
+    color: #c2ced9;
+  }
+}
+
+@media (max-width: 600px) {
+  .header {
+    height: auto;
+    padding: 18px 0;
+    align-items: flex-start;
+  }
+  .nav {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .article {
+    padding-top: 52px;
+  }
+  .toc ol {
+    columns: 1;
+  }
+  .footer {
+    flex-direction: column;
+  }
+}
