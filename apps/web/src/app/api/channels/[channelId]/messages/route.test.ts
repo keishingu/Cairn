@@ -12,6 +12,7 @@ const {
   mockRequireChannelAccess,
   mockCanAccessFile,
   mockDbSelect,
+  mockDbTransaction,
   mockEq,
   mockIsNull,
   mockInArray,
@@ -25,6 +26,7 @@ const {
   mockRequireChannelAccess: vi.fn(),
   mockCanAccessFile: vi.fn(),
   mockDbSelect: vi.fn(),
+  mockDbTransaction: vi.fn(),
   mockEq: vi.fn(() => Symbol('eq')),
   mockIsNull: vi.fn(() => Symbol('isNull')),
   mockInArray: vi.fn(() => Symbol('inArray')),
@@ -52,7 +54,7 @@ vi.mock('@cairn/shared', () => ({
   },
 }))
 vi.mock('@cairn/db', () => ({
-  db: { select: mockDbSelect },
+  db: { select: mockDbSelect, transaction: mockDbTransaction },
   messages: {
     id: 'messages.id',
     content: 'messages.content',
@@ -66,8 +68,10 @@ vi.mock('@cairn/db', () => ({
   },
   profiles: { id: 'profiles.id', displayName: 'profiles.displayName' },
   workspaceMembers: {
+    id: 'workspaceMembers.id',
     userId: 'workspaceMembers.userId',
     workspaceId: 'workspaceMembers.workspaceId',
+    membershipStatus: 'workspaceMembers.membershipStatus',
     displayName: 'workspaceMembers.displayName',
     avatarUrl: 'workspaceMembers.avatarUrl',
   },
@@ -93,6 +97,8 @@ vi.mock('@cairn/db', () => ({
     mimeType: 'files.mimeType',
     fileSize: 'files.fileSize',
   },
+  channels: { id: 'channels.id', projectId: 'channels.projectId' },
+  tasks: {},
 }))
 vi.mock('drizzle-orm', () => ({
   eq: mockEq,
@@ -121,6 +127,7 @@ function mockSelectResults(...results: unknown[]) {
       where: () => builder,
       orderBy: () => builder,
       limit: () => builder,
+      for: () => builder,
       then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
         Promise.resolve(result).then(resolve, reject),
     }
@@ -164,6 +171,25 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     const res = await POST(req, ctxRouteParams())
     expect(res.status).toBe(403)
     expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID, 'member')
+  })
+
+  it('認可後にmembershipが失効した場合はトランザクション内で投稿を拒否する', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockSelectResults([], [])
+    mockDbTransaction.mockImplementation(async (callback) =>
+      callback({ select: mockDbSelect }),
+    )
+
+    const { POST } = await import('./route')
+    const req = new Request('http://localhost/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'hi' }),
+    })
+    const res = await POST(req, ctxRouteParams())
+
+    expect(res.status).toBe(403)
+    expect(mockDbTransaction).toHaveBeenCalledOnce()
   })
 
   it('GET はリアクションごとの参加者名を返す', async () => {
