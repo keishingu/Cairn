@@ -12,7 +12,10 @@ import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
 import { passesPhaseTwoConfidence } from '@/lib/ai-nudges/llm-nudge-rules'
 import { runForActiveMessageSender } from './message-notification-guard'
-import { runForActiveMembership } from '@/lib/access/active-membership-lock'
+import {
+  runForActiveMembership,
+  runForActiveMemberships,
+} from '@/lib/access/active-membership-lock'
 import { runForActiveFileUploader } from './file-indexing-guard'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
@@ -123,7 +126,12 @@ export const onMessageCreated = inngest.createFunction(
       await step.run('create-dm-notifications', async () => {
         if (members.length === 0) return
         const { notifications } = await import('@cairn/db')
-        await runForActiveMessageSender(messageId, workspaceId, senderId, async (tx) => {
+        await runForActiveMessageSender(
+          messageId,
+          workspaceId,
+          senderId,
+          members.map((member) => member.userId),
+          async (tx) => {
           await tx.insert(notifications).values(
             members.map((m) => ({
               userId: m.userId,
@@ -134,7 +142,8 @@ export const onMessageCreated = inngest.createFunction(
               data: { messageId, channelId, senderName },
             })),
           )
-        })
+          },
+        )
       })
 
       if (members.length > 0) {
@@ -145,7 +154,12 @@ export const onMessageCreated = inngest.createFunction(
         )
 
         await step.run('send-dm-push', async () => {
-          await runForActiveMessageSender(messageId, workspaceId, senderId, async () => {
+          await runForActiveMessageSender(
+            messageId,
+            workspaceId,
+            senderId,
+            unreadRecipients.map((recipient) => recipient.userId),
+            async () => {
             await Promise.allSettled(
               unreadRecipients.map((m) =>
                 sendPushToUser(m.userId, {
@@ -155,7 +169,8 @@ export const onMessageCreated = inngest.createFunction(
                 }),
               ),
             )
-          })
+            },
+          )
         })
       }
       return { mentionNotifications: 0, fileNotifications: 0, dm: true }
@@ -286,7 +301,12 @@ export const onMessageCreated = inngest.createFunction(
         const { and, eq, inArray, sql } = await import('drizzle-orm')
 
         const recipients = [...notifyMentioned].sort((a, b) => a.userId.localeCompare(b.userId))
-        await runForActiveMessageSender(messageId, workspaceId, senderId, async (tx) => {
+        await runForActiveMessageSender(
+          messageId,
+          workspaceId,
+          senderId,
+          recipients.map((recipient) => recipient.userId),
+          async (tx) => {
           // 未参加者はジョブの実行順にかかわらず、すべてのメンションを未読から始める。
           await tx
             .insert(channelReadStates)
@@ -358,7 +378,8 @@ export const onMessageCreated = inngest.createFunction(
                 ),
               ))
           }
-        })
+          },
+        )
       })
       mentionNotifications = notifyMentioned.length
     }
@@ -380,7 +401,12 @@ export const onMessageCreated = inngest.createFunction(
         const extraCount = attachmentFileIds.length - 1
         const body = extraCount > 0 ? `${fileName} ほか ${extraCount} 件` : fileName
 
-        await runForActiveMessageSender(messageId, workspaceId, senderId, async (tx) => {
+        await runForActiveMessageSender(
+          messageId,
+          workspaceId,
+          senderId,
+          members.map((member) => member.userId),
+          async (tx) => {
           await tx.insert(notifications).values(
             members.map((m) => ({
               userId: m.userId,
@@ -391,7 +417,8 @@ export const onMessageCreated = inngest.createFunction(
               data: { messageId, channelId, senderName },
             })),
           )
-        })
+          },
+        )
       })
       fileNotifications = members.length
     }
@@ -406,7 +433,12 @@ export const onMessageCreated = inngest.createFunction(
       )
 
       await step.run('send-mention-push', async () => {
-        await runForActiveMessageSender(messageId, workspaceId, senderId, async () => {
+        await runForActiveMessageSender(
+          messageId,
+          workspaceId,
+          senderId,
+          notifyMentioned.map((recipient) => recipient.userId),
+          async () => {
           await Promise.allSettled(
             [
               ...unreadRecipients.map((m) => ({ recipient: m, updateAppBadge: true })),
@@ -423,7 +455,8 @@ export const onMessageCreated = inngest.createFunction(
               ),
             ),
           )
-        })
+          },
+        )
       })
     }
 
@@ -443,7 +476,7 @@ export const onTaskAssigned = inngest.createFunction(
 
     const created = await step.run('create-task-notification', async () => {
       const { db, notifications } = await import('@cairn/db')
-      return runForActiveMembership(db, workspaceId, assignerId, async (tx) => {
+      return runForActiveMemberships(db, workspaceId, [assignerId, assigneeId], async (tx) => {
         await tx.insert(notifications).values({
           userId: assigneeId,
           workspaceId,
@@ -459,7 +492,7 @@ export const onTaskAssigned = inngest.createFunction(
     if (created) {
       await step.run('send-task-push', async () => {
         const { db } = await import('@cairn/db')
-        await runForActiveMembership(db, workspaceId, assignerId, async () => {
+        await runForActiveMemberships(db, workspaceId, [assignerId, assigneeId], async () => {
           await sendPushToUser(assigneeId, {
             title: `${assignerName} があなたにタスクを割り当てました`,
             body: `「${taskTitle}」- ${projectTitle}`,

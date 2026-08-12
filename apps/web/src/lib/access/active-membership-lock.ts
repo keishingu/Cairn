@@ -13,15 +13,41 @@ export async function lockActiveMembership(
   workspaceId: string,
   userId: string,
 ): Promise<boolean> {
+  return lockActiveMemberships(client, workspaceId, [userId])
+}
+
+export async function lockActiveMemberships(
+  client: SqlClient,
+  workspaceId: string,
+  userIds: string[],
+): Promise<boolean> {
+  const ids = [...new Set(userIds)].sort()
+  if (ids.length === 0) return true
   const result = await client.execute(sql`
-    select 1
+    select user_id
     from workspace_members
     where workspace_id = ${workspaceId}
-      and user_id = ${userId}
+      and user_id in (${sql.join(
+        ids.map((id) => sql`${id}`),
+        sql`, `,
+      )})
       and membership_status = 'active'
+    order by user_id
     for share
   `)
-  return result.rows.length > 0
+  return result.rows.length === ids.length
+}
+
+export async function runForActiveMemberships<T>(
+  client: TransactionClient,
+  workspaceId: string,
+  userIds: string[],
+  action: (tx: Transaction) => Promise<T>,
+): Promise<T | null> {
+  return client.transaction(async (tx) => {
+    if (!(await lockActiveMemberships(tx, workspaceId, userIds))) return null
+    return action(tx)
+  })
 }
 
 export async function runForActiveMembership<T>(

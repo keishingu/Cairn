@@ -3,7 +3,7 @@
 
 import { db } from '@cairn/db'
 import { sql } from 'drizzle-orm'
-import { lockActiveMembership } from '@/lib/access/active-membership-lock'
+import { lockActiveMemberships } from '@/lib/access/active-membership-lock'
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -11,10 +11,11 @@ export async function runForActiveMessageSender<T>(
   messageId: string,
   workspaceId: string,
   senderId: string,
+  recipientIds: string[],
   action: (tx: Transaction) => Promise<T>,
 ): Promise<T | null> {
   return db.transaction(async (tx) => {
-    if (!(await lockActiveMembership(tx, workspaceId, senderId))) return null
+    if (!(await lockActiveMemberships(tx, workspaceId, [senderId, ...recipientIds]))) return null
 
     const source = await tx.execute(sql`
       select 1

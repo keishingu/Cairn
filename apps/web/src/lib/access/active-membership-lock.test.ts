@@ -2,9 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it, vi } from 'vitest'
-import { lockActiveMembership, runForActiveMembership } from './active-membership-lock'
+import {
+  lockActiveMembership,
+  lockActiveMemberships,
+  runForActiveMembership,
+} from './active-membership-lock'
 
-vi.mock('drizzle-orm', () => ({ sql: vi.fn(() => 'lock-query') }))
+vi.mock('drizzle-orm', () => ({
+  sql: Object.assign(vi.fn(() => 'lock-query'), { join: vi.fn(() => 'joined-ids') }),
+}))
 
 describe('active membershipの共有ロック', () => {
   it('active行をロックできた場合だけtrueを返す', async () => {
@@ -19,6 +25,17 @@ describe('active membershipの共有ロック', () => {
     await expect(lockActiveMembership({ execute } as never, 'workspace-1', 'user-1')).resolves.toBe(
       false,
     )
+  })
+
+  it('全受信者をロックできた場合だけtrueを返す', async () => {
+    const execute = vi.fn().mockResolvedValue({ rows: [{ userId: 'user-1' }] })
+    await expect(
+      lockActiveMemberships(
+        { execute } as never,
+        'workspace-1',
+        ['user-2', 'user-1'],
+      ),
+    ).resolves.toBe(false)
   })
 
   it('active membershipがある間だけactionを実行する', async () => {

@@ -8,8 +8,8 @@ const { mockExecute, mockTransaction } = vi.hoisted(() => ({
   mockTransaction: vi.fn(),
 }))
 
-const { mockLockActiveMembership } = vi.hoisted(() => ({
-  mockLockActiveMembership: vi.fn(),
+const { mockLockActiveMemberships } = vi.hoisted(() => ({
+  mockLockActiveMemberships: vi.fn(),
 }))
 
 vi.mock('@cairn/db', () => ({
@@ -20,7 +20,7 @@ vi.mock('@cairn/db', () => ({
 
 vi.mock('drizzle-orm', () => ({ sql: vi.fn(() => 'guard-query') }))
 vi.mock('@/lib/access/active-membership-lock', () => ({
-  lockActiveMembership: mockLockActiveMembership,
+  lockActiveMemberships: mockLockActiveMemberships,
 }))
 
 describe('メッセージ通知の送信元ガード', () => {
@@ -28,26 +28,31 @@ describe('メッセージ通知の送信元ガード', () => {
 
   it('送信者がactiveでメッセージが未削除ならロック中に処理する', async () => {
     mockExecute.mockResolvedValue({ rows: [{ '?column?': 1 }] })
-    mockLockActiveMembership.mockResolvedValue(true)
+    mockLockActiveMemberships.mockResolvedValue(true)
     mockTransaction.mockImplementation((callback) => callback({ execute: mockExecute }))
     const action = vi.fn().mockResolvedValue('sent')
 
     const { runForActiveMessageSender } = await import('./message-notification-guard')
     await expect(
-      runForActiveMessageSender('message-1', 'workspace-1', 'user-1', action),
+      runForActiveMessageSender('message-1', 'workspace-1', 'user-1', ['user-2'], action),
     ).resolves.toBe('sent')
     expect(action).toHaveBeenCalledOnce()
+    expect(mockLockActiveMemberships).toHaveBeenCalledWith(
+      expect.anything(),
+      'workspace-1',
+      ['user-1', 'user-2'],
+    )
   })
 
   it('退会済みまたは削除済みなら通知処理を呼ばない', async () => {
     mockExecute.mockResolvedValue({ rows: [] })
-    mockLockActiveMembership.mockResolvedValue(false)
+    mockLockActiveMemberships.mockResolvedValue(false)
     mockTransaction.mockImplementation((callback) => callback({ execute: mockExecute }))
     const action = vi.fn()
 
     const { runForActiveMessageSender } = await import('./message-notification-guard')
     await expect(
-      runForActiveMessageSender('message-1', 'workspace-1', 'user-1', action),
+      runForActiveMessageSender('message-1', 'workspace-1', 'user-1', ['user-2'], action),
     ).resolves.toBeNull()
     expect(action).not.toHaveBeenCalled()
   })
