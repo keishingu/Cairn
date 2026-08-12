@@ -26,6 +26,7 @@ import {
   startOfJstDay,
   type TaskNudgeCandidate,
 } from './rules'
+import { lockActiveMemberships } from '@/lib/access/active-membership-lock'
 
 const PHASE_ONE_DETECTORS: AiNudgeDetector[] = ['task_due_soon', 'task_overdue', 'task_stalled']
 
@@ -110,6 +111,20 @@ export async function reconcilePhaseOneAiNudges(now = new Date()) {
       if (!row.assigneeId) return []
       return detectTaskNudges({ ...row, assigneeId: row.assigneeId }, now)
     })
+    const recipientsByWorkspace = new Map<string, string[]>()
+    for (const candidate of candidates) {
+      recipientsByWorkspace.set(candidate.workspaceId, [
+        ...(recipientsByWorkspace.get(candidate.workspaceId) ?? []),
+        candidate.userId,
+      ])
+    }
+    for (const [workspaceId, userIds] of [...recipientsByWorkspace].sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
+      if (!(await lockActiveMemberships(tx, workspaceId, userIds))) {
+        return { candidates: candidates.length, created: 0, reactivated: 0, resolved: 0, suppressed: 0 }
+      }
+    }
     await lockWorkspaceCreditBalances(
       tx,
       candidates.map((candidate) => candidate.workspaceId),

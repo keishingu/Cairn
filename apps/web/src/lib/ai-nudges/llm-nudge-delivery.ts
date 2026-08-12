@@ -26,6 +26,7 @@ import {
   shouldResolveDueLlmRiskReminder,
 } from './llm-nudge-rules'
 import type { PhaseTwoChannelInput, PhaseTwoNudgeCandidate } from './llm-nudge-scan'
+import { lockActiveMemberships } from '@/lib/access/active-membership-lock'
 
 export interface PhaseTwoScanResult {
   input: PhaseTwoChannelInput
@@ -267,6 +268,21 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           or(isNull(aiNudges.remindAfter), lte(aiNudges.remindAfter, now)),
         ),
       )
+
+    const recipientsByWorkspace = new Map<string, string[]>()
+    for (const recipient of [...dueReminders, ...candidates]) {
+      recipientsByWorkspace.set(recipient.workspaceId, [
+        ...(recipientsByWorkspace.get(recipient.workspaceId) ?? []),
+        recipient.userId,
+      ])
+    }
+    for (const [workspaceId, userIds] of [...recipientsByWorkspace].sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
+      if (!(await lockActiveMemberships(tx, workspaceId, userIds))) {
+        return { created: 0, reactivated: 0, discarded: candidates.length, channels: enabledResults.length }
+      }
+    }
 
     await lockWorkspaceCreditBalances(tx, [
       ...dueReminders.map((reminder) => reminder.workspaceId),

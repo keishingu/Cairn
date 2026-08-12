@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 const webSchema = z.object({
   deviceType: z.literal('web'),
@@ -35,8 +36,9 @@ export async function POST(req: Request) {
   try {
     const { db, pushSubscriptions } = await import('@cairn/db')
 
-    if (parsed.data.deviceType === 'web') {
-      await db
+    const saved = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async (tx) => {
+      if (parsed.data.deviceType === 'web') {
+        await tx
         .insert(pushSubscriptions)
         .values({
           userId: ctx.userId,
@@ -48,8 +50,8 @@ export async function POST(req: Request) {
           target: [pushSubscriptions.userId, pushSubscriptions.endpoint],
           set: { keys: parsed.data.keys },
         })
-    } else {
-      await db
+      } else {
+        await tx
         .insert(pushSubscriptions)
         .values({
           userId: ctx.userId,
@@ -57,6 +59,14 @@ export async function POST(req: Request) {
           expoToken: parsed.data.expoToken,
         })
         .onConflictDoNothing()
+      }
+      return true
+    })
+    if (!saved) {
+      return NextResponse.json(
+        { error: 'ワークスペースへのアクセス権がありません' },
+        { status: 403 },
+      )
     }
 
     return NextResponse.json({ ok: true })

@@ -4,6 +4,11 @@ import {
   finishNativeAccountDeletion,
 } from '../lib/account-deletion-bridge'
 import { mobileHandoffUrl, webPath } from '../lib/webview-path'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+
+vi.mock('@react-native-async-storage/async-storage', () => ({
+  default: { removeItem: vi.fn().mockResolvedValue(undefined) },
+}))
 
 describe('アプリ内WebViewのパス変換', () => {
   it('webview=1 を相対パスへ付与する', () => {
@@ -30,8 +35,11 @@ describe('WebViewからのアカウント削除通知', () => {
     const signOut = vi.fn().mockResolvedValue(undefined)
     const navigateToLogin = vi.fn()
 
-    await finishNativeAccountDeletion(signOut, navigateToLogin)
+    await finishNativeAccountDeletion('user-1', signOut, navigateToLogin)
 
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith(
+      'cairn:offline-message-queue:v1:user-1',
+    )
     expect(signOut).toHaveBeenCalledOnce()
     expect(navigateToLogin).toHaveBeenCalledOnce()
   })
@@ -40,7 +48,9 @@ describe('WebViewからのアカウント削除通知', () => {
     const signOut = vi.fn().mockRejectedValue(new Error('user already deleted'))
     const navigateToLogin = vi.fn()
 
-    await expect(finishNativeAccountDeletion(signOut, navigateToLogin)).resolves.toBeUndefined()
+    await expect(
+      finishNativeAccountDeletion('user-1', signOut, navigateToLogin),
+    ).resolves.toBeUndefined()
     expect(navigateToLogin).toHaveBeenCalledOnce()
   })
 })
