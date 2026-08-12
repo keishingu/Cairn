@@ -16,6 +16,7 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
 import { UPLOAD_REQUEST_EXPIRY_MS } from '@/lib/gallery-upload'
 import { lockActiveMembership } from '@/lib/access/active-membership-lock'
+import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
 
 // ファイル本体を Vercel の Function 経由で受け取ると 4.5MB のリクエストボディ上限
 // (FUNCTION_PAYLOAD_TOO_LARGE) に阻まれる。そこでメタデータだけを受け取り、
@@ -78,6 +79,12 @@ export async function POST(req: Request) {
   const storagePath = `${ctx.workspaceId}/${channelId}/${ctx.userId}/${crypto.randomUUID()}.${ext}`
 
   const { db, uploadRequests } = await import('@cairn/db')
+  if (!(await hasAttachmentUploadRequestSchema(db))) {
+    return NextResponse.json(
+      { error: 'アップロード機能を更新中です。少し待ってから再試行してください' },
+      { status: 503 },
+    )
+  }
   const uploadRequest = await db.transaction(async (tx) => {
     if (!(await lockActiveMembership(tx, ctx.workspaceId, ctx.userId))) return null
     const [request] = await tx

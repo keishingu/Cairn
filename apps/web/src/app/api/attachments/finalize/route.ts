@@ -16,6 +16,7 @@ import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
 import { lockActiveMembership } from '@/lib/access/active-membership-lock'
+import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
 
 const PAID_STORAGE_ENTITLEMENT_ERROR = 'paid-storage-entitlement-required'
 const MEMBERSHIP_REVOKED_ERROR = 'membership-revoked'
@@ -100,6 +101,13 @@ export async function POST(req: Request) {
         fileSize: existing.fileSize,
       },
       { status: 200 },
+    )
+  }
+
+  if (!(await hasAttachmentUploadRequestSchema(db))) {
+    return NextResponse.json(
+      { error: 'アップロード機能を更新中です。少し待ってから再試行してください' },
+      { status: 503 },
     )
   }
 

@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { and, eq, isNull, lte } from 'drizzle-orm'
+import { and, eq, isNull, lte, sql } from 'drizzle-orm'
 import { db, uploadRequests } from '@cairn/db'
 import { GALLERY_BUCKET, GALLERY_ORIGINALS_BUCKET } from '@/lib/gallery-upload'
 import { createServiceRoleClient } from '@/lib/supabase/service'
@@ -24,7 +24,7 @@ export async function cleanupExpiredUploadRequests(
     .select({
       id: uploadRequests.id,
       derivedStoragePath: uploadRequests.derivedStoragePath,
-      storageBucket: uploadRequests.storageBucket,
+      storageBucket: sql<string>`coalesce(to_jsonb(${uploadRequests})->>'storage_bucket', 'gallery')`,
       originalStoragePath: uploadRequests.originalStoragePath,
     })
     .from(uploadRequests)

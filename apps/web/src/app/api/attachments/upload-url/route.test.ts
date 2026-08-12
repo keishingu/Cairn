@@ -15,6 +15,7 @@ const {
   mockLockActiveMembership,
   mockInsertValues,
   mockDeleteWhere,
+  mockHasAttachmentUploadRequestSchema,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -25,6 +26,7 @@ const {
   mockLockActiveMembership: vi.fn(),
   mockInsertValues: vi.fn(),
   mockDeleteWhere: vi.fn(),
+  mockHasAttachmentUploadRequestSchema: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -39,6 +41,9 @@ vi.mock('@/lib/supabase/service', () => ({
 }))
 vi.mock('@/lib/access/active-membership-lock', () => ({
   lockActiveMembership: mockLockActiveMembership,
+}))
+vi.mock('@/lib/uploads/schema-readiness', () => ({
+  hasAttachmentUploadRequestSchema: mockHasAttachmentUploadRequestSchema,
 }))
 vi.mock('@cairn/db', () => ({
   db: {
@@ -62,6 +67,7 @@ function post(body: unknown): Request {
 
 describe('/api/attachments/upload-url', () => {
   beforeEach(() => {
+    mockHasAttachmentUploadRequestSchema.mockResolvedValue(true)
     mockLockActiveMembership.mockResolvedValue(true)
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
@@ -186,5 +192,22 @@ describe('/api/attachments/upload-url', () => {
       true,
     )
     expect(body.storagePath.endsWith('.pdf')).toBe(true)
+  })
+
+  it('migration適用前は署名付きURLを発行しない', async () => {
+    mockHasAttachmentUploadRequestSchema.mockResolvedValue(false)
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      post({
+        channelId: CHANNEL_ID,
+        fileName: 'a.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 100,
+      }),
+    )
+
+    expect(res.status).toBe(503)
+    expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
   })
 })

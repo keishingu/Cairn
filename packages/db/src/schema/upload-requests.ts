@@ -16,8 +16,9 @@ export const uploadRequests = pgTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
-    // 退会後も署名URLの有効期限までは未確定objectを回収するためintentを残す。
-    requestedBy: uuid('requested_by').references(() => profiles.id, { onDelete: 'set null' }),
+    requestedBy: uuid('requested_by')
+      .notNull()
+      .references(() => profiles.id),
     fileName: text('file_name').notNull(),
     derivedMimeType: text('derived_mime_type').notNull(),
     originalMimeType: text('original_mime_type'),

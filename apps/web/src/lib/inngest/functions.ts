@@ -13,6 +13,7 @@ import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
 import { passesPhaseTwoConfidence } from '@/lib/ai-nudges/llm-nudge-rules'
 import { runForActiveMessageSender } from './message-notification-guard'
 import { runForActiveMembership } from '@/lib/access/active-membership-lock'
+import { runForActiveFileUploader } from './file-indexing-guard'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // DM は Push を抑制し、メンションはバッジ更新なしの Push に切り替えられる。
@@ -674,7 +675,7 @@ export const indexFileChunks = inngest.createFunction(
     await step.run('save-embeddings', async () => {
       const { embedMany } = await import('ai')
       const { openai, EMBEDDING_MODEL } = await import('@/lib/ai/client')
-      const { db, documentChunks } = await import('@cairn/db')
+      const { documentChunks } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
 
       const { embeddings } = await embedMany({
@@ -682,20 +683,22 @@ export const indexFileChunks = inngest.createFunction(
         values: chunks,
       })
 
-      await db
-        .delete(documentChunks)
-        .where(and(eq(documentChunks.sourceType, 'file'), eq(documentChunks.sourceId, fileId)))
+      await runForActiveFileUploader(fileId, workspaceId, async (tx) => {
+        await tx
+          .delete(documentChunks)
+          .where(and(eq(documentChunks.sourceType, 'file'), eq(documentChunks.sourceId, fileId)))
 
-      await db.insert(documentChunks).values(
-        chunks.map((content, i) => ({
-          workspaceId,
-          sourceType: 'file' as const,
-          sourceId: fileId,
-          chunkIndex: i,
-          content,
-          embedding: embeddings[i]!,
-        })),
-      )
+        await tx.insert(documentChunks).values(
+          chunks.map((content, i) => ({
+            workspaceId,
+            sourceType: 'file' as const,
+            sourceId: fileId,
+            chunkIndex: i,
+            content,
+            embedding: embeddings[i]!,
+          })),
+        )
+      })
     })
 
     return { indexed: chunks.length }
@@ -850,51 +853,58 @@ export const indexExternalLink = inngest.createFunction(
     })
 
     await step.run('save-embeddings', async () => {
-      const { db, documentChunks, files } = await import('@cairn/db')
+      const { documentChunks, files } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
-      const [row] = await db
-        .select({ metadata: files.metadata })
-        .from(files)
-        .where(eq(files.id, fileId))
-        .limit(1)
-      if (!row) return
-
-      const meta = Object.assign({}, row.metadata as Record<string, unknown>)
-      const newMeta = { ...meta, indexingStatus: 'indexed' }
+      let embeddings: number[][] = []
 
       if (chunks.length > 0) {
         const { embedMany } = await import('ai')
         const { openai, EMBEDDING_MODEL } = await import('@/lib/ai/client')
 
-        const { embeddings } = await embedMany({
+        const result = await embedMany({
           model: openai.embedding(EMBEDDING_MODEL),
           values: chunks,
         })
-
-        await db
-          .delete(documentChunks)
-          .where(and(eq(documentChunks.sourceType, 'file'), eq(documentChunks.sourceId, fileId)))
-
-        await db.insert(documentChunks).values(
-          chunks.map((content, i) => ({
-            workspaceId,
-            sourceType: 'file' as const,
-            sourceId: fileId,
-            chunkIndex: i,
-            content,
-            embedding: embeddings[i]!,
-          })),
-        )
+        embeddings = result.embeddings
       }
 
-      if (fetchResult.title) {
-        await db
-          .update(files)
-          .set({ fileName: fetchResult.title, metadata: newMeta })
+      await runForActiveFileUploader(fileId, workspaceId, async (tx) => {
+        const [row] = await tx
+          .select({ metadata: files.metadata })
+          .from(files)
           .where(eq(files.id, fileId))
-      } else {
-        await db.update(files).set({ metadata: newMeta }).where(eq(files.id, fileId))
-      }
+          .limit(1)
+        if (!row) return
+
+        const meta = Object.assign({}, row.metadata as Record<string, unknown>)
+        const newMeta = { ...meta, indexingStatus: 'indexed' }
+
+        if (chunks.length > 0) {
+          await tx
+            .delete(documentChunks)
+            .where(and(eq(documentChunks.sourceType, 'file'), eq(documentChunks.sourceId, fileId)))
+
+          await tx.insert(documentChunks).values(
+            chunks.map((content, i) => ({
+              workspaceId,
+              sourceType: 'file' as const,
+              sourceId: fileId,
+              chunkIndex: i,
+              content,
+              embedding: embeddings[i]!,
+            })),
+          )
+        }
+
+        if (fetchResult.title) {
+          await tx
+            .update(files)
+            .set({ fileName: fetchResult.title, metadata: newMeta })
+            .where(eq(files.id, fileId))
+        } else {
+          await tx.update(files).set({ metadata: newMeta }).where(eq(files.id, fileId))
+        }
+      })
     })
 
     return { indexed: chunks.length }
@@ -981,15 +991,24 @@ export const indexMemberChunks = inngest.createFunction(
         value: content,
       })
 
-      await deleteMemberChunks()
-
-      await db.insert(documentChunks).values({
-        workspaceId,
-        sourceType: 'member',
-        sourceId: userId,
-        chunkIndex: 0,
-        content,
-        embedding,
+      await runForActiveMembership(db, workspaceId, userId, async (tx) => {
+        await tx
+          .delete(documentChunks)
+          .where(
+            and(
+              eq(documentChunks.sourceType, 'member'),
+              eq(documentChunks.sourceId, userId),
+              eq(documentChunks.workspaceId, workspaceId),
+            ),
+          )
+        await tx.insert(documentChunks).values({
+          workspaceId,
+          sourceType: 'member',
+          sourceId: userId,
+          chunkIndex: 0,
+          content,
+          embedding,
+        })
       })
     })
 

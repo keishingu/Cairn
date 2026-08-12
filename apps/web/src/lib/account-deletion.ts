@@ -329,7 +329,7 @@ async function anonymizeAndRevoke(
       .select({
         derivedStoragePath: uploadRequests.derivedStoragePath,
         originalStoragePath: uploadRequests.originalStoragePath,
-        storageBucket: uploadRequests.storageBucket,
+        storageBucket: sql<string>`coalesce(to_jsonb(${uploadRequests})->>'storage_bucket', 'gallery')`,
       })
       .from(uploadRequests)
       .where(and(eq(uploadRequests.requestedBy, userId), isNull(uploadRequests.finalizedAt)))

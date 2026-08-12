@@ -23,6 +23,7 @@ const {
   mockSelectLimit,
   mockTransactionSelectLimit,
   mockLockActiveMembership,
+  mockHasAttachmentUploadRequestSchema,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -38,6 +39,7 @@ const {
   mockInsertReturning: vi.fn(),
   mockTransactionSelectLimit: vi.fn(),
   mockLockActiveMembership: vi.fn().mockResolvedValue(true),
+  mockHasAttachmentUploadRequestSchema: vi.fn().mockResolvedValue(true),
   mockInsertValues: vi.fn((v: Record<string, unknown>) => ({
     onConflictDoNothing: () => ({ returning: () => mockInsertReturning(v) }),
   })),
@@ -68,6 +70,9 @@ vi.mock('@/lib/billing/storage-usage', () => ({
 }))
 vi.mock('@/lib/access/active-membership-lock', () => ({
   lockActiveMembership: mockLockActiveMembership,
+}))
+vi.mock('@/lib/uploads/schema-readiness', () => ({
+  hasAttachmentUploadRequestSchema: mockHasAttachmentUploadRequestSchema,
 }))
 vi.mock('@cairn/db', () => ({
   db: {

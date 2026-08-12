@@ -33,6 +33,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   isNull: vi.fn(() => 'isNull'),
   lte: vi.fn(() => 'lte'),
+  sql: vi.fn(() => 'sql'),
 }))
 
 vi.mock('@/lib/supabase/service', () => ({
