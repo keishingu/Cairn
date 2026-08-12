@@ -9,6 +9,7 @@ import { requireProjectAccess } from '@/lib/permissions'
 import { recordStorageUsageDelta } from '@/lib/billing/storage-usage'
 import { GALLERY_BUCKET, GALLERY_ORIGINALS_BUCKET } from '@/lib/gallery-upload'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { lockActiveMembership } from '@/lib/access/active-membership-lock'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -24,6 +25,7 @@ interface StorageObject {
 }
 
 const ORIGINAL_UPLOAD_ENTITLEMENT_ERROR = 'original-upload-entitlement-required'
+const MEMBERSHIP_REVOKED_ERROR = 'membership-revoked'
 
 async function readStorageObject(
   bucket: string,
@@ -194,6 +196,9 @@ export async function POST(req: Request, { params }: RouteContext) {
     const finalized = await (async () => {
       try {
         return await db.transaction(async (tx) => {
+          if (!(await lockActiveMembership(tx, ctx.workspaceId, ctx.userId))) {
+            throw new Error(MEMBERSHIP_REVOKED_ERROR)
+          }
           const [lockedRequest] = await tx
             .select({
               id: uploadRequests.id,
@@ -313,6 +318,12 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     return toResponse(finalized.fileId, finalized.reused ? 200 : 201)
   } catch (err) {
+    if (err instanceof Error && err.message === MEMBERSHIP_REVOKED_ERROR) {
+      return NextResponse.json(
+        { error: 'ワークスペースへのアクセス権がありません' },
+        { status: 403 },
+      )
+    }
     if (err instanceof Error && err.message === ORIGINAL_UPLOAD_ENTITLEMENT_ERROR) {
       return NextResponse.json(
         { error: 'オリジナルを保存するには、残高のある有効な支援が必要です' },

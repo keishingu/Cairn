@@ -21,6 +21,7 @@ vi.mock('@cairn/db', () => ({
   uploadRequests: {
     id: 'upload_requests.id',
     derivedStoragePath: 'upload_requests.derived_storage_path',
+    storageBucket: 'upload_requests.storage_bucket',
     originalStoragePath: 'upload_requests.original_storage_path',
     finalizedAt: 'upload_requests.finalized_at',
     expiresAt: 'upload_requests.expires_at',
@@ -54,6 +55,7 @@ describe('cleanupExpiredUploadRequests', () => {
       {
         id: 'upload-1',
         derivedStoragePath: 'workspace/project/derived/image.jpg',
+        storageBucket: 'gallery',
         originalStoragePath: 'workspace/project/original/image.jpg',
       },
     ])
@@ -72,6 +74,7 @@ describe('cleanupExpiredUploadRequests', () => {
       {
         id: 'upload-1',
         derivedStoragePath: 'workspace/project/derived/image.jpg',
+        storageBucket: 'gallery',
         originalStoragePath: null,
       },
     ])

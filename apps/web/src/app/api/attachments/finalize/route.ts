@@ -14,8 +14,11 @@ import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
+import { lockActiveMembership } from '@/lib/access/active-membership-lock'
 
 const PAID_STORAGE_ENTITLEMENT_ERROR = 'paid-storage-entitlement-required'
+const MEMBERSHIP_REVOKED_ERROR = 'membership-revoked'
 
 // 署名付きURLでのアップロード(upload-url)完了後、files レコードを登録し
 // 検索インデックスジョブを発火する。ファイル本体はここを通らないため
@@ -72,9 +75,9 @@ export async function POST(req: Request) {
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
-  const { creditLedger, db, files, subscriptions, workspaceStorageUsage } =
+  const { creditLedger, db, files, subscriptions, uploadRequests, workspaceStorageUsage } =
     await import('@cairn/db')
-  const { and, eq, gt, sql } = await import('drizzle-orm')
+  const { and, eq, gt, isNull, sql } = await import('drizzle-orm')
 
   // 応答喪失後の再試行は、現在の支援・残高が失効していても既に確定済みの
   // オブジェクトを消してはならない。冪等に既存の登録結果を返す。
@@ -100,6 +103,24 @@ export async function POST(req: Request) {
     )
   }
 
+  const [uploadRequest] = await db
+    .select({ id: uploadRequests.id })
+    .from(uploadRequests)
+    .where(
+      and(
+        eq(uploadRequests.workspaceId, ctx.workspaceId),
+        eq(uploadRequests.requestedBy, ctx.userId),
+        eq(uploadRequests.derivedStoragePath, storagePath),
+        eq(uploadRequests.storageBucket, ATTACHMENTS_BUCKET),
+        isNull(uploadRequests.projectId),
+        isNull(uploadRequests.finalizedAt),
+      ),
+    )
+    .limit(1)
+  if (!uploadRequest) {
+    return NextResponse.json({ error: 'アップロード情報が見つかりません' }, { status: 404 })
+  }
+
   const supabase = createServiceRoleClient()
   const removeIfUnfinalized = async (paths: string[]) =>
     db.transaction(async (tx) => {
@@ -120,9 +141,10 @@ export async function POST(req: Request) {
         .limit(1)
       if (file) return file
 
-      const { error: removeError } = await supabase.storage.from('chat-attachments').remove(paths)
+      const { error: removeError } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove(paths)
       if (removeError)
         throw new Error(`Failed to remove rejected attachment: ${removeError.message}`)
+      await tx.delete(uploadRequests).where(eq(uploadRequests.id, uploadRequest.id))
       return null
     })
 
@@ -132,7 +154,7 @@ export async function POST(req: Request) {
   const folder = storagePath.slice(0, lastSlash)
   const objectName = storagePath.slice(lastSlash + 1)
   const { data: listed, error: listError } = await supabase.storage
-    .from('chat-attachments')
+    .from(ATTACHMENTS_BUCKET)
     .list(folder, { search: objectName })
 
   if (listError) {
@@ -207,6 +229,9 @@ export async function POST(req: Request) {
       .limit(1)
 
     const finalized = await db.transaction(async (tx) => {
+      if (!(await lockActiveMembership(tx, ctx.workspaceId, ctx.userId))) {
+        throw new Error(MEMBERSHIP_REVOKED_ERROR)
+      }
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`attachment:${ctx.workspaceId}:${storagePath}`}, 0))`,
       )
@@ -282,6 +307,10 @@ export async function POST(req: Request) {
           .where(and(eq(files.workspaceId, ctx.workspaceId), eq(files.storagePath, storagePath)))
           .limit(1)
         if (!existing) throw new Error('Conflicted insert returned no rows')
+        await tx
+          .update(uploadRequests)
+          .set({ fileId: existing.id, finalizedAt: new Date() })
+          .where(eq(uploadRequests.id, uploadRequest.id))
         return { file: existing, created: false }
       }
 
@@ -291,6 +320,10 @@ export async function POST(req: Request) {
         { originalBytes: actualSize, derivedBytes: 0 },
         tx,
       )
+      await tx
+        .update(uploadRequests)
+        .set({ fileId: file.id, finalizedAt: new Date() })
+        .where(eq(uploadRequests.id, uploadRequest.id))
       return { file, created: true }
     })
 
@@ -340,6 +373,12 @@ export async function POST(req: Request) {
     if (err instanceof Error && err.message === PAID_STORAGE_ENTITLEMENT_ERROR) {
       return NextResponse.json(
         { error: '無料容量を超えて保存するには、残高のある有効な支援が必要です' },
+        { status: 403 },
+      )
+    }
+    if (err instanceof Error && err.message === MEMBERSHIP_REVOKED_ERROR) {
+      return NextResponse.json(
+        { error: 'ワークスペースへのアクセス権がありません' },
         { status: 403 },
       )
     }

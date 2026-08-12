@@ -24,6 +24,7 @@ export async function cleanupExpiredUploadRequests(
     .select({
       id: uploadRequests.id,
       derivedStoragePath: uploadRequests.derivedStoragePath,
+      storageBucket: uploadRequests.storageBucket,
       originalStoragePath: uploadRequests.originalStoragePath,
     })
     .from(uploadRequests)
@@ -36,7 +37,7 @@ export async function cleanupExpiredUploadRequests(
 
   for (const request of expired) {
     const [{ error: derivedError }, originalResult] = await Promise.all([
-      supabase.storage.from(GALLERY_BUCKET).remove([request.derivedStoragePath]),
+      supabase.storage.from(request.storageBucket).remove([request.derivedStoragePath]),
       request.originalStoragePath
         ? supabase.storage.from(GALLERY_ORIGINALS_BUCKET).remove([request.originalStoragePath])
         : Promise.resolve({ error: null }),

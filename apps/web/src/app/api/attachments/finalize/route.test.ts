@@ -22,6 +22,7 @@ const {
   mockRecordStorageUsageDelta,
   mockSelectLimit,
   mockTransactionSelectLimit,
+  mockLockActiveMembership,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -36,6 +37,7 @@ const {
   mockSelectLimit: vi.fn(),
   mockInsertReturning: vi.fn(),
   mockTransactionSelectLimit: vi.fn(),
+  mockLockActiveMembership: vi.fn().mockResolvedValue(true),
   mockInsertValues: vi.fn((v: Record<string, unknown>) => ({
     onConflictDoNothing: () => ({ returning: () => mockInsertReturning(v) }),
   })),
@@ -57,11 +59,15 @@ vi.mock('@/lib/supabase/service', () => ({
 }))
 vi.mock('@/lib/ai/extract-text', () => ({ isIndexable: mockIsIndexable }))
 vi.mock('@/lib/attachments/thumbnail', () => ({
+  ATTACHMENTS_BUCKET: 'chat-attachments',
   createThumbnailFromStorage: mockCreateThumbnailFromStorage,
 }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 vi.mock('@/lib/billing/storage-usage', () => ({
   recordStorageUsageDelta: mockRecordStorageUsageDelta,
+}))
+vi.mock('@/lib/access/active-membership-lock', () => ({
+  lockActiveMembership: mockLockActiveMembership,
 }))
 vi.mock('@cairn/db', () => ({
   db: {
@@ -79,6 +85,8 @@ vi.mock('@cairn/db', () => ({
       callback: (tx: {
         execute: () => Promise<void>
         insert: () => { values: typeof mockInsertValues }
+        update: () => { set: () => { where: () => Promise<void> } }
+        delete: () => { where: () => Promise<void> }
         select: () => {
           from: () => {
             where: () => {
@@ -92,6 +100,8 @@ vi.mock('@cairn/db', () => ({
       callback({
         execute: vi.fn().mockResolvedValue(undefined),
         insert: () => ({ values: mockInsertValues }),
+        update: () => ({ set: () => ({ where: vi.fn().mockResolvedValue(undefined) }) }),
+        delete: () => ({ where: vi.fn().mockResolvedValue(undefined) }),
         select: () => ({
           from: () => ({
             where: () => {
@@ -114,11 +124,13 @@ vi.mock('@cairn/db', () => ({
   subscriptions: {},
   workspaceStorageUsage: {},
   channels: { projectId: 'c.projectId', id: 'c.id' },
+  uploadRequests: {},
 }))
 vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
   eq: vi.fn(() => 'eq'),
   gt: vi.fn(() => 'gt'),
+  isNull: vi.fn(() => 'isNull'),
   sql: vi.fn(() => 'sql'),
 }))
 
@@ -141,6 +153,7 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     mockSelectLimit
       .mockReset()
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'upload-1' }])
       .mockResolvedValueOnce([{ projectId: null }])
     mockInsertReturning.mockImplementation((values) =>
       Promise.resolve([{ id: 'file-1', ...values }]),
@@ -238,6 +251,7 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     mockSelectLimit
       .mockReset()
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'upload-1' }])
       .mockResolvedValueOnce([{ projectId: null }])
     mockTransactionSelectLimit
       .mockResolvedValueOnce([{ originalBytes: BILLING_CONFIG.freeStorageBytes }])
@@ -272,6 +286,7 @@ describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {
     mockSelectLimit
       .mockReset()
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'upload-1' }])
       .mockResolvedValueOnce([{ projectId: null }])
     mockIsIndexable.mockReturnValue(true)
     mockCreateThumbnailFromStorage.mockResolvedValue(null)

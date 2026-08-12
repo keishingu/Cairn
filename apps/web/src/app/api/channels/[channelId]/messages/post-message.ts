@@ -8,6 +8,7 @@ import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
 import { canAccessFile, type WorkspaceRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { lockActiveMembership } from '@/lib/access/active-membership-lock'
 import type { MessageDto } from './dto'
 
 type PostMessageInput = {
@@ -166,18 +167,7 @@ export async function postMessage({
 
       // 認可後に退会が始まっても投稿を残さないよう、退会処理が排他ロックする
       // membership行を共有ロックし、同じトランザクション内でactiveを再確認する。
-      const [activeMembership] = await tx
-        .select({ id: workspaceMembers.id })
-        .from(workspaceMembers)
-        .where(
-          and(
-            eq(workspaceMembers.userId, userId),
-            eq(workspaceMembers.workspaceId, workspaceId),
-            eq(workspaceMembers.membershipStatus, 'active'),
-          ),
-        )
-        .for('share')
-      if (!activeMembership) return null
+      if (!(await lockActiveMembership(tx, workspaceId, userId))) return null
 
       const [message] = await tx
         .insert(messages)
@@ -233,7 +223,10 @@ export async function postMessage({
     })
 
     if (!inserted) {
-      return NextResponse.json({ error: 'ワークスペースへのアクセス権がありません' }, { status: 403 })
+      return NextResponse.json(
+        { error: 'ワークスペースへのアクセス権がありません' },
+        { status: 403 },
+      )
     }
 
     const [profile] = await db

@@ -33,7 +33,7 @@ import {
   workspaceMembers,
   workspaceInvites,
 } from '@cairn/db'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { recordStorageUsageDelta } from '@/lib/billing/storage-usage'
 import { getStripeClient } from '@/lib/billing/stripe'
@@ -52,6 +52,7 @@ export interface BlockingOwnerWorkspace {
 interface PendingUpload {
   derivedStoragePath: string
   originalStoragePath: string | null
+  storageBucket: string
 }
 
 interface StoredFile {
@@ -69,7 +70,6 @@ interface StorageDeletionTarget {
 interface DeletionContext {
   billingCustomerId: string | null
   avatarPaths: string[]
-  pendingAttachmentPaths: string[]
 }
 
 export class LastOwnerAccountDeletionError extends Error {
@@ -133,7 +133,6 @@ async function readContext(userId: string): Promise<DeletionContext> {
   ])
 
   const avatarPaths: string[] = []
-  const pendingAttachmentPaths: string[] = []
   const admin = createServiceRoleClient()
   for (const workspaceId of new Set(memberships.map((membership) => membership.workspaceId))) {
     const { data, error } = await admin.storage.from('avatars').list(workspaceId, {
@@ -143,35 +142,11 @@ async function readContext(userId: string): Promise<DeletionContext> {
     for (const item of data) {
       if (item.name.startsWith(`${userId}.`)) avatarPaths.push(`${workspaceId}/${item.name}`)
     }
-
-    for (let offset = 0; ; offset += 100) {
-      const { data: channelFolders, error: channelError } = await admin.storage
-        .from(ATTACHMENTS_BUCKET)
-        .list(workspaceId, { limit: 100, offset })
-      if (channelError) throw channelError
-
-      for (const folder of channelFolders) {
-        if (folder.id) continue
-        const prefix = `${workspaceId}/${folder.name}/${userId}`
-        for (let objectOffset = 0; ; objectOffset += 100) {
-          const { data: objects, error: objectError } = await admin.storage
-            .from(ATTACHMENTS_BUCKET)
-            .list(prefix, { limit: 100, offset: objectOffset })
-          if (objectError) throw objectError
-          for (const object of objects) {
-            if (object.id) pendingAttachmentPaths.push(`${prefix}/${object.name}`)
-          }
-          if (objects.length < 100) break
-        }
-      }
-      if (channelFolders.length < 100) break
-    }
   }
 
   return {
     billingCustomerId: billingCustomer?.stripeCustomerId ?? null,
     avatarPaths,
-    pendingAttachmentPaths,
   }
 }
 
@@ -179,7 +154,6 @@ export function buildStorageDeletionTargets(
   avatarPaths: string[],
   storedFiles: StoredFile[],
   pendingUploads: PendingUpload[],
-  pendingAttachmentPaths: string[] = [],
 ): StorageDeletionTarget[] {
   const pathsByBucket = new Map<string, Set<string>>()
   const add = (bucket: string, path: string | null) => {
@@ -200,10 +174,9 @@ export function buildStorageDeletionTargets(
     }
   }
   for (const upload of pendingUploads) {
-    add(GALLERY_BUCKET, upload.derivedStoragePath)
+    add(upload.storageBucket, upload.derivedStoragePath)
     add(GALLERY_ORIGINALS_BUCKET, upload.originalStoragePath)
   }
-  for (const path of pendingAttachmentPaths) add(ATTACHMENTS_BUCKET, path)
 
   return [...pathsByBucket].map(([bucket, paths]) => ({ bucket, paths: [...paths] }))
 }
@@ -283,13 +256,15 @@ async function anonymizeAndRevoke(
     )
     const removedFiles = await tx
       .delete(files)
-      .where(sql`
+      .where(
+        sql`
         ${files.uploadedBy} = ${userId}
         or exists (
           select 1 from gallery_items gi
           where gi.file_id = ${files.id} and gi.uploaded_by = ${userId}
         )
-      `)
+      `,
+      )
       .returning({
         id: files.id,
         workspaceId: files.workspaceId,
@@ -348,13 +323,16 @@ async function anonymizeAndRevoke(
     await tx.delete(aiNudges).where(eq(aiNudges.userId, userId))
     await tx.delete(projectMembers).where(eq(projectMembers.userId, userId))
     await tx.delete(channelMembers).where(eq(channelMembers.userId, userId))
-    const removedUploads = await tx
-      .delete(uploadRequests)
-      .where(eq(uploadRequests.requestedBy, userId))
-      .returning({
+    // signed URLはAuth削除後も有効期限までは使用できるため、intent行は残して
+    // 期限切れcleanupでも再削除する。ここでは現在存在する対象をoutboxへ含める。
+    const pendingUploads = await tx
+      .select({
         derivedStoragePath: uploadRequests.derivedStoragePath,
         originalStoragePath: uploadRequests.originalStoragePath,
+        storageBucket: uploadRequests.storageBucket,
       })
+      .from(uploadRequests)
+      .where(and(eq(uploadRequests.requestedBy, userId), isNull(uploadRequests.finalizedAt)))
     await tx
       .delete(documentChunks)
       .where(and(eq(documentChunks.sourceType, 'member'), eq(documentChunks.sourceId, userId)))
@@ -392,8 +370,7 @@ async function anonymizeAndRevoke(
             : null,
         isGallery: galleryFileIds.has(file.id),
       })),
-      removedUploads,
-      context.pendingAttachmentPaths,
+      pendingUploads,
     )
     let storageDeletionJobId: string | null = null
     if (storageTargets.length > 0) {

@@ -14,6 +14,7 @@ import {
   isGalleryImageMimeType,
 } from '@/lib/gallery-upload'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { lockActiveMembership } from '@/lib/access/active-membership-lock'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -46,7 +47,9 @@ export async function POST(req: Request, { params }: RouteContext) {
       { status: 400 },
     )
   }
-  if (!isGalleryImageMimeType(body.derived.mimeType)) {
+  const originalMetadata = body.original
+  const derivedMetadata = body.derived
+  if (!isGalleryImageMimeType(derivedMetadata.mimeType)) {
     return NextResponse.json({ error: '対応していない圧縮版の画像形式です' }, { status: 400 })
   }
 
@@ -64,40 +67,51 @@ export async function POST(req: Request, { params }: RouteContext) {
     if (forbidden) return forbidden
 
     const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
-    if (entitlements.rights.canUploadOriginal && !isGalleryImageMimeType(body.original.mimeType)) {
+    if (
+      entitlements.rights.canUploadOriginal &&
+      !isGalleryImageMimeType(originalMetadata.mimeType)
+    ) {
       return NextResponse.json({ error: '対応していないオリジナル画像形式です' }, { status: 400 })
     }
     const derivedStoragePath = galleryStoragePath(
       ctx.workspaceId,
       projectId,
       'derived',
-      extensionForFile(body.derived.fileName, body.derived.mimeType),
+      extensionForFile(derivedMetadata.fileName, derivedMetadata.mimeType),
     )
     const originalStoragePath = entitlements.rights.canUploadOriginal
       ? galleryStoragePath(
           ctx.workspaceId,
           projectId,
           'original',
-          extensionForFile(body.original.fileName, body.original.mimeType),
+          extensionForFile(originalMetadata.fileName, originalMetadata.mimeType),
         )
       : null
 
     const expiresAt = new Date(Date.now() + UPLOAD_REQUEST_EXPIRY_MS)
-    const [uploadRequest] = await db
-      .insert(uploadRequests)
-      .values({
-        workspaceId: ctx.workspaceId,
-        projectId,
-        requestedBy: ctx.userId,
-        fileName: body.original.fileName,
-        derivedMimeType: body.derived.mimeType,
-        originalMimeType: originalStoragePath ? body.original.mimeType : null,
-        derivedStoragePath,
-        originalStoragePath,
-        expiresAt,
-      })
-      .returning({ id: uploadRequests.id })
-    if (!uploadRequest) throw new Error('upload request insert returned no rows')
+    const [uploadRequest] = await db.transaction(async (tx) => {
+      if (!(await lockActiveMembership(tx, ctx.workspaceId, ctx.userId))) return []
+      return tx
+        .insert(uploadRequests)
+        .values({
+          workspaceId: ctx.workspaceId,
+          projectId,
+          requestedBy: ctx.userId,
+          fileName: originalMetadata.fileName,
+          derivedMimeType: derivedMetadata.mimeType,
+          originalMimeType: originalStoragePath ? originalMetadata.mimeType : null,
+          derivedStoragePath,
+          originalStoragePath,
+          expiresAt,
+        })
+        .returning({ id: uploadRequests.id })
+    })
+    if (!uploadRequest) {
+      return NextResponse.json(
+        { error: 'ワークスペースへのアクセス権がありません' },
+        { status: 403 },
+      )
+    }
 
     const supabase = createServiceRoleClient()
     const [{ data: derived, error: derivedError }, originalResult] = await Promise.all([

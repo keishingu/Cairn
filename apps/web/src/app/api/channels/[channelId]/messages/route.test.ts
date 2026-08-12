@@ -13,6 +13,7 @@ const {
   mockCanAccessFile,
   mockDbSelect,
   mockDbTransaction,
+  mockLockActiveMembership,
   mockEq,
   mockIsNull,
   mockInArray,
@@ -27,6 +28,7 @@ const {
   mockCanAccessFile: vi.fn(),
   mockDbSelect: vi.fn(),
   mockDbTransaction: vi.fn(),
+  mockLockActiveMembership: vi.fn(),
   mockEq: vi.fn(() => Symbol('eq')),
   mockIsNull: vi.fn(() => Symbol('isNull')),
   mockInArray: vi.fn(() => Symbol('inArray')),
@@ -47,6 +49,9 @@ vi.mock('@/lib/permissions', () => ({
 }))
 
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
+vi.mock('@/lib/access/active-membership-lock', () => ({
+  lockActiveMembership: mockLockActiveMembership,
+}))
 vi.mock('@/lib/chat/checkboxes', () => ({ parseCheckboxes: () => [] }))
 vi.mock('@cairn/shared', () => ({
   postMessageSchema: {
@@ -137,6 +142,7 @@ function mockSelectResults(...results: unknown[]) {
 
 describe('/api/channels/[channelId]/messages のアクセス制御', () => {
   beforeEach(() => {
+    mockLockActiveMembership.mockResolvedValue(true)
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
@@ -155,7 +161,12 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/'), ctxRouteParams())
     expect(res.status).toBe(403)
-    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID, 'member')
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(
+      DEV_WORKSPACE_ID,
+      DEV_USER_ID,
+      CHANNEL_ID,
+      'member',
+    )
   })
 
   it('アクセス権の無いチャンネルでは POST が 403 を返し、投稿できない', async () => {
@@ -170,15 +181,19 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     })
     const res = await POST(req, ctxRouteParams())
     expect(res.status).toBe(403)
-    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID, 'member')
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(
+      DEV_WORKSPACE_ID,
+      DEV_USER_ID,
+      CHANNEL_ID,
+      'member',
+    )
   })
 
   it('認可後にmembershipが失効した場合はトランザクション内で投稿を拒否する', async () => {
     mockRequireChannelAccess.mockResolvedValue(null)
-    mockSelectResults([], [])
-    mockDbTransaction.mockImplementation(async (callback) =>
-      callback({ select: mockDbSelect }),
-    )
+    mockSelectResults([])
+    mockLockActiveMembership.mockResolvedValue(false)
+    mockDbTransaction.mockImplementation(async (callback) => callback({ select: mockDbSelect }))
 
     const { POST } = await import('./route')
     const req = new Request('http://localhost/', {
