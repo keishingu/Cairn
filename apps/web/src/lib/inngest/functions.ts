@@ -11,6 +11,7 @@ import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
 import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
 import { passesPhaseTwoConfidence } from '@/lib/ai-nudges/llm-nudge-rules'
+import { runForActiveMessageSender } from './message-notification-guard'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // DM は Push を抑制し、メンションはバッジ更新なしの Push に切り替えられる。
@@ -119,17 +120,19 @@ export const onMessageCreated = inngest.createFunction(
       // DM はアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
       await step.run('create-dm-notifications', async () => {
         if (members.length === 0) return
-        const { db, notifications } = await import('@cairn/db')
-        await db.insert(notifications).values(
-          members.map((m) => ({
-            userId: m.userId,
-            workspaceId,
-            type: 'dm' as const,
-            title: senderName,
-            body: dmBody.slice(0, 200),
-            data: { messageId, channelId, senderName },
-          })),
-        )
+        const { notifications } = await import('@cairn/db')
+        await runForActiveMessageSender(messageId, workspaceId, senderId, async (tx) => {
+          await tx.insert(notifications).values(
+            members.map((m) => ({
+              userId: m.userId,
+              workspaceId,
+              type: 'dm' as const,
+              title: senderName,
+              body: dmBody.slice(0, 200),
+              data: { messageId, channelId, senderName },
+            })),
+          )
+        })
       })
 
       if (members.length > 0) {
@@ -140,15 +143,17 @@ export const onMessageCreated = inngest.createFunction(
         )
 
         await step.run('send-dm-push', async () => {
-          await Promise.allSettled(
-            unreadRecipients.map((m) =>
-              sendPushToUser(m.userId, {
-                title: senderName,
-                body: dmBody.slice(0, 100),
-                url: `/chats/${channelId}`,
-              }),
-            ),
-          )
+          await runForActiveMessageSender(messageId, workspaceId, senderId, async () => {
+            await Promise.allSettled(
+              unreadRecipients.map((m) =>
+                sendPushToUser(m.userId, {
+                  title: senderName,
+                  body: dmBody.slice(0, 100),
+                  url: `/chats/${channelId}`,
+                }),
+              ),
+            )
+          })
         })
       }
       return { mentionNotifications: 0, fileNotifications: 0, dm: true }
@@ -275,18 +280,11 @@ export const onMessageCreated = inngest.createFunction(
     let mentionNotifications = 0
     if (notifyMentioned.length > 0) {
       await step.run('create-mention-notifications', async () => {
-        const { db, notifications, channelReadStates, messages } = await import('@cairn/db')
+        const { notifications, channelReadStates, messages } = await import('@cairn/db')
         const { and, eq, inArray, sql } = await import('drizzle-orm')
 
-        const [message] = await db
-          .select({ id: messages.id })
-          .from(messages)
-          .where(eq(messages.id, messageId))
-          .limit(1)
-        if (!message) throw new Error(`Message not found: ${messageId}`)
-
         const recipients = [...notifyMentioned].sort((a, b) => a.userId.localeCompare(b.userId))
-        await db.transaction(async (tx) => {
+        await runForActiveMessageSender(messageId, workspaceId, senderId, async (tx) => {
           // 未参加者はジョブの実行順にかかわらず、すべてのメンションを未読から始める。
           await tx
             .insert(channelReadStates)
@@ -380,16 +378,18 @@ export const onMessageCreated = inngest.createFunction(
         const extraCount = attachmentFileIds.length - 1
         const body = extraCount > 0 ? `${fileName} ほか ${extraCount} 件` : fileName
 
-        await db.insert(notifications).values(
-          members.map((m) => ({
-            userId: m.userId,
-            workspaceId,
-            type: 'file' as const,
-            title: `${senderName} がファイルを共有しました`,
-            body,
-            data: { messageId, channelId, senderName },
-          })),
-        )
+        await runForActiveMessageSender(messageId, workspaceId, senderId, async (tx) => {
+          await tx.insert(notifications).values(
+            members.map((m) => ({
+              userId: m.userId,
+              workspaceId,
+              type: 'file' as const,
+              title: `${senderName} がファイルを共有しました`,
+              body,
+              data: { messageId, channelId, senderName },
+            })),
+          )
+        })
       })
       fileNotifications = members.length
     }
@@ -404,22 +404,24 @@ export const onMessageCreated = inngest.createFunction(
       )
 
       await step.run('send-mention-push', async () => {
-        await Promise.allSettled(
-          [
-            ...unreadRecipients.map((m) => ({ recipient: m, updateAppBadge: true })),
-            ...readRecipients.map((m) => ({ recipient: m, updateAppBadge: false })),
-          ].map(({ recipient, updateAppBadge }) =>
-            sendPushToUser(
-              recipient.userId,
-              {
-                title: `${senderName} があなたをメンションしました`,
-                body: mentionBody.slice(0, 100),
-                url: `/chats/${channelId}`,
-              },
-              { updateAppBadge },
+        await runForActiveMessageSender(messageId, workspaceId, senderId, async () => {
+          await Promise.allSettled(
+            [
+              ...unreadRecipients.map((m) => ({ recipient: m, updateAppBadge: true })),
+              ...readRecipients.map((m) => ({ recipient: m, updateAppBadge: false })),
+            ].map(({ recipient, updateAppBadge }) =>
+              sendPushToUser(
+                recipient.userId,
+                {
+                  title: `${senderName} があなたをメンションしました`,
+                  body: mentionBody.slice(0, 100),
+                  url: `/chats/${channelId}`,
+                },
+                { updateAppBadge },
+              ),
             ),
-          ),
-        )
+          )
+        })
       })
     }
 
