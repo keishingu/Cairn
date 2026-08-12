@@ -14,6 +14,7 @@ import {
 } from '@/lib/mcp-oauth'
 import { validateOAuthAuthorizationRequest } from '@/lib/mcp-oauth-authorization'
 import { getWorkspaceRole } from '@/lib/access/membership'
+import { lockActiveMembership } from '@/lib/access/active-membership-lock'
 
 const authorizationKeys = [
   'client_id',
@@ -86,6 +87,9 @@ export async function finishOAuthAuthorization(formData: FormData) {
   const code = createOAuthSecret(OAUTH_AUTHORIZATION_CODE_PREFIX)
   const { db, mcpOAuthAuthorizationCodes, mcpOAuthConnections } = await import('@cairn/db')
   await db.transaction(async (tx) => {
+    if (!(await lockActiveMembership(tx, workspaceId, userId))) {
+      throw new Error('選択したワークスペースの有効なメンバーではありません')
+    }
     const [connection] = await tx
       .insert(mcpOAuthConnections)
       .values({

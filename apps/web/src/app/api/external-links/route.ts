@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess, requireProjectAccess, requireRole } from '@/lib/permissions'
+import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 const GOOGLE_DOC_RE = /https:\/\/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/
 const GOOGLE_SHEET_RE = /https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/
@@ -161,20 +162,30 @@ export async function POST(req: Request) {
       ...(metadataChannelId ? { channelIds: [metadataChannelId] } : {}),
     }
 
-    const [inserted] = await db
-      .insert(files)
-      .values({
-        workspaceId: ctx.workspaceId,
-        projectId,
-        uploadedBy: ctx.userId,
-        storagePath: null,
-        fileName: label,
-        mimeType: null,
-        fileSize: null,
-        fileType: 'link',
-        metadata,
-      })
-      .returning()
+    const inserted = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async (tx) => {
+      const [created] = await tx
+        .insert(files)
+        .values({
+          workspaceId: ctx.workspaceId,
+          projectId,
+          uploadedBy: ctx.userId,
+          storagePath: null,
+          fileName: label,
+          mimeType: null,
+          fileSize: null,
+          fileType: 'link',
+          metadata,
+        })
+        .returning()
+      return created ?? undefined
+    })
+
+    if (inserted === null) {
+      return NextResponse.json(
+        { error: 'ワークスペースへのアクセス権がありません' },
+        { status: 403 },
+      )
+    }
 
     if (!inserted) throw new Error('Insert returned no rows')
 
