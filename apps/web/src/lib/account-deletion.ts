@@ -29,7 +29,6 @@ import {
   pushSubscriptions,
   savedFileFilters,
   storageDeletionJobs,
-  tasks,
   uploadRequests,
   workspaceMembers,
   workspaceInvites,
@@ -226,9 +225,6 @@ async function anonymizeAndRevoke(
     // Appleのアカウント削除要件に合わせ、本人が投稿したメッセージ本文・写真・
     // ファイル・コメント・AI会話を削除する。プロジェクトやタスクなど共同作業の
     // 構造は残し、作成者参照は匿名化したprofilesへ向けたままにする。
-    await tx.delete(tasks).where(sql`
-      ${tasks.sourceMessageId} in (select id from messages where sender_id = ${userId})
-    `)
     await tx.delete(notifications).where(sql`
       ${notifications.data}->>'messageId' in (
         select id::text from messages where sender_id = ${userId}
