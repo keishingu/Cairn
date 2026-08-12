@@ -23,6 +23,10 @@ import {
   decideWebViewNavigation,
   WEBVIEW_ORIGIN_WHITELIST,
 } from '../lib/webview-navigation'
+import {
+  ACCOUNT_DELETED_LOGIN_ROUTE,
+  finishNativeAccountDeletion,
+} from '../lib/account-deletion-bridge'
 
 type ShouldStartLoadRequest = Parameters<
   NonNullable<WebViewProps['onShouldStartLoadWithRequest']>
@@ -207,6 +211,15 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
     }
     if (msg?.type === 'HANDOFF_FAILED') {
       void recoverFromHandoffFailure()
+    }
+    if (msg?.type === 'account-deleted') {
+      // WebView側でAuthユーザーを削除したら、独立して保持しているネイティブの
+      // Supabaseセッションもローカルから消し、認証画面へ戻す。
+      void finishNativeAccountDeletion(
+        () => supabase.auth.signOut({ scope: 'local' }),
+        () => router.replace(ACCOUNT_DELETED_LOGIN_ROUTE),
+      )
+      return
     }
     if (msg?.type === 'open-chats') {
       router.push('/(app)/chats')

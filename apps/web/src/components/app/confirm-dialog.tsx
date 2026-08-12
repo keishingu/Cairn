@@ -9,6 +9,7 @@ interface ConfirmDialogProps {
   message: React.ReactNode
   confirmLabel?: string
   busyLabel?: string
+  confirmDisabled?: boolean
   onConfirm: () => void | Promise<void>
   onClose: () => void
 }
@@ -18,6 +19,7 @@ interface ConfirmDialogProps {
 export const ConfirmDialog = ({
   open, title, message,
   confirmLabel = '削除する', busyLabel = '削除中…',
+  confirmDisabled = false,
   onConfirm, onClose,
 }: ConfirmDialogProps) => {
   const [busy, setBusy] = React.useState(false)
@@ -60,7 +62,7 @@ export const ConfirmDialog = ({
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn" onClick={close} disabled={busy}>キャンセル</button>
-          <button className="btn btn-danger" onClick={handleConfirm} disabled={busy} style={{ opacity: busy ? 0.7 : 1 }}>
+          <button className="btn btn-danger" onClick={handleConfirm} disabled={busy || confirmDisabled} style={{ opacity: busy || confirmDisabled ? 0.7 : 1 }}>
             {busy ? busyLabel : confirmLabel}
           </button>
         </div>

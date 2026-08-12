@@ -25,6 +25,7 @@ import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import type { AccentId } from '@cairn/shared'
 import { FEATURE_FLAGS } from '@cairn/shared'
+import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 
 const CreditPlacementBoard = dynamic(
   () =>
@@ -205,6 +206,7 @@ async function isAnimatedAvatarImage(file: File): Promise<boolean> {
 
 const SettingsAccount = () => {
   const queryClient = useQueryClient()
+  const router = useRouter()
   const { data: user, isLoading } = useQuery<CurrentUserDto>({
     queryKey: ['me'],
     queryFn: () => fetchWithAuth('/api/me').then((r) => r.json()),
@@ -212,6 +214,8 @@ const SettingsAccount = () => {
 
   const [displayName, setDisplayName] = React.useState('')
   const [nameSaved, setNameSaved] = React.useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
+  const [deleteConfirmation, setDeleteConfirmation] = React.useState('')
   const avatarInputRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
@@ -286,6 +290,42 @@ const SettingsAccount = () => {
       )
       void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
       void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    },
+  })
+
+  const deleteAccountMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetchWithAuth('/api/me/account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation: deleteConfirmation }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string
+          workspaces?: { name: string }[]
+        }
+        const workspaceNames = data.workspaces?.map((workspace) => workspace.name).join('、')
+        throw new Error(
+          workspaceNames
+            ? `${data.error ?? 'アカウントを削除できませんでした'} 対象: ${workspaceNames}`
+            : (data.error ?? 'アカウントを削除できませんでした'),
+        )
+      }
+    },
+    onSuccess: async () => {
+      const nativeBridge = (
+        window as typeof window & {
+          ReactNativeWebView?: { postMessage: (message: string) => void }
+        }
+      ).ReactNativeWebView
+      nativeBridge?.postMessage(JSON.stringify({ type: 'account-deleted' }))
+
+      // Authユーザー削除後でもsupabase-jsは404/401を無視してローカル保存を消す。
+      await createSupabaseClient()
+        .auth.signOut({ scope: 'local' })
+        .catch(() => undefined)
+      router.replace('/auth/login?accountDeleted=1')
     },
   })
 
@@ -459,6 +499,87 @@ const SettingsAccount = () => {
           </div>
         </section>
       )}
+
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>危険な操作</h2>
+        <div className="card" style={{ padding: 0 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              padding: '14px 16px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--red-text)' }}>
+                アカウントを削除
+              </div>
+              <div
+                style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 3, lineHeight: 1.6 }}
+              >
+                ログイン情報と個人データを削除し、すべてのワークスペースから退会します。
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-danger"
+              style={{ minHeight: 44, padding: '0 14px', flexShrink: 0 }}
+              onClick={() => {
+                setDeleteConfirmation('')
+                setDeleteDialogOpen(true)
+              }}
+            >
+              アカウントを削除
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title="アカウントを完全に削除しますか？"
+        confirmLabel="完全に削除する"
+        busyLabel="削除中…"
+        confirmDisabled={deleteConfirmation !== '削除'}
+        onClose={() => {
+          setDeleteDialogOpen(false)
+          setDeleteConfirmation('')
+        }}
+        onConfirm={() => deleteAccountMutation.mutateAsync()}
+        message={
+          <div>
+            <p style={{ margin: '0 0 8px' }}>
+              この操作は取り消せません。ログイン情報、プロフィール、外部連携、通知先が削除され、すべてのワークスペースへアクセスできなくなります。
+            </p>
+            <p style={{ margin: '0 0 12px' }}>
+              あなたが投稿したメッセージ、写真、添付ファイル、コメントも削除されます。プロジェクトやタスクなど共同作業の構造は、個人を識別できない「退会済みユーザー」名義で保持されます。支援中の購読は自動的に停止します。
+            </p>
+            <label
+              htmlFor="delete-account-confirmation"
+              style={{ display: 'block', fontWeight: 700 }}
+            >
+              確認のため「削除」と入力してください
+            </label>
+            <input
+              id="delete-account-confirmation"
+              aria-label="アカウント削除の確認"
+              value={deleteConfirmation}
+              onChange={(event) => setDeleteConfirmation(event.target.value)}
+              autoComplete="off"
+              disabled={deleteAccountMutation.isPending}
+              style={{
+                ...inputStyle,
+                boxSizing: 'border-box',
+                width: '100%',
+                minHeight: 42,
+                marginTop: 6,
+              }}
+            />
+          </div>
+        }
+      />
 
       <section style={{ marginBottom: 24 }}>
         <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>法務・サポート</h2>

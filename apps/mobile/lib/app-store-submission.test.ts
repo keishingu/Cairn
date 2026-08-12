@@ -6,7 +6,7 @@ const app = JSON.parse(readFileSync(new URL('../app.json', import.meta.url), 'ut
 }
 const eas = JSON.parse(readFileSync(new URL('../eas.json', import.meta.url), 'utf8')) as {
   build: { production: { autoIncrement: boolean; environment: string; channel: string } }
-  submit: { production: { ios: { metadataPath: string } } }
+  submit: { production: { ios: { ascAppId: string; metadataPath: string } } }
 }
 const mobilePackage = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
@@ -34,6 +34,7 @@ describe('iOS App Store申請設定', () => {
       environment: 'production',
       channel: 'production',
     })
+    expect(eas.submit.production.ios.ascAppId).toBe('6800673777')
     expect(eas.submit.production.ios.metadataPath).toBe('./store.config.json')
     expect(mobilePackage.scripts['release:testflight:ios']).toContain('--auto-submit')
   })

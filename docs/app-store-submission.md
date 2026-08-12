@@ -21,7 +21,7 @@
    - プライマリ言語: 日本語
    - Bundle ID: `com.oss-cairn`
    - SKU: `cairn-ios`
-4. App Informationに表示されたApple IDを、`apps/mobile/eas.json` の `submit.production.ios.ascAppId` に追加する
+4. App Informationに表示されたApple IDが `6800673777` であることと、`apps/mobile/eas.json` の `submit.production.ios.ascAppId` が同じ値であることを確認する
 5. `apps/mobile` で `eas credentials --platform ios` を実行し、production profile用のDistribution Certificate、Provisioning Profile、App Store Connect API Keyを設定する
 6. EASの `production` Environmentに本番の `EXPO_PUBLIC_API_BASE_URL`、`EXPO_PUBLIC_SUPABASE_URL`、`EXPO_PUBLIC_SUPABASE_ANON_KEY` があることを確認する
 
@@ -62,6 +62,7 @@ Review Notesには次を記載する。
 - チャット以外の一部画面は、同じCairnサービスのWeb画面を安全な認証ハンドオフで表示する
 - Googleカレンダー連携、AI、決済など、審査アカウントで有効にしていない任意機能を明記する
 - 主要な確認導線（プロジェクト → チャット → タスク → ファイル → 設定）
+- アカウント削除の導線（設定 → アカウント → アカウントを削除）
 
 ## App Privacyの申告候補
 
@@ -118,11 +119,14 @@ EAS SubmitはApp Store Connect / TestFlightへのアップロードまでを行�
 - オフライン送信キュー、回線復帰時の再送、二重送信が起きないこと
 - ダーク／ライトテーマ、文字サイズ、主要画面のVoiceOverラベル
 - プライバシーポリシー、利用規約、サポートへの導線
+- 使い捨ての一般メンバー用アカウントで、設定 → アカウント → アカウントを削除から退会でき、WebViewとネイティブの両方がログアウトされること
+- 最後のowner用アカウントでは削除が実行されず、owner移譲が必要なワークスペース名が表示されること
+- 退会済みアカウントで再ログインできず、本人のメッセージ・写真・添付ファイルが表示されないこと
 - クラッシュ、白画面、開発用URL・テストデータ・秘密情報が表示されないこと
 
 ## App Review送信前のブロッカー
 
-- [ ] アプリ内からアカウント削除を開始できる機能を実装する
+- [ ] Issue #469のアカウント削除機能をmainへ反映し、TestFlightで一般メンバー／最後のownerの両方を確認する
 - [ ] ユーザー投稿型チャットについて、報告・ブロック・モデレーションの要否と実装を確認する
 - [ ] 運営者の正式名称、非公開問い合わせ先、法務文面を最終確認する
 - [ ] App Store ConnectのApp Privacyを本番構成に合わせて公開する
