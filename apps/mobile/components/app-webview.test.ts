@@ -3,7 +3,7 @@ import {
   ACCOUNT_DELETED_LOGIN_ROUTE,
   finishNativeAccountDeletion,
 } from '../lib/account-deletion-bridge'
-import { webPath } from '../lib/webview-path'
+import { mobileHandoffUrl, webPath } from '../lib/webview-path'
 
 describe('アプリ内WebViewのパス変換', () => {
   it('webview=1 を相対パスへ付与する', () => {
@@ -12,6 +12,12 @@ describe('アプリ内WebViewのパス変換', () => {
 
   it('既存クエリを保ったまま webview=1 を追加する', () => {
     expect(webPath('/projects?open=p1')).toBe('/projects?open=p1&webview=1')
+  })
+
+  it('active workspaceがない設定画面でも認証ハンドオフURLを作る', () => {
+    expect(mobileHandoffUrl('https://oss-cairn.com', '/settings', 'token')).toBe(
+      'https://oss-cairn.com/auth/mobile-handoff?redirect=%2Fsettings%3Fwebview%3D1#th=token',
+    )
   })
 })
 
