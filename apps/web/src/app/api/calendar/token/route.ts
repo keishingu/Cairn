@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { runForUsableAccount } from '@/lib/access/account-lifecycle-lock'
 
 function generateToken(): string {
   const bytes = new Uint8Array(24)
@@ -19,20 +20,23 @@ export async function GET() {
     const { profiles } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
 
-    const [row] = await db
-      .select({ icalToken: profiles.icalToken })
-      .from(profiles)
-      .where(eq(profiles.id, ctx.userId))
+    const token = await runForUsableAccount(db, ctx.userId, async (tx) => {
+      const [row] = await tx
+        .select({ icalToken: profiles.icalToken })
+        .from(profiles)
+        .where(eq(profiles.id, ctx.userId))
+      if (row?.icalToken) return row.icalToken
 
-    if (row?.icalToken) {
-      return NextResponse.json({ token: row.icalToken })
+      const generated = generateToken()
+      await tx
+        .update(profiles)
+        .set({ icalToken: generated })
+        .where(eq(profiles.id, ctx.userId))
+      return generated
+    })
+    if (!token) {
+      return NextResponse.json({ error: 'Account deletion is in progress' }, { status: 410 })
     }
-
-    const token = generateToken()
-    await db
-      .update(profiles)
-      .set({ icalToken: token })
-      .where(eq(profiles.id, ctx.userId))
 
     return NextResponse.json({ token })
   } catch (err) {
@@ -50,11 +54,17 @@ export async function POST() {
     const { profiles } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
 
-    const token = generateToken()
-    await db
-      .update(profiles)
-      .set({ icalToken: token })
-      .where(eq(profiles.id, ctx.userId))
+    const token = await runForUsableAccount(db, ctx.userId, async (tx) => {
+      const generated = generateToken()
+      await tx
+        .update(profiles)
+        .set({ icalToken: generated })
+        .where(eq(profiles.id, ctx.userId))
+      return generated
+    })
+    if (!token) {
+      return NextResponse.json({ error: 'Account deletion is in progress' }, { status: 410 })
+    }
 
     return NextResponse.json({ token })
   } catch (err) {

@@ -18,6 +18,7 @@ const { mockUser, mockSupabase, mockDb } = vi.hoisted(() => {
   const mockDb = {
     select: vi.fn(),
     insert: vi.fn(),
+    execute: vi.fn().mockResolvedValue({ rows: [] }),
     transaction: vi.fn(),
   }
   return { mockUser, mockSupabase, mockDb }
@@ -63,14 +64,17 @@ vi.mock('@cairn/db', () => ({
   },
 }))
 
-vi.mock('drizzle-orm', () => ({ eq: vi.fn(() => 'eq-result') }))
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn(() => 'eq-result'),
+  sql: vi.fn(() => 'sql-result'),
+}))
 
 vi.mock('@/lib/inngest/client', () => ({
   inngest: { send: vi.fn().mockResolvedValue(undefined) },
 }))
 
 vi.mock('@/lib/access/account-lifecycle-lock', () => ({
-  lockUsableAccount: vi.fn().mockResolvedValue(true),
+  lockAccountLifecycle: vi.fn().mockResolvedValue('usable'),
 }))
 
 /** 単一結果を返す select チェーン */
@@ -125,9 +129,7 @@ describe('POST /api/auth/setup', () => {
   })
 
   it('workspaceName なし・メンバーシップなし → needsWorkspace: true', async () => {
-    mockDb.select
-      .mockReturnValueOnce(selectChain([{ id: mockUser.id }])) // プロフィール存在
-      .mockReturnValueOnce(selectChain([]))                    // メンバーシップなし
+    mockDb.select.mockReturnValueOnce(selectChain([]))
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -143,9 +145,7 @@ describe('POST /api/auth/setup', () => {
   })
 
   it('workspaceName なし・メンバーシップあり → needsWorkspace: false', async () => {
-    mockDb.select
-      .mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
-      .mockReturnValueOnce(selectChain([{ workspaceId: 'ws-existing' }]))
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-existing' }]))
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -160,9 +160,6 @@ describe('POST /api/auth/setup', () => {
   })
 
   it('workspaceName あり・既存メンバーシップがあっても新規ワークスペースを作成する', async () => {
-    // プロフィール存在確認のみ（membership チェックは workspaceName 指定時はスキップ）
-    mockDb.select.mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
-
     mockDb.insert
       .mockReturnValueOnce(insertChainReturning([{ id: 'new-ws-id-999' }])) // workspaces
       .mockReturnValueOnce(insertChainPlain())                               // channels
@@ -188,10 +185,10 @@ describe('POST /api/auth/setup', () => {
   })
 
   it('workspaceName あり・プロフィール未作成 → プロフィールも同時に作成する', async () => {
-    mockDb.select.mockReturnValueOnce(selectChain([]))   // プロフィールなし
+    const { lockAccountLifecycle } = await import('@/lib/access/account-lifecycle-lock')
+    vi.mocked(lockAccountLifecycle).mockResolvedValueOnce('missing')
 
     mockDb.insert
-      .mockReturnValueOnce(insertChainPlain())                               // profiles
       .mockReturnValueOnce(insertChainReturning([{ id: 'ws-new-777' }]))    // workspaces
       .mockReturnValueOnce(insertChainPlain())                               // channels
       .mockReturnValueOnce(insertChainPlain())                               // projectStatuses
@@ -207,14 +204,13 @@ describe('POST /api/auth/setup', () => {
     )
 
     expect(res.status).toBe(200)
-    // profiles も含めて insert が5回（profiles / workspaces / channels / projectStatuses / workspaceMembers）
-    expect(mockDb.insert).toHaveBeenCalledTimes(5)
+    expect(mockDb.execute).toHaveBeenCalled()
+    expect(mockDb.insert).toHaveBeenCalledTimes(4)
   })
 
   it('退会開始済みなら新規ワークスペースを作成しない', async () => {
-    const { lockUsableAccount } = await import('@/lib/access/account-lifecycle-lock')
-    vi.mocked(lockUsableAccount).mockResolvedValueOnce(false)
-    mockDb.select.mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
+    const { lockAccountLifecycle } = await import('@/lib/access/account-lifecycle-lock')
+    vi.mocked(lockAccountLifecycle).mockResolvedValueOnce('deleting')
 
     const { POST } = await import('./route')
     const res = await POST(

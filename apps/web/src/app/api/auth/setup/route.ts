@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { lockUsableAccount } from '@/lib/access/account-lifecycle-lock'
+import { lockAccountLifecycle } from '@/lib/access/account-lifecycle-lock'
 
 const setupSchema = z.object({
   displayName: z.string().min(1).max(100).optional(),
@@ -36,27 +36,28 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { profiles, workspaces, workspaceMembers, activeWorkspaceMembers, channels } =
+    const { workspaces, workspaceMembers, activeWorkspaceMembers, channels } =
       await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
 
-    const existing = await db
-      .select({ id: profiles.id })
-      .from(profiles)
-      .where(eq(profiles.id, user.id))
-      .limit(1)
-
-    if (existing.length === 0) {
-      const displayName =
-        parsed.data.displayName ??
-        (user.user_metadata?.['display_name'] as string | undefined) ??
-        user.email ??
-        'ユーザー'
-      await db.insert(profiles).values({ id: user.id, displayName })
-    }
+    const displayName =
+      parsed.data.displayName ??
+      (user.user_metadata?.['display_name'] as string | undefined) ??
+      user.email ??
+      'ユーザー'
 
     const setup = await db.transaction(async (tx) => {
-      if (!(await lockUsableAccount(tx, user.id))) return null
+      const accountState = await lockAccountLifecycle(tx, user.id)
+      if (accountState === 'deleting') return null
+      if (accountState === 'missing') {
+        const { sql } = await import('drizzle-orm')
+        // migration前後のどちらでも動く既存カラムだけを明示する。
+        await tx.execute(sql`
+          insert into profiles (id, display_name)
+          values (${user.id}, ${displayName})
+          on conflict (id) do nothing
+        `)
+      }
 
       // workspaceName が指定されていれば必ず新規ワークスペースを作成（複数WS対応）
       // 指定がない場合のみ既存メンバーシップを確認してオンボーディング要否を返す

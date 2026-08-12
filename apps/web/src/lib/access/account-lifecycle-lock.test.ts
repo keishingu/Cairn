@@ -8,7 +8,10 @@ vi.mock('drizzle-orm', () => ({ sql: vi.fn(() => 'sql') }))
 
 describe('lockUsableAccount', () => {
   it('退会未開始のプロフィールを共有ロックできる', async () => {
-    const execute = vi.fn().mockResolvedValue({ rows: [{ '?column?': 1 }] })
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ deletion_started: false }] })
     await expect(lockUsableAccount({ execute } as never, 'user-1')).resolves.toBe(true)
   })
 
