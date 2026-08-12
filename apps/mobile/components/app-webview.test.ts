@@ -53,4 +53,15 @@ describe('WebViewからのアカウント削除通知', () => {
     ).resolves.toBeUndefined()
     expect(navigateToLogin).toHaveBeenCalledOnce()
   })
+
+  it('端末キュー削除に失敗してもsignOutと画面遷移を続行する', async () => {
+    vi.mocked(AsyncStorage.removeItem).mockRejectedValueOnce(new Error('storage unavailable'))
+    const signOut = vi.fn().mockResolvedValue(undefined)
+    const navigateToLogin = vi.fn()
+
+    await finishNativeAccountDeletion('user-1', signOut, navigateToLogin)
+
+    expect(signOut).toHaveBeenCalledOnce()
+    expect(navigateToLogin).toHaveBeenCalledOnce()
+  })
 })

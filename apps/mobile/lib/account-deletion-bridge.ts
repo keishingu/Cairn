@@ -10,10 +10,14 @@ export async function finishNativeAccountDeletion(
   signOut: () => Promise<unknown>,
   navigateToLogin: () => void,
 ): Promise<void> {
-  try {
-    if (userId) {
+  if (userId) {
+    try {
       await AsyncStorage.removeItem(`cairn:offline-message-queue:v1:${userId}`)
+    } catch {
+      // 端末ストレージ障害でも、削除済みAuthセッションの破棄は必ず続行する。
     }
+  }
+  try {
     await signOut()
   } catch {
     // AuthユーザーはWeb側ですでに削除済みのため、リモートsignOutの失敗は無視する。
