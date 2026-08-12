@@ -20,6 +20,7 @@ import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness
 
 const PAID_STORAGE_ENTITLEMENT_ERROR = 'paid-storage-entitlement-required'
 const MEMBERSHIP_REVOKED_ERROR = 'membership-revoked'
+const UPLOAD_REQUEST_EXPIRED_ERROR = 'upload-request-expired'
 
 // 署名付きURLでのアップロード(upload-url)完了後、files レコードを登録し
 // 検索インデックスジョブを発火する。ファイル本体はここを通らないため
@@ -241,6 +242,35 @@ export async function POST(req: Request) {
       if (!(await lockActiveMembership(tx, ctx.workspaceId, ctx.userId))) {
         throw new Error(MEMBERSHIP_REVOKED_ERROR)
       }
+      const lockedResult = await tx.execute<{
+        id: string
+        expires_at: Date
+        finalized_at: Date | null
+        file_id: string | null
+      }>(sql`
+        select id, expires_at, finalized_at, file_id
+        from upload_requests
+        where id = ${uploadRequest.id}
+          and workspace_id = ${ctx.workspaceId}
+          and requested_by = ${ctx.userId}
+          and derived_storage_path = ${storagePath}
+          and storage_bucket = ${ATTACHMENTS_BUCKET}
+          and project_id is null
+        for update
+      `)
+      const lockedUploadRequest = lockedResult.rows[0]
+      if (!lockedUploadRequest || lockedUploadRequest.expires_at <= new Date()) {
+        throw new Error(UPLOAD_REQUEST_EXPIRED_ERROR)
+      }
+      if (lockedUploadRequest.finalized_at && lockedUploadRequest.file_id) {
+        const [committed] = await tx
+          .select()
+          .from(files)
+          .where(eq(files.id, lockedUploadRequest.file_id))
+          .limit(1)
+        if (!committed) throw new Error('Finalized upload file was not found')
+        return { file: committed, created: false }
+      }
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`attachment:${ctx.workspaceId}:${storagePath}`}, 0))`,
       )
@@ -319,7 +349,7 @@ export async function POST(req: Request) {
         await tx
           .update(uploadRequests)
           .set({ fileId: existing.id, finalizedAt: new Date() })
-          .where(eq(uploadRequests.id, uploadRequest.id))
+          .where(eq(uploadRequests.id, lockedUploadRequest.id))
         return { file: existing, created: false }
       }
 
@@ -332,7 +362,7 @@ export async function POST(req: Request) {
       await tx
         .update(uploadRequests)
         .set({ fileId: file.id, finalizedAt: new Date() })
-        .where(eq(uploadRequests.id, uploadRequest.id))
+        .where(eq(uploadRequests.id, lockedUploadRequest.id))
       return { file, created: true }
     })
 
@@ -390,6 +420,9 @@ export async function POST(req: Request) {
         { error: 'ワークスペースへのアクセス権がありません' },
         { status: 403 },
       )
+    }
+    if (err instanceof Error && err.message === UPLOAD_REQUEST_EXPIRED_ERROR) {
+      return NextResponse.json({ error: 'アップロードURLの有効期限が切れました' }, { status: 410 })
     }
     console.error('[/api/attachments/finalize] DB insert failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

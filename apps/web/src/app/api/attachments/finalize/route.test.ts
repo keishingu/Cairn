@@ -22,6 +22,7 @@ const {
   mockRecordStorageUsageDelta,
   mockSelectLimit,
   mockTransactionSelectLimit,
+  mockTransactionExecute,
   mockDeleteWhere,
   mockLockActiveMembership,
   mockHasAttachmentUploadRequestSchema,
@@ -39,6 +40,16 @@ const {
   mockSelectLimit: vi.fn(),
   mockInsertReturning: vi.fn(),
   mockTransactionSelectLimit: vi.fn(),
+  mockTransactionExecute: vi.fn().mockResolvedValue({
+    rows: [
+      {
+        id: 'upload-1',
+        expires_at: new Date('2099-01-01T00:00:00Z'),
+        finalized_at: null,
+        file_id: null,
+      },
+    ],
+  }),
   mockDeleteWhere: vi.fn().mockResolvedValue(undefined),
   mockLockActiveMembership: vi.fn().mockResolvedValue(true),
   mockHasAttachmentUploadRequestSchema: vi.fn().mockResolvedValue(true),
@@ -105,7 +116,7 @@ vi.mock('@cairn/db', () => ({
       }) => unknown,
     ) =>
       callback({
-        execute: vi.fn().mockResolvedValue(undefined),
+        execute: mockTransactionExecute,
         insert: () => ({ values: mockInsertValues }),
         update: () => ({ set: () => ({ where: vi.fn().mockResolvedValue(undefined) }) }),
         delete: () => ({ where: mockDeleteWhere }),
@@ -223,6 +234,35 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     )
 
     expect(res.status).toBe(400)
+  })
+
+  it('清掃と競合してintentが期限切れならファイルを確定しない', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockTransactionSelectLimit.mockResolvedValue([])
+    mockTransactionExecute.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'upload-1',
+          expires_at: new Date('2000-01-01T00:00:00Z'),
+          finalized_at: null,
+          file_id: null,
+        },
+      ],
+    })
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      post({
+        channelId: CHANNEL_ID,
+        storagePath: storagePathFor('x.pdf'),
+        fileName: 'x.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 100,
+      }),
+    )
+
+    expect(res.status).toBe(410)
+    expect(mockInsertValues).not.toHaveBeenCalled()
   })
 
   it('原本保存の権利を失った場合はオブジェクトを削除して登録しない', async () => {

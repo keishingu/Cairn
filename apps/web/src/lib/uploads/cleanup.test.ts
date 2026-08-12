@@ -17,6 +17,17 @@ vi.mock('@cairn/db', () => ({
       }),
     }),
     delete: () => ({ where: mockDeleteWhere }),
+    transaction: (callback: (tx: unknown) => unknown) =>
+      callback({
+        select: () => ({
+          from: () => ({
+            where: () => ({
+              for: () => ({ limit: mockExpiredRequests }),
+            }),
+          }),
+        }),
+        delete: () => ({ where: mockDeleteWhere }),
+      }),
   },
   uploadRequests: {
     id: 'upload_requests.id',
@@ -84,6 +95,18 @@ describe('cleanupExpiredUploadRequests', () => {
     const { cleanupExpiredUploadRequests } = await import('./cleanup')
     await expect(cleanupExpiredUploadRequests()).resolves.toEqual({ removed: 0, failed: 1 })
 
+    expect(mockDeleteWhere).not.toHaveBeenCalled()
+  })
+
+  it('ロック待ち中に確定されたintentは削除しない', async () => {
+    mockExpiredRequests
+      .mockResolvedValueOnce([{ id: 'upload-1' }])
+      .mockResolvedValueOnce([])
+
+    const { cleanupExpiredUploadRequests } = await import('./cleanup')
+    await expect(cleanupExpiredUploadRequests()).resolves.toEqual({ removed: 0, failed: 0 })
+
+    expect(mockRemove).not.toHaveBeenCalled()
     expect(mockDeleteWhere).not.toHaveBeenCalled()
   })
 })

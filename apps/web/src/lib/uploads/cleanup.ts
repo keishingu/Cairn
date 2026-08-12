@@ -21,12 +21,7 @@ export async function cleanupExpiredUploadRequests(
   now = new Date(),
 ): Promise<ExpiredUploadCleanupResult> {
   const expired = await db
-    .select({
-      id: uploadRequests.id,
-      derivedStoragePath: uploadRequests.derivedStoragePath,
-      storageBucket: sql<string>`coalesce(to_jsonb(${uploadRequests})->>'storage_bucket', 'gallery')`,
-      originalStoragePath: uploadRequests.originalStoragePath,
-    })
+    .select({ id: uploadRequests.id })
     .from(uploadRequests)
     .where(and(isNull(uploadRequests.finalizedAt), lte(uploadRequests.expiresAt, now)))
     .limit(CLEANUP_BATCH_SIZE)
@@ -35,28 +30,53 @@ export async function cleanupExpiredUploadRequests(
   let removed = 0
   let failed = 0
 
-  for (const request of expired) {
-    const [{ error: derivedError }, originalResult] = await Promise.all([
-      supabase.storage.from(request.storageBucket).remove([request.derivedStoragePath]),
-      request.originalStoragePath
-        ? supabase.storage.from(GALLERY_ORIGINALS_BUCKET).remove([request.originalStoragePath])
-        : Promise.resolve({ error: null }),
-    ])
+  for (const candidate of expired) {
+    const outcome = await db.transaction(async (tx) => {
+      const [request] = await tx
+        .select({
+          id: uploadRequests.id,
+          derivedStoragePath: uploadRequests.derivedStoragePath,
+          storageBucket: sql<string>`coalesce(to_jsonb(${uploadRequests})->>'storage_bucket', 'gallery')`,
+          originalStoragePath: uploadRequests.originalStoragePath,
+        })
+        .from(uploadRequests)
+        .where(
+          and(
+            eq(uploadRequests.id, candidate.id),
+            isNull(uploadRequests.finalizedAt),
+            lte(uploadRequests.expiresAt, now),
+          ),
+        )
+        .for('update')
+        .limit(1)
+      if (!request) return 'skipped' as const
 
-    if (derivedError || originalResult.error) {
+      const [{ error: derivedError }, originalResult] = await Promise.all([
+        supabase.storage.from(request.storageBucket).remove([request.derivedStoragePath]),
+        request.originalStoragePath
+          ? supabase.storage.from(GALLERY_ORIGINALS_BUCKET).remove([request.originalStoragePath])
+          : Promise.resolve({ error: null }),
+      ])
+
+      if (derivedError || originalResult.error) {
+        console.error('[uploads] Failed to remove expired upload objects:', {
+          uploadRequestId: request.id,
+          derivedError,
+          originalError: originalResult.error,
+        })
+        return 'failed' as const
+      }
+
+      await tx
+        .delete(uploadRequests)
+        .where(and(eq(uploadRequests.id, request.id), isNull(uploadRequests.finalizedAt)))
+      return 'removed' as const
+    })
+
+    if (outcome === 'failed') {
       failed += 1
-      console.error('[uploads] Failed to remove expired upload objects:', {
-        uploadRequestId: request.id,
-        derivedError,
-        originalError: originalResult.error,
-      })
-      continue
     }
-
-    await db
-      .delete(uploadRequests)
-      .where(and(eq(uploadRequests.id, request.id), isNull(uploadRequests.finalizedAt)))
-    removed += 1
+    if (outcome === 'removed') removed += 1
   }
 
   return { removed, failed }
