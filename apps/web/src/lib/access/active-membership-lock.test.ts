@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it, vi } from 'vitest'
-import { lockActiveMembership } from './active-membership-lock'
+import { lockActiveMembership, runForActiveMembership } from './active-membership-lock'
 
 vi.mock('drizzle-orm', () => ({ sql: vi.fn(() => 'lock-query') }))
 
@@ -19,5 +19,27 @@ describe('active membershipの共有ロック', () => {
     await expect(lockActiveMembership({ execute } as never, 'workspace-1', 'user-1')).resolves.toBe(
       false,
     )
+  })
+
+  it('active membershipがある間だけactionを実行する', async () => {
+    const tx = { execute: vi.fn().mockResolvedValue({ rows: [{}] }) }
+    const client = { transaction: vi.fn((callback) => callback(tx)) }
+    const action = vi.fn().mockResolvedValue('done')
+
+    await expect(
+      runForActiveMembership(client as never, 'workspace-1', 'user-1', action),
+    ).resolves.toBe('done')
+    expect(action).toHaveBeenCalledWith(tx)
+  })
+
+  it('退会済みならactionを実行しない', async () => {
+    const tx = { execute: vi.fn().mockResolvedValue({ rows: [] }) }
+    const client = { transaction: vi.fn((callback) => callback(tx)) }
+    const action = vi.fn()
+
+    await expect(
+      runForActiveMembership(client as never, 'workspace-1', 'user-1', action),
+    ).resolves.toBeNull()
+    expect(action).not.toHaveBeenCalled()
   })
 })

@@ -12,6 +12,7 @@ import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
 import { passesPhaseTwoConfidence } from '@/lib/ai-nudges/llm-nudge-rules'
 import { runForActiveMessageSender } from './message-notification-guard'
+import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // DM は Push を抑制し、メンションはバッジ更新なしの Push に切り替えられる。
@@ -433,30 +434,42 @@ export const onTaskAssigned = inngest.createFunction(
   { id: 'on-task-assigned' },
   { event: 'task/assigned' satisfies TaskAssignedEvent['name'] },
   async ({ event, step }) => {
-    const { taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
+    const { taskTitle, assigneeId, projectTitle, workspaceId, assignerId, assignerName } =
       event.data as TaskAssignedEvent['data']
 
-    await step.run('create-task-notification', async () => {
+    // デプロイ前にキューへ入ったassignerIdなしのイベントは、退会状態を検証できないため破棄する。
+    if (!assignerId) return { notified: null }
+
+    const created = await step.run('create-task-notification', async () => {
       const { db, notifications } = await import('@cairn/db')
-      await db.insert(notifications).values({
-        userId: assigneeId,
-        workspaceId,
-        type: 'task' as const,
-        title: `${assignerName} があなたにタスクを割り当てました`,
-        body: `「${taskTitle}」- ${projectTitle}`,
-        data: { assignerName, projectTitle },
+      return runForActiveMembership(db, workspaceId, assignerId, async (tx) => {
+        await tx.insert(notifications).values({
+          userId: assigneeId,
+          workspaceId,
+          type: 'task' as const,
+          title: `${assignerName} があなたにタスクを割り当てました`,
+          body: `「${taskTitle}」- ${projectTitle}`,
+          data: { assignerId, assignerName, projectTitle },
+        })
+        return true
       })
     })
 
-    await step.run('send-task-push', async () => {
-      await sendPushToUser(assigneeId, {
-        title: `${assignerName} があなたにタスクを割り当てました`,
-        body: `「${taskTitle}」- ${projectTitle}`,
-        url: '/tasks',
+    if (created) {
+      await step.run('send-task-push', async () => {
+        const { db } = await import('@cairn/db')
+        await runForActiveMembership(db, workspaceId, assignerId, async () => {
+          await sendPushToUser(assigneeId, {
+            title: `${assignerName} があなたにタスクを割り当てました`,
+            body: `「${taskTitle}」- ${projectTitle}`,
+            url: '/tasks',
+          })
+          return true
+        })
       })
-    })
+    }
 
-    return { notified: assigneeId }
+    return { notified: created ? assigneeId : null }
   },
 )
 

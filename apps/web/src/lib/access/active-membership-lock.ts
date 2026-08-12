@@ -5,6 +5,8 @@ import type { db } from '@cairn/db'
 import { sql } from 'drizzle-orm'
 
 type SqlClient = Pick<typeof db, 'execute'>
+type TransactionClient = Pick<typeof db, 'transaction'>
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 export async function lockActiveMembership(
   client: SqlClient,
@@ -20,4 +22,16 @@ export async function lockActiveMembership(
     for share
   `)
   return result.rows.length > 0
+}
+
+export async function runForActiveMembership<T>(
+  client: TransactionClient,
+  workspaceId: string,
+  userId: string,
+  action: (tx: Transaction) => Promise<T>,
+): Promise<T | null> {
+  return client.transaction(async (tx) => {
+    if (!(await lockActiveMembership(tx, workspaceId, userId))) return null
+    return action(tx)
+  })
 }

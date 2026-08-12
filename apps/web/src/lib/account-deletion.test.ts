@@ -25,7 +25,6 @@ function createDependencies(): AccountDeletionDependencies & {
       calls.push('context')
       return {
         billingCustomerId: 'cus_1',
-        avatarPaths: [],
       }
     }),
     deleteBillingCustomer: vi.fn(async () => {

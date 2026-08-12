@@ -69,7 +69,6 @@ interface StorageDeletionTarget {
 
 interface DeletionContext {
   billingCustomerId: string | null
-  avatarPaths: string[]
 }
 
 export class LastOwnerAccountDeletionError extends Error {
@@ -120,33 +119,14 @@ async function findBlockingOwnerWorkspaces(
 }
 
 async function readContext(userId: string): Promise<DeletionContext> {
-  const [memberships, [billingCustomer]] = await Promise.all([
-    db
-      .select({ workspaceId: workspaceMembers.workspaceId })
-      .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, userId)),
-    db
-      .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
-      .from(billingCustomers)
-      .where(eq(billingCustomers.userId, userId))
-      .limit(1),
-  ])
-
-  const avatarPaths: string[] = []
-  const admin = createServiceRoleClient()
-  for (const workspaceId of new Set(memberships.map((membership) => membership.workspaceId))) {
-    const { data, error } = await admin.storage.from('avatars').list(workspaceId, {
-      search: userId,
-    })
-    if (error) throw error
-    for (const item of data) {
-      if (item.name.startsWith(`${userId}.`)) avatarPaths.push(`${workspaceId}/${item.name}`)
-    }
-  }
+  const [billingCustomer] = await db
+    .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
+    .from(billingCustomers)
+    .where(eq(billingCustomers.userId, userId))
+    .limit(1)
 
   return {
     billingCustomerId: billingCustomer?.stripeCustomerId ?? null,
-    avatarPaths,
   }
 }
 
@@ -223,6 +203,24 @@ async function anonymizeAndRevoke(
     const blocked = await findBlockingOwnerWorkspaces(tx, userId)
     if (blocked.length > 0) throw new LastOwnerAccountDeletionError(blocked)
 
+    // 排他membershipロック取得後に列挙する。先行中のavatar更新は完了まで待ち、
+    // 後続の更新は退会commit後にactive再確認で拒否されるため、一覧が陳腐化しない。
+    const memberships = await tx
+      .select({ workspaceId: workspaceMembers.workspaceId })
+      .from(workspaceMembers)
+      .where(eq(workspaceMembers.userId, userId))
+    const avatarPaths: string[] = []
+    const admin = createServiceRoleClient()
+    for (const workspaceId of new Set(memberships.map((membership) => membership.workspaceId))) {
+      const { data, error } = await admin.storage.from('avatars').list(workspaceId, {
+        search: userId,
+      })
+      if (error) throw error
+      for (const item of data) {
+        if (item.name.startsWith(`${userId}.`)) avatarPaths.push(`${workspaceId}/${item.name}`)
+      }
+    }
+
     // Appleのアカウント削除要件に合わせ、本人が投稿したメッセージ本文・写真・
     // ファイル・コメント・AI会話を削除する。プロジェクトやタスクなど共同作業の
     // 構造は残し、作成者参照は匿名化したprofilesへ向けたままにする。
@@ -231,6 +229,16 @@ async function anonymizeAndRevoke(
         select id::text from messages where sender_id = ${userId}
       )
     `)
+    await tx.delete(notifications).where(sql`
+        ${notifications.data}->>'assignerId' = ${userId}
+        or (
+          ${notifications.type} = 'task'
+          and ${notifications.data}->>'assignerId' is null
+          and ${notifications.workspaceId} in (
+            select workspace_id from workspace_members where user_id = ${userId}
+          )
+        )
+      `)
     await tx.delete(aiNudges).where(sql`
       ${aiNudges.messageId} in (select id from messages where sender_id = ${userId})
     `)
@@ -360,7 +368,7 @@ async function anonymizeAndRevoke(
       .where(eq(profiles.id, userId))
 
     const storageTargets = buildStorageDeletionTargets(
-      context.avatarPaths,
+      avatarPaths,
       removedFiles.map((file) => ({
         storagePath: file.storagePath,
         derivedStoragePath: file.derivedStoragePath,

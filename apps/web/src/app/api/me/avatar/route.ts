@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 const MAX_SIZE = 5 * 1024 * 1024
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
@@ -37,30 +38,41 @@ export async function POST(req: Request) {
   const supabase = createServiceRoleClient()
   const buffer = await file.arrayBuffer()
 
-  const { error: uploadError } = await supabase.storage
-    .from(BUCKET)
-    .upload(storagePath, buffer, { contentType: file.type, upsert: true })
-
-  if (uploadError) {
-    console.error('[POST /api/me/avatar] Storage upload failed:', uploadError)
-    return NextResponse.json({ error: 'アップロードに失敗しました' }, { status: 500 })
-  }
-
-  const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(storagePath)
-
+  let uploaded = false
   try {
     const { db, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
+    const publicUrl = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async (tx) => {
+      const { error: uploadError } = await supabase.storage
+        .from(BUCKET)
+        .upload(storagePath, buffer, { contentType: file.type, upsert: true })
+      if (uploadError) throw uploadError
+      uploaded = true
 
-    await db
-      .update(workspaceMembers)
-      .set({ avatarUrl: publicUrl })
-      .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from(BUCKET).getPublicUrl(storagePath)
+      await tx
+        .update(workspaceMembers)
+        .set({ avatarUrl: publicUrl })
+        .where(
+          and(
+            eq(workspaceMembers.userId, ctx.userId),
+            eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          ),
+        )
+      return publicUrl
+    })
+    if (!publicUrl) {
+      return NextResponse.json(
+        { error: 'ワークスペースへのアクセス権がありません' },
+        { status: 403 },
+      )
+    }
     return NextResponse.json({ avatarUrl: publicUrl })
   } catch (err) {
-    await supabase.storage.from(BUCKET).remove([storagePath])
-    console.error('[POST /api/me/avatar] DB update failed:', err)
+    if (uploaded) await supabase.storage.from(BUCKET).remove([storagePath])
+    console.error('[POST /api/me/avatar] Avatar update failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

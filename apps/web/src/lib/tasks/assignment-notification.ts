@@ -37,6 +37,7 @@ export async function notifyTaskAssigned(params: {
         projectId: params.projectId ?? '',
         projectTitle: params.projectTitle,
         workspaceId: params.workspaceId,
+        assignerId: params.assignerId,
         assignerName: assigner?.displayName ?? '不明',
       },
     } satisfies TaskAssignedEvent)
