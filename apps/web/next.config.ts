@@ -23,7 +23,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: lanDevOrigins(),
   // VERCEL_ENV はクライアントへ自動公開されないため、環境別feature flag用に明示的に渡す。
   env: {
-    NEXT_PUBLIC_CAIRN_DEPLOYMENT_ENV: process.env.VERCEL_ENV ?? 'development',
+    NEXT_PUBLIC_CAIRN_DEPLOYMENT_ENV: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'development',
   },
   async headers() {
     return [

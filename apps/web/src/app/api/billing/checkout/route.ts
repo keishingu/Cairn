@@ -3,16 +3,28 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceRole } from '@/lib/access/membership'
+import { getWorkspaceRole, isWorkspaceOwner } from '@/lib/access/membership'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import {
   getIndividualSubscriptionPriceId,
+  getWorkspaceSubscriptionPriceId,
   getStripeClient,
   resolveApplicationUrl,
 } from '@/lib/billing/stripe'
 
 interface CheckoutBody {
   quantity?: unknown
+  plan?: unknown
+}
+
+function resolveStripeSubscriptionPlan(subscription: {
+  items: { data: Array<{ price?: string | { id: string } }> }
+}): 'individual' | 'workspace' | null {
+  const price = subscription.items.data[0]?.price
+  const priceId = typeof price === 'string' ? price : price?.id
+  if (priceId === getIndividualSubscriptionPriceId()) return 'individual'
+  if (priceId === getWorkspaceSubscriptionPriceId()) return 'workspace'
+  return null
 }
 
 export async function POST(request: Request) {
@@ -28,7 +40,11 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: 'リクエスト形式が不正です' }, { status: 400 })
   }
-  const quantity = body.quantity === undefined ? 1 : body.quantity
+  if (body.plan !== undefined && body.plan !== 'individual' && body.plan !== 'workspace') {
+    return NextResponse.json({ error: 'プランはindividualまたはworkspaceで指定してください' }, { status: 400 })
+  }
+  const plan = body.plan ?? 'individual'
+  const quantity = plan === 'workspace' ? 1 : body.quantity === undefined ? 1 : body.quantity
   if (
     typeof quantity !== 'number' ||
     !Number.isInteger(quantity) ||
@@ -42,6 +58,12 @@ export async function POST(request: Request) {
   const role = await getWorkspaceRole(ctx.workspaceId, ctx.userId)
   if (!role)
     return NextResponse.json({ error: 'ワークスペースへのアクセス権がありません' }, { status: 403 })
+  if (plan === 'workspace' && !isWorkspaceOwner(role)) {
+    return NextResponse.json(
+      { error: 'Teamプランの契約にはオーナー権限が必要です' },
+      { status: 403 },
+    )
+  }
 
   try {
     const { billingCustomers, db, subscriptions } = await import('@cairn/db')
@@ -78,7 +100,7 @@ export async function POST(request: Request) {
     const checkout = await db.transaction(async (tx) => {
       // Webhook 到着前には subscriptions に行がないため、同じ支援者・ワークスペースの
       // Checkout 作成を直列化し、Stripe 上の未完了セッションも確認する。
-      const lockKey = `checkout:${ctx.workspaceId}:${ctx.userId}:individual`
+      const lockKey = `checkout:${ctx.workspaceId}:${plan === 'workspace' ? 'workspace' : ctx.userId}:${plan}`
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`)
 
       const [existingSubscription] = await tx
@@ -87,43 +109,62 @@ export async function POST(request: Request) {
         .where(
           and(
             eq(subscriptions.workspaceId, ctx.workspaceId),
-            eq(subscriptions.supporterUserId, ctx.userId),
-            eq(subscriptions.plan, 'individual'),
+            eq(subscriptions.plan, plan),
+            ...(plan === 'workspace' ? [] : [eq(subscriptions.supporterUserId, ctx.userId)]),
             inArray(subscriptions.status, ['active', 'past_due']),
           ),
         )
         .limit(1)
       if (existingSubscription) return { error: '既存の購読は請求管理画面から変更してください' }
 
-      const openSessions = await stripe.checkout.sessions.list({
-        customer: customerId,
-        status: 'open',
-        limit: 100,
-      })
-      const openSession = openSessions.data.find(
-        (session) =>
+      // Team は複数 owner が開始できるため、owner 個人の Customer に限定せず
+      // ワークスペース単位で未完了 Checkout を探索する。
+      let openSession:
+        | Awaited<ReturnType<typeof stripe.checkout.sessions.list>>['data'][number]
+        | undefined
+      for await (const session of stripe.checkout.sessions.list(
+        plan === 'workspace'
+          ? { status: 'open', limit: 100 }
+          : { customer: customerId, status: 'open', limit: 100 },
+      )) {
+        if (
           session.metadata?.['workspaceId'] === ctx.workspaceId &&
-          session.metadata?.['supporterUserId'] === ctx.userId &&
-          session.metadata?.['plan'] === 'individual',
-      )
-      if (openSession?.url) return { url: openSession.url }
-      if (openSession) return { error: '決済画面の準備中です。少し待ってから再試行してください' }
+          (plan === 'workspace' || session.metadata?.['supporterUserId'] === ctx.userId) &&
+          session.metadata?.['plan'] === plan
+        ) {
+          openSession = session
+          break
+        }
+      }
+      if (openSession) {
+        if (plan === 'workspace' && openSession.metadata?.['supporterUserId'] !== ctx.userId) {
+          return { error: '別のオーナーがTeamプランの決済を進めています。完了後に請求管理画面を確認してください' }
+        }
+        if (openSession.url) return { url: openSession.url }
+        return { error: '決済画面の準備中です。少し待ってから再試行してください' }
+      }
 
       // Checkout が complete になった直後は、Webhook が subscriptions を同期する前でも
       // Stripe 側には購読が存在する。この間に2件目の Checkout を作らない。
-      const stripeSubscriptions = await stripe.subscriptions.list({
-        customer: customerId,
-        status: 'all',
-        limit: 100,
-      })
-      const pendingSubscription = stripeSubscriptions.data.find(
-        (subscription) =>
+      let pendingSubscription:
+        | Awaited<ReturnType<typeof stripe.subscriptions.list>>['data'][number]
+        | undefined
+      for await (const subscription of stripe.subscriptions.list(
+        plan === 'workspace'
+          ? { status: 'all', limit: 100 }
+          : { customer: customerId, status: 'all', limit: 100 },
+      )) {
+        if (
           subscription.metadata?.['workspaceId'] === ctx.workspaceId &&
-          subscription.metadata?.['supporterUserId'] === ctx.userId &&
-          subscription.metadata?.['plan'] === 'individual' &&
+          (plan === 'workspace' || subscription.metadata?.['supporterUserId'] === ctx.userId) &&
+          resolveStripeSubscriptionPlan(subscription) === plan &&
           subscription.status !== 'canceled' &&
-          subscription.status !== 'incomplete_expired',
-      )
+          subscription.status !== 'incomplete_expired'
+        ) {
+          pendingSubscription = subscription
+          break
+        }
+      }
       if (pendingSubscription) {
         return { error: '既存の購読を処理中です。少し待ってから請求管理画面を確認してください' }
       }
@@ -133,12 +174,20 @@ export async function POST(request: Request) {
         mode: 'subscription',
         customer: customerId,
         client_reference_id: ctx.userId,
-        line_items: [{ price: getIndividualSubscriptionPriceId(), quantity }],
+        line_items: [
+          {
+            price:
+              plan === 'workspace'
+                ? getWorkspaceSubscriptionPriceId()
+                : getIndividualSubscriptionPriceId(),
+            quantity,
+          },
+        ],
         success_url: `${appUrl}/settings/billing?checkout=success`,
         cancel_url: `${appUrl}/settings/billing?checkout=cancel`,
-        metadata: { workspaceId: ctx.workspaceId, supporterUserId: ctx.userId, plan: 'individual' },
+        metadata: { workspaceId: ctx.workspaceId, supporterUserId: ctx.userId, plan },
         subscription_data: {
-          metadata: { workspaceId: ctx.workspaceId, supporterUserId: ctx.userId, plan: 'individual' },
+          metadata: { workspaceId: ctx.workspaceId, supporterUserId: ctx.userId, plan },
         },
       })
       if (!session.url) throw new Error('Stripe Checkout session did not include a URL')

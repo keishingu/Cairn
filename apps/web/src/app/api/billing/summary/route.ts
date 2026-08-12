@@ -6,6 +6,7 @@ import { resolveWorkspaceState } from '@cairn/core/billing'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
+import { isWorkspaceOwner } from '@/lib/access/membership'
 
 export interface BillingSummaryDto {
   billingEnabled: boolean
@@ -14,6 +15,13 @@ export interface BillingSummaryDto {
   originalBytes: number
   derivedBytes: number
   hasManageableSubscription: boolean
+  hasActiveWorkspaceSubscription: boolean
+  manageableSubscriptions: Array<{
+    id: string
+    plan: 'individual' | 'workspace'
+    action: 'update' | 'cancel'
+  }>
+  paymentMethodSubscriptionId: string | null
   canPurchaseCreditPack: boolean
   creditPackFulfilled: boolean | null
 }
@@ -33,6 +41,9 @@ export async function GET(request: Request) {
       originalBytes: 0,
       derivedBytes: 0,
       hasManageableSubscription: false,
+      hasActiveWorkspaceSubscription: false,
+      manageableSubscriptions: [],
+      paymentMethodSubscriptionId: null,
       canPurchaseCreditPack: false,
       creditPackFulfilled: null,
     } satisfies BillingSummaryDto)
@@ -40,69 +51,141 @@ export async function GET(request: Request) {
 
   try {
     const { creditLedger, db, subscriptions, workspaceStorageUsage } = await import('@cairn/db')
-    const { and, eq, gt, inArray, sql } = await import('drizzle-orm')
+    const { and, eq, gt, inArray, or, sql } = await import('drizzle-orm')
     const creditPackSessionId = new URL(request.url).searchParams.get('credit_pack_session_id')
-    const [[balance], [usage], [subscription], [creditPackSubscription], creditPackFulfillments] =
+    const [
+      [balance],
+      [usage],
+      ownSubscriptions,
+      workspaceSubscriptions,
+      [creditPackSubscription],
+      creditPackFulfillments,
+    ] =
       await Promise.all([
-      db
-        .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
-        .from(creditLedger)
-        .where(eq(creditLedger.workspaceId, ctx.workspaceId)),
-      db
-        .select({
-          originalBytes: workspaceStorageUsage.originalBytes,
-          derivedBytes: workspaceStorageUsage.derivedBytes,
-        })
-        .from(workspaceStorageUsage)
-        .where(eq(workspaceStorageUsage.workspaceId, ctx.workspaceId))
-        .limit(1),
-      db
-        .select({ id: subscriptions.id })
-        .from(subscriptions)
-        .where(
-          and(
-            eq(subscriptions.workspaceId, ctx.workspaceId),
-            eq(subscriptions.supporterUserId, ctx.userId),
-            eq(subscriptions.plan, 'individual'),
-            inArray(subscriptions.status, ['active', 'past_due']),
+        db
+          .select({ value: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
+          .from(creditLedger)
+          .where(eq(creditLedger.workspaceId, ctx.workspaceId)),
+        db
+          .select({
+            originalBytes: workspaceStorageUsage.originalBytes,
+            derivedBytes: workspaceStorageUsage.derivedBytes,
+          })
+          .from(workspaceStorageUsage)
+          .where(eq(workspaceStorageUsage.workspaceId, ctx.workspaceId))
+          .limit(1),
+        db
+          .select({
+            id: subscriptions.id,
+            plan: subscriptions.plan,
+            supporterUserId: subscriptions.supporterUserId,
+          })
+          .from(subscriptions)
+          .where(
+            and(
+              eq(subscriptions.workspaceId, ctx.workspaceId),
+              eq(subscriptions.supporterUserId, ctx.userId),
+              inArray(subscriptions.plan, ['individual', 'workspace']),
+              inArray(subscriptions.status, ['active', 'past_due']),
+            ),
           ),
-        )
-        .limit(1),
-      db
-        .select({ id: subscriptions.id })
-        .from(subscriptions)
-        .where(
-          and(
-            eq(subscriptions.workspaceId, ctx.workspaceId),
-            eq(subscriptions.supporterUserId, ctx.userId),
-            eq(subscriptions.plan, 'individual'),
-            eq(subscriptions.status, 'active'),
-            gt(subscriptions.currentPeriodEnd, new Date()),
+        db
+          .select({
+            id: subscriptions.id,
+            supporterUserId: subscriptions.supporterUserId,
+          })
+          .from(subscriptions)
+          .where(
+            and(
+              eq(subscriptions.workspaceId, ctx.workspaceId),
+              eq(subscriptions.plan, 'workspace'),
+              inArray(subscriptions.status, ['active', 'past_due']),
+            ),
           ),
-        )
-        .limit(1),
-      creditPackSessionId
-        ? db
-            .select({ id: creditLedger.id })
-            .from(creditLedger)
-            .where(
-              and(
-                eq(creditLedger.workspaceId, ctx.workspaceId),
-                eq(creditLedger.reason, 'pack_purchase'),
-                eq(creditLedger.refId, creditPackSessionId),
+        db
+          .select({ id: subscriptions.id })
+          .from(subscriptions)
+          .where(
+            and(
+              eq(subscriptions.workspaceId, ctx.workspaceId),
+              eq(subscriptions.status, 'active'),
+              gt(subscriptions.currentPeriodEnd, new Date()),
+              or(
+                and(
+                  eq(subscriptions.plan, 'individual'),
+                  eq(subscriptions.supporterUserId, ctx.userId),
+                ),
+                eq(subscriptions.plan, 'workspace'),
               ),
-            )
-            .limit(1)
-        : Promise.resolve([]),
-    ])
+            ),
+          )
+          .limit(1),
+        creditPackSessionId
+          ? db
+              .select({ id: creditLedger.id })
+              .from(creditLedger)
+              .where(
+                and(
+                  eq(creditLedger.workspaceId, ctx.workspaceId),
+                  eq(creditLedger.reason, 'pack_purchase'),
+                  eq(creditLedger.refId, creditPackSessionId),
+                ),
+              )
+              .limit(1)
+          : Promise.resolve([]),
+      ])
     const creditBalance = Number(balance?.value ?? 0)
+    const manageableSubscriptionMap = new Map<
+      string,
+      { id: string; plan: 'individual' | 'workspace'; action: 'update' | 'cancel' }
+    >()
+    const hasOwnIndividualSubscription = ownSubscriptions.some(
+      (subscription) => subscription.plan === 'individual',
+    )
+    for (const subscription of ownSubscriptions) {
+      if (subscription.plan === 'individual' || isWorkspaceOwner(ctx.role)) {
+        manageableSubscriptionMap.set(subscription.id, {
+          id: subscription.id,
+          plan: subscription.plan,
+          // owner用PortalはSolo / Teamの両方へ変更できる。Teamが既に存在する
+          // 状態でSoloを変更すると、二重のTeam契約を作れてしまうため解約だけにする。
+          action:
+            subscription.plan === 'individual' &&
+            isWorkspaceOwner(ctx.role) &&
+            workspaceSubscriptions.length > 0
+              ? 'cancel'
+              : 'update',
+        })
+      }
+    }
+    if (isWorkspaceOwner(ctx.role)) {
+      for (const subscription of workspaceSubscriptions) {
+        manageableSubscriptionMap.set(subscription.id, {
+          id: subscription.id,
+          plan: 'workspace',
+          // 購入者が非活性化したTeamは、後任ownerが解約だけを行える。Soloへの
+          // 変更を許すと、非活性の購入者に紐付いたSolo購読が管理不能になる。
+          action:
+            subscription.supporterUserId === ctx.userId && !hasOwnIndividualSubscription
+              ? 'update'
+              : 'cancel',
+        })
+      }
+    }
+    const manageableSubscriptions = [...manageableSubscriptionMap.values()]
+    const paymentMethodSubscription = ownSubscriptions.find(
+      (subscription) => subscription.plan === 'individual',
+    ) ?? (isWorkspaceOwner(ctx.role) ? ownSubscriptions.find((subscription) => subscription.plan === 'workspace') : undefined)
     return NextResponse.json({
       billingEnabled: true,
       creditBalance,
       workspaceState: resolveWorkspaceState(creditBalance, true),
       originalBytes: usage?.originalBytes ?? 0,
       derivedBytes: usage?.derivedBytes ?? 0,
-      hasManageableSubscription: subscription !== undefined,
+      hasManageableSubscription: manageableSubscriptions.length > 0,
+      hasActiveWorkspaceSubscription: workspaceSubscriptions.length > 0,
+      manageableSubscriptions,
+      paymentMethodSubscriptionId: paymentMethodSubscription?.id ?? null,
       canPurchaseCreditPack: creditPackSubscription !== undefined,
       creditPackFulfilled: creditPackSessionId ? creditPackFulfillments.length > 0 : null,
     } satisfies BillingSummaryDto)

@@ -15,10 +15,44 @@ export function getIndividualSubscriptionPriceId(): string {
   return priceId
 }
 
+export function getWorkspaceSubscriptionPriceId(): string {
+  const priceId = process.env['STRIPE_WORKSPACE_PRICE_ID']
+  if (!priceId) throw new Error('STRIPE_WORKSPACE_PRICE_ID is not configured')
+  return priceId
+}
+
 export function getCreditPackPriceId(): string {
   const priceId = process.env['STRIPE_CREDIT_PACK_PRICE_ID']
   if (!priceId) throw new Error('STRIPE_CREDIT_PACK_PRICE_ID is not configured')
   return priceId
+}
+
+export function getOwnerBillingPortalConfigurationId(): string {
+  const configurationId = process.env['STRIPE_OWNER_BILLING_PORTAL_CONFIGURATION_ID']
+  if (!configurationId) throw new Error('STRIPE_OWNER_BILLING_PORTAL_CONFIGURATION_ID is not configured')
+  return configurationId
+}
+
+export function getMemberBillingPortalConfigurationId(): string {
+  const configurationId = process.env['STRIPE_MEMBER_BILLING_PORTAL_CONFIGURATION_ID']
+  if (!configurationId) throw new Error('STRIPE_MEMBER_BILLING_PORTAL_CONFIGURATION_ID is not configured')
+  return configurationId
+}
+
+export function getOwnerIndividualBillingPortalConfigurationId(): string {
+  const configurationId = process.env['STRIPE_OWNER_INDIVIDUAL_BILLING_PORTAL_CONFIGURATION_ID']
+  if (!configurationId) {
+    throw new Error('STRIPE_OWNER_INDIVIDUAL_BILLING_PORTAL_CONFIGURATION_ID is not configured')
+  }
+  return configurationId
+}
+
+export function getOwnerWorkspaceBillingPortalConfigurationId(): string {
+  const configurationId = process.env['STRIPE_OWNER_WORKSPACE_BILLING_PORTAL_CONFIGURATION_ID']
+  if (!configurationId) {
+    throw new Error('STRIPE_OWNER_WORKSPACE_BILLING_PORTAL_CONFIGURATION_ID is not configured')
+  }
+  return configurationId
 }
 
 export function resolveApplicationUrl(request: Request): string {

@@ -119,6 +119,7 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
   eq: vi.fn(() => 'eq'),
   gt: vi.fn(() => 'gt'),
+  or: vi.fn(() => 'or'),
   sql: vi.fn(() => 'sql'),
 }))
 
@@ -259,6 +260,7 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     expect(mockRemove).toHaveBeenCalledWith([storagePathFor('x.pdf')])
     expect(mockInsertReturning).not.toHaveBeenCalled()
   })
+
 })
 
 describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {

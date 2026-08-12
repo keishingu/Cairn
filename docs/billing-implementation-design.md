@@ -10,7 +10,7 @@
 - **対象は Free + Solo のみ**（ロールアウト順序に従う）。Team / Expedition は引き合いが出てから設計する
 - 決済は **Stripe・Web のみ**（IAP なし。アプリはリンクアウト）
 - **OSS 原則との両立**: 課金コードは OSS リポジトリに含める。ただし Stripe 環境変数が未設定の場合（セルフホスト）は課金機構が無効になり、**全エンタイトルメントが無制限（Expedition 相当）として解決される**。石・ケルン・風化の機構ごと無効化する
-- 課金有効判定は `STRIPE_SECRET_KEY` の有無による単一フラグ（`isBillingEnabled()`）とし、機能ごとのフラグを散在させない
+- 課金有効判定は `FEATURE_FLAGS.billing` と `STRIPE_SECRET_KEY` を `isBillingEnabled()` に集約する。本番では `FEATURE_FLAGS.billing` を無効にしてロールアウト前の決済UI・APIを公開しない
 - **ブランド名（石 / ケルン / Solo 等）はスキーマ・コード識別子に入れない**。ブランド改名に耐えるよう、DB・コードでは `credit`・`subscription`・`plan` など中立な語を使う。「石 / ケルン」は UI 文言（i18n 層）にのみ存在させる。本書では可読性のため UI 名を併記するが、識別子は中立語が正
 
 ## 2. モデルの骨格: 石 = 消費型クレジット
@@ -168,6 +168,9 @@ Team（WS 定額）は「**全メンバーがオリジナルをアップロー�
   - 署名検証必須。`stripe_events` による冪等化
 - Webhook は Vercel 上で同期処理できる軽さに保つ。重い後続処理は Inngest に流す
 - 初期パックは **¥500 / 400 クレジット**。Stripe の単発 Price ID は `STRIPE_CREDIT_PACK_PRICE_ID` に設定する
+- Stripeの環境変数は `STRIPE_INDIVIDUAL_PRICE_ID`（Solo月額）、`STRIPE_WORKSPACE_PRICE_ID`（Team月額）、`STRIPE_CREDIT_PACK_PRICE_ID`（単発パック）を使用する
+- Stripe Customer Portalは `STRIPE_MEMBER_BILLING_PORTAL_CONFIGURATION_ID`（memberのSolo更新用）、`STRIPE_OWNER_INDIVIDUAL_BILLING_PORTAL_CONFIGURATION_ID`（ownerのSolo更新用）、`STRIPE_OWNER_WORKSPACE_BILLING_PORTAL_CONFIGURATION_ID`（ownerのTeam更新用）を分ける。各更新用Configurationは対象プランだけを許可し、発行後に状態が変わった古いPortal Sessionから別プランへ変更できないようにする。`STRIPE_OWNER_BILLING_PORTAL_CONFIGURATION_ID` はownerの解約専用フローに使用する。Portalのsubscription更新は常に対象ワークスペースの購読へスコープする。SoloとTeamが併存する場合は、重複するプランへの変更を防ぐため両購読を解約専用にする。購入者が非活性のTeamも、後任ownerは解約専用で管理する
+- Preview / develop で決済なしの検証クレジットを有効にする場合だけ `BILLING_TEST_MODE=true` を設定する。Production ではこの値にかかわらず無効化する
 
 ## 9. packages/core への配置（CQRS 命名）
 

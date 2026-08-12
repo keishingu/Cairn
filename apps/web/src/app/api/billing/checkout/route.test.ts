@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   mockGetAuthContext,
   mockGetWorkspaceRole,
+  mockIsWorkspaceOwner,
   mockStripeCustomersCreate,
   mockStripeSessionsList,
   mockStripeSubscriptionsList,
@@ -16,6 +17,7 @@ const {
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockGetWorkspaceRole: vi.fn(),
+  mockIsWorkspaceOwner: vi.fn((role: string) => role === 'owner'),
   mockStripeCustomersCreate: vi.fn(),
   mockStripeSessionsList: vi.fn(),
   mockStripeSubscriptionsList: vi.fn(),
@@ -26,10 +28,14 @@ const {
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/access/membership', () => ({ getWorkspaceRole: mockGetWorkspaceRole }))
+vi.mock('@/lib/access/membership', () => ({
+  getWorkspaceRole: mockGetWorkspaceRole,
+  isWorkspaceOwner: mockIsWorkspaceOwner,
+}))
 vi.mock('@/lib/billing/is-billing-enabled', () => ({ isBillingEnabled: () => true }))
 vi.mock('@/lib/billing/stripe', () => ({
   getIndividualSubscriptionPriceId: () => 'price_individual',
+  getWorkspaceSubscriptionPriceId: () => 'price_workspace',
   getStripeClient: () => ({
     customers: { create: mockStripeCustomersCreate },
     checkout: { sessions: { create: mockStripeSessionsCreate, list: mockStripeSessionsList } },
@@ -67,6 +73,15 @@ vi.mock('drizzle-orm', () => ({
   sql: vi.fn(() => 'sql'),
 }))
 
+function stripeList<T>(data: T[]) {
+  return {
+    data,
+    async *[Symbol.asyncIterator]() {
+      yield* data
+    },
+  }
+}
+
 describe('POST /api/billing/checkout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -76,8 +91,8 @@ describe('POST /api/billing/checkout', () => {
     })
     mockGetWorkspaceRole.mockResolvedValue('member')
     mockStripeCustomersCreate.mockResolvedValue({ id: 'cus-created' })
-    mockStripeSessionsList.mockResolvedValue({ data: [] })
-    mockStripeSubscriptionsList.mockResolvedValue({ data: [] })
+    mockStripeSessionsList.mockReturnValue(stripeList([]))
+    mockStripeSubscriptionsList.mockReturnValue(stripeList([]))
     mockStripeSessionsCreate.mockResolvedValue({ url: 'https://checkout.stripe.test/session' })
     mockTransaction.mockImplementation(async (callback) => callback({
       execute: vi.fn().mockResolvedValue(undefined),
@@ -108,16 +123,28 @@ describe('POST /api/billing/checkout', () => {
     }))
   })
 
+  it('未対応のプラン値はSoloへフォールバックせず拒否する', async () => {
+    const { POST } = await import('./route')
+    const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ plan: 'workspcae' }),
+    }))
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'プランはindividualまたはworkspaceで指定してください' })
+    expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
+  })
+
   it('Stripe上の同一ワークスペースの未完了Checkoutを再利用する', async () => {
     mockSelectLimit
       .mockResolvedValueOnce([{ stripeCustomerId: 'cus-existing' }])
       .mockResolvedValueOnce([])
-    mockStripeSessionsList.mockResolvedValue({
-      data: [{
+    mockStripeSessionsList.mockReturnValue(stripeList([
+      {
         url: 'https://checkout.stripe.test/open-session',
         metadata: { workspaceId: 'workspace-1', supporterUserId: 'user-1', plan: 'individual' },
-      }],
-    })
+      },
+    ]))
 
     const { POST } = await import('./route')
     const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
@@ -134,12 +161,13 @@ describe('POST /api/billing/checkout', () => {
     mockSelectLimit
       .mockResolvedValueOnce([{ stripeCustomerId: 'cus-existing' }])
       .mockResolvedValueOnce([])
-    mockStripeSubscriptionsList.mockResolvedValue({
-      data: [{
+    mockStripeSubscriptionsList.mockReturnValue(stripeList([
+      {
         status: 'active',
         metadata: { workspaceId: 'workspace-1', supporterUserId: 'user-1', plan: 'individual' },
-      }],
-    })
+        items: { data: [{ price: { id: 'price_individual' } }] },
+      },
+    ]))
 
     const { POST } = await import('./route')
     const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
@@ -148,6 +176,78 @@ describe('POST /api/billing/checkout', () => {
     }))
 
     expect(res.status).toBe(409)
+    expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
+  })
+
+  it('PortalでTeamへ変更済みの購読は古いmetadataでもPrice IDから検出する', async () => {
+    mockGetWorkspaceRole.mockResolvedValue('owner')
+    mockSelectLimit
+      .mockResolvedValueOnce([{ stripeCustomerId: 'cus-existing' }])
+      .mockResolvedValueOnce([])
+    mockStripeSubscriptionsList.mockReturnValue(stripeList([
+      {
+        status: 'active',
+        metadata: { workspaceId: 'workspace-1', supporterUserId: 'user-1', plan: 'individual' },
+        items: { data: [{ price: { id: 'price_workspace' } }] },
+      },
+    ]))
+
+    const { POST } = await import('./route')
+    const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ plan: 'workspace' }),
+    }))
+
+    expect(res.status).toBe(409)
+    expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
+  })
+
+  it('別ownerの未完了Team Checkoutは再利用せず競合として扱う', async () => {
+    mockGetWorkspaceRole.mockResolvedValue('owner')
+    mockSelectLimit
+      .mockResolvedValueOnce([{ stripeCustomerId: 'cus-owner-b' }])
+      .mockResolvedValueOnce([])
+    mockStripeSessionsList.mockReturnValue(stripeList([
+      {
+        url: 'https://checkout.stripe.test/owner-a-session',
+        metadata: { workspaceId: 'workspace-1', supporterUserId: 'user-a', plan: 'workspace' },
+      },
+    ]))
+
+    const { POST } = await import('./route')
+    const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ plan: 'workspace' }),
+    }))
+
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({
+      error: '別のオーナーがTeamプランの決済を進めています。完了後に請求管理画面を確認してください',
+    })
+    expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
+  })
+
+  it('ページをまたぐ未完了Team Checkoutを検出する', async () => {
+    mockGetWorkspaceRole.mockResolvedValue('owner')
+    mockSelectLimit
+      .mockResolvedValueOnce([{ stripeCustomerId: 'cus-owner' }])
+      .mockResolvedValueOnce([])
+    mockStripeSessionsList.mockReturnValue(stripeList([
+      ...Array.from({ length: 100 }, () => ({ metadata: {} })),
+      {
+        url: 'https://checkout.stripe.test/own-session',
+        metadata: { workspaceId: 'workspace-1', supporterUserId: 'user-1', plan: 'workspace' },
+      },
+    ]))
+
+    const { POST } = await import('./route')
+    const res = await POST(new Request('https://cairn.example/api/billing/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ plan: 'workspace' }),
+    }))
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ url: 'https://checkout.stripe.test/own-session' })
     expect(mockStripeSessionsCreate).not.toHaveBeenCalled()
   })
 })

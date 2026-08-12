@@ -1,9 +1,30 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type Stripe from 'stripe'
-import { resolveCreditPackFulfillment } from './stripe-webhook'
+import {
+  isMonthlyGrantInvoice,
+  resolveCreditPackFulfillment,
+  resolveInvoicePlan,
+  resolveMonthlyCreditGrant,
+} from './stripe-webhook'
+
+const originalIndividualPriceId = process.env['STRIPE_INDIVIDUAL_PRICE_ID']
+const originalWorkspacePriceId = process.env['STRIPE_WORKSPACE_PRICE_ID']
+
+afterEach(() => {
+  if (originalIndividualPriceId === undefined) {
+    delete process.env['STRIPE_INDIVIDUAL_PRICE_ID']
+  } else {
+    process.env['STRIPE_INDIVIDUAL_PRICE_ID'] = originalIndividualPriceId
+  }
+  if (originalWorkspacePriceId === undefined) {
+    delete process.env['STRIPE_WORKSPACE_PRICE_ID']
+  } else {
+    process.env['STRIPE_WORKSPACE_PRICE_ID'] = originalWorkspacePriceId
+  }
+})
 
 function checkoutSession(overrides: Partial<Stripe.Checkout.Session> = {}) {
   return {
@@ -52,5 +73,64 @@ describe('resolveCreditPackFulfillment', () => {
     expect(() => resolveCreditPackFulfillment(checkoutSession({ amount_total: 499 }))).toThrow(
       'Credit pack Checkout cs_credit_pack is missing billing metadata',
     )
+  })
+})
+
+describe('resolveMonthlyCreditGrant', () => {
+  it('Teamの初回請求はTeam価格の請求行から最低900石を付与する', () => {
+    process.env['STRIPE_WORKSPACE_PRICE_ID'] = 'price_workspace'
+
+    expect(
+      resolveMonthlyCreditGrant(
+        'subscription_create',
+        [{ quantity: 1, priceId: 'price_workspace' }],
+        'workspace',
+        1,
+      ),
+    ).toBe(900)
+  })
+
+  it('Teamの月次付与はアクティブメンバー数に応じて増える', () => {
+    process.env['STRIPE_WORKSPACE_PRICE_ID'] = 'price_workspace'
+
+    expect(
+      resolveMonthlyCreditGrant(
+        'subscription_cycle',
+        [{ quantity: 1, priceId: 'price_workspace' }],
+        'workspace',
+        5,
+      ),
+    ).toBe(1500)
+  })
+
+  it('Soloの月次付与はSolo価格の口数に応じる', () => {
+    process.env['STRIPE_INDIVIDUAL_PRICE_ID'] = 'price_individual'
+
+    expect(
+      resolveMonthlyCreditGrant(
+        'subscription_cycle',
+        [{ quantity: 2, priceId: 'price_individual' }],
+        'individual',
+        0,
+      ),
+    ).toBe(600)
+  })
+})
+
+describe('resolveInvoicePlan', () => {
+  it('最新のsubscription価格ではなく請求行の価格からプランを判定する', () => {
+    process.env['STRIPE_INDIVIDUAL_PRICE_ID'] = 'price_individual'
+    process.env['STRIPE_WORKSPACE_PRICE_ID'] = 'price_workspace'
+
+    expect(resolveInvoicePlan([{ quantity: 1, priceId: 'price_individual' }])).toBe('individual')
+    expect(resolveInvoicePlan([{ quantity: 1, priceId: 'price_workspace' }])).toBe('workspace')
+  })
+})
+
+describe('isMonthlyGrantInvoice', () => {
+  it('プラン変更の請求書は月次付与・プラン判定の対象にしない', () => {
+    expect(isMonthlyGrantInvoice('subscription_update')).toBe(false)
+    expect(isMonthlyGrantInvoice('subscription_create')).toBe(true)
+    expect(isMonthlyGrantInvoice('subscription_cycle')).toBe(true)
   })
 })

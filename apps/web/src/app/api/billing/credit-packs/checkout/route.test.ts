@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   mockGetAuthContext,
   mockGetWorkspaceRole,
+  mockInArray,
+  mockOr,
   mockStripePriceRetrieve,
   mockStripeSessionsList,
   mockStripeSessionsCreate,
@@ -15,6 +17,8 @@ const {
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockGetWorkspaceRole: vi.fn(),
+  mockInArray: vi.fn(() => 'inArray'),
+  mockOr: vi.fn(() => 'or'),
   mockStripePriceRetrieve: vi.fn(),
   mockStripeSessionsList: vi.fn(),
   mockStripeSessionsCreate: vi.fn(),
@@ -63,6 +67,8 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
   eq: vi.fn(() => 'eq'),
   gt: vi.fn(() => 'gt'),
+  inArray: mockInArray,
+  or: mockOr,
   sql: vi.fn(() => 'sql'),
 }))
 
@@ -121,6 +127,21 @@ describe('POST /api/billing/credit-packs/checkout', () => {
         }),
       }),
     )
+  })
+
+  it('Team契約者も単発クレジットパックを購入できる', async () => {
+    mockSelectLimit
+      .mockResolvedValueOnce([{ stripeCustomerId: 'cus-existing' }])
+      .mockResolvedValueOnce([{ id: 'sub-workspace' }])
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('https://cairn.example/api/billing/credit-packs/checkout', { method: 'POST' }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(mockOr).toHaveBeenCalled()
+    expect(mockStripeSessionsCreate).toHaveBeenCalledOnce()
   })
 
   it('アクティブな支援者でなければクレジットパックを購入できない', async () => {

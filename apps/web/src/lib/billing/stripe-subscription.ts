@@ -8,6 +8,7 @@ export interface StripeSubscriptionRecord {
   status: string
   quantity: number
   currentPeriodEnd: number
+  priceId: string
   metadata: Record<string, string>
 }
 
@@ -17,12 +18,24 @@ export function asStripeSubscriptionRecord(
   const value = subscription as unknown as {
     id: string
     status: string
-    items: { data: Array<{ quantity: number | null; current_period_end?: number }> }
+    items: {
+      data: Array<{
+        quantity: number | null
+        current_period_end?: number
+        price?: string | { id: string }
+      }>
+    }
     metadata: Record<string, string>
   }
   const firstItem = value.items.data[0]
   const currentPeriodEnd = firstItem?.current_period_end
-  if (!firstItem || typeof currentPeriodEnd !== 'number' || !Number.isFinite(currentPeriodEnd)) {
+  const priceId = typeof firstItem?.price === 'string' ? firstItem.price : firstItem?.price?.id
+  if (
+    !firstItem ||
+    typeof currentPeriodEnd !== 'number' ||
+    !Number.isFinite(currentPeriodEnd) ||
+    !priceId
+  ) {
     throw new Error(`Subscription ${value.id} has no current period end`)
   }
 
@@ -31,6 +44,7 @@ export function asStripeSubscriptionRecord(
     status: value.status,
     quantity: firstItem.quantity ?? 1,
     currentPeriodEnd,
+    priceId,
     metadata: value.metadata,
   }
 }
