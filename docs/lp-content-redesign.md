@@ -39,7 +39,7 @@
 | Files & Search: 最新版フラグ・全チャンネル横断検索 | #155, #89, #237 |
 | Gallery: プロジェクトごとのアルバム | 既存 + #92 |
 | AI: ファイル・Google Docs を読み出典つきで回答 | #59, #263 |
-| Everywhere: Web / iOS / Android / Desktop・閲覧中は鳴らない Push | Expo, #115, #130 |
+| Everywhere: Web / iOS / Android / Desktop・閲覧状態に応じた Push / バッジ制御 | Expo, #115, #130 |
 | Guests & Roles: 招待リンク・ゲスト制限・ロール権限・リンク無効化 | #120, #140, #93, #102 |
 
 
