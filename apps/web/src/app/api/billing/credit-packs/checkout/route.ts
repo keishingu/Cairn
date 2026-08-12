@@ -8,6 +8,7 @@ import { getWorkspaceRole } from '@/lib/access/membership'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { getCreditPackPriceId, getStripeClient, resolveApplicationUrl } from '@/lib/billing/stripe'
 import { isConfiguredCreditPackPrice, isReusableCreditPackCheckout } from './credit-pack-checkout'
+import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 export async function POST(request: Request) {
   const { ctx, error } = await getAuthContext()
@@ -25,36 +26,38 @@ export async function POST(request: Request) {
     const { billingCustomers, db, subscriptions } = await import('@cairn/db')
     const { and, eq, gt, sql } = await import('drizzle-orm')
     const stripe = getStripeClient()
-    const [existingCustomer] = await db
-      .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
-      .from(billingCustomers)
-      .where(eq(billingCustomers.userId, ctx.userId))
-      .limit(1)
-    let customerId = existingCustomer?.stripeCustomerId
-    if (!customerId) {
-      const createdCustomer = await stripe.customers.create({ metadata: { userId: ctx.userId } })
-      const [insertedCustomer] = await db
-        .insert(billingCustomers)
-        .values({ userId: ctx.userId, stripeCustomerId: createdCustomer.id })
-        .onConflictDoNothing()
-        .returning({ stripeCustomerId: billingCustomers.stripeCustomerId })
-      if (insertedCustomer) {
-        customerId = insertedCustomer.stripeCustomerId
-      } else {
-        const [persistedCustomer] = await db
-          .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
-          .from(billingCustomers)
-          .where(eq(billingCustomers.userId, ctx.userId))
-          .limit(1)
-        if (!persistedCustomer) throw new Error('Stripe customer was not persisted')
-        customerId = persistedCustomer.stripeCustomerId
-      }
-    }
-
-    const checkout = await db.transaction(async (tx) => {
+    const checkout = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async (tx) => {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`checkout:${ctx.workspaceId}:${ctx.userId}:credit-pack`}, 0))`,
       )
+      const [existingCustomer] = await tx
+        .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
+        .from(billingCustomers)
+        .where(eq(billingCustomers.userId, ctx.userId))
+        .limit(1)
+      let customerId = existingCustomer?.stripeCustomerId
+      if (!customerId) {
+        const createdCustomer = await stripe.customers.create({
+          metadata: { userId: ctx.userId },
+        })
+        const [insertedCustomer] = await tx
+          .insert(billingCustomers)
+          .values({ userId: ctx.userId, stripeCustomerId: createdCustomer.id })
+          .onConflictDoNothing()
+          .returning({ stripeCustomerId: billingCustomers.stripeCustomerId })
+        if (insertedCustomer) {
+          customerId = insertedCustomer.stripeCustomerId
+        } else {
+          const [persistedCustomer] = await tx
+            .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
+            .from(billingCustomers)
+            .where(eq(billingCustomers.userId, ctx.userId))
+            .limit(1)
+          if (!persistedCustomer) throw new Error('Stripe customer was not persisted')
+          customerId = persistedCustomer.stripeCustomerId
+        }
+      }
+
       const [activeSubscription] = await tx
         .select({ id: subscriptions.id })
         .from(subscriptions)
@@ -122,6 +125,12 @@ export async function POST(request: Request) {
       if (!session.url) throw new Error('Stripe Checkout session did not include a URL')
       return { url: session.url }
     })
+    if (!checkout) {
+      return NextResponse.json(
+        { error: 'ワークスペースへのアクセス権がありません' },
+        { status: 403 },
+      )
+    }
     if ('error' in checkout) return NextResponse.json({ error: checkout.error }, { status: 403 })
     return NextResponse.json({ url: checkout.url })
   } catch (err) {
