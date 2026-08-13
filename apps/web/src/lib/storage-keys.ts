@@ -24,11 +24,11 @@ export const STORAGE_KEYS = {
   kanban_member_filter:      'cairn:kanban_member_filter',
   kanban_scope:              'cairn:kanban_scope',
   sidebar_collapsed:         'cairn:sidebar_collapsed',
+  project_detail_tab:        'cairn:project_detail_tab',
   projects_list_view:        'cairn:projects_list_view',
   projects_table_sort:       'cairn:projects_table_sort',
   webview_mode:              'cairn:webview_mode',
   chat_archived_collapsed:   'cairn:chat_archived_collapsed',
-  chat_completed_milestones_collapsed: 'cairn:chat_completed_milestones_collapsed',
   chat_last_channel_id:      'cairn:chat_last_channel_id',
 } as const
 
@@ -36,3 +36,7 @@ export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS]
 
 /** チャンネル別の未送信ドラフトキー (cairn:chat_draft_<channelId>) */
 export const chatDraftKey = (channelId: string) => `cairn:chat_draft_${channelId}` as const
+
+/** プロジェクト別の完了済みマイルストーン折りたたみ状態 */
+export const chatCompletedMilestonesCollapsedKey = (projectId: string) =>
+  `cairn:chat_completed_milestones_collapsed_${projectId}` as const

@@ -4,7 +4,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ChatMessage, copyMessageContent } from './chat-thread'
+import { ChatMessage, copyMessageContent, copyMessageLink } from './chat-thread'
 
 const { toastSuccess, toastError } = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
@@ -104,6 +104,23 @@ describe('ChatMessage copy action', () => {
 
     expect(writeText).toHaveBeenCalledWith('hello')
     expect(toastError).toHaveBeenCalledWith('メッセージをコピーできませんでした')
+  })
+
+  it('メッセージのリンクをコピーして成功トーストを出す', async () => {
+    const url = 'https://develop.oss-cairn.com/chats/channel-1?m=message-1'
+
+    await expect(copyMessageLink(url)).resolves.toBe(true)
+
+    expect(clipboardWriteText).toHaveBeenCalledWith(url)
+    expect(toastSuccess).toHaveBeenCalledWith('リンクをコピーしました')
+  })
+
+  it('メッセージのリンクをコピーできなければエラートーストを出す', async () => {
+    clipboardWriteText.mockRejectedValue(new Error('denied'))
+
+    await expect(copyMessageLink('https://develop.oss-cairn.com/chats/1')).resolves.toBe(false)
+
+    expect(toastError).toHaveBeenCalledWith('リンクをコピーできませんでした')
   })
 
   it('Markdown を装飾つきで表示できる', () => {

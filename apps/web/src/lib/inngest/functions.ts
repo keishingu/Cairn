@@ -7,14 +7,13 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
-import { hasReadMessage } from '@/lib/push/suppress'
 import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
 import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
 import { passesPhaseTwoConfidence } from '@/lib/ai-nudges/llm-nudge-rules'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
-// 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
+// DM は Push を抑制し、メンションはバッジ更新なしの Push に切り替えられる。
 const PUSH_GRACE_PERIOD = '10s'
 
 // メンバー一覧から userId → 表示名のリゾルバを作る（通知本文のメンション解決用）
@@ -25,32 +24,29 @@ function nameResolver(
   return (id) => map.get(id)
 }
 
-// 猶予期間中に対象メッセージを既読にした受信者を Push 対象から除外する
-async function filterUnreadRecipients<T extends { userId: string }>(
+// 猶予期間中に対象メッセージを既読にした受信者と未読の受信者を分ける。
+// 猶予中にメッセージが削除された場合は、どちらにも含めない。
+async function classifyPushRecipients<T extends { userId: string }>(
   messageId: string,
   channelId: string,
   recipients: T[],
-): Promise<T[]> {
-  if (recipients.length === 0) return []
+): Promise<{ readRecipients: T[]; unreadRecipients: T[] }> {
+  if (recipients.length === 0) return { readRecipients: [], unreadRecipients: [] }
 
   const { db, messages, channelReadStates } = await import('@cairn/db')
-  const { eq, and, inArray } = await import('drizzle-orm')
+  const { eq, and, inArray, or, sql } = await import('drizzle-orm')
 
   const [msg] = await db
-    .select({ createdAt: messages.createdAt, deletedAt: messages.deletedAt })
+    .select({ deletedAt: messages.deletedAt })
     .from(messages)
     .where(eq(messages.id, messageId))
     .limit(1)
 
   // 猶予中に削除されたメッセージの Push は送らない
-  if (!msg || msg.deletedAt) return []
+  if (!msg || msg.deletedAt) return { readRecipients: [], unreadRecipients: [] }
 
-  const states = await db
-    .select({
-      userId: channelReadStates.userId,
-      lastReadAt: channelReadStates.lastReadAt,
-      lastReadMessageId: channelReadStates.lastReadMessageId,
-    })
+  const readStates = await db
+    .select({ userId: channelReadStates.userId })
     .from(channelReadStates)
     .where(
       and(
@@ -59,13 +55,22 @@ async function filterUnreadRecipients<T extends { userId: string }>(
           channelReadStates.userId,
           recipients.map((r) => r.userId),
         ),
+        or(
+          eq(channelReadStates.lastReadMessageId, messageId),
+          sql`${channelReadStates.lastReadAt} >= (
+            select ${messages.createdAt}
+            from ${messages}
+            where ${messages.id} = ${messageId}
+          )`,
+        ),
       ),
     )
 
-  const stateMap = new Map(states.map((s) => [s.userId, s]))
-  return recipients.filter(
-    (r) => !hasReadMessage(stateMap.get(r.userId), { id: messageId, createdAt: msg.createdAt }),
-  )
+  const readUserIds = new Set(readStates.map((state) => state.userId))
+  return {
+    readRecipients: recipients.filter((recipient) => readUserIds.has(recipient.userId)),
+    unreadRecipients: recipients.filter((recipient) => !readUserIds.has(recipient.userId)),
+  }
 }
 
 export const onMessageCreated = inngest.createFunction(
@@ -130,13 +135,13 @@ export const onMessageCreated = inngest.createFunction(
       if (members.length > 0) {
         // 閲覧中の相手に Push を出さないため、猶予後に既読を再確認してから送る
         await step.sleep('push-grace', PUSH_GRACE_PERIOD)
-        const unreadMembers = await step.run('filter-dm-push-targets', () =>
-          filterUnreadRecipients(messageId, channelId, members),
+        const { unreadRecipients } = await step.run('filter-dm-push-targets', () =>
+          classifyPushRecipients(messageId, channelId, members),
         )
 
         await step.run('send-dm-push', async () => {
           await Promise.allSettled(
-            unreadMembers.map((m) =>
+            unreadRecipients.map((m) =>
               sendPushToUser(m.userId, {
                 title: senderName,
                 body: dmBody.slice(0, 100),
@@ -270,34 +275,90 @@ export const onMessageCreated = inngest.createFunction(
     let mentionNotifications = 0
     if (notifyMentioned.length > 0) {
       await step.run('create-mention-notifications', async () => {
-        const { db, notifications, channelReadStates } = await import('@cairn/db')
-        const { sql } = await import('drizzle-orm')
+        const { db, notifications, channelReadStates, messages } = await import('@cairn/db')
+        const { and, eq, inArray, sql } = await import('drizzle-orm')
 
-        await db.insert(notifications).values(
-          notifyMentioned.map((m) => ({
-            userId: m.userId,
+        const [message] = await db
+          .select({ id: messages.id })
+          .from(messages)
+          .where(eq(messages.id, messageId))
+          .limit(1)
+        if (!message) throw new Error(`Message not found: ${messageId}`)
+
+        const recipients = [...notifyMentioned].sort((a, b) => a.userId.localeCompare(b.userId))
+        await db.transaction(async (tx) => {
+          // 未参加者はジョブの実行順にかかわらず、すべてのメンションを未読から始める。
+          await tx
+            .insert(channelReadStates)
+            .values(recipients.map((recipient) => ({
+              userId: recipient.userId,
+              channelId,
+              lastReadAt: sql`'epoch'::timestamptz`,
+            })))
+            .onConflictDoNothing()
+
+          // 既読APIも同じ行を更新するため、通知行とカウンターの確定まで直列化する。
+          const states = await tx
+            .select({ userId: channelReadStates.userId })
+            .from(channelReadStates)
+            .where(and(
+              eq(channelReadStates.channelId, channelId),
+              inArray(channelReadStates.userId, recipients.map((recipient) => recipient.userId)),
+            ))
+            .orderBy(channelReadStates.userId)
+            .for('update')
+
+          if (states.length !== recipients.length) {
+            throw new Error('Channel read states were not created')
+          }
+
+          const readStates = await tx
+            .select({ userId: channelReadStates.userId })
+            .from(channelReadStates)
+            .where(and(
+              eq(channelReadStates.channelId, channelId),
+              inArray(channelReadStates.userId, recipients.map((recipient) => recipient.userId)),
+              sql`(
+                ${channelReadStates.lastReadMessageId} = ${messageId}::uuid
+                or ${channelReadStates.lastReadAt} >= (
+                  select ${messages.createdAt}
+                  from ${messages}
+                  where ${messages.id} = ${messageId}
+                )
+              )`,
+            ))
+          const readUserIds = new Set(readStates.map((state) => state.userId))
+          const unreadRecipients = recipients.filter(
+            (recipient) => !readUserIds.has(recipient.userId),
+          )
+          const now = new Date()
+
+          await tx.insert(notifications).values(recipients.map((recipient) => ({
+            userId: recipient.userId,
             workspaceId,
             type: 'mention' as const,
             title: `${senderName} があなたをメンションしました`,
             body: mentionBody.slice(0, 200),
             data: { messageId, channelId, senderName },
-          })),
-        )
+            readAt: readUserIds.has(recipient.userId) ? now : null,
+          })))
 
-        // unread_mention_count をインクリメント（行が無ければ作成）
-        await db
-          .insert(channelReadStates)
-          .values(
-            notifyMentioned.map((m) => ({
-              userId: m.userId,
-              channelId,
-              unreadMentionCount: 1,
-            })),
-          )
-          .onConflictDoUpdate({
-            target: [channelReadStates.userId, channelReadStates.channelId],
-            set: { unreadMentionCount: sql`${channelReadStates.unreadMentionCount} + 1` },
-          })
+          if (unreadRecipients.length > 0) {
+            await tx
+              .update(channelReadStates)
+              .set({
+                unreadMentionCount: sql`${channelReadStates.unreadMentionCount} + 1`,
+                updatedAt: now,
+              })
+              .where(and(
+                eq(channelReadStates.channelId, channelId),
+                inArray(
+                  channelReadStates.userId,
+                  unreadRecipients.map((recipient) => recipient.userId),
+                ),
+              ))
+          }
+        })
       })
       mentionNotifications = notifyMentioned.length
     }
@@ -333,21 +394,30 @@ export const onMessageCreated = inngest.createFunction(
       fileNotifications = members.length
     }
 
-    // メンション Push は猶予後に既読を再確認してから送る（アプリ内通知・バッジは上で記録済み）
+    // メンション Push は閲覧中でも送る。猶予中に既読になった受信者には、
+    // 表示中チャットのメンションでアプリアイコンバッジを更新しないようにする。
     if (notifyMentioned.length > 0) {
       await step.sleep('push-grace', PUSH_GRACE_PERIOD)
-      const unreadMembers = await step.run('filter-mention-push-targets', () =>
-        filterUnreadRecipients(messageId, channelId, notifyMentioned),
+      const { readRecipients, unreadRecipients } = await step.run(
+        'filter-mention-push-targets',
+        () => classifyPushRecipients(messageId, channelId, notifyMentioned),
       )
 
       await step.run('send-mention-push', async () => {
         await Promise.allSettled(
-          unreadMembers.map((m) =>
-            sendPushToUser(m.userId, {
-              title: `${senderName} があなたをメンションしました`,
-              body: mentionBody.slice(0, 100),
-              url: `/chats/${channelId}`,
-            }),
+          [
+            ...unreadRecipients.map((m) => ({ recipient: m, updateAppBadge: true })),
+            ...readRecipients.map((m) => ({ recipient: m, updateAppBadge: false })),
+          ].map(({ recipient, updateAppBadge }) =>
+            sendPushToUser(
+              recipient.userId,
+              {
+                title: `${senderName} があなたをメンションしました`,
+                body: mentionBody.slice(0, 100),
+                url: `/chats/${channelId}`,
+              },
+              { updateAppBadge },
+            ),
           ),
         )
       })

@@ -22,6 +22,9 @@ const {
   mockRecordStorageUsageDelta,
   mockSelectLimit,
   mockTransactionSelectLimit,
+  mockTransactionExecute,
+  mockDeleteWhere,
+  mockHasAttachmentUploadRequestSchema,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -36,6 +39,18 @@ const {
   mockSelectLimit: vi.fn(),
   mockInsertReturning: vi.fn(),
   mockTransactionSelectLimit: vi.fn(),
+  mockTransactionExecute: vi.fn().mockResolvedValue({
+    rows: [
+      {
+        id: 'upload-1',
+        expires_at: new Date('2099-01-01T00:00:00Z'),
+        finalized_at: null,
+        file_id: null,
+      },
+    ],
+  }),
+  mockDeleteWhere: vi.fn().mockResolvedValue(undefined),
+  mockHasAttachmentUploadRequestSchema: vi.fn().mockResolvedValue(true),
   mockInsertValues: vi.fn((v: Record<string, unknown>) => ({
     onConflictDoNothing: () => ({ returning: () => mockInsertReturning(v) }),
   })),
@@ -57,11 +72,15 @@ vi.mock('@/lib/supabase/service', () => ({
 }))
 vi.mock('@/lib/ai/extract-text', () => ({ isIndexable: mockIsIndexable }))
 vi.mock('@/lib/attachments/thumbnail', () => ({
+  ATTACHMENTS_BUCKET: 'chat-attachments',
   createThumbnailFromStorage: mockCreateThumbnailFromStorage,
 }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 vi.mock('@/lib/billing/storage-usage', () => ({
   recordStorageUsageDelta: mockRecordStorageUsageDelta,
+}))
+vi.mock('@/lib/uploads/schema-readiness', () => ({
+  hasAttachmentUploadRequestSchema: mockHasAttachmentUploadRequestSchema,
 }))
 vi.mock('@cairn/db', () => ({
   db: {
@@ -79,6 +98,8 @@ vi.mock('@cairn/db', () => ({
       callback: (tx: {
         execute: () => Promise<void>
         insert: () => { values: typeof mockInsertValues }
+        update: () => { set: () => { where: () => Promise<void> } }
+        delete: () => { where: () => Promise<void> }
         select: () => {
           from: () => {
             where: () => {
@@ -90,8 +111,10 @@ vi.mock('@cairn/db', () => ({
       }) => unknown,
     ) =>
       callback({
-        execute: vi.fn().mockResolvedValue(undefined),
+        execute: mockTransactionExecute,
         insert: () => ({ values: mockInsertValues }),
+        update: () => ({ set: () => ({ where: vi.fn().mockResolvedValue(undefined) }) }),
+        delete: () => ({ where: mockDeleteWhere }),
         select: () => ({
           from: () => ({
             where: () => {
@@ -114,11 +137,13 @@ vi.mock('@cairn/db', () => ({
   subscriptions: {},
   workspaceStorageUsage: {},
   channels: { projectId: 'c.projectId', id: 'c.id' },
+  uploadRequests: {},
 }))
 vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
   eq: vi.fn(() => 'eq'),
   gt: vi.fn(() => 'gt'),
+  isNull: vi.fn(() => 'isNull'),
   sql: vi.fn(() => 'sql'),
 }))
 
@@ -127,7 +152,7 @@ function post(body: unknown): Request {
 }
 
 function storagePathFor(name: string): string {
-  return `${DEV_WORKSPACE_ID}/${CHANNEL_ID}/${name}`
+  return `${DEV_WORKSPACE_ID}/${CHANNEL_ID}/${DEV_USER_ID}/${name}`
 }
 
 describe('/api/attachments/finalize のアクセス制御', () => {
@@ -141,6 +166,7 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     mockSelectLimit
       .mockReset()
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'upload-1' }])
       .mockResolvedValueOnce([{ projectId: null }])
     mockInsertReturning.mockImplementation((values) =>
       Promise.resolve([{ id: 'file-1', ...values }]),
@@ -205,6 +231,35 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     expect(res.status).toBe(400)
   })
 
+  it('清掃と競合してintentが期限切れならファイルを確定しない', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockTransactionSelectLimit.mockResolvedValue([])
+    mockTransactionExecute.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'upload-1',
+          expires_at: new Date('2000-01-01T00:00:00Z'),
+          finalized_at: null,
+          file_id: null,
+        },
+      ],
+    })
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      post({
+        channelId: CHANNEL_ID,
+        storagePath: storagePathFor('x.pdf'),
+        fileName: 'x.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 100,
+      }),
+    )
+
+    expect(res.status).toBe(410)
+    expect(mockInsertValues).not.toHaveBeenCalled()
+  })
+
   it('原本保存の権利を失った場合はオブジェクトを削除して登録しない', async () => {
     mockRequireChannelAccess.mockResolvedValue(null)
     mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadLargeFile: false } })
@@ -227,6 +282,7 @@ describe('/api/attachments/finalize のアクセス制御', () => {
 
     expect(res.status).toBe(403)
     expect(mockRemove).toHaveBeenCalledWith([storagePathFor('x.pdf')])
+    expect(mockDeleteWhere).not.toHaveBeenCalled()
     expect(mockInsertValues).not.toHaveBeenCalled()
   })
 
@@ -238,6 +294,7 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     mockSelectLimit
       .mockReset()
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'upload-1' }])
       .mockResolvedValueOnce([{ projectId: null }])
     mockTransactionSelectLimit
       .mockResolvedValueOnce([{ originalBytes: BILLING_CONFIG.freeStorageBytes }])
@@ -272,6 +329,7 @@ describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {
     mockSelectLimit
       .mockReset()
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'upload-1' }])
       .mockResolvedValueOnce([{ projectId: null }])
     mockIsIndexable.mockReturnValue(true)
     mockCreateThumbnailFromStorage.mockResolvedValue(null)

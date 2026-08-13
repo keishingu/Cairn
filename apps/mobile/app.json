@@ -12,6 +12,7 @@
     },
     "platforms": ["ios", "android"],
     "ios": {
+      "icon": "./assets/icon-ios.png",
       "bundleIdentifier": "com.oss-cairn",
       "infoPlist": {
         "NSUserNotificationsUsageDescription": "プロジェクトのメンションやタスクの更新を通知します",

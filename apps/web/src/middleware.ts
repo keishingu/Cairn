@@ -53,12 +53,14 @@ export async function middleware(request: NextRequest) {
     pathname === '/og-image.png' ||
     pathname === '/og-image.svg'
   const isSeoRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
+  const isLegalRoute = pathname === '/privacy' || pathname === '/terms'
   // 未ログインでもアクセスできるパブリックルート（LP と関連静的アセットを含む）
   const isPublicRoute =
     pathname.startsWith('/invite') ||
     pathname.startsWith('/.well-known/') ||
     isLandingRoute ||
     isLandingAsset ||
+    isLegalRoute ||
     isSeoRoute
   // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
   const isOnboardingRoute = pathname.startsWith('/onboarding')

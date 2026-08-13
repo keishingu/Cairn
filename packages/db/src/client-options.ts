@@ -1,13 +1,13 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-export const postgresClientOptions = {
-  // Supavisor transaction mode は prepared statement をサポートしない。
-  prepare: false,
-  // Vercel Function インスタンスあたりの接続数を抑える。
+export const nodePostgresPoolOptions = {
+  // Vercel Function インスタンスあたりの接続数を抑え、pg 側でクエリを直列化する。
   max: 1,
   // warm インスタンスが Supavisor のクライアント枠を長時間保持しないようにする。
-  idle_timeout: 20,
-  // ネットワーク障害時に Vercel の実行上限まで接続を待ち続けない。
-  connect_timeout: 10,
+  idleTimeoutMillis: 20_000,
+  // 接続確立または pool の空き待ちが長引いた場合は早く失敗する。
+  connectionTimeoutMillis: 10_000,
+  // Supavisor から応答がなくても Vercel の実行上限まで query を待ち続けない。
+  query_timeout: 30_000,
 } as const

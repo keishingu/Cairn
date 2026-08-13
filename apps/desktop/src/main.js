@@ -1,6 +1,8 @@
-const { app, BrowserWindow, Menu, session, ipcMain, nativeImage } = require('electron')
+const { app, BrowserWindow, Menu, session, ipcMain, nativeImage, shell } = require('electron')
 const path = require('path')
 const pkg = require('../package.json')
+const { registerExternalNavigation } = require('./external-navigation')
+const { registerPermissionPolicy } = require('./permission-policy')
 
 const APP_URL = process.env.DESKTOP_APP_URL || pkg.config?.appUrl || 'https://develop.oss-cairn.com'
 const isDev = process.env.NODE_ENV === 'development'
@@ -99,6 +101,7 @@ function createWindow() {
     },
   })
 
+  registerExternalNavigation(win.webContents, APP_URL, url => shell.openExternal(url))
   win.loadURL(APP_URL)
 
   // Desktop 特権: ブラウザがタブ切替に使う Ctrl+Tab / Ctrl+Shift+Tab を横取りし、
@@ -115,10 +118,9 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // Web Push (PushManager) の購読・通知許可ダイアログを許可する
-  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    callback(permission === 'notifications' || permission === 'push')
-  })
+  // Cairn が使用する権限だけを同一オリジンに許可する。
+  // Clipboard API は clipboard-sanitized-write の許可がないと Desktop 版で失敗する。
+  registerPermissionPolicy(session.defaultSession, APP_URL)
 
   registerBadgeBridge()
   buildMenu()

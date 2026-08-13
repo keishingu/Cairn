@@ -10,6 +10,7 @@ const { mockHeaders, mockCookies, mockSupabase, mockDb, mockEq } = vi.hoisted(()
     auth: {
       getClaims: vi.fn(),
       getSession: vi.fn(),
+      getUser: vi.fn(),
     },
   }
   const mockDb = {
@@ -214,15 +215,33 @@ describe('get-auth-context', () => {
     expect(result.error?.status).toBe(403)
   })
 
-  it('getAuthUser も Cookie 認証で getClaims() を使う', async () => {
+  it('getAuthUser はAuthサーバーへ再照合して削除済みユーザーを許可しない', async () => {
     mockHeaders.mockResolvedValue(new Headers())
-    mockSupabase.auth.getClaims.mockResolvedValue(okClaims)
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+      error: null,
+    })
 
     const { getAuthUser } = await import('./get-auth-context')
     const result = await getAuthUser()
 
-    expect(mockSupabase.auth.getClaims).toHaveBeenCalledWith(SESSION_TOKEN, undefined)
+    expect(mockSupabase.auth.getUser).toHaveBeenCalledWith(undefined)
     expect(result).toEqual({ userId: 'user-1', error: null })
+  })
+
+  it('getAuthUser はAuthから削除済みなら有効期限内のBearer JWTでも401を返す', async () => {
+    mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer deleted-user-token' }))
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: null },
+      error: { message: 'User not found' },
+    })
+
+    const { getAuthUser } = await import('./get-auth-context')
+    const result = await getAuthUser()
+
+    expect(mockSupabase.auth.getUser).toHaveBeenCalledWith('deleted-user-token')
+    expect(result.userId).toBeNull()
+    expect(result.error?.status).toBe(401)
   })
 
   it('非活性な preferred workspace cookie は無視して active 所属へフォールバックする', async () => {

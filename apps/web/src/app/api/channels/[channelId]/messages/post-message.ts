@@ -37,7 +37,7 @@ export async function postMessage({
     const { db } = await import('@cairn/db')
     const { messages, profiles, messageAttachments, files, channels, tasks, workspaceMembers } =
       await import('@cairn/db')
-    const { eq, and, isNull, inArray } = await import('drizzle-orm')
+    const { eq, and, isNull, inArray, sql } = await import('drizzle-orm')
 
     // モバイルのオフラインキューは最初の送信から同じ UUID を使い続ける。
     // 応答が端末へ届く前に回線が切れて再送されても、既存行を返して二重投稿を防ぐ。
@@ -157,6 +157,13 @@ export async function postMessage({
         : [undefined]
 
     const inserted = await db.transaction(async (tx) => {
+      // 既読スナップショットと投稿順をチャンネル単位で直列化する。
+      await tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(eq(channels.id, channelId))
+        .for('update')
+
       const [message] = await tx
         .insert(messages)
         .values({
@@ -166,6 +173,9 @@ export async function postMessage({
           content,
           messageType: payload.messageType ?? 'text',
           parentMessageId: payload.parentMessageId ?? null,
+          // default now() はトランザクション開始時刻なので、ロック取得後の時刻を使う。
+          createdAt: sql`clock_timestamp()`,
+          updatedAt: sql`clock_timestamp()`,
         })
         .returning({
           id: messages.id,

@@ -24,6 +24,11 @@ export interface PushPayload {
   url?: string
 }
 
+export interface PushDeliveryOptions {
+  /** false の場合、通知は送るが Web のアプリアイコンバッジは更新しない。 */
+  updateAppBadge?: boolean
+}
+
 /** Service Worker に送る、バッジ数を含めた実際の Web Push ペイロード */
 interface PushMessage extends PushPayload {
   /**
@@ -41,7 +46,11 @@ interface Subscription {
   expoToken: string | null
 }
 
-export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
+export async function sendPushToUser(
+  userId: string,
+  payload: PushPayload,
+  { updateAppBadge = true }: PushDeliveryOptions = {},
+): Promise<void> {
   const { db, pushSubscriptions } = await import('@cairn/db')
   const { eq } = await import('drizzle-orm')
 
@@ -68,7 +77,7 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
     // Push 送信時点で通知行は既に作成済みのため、この件数に新着分も含まれる。
     // best-effort: 集計に失敗しても通知本体（と後段の Expo push）は送る
     let badgeCount: number | undefined
-    if (webSubs.length > 0) {
+    if (webSubs.length > 0 && updateAppBadge) {
       try {
         const { getUnreadNotificationCount } = await import('@/lib/notifications/badge')
         badgeCount = await getUnreadNotificationCount(userId)

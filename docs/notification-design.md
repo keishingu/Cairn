@@ -21,12 +21,14 @@
 | チャンネル発言（`<@userId>` メンション） | メンションされた WS メンバーへ送信 | メンションされた WS メンバーに記録 |
 | DM 発言（メンション有無問わず） | 参加者全員へ送信 | 参加者全員に記録（`type='dm'`） |
 
-- **閲覧中の Push 抑制**: DM・メンションの Push は 10 秒の猶予後に `channel_read_states` を再確認し、対象メッセージを既読済みの受信者には送らない（閲覧中なら自動既読が立つため鳴らない）。アプリ内通知・バッジは即時
+- **閲覧中の Push**: DM・メンションの Push は 10 秒の猶予後に `channel_read_states` を再確認する。DM は対象メッセージを既読済みの受信者には送らない。メンションは閲覧中でも送り、既読済みなら Web のアプリアイコンバッジを更新しない（アプリ内通知とチャンネル未読は自動既読で解消される）
 - メンション通知は **チャンネルメンバーに限定しない**。ワークスペースメンバーであれば通知対象（チャンネル未参加でも可）
 - DM は `check-dm` ステップで早期リターンするが、Push に加えてアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
 - Push の遷移先 URL は実ルート `/chats/{channelId}` に統一する（DM・メンション共通）
 - チャンネルを既読にすると、そのチャンネルに紐づく `mention` / `dm` 通知（`data->>'channelId'` で判定）も既読化する。既読状態をチャンネルとベルで分裂させないため
+- メッセージ作成と既読スナップショットはチャンネル行、メンション通知作成とチャンネル既読化は同じ `channel_read_states` 行をロックして、それぞれトランザクションを直列化する。メッセージの `created_at` はチャンネルロック取得後の時刻にし、既読位置とメンションの既読判定は DB のマイクロ秒精度を保ったまま比較する。既読時刻は既存値と取得した最新メッセージの新しい方を採用して単調増加させ、message ID は実際に開いた最新スナップショットを記録する。その時刻以前と削除済みメッセージ由来の通知だけを既読化した後、残った未読メンション通知行から `unread_mention_count` を再計算する。空チャンネルと未参加者の初期 read state は epoch を起点にし、ジョブの実行順にかかわらず未閲覧のメンションを未読として残す
 - 未読カウントは自分の発言を除外する（`messages.sender_id != userId`）。チャンネル参加時には `channel_read_states` 行を作成し、参加時点を既読起点にする
+- メンション配信が参加前のユーザーに作成した epoch 起点の合成 read state は、後からチャンネルへ参加した時点まで進める。実際の既読履歴がある state は保持する
 - 実装: `apps/web/src/lib/inngest/functions.ts` の `onMessageCreated`、既読化は `apps/web/src/app/api/channels/[channelId]/read/route.ts`
 
-> 通知・未読の全体的な再設計方針は [`docs/notification-ux-redesign.md`](notification-ux-redesign.md) を参照。上記は Phase 3（閲覧中の Push 抑制）まで反映後の動作。配信は Supabase Realtime（Broadcast from Database）で行う（同 Phase 2）。Phase 4（チャンネル別通知設定・DND）以降は未実装。
+> 通知・未読の全体的な再設計方針は [`docs/notification-ux-redesign.md`](notification-ux-redesign.md) を参照。上記は Phase 3（閲覧状態に応じた Push / バッジ制御）まで反映後の動作。配信は Supabase Realtime（Broadcast from Database）で行う（同 Phase 2）。Phase 4（チャンネル別通知設定・DND）以降は未実装。

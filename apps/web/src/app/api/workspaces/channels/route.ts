@@ -9,6 +9,7 @@ import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 export interface WorkspaceChannelDto {
   id: string
   name: string | null
+  parentChannelId: string | null
   isPrivate: boolean
   memberCount: number
   memberNames: string[]
@@ -24,10 +25,12 @@ export async function GET() {
   try {
     const { db } = await import('@cairn/db')
     const { channels, channelMembers, profiles, activeWorkspaceMembers } = await import('@cairn/db')
-    const { and, eq, inArray } = await import('drizzle-orm')
+    const { and, eq, inArray, sql } = await import('drizzle-orm')
+    // デプロイがmigrationより先でも既存チャンネル一覧を壊さない。
+    const parentChannelId = sql<string | null>`to_jsonb(${channels})->>'parent_channel_id'`
 
     const allChannelRows = await db
-      .select({ id: channels.id, name: channels.name, isPrivate: channels.isPrivate })
+      .select({ id: channels.id, name: channels.name, parentChannelId, isPrivate: channels.isPrivate })
       .from(channels)
       .where(and(eq(channels.workspaceId, ctx.workspaceId), eq(channels.type, 'workspace')))
       .orderBy(channels.createdAt)
@@ -77,7 +80,7 @@ export async function GET() {
 
     const channelIds = channelRows.map(c => c.id)
     const { channelReadStates, messages } = await import('@cairn/db')
-    const { isNull, gt, count, sql, ne } = await import('drizzle-orm')
+    const { isNull, gt, count, ne } = await import('drizzle-orm')
 
     const [unreadRows, mentionRows] = await Promise.all([
       channelIds.length > 0
@@ -103,7 +106,7 @@ export async function GET() {
       const members = membersByChannel.get(c.id) ?? []
       const top4 = members.slice(0, 4)
       return {
-        id: c.id, name: c.name, isPrivate: c.isPrivate,
+        id: c.id, name: c.name, parentChannelId: c.parentChannelId, isPrivate: c.isPrivate,
         memberCount: members.length,
         memberNames: top4.map(m => m.name),
         memberAvatarUrls: top4.map(m => m.avatarUrl),
@@ -169,7 +172,7 @@ export async function POST(req: Request) {
     }
 
     const memberCount = isPrivate ? 1 : 0
-    const result: WorkspaceChannelDto = { ...inserted, memberCount, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
+    const result: WorkspaceChannelDto = { ...inserted, parentChannelId: null, memberCount, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('[/api/workspaces/channels POST] DB error:', err)

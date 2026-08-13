@@ -1,5 +1,6 @@
 {
   "cli": {
+    "version": ">= 21.0.2",
     "appVersionSource": "remote"
   },
   "build": {
@@ -36,6 +37,14 @@
         "EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV": "production"
       },
       "channel": "production"
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "6800673777",
+        "metadataPath": "./store.config.json"
+      }
     }
   }
 }

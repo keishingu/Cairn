@@ -1,0 +1,19 @@
+name: Submit iOS to TestFlight
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build_ios:
+    name: Build production iOS app
+    type: build
+    params:
+      platform: ios
+      profile: production
+
+  submit_ios:
+    name: Submit build to TestFlight
+    needs: [build_ios]
+    type: testflight
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}

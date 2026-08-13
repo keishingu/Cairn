@@ -14,8 +14,11 @@ import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
+import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
 
 const PAID_STORAGE_ENTITLEMENT_ERROR = 'paid-storage-entitlement-required'
+const UPLOAD_REQUEST_EXPIRED_ERROR = 'upload-request-expired'
 
 // 署名付きURLでのアップロード(upload-url)完了後、files レコードを登録し
 // 検索インデックスジョブを発火する。ファイル本体はここを通らないため
@@ -64,7 +67,7 @@ export async function POST(req: Request) {
 
   // storagePath は upload-url が発行した `${workspaceId}/${channelId}/...` 形式のはず。
   // クライアントが任意のパスを渡して他ワークスペースのオブジェクトを登録できないよう検証する
-  const expectedPrefix = `${ctx.workspaceId}/${channelId}/`
+  const expectedPrefix = `${ctx.workspaceId}/${channelId}/${ctx.userId}/`
   if (!storagePath.startsWith(expectedPrefix) || storagePath.includes('..')) {
     return NextResponse.json({ error: '不正な storagePath です' }, { status: 400 })
   }
@@ -72,9 +75,9 @@ export async function POST(req: Request) {
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
-  const { creditLedger, db, files, subscriptions, workspaceStorageUsage } =
+  const { creditLedger, db, files, subscriptions, uploadRequests, workspaceStorageUsage } =
     await import('@cairn/db')
-  const { and, eq, gt, sql } = await import('drizzle-orm')
+  const { and, eq, gt, isNull, sql } = await import('drizzle-orm')
 
   // 応答喪失後の再試行は、現在の支援・残高が失効していても既に確定済みの
   // オブジェクトを消してはならない。冪等に既存の登録結果を返す。
@@ -100,6 +103,31 @@ export async function POST(req: Request) {
     )
   }
 
+  if (!(await hasAttachmentUploadRequestSchema(db))) {
+    return NextResponse.json(
+      { error: 'アップロード機能を更新中です。少し待ってから再試行してください' },
+      { status: 503 },
+    )
+  }
+
+  const [uploadRequest] = await db
+    .select({ id: uploadRequests.id })
+    .from(uploadRequests)
+    .where(
+      and(
+        eq(uploadRequests.workspaceId, ctx.workspaceId),
+        eq(uploadRequests.requestedBy, ctx.userId),
+        eq(uploadRequests.derivedStoragePath, storagePath),
+        eq(uploadRequests.storageBucket, ATTACHMENTS_BUCKET),
+        isNull(uploadRequests.projectId),
+        isNull(uploadRequests.finalizedAt),
+      ),
+    )
+    .limit(1)
+  if (!uploadRequest) {
+    return NextResponse.json({ error: 'アップロード情報が見つかりません' }, { status: 404 })
+  }
+
   const supabase = createServiceRoleClient()
   const removeIfUnfinalized = async (paths: string[]) =>
     db.transaction(async (tx) => {
@@ -120,9 +148,11 @@ export async function POST(req: Request) {
         .limit(1)
       if (file) return file
 
-      const { error: removeError } = await supabase.storage.from('chat-attachments').remove(paths)
+      const { error: removeError } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove(paths)
       if (removeError)
         throw new Error(`Failed to remove rejected attachment: ${removeError.message}`)
+      // 署名URLは拒否後もしばらく有効なため、意図レコードは期限切れ清掃まで残す。
+      // 後着の PUT でオブジェクトが再作成されても hourly cleanup が回収できる。
       return null
     })
 
@@ -132,7 +162,7 @@ export async function POST(req: Request) {
   const folder = storagePath.slice(0, lastSlash)
   const objectName = storagePath.slice(lastSlash + 1)
   const { data: listed, error: listError } = await supabase.storage
-    .from('chat-attachments')
+    .from(ATTACHMENTS_BUCKET)
     .list(folder, { search: objectName })
 
   if (listError) {
@@ -207,6 +237,35 @@ export async function POST(req: Request) {
       .limit(1)
 
     const finalized = await db.transaction(async (tx) => {
+      const lockedResult = await tx.execute<{
+        id: string
+        expires_at: Date
+        finalized_at: Date | null
+        file_id: string | null
+      }>(sql`
+        select id, expires_at, finalized_at, file_id
+        from upload_requests
+        where id = ${uploadRequest.id}
+          and workspace_id = ${ctx.workspaceId}
+          and requested_by = ${ctx.userId}
+          and derived_storage_path = ${storagePath}
+          and storage_bucket = ${ATTACHMENTS_BUCKET}
+          and project_id is null
+        for update
+      `)
+      const lockedUploadRequest = lockedResult.rows[0]
+      if (!lockedUploadRequest || lockedUploadRequest.expires_at <= new Date()) {
+        throw new Error(UPLOAD_REQUEST_EXPIRED_ERROR)
+      }
+      if (lockedUploadRequest.finalized_at && lockedUploadRequest.file_id) {
+        const [committed] = await tx
+          .select()
+          .from(files)
+          .where(eq(files.id, lockedUploadRequest.file_id))
+          .limit(1)
+        if (!committed) throw new Error('Finalized upload file was not found')
+        return { file: committed, created: false }
+      }
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`attachment:${ctx.workspaceId}:${storagePath}`}, 0))`,
       )
@@ -282,6 +341,10 @@ export async function POST(req: Request) {
           .where(and(eq(files.workspaceId, ctx.workspaceId), eq(files.storagePath, storagePath)))
           .limit(1)
         if (!existing) throw new Error('Conflicted insert returned no rows')
+        await tx
+          .update(uploadRequests)
+          .set({ fileId: existing.id, finalizedAt: new Date() })
+          .where(eq(uploadRequests.id, lockedUploadRequest.id))
         return { file: existing, created: false }
       }
 
@@ -291,6 +354,10 @@ export async function POST(req: Request) {
         { originalBytes: actualSize, derivedBytes: 0 },
         tx,
       )
+      await tx
+        .update(uploadRequests)
+        .set({ fileId: file.id, finalizedAt: new Date() })
+        .where(eq(uploadRequests.id, lockedUploadRequest.id))
       return { file, created: true }
     })
 
@@ -342,6 +409,9 @@ export async function POST(req: Request) {
         { error: '無料容量を超えて保存するには、残高のある有効な支援が必要です' },
         { status: 403 },
       )
+    }
+    if (err instanceof Error && err.message === UPLOAD_REQUEST_EXPIRED_ERROR) {
+      return NextResponse.json({ error: 'アップロードURLの有効期限が切れました' }, { status: 410 })
     }
     console.error('[/api/attachments/finalize] DB insert failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

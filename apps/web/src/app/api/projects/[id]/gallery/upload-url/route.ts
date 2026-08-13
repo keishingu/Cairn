@@ -11,9 +11,12 @@ import {
   GALLERY_BUCKET,
   GALLERY_ORIGINALS_BUCKET,
   UPLOAD_REQUEST_EXPIRY_MS,
+  UPLOAD_REQUEST_EXPIRY_SAFETY_MS,
+  UPLOAD_REQUEST_FALLBACK_EXPIRY_MS,
   isGalleryImageMimeType,
 } from '@/lib/gallery-upload'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -46,7 +49,9 @@ export async function POST(req: Request, { params }: RouteContext) {
       { status: 400 },
     )
   }
-  if (!isGalleryImageMimeType(body.derived.mimeType)) {
+  const originalMetadata = body.original
+  const derivedMetadata = body.derived
+  if (!isGalleryImageMimeType(derivedMetadata.mimeType)) {
     return NextResponse.json({ error: '対応していない圧縮版の画像形式です' }, { status: 400 })
   }
 
@@ -64,34 +69,44 @@ export async function POST(req: Request, { params }: RouteContext) {
     if (forbidden) return forbidden
 
     const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
-    if (entitlements.rights.canUploadOriginal && !isGalleryImageMimeType(body.original.mimeType)) {
+    if (
+      entitlements.rights.canUploadOriginal &&
+      !isGalleryImageMimeType(originalMetadata.mimeType)
+    ) {
       return NextResponse.json({ error: '対応していないオリジナル画像形式です' }, { status: 400 })
     }
     const derivedStoragePath = galleryStoragePath(
       ctx.workspaceId,
       projectId,
       'derived',
-      extensionForFile(body.derived.fileName, body.derived.mimeType),
+      extensionForFile(derivedMetadata.fileName, derivedMetadata.mimeType),
     )
     const originalStoragePath = entitlements.rights.canUploadOriginal
       ? galleryStoragePath(
           ctx.workspaceId,
           projectId,
           'original',
-          extensionForFile(body.original.fileName, body.original.mimeType),
+          extensionForFile(originalMetadata.fileName, originalMetadata.mimeType),
         )
       : null
 
-    const expiresAt = new Date(Date.now() + UPLOAD_REQUEST_EXPIRY_MS)
+    if (!(await hasAttachmentUploadRequestSchema(db))) {
+      return NextResponse.json(
+        { error: 'アップロード機能を更新中です。少し待ってから再試行してください' },
+        { status: 503 },
+      )
+    }
+
+    const expiresAt = new Date(Date.now() + UPLOAD_REQUEST_FALLBACK_EXPIRY_MS)
     const [uploadRequest] = await db
       .insert(uploadRequests)
       .values({
         workspaceId: ctx.workspaceId,
         projectId,
         requestedBy: ctx.userId,
-        fileName: body.original.fileName,
-        derivedMimeType: body.derived.mimeType,
-        originalMimeType: originalStoragePath ? body.original.mimeType : null,
+        fileName: originalMetadata.fileName,
+        derivedMimeType: derivedMetadata.mimeType,
+        originalMimeType: originalStoragePath ? originalMetadata.mimeType : null,
         derivedStoragePath,
         originalStoragePath,
         expiresAt,
@@ -119,6 +134,15 @@ export async function POST(req: Request, { params }: RouteContext) {
       })
       return NextResponse.json({ error: 'アップロードURLの発行に失敗しました' }, { status: 500 })
     }
+
+    await db
+      .update(uploadRequests)
+      .set({
+        expiresAt: new Date(
+          Date.now() + UPLOAD_REQUEST_EXPIRY_MS + UPLOAD_REQUEST_EXPIRY_SAFETY_MS,
+        ),
+      })
+      .where(eq(uploadRequests.id, uploadRequest.id))
 
     return NextResponse.json({
       uploadId: uploadRequest.id,

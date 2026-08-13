@@ -1,0 +1,130 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ChatDetailSidebar } from './chat-detail-sidebar'
+import { useChannelFiles } from '@/hooks/use-channel-files'
+
+const { renameMutateAsyncMock } = vi.hoisted(() => ({
+  renameMutateAsyncMock: vi.fn(),
+}))
+
+vi.mock('@/hooks/use-channel-files')
+vi.mock('@/hooks/use-rename-file', () => ({
+  useRenameFile: vi.fn(() => ({ mutateAsync: renameMutateAsyncMock })),
+}))
+vi.mock('@/hooks/use-project-tasks', () => ({
+  useProjectTasks: vi.fn(() => ({
+    data: [],
+    isLoading: false,
+    toggleMutation: { mutate: vi.fn() },
+  })),
+}))
+
+const mockUseChannelFiles = vi.mocked(useChannelFiles)
+
+function renderSidebar(onJumpToMessage = vi.fn()) {
+  render(
+    <ChatDetailSidebar
+      isProject={false}
+      isDm={false}
+      isPrivate={false}
+      channelName="全体"
+      currentDmAvatarUrl={null}
+      dmParticipantId={null}
+      project={null}
+      channelMembers={[]}
+      memberLabel={null}
+      channelId="channel-1"
+      showMemberInvite={false}
+      onInviteMember={vi.fn()}
+      onCloseMemberInvite={vi.fn()}
+      onOpenProject={vi.fn()}
+      onOpenMember={vi.fn()}
+      onJumpToMessage={onJumpToMessage}
+    />,
+  )
+  return onJumpToMessage
+}
+
+describe('チャット詳細サイドバーのファイル一覧', () => {
+  beforeEach(() => {
+    renameMutateAsyncMock.mockReset()
+    renameMutateAsyncMock.mockResolvedValue({ success: true, fileName: 'renamed.pdf' })
+    vi.spyOn(window, 'open').mockImplementation(() => null)
+    mockUseChannelFiles.mockReturnValue({
+      data: [
+        {
+          id: 'file-1',
+          sourceMessageId: 'message-1',
+          fileName: 'guide.pdf',
+          mimeType: 'application/pdf',
+          fileSize: 1024,
+          fileType: 'document',
+          uploaderName: '山田 太郎',
+          createdAt: '2026-08-07T03:45:00.000Z',
+        },
+      ],
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useChannelFiles>)
+  })
+
+  it('ファイルを開かず、共有されたメッセージへジャンプする', async () => {
+    const onJumpToMessage = renderSidebar()
+
+    expect(screen.queryByRole('link', { name: /guide\.pdf/ })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /guide\.pdf/ }))
+
+    expect(onJumpToMessage).toHaveBeenCalledWith('message-1')
+  })
+
+  it('操作メニューからファイルを開く', async () => {
+    renderSidebar()
+
+    await userEvent.click(screen.getByTitle('操作'))
+    await userEvent.click(screen.getByRole('button', { name: 'ファイルを開く' }))
+
+    expect(window.open).toHaveBeenCalledWith(
+      '/api/attachments/file-1',
+      '_blank',
+      'noopener,noreferrer',
+    )
+  })
+
+  it('外部リンクは中継せず直接開く', async () => {
+    const externalUrl = 'https://docs.google.com/document/d/doc-1/edit'
+    mockUseChannelFiles.mockReturnValue({
+      data: [{
+        id: 'link-1', sourceMessageId: 'message-1', fileName: 'Google ドキュメント',
+        mimeType: null, fileSize: null, fileType: 'link', uploaderName: '山田 太郎',
+        createdAt: '2026-08-07T03:45:00.000Z', externalUrl,
+      }],
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useChannelFiles>)
+    renderSidebar()
+
+    await userEvent.click(screen.getByTitle('操作'))
+    await userEvent.click(screen.getByRole('button', { name: 'ファイルを開く' }))
+
+    expect(window.open).toHaveBeenCalledWith(externalUrl, '_blank', 'noopener,noreferrer')
+  })
+
+  it('操作メニューからファイル名をインライン変更する', async () => {
+    renderSidebar()
+
+    await userEvent.click(screen.getByTitle('操作'))
+    await userEvent.click(screen.getByRole('button', { name: '名前を変更' }))
+    const input = screen.getByRole('textbox', { name: 'ファイル名を変更' })
+    await userEvent.clear(input)
+    await userEvent.type(input, 'renamed.pdf{enter}')
+
+    await waitFor(() => expect(renameMutateAsyncMock).toHaveBeenCalledWith({
+      fileId: 'file-1',
+      fileName: 'renamed.pdf',
+    }))
+  })
+})

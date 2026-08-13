@@ -1,0 +1,30 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "copyright": "2026 Cairn Project",
+    "categories": ["BUSINESS", "PRODUCTIVITY"],
+    "info": {
+      "ja": {
+        "title": "Cairn",
+        "subtitle": "チームの仕事を、ひとつの場所に",
+        "description": "Cairnは、小さなチームのプロジェクト管理、チャット、タスク、カレンダー、ファイル共有をひとつにまとめるコラボレーションアプリです。\n\n主な機能\n・ワークスペースとプロジェクトの管理\n・リアルタイムチャットとメンション通知\n・タスク、担当者、期限の管理\n・プロジェクトカレンダー\n・ファイルと画像の共有\n・複数端末での同期\n\nチームの会話と仕事の進捗を分断せず、必要な情報へすばやくアクセスできます。",
+        "keywords": [
+          "プロジェクト管理",
+          "タスク管理",
+          "チャット",
+          "チーム",
+          "カレンダー",
+          "ファイル共有"
+        ],
+        "marketingUrl": "https://oss-cairn.com",
+        "supportUrl": "https://github.com/keishingu/Cairn/issues",
+        "privacyPolicyUrl": "https://oss-cairn.com/privacy",
+        "privacyChoicesUrl": "https://oss-cairn.com/privacy#choices"
+      }
+    },
+    "release": {
+      "automaticRelease": false,
+      "phasedRelease": false
+    }
+  }
+}

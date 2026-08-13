@@ -5,9 +5,11 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { extractGoogleDocsUrls, normalizeGoogleDocsUrl } from '@/lib/google-docs-url'
 
 export interface ChannelFileDto {
   id: string
+  sourceMessageId: string | null
   fileName: string
   mimeType: string | null
   fileSize: number | null
@@ -77,15 +79,63 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
     const fileIds = rows.map(r => r.id)
     const chunkedIdSet = new Set<string>()
+    const sourceMessageIdByFileId = new Map<string, string>()
     if (fileIds.length > 0) {
-      const chunked = await db
-        .selectDistinct({ sourceId: documentChunks.sourceId })
-        .from(documentChunks)
-        .where(and(
-          eq(documentChunks.sourceType, 'file'),
-          inArray(documentChunks.sourceId, fileIds),
-        ))
+      const [chunked, attachmentSources] = await Promise.all([
+        db
+          .selectDistinct({ sourceId: documentChunks.sourceId })
+          .from(documentChunks)
+          .where(and(
+            eq(documentChunks.sourceType, 'file'),
+            inArray(documentChunks.sourceId, fileIds),
+          )),
+        db
+          .select({ fileId: messageAttachments.fileId, messageId: messages.id })
+          .from(messageAttachments)
+          .innerJoin(messages, eq(messages.id, messageAttachments.messageId))
+          .where(and(
+            inArray(messageAttachments.fileId, fileIds),
+            eq(messages.channelId, channelId),
+            isNull(messages.deletedAt),
+          ))
+          .orderBy(desc(messages.createdAt)),
+      ])
       chunked.forEach(c => chunkedIdSet.add(c.sourceId))
+      for (const source of attachmentSources) {
+        if (!sourceMessageIdByFileId.has(source.fileId)) {
+          sourceMessageIdByFileId.set(source.fileId, source.messageId)
+        }
+      }
+    }
+
+    // 外部リンクは message_attachments を持たないため、同じチャンネル内で
+    // URL を含む最新のメッセージをジャンプ先として解決する。
+    const externalLinks = rows.flatMap(r => {
+      if (r.fileType !== 'link') return []
+      const externalUrl = ((r.metadata ?? {}) as Record<string, unknown>)['externalUrl']
+      return typeof externalUrl === 'string'
+        ? [{ fileId: r.id, externalUrl: normalizeGoogleDocsUrl(externalUrl) }]
+        : []
+    })
+    if (externalLinks.length > 0) {
+      const linkMessages = await db
+        .select({ id: messages.id, content: messages.content })
+        .from(messages)
+        .where(and(
+          eq(messages.channelId, channelId),
+          isNull(messages.deletedAt),
+          or(...externalLinks.map(link => sql`position(${link.externalUrl} in ${messages.content}) > 0`)),
+        ))
+        .orderBy(desc(messages.createdAt))
+
+      for (const message of linkMessages) {
+        const messageUrls = new Set(extractGoogleDocsUrls(message.content))
+        for (const link of externalLinks) {
+          if (!sourceMessageIdByFileId.has(link.fileId) && messageUrls.has(link.externalUrl)) {
+            sourceMessageIdByFileId.set(link.fileId, message.id)
+          }
+        }
+      }
     }
 
     return NextResponse.json(
@@ -103,13 +153,14 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
         return {
           id: r.id,
+          sourceMessageId: sourceMessageIdByFileId.get(r.id) ?? null,
           fileName: r.fileName,
           mimeType: r.mimeType,
           fileSize: r.fileSize,
           fileType: r.fileType,
           uploaderName: r.uploaderName,
           createdAt: r.createdAt.toISOString(),
-          ...(typeof externalUrl === 'string' ? { externalUrl } : {}),
+          ...(typeof externalUrl === 'string' ? { externalUrl: normalizeGoogleDocsUrl(externalUrl) } : {}),
           ...(indexingStatus !== undefined ? { indexingStatus } : {}),
         }
       }) satisfies ChannelFileDto[],

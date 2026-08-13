@@ -8,6 +8,11 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 
 type RouteContext = { params: Promise<{ fileId: string }> }
 
+function extensionOf(fileName: string): string {
+  const dotIndex = fileName.lastIndexOf('.')
+  return dotIndex > 0 ? fileName.slice(dotIndex).toLowerCase() : ''
+}
+
 function resolveResponseContentType(fileName: string, mimeType: string | null) {
   const normalizedMimeType = mimeType?.toLowerCase() ?? ''
   const normalizedFileName = fileName.toLowerCase()
@@ -114,9 +119,24 @@ export async function PATCH(req: Request, { params }: RouteContext) {
   } catch {
     return NextResponse.json({ error: 'リクエストボディが不正です' }, { status: 400 })
   }
-  const isLatest = (body as { isLatest?: unknown })?.isLatest
-  if (typeof isLatest !== 'boolean') {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return NextResponse.json({ error: 'リクエストボディが不正です' }, { status: 400 })
+  }
+  const payload = body as { isLatest?: unknown; fileName?: unknown }
+  const hasIsLatest = Object.prototype.hasOwnProperty.call(payload, 'isLatest')
+  const hasFileName = Object.prototype.hasOwnProperty.call(payload, 'fileName')
+  if (hasIsLatest === hasFileName) {
+    return NextResponse.json({ error: 'isLatest または fileName のどちらか一方を指定してください' }, { status: 400 })
+  }
+
+  const isLatest = payload.isLatest
+  if (hasIsLatest && typeof isLatest !== 'boolean') {
     return NextResponse.json({ error: 'isLatest は boolean で指定してください' }, { status: 400 })
+  }
+
+  const fileName = typeof payload.fileName === 'string' ? payload.fileName.trim() : null
+  if (hasFileName && (!fileName || fileName.length > 255 || /[\u0000-\u001f\u007f]/.test(fileName))) {
+    return NextResponse.json({ error: 'ファイル名は1〜255文字で指定してください' }, { status: 400 })
   }
 
   try {
@@ -129,6 +149,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         workspaceId: files.workspaceId,
         projectId: files.projectId,
         uploadedBy: files.uploadedBy,
+        fileName: files.fileName,
+        fileType: files.fileType,
         metadata: files.metadata,
       })
       .from(files)
@@ -138,6 +160,14 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     if (!file) return new NextResponse(null, { status: 404 })
     const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role)
     if (!canAccess) return new NextResponse(null, { status: 403 })
+
+    if (fileName) {
+      if (file.fileType !== 'link' && extensionOf(fileName) !== extensionOf(file.fileName)) {
+        return NextResponse.json({ error: 'ファイルの拡張子は変更できません' }, { status: 400 })
+      }
+      await db.update(files).set({ fileName }).where(eq(files.id, fileId))
+      return NextResponse.json({ success: true, fileName })
+    }
 
     // 最新版ラベルは複数ファイルに同時付与できる（排他にしない）
     const meta = (file.metadata ?? {}) as Record<string, unknown>

@@ -60,4 +60,14 @@ describe('ネイティブWebViewのワークスペース準備状態', () => {
     expect(before).toEqual({ status: 'ready', workspaceId: 'workspace-1' })
     expect(after).toEqual({ status: 'ready', workspaceId: 'workspace-2' })
   })
+
+  it('設定画面はactive workspaceがなくてもWebViewを表示する', () => {
+    expect(
+      resolveNativeWebViewWorkspaceState({
+        isPending: false,
+        error: new Error('ワークスペース情報の取得に失敗しました (403)'),
+        requiresWorkspace: false,
+      }),
+    ).toEqual({ status: 'ready', workspaceId: 'auth-only' })
+  })
 })

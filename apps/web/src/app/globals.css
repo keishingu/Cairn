@@ -158,6 +158,18 @@
 .app .card { background: var(--card); border:1px solid var(--border); border-radius:12px; }
 .app .kbd { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; border-radius:4px; font-size:10.5px; font-weight:600; background:var(--bg-elev); color:var(--text-3); border:1px solid var(--border); font-family:'SF Mono', ui-monospace, monospace; }
 
+.app .chat-sidebar-item-action { opacity:0; pointer-events:none; transition:opacity .12s ease-out; }
+.app .chat-sidebar-item:hover > .chat-sidebar-item-action,
+.app .chat-sidebar-item:focus-within > .chat-sidebar-item-action,
+.app .chat-sidebar-item-action[data-always-visible="true"] { opacity:1; pointer-events:auto; }
+
+@media (hover: none) {
+  .app .chat-sidebar-item-action { opacity:1; pointer-events:auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app .chat-sidebar-item-action { transition:none; }
+}
+
 @keyframes messageHighlight { 0% { background-color: var(--accent-soft-2); } 100% { background-color: transparent; } }
 .message-highlight { animation: messageHighlight 2s ease-out forwards; }
 

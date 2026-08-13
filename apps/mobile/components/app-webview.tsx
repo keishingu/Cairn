@@ -3,15 +3,11 @@ import { Linking, Platform, View, Text, Pressable, StyleSheet } from 'react-nati
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
-import type {
-  WebViewProps,
-  WebViewNavigation,
-  WebViewMessageEvent,
-} from 'react-native-webview'
+import type { WebViewProps, WebViewNavigation, WebViewMessageEvent } from 'react-native-webview'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/api-fetch'
 import { API_BASE_URL as WEB_BASE } from '../lib/env'
-import { webPath } from '../lib/webview-path'
+import { mobileHandoffUrl, webPath } from '../lib/webview-path'
 import { isAccentId, isAppearanceTheme } from '@cairn/shared'
 import { useAppAppearance } from './appearance-provider'
 import {
@@ -19,10 +15,11 @@ import {
   parseNativeHeaderDescriptor,
   type NativeHeaderDescriptor,
 } from '../lib/native-header-bridge'
+import { decideWebViewNavigation, WEBVIEW_ORIGIN_WHITELIST } from '../lib/webview-navigation'
 import {
-  decideWebViewNavigation,
-  WEBVIEW_ORIGIN_WHITELIST,
-} from '../lib/webview-navigation'
+  ACCOUNT_DELETED_LOGIN_ROUTE,
+  finishNativeAccountDeletion,
+} from '../lib/account-deletion-bridge'
 
 type ShouldStartLoadRequest = Parameters<
   NonNullable<WebViewProps['onShouldStartLoadWithRequest']>
@@ -111,20 +108,15 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
           throw new Error(`handoff failed: ${res.status}`)
         }
         const data = (await res.json()) as { tokenHash?: string; workspaceId?: string }
-        if (!data.tokenHash || !data.workspaceId) {
-          throw new Error('handoff response missing tokenHash or workspaceId')
+        if (!data.tokenHash) {
+          throw new Error('handoff response missing tokenHash')
         }
 
-        const redirect = encodeURIComponent(webPath(targetPath))
-        const th = encodeURIComponent(data.tokenHash)
-        const workspaceId = encodeURIComponent(data.workspaceId)
         initialPathRef.current = targetPath
         loadedRef.current = false
         // トークンは URL フラグメント（#th=...）で渡す。
         // フラグメントはサーバーに送信されないためアクセスログに残らない。
-        setUri(
-          `${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}&workspaceId=${workspaceId}#th=${th}`,
-        )
+        setUri(mobileHandoffUrl(WEB_BASE, targetPath, data.tokenHash, data.workspaceId))
       } catch (err) {
         // 失敗理由が Metro ログで追えるように必ず出力する
         console.error('[AppWebView] ハンドオフに失敗:', err)
@@ -207,6 +199,22 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
     }
     if (msg?.type === 'HANDOFF_FAILED') {
       void recoverFromHandoffFailure()
+    }
+    if (msg?.type === 'account-deleted') {
+      // WebView側でAuthユーザーを削除したら、独立して保持しているネイティブの
+      // Supabaseセッションもローカルから消し、認証画面へ戻す。
+      void supabase.auth
+        .getSession()
+        .then(({ data }) => data.session?.user.id ?? null)
+        .catch(() => null)
+        .then((userId) =>
+          finishNativeAccountDeletion(
+            userId,
+            () => supabase.auth.signOut({ scope: 'local' }),
+            () => router.replace(ACCOUNT_DELETED_LOGIN_ROUTE),
+          ),
+        )
+      return
     }
     if (msg?.type === 'open-chats') {
       router.push('/(app)/chats')
