@@ -83,7 +83,7 @@ export const onMessageCreated = inngest.createFunction(
     // チャンネルメンバー（送信者を除く）を取得。非活性メンバーは DM・ファイル通知の宛先に
     // しないよう active_workspace_members に inner join して active のみに絞る
     // （deactivation は履歴のため channel_members 行を残すため、ここで除外しないと通知が飛ぶ）
-    const members = await step.run('fetch-members', async () => {
+    const rawMembers = await step.run('fetch-members', async () => {
       const { db, channelMembers, profiles, activeWorkspaceMembers } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
       return db
@@ -99,6 +99,11 @@ export const onMessageCreated = inngest.createFunction(
         )
         .where(eq(channelMembers.channelId, channelId))
         .then((rows) => rows.filter((r) => r.userId !== senderId))
+    })
+    const members = await step.run('filter-blocked-members', async () => {
+      const { filterUnblockedRecipients } = await import('@/lib/safety/blocks')
+      const ids = await filterUnblockedRecipients(senderId, rawMembers.map(member => member.userId))
+      return rawMembers.filter(member => ids.includes(member.userId))
     })
 
     // DM チャンネルの場合は相手に Push を送って終了
@@ -272,8 +277,14 @@ export const onMessageCreated = inngest.createFunction(
           })
         : []
 
+    const unblockedMentioned = await step.run('filter-blocked-mentions', async () => {
+      const { filterUnblockedRecipients } = await import('@/lib/safety/blocks')
+      const ids = await filterUnblockedRecipients(senderId, notifyMentioned.map(member => member.userId))
+      return notifyMentioned.filter(member => ids.includes(member.userId))
+    })
+
     let mentionNotifications = 0
-    if (notifyMentioned.length > 0) {
+    if (unblockedMentioned.length > 0) {
       await step.run('create-mention-notifications', async () => {
         const { db, notifications, channelReadStates, messages } = await import('@cairn/db')
         const { and, eq, inArray, sql } = await import('drizzle-orm')
@@ -285,7 +296,7 @@ export const onMessageCreated = inngest.createFunction(
           .limit(1)
         if (!message) throw new Error(`Message not found: ${messageId}`)
 
-        const recipients = [...notifyMentioned].sort((a, b) => a.userId.localeCompare(b.userId))
+        const recipients = [...unblockedMentioned].sort((a, b) => a.userId.localeCompare(b.userId))
         await db.transaction(async (tx) => {
           // 未参加者はジョブの実行順にかかわらず、すべてのメンションを未読から始める。
           await tx
@@ -360,7 +371,7 @@ export const onMessageCreated = inngest.createFunction(
           }
         })
       })
-      mentionNotifications = notifyMentioned.length
+      mentionNotifications = unblockedMentioned.length
     }
 
     // ファイル添付通知（送信者以外の全メンバーへ）
@@ -396,11 +407,11 @@ export const onMessageCreated = inngest.createFunction(
 
     // メンション Push は閲覧中でも送る。猶予中に既読になった受信者には、
     // 表示中チャットのメンションでアプリアイコンバッジを更新しないようにする。
-    if (notifyMentioned.length > 0) {
+    if (unblockedMentioned.length > 0) {
       await step.sleep('push-grace', PUSH_GRACE_PERIOD)
       const { readRecipients, unreadRecipients } = await step.run(
         'filter-mention-push-targets',
-        () => classifyPushRecipients(messageId, channelId, notifyMentioned),
+        () => classifyPushRecipients(messageId, channelId, unblockedMentioned),
       )
 
       await step.run('send-mention-push', async () => {

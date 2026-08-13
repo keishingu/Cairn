@@ -126,7 +126,7 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -141,6 +141,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   attachments: AttachmentDto[]
   replyTo: ReplyToDto | null
   bookmarked: boolean
+  blocked?: boolean | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
@@ -219,6 +220,23 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const handleCopy = React.useCallback(() => {
     void copyMessageContent(content)
   }, [content])
+  const reportMessage = () => {
+    const choice = window.prompt('報告理由を選択してください\n1: 嫌がらせ・いじめ\n2: 差別的または攻撃的\n3: 性的または不適切\n4: 暴力・脅迫\n5: スパム\n6: その他')
+    const reasons = ['harassment', 'discriminatory', 'sexual', 'violence', 'spam', 'other'] as const
+    const reason = choice ? reasons[Number(choice) - 1] : undefined
+    if (!reason) return
+    const details = reason === 'other' ? window.prompt('補足説明を入力してください')?.trim() : undefined
+    if (reason === 'other' && !details) return
+    void fetchWithAuth(`/api/messages/${messageId}/report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason, ...(details ? { details } : {}) }) })
+      .then(res => res.ok ? toast.success('メッセージを報告しました') : res.json().then(data => toast.error(data.error ?? '報告に失敗しました')))
+      .catch(() => toast.error('報告に失敗しました'))
+  }
+  const blockUser = () => {
+    if (!window.confirm(`${senderName} をブロックしますか？`)) return
+    void fetchWithAuth('/api/me/blocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: senderId }) })
+      .then(res => res.ok ? toast.success('ユーザーをブロックしました') : res.json().then(data => toast.error(data.error ?? 'ブロックに失敗しました')))
+      .catch(() => toast.error('ブロックに失敗しました'))
+  }
 
   // MarkdownContent の React.memo を効かせるため、チェックボックストグルを安定参照で渡す
   const handleCheckboxToggle = React.useCallback(
@@ -240,6 +258,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const menuActions = [
     { icon: 'link' as const, label: 'リンクをコピー', onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: 'コピー', onSelect: handleCopy }] : []),
+    ...(!isOwn ? [{ icon: 'flag' as const, label: '報告', onSelect: reportMessage }, { icon: 'user' as const, label: 'ブロック', danger: true, onSelect: blockUser }] : []),
     ...(isOwn ? [
       { icon: 'edit' as const, label: '編集', onSelect: startEdit },
       { icon: 'trash' as const, label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
@@ -299,7 +318,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             </span>
           </button>
         )}
-        {editMode ? (
+        {blocked ? (
+          <details><summary style={{ cursor: 'pointer', color: 'var(--text-3)', fontSize: 13 }}>ブロックしたユーザーのメッセージ</summary><div style={{ marginTop: 6, fontSize: 13, color: 'var(--text-3)' }}>{content}</div></details>
+        ) : editMode ? (
           <div style={{ marginBottom: 4 }}>
             <textarea
               ref={editTextareaRef}
@@ -1594,6 +1615,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               attachments={item.message.attachments}
               replyTo={item.message.replyTo}
               bookmarked={item.message.bookmarked}
+              blocked={item.message.blocked}
               onReact={handleReact}
               onEdit={handleEdit}
               onDelete={handleDelete}

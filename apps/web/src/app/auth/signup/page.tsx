@@ -211,6 +211,7 @@ function SignupForm() {
       </div>
 
       <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-3)' }}>
+        <div style={{ marginBottom: 12, fontSize: 12 }}><Link href="/terms">利用規約</Link>{' ・ '}<Link href="/privacy">プライバシーポリシー</Link></div>
         すでにアカウントをお持ちの方は{' '}
         <Link
           href={inviteToken ? `/auth/login?invite=${inviteToken}` : '/auth/login'}
@@ -222,4 +223,3 @@ function SignupForm() {
     </div>
   )
 }
-

@@ -83,8 +83,27 @@ const THEME_OPTIONS: { value: ThemeValue; label: string; icon: string }[] = [
 const LEGAL_SUPPORT_LINKS = [
   { label: 'プライバシーポリシー', href: '/privacy' },
   { label: '利用規約', href: '/terms' },
-  { label: 'サポート・お問い合わせ', href: 'https://github.com/keishingu/Cairn/issues' },
+  { label: '非公開のお問い合わせ', href: 'https://moru.tech/#consultation' },
 ]
+
+const SettingsSafety = () => {
+  const queryClient = useQueryClient()
+  const { data = [], isLoading } = useQuery({ queryKey: ['user-blocks'], queryFn: async () => {
+    const res = await fetchWithAuth('/api/me/blocks')
+    if (!res.ok) throw new Error('ブロック済みユーザーを取得できません')
+    return res.json() as Promise<Array<{ userId: string; displayName: string }>>
+  }})
+  const unblock = useMutation({ mutationFn: async (userId: string) => {
+    const res = await fetchWithAuth(`/api/me/blocks/${userId}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error('ブロックを解除できません')
+  }, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user-blocks'] }) })
+  return <div style={{ maxWidth: 780 }}>
+    <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700 }}>安全・サポート</h1>
+    <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>ブロックしたユーザーと法務・お問い合わせ先を管理します。</p>
+    <section style={{ marginBottom: 24 }}><h2 style={{ fontSize: 14 }}>ブロック済みユーザー</h2><div className="card" style={{ padding: 0 }}>{isLoading ? <div style={{ padding: 16 }}>読み込み中…</div> : data.length === 0 ? <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>ブロックしているユーザーはいません。</div> : data.map(user => <div key={user.userId} style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}><span style={{ flex: 1 }}>{user.displayName}</span><button className="btn" onClick={() => unblock.mutate(user.userId)}>解除</button></div>)}</div></section>
+    <section><h2 style={{ fontSize: 14 }}>法務・サポート</h2><div className="card" style={{ padding: 0 }}>{LEGAL_SUPPORT_LINKS.map(link => <a key={link.href} href={link.href} target="_blank" rel="noreferrer" style={{ display: 'block', padding: '12px 16px', borderBottom: '1px solid var(--divider)', color: 'var(--accent)' }}>{link.label}</a>)}</div></section>
+  </div>
+}
 
 function initials(name: string) {
   return name
@@ -3171,6 +3190,7 @@ export function getSettingsNavGroups(
       items: [
         { id: 'account', label: 'アカウント', icon: 'user' },
         { id: 'appearance', label: '外観', icon: 'sun' },
+        { id: 'safety', label: '安全・サポート', icon: 'shield' },
       ],
     },
     {
@@ -3198,6 +3218,7 @@ export interface SettingsSectionMeta {
 const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   account: SettingsAccount,
   appearance: SettingsAppearance,
+  safety: SettingsSafety,
   general: SettingsWorkspaceGeneral,
   workflow: SettingsWorkflow,
   ai: SettingsAI,
