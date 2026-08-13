@@ -249,13 +249,6 @@ async function anonymizeAndRevoke(
     `)
     await tx.delete(notifications).where(sql`
         ${notifications.data}->>'assignerId' = ${userId}
-        or (
-          ${notifications.type} = 'task'
-          and ${notifications.data}->>'assignerId' is null
-          and ${notifications.workspaceId} in (
-            select workspace_id from workspace_members where user_id = ${userId}
-          )
-        )
       `)
     await tx.delete(aiNudges).where(sql`
       ${aiNudges.messageId} in (select id from messages where sender_id = ${userId})

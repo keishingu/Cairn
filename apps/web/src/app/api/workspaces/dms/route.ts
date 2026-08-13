@@ -6,6 +6,7 @@ import { FEATURE_FLAGS } from '@cairn/shared'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { lockActiveMemberships } from '@/lib/access/active-membership-lock'
 
 export interface DmChannelDto {
   id: string
@@ -119,71 +120,66 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
-    const { and, eq, inArray, sql } = await import('drizzle-orm')
+    const { channels, channelMembers, channelReadStates } = await import('@cairn/db')
+    const { and, eq, inArray } = await import('drizzle-orm')
 
-    const [targetMember] = await db
-      .select({ userId: activeWorkspaceMembers.userId })
-      .from(activeWorkspaceMembers)
-      .where(and(
-        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
-        eq(activeWorkspaceMembers.userId, targetUserId),
-      ))
-      .limit(1)
+    const result = await db.transaction(async tx => {
+      if (!(await lockActiveMemberships(tx, ctx.workspaceId, [ctx.userId, targetUserId]))) {
+        return null
+      }
 
-    if (!targetMember) {
+      // 既存の DM チャンネルを探す（両者が参加している）
+      const myChannelIds = tx
+        .select({ channelId: channelMembers.channelId })
+        .from(channelMembers)
+        .where(eq(channelMembers.userId, ctx.userId))
+
+      const targetChannelIds = tx
+        .select({ channelId: channelMembers.channelId })
+        .from(channelMembers)
+        .where(eq(channelMembers.userId, targetUserId))
+
+      const [existing] = await tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(
+          and(
+            eq(channels.workspaceId, ctx.workspaceId),
+            eq(channels.type, 'dm'),
+            inArray(channels.id, myChannelIds),
+            inArray(channels.id, targetChannelIds),
+          ),
+        )
+        .limit(1)
+
+      if (existing) return { id: existing.id, created: false }
+
+      const [ch] = await tx
+        .insert(channels)
+        .values({ workspaceId: ctx.workspaceId, type: 'dm' })
+        .returning({ id: channels.id })
+
+      if (!ch) throw new Error('channel insert failed')
+
+      await tx.insert(channelMembers).values([
+        { channelId: ch.id, userId: ctx.userId },
+        { channelId: ch.id, userId: targetUserId },
+      ])
+
+      // 両参加者の既読起点を作成時点にする（参加直後の過去履歴未読を防ぐ。新規DMでは履歴ゼロだが一貫性のため）
+      await tx.insert(channelReadStates).values([
+        { channelId: ch.id, userId: ctx.userId, lastReadAt: new Date() },
+        { channelId: ch.id, userId: targetUserId, lastReadAt: new Date() },
+      ]).onConflictDoNothing()
+
+      return { id: ch.id, created: true }
+    })
+
+    if (!result) {
       return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
     }
 
-    // 既存の DM チャンネルを探す（両者が参加している）
-    const myChannelIds = db
-      .select({ channelId: channelMembers.channelId })
-      .from(channelMembers)
-      .where(eq(channelMembers.userId, ctx.userId))
-
-    const targetChannelIds = db
-      .select({ channelId: channelMembers.channelId })
-      .from(channelMembers)
-      .where(eq(channelMembers.userId, targetUserId))
-
-    const existing = await db
-      .select({ id: channels.id })
-      .from(channels)
-      .where(
-        and(
-          eq(channels.workspaceId, ctx.workspaceId),
-          eq(channels.type, 'dm'),
-          inArray(channels.id, myChannelIds),
-          inArray(channels.id, targetChannelIds),
-        ),
-      )
-      .limit(1)
-
-    if (existing.length > 0) {
-      return NextResponse.json({ id: existing[0]!.id })
-    }
-
-    const [ch] = await db
-      .insert(channels)
-      .values({ workspaceId: ctx.workspaceId, type: 'dm' })
-      .returning({ id: channels.id })
-
-    if (!ch) throw new Error('channel insert failed')
-
-    await db.insert(channelMembers).values([
-      { channelId: ch.id, userId: ctx.userId },
-      { channelId: ch.id, userId: targetUserId },
-    ])
-
-    // 両参加者の既読起点を作成時点にする（参加直後の過去履歴未読を防ぐ。新規DMでは履歴ゼロだが一貫性のため）
-    await db.insert(channelReadStates).values([
-      { channelId: ch.id, userId: ctx.userId, lastReadAt: new Date() },
-      { channelId: ch.id, userId: targetUserId, lastReadAt: new Date() },
-    ]).onConflictDoNothing()
-
-    void sql // suppress unused import warning
-
-    return NextResponse.json({ id: ch.id }, { status: 201 })
+    return NextResponse.json({ id: result.id }, { status: result.created ? 201 : 200 })
   } catch (err) {
     console.error('[/api/workspaces/dms POST] failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
