@@ -26,6 +26,7 @@ import {
   pinnedProjects,
   profiles,
   projectMembers,
+  projects,
   pushSubscriptions,
   savedFileFilters,
   storageDeletionJobs,
@@ -82,9 +83,20 @@ export interface AccountDeletionDependencies {
     userId: string,
     now: Date,
     deleteBillingCustomer: (customerId: string | null) => Promise<void>,
-  ): Promise<string | null>
+  ): Promise<AccountDeletionResult>
   enqueueStorageDeletion(jobId: string | null): Promise<void>
+  enqueueProjectReindex(projects: AffectedProject[]): Promise<void>
   deleteAuthUser(userId: string): Promise<void>
+}
+
+export interface AffectedProject {
+  projectId: string
+  workspaceId: string
+}
+
+export interface AccountDeletionResult {
+  storageDeletionJobId: string | null
+  affectedProjects: AffectedProject[]
 }
 
 type SqlClient = Pick<typeof db, 'execute'>
@@ -164,7 +176,7 @@ async function anonymizeAndRevoke(
   userId: string,
   now: Date,
   deleteCustomer: (customerId: string | null) => Promise<void>,
-): Promise<string | null> {
+): Promise<AccountDeletionResult> {
   return db.transaction(async (tx) => {
     // profileがまだ無い初回セットアップともadvisory lockで直列化し、必ずtombstoneを残す。
     // 非キー列だけのupsertは外部キー検査のKEY SHAREと競合しない。
@@ -248,12 +260,14 @@ async function anonymizeAndRevoke(
     await tx.delete(aiNudges).where(sql`
       ${aiNudges.messageId} in (select id from messages where sender_id = ${userId})
     `)
-    await tx.execute(sql`
-      select 1 from projects
-      where id in (select project_id from project_members where user_id = ${userId})
-      order by id
-      for update
-    `)
+    const affectedProjects = await tx
+      .select({ projectId: projects.id, workspaceId: projects.workspaceId })
+      .from(projects)
+      .where(sql`
+        ${projects.id} in (select project_id from project_members where user_id = ${userId})
+      `)
+      .orderBy(projects.id)
+      .for('update')
     await tx.delete(documentChunks).where(sql`
       ${documentChunks.sourceType} = 'project'
       and ${documentChunks.sourceId} in (
@@ -360,6 +374,10 @@ async function anonymizeAndRevoke(
       .from(uploadRequests)
       .where(and(eq(uploadRequests.requestedBy, userId), isNull(uploadRequests.finalizedAt)))
     await tx
+      .update(uploadRequests)
+      .set({ fileName: '', derivedMimeType: '', originalMimeType: null })
+      .where(and(eq(uploadRequests.requestedBy, userId), isNull(uploadRequests.finalizedAt)))
+    await tx
       .delete(documentChunks)
       .where(and(eq(documentChunks.sourceType, 'member'), eq(documentChunks.sourceId, userId)))
 
@@ -414,7 +432,7 @@ async function anonymizeAndRevoke(
     await deleteCustomer(billingCustomer?.stripeCustomerId ?? null)
     await tx.delete(billingCustomers).where(eq(billingCustomers.userId, userId))
 
-    return storageDeletionJobId
+    return { storageDeletionJobId, affectedProjects }
   })
 }
 
@@ -428,6 +446,21 @@ async function enqueueStorageDeletion(jobId: string | null): Promise<void> {
   }
 }
 
+async function enqueueProjectReindex(projects: AffectedProject[]): Promise<void> {
+  if (projects.length === 0) return
+  try {
+    await inngest.send(
+      projects.map(({ projectId, workspaceId }) => ({
+        name: 'project/upserted' as const,
+        data: { projectId, workspaceId },
+      })),
+    )
+  } catch (error) {
+    // 索引は管理画面から再構築できるため、Auth削除を失敗扱いにはしない。
+    console.error('[account-deletion] project reindex enqueue failed:', error)
+  }
+}
+
 async function deleteAuthUser(userId: string): Promise<void> {
   const { error } = await createServiceRoleClient().auth.admin.deleteUser(userId)
   if (error) throw error
@@ -438,6 +471,7 @@ const defaultDependencies: AccountDeletionDependencies = {
   deleteBillingCustomer,
   anonymizeAndRevoke,
   enqueueStorageDeletion,
+  enqueueProjectReindex,
   deleteAuthUser,
 }
 
@@ -448,11 +482,12 @@ export async function deleteAccount(
   const blocked = await dependencies.findBlockingOwnerWorkspaces(userId)
   if (blocked.length > 0) throw new LastOwnerAccountDeletionError(blocked)
 
-  const storageDeletionJobId = await dependencies.anonymizeAndRevoke(
+  const { storageDeletionJobId, affectedProjects } = await dependencies.anonymizeAndRevoke(
     userId,
     new Date(),
     dependencies.deleteBillingCustomer,
   )
   await dependencies.enqueueStorageDeletion(storageDeletionJobId)
+  await dependencies.enqueueProjectReindex(affectedProjects)
   await dependencies.deleteAuthUser(userId)
 }

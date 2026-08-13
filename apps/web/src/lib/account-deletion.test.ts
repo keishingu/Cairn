@@ -27,10 +27,16 @@ function createDependencies(): AccountDeletionDependencies & {
     anonymizeAndRevoke: vi.fn(async (_userId, _now, deleteBillingCustomer) => {
       calls.push('anonymize')
       await deleteBillingCustomer('cus_1')
-      return 'storage-job-1'
+      return {
+        storageDeletionJobId: 'storage-job-1',
+        affectedProjects: [{ projectId: 'project-1', workspaceId: 'workspace-1' }],
+      }
     }),
     enqueueStorageDeletion: vi.fn(async () => {
       calls.push('storage-enqueue')
+    }),
+    enqueueProjectReindex: vi.fn(async () => {
+      calls.push('project-reindex')
     }),
     deleteAuthUser: vi.fn(async () => {
       calls.push('auth-user')
@@ -49,9 +55,13 @@ describe('アカウント削除', () => {
       'anonymize',
       'billing',
       'storage-enqueue',
+      'project-reindex',
       'auth-user',
     ])
     expect(dependencies.enqueueStorageDeletion).toHaveBeenCalledWith('storage-job-1')
+    expect(dependencies.enqueueProjectReindex).toHaveBeenCalledWith([
+      { projectId: 'project-1', workspaceId: 'workspace-1' },
+    ])
     expect(dependencies.deleteAuthUser).toHaveBeenCalledWith(USER_ID)
   })
 
@@ -75,6 +85,7 @@ describe('アカウント削除', () => {
     await expect(deleteAccount(USER_ID, dependencies)).rejects.toThrow('database unavailable')
 
     expect(dependencies.enqueueStorageDeletion).not.toHaveBeenCalled()
+    expect(dependencies.enqueueProjectReindex).not.toHaveBeenCalled()
     expect(dependencies.deleteBillingCustomer).not.toHaveBeenCalled()
     expect(dependencies.deleteAuthUser).not.toHaveBeenCalled()
   })
