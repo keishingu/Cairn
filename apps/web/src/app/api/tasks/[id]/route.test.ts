@@ -18,6 +18,7 @@ const {
   mockRequireRole,
   mockIsAssignableTaskMember,
   mockNotifyTaskAssigned,
+  mockRunForActiveMembership,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockDbSelectLimit: vi.fn(),
@@ -28,6 +29,7 @@ const {
   mockRequireRole: vi.fn(),
   mockIsAssignableTaskMember: vi.fn(),
   mockNotifyTaskAssigned: vi.fn(),
+  mockRunForActiveMembership: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -42,6 +44,9 @@ vi.mock('@/lib/permissions', () => ({
 vi.mock('@/lib/tasks/assignment-notification', () => ({
   isAssignableTaskMember: mockIsAssignableTaskMember,
   notifyTaskAssigned: mockNotifyTaskAssigned,
+}))
+vi.mock('@/lib/access/active-membership-lock', () => ({
+  runForActiveMembership: mockRunForActiveMembership,
 }))
 vi.mock('@cairn/shared', async () => {
   const actual = await vi.importActual<typeof import('@cairn/shared')>('@cairn/shared')
@@ -174,6 +179,10 @@ describe('PATCH /api/tasks/[id]', () => {
     mockRequireProjectAccess.mockResolvedValue(null)
     mockRequireRole.mockReturnValue(null)
     mockIsAssignableTaskMember.mockResolvedValue(true)
+    mockRunForActiveMembership.mockImplementation(
+      async (db: { transaction: (action: (tx: unknown) => unknown) => unknown }, _workspaceId: string, _userId: string, action: (tx: unknown) => unknown) =>
+        db.transaction(action),
+    )
   })
 
   afterEach(() => vi.clearAllMocks())
@@ -203,6 +212,32 @@ describe('PATCH /api/tasks/[id]', () => {
     }), {
       params: Promise.resolve({ id: TASK_ID }),
     })
+
+    expect(res.status).toBe(403)
+    expect(mockDbUpdateReturning).not.toHaveBeenCalled()
+  })
+
+  it('退会済みならタスクを更新しない', async () => {
+    mockDbSelectLimit.mockResolvedValueOnce([{
+      id: TASK_ID,
+      projectId: 'project-1',
+      projectTitle: 'proj',
+      title: 'title',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId: null,
+      sourceMessageId: null,
+      sourceCheckboxIndex: null,
+    }])
+    mockRunForActiveMembership.mockResolvedValue(null)
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: 'updated' }),
+      headers: { 'content-type': 'application/json' },
+    }), { params: Promise.resolve({ id: TASK_ID }) })
 
     expect(res.status).toBe(403)
     expect(mockDbUpdateReturning).not.toHaveBeenCalled()
