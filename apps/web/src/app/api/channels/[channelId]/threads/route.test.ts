@@ -38,6 +38,10 @@ vi.mock('@cairn/db', () => ({
     type: 'channels.type', parentChannelId: 'channels.parentChannelId',
   },
   channelMembers: { channelId: 'channelMembers.channelId', userId: 'channelMembers.userId' },
+  activeWorkspaceMembers: {
+    workspaceId: 'activeWorkspaceMembers.workspaceId',
+    userId: 'activeWorkspaceMembers.userId',
+  },
 }))
 vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
@@ -91,6 +95,7 @@ function setupTransaction(memberRows: { userId: string }[] = []) {
     const result = selectResults.shift() ?? []
     const builder = {
       from: vi.fn(() => builder),
+      innerJoin: vi.fn(() => builder),
       where: vi.fn(() => builder),
       for: vi.fn(() => builder),
       limit: vi.fn(() => builder),

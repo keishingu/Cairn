@@ -34,7 +34,7 @@ export async function POST(req: Request, { params }: RouteContext) {
   if (name.length > 60) return NextResponse.json({ error: '60文字以内で入力してください' }, { status: 400 })
 
   try {
-    const { db, channels, channelMembers } = await import('@cairn/db')
+    const { db, channels, channelMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { and, eq, sql } = await import('drizzle-orm')
     const parentChannelId = sql<string | null>`to_jsonb(${channels})->>'parent_channel_id'`
 
@@ -73,6 +73,10 @@ export async function POST(req: Request, { params }: RouteContext) {
       const members = await tx
         .select({ userId: channelMembers.userId })
         .from(channelMembers)
+        .innerJoin(activeWorkspaceMembers, and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, channelMembers.userId),
+        ))
         .where(eq(channelMembers.channelId, parent.id))
 
       if (!(await lockActiveMemberships(
