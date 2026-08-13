@@ -19,6 +19,8 @@ export interface TaskDto {
   assigneeId: string | null
   assigneeName: string | null
   assigneeAvatarUrl: string | null
+  /** チャット由来タスクの共有元メッセージ。未紐付けなら null。 */
+  sourceMessageId?: string | null
   isLinkedToMessage: boolean
 }
 
@@ -89,6 +91,7 @@ export async function GET(req: Request) {
       assigneeId: r.assigneeId,
       assigneeName: r.assigneeName ?? null,
       assigneeAvatarUrl: r.assigneeAvatarUrl ?? null,
+      sourceMessageId: r.sourceMessageId,
       isLinkedToMessage: r.sourceMessageId != null,
     }))
 
@@ -197,6 +200,7 @@ export async function POST(req: Request) {
       assigneeId: inserted.assigneeId,
       assigneeName: assigneeRow?.displayName ?? null,
       assigneeAvatarUrl: assigneeRow?.avatarUrl ?? null,
+      sourceMessageId: null,
       isLinkedToMessage: false,
     }
 

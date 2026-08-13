@@ -163,11 +163,17 @@
 .app .chat-sidebar-item:focus-within > .chat-sidebar-item-action,
 .app .chat-sidebar-item-action[data-always-visible="true"] { opacity:1; pointer-events:auto; }
 
+.app .chat-detail-row-action { opacity:0; pointer-events:none; transition:opacity .12s ease-out; }
+.app .chat-detail-row:hover .chat-detail-row-action,
+.app .chat-detail-row:focus-within .chat-detail-row-action { opacity:1; pointer-events:auto; }
+
 @media (hover: none) {
   .app .chat-sidebar-item-action { opacity:1; pointer-events:auto; }
+  .app .chat-detail-row-action { opacity:1; pointer-events:auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   .app .chat-sidebar-item-action { transition:none; }
+  .app .chat-detail-row-action { transition:none; }
 }
 
 @keyframes messageHighlight { 0% { background-color: var(--accent-soft-2); } 100% { background-color: transparent; } }
