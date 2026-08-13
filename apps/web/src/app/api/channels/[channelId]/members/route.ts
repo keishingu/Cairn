@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
+import { lockActiveMemberships } from '@/lib/access/active-membership-lock'
 
 export interface ChannelMemberDto {
   userId: string
@@ -98,7 +99,9 @@ export async function POST(
     }
 
     const rootChannelId = targetChannel.parentChannelId ?? targetChannel.id
-    await db.transaction(async tx => {
+    const added = await db.transaction(async tx => {
+      if (!(await lockActiveMemberships(tx, ctx.workspaceId, [ctx.userId, userId]))) return false
+
       // 子スレッド作成とメンバー追加を同じ親行で直列化し、参加者の取りこぼしを防ぐ。
       await tx
         .select({ id: channels.id })
@@ -130,7 +133,13 @@ export async function POST(
           setWhere: sql`${channelReadStates.lastReadAt} = 'epoch'::timestamptz
             and ${channelReadStates.lastReadMessageId} is null`,
         })
+
+      return true
     })
+
+    if (!added) {
+      return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
+    }
 
     return NextResponse.json({ userId, channelId } satisfies ChannelMemberDto, { status: 201 })
   } catch (err) {

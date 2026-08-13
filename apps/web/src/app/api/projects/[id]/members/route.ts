@@ -7,6 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireProjectAccess, requireRole } from '@/lib/permissions'
 import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { runForActiveMemberships } from '@/lib/access/active-membership-lock'
 
 export interface ProjectMemberDto {
   userId: string
@@ -121,7 +122,7 @@ export async function POST(
   try {
     const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
-    const { profiles, projectMembers, projects, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { profiles, projectMembers, projects, workspaceMembers } = await import('@cairn/db')
     const { eq, and, inArray } = await import('drizzle-orm')
 
     const [project] = await db
@@ -136,49 +137,57 @@ export async function POST(
     const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
 
-    // プロジェクトに追加できるのは active メンバーのみ（非活性メンバーは追加不可）
-    const wsMembers = await db
-      .select({ userId: activeWorkspaceMembers.userId })
-      .from(activeWorkspaceMembers)
-      .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), inArray(activeWorkspaceMembers.userId, normalizedUserIds)))
+    const addition = await runForActiveMemberships(
+      db,
+      ctx.workspaceId,
+      [ctx.userId, ...normalizedUserIds],
+      async tx => {
+        const inserted = await tx
+          .insert(projectMembers)
+          .values(
+            normalizedUserIds.map(targetUserId => ({
+              projectId,
+              userId: targetUserId,
+              role: (role as ProjectMemberDto['role']),
+              attendance: 'attending' as const,
+            })),
+          )
+          .onConflictDoNothing()
+          .returning({
+            userId: projectMembers.userId,
+            role: projectMembers.role,
+            attendance: projectMembers.attendance,
+            addedAt: projectMembers.createdAt,
+          })
 
-    if (wsMembers.length !== normalizedUserIds.length) {
+        if (inserted.length === 0) return { inserted, profileRows: [] }
+
+        const insertedUserIds = inserted.map(member => member.userId)
+        const profileRows = await tx
+          .select({
+            userId: profiles.id,
+            displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+            avatarUrl: workspaceMembers.avatarUrl,
+          })
+          .from(profiles)
+          .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+          .where(inArray(profiles.id, insertedUserIds))
+
+        return { inserted, profileRows }
+      },
+    )
+
+    if (!addition) {
       return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })
     }
 
-    const inserted = await db
-      .insert(projectMembers)
-      .values(
-        normalizedUserIds.map(targetUserId => ({
-          projectId,
-          userId: targetUserId,
-          role: (role as ProjectMemberDto['role']),
-          attendance: 'attending' as const,
-        })),
-      )
-      .onConflictDoNothing()
-      .returning({
-        userId: projectMembers.userId,
-        role: projectMembers.role,
-        attendance: projectMembers.attendance,
-        addedAt: projectMembers.createdAt,
-      })
+    const { inserted, profileRows } = addition
 
     if (inserted.length === 0) {
       return NextResponse.json({ error: 'Member already exists' }, { status: 409 })
     }
 
     const insertedUserIds = inserted.map(member => member.userId)
-    const profileRows = await db
-      .select({
-        userId: profiles.id,
-        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
-        avatarUrl: workspaceMembers.avatarUrl,
-      })
-      .from(profiles)
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-      .where(inArray(profiles.id, insertedUserIds))
-
     const profileMap = new Map(profileRows.map(profile => [profile.userId, profile]))
     const emails = await resolveEmailsByUserId(admin, insertedUserIds)
     const insertedMembers = inserted.map(member => {

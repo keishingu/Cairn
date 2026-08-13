@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
+import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 type RouteContext = { params: Promise<{ messageId: string }> }
 
@@ -36,18 +37,31 @@ export async function POST(_req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 })
     }
 
-    const [existing] = await db
-      .select({ id: messageBookmarks.id })
-      .from(messageBookmarks)
-      .where(and(eq(messageBookmarks.messageId, messageId), eq(messageBookmarks.userId, ctx.userId)))
+    const bookmarked = await runForActiveMembership(
+      db,
+      ctx.workspaceId,
+      ctx.userId,
+      async tx => {
+        const [existing] = await tx
+          .select({ id: messageBookmarks.id })
+          .from(messageBookmarks)
+          .where(and(eq(messageBookmarks.messageId, messageId), eq(messageBookmarks.userId, ctx.userId)))
 
-    if (existing) {
-      await db.delete(messageBookmarks).where(eq(messageBookmarks.id, existing.id))
-      return NextResponse.json({ bookmarked: false })
+        if (existing) {
+          await tx.delete(messageBookmarks).where(eq(messageBookmarks.id, existing.id))
+          return false
+        }
+
+        await tx.insert(messageBookmarks).values({ messageId, userId: ctx.userId })
+        return true
+      },
+    )
+
+    if (bookmarked === null) {
+      return NextResponse.json({ error: 'ワークスペースに所属していません' }, { status: 403 })
     }
 
-    await db.insert(messageBookmarks).values({ messageId, userId: ctx.userId })
-    return NextResponse.json({ bookmarked: true })
+    return NextResponse.json({ bookmarked })
   } catch (err) {
     console.error('[/api/messages/[messageId]/bookmark POST] DB query failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
