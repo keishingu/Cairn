@@ -34,7 +34,6 @@ export type TaskAssignedEvent = {
     projectId: string
     projectTitle: string
     workspaceId: string
-    assignerId: string
     assignerName: string
   }
 }

@@ -3,11 +3,7 @@ import { Linking, Platform, View, Text, Pressable, StyleSheet } from 'react-nati
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
-import type {
-  WebViewProps,
-  WebViewNavigation,
-  WebViewMessageEvent,
-} from 'react-native-webview'
+import type { WebViewProps, WebViewNavigation, WebViewMessageEvent } from 'react-native-webview'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/api-fetch'
 import { API_BASE_URL as WEB_BASE } from '../lib/env'
@@ -19,10 +15,7 @@ import {
   parseNativeHeaderDescriptor,
   type NativeHeaderDescriptor,
 } from '../lib/native-header-bridge'
-import {
-  decideWebViewNavigation,
-  WEBVIEW_ORIGIN_WHITELIST,
-} from '../lib/webview-navigation'
+import { decideWebViewNavigation, WEBVIEW_ORIGIN_WHITELIST } from '../lib/webview-navigation'
 import {
   ACCOUNT_DELETED_LOGIN_ROUTE,
   finishNativeAccountDeletion,
@@ -210,13 +203,17 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
     if (msg?.type === 'account-deleted') {
       // WebView側でAuthユーザーを削除したら、独立して保持しているネイティブの
       // Supabaseセッションもローカルから消し、認証画面へ戻す。
-      void supabase.auth.getSession().then(({ data }) =>
-        finishNativeAccountDeletion(
-          data.session?.user.id ?? null,
-          () => supabase.auth.signOut({ scope: 'local' }),
-          () => router.replace(ACCOUNT_DELETED_LOGIN_ROUTE),
-        ),
-      )
+      void supabase.auth
+        .getSession()
+        .then(({ data }) => data.session?.user.id ?? null)
+        .catch(() => null)
+        .then((userId) =>
+          finishNativeAccountDeletion(
+            userId,
+            () => supabase.auth.signOut({ scope: 'local' }),
+            () => router.replace(ACCOUNT_DELETED_LOGIN_ROUTE),
+          ),
+        )
       return
     }
     if (msg?.type === 'open-chats') {

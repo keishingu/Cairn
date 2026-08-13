@@ -5,7 +5,6 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
-import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 const toggleSchema = z.object({
   emoji: z.string().min(1).max(10),
@@ -51,42 +50,29 @@ export async function POST(req: Request, { params }: RouteContext) {
     const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId, ctx.role)
     if (forbidden) return forbidden
 
-    const result = await runForActiveMembership(
-      db,
-      ctx.workspaceId,
-      ctx.userId,
-      async (tx) => {
-        const [existing] = await tx
-          .select({ id: messageReactions.id })
-          .from(messageReactions)
-          .where(
-            and(
-              eq(messageReactions.messageId, messageId),
-              eq(messageReactions.userId, ctx.userId),
-              eq(messageReactions.emoji, emoji),
-            ),
-          )
+    const [existing] = await db
+      .select({ id: messageReactions.id })
+      .from(messageReactions)
+      .where(
+        and(
+          eq(messageReactions.messageId, messageId),
+          eq(messageReactions.userId, ctx.userId),
+          eq(messageReactions.emoji, emoji),
+        ),
+      )
 
-        if (existing) {
-          await tx.delete(messageReactions).where(eq(messageReactions.id, existing.id))
-        } else {
-          await tx.insert(messageReactions).values({ messageId, userId: ctx.userId, emoji })
-        }
-
-        const countResult = await tx
-          .select({ n: count() })
-          .from(messageReactions)
-          .where(and(eq(messageReactions.messageId, messageId), eq(messageReactions.emoji, emoji)))
-
-        return { added: !existing, count: Number(countResult[0]?.n ?? 0) }
-      },
-    )
-
-    if (!result) {
-      return NextResponse.json({ error: 'ワークスペースに所属していません' }, { status: 403 })
+    if (existing) {
+      await db.delete(messageReactions).where(eq(messageReactions.id, existing.id))
+    } else {
+      await db.insert(messageReactions).values({ messageId, userId: ctx.userId, emoji })
     }
 
-    return NextResponse.json({ added: result.added, emoji, count: result.count })
+    const countResult = await db
+      .select({ n: count() })
+      .from(messageReactions)
+      .where(and(eq(messageReactions.messageId, messageId), eq(messageReactions.emoji, emoji)))
+
+    return NextResponse.json({ added: !existing, emoji, count: Number(countResult[0]?.n ?? 0) })
   } catch (err) {
     console.error('[/api/messages/[messageId]/reactions POST] DB query failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

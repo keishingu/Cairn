@@ -4,10 +4,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NextResponse } from 'next/server'
 
-const { mockGetAuthUser, mockDeleteAccount, mockHasAccountLifecycleSchema } = vi.hoisted(() => ({
+const { mockGetAuthUser, mockDeleteAccount } = vi.hoisted(() => ({
   mockGetAuthUser: vi.fn(),
   mockDeleteAccount: vi.fn(),
-  mockHasAccountLifecycleSchema: vi.fn().mockResolvedValue(true),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthUser: mockGetAuthUser }))
@@ -15,10 +14,6 @@ vi.mock('@/lib/account-deletion', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/lib/account-deletion')>()
   return { ...original, deleteAccount: mockDeleteAccount }
 })
-vi.mock('@/lib/access/account-lifecycle-lock', () => ({
-  hasAccountLifecycleSchema: mockHasAccountLifecycleSchema,
-}))
-vi.mock('@cairn/db', () => ({ db: {} }))
 
 function request(body: unknown) {
   return new Request('https://oss-cairn.com/api/me/account', {
@@ -66,17 +61,6 @@ describe('DELETE /api/me/account', () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual({ deleted: true })
     expect(mockDeleteAccount).toHaveBeenCalledWith('user-1')
-  })
-
-  it('DB migration前は503を返して削除を始めない', async () => {
-    mockGetAuthUser.mockResolvedValue({ userId: 'user-1', error: null })
-    mockHasAccountLifecycleSchema.mockResolvedValueOnce(false)
-
-    const { DELETE } = await import('./route')
-    const response = await DELETE(request({ confirmation: '削除' }))
-
-    expect(response.status).toBe(503)
-    expect(mockDeleteAccount).not.toHaveBeenCalled()
   })
 
   it('最後のownerなら対象ワークスペースを返す', async () => {

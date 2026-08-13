@@ -25,12 +25,6 @@ const {
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/access/membership', () => ({ getWorkspaceRole: mockGetWorkspaceRole }))
-vi.mock('@/lib/access/active-membership-lock', () => ({
-  runForActiveMembership: vi.fn(
-    async (_db: unknown, _workspaceId: string, _userId: string, action: (tx: unknown) => unknown) =>
-      mockTransaction(action),
-  ),
-}))
 vi.mock('@/lib/billing/is-billing-enabled', () => ({ isBillingEnabled: () => true }))
 vi.mock('@/lib/billing/stripe', () => ({
   getCreditPackPriceId: () => 'price_credit_pack',

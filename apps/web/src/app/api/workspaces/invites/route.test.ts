@@ -7,7 +7,7 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 
 // --- vi.hoisted ---
-const { mockGetAuthContext, mockDb, mockRunForActiveMembership } = vi.hoisted(() => {
+const { mockGetAuthContext, mockDb } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -20,14 +20,11 @@ const { mockGetAuthContext, mockDb, mockRunForActiveMembership } = vi.hoisted(()
     select: vi.fn(),
     insert: vi.fn(),
   }
-  return { mockGetAuthContext, mockDb, mockRunForActiveMembership: vi.fn() }
+  return { mockGetAuthContext, mockDb }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: mockGetAuthContext,
-}))
-vi.mock('@/lib/access/active-membership-lock', () => ({
-  runForActiveMembership: mockRunForActiveMembership,
 }))
 
 vi.mock('@cairn/db', () => ({
@@ -77,9 +74,6 @@ function selectChain(result: unknown[]) {
 describe('POST /api/workspaces/invites', () => {
   beforeEach(() => {
     process.env['DATABASE_URL'] = 'postgresql://test'
-    mockRunForActiveMembership.mockImplementation((_db, _workspaceId, _userId, action) =>
-      action(mockDb),
-    )
   })
 
   afterEach(() => {
@@ -200,22 +194,6 @@ describe('POST /api/workspaces/invites', () => {
     )
 
     expect(res.status).toBe(200)
-  })
-
-  it('退会済みなら招待トークンを作成しない', async () => {
-    mockRunForActiveMembership.mockResolvedValue(null)
-
-    const { POST } = await import('./route')
-    const res = await POST(
-      new Request('http://localhost/api/workspaces/invites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ expiresIn: '1h' }),
-      }),
-    )
-
-    expect(res.status).toBe(403)
-    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 })
 

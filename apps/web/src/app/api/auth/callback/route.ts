@@ -3,7 +3,6 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { lockAccountLifecycle } from '@/lib/access/account-lifecycle-lock'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -30,19 +29,20 @@ export async function GET(request: Request) {
       if (process.env['DATABASE_URL']) {
         try {
           const { db } = await import('@cairn/db')
+          const { profiles } = await import('@cairn/db')
+          const { eq } = await import('drizzle-orm')
 
-          isNewUser = await db.transaction(async (tx) => {
-            const state = await lockAccountLifecycle(tx, user.id)
-            if (state === 'deleting') return false
-            if (state === 'usable') return false
-            const { sql } = await import('drizzle-orm')
-            await tx.execute(sql`
-              insert into profiles (id, display_name)
-              values (${user.id}, ${displayName})
-              on conflict (id) do nothing
-            `)
-            return true
-          })
+          const existing = await db
+            .select({ id: profiles.id })
+            .from(profiles)
+            .where(eq(profiles.id, user.id))
+            .limit(1)
+
+          isNewUser = existing.length === 0
+
+          if (isNewUser) {
+            await db.insert(profiles).values({ id: user.id, displayName })
+          }
         } catch (err) {
           console.error('[/api/auth/callback] setup failed:', err)
         }

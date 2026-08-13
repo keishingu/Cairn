@@ -99,9 +99,7 @@ describe('cleanupExpiredUploadRequests', () => {
   })
 
   it('ロック待ち中に確定されたintentは削除しない', async () => {
-    mockExpiredRequests
-      .mockResolvedValueOnce([{ id: 'upload-1' }])
-      .mockResolvedValueOnce([])
+    mockExpiredRequests.mockResolvedValueOnce([{ id: 'upload-1' }]).mockResolvedValueOnce([])
 
     const { cleanupExpiredUploadRequests } = await import('./cleanup')
     await expect(cleanupExpiredUploadRequests()).resolves.toEqual({ removed: 0, failed: 0 })

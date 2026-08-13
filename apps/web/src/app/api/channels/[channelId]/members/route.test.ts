@@ -22,7 +22,6 @@ const {
   mockAnd,
   mockOr,
   mockSql,
-  mockLockActiveMemberships,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -37,11 +36,6 @@ const {
   mockAnd: vi.fn(() => Symbol('and')),
   mockOr: vi.fn(() => Symbol('or')),
   mockSql: vi.fn(() => Symbol('sql')),
-  mockLockActiveMemberships: vi.fn(),
-}))
-
-vi.mock('@/lib/access/active-membership-lock', () => ({
-  lockActiveMemberships: mockLockActiveMemberships,
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -130,7 +124,6 @@ describe('/api/channels/[channelId]/members のアクセス制御', () => {
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
-    mockLockActiveMemberships.mockResolvedValue(true)
   })
 
   afterEach(() => {
@@ -192,26 +185,5 @@ describe('/api/channels/[channelId]/members のアクセス制御', () => {
     await expect(res.json()).resolves.toEqual({ userId: TARGET_USER_ID, channelId: CHANNEL_ID })
     expect(mockForUpdate).toHaveBeenCalledOnce()
     expect(mockOnConflictDoUpdate).toHaveBeenCalledOnce()
-    expect(mockLockActiveMemberships).toHaveBeenCalledWith(
-      expect.objectContaining({ select: mockTxSelect, insert: mockTxInsert }),
-      DEV_WORKSPACE_ID,
-      [DEV_USER_ID, TARGET_USER_ID],
-    )
-  })
-
-  it('退会済みユーザーはチャンネルへ追加できない', async () => {
-    mockRequireChannelAccess.mockResolvedValue(null)
-    mockSelectResults(
-      [{ userId: TARGET_USER_ID }],
-      [{ id: CHANNEL_ID, parentChannelId: null }],
-    )
-    mockTransaction([{ id: CHANNEL_ID }])
-    mockLockActiveMemberships.mockResolvedValue(false)
-
-    const { POST } = await import('./route')
-    const res = await POST(postRequest({ userId: TARGET_USER_ID }), ctxRouteParams())
-
-    expect(res.status).toBe(422)
-    expect(mockTxInsert).not.toHaveBeenCalled()
   })
 })

@@ -18,7 +18,6 @@ const {
   mockAnd,
   mockIsNull,
   mockCount,
-  mockRunForActiveMembership,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -29,11 +28,6 @@ const {
   mockAnd: vi.fn(() => Symbol('and')),
   mockIsNull: vi.fn(() => Symbol('isNull')),
   mockCount: vi.fn(() => Symbol('count')),
-  mockRunForActiveMembership: vi.fn(),
-}))
-
-vi.mock('@/lib/access/active-membership-lock', () => ({
-  runForActiveMembership: mockRunForActiveMembership,
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -95,10 +89,6 @@ describe('/api/messages/[messageId]/reactions のアクセス制御', () => {
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
-    mockRunForActiveMembership.mockImplementation(
-      async (_db: unknown, _workspaceId: string, _userId: string, action: (tx: unknown) => unknown) =>
-        action({ select: mockDbSelect, insert: mockDbInsert, delete: mockDbDelete }),
-    )
   })
 
   afterEach(() => {
@@ -138,23 +128,5 @@ describe('/api/messages/[messageId]/reactions のアクセス制御', () => {
     const res = await POST(postRequest({ emoji: '👍' }), ctxRouteParams())
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ added: true, emoji: '👍', count: 1 })
-    expect(mockRunForActiveMembership).toHaveBeenCalledWith(
-      expect.anything(),
-      DEV_WORKSPACE_ID,
-      DEV_USER_ID,
-      expect.any(Function),
-    )
-  })
-
-  it('退会済みならリアクションを追加できない', async () => {
-    mockSelectResults([{ channelId: CHANNEL_ID }])
-    mockRequireChannelAccess.mockResolvedValue(null)
-    mockRunForActiveMembership.mockResolvedValue(null)
-
-    const { POST } = await import('./route')
-    const res = await POST(postRequest({ emoji: '👍' }), ctxRouteParams())
-
-    expect(res.status).toBe(403)
-    expect(mockDbInsert).not.toHaveBeenCalled()
   })
 })

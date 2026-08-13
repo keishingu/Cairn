@@ -16,7 +16,6 @@ import {
   isGalleryImageMimeType,
 } from '@/lib/gallery-upload'
 import { createServiceRoleClient } from '@/lib/supabase/service'
-import { lockActiveMembership } from '@/lib/access/active-membership-lock'
 import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -99,29 +98,21 @@ export async function POST(req: Request, { params }: RouteContext) {
     }
 
     const expiresAt = new Date(Date.now() + UPLOAD_REQUEST_FALLBACK_EXPIRY_MS)
-    const [uploadRequest] = await db.transaction(async (tx) => {
-      if (!(await lockActiveMembership(tx, ctx.workspaceId, ctx.userId))) return []
-      return tx
-        .insert(uploadRequests)
-        .values({
-          workspaceId: ctx.workspaceId,
-          projectId,
-          requestedBy: ctx.userId,
-          fileName: originalMetadata.fileName,
-          derivedMimeType: derivedMetadata.mimeType,
-          originalMimeType: originalStoragePath ? originalMetadata.mimeType : null,
-          derivedStoragePath,
-          originalStoragePath,
-          expiresAt,
-        })
-        .returning({ id: uploadRequests.id })
-    })
-    if (!uploadRequest) {
-      return NextResponse.json(
-        { error: 'ワークスペースへのアクセス権がありません' },
-        { status: 403 },
-      )
-    }
+    const [uploadRequest] = await db
+      .insert(uploadRequests)
+      .values({
+        workspaceId: ctx.workspaceId,
+        projectId,
+        requestedBy: ctx.userId,
+        fileName: originalMetadata.fileName,
+        derivedMimeType: derivedMetadata.mimeType,
+        originalMimeType: originalStoragePath ? originalMetadata.mimeType : null,
+        derivedStoragePath,
+        originalStoragePath,
+        expiresAt,
+      })
+      .returning({ id: uploadRequests.id })
+    if (!uploadRequest) throw new Error('upload request insert returned no rows')
 
     const supabase = createServiceRoleClient()
     const [{ data: derived, error: derivedError }, originalResult] = await Promise.all([

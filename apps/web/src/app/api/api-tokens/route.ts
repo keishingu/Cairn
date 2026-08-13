@@ -11,7 +11,6 @@ import {
   createApiToken,
   type ApiTokenScope,
 } from '@/lib/api-tokens'
-import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 export interface ApiTokenDto {
   id: string
@@ -86,45 +85,36 @@ export async function POST(req: Request) {
 
   try {
     const { db, apiTokens } = await import('@cairn/db')
+    const generated = createApiToken()
     const expiresAt = new Date(Date.now() + parsed.data.expiresInDays * 24 * 60 * 60 * 1000)
-    const created = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async (tx) => {
-      const generated = createApiToken()
-      const [row] = await tx
-        .insert(apiTokens)
-        .values({
-          userId: ctx.userId,
-          workspaceId: ctx.workspaceId,
-          name: parsed.data.name,
-          tokenHash: generated.hash,
-          tokenPrefix: generated.prefix,
-          scope: parsed.data.scope,
-          expiresAt,
-        })
-        .returning({
-          id: apiTokens.id,
-          name: apiTokens.name,
-          prefix: apiTokens.tokenPrefix,
-          scope: apiTokens.scope,
-          expiresAt: apiTokens.expiresAt,
-          createdAt: apiTokens.createdAt,
-        })
-      if (!row) throw new Error('Insert returned no rows')
-      return { generated, row }
-    })
-    if (!created) {
-      return NextResponse.json(
-        { error: 'ワークスペースへのアクセス権がありません' },
-        { status: 403 },
-      )
-    }
+    const [row] = await db
+      .insert(apiTokens)
+      .values({
+        userId: ctx.userId,
+        workspaceId: ctx.workspaceId,
+        name: parsed.data.name,
+        tokenHash: generated.hash,
+        tokenPrefix: generated.prefix,
+        scope: parsed.data.scope,
+        expiresAt,
+      })
+      .returning({
+        id: apiTokens.id,
+        name: apiTokens.name,
+        prefix: apiTokens.tokenPrefix,
+        scope: apiTokens.scope,
+        expiresAt: apiTokens.expiresAt,
+        createdAt: apiTokens.createdAt,
+      })
+    if (!row) throw new Error('Insert returned no rows')
 
     return NextResponse.json(
       {
-        token: created.generated.token,
+        token: generated.token,
         apiToken: {
-          ...created.row,
-          expiresAt: created.row.expiresAt.toISOString(),
-          createdAt: created.row.createdAt.toISOString(),
+          ...row,
+          expiresAt: row.expiresAt.toISOString(),
+          createdAt: row.createdAt.toISOString(),
           revokedAt: null,
           lastUsedAt: null,
         } satisfies ApiTokenDto,

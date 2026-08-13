@@ -12,12 +12,6 @@ const { mockGetAuthContext, mockSet } = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/access/account-lifecycle-lock', () => ({
-  lockUsableAccount: vi.fn().mockResolvedValue(true),
-}))
-vi.mock('@/lib/access/active-membership-lock', () => ({
-  lockActiveMembership: vi.fn().mockResolvedValue(true),
-}))
 vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
   eq: vi.fn(() => 'eq'),

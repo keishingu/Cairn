@@ -6,7 +6,6 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { exchangeCodeForTokens, listCalendars } from '@/lib/google-calendar-api'
 import type { GcalAccountMeta, SelectedCalendar } from '@/lib/google-calendar-account'
 import { encryptToken } from '@/lib/token-crypto'
-import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
@@ -50,56 +49,44 @@ export async function GET(req: NextRequest) {
     const { db, connectedAccounts } = await import('@cairn/db')
     const { and, eq } = await import('drizzle-orm')
 
-    const persisted = await runForActiveMembership(
-      db,
-      ctx.workspaceId,
-      ctx.userId,
-      async (tx) => {
-        // 既存レコードがあれば更新、なければ挿入
-        const [existing] = await tx
-          .select({ id: connectedAccounts.id, metadata: connectedAccounts.metadata })
-          .from(connectedAccounts)
-          .where(and(
-            eq(connectedAccounts.userId, ctx.userId),
-            eq(connectedAccounts.provider, 'google_calendar'),
-          ))
-          .limit(1)
+    // 既存レコードがあれば更新、なければ挿入
+    const [existing] = await db
+      .select({ id: connectedAccounts.id, metadata: connectedAccounts.metadata })
+      .from(connectedAccounts)
+      .where(and(
+        eq(connectedAccounts.userId, ctx.userId),
+        eq(connectedAccounts.provider, 'google_calendar'),
+      ))
+      .limit(1)
 
-        const selectedCalendars = existing
-          ? preserveExistingSelection(
-              existing.metadata as GcalAccountMeta | null | undefined,
-              allCalendars,
-            )
-          : allCalendars
-        const meta = { googleAccountEmail: email, selectedCalendars }
+    const selectedCalendars = existing
+      ? preserveExistingSelection(existing.metadata as GcalAccountMeta | null | undefined, allCalendars)
+      : allCalendars
+    const meta = { googleAccountEmail: email, selectedCalendars }
 
-        if (existing) {
-          await tx.update(connectedAccounts)
-            .set({
-              accessTokenEncrypted: encryptToken(accessToken),
-              refreshTokenEncrypted: encryptToken(refreshToken),
-              expiresAt,
-              providerAccountId: email,
-              metadata: meta,
-              updatedAt: new Date(),
-            })
-            .where(eq(connectedAccounts.id, existing.id))
-        } else {
-          await tx.insert(connectedAccounts).values({
-            userId: ctx.userId,
-            workspaceId: ctx.workspaceId,
-            provider: 'google_calendar',
-            providerAccountId: email,
-            accessTokenEncrypted: encryptToken(accessToken),
-            refreshTokenEncrypted: encryptToken(refreshToken),
-            expiresAt,
-            metadata: meta,
-          })
-        }
-        return true
-      },
-    )
-    if (!persisted) return NextResponse.redirect(`${settingsUrl}?gcal=error`)
+    if (existing) {
+      await db.update(connectedAccounts)
+        .set({
+          accessTokenEncrypted: encryptToken(accessToken),
+          refreshTokenEncrypted: encryptToken(refreshToken),
+          expiresAt,
+          providerAccountId: email,
+          metadata: meta,
+          updatedAt: new Date(),
+        })
+        .where(eq(connectedAccounts.id, existing.id))
+    } else {
+      await db.insert(connectedAccounts).values({
+        userId: ctx.userId,
+        workspaceId: ctx.workspaceId,
+        provider: 'google_calendar',
+        providerAccountId: email,
+        accessTokenEncrypted: encryptToken(accessToken),
+        refreshTokenEncrypted: encryptToken(refreshToken),
+        expiresAt,
+        metadata: meta,
+      })
+    }
 
     const res = NextResponse.redirect(`${settingsUrl}?gcal=connected`)
     res.cookies.delete('gcal_oauth_state')

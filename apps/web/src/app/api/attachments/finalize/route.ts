@@ -15,11 +15,9 @@ import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
-import { lockActiveMembership } from '@/lib/access/active-membership-lock'
 import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
 
 const PAID_STORAGE_ENTITLEMENT_ERROR = 'paid-storage-entitlement-required'
-const MEMBERSHIP_REVOKED_ERROR = 'membership-revoked'
 const UPLOAD_REQUEST_EXPIRED_ERROR = 'upload-request-expired'
 
 // 署名付きURLでのアップロード(upload-url)完了後、files レコードを登録し
@@ -239,9 +237,6 @@ export async function POST(req: Request) {
       .limit(1)
 
     const finalized = await db.transaction(async (tx) => {
-      if (!(await lockActiveMembership(tx, ctx.workspaceId, ctx.userId))) {
-        throw new Error(MEMBERSHIP_REVOKED_ERROR)
-      }
       const lockedResult = await tx.execute<{
         id: string
         expires_at: Date
@@ -412,12 +407,6 @@ export async function POST(req: Request) {
     if (err instanceof Error && err.message === PAID_STORAGE_ENTITLEMENT_ERROR) {
       return NextResponse.json(
         { error: '無料容量を超えて保存するには、残高のある有効な支援が必要です' },
-        { status: 403 },
-      )
-    }
-    if (err instanceof Error && err.message === MEMBERSHIP_REVOKED_ERROR) {
-      return NextResponse.json(
-        { error: 'ワークスペースへのアクセス権がありません' },
         { status: 403 },
       )
     }

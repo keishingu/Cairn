@@ -12,7 +12,6 @@ const {
   mockRequireChannelAccess,
   mockResolveUploadEntitlements,
   mockCreateSignedUploadUrl,
-  mockLockActiveMembership,
   mockInsertValues,
   mockDeleteWhere,
   mockHasAttachmentUploadRequestSchema,
@@ -24,7 +23,6 @@ const {
   mockCreateSignedUploadUrl: vi
     .fn()
     .mockResolvedValue({ data: { token: 'tok', path: 'p' }, error: null }),
-  mockLockActiveMembership: vi.fn(),
   mockInsertValues: vi.fn(),
   mockDeleteWhere: vi.fn(),
   mockHasAttachmentUploadRequestSchema: vi.fn(),
@@ -41,22 +39,16 @@ vi.mock('@/lib/supabase/service', () => ({
     storage: { from: () => ({ createSignedUploadUrl: mockCreateSignedUploadUrl }) },
   }),
 }))
-vi.mock('@/lib/access/active-membership-lock', () => ({
-  lockActiveMembership: mockLockActiveMembership,
-}))
 vi.mock('@/lib/uploads/schema-readiness', () => ({
   hasAttachmentUploadRequestSchema: mockHasAttachmentUploadRequestSchema,
 }))
 vi.mock('@cairn/db', () => ({
   db: {
-    transaction: (callback: (tx: unknown) => unknown) =>
-      callback({
-        insert: () => ({
-          values: (values: unknown) => {
-            mockInsertValues(values)
-            return { returning: () => Promise.resolve([{ id: 'upload-1' }]) }
-          },
-        }),
+    insert: () => ({
+      values: (values: unknown) => {
+        mockInsertValues(values)
+        return { returning: () => Promise.resolve([{ id: 'upload-1' }]) }
+      },
     }),
     delete: () => ({ where: mockDeleteWhere }),
     update: () => ({ set: mockUpdateSet }),
@@ -71,7 +63,6 @@ function post(body: unknown): Request {
 describe('/api/attachments/upload-url', () => {
   beforeEach(() => {
     mockHasAttachmentUploadRequestSchema.mockResolvedValue(true)
-    mockLockActiveMembership.mockResolvedValue(true)
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
       error: null,

@@ -3,10 +3,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getGcalAccount, getFreshToken } from '@/lib/google-calendar-account'
+import { getGcalAccount, getFreshToken, updateGcalMeta } from '@/lib/google-calendar-account'
 import { listEvents } from '@/lib/google-calendar-api'
-import { runForUsableAccount } from '@/lib/access/account-lifecycle-lock'
-import { lockActiveMembership } from '@/lib/access/active-membership-lock'
 
 export interface GcalEventDto {
   id: string
@@ -120,7 +118,7 @@ async function syncEvents(
 
   if (selectedCalendars.length === 0) return
 
-  const { connectedAccounts, db, googleCalendarEvents } = await import('@cairn/db')
+  const { db, googleCalendarEvents } = await import('@cairn/db')
 
   type InsertRow = typeof googleCalendarEvents.$inferInsert
 
@@ -180,51 +178,27 @@ async function syncEvents(
     }
   }
 
-  const { and, eq, sql } = await import('drizzle-orm')
-  await runForUsableAccount(db, userId, async (tx) => {
-    if (!(await lockActiveMembership(tx, workspaceId, userId))) return
-    const [connected] = await tx
-      .select({ metadata: connectedAccounts.metadata })
-      .from(connectedAccounts)
-      .where(
-        and(
-          eq(connectedAccounts.id, refreshedAccount.id),
-          eq(connectedAccounts.userId, userId),
-        ),
-      )
-      .limit(1)
-    if (!connected) return
-
-    if (rows.length > 0) {
-      await tx
-        .insert(googleCalendarEvents)
-        .values(rows)
-        .onConflictDoUpdate({
-          target: [
-            googleCalendarEvents.userId,
-            googleCalendarEvents.googleCalendarId,
-            googleCalendarEvents.googleEventId,
-          ],
-          set: {
-            title: sql`excluded.title`,
-            startDate: sql`excluded.start_date`,
-            endDate: sql`excluded.end_date`,
-            startTime: sql`excluded.start_time`,
-            endTime: sql`excluded.end_time`,
-            syncedAt: sql`excluded.synced_at`,
-          },
-        })
-    }
-
-    await tx
-      .update(connectedAccounts)
-      .set({
-        metadata: {
-          ...((connected.metadata as object | null) ?? {}),
-          lastSyncedAt: new Date().toISOString(),
+  if (rows.length > 0) {
+    const { sql } = await import('drizzle-orm')
+    await db
+      .insert(googleCalendarEvents)
+      .values(rows)
+      .onConflictDoUpdate({
+        target: [
+          googleCalendarEvents.userId,
+          googleCalendarEvents.googleCalendarId,
+          googleCalendarEvents.googleEventId,
+        ],
+        set: {
+          title: sql`excluded.title`,
+          startDate: sql`excluded.start_date`,
+          endDate: sql`excluded.end_date`,
+          startTime: sql`excluded.start_time`,
+          endTime: sql`excluded.end_time`,
+          syncedAt: sql`excluded.synced_at`,
         },
-        updatedAt: new Date(),
       })
-      .where(eq(connectedAccounts.id, refreshedAccount.id))
-  })
+  }
+
+  await updateGcalMeta(refreshedAccount.id, { lastSyncedAt: new Date().toISOString() })
 }

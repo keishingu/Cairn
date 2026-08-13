@@ -4,7 +4,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
-import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 export async function POST(
   req: Request,
@@ -23,45 +22,35 @@ export async function POST(
     const { eq, and } = await import('drizzle-orm')
     const { randomUUID } = await import('crypto')
 
+    const [project] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
+
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
     const token = randomUUID()
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30日
 
-    const result = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async (tx) => {
-      const [project] = await tx
-        .select({ id: projects.id })
-        .from(projects)
-        .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)))
-      if (!project) return { invite: null }
-
-      const [invite] = await tx
-        .insert(workspaceInvites)
-        .values({
-          workspaceId: ctx.workspaceId,
-          token,
-          createdBy: ctx.userId,
-          expiresAt,
-          role: 'guest',
-          projectId,
-        })
-        .returning()
-      return { invite: invite! }
-    })
-    if (!result) {
-      return NextResponse.json(
-        { error: 'ワークスペースへのアクセス権がありません' },
-        { status: 403 },
-      )
-    }
-    if (!result.invite) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
-    }
-    const invite = result.invite
+    const [invite] = await db
+      .insert(workspaceInvites)
+      .values({
+        workspaceId: ctx.workspaceId,
+        token,
+        createdBy: ctx.userId,
+        expiresAt,
+        role: 'guest',
+        projectId,
+      })
+      .returning()
 
     const origin = new URL(req.url).origin
     return NextResponse.json({
-      token: invite.token,
-      url: `${origin}/invite/${invite.token}`,
-      expiresAt: invite.expiresAt,
+      token: invite!.token,
+      url: `${origin}/invite/${invite!.token}`,
+      expiresAt: invite!.expiresAt,
     })
   } catch (err) {
     console.error('[POST /api/projects/[id]/guest-invite]', err)

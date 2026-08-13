@@ -8,7 +8,6 @@ import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
 import { canAccessFile, type WorkspaceRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
-import { lockActiveMembership } from '@/lib/access/active-membership-lock'
 import type { MessageDto } from './dto'
 
 type PostMessageInput = {
@@ -165,10 +164,6 @@ export async function postMessage({
         .where(eq(channels.id, channelId))
         .for('update')
 
-      // 認可後に退会が始まっても投稿を残さないよう、退会処理が排他ロックする
-      // membership行を共有ロックし、同じトランザクション内でactiveを再確認する。
-      if (!(await lockActiveMembership(tx, workspaceId, userId))) return null
-
       const [message] = await tx
         .insert(messages)
         .values({
@@ -221,13 +216,6 @@ export async function postMessage({
 
       return message
     })
-
-    if (!inserted) {
-      return NextResponse.json(
-        { error: 'ワークスペースへのアクセス権がありません' },
-        { status: 403 },
-      )
-    }
 
     const [profile] = await db
       .select({

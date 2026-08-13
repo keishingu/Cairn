@@ -5,7 +5,6 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthUser } from '@/lib/get-auth-context'
 import { deleteAccount, LastOwnerAccountDeletionError } from '@/lib/account-deletion'
-import { hasAccountLifecycleSchema } from '@/lib/access/account-lifecycle-lock'
 
 const deleteAccountSchema = z.object({ confirmation: z.literal('削除') })
 
@@ -25,13 +24,6 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    const { db } = await import('@cairn/db')
-    if (!(await hasAccountLifecycleSchema(db))) {
-      return NextResponse.json(
-        { error: '退会機能を更新中です。少し待ってから再試行してください' },
-        { status: 503 },
-      )
-    }
     await deleteAccount(userId)
     return NextResponse.json({ deleted: true })
   } catch (accountError) {

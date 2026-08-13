@@ -11,12 +11,6 @@ import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
 import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
 import { passesPhaseTwoConfidence } from '@/lib/ai-nudges/llm-nudge-rules'
-import { runForActiveMessageSender } from './message-notification-guard'
-import {
-  runForActiveMembership,
-  runForActiveMemberships,
-} from '@/lib/access/active-membership-lock'
-import { runForActiveFileUploader } from './file-indexing-guard'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // DM は Push を抑制し、メンションはバッジ更新なしの Push に切り替えられる。
@@ -125,24 +119,16 @@ export const onMessageCreated = inngest.createFunction(
       // DM はアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
       await step.run('create-dm-notifications', async () => {
         if (members.length === 0) return
-        const { notifications } = await import('@cairn/db')
-        await runForActiveMessageSender(
-          messageId,
-          workspaceId,
-          senderId,
-          members.map((member) => member.userId),
-          async (tx) => {
-          await tx.insert(notifications).values(
-            members.map((m) => ({
-              userId: m.userId,
-              workspaceId,
-              type: 'dm' as const,
-              title: senderName,
-              body: dmBody.slice(0, 200),
-              data: { messageId, channelId, senderName },
-            })),
-          )
-          },
+        const { db, notifications } = await import('@cairn/db')
+        await db.insert(notifications).values(
+          members.map((m) => ({
+            userId: m.userId,
+            workspaceId,
+            type: 'dm' as const,
+            title: senderName,
+            body: dmBody.slice(0, 200),
+            data: { messageId, channelId, senderName },
+          })),
         )
       })
 
@@ -154,22 +140,14 @@ export const onMessageCreated = inngest.createFunction(
         )
 
         await step.run('send-dm-push', async () => {
-          await runForActiveMessageSender(
-            messageId,
-            workspaceId,
-            senderId,
-            unreadRecipients.map((recipient) => recipient.userId),
-            async () => {
-            await Promise.allSettled(
-              unreadRecipients.map((m) =>
-                sendPushToUser(m.userId, {
-                  title: senderName,
-                  body: dmBody.slice(0, 100),
-                  url: `/chats/${channelId}`,
-                }),
-              ),
-            )
-            },
+          await Promise.allSettled(
+            unreadRecipients.map((m) =>
+              sendPushToUser(m.userId, {
+                title: senderName,
+                body: dmBody.slice(0, 100),
+                url: `/chats/${channelId}`,
+              }),
+            ),
           )
         })
       }
@@ -297,16 +275,18 @@ export const onMessageCreated = inngest.createFunction(
     let mentionNotifications = 0
     if (notifyMentioned.length > 0) {
       await step.run('create-mention-notifications', async () => {
-        const { notifications, channelReadStates, messages } = await import('@cairn/db')
+        const { db, notifications, channelReadStates, messages } = await import('@cairn/db')
         const { and, eq, inArray, sql } = await import('drizzle-orm')
 
+        const [message] = await db
+          .select({ id: messages.id })
+          .from(messages)
+          .where(eq(messages.id, messageId))
+          .limit(1)
+        if (!message) throw new Error(`Message not found: ${messageId}`)
+
         const recipients = [...notifyMentioned].sort((a, b) => a.userId.localeCompare(b.userId))
-        await runForActiveMessageSender(
-          messageId,
-          workspaceId,
-          senderId,
-          recipients.map((recipient) => recipient.userId),
-          async (tx) => {
+        await db.transaction(async (tx) => {
           // 未参加者はジョブの実行順にかかわらず、すべてのメンションを未読から始める。
           await tx
             .insert(channelReadStates)
@@ -378,8 +358,7 @@ export const onMessageCreated = inngest.createFunction(
                 ),
               ))
           }
-          },
-        )
+        })
       })
       mentionNotifications = notifyMentioned.length
     }
@@ -401,23 +380,15 @@ export const onMessageCreated = inngest.createFunction(
         const extraCount = attachmentFileIds.length - 1
         const body = extraCount > 0 ? `${fileName} ほか ${extraCount} 件` : fileName
 
-        await runForActiveMessageSender(
-          messageId,
-          workspaceId,
-          senderId,
-          members.map((member) => member.userId),
-          async (tx) => {
-          await tx.insert(notifications).values(
-            members.map((m) => ({
-              userId: m.userId,
-              workspaceId,
-              type: 'file' as const,
-              title: `${senderName} がファイルを共有しました`,
-              body,
-              data: { messageId, channelId, senderName },
-            })),
-          )
-          },
+        await db.insert(notifications).values(
+          members.map((m) => ({
+            userId: m.userId,
+            workspaceId,
+            type: 'file' as const,
+            title: `${senderName} がファイルを共有しました`,
+            body,
+            data: { messageId, channelId, senderName },
+          })),
         )
       })
       fileNotifications = members.length
@@ -433,29 +404,21 @@ export const onMessageCreated = inngest.createFunction(
       )
 
       await step.run('send-mention-push', async () => {
-        await runForActiveMessageSender(
-          messageId,
-          workspaceId,
-          senderId,
-          notifyMentioned.map((recipient) => recipient.userId),
-          async () => {
-          await Promise.allSettled(
-            [
-              ...unreadRecipients.map((m) => ({ recipient: m, updateAppBadge: true })),
-              ...readRecipients.map((m) => ({ recipient: m, updateAppBadge: false })),
-            ].map(({ recipient, updateAppBadge }) =>
-              sendPushToUser(
-                recipient.userId,
-                {
-                  title: `${senderName} があなたをメンションしました`,
-                  body: mentionBody.slice(0, 100),
-                  url: `/chats/${channelId}`,
-                },
-                { updateAppBadge },
-              ),
+        await Promise.allSettled(
+          [
+            ...unreadRecipients.map((m) => ({ recipient: m, updateAppBadge: true })),
+            ...readRecipients.map((m) => ({ recipient: m, updateAppBadge: false })),
+          ].map(({ recipient, updateAppBadge }) =>
+            sendPushToUser(
+              recipient.userId,
+              {
+                title: `${senderName} があなたをメンションしました`,
+                body: mentionBody.slice(0, 100),
+                url: `/chats/${channelId}`,
+              },
+              { updateAppBadge },
             ),
-          )
-          },
+          ),
         )
       })
     }
@@ -468,42 +431,30 @@ export const onTaskAssigned = inngest.createFunction(
   { id: 'on-task-assigned' },
   { event: 'task/assigned' satisfies TaskAssignedEvent['name'] },
   async ({ event, step }) => {
-    const { taskTitle, assigneeId, projectTitle, workspaceId, assignerId, assignerName } =
+    const { taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
       event.data as TaskAssignedEvent['data']
 
-    // デプロイ前にキューへ入ったassignerIdなしのイベントは、退会状態を検証できないため破棄する。
-    if (!assignerId) return { notified: null }
-
-    const created = await step.run('create-task-notification', async () => {
+    await step.run('create-task-notification', async () => {
       const { db, notifications } = await import('@cairn/db')
-      return runForActiveMemberships(db, workspaceId, [assignerId, assigneeId], async (tx) => {
-        await tx.insert(notifications).values({
-          userId: assigneeId,
-          workspaceId,
-          type: 'task' as const,
-          title: `${assignerName} があなたにタスクを割り当てました`,
-          body: `「${taskTitle}」- ${projectTitle}`,
-          data: { assignerId, assignerName, projectTitle },
-        })
-        return true
+      await db.insert(notifications).values({
+        userId: assigneeId,
+        workspaceId,
+        type: 'task' as const,
+        title: `${assignerName} があなたにタスクを割り当てました`,
+        body: `「${taskTitle}」- ${projectTitle}`,
+        data: { assignerName, projectTitle },
       })
     })
 
-    if (created) {
-      await step.run('send-task-push', async () => {
-        const { db } = await import('@cairn/db')
-        await runForActiveMemberships(db, workspaceId, [assignerId, assigneeId], async () => {
-          await sendPushToUser(assigneeId, {
-            title: `${assignerName} があなたにタスクを割り当てました`,
-            body: `「${taskTitle}」- ${projectTitle}`,
-            url: '/tasks',
-          })
-          return true
-        })
+    await step.run('send-task-push', async () => {
+      await sendPushToUser(assigneeId, {
+        title: `${assignerName} があなたにタスクを割り当てました`,
+        body: `「${taskTitle}」- ${projectTitle}`,
+        url: '/tasks',
       })
-    }
+    })
 
-    return { notified: created ? assigneeId : null }
+    return { notified: assigneeId }
   },
 )
 
@@ -708,7 +659,7 @@ export const indexFileChunks = inngest.createFunction(
     await step.run('save-embeddings', async () => {
       const { embedMany } = await import('ai')
       const { openai, EMBEDDING_MODEL } = await import('@/lib/ai/client')
-      const { documentChunks } = await import('@cairn/db')
+      const { db, documentChunks } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
 
       const { embeddings } = await embedMany({
@@ -716,22 +667,20 @@ export const indexFileChunks = inngest.createFunction(
         values: chunks,
       })
 
-      await runForActiveFileUploader(fileId, workspaceId, async (tx) => {
-        await tx
-          .delete(documentChunks)
-          .where(and(eq(documentChunks.sourceType, 'file'), eq(documentChunks.sourceId, fileId)))
+      await db
+        .delete(documentChunks)
+        .where(and(eq(documentChunks.sourceType, 'file'), eq(documentChunks.sourceId, fileId)))
 
-        await tx.insert(documentChunks).values(
-          chunks.map((content, i) => ({
-            workspaceId,
-            sourceType: 'file' as const,
-            sourceId: fileId,
-            chunkIndex: i,
-            content,
-            embedding: embeddings[i]!,
-          })),
-        )
-      })
+      await db.insert(documentChunks).values(
+        chunks.map((content, i) => ({
+          workspaceId,
+          sourceType: 'file' as const,
+          sourceId: fileId,
+          chunkIndex: i,
+          content,
+          embedding: embeddings[i]!,
+        })),
+      )
     })
 
     return { indexed: chunks.length }
@@ -749,62 +698,61 @@ export const indexProjectChunks = inngest.createFunction(
         await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
 
-      await db.transaction(async (tx) => {
-        const [row] = await tx
-          .select({
-            title: projects.title,
-            description: projects.description,
-            startDate: projects.startDate,
-            endDate: projects.endDate,
-            statusName: projectStatuses.name,
-          })
-          .from(projects)
-          .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
-          .where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)))
-          .for('share')
-          .limit(1)
-
-        if (!row) return
-
-        const memberRows = await tx
-          .select({ displayName: profiles.displayName })
-          .from(projectMembers)
-          .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
-          .where(eq(projectMembers.projectId, projectId))
-
-        const lines: string[] = [
-          `プロジェクト: ${row.title}`,
-          ...(row.description ? [`説明: ${row.description}`] : []),
-          ...(row.statusName ? [`ステータス: ${row.statusName}`] : []),
-          ...(row.startDate ? [`開始日: ${row.startDate}`] : []),
-          ...(row.endDate ? [`終了日: ${row.endDate}`] : []),
-          ...(memberRows.length > 0
-            ? [`メンバー: ${memberRows.map((m) => m.displayName).join('、')}`]
-            : []),
-        ]
-
-        const content = lines.join('\n')
-
-        const { embed } = await import('ai')
-        const { openai, EMBEDDING_MODEL } = await import('@/lib/ai/client')
-
-        const { embedding } = await embed({
-          model: openai.embedding(EMBEDDING_MODEL),
-          value: content,
+      const [row] = await db
+        .select({
+          title: projects.title,
+          description: projects.description,
+          startDate: projects.startDate,
+          endDate: projects.endDate,
+          statusName: projectStatuses.name,
         })
+        .from(projects)
+        .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
+        .where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)))
+        .limit(1)
 
-        await tx.delete(documentChunks).where(
+      if (!row) return
+
+      const memberRows = await db
+        .select({ displayName: profiles.displayName })
+        .from(projectMembers)
+        .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
+        .where(eq(projectMembers.projectId, projectId))
+
+      const lines: string[] = [
+        `プロジェクト: ${row.title}`,
+        ...(row.description ? [`説明: ${row.description}`] : []),
+        ...(row.statusName ? [`ステータス: ${row.statusName}`] : []),
+        ...(row.startDate ? [`開始日: ${row.startDate}`] : []),
+        ...(row.endDate ? [`終了日: ${row.endDate}`] : []),
+        ...(memberRows.length > 0
+          ? [`メンバー: ${memberRows.map((m) => m.displayName).join('、')}`]
+          : []),
+      ]
+
+      const content = lines.join('\n')
+
+      const { embed } = await import('ai')
+      const { openai, EMBEDDING_MODEL } = await import('@/lib/ai/client')
+
+      const { embedding } = await embed({
+        model: openai.embedding(EMBEDDING_MODEL),
+        value: content,
+      })
+
+      await db
+        .delete(documentChunks)
+        .where(
           and(eq(documentChunks.sourceType, 'project'), eq(documentChunks.sourceId, projectId)),
         )
 
-        await tx.insert(documentChunks).values({
-          workspaceId,
-          sourceType: 'project',
-          sourceId: projectId,
-          chunkIndex: 0,
-          content,
-          embedding,
-        })
+      await db.insert(documentChunks).values({
+        workspaceId,
+        sourceType: 'project',
+        sourceId: projectId,
+        chunkIndex: 0,
+        content,
+        embedding,
       })
     })
 
@@ -887,58 +835,51 @@ export const indexExternalLink = inngest.createFunction(
     })
 
     await step.run('save-embeddings', async () => {
-      const { documentChunks, files } = await import('@cairn/db')
+      const { db, documentChunks, files } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
-      let embeddings: number[][] = []
+      const [row] = await db
+        .select({ metadata: files.metadata })
+        .from(files)
+        .where(eq(files.id, fileId))
+        .limit(1)
+      if (!row) return
+
+      const meta = Object.assign({}, row.metadata as Record<string, unknown>)
+      const newMeta = { ...meta, indexingStatus: 'indexed' }
 
       if (chunks.length > 0) {
         const { embedMany } = await import('ai')
         const { openai, EMBEDDING_MODEL } = await import('@/lib/ai/client')
 
-        const result = await embedMany({
+        const { embeddings } = await embedMany({
           model: openai.embedding(EMBEDDING_MODEL),
           values: chunks,
         })
-        embeddings = result.embeddings
+
+        await db
+          .delete(documentChunks)
+          .where(and(eq(documentChunks.sourceType, 'file'), eq(documentChunks.sourceId, fileId)))
+
+        await db.insert(documentChunks).values(
+          chunks.map((content, i) => ({
+            workspaceId,
+            sourceType: 'file' as const,
+            sourceId: fileId,
+            chunkIndex: i,
+            content,
+            embedding: embeddings[i]!,
+          })),
+        )
       }
 
-      await runForActiveFileUploader(fileId, workspaceId, async (tx) => {
-        const [row] = await tx
-          .select({ metadata: files.metadata })
-          .from(files)
+      if (fetchResult.title) {
+        await db
+          .update(files)
+          .set({ fileName: fetchResult.title, metadata: newMeta })
           .where(eq(files.id, fileId))
-          .limit(1)
-        if (!row) return
-
-        const meta = Object.assign({}, row.metadata as Record<string, unknown>)
-        const newMeta = { ...meta, indexingStatus: 'indexed' }
-
-        if (chunks.length > 0) {
-          await tx
-            .delete(documentChunks)
-            .where(and(eq(documentChunks.sourceType, 'file'), eq(documentChunks.sourceId, fileId)))
-
-          await tx.insert(documentChunks).values(
-            chunks.map((content, i) => ({
-              workspaceId,
-              sourceType: 'file' as const,
-              sourceId: fileId,
-              chunkIndex: i,
-              content,
-              embedding: embeddings[i]!,
-            })),
-          )
-        }
-
-        if (fetchResult.title) {
-          await tx
-            .update(files)
-            .set({ fileName: fetchResult.title, metadata: newMeta })
-            .where(eq(files.id, fileId))
-        } else {
-          await tx.update(files).set({ metadata: newMeta }).where(eq(files.id, fileId))
-        }
-      })
+      } else {
+        await db.update(files).set({ metadata: newMeta }).where(eq(files.id, fileId))
+      }
     })
 
     return { indexed: chunks.length }
@@ -1025,24 +966,15 @@ export const indexMemberChunks = inngest.createFunction(
         value: content,
       })
 
-      await runForActiveMembership(db, workspaceId, userId, async (tx) => {
-        await tx
-          .delete(documentChunks)
-          .where(
-            and(
-              eq(documentChunks.sourceType, 'member'),
-              eq(documentChunks.sourceId, userId),
-              eq(documentChunks.workspaceId, workspaceId),
-            ),
-          )
-        await tx.insert(documentChunks).values({
-          workspaceId,
-          sourceType: 'member',
-          sourceId: userId,
-          chunkIndex: 0,
-          content,
-          embedding,
-        })
+      await deleteMemberChunks()
+
+      await db.insert(documentChunks).values({
+        workspaceId,
+        sourceType: 'member',
+        sourceId: userId,
+        chunkIndex: 0,
+        content,
+        embedding,
       })
     })
 

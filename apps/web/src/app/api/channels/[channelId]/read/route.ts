@@ -4,7 +4,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
-import { lockActiveMembership } from '@/lib/access/active-membership-lock'
 
 type RouteContext = { params: Promise<{ channelId: string }> }
 
@@ -21,9 +20,7 @@ export async function POST(_req: Request, { params }: RouteContext) {
     const { channelReadStates, channels, messages, notifications } = await import('@cairn/db')
     const { eq, and, isNull, desc, inArray, sql } = await import('drizzle-orm')
 
-    const marked = await db.transaction(async (tx) => {
-      if (!(await lockActiveMembership(tx, ctx.workspaceId, ctx.userId))) return false
-
+    await db.transaction(async (tx) => {
       // 投稿トランザクションと直列化し、ここで見えたメッセージだけを既読対象にする。
       await tx
         .select({ id: channels.id })
@@ -128,13 +125,7 @@ export async function POST(_req: Request, { params }: RouteContext) {
           eq(channelReadStates.userId, ctx.userId),
           eq(channelReadStates.channelId, channelId),
         ))
-
-      return true
     })
-
-    if (!marked) {
-      return NextResponse.json({ error: 'ワークスペースに所属していません' }, { status: 403 })
-    }
 
     return NextResponse.json({ ok: true })
   } catch (err) {

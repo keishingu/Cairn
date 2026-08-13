@@ -42,7 +42,6 @@ import { GALLERY_BUCKET, GALLERY_ORIGINALS_BUCKET } from '@/lib/gallery-upload'
 import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
 import { inngest } from '@/lib/inngest/client'
 import { createServiceRoleClient } from '@/lib/supabase/service'
-import { lockAccountLifecycle } from '@/lib/access/account-lifecycle-lock'
 
 export const DELETED_USER_DISPLAY_NAME = '退会済みユーザー'
 
@@ -178,19 +177,6 @@ async function anonymizeAndRevoke(
   deleteCustomer: (customerId: string | null) => Promise<void>,
 ): Promise<AccountDeletionResult> {
   return db.transaction(async (tx) => {
-    // profileがまだ無い初回セットアップともadvisory lockで直列化し、必ずtombstoneを残す。
-    // 非キー列だけのupsertは外部キー検査のKEY SHAREと競合しない。
-    await lockAccountLifecycle(tx, userId)
-    await tx.execute(sql`
-      insert into profiles (id, display_name, account_deletion_started_at)
-      values (${userId}, ${DELETED_USER_DISPLAY_NAME}, ${now})
-      on conflict (id) do update
-      set account_deletion_started_at = coalesce(
-        profiles.account_deletion_started_at,
-        excluded.account_deletion_started_at
-      )
-    `)
-
     // 対象membershipと同じworkspaceのactive ownerを決定順でロックし、
     // owner移譲とアカウント削除の競合でowner不在になることを防ぐ。
     await tx.execute(sql`
@@ -216,8 +202,7 @@ async function anonymizeAndRevoke(
       .where(eq(billingCustomers.userId, userId))
       .limit(1)
 
-    // 排他membershipロック取得後に列挙する。先行中のavatar更新は完了まで待ち、
-    // 後続の更新は退会commit後にactive再確認で拒否されるため、一覧が陳腐化しない。
+    // アバターはユーザーIDを含む既知の保存規則に沿って全ページ列挙する。
     const memberships = await tx
       .select({ workspaceId: workspaceMembers.workspaceId })
       .from(workspaceMembers)
@@ -256,9 +241,11 @@ async function anonymizeAndRevoke(
     const affectedProjects = await tx
       .select({ projectId: projects.id, workspaceId: projects.workspaceId })
       .from(projects)
-      .where(sql`
+      .where(
+        sql`
         ${projects.id} in (select project_id from project_members where user_id = ${userId})
-      `)
+      `,
+      )
       .orderBy(projects.id)
       .for('update')
     await tx.delete(documentChunks).where(sql`

@@ -6,7 +6,6 @@ import { updateTaskSchema } from '@cairn/shared'
 import { replaceCheckboxLabelAt, toggleCheckboxAt } from '@/lib/chat/checkboxes'
 import { requireProjectAccess, requireRole } from '@/lib/permissions'
 import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
-import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 export async function PATCH(
   req: Request,
@@ -98,28 +97,20 @@ export async function PATCH(
     if (parsed.data.status !== undefined) updates.status = parsed.data.status
     if (parsed.data.assigneeId !== undefined) updates.assigneeId = parsed.data.assigneeId
 
-    const updated = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async tx => {
-      const [task] = await tx
-        .update(tasks)
-        .set(updates)
-        .where(eq(tasks.id, id))
-        .returning({
-          id: tasks.id,
-          title: tasks.title,
-          priority: tasks.priority,
-          dueDate: tasks.dueDate,
-          status: tasks.status,
-          assigneeId: tasks.assigneeId,
-          sourceMessageId: tasks.sourceMessageId,
-          sourceCheckboxIndex: tasks.sourceCheckboxIndex,
-        })
-
-      return task
-    })
-
-    if (updated === null) {
-      return NextResponse.json({ error: 'ワークスペースに所属していません' }, { status: 403 })
-    }
+    const [updated] = await db
+      .update(tasks)
+      .set(updates)
+      .where(eq(tasks.id, id))
+      .returning({
+        id: tasks.id,
+        title: tasks.title,
+        priority: tasks.priority,
+        dueDate: tasks.dueDate,
+        status: tasks.status,
+        assigneeId: tasks.assigneeId,
+        sourceMessageId: tasks.sourceMessageId,
+        sourceCheckboxIndex: tasks.sourceCheckboxIndex,
+      })
 
     if (!updated) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })

@@ -5,7 +5,6 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceRole } from '@/lib/access/membership'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
-import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 import {
   getIndividualSubscriptionPriceId,
   getStripeClient,
@@ -48,39 +47,39 @@ export async function POST(request: Request) {
     const { billingCustomers, db, subscriptions } = await import('@cairn/db')
     const { and, eq, inArray, sql } = await import('drizzle-orm')
     const stripe = getStripeClient()
-    const checkout = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async (tx) => {
+    const [existingCustomer] = await db
+      .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
+      .from(billingCustomers)
+      .where(eq(billingCustomers.userId, ctx.userId))
+      .limit(1)
+    let customerId = existingCustomer?.stripeCustomerId
+    if (!customerId) {
+      const createdCustomer = await stripe.customers.create({
+        metadata: { userId: ctx.userId },
+      })
+      const [insertedCustomer] = await db
+        .insert(billingCustomers)
+        .values({ userId: ctx.userId, stripeCustomerId: createdCustomer.id })
+        .onConflictDoNothing()
+        .returning({ stripeCustomerId: billingCustomers.stripeCustomerId })
+      if (insertedCustomer) {
+        customerId = insertedCustomer.stripeCustomerId
+      } else {
+        const [persistedCustomer] = await db
+          .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
+          .from(billingCustomers)
+          .where(eq(billingCustomers.userId, ctx.userId))
+          .limit(1)
+        if (!persistedCustomer) throw new Error('Stripe customer was not persisted')
+        customerId = persistedCustomer.stripeCustomerId
+      }
+    }
+
+    const checkout = await db.transaction(async (tx) => {
       // Webhook 到着前には subscriptions に行がないため、同じ支援者・ワークスペースの
       // Checkout 作成を直列化し、Stripe 上の未完了セッションも確認する。
       const lockKey = `checkout:${ctx.workspaceId}:${ctx.userId}:individual`
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`)
-
-      const [existingCustomer] = await tx
-        .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
-        .from(billingCustomers)
-        .where(eq(billingCustomers.userId, ctx.userId))
-        .limit(1)
-      let customerId = existingCustomer?.stripeCustomerId
-      if (!customerId) {
-        const createdCustomer = await stripe.customers.create({
-          metadata: { userId: ctx.userId },
-        })
-        const [insertedCustomer] = await tx
-          .insert(billingCustomers)
-          .values({ userId: ctx.userId, stripeCustomerId: createdCustomer.id })
-          .onConflictDoNothing()
-          .returning({ stripeCustomerId: billingCustomers.stripeCustomerId })
-        if (insertedCustomer) {
-          customerId = insertedCustomer.stripeCustomerId
-        } else {
-          const [persistedCustomer] = await tx
-            .select({ stripeCustomerId: billingCustomers.stripeCustomerId })
-            .from(billingCustomers)
-            .where(eq(billingCustomers.userId, ctx.userId))
-            .limit(1)
-          if (!persistedCustomer) throw new Error('Stripe customer was not persisted')
-          customerId = persistedCustomer.stripeCustomerId
-        }
-      }
 
       const [existingSubscription] = await tx
         .select({ id: subscriptions.id })
@@ -145,12 +144,6 @@ export async function POST(request: Request) {
       if (!session.url) throw new Error('Stripe Checkout session did not include a URL')
       return { url: session.url }
     })
-    if (!checkout) {
-      return NextResponse.json(
-        { error: 'ワークスペースへのアクセス権がありません' },
-        { status: 403 },
-      )
-    }
     if ('error' in checkout) return NextResponse.json({ error: checkout.error }, { status: 409 })
     return NextResponse.json({ url: checkout.url })
   } catch (err) {

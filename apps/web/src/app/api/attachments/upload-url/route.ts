@@ -19,7 +19,6 @@ import {
   UPLOAD_REQUEST_EXPIRY_SAFETY_MS,
   UPLOAD_REQUEST_FALLBACK_EXPIRY_MS,
 } from '@/lib/gallery-upload'
-import { lockActiveMembership } from '@/lib/access/active-membership-lock'
 import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
 
 // ファイル本体を Vercel の Function 経由で受け取ると 4.5MB のリクエストボディ上限
@@ -89,28 +88,21 @@ export async function POST(req: Request) {
       { status: 503 },
     )
   }
-  const uploadRequest = await db.transaction(async (tx) => {
-    if (!(await lockActiveMembership(tx, ctx.workspaceId, ctx.userId))) return null
-    const [request] = await tx
-      .insert(uploadRequests)
-      .values({
-        workspaceId: ctx.workspaceId,
-        projectId: null,
-        requestedBy: ctx.userId,
-        fileName,
-        derivedMimeType: normalizedMime,
-        derivedStoragePath: storagePath,
-        storageBucket: ATTACHMENTS_BUCKET,
-        // token発行後の期限更新に失敗しても、intentがtokenより先に消えないfallback。
-        expiresAt: new Date(Date.now() + UPLOAD_REQUEST_FALLBACK_EXPIRY_MS),
-      })
-      .returning({ id: uploadRequests.id })
-    if (!request) throw new Error('upload request insert returned no rows')
-    return request
-  })
-  if (!uploadRequest) {
-    return NextResponse.json({ error: 'ワークスペースへのアクセス権がありません' }, { status: 403 })
-  }
+  const [uploadRequest] = await db
+    .insert(uploadRequests)
+    .values({
+      workspaceId: ctx.workspaceId,
+      projectId: null,
+      requestedBy: ctx.userId,
+      fileName,
+      derivedMimeType: normalizedMime,
+      derivedStoragePath: storagePath,
+      storageBucket: ATTACHMENTS_BUCKET,
+      // token発行後の期限更新に失敗しても、intentがtokenより先に消えないfallback。
+      expiresAt: new Date(Date.now() + UPLOAD_REQUEST_FALLBACK_EXPIRY_MS),
+    })
+    .returning({ id: uploadRequests.id })
+  if (!uploadRequest) throw new Error('upload request insert returned no rows')
 
   const supabase = createServiceRoleClient()
   const { data, error: signError } = await supabase.storage
@@ -128,9 +120,7 @@ export async function POST(req: Request) {
   await db
     .update(uploadRequests)
     .set({
-      expiresAt: new Date(
-        Date.now() + UPLOAD_REQUEST_EXPIRY_MS + UPLOAD_REQUEST_EXPIRY_SAFETY_MS,
-      ),
+      expiresAt: new Date(Date.now() + UPLOAD_REQUEST_EXPIRY_MS + UPLOAD_REQUEST_EXPIRY_SAFETY_MS),
     })
     .where(eq(uploadRequests.id, uploadRequest.id))
 

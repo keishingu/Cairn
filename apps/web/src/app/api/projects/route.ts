@@ -6,7 +6,6 @@ import { createProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
-import { runForActiveMemberships } from '@/lib/access/active-membership-lock'
 
 export interface ProjectDto {
   id: string
@@ -196,9 +195,21 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, channels, projectStatuses, projectMembers, workspaceMembers, profiles } = await import('@cairn/db')
+    const { projects, channels, projectStatuses, projectMembers, workspaceMembers, activeWorkspaceMembers, profiles } = await import('@cairn/db')
     const { eq, and, inArray } = await import('drizzle-orm')
     const selectedMemberIds = [...new Set(parsed.data.memberUserIds ?? [])]
+
+    if (selectedMemberIds.length > 0) {
+      // 新規プロジェクトに追加できるのは active メンバーのみ
+      const wsRows = await db
+        .select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
+        .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), inArray(activeWorkspaceMembers.userId, selectedMemberIds)))
+
+      if (wsRows.length !== selectedMemberIds.length) {
+        return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })
+      }
+    }
 
     let coverPhotoUrl = parsed.data.coverPhotoUrl ?? null
 
@@ -207,87 +218,72 @@ export async function POST(req: Request) {
       coverPhotoUrl = await fetchAndStoreCoverFromPlace(parsed.data.placePhotoName)
     }
 
-    const created = await runForActiveMemberships(
-      db,
-      ctx.workspaceId,
-      [ctx.userId, ...selectedMemberIds],
-      async tx => {
-        const [inserted] = await tx
-          .insert(projects)
-          .values({
-            workspaceId: ctx.workspaceId,
-            title: parsed.data.title,
-            description: parsed.data.description ?? null,
-            statusId: parsed.data.statusId ?? null,
-            startDate: parsed.data.startDate ?? null,
-            endDate: parsed.data.endDate ?? null,
-            coverPhotoUrl,
-            location: parsed.data.location ?? null,
-            placeId: parsed.data.placeId ?? null,
-            createdBy: ctx.userId,
-          })
-          .returning({ id: projects.id, title: projects.title, description: projects.description, startDate: projects.startDate, endDate: projects.endDate, coverPhotoUrl: projects.coverPhotoUrl, location: projects.location })
+    const [inserted] = await db
+      .insert(projects)
+      .values({
+        workspaceId: ctx.workspaceId,
+        title: parsed.data.title,
+        description: parsed.data.description ?? null,
+        statusId: parsed.data.statusId ?? null,
+        startDate: parsed.data.startDate ?? null,
+        endDate: parsed.data.endDate ?? null,
+        coverPhotoUrl,
+        location: parsed.data.location ?? null,
+        placeId: parsed.data.placeId ?? null,
+        createdBy: ctx.userId,
+      })
+      .returning({ id: projects.id, title: projects.title, description: projects.description, startDate: projects.startDate, endDate: projects.endDate, coverPhotoUrl: projects.coverPhotoUrl, location: projects.location })
 
-        if (!inserted) throw new Error('Insert returned no rows')
+    if (!inserted) throw new Error('Insert returned no rows')
 
-        let statusName: string | null = null
-        let statusColor: string | null = null
-        if (parsed.data.statusId) {
-          const [st] = await tx
-            .select({ name: projectStatuses.name, color: projectStatuses.color })
-            .from(projectStatuses)
-            .where(eq(projectStatuses.id, parsed.data.statusId))
-            .limit(1)
-          statusName = st?.name ?? null
-          statusColor = st?.color ?? null
-        }
-
-        await tx.insert(channels).values({
-          workspaceId: ctx.workspaceId,
-          projectId: inserted.id,
-          type: 'project',
-        })
-
-        let memberNames: string[] = []
-        let memberAvatarUrls: (string | null)[] = []
-        if (selectedMemberIds.length > 0) {
-          await tx.insert(projectMembers).values(
-            selectedMemberIds.map(userId => ({
-              projectId: inserted.id,
-              userId,
-              role: 'member' as const,
-              attendance: 'attending' as const,
-            })),
-          )
-
-          const memberRows = await tx
-            .select({
-              userId: profiles.id,
-              displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
-              avatarUrl: workspaceMembers.avatarUrl,
-            })
-            .from(profiles)
-            .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-            .where(inArray(profiles.id, selectedMemberIds))
-
-          const memberMap = new Map(memberRows.map(row => [row.userId, row]))
-          const selectedMembers = selectedMemberIds
-            .map(userId => memberMap.get(userId))
-            .filter((row): row is NonNullable<typeof row> => row !== undefined)
-
-          memberNames = selectedMembers.slice(0, 4).map(row => row.displayName)
-          memberAvatarUrls = selectedMembers.slice(0, 4).map(row => row.avatarUrl ?? null)
-        }
-
-        return { inserted, statusName, statusColor, memberNames, memberAvatarUrls }
-      },
-    )
-
-    if (!created) {
-      return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })
+    let statusName: string | null = null
+    let statusColor: string | null = null
+    if (parsed.data.statusId) {
+      const [st] = await db
+        .select({ name: projectStatuses.name, color: projectStatuses.color })
+        .from(projectStatuses)
+        .where(eq(projectStatuses.id, parsed.data.statusId))
+        .limit(1)
+      statusName = st?.name ?? null
+      statusColor = st?.color ?? null
     }
 
-    const { inserted, statusName, statusColor, memberNames, memberAvatarUrls } = created
+    await db.insert(channels).values({
+      workspaceId: ctx.workspaceId,
+      projectId: inserted.id,
+      type: 'project',
+    })
+
+    let memberNames: string[] = []
+    let memberAvatarUrls: (string | null)[] = []
+    if (selectedMemberIds.length > 0) {
+      await db.insert(projectMembers).values(
+        selectedMemberIds.map(userId => ({
+          projectId: inserted.id,
+          userId,
+          role: 'member' as const,
+          attendance: 'attending' as const,
+        })),
+      )
+
+      const memberRows = await db
+        .select({
+          userId: profiles.id,
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+          avatarUrl: workspaceMembers.avatarUrl,
+        })
+        .from(profiles)
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+        .where(inArray(profiles.id, selectedMemberIds))
+
+      const memberMap = new Map(memberRows.map(row => [row.userId, row]))
+      const selectedMembers = selectedMemberIds
+        .map(userId => memberMap.get(userId))
+        .filter((row): row is NonNullable<typeof row> => row !== undefined)
+
+      memberNames = selectedMembers.slice(0, 4).map(row => row.displayName)
+      memberAvatarUrls = selectedMembers.slice(0, 4).map(row => row.avatarUrl ?? null)
+    }
 
     try {
       const { inngest } = await import('@/lib/inngest/client')

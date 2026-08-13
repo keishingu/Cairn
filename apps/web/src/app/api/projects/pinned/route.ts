@@ -3,7 +3,6 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 export interface PinnedProjectDto {
   id: string
@@ -91,27 +90,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    const pinned = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async tx => {
-      const [existing] = await tx
-        .select({ n: count() })
-        .from(pinnedProjects)
-        .where(and(eq(pinnedProjects.userId, ctx.userId), eq(pinnedProjects.workspaceId, ctx.workspaceId)))
+    const [existing] = await db
+      .select({ n: count() })
+      .from(pinnedProjects)
+      .where(and(eq(pinnedProjects.userId, ctx.userId), eq(pinnedProjects.workspaceId, ctx.workspaceId)))
 
-      const sortOrder = Number(existing?.n ?? 0)
+    const sortOrder = Number(existing?.n ?? 0)
 
-      await tx.insert(pinnedProjects).values({
-        workspaceId: ctx.workspaceId,
-        userId: ctx.userId,
-        projectId,
-        sortOrder,
-      }).onConflictDoNothing()
-
-      return true
-    })
-
-    if (!pinned) {
-      return NextResponse.json({ error: 'ワークスペースに所属していません' }, { status: 403 })
-    }
+    await db.insert(pinnedProjects).values({
+      workspaceId: ctx.workspaceId,
+      userId: ctx.userId,
+      projectId,
+      sortOrder,
+    }).onConflictDoNothing()
 
     return NextResponse.json({ ok: true }, { status: 201 })
   } catch (err) {

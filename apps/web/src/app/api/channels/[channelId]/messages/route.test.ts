@@ -12,8 +12,6 @@ const {
   mockRequireChannelAccess,
   mockCanAccessFile,
   mockDbSelect,
-  mockDbTransaction,
-  mockLockActiveMembership,
   mockEq,
   mockIsNull,
   mockInArray,
@@ -27,8 +25,6 @@ const {
   mockRequireChannelAccess: vi.fn(),
   mockCanAccessFile: vi.fn(),
   mockDbSelect: vi.fn(),
-  mockDbTransaction: vi.fn(),
-  mockLockActiveMembership: vi.fn(),
   mockEq: vi.fn(() => Symbol('eq')),
   mockIsNull: vi.fn(() => Symbol('isNull')),
   mockInArray: vi.fn(() => Symbol('inArray')),
@@ -49,9 +45,6 @@ vi.mock('@/lib/permissions', () => ({
 }))
 
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
-vi.mock('@/lib/access/active-membership-lock', () => ({
-  lockActiveMembership: mockLockActiveMembership,
-}))
 vi.mock('@/lib/chat/checkboxes', () => ({ parseCheckboxes: () => [] }))
 vi.mock('@cairn/shared', () => ({
   postMessageSchema: {
@@ -59,7 +52,7 @@ vi.mock('@cairn/shared', () => ({
   },
 }))
 vi.mock('@cairn/db', () => ({
-  db: { select: mockDbSelect, transaction: mockDbTransaction },
+  db: { select: mockDbSelect },
   messages: {
     id: 'messages.id',
     content: 'messages.content',
@@ -73,10 +66,8 @@ vi.mock('@cairn/db', () => ({
   },
   profiles: { id: 'profiles.id', displayName: 'profiles.displayName' },
   workspaceMembers: {
-    id: 'workspaceMembers.id',
     userId: 'workspaceMembers.userId',
     workspaceId: 'workspaceMembers.workspaceId',
-    membershipStatus: 'workspaceMembers.membershipStatus',
     displayName: 'workspaceMembers.displayName',
     avatarUrl: 'workspaceMembers.avatarUrl',
   },
@@ -102,8 +93,6 @@ vi.mock('@cairn/db', () => ({
     mimeType: 'files.mimeType',
     fileSize: 'files.fileSize',
   },
-  channels: { id: 'channels.id', projectId: 'channels.projectId' },
-  tasks: {},
 }))
 vi.mock('drizzle-orm', () => ({
   eq: mockEq,
@@ -132,7 +121,6 @@ function mockSelectResults(...results: unknown[]) {
       where: () => builder,
       orderBy: () => builder,
       limit: () => builder,
-      for: () => builder,
       then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
         Promise.resolve(result).then(resolve, reject),
     }
@@ -142,7 +130,6 @@ function mockSelectResults(...results: unknown[]) {
 
 describe('/api/channels/[channelId]/messages のアクセス制御', () => {
   beforeEach(() => {
-    mockLockActiveMembership.mockResolvedValue(true)
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
@@ -161,12 +148,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/'), ctxRouteParams())
     expect(res.status).toBe(403)
-    expect(mockRequireChannelAccess).toHaveBeenCalledWith(
-      DEV_WORKSPACE_ID,
-      DEV_USER_ID,
-      CHANNEL_ID,
-      'member',
-    )
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID, 'member')
   })
 
   it('アクセス権の無いチャンネルでは POST が 403 を返し、投稿できない', async () => {
@@ -181,30 +163,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     })
     const res = await POST(req, ctxRouteParams())
     expect(res.status).toBe(403)
-    expect(mockRequireChannelAccess).toHaveBeenCalledWith(
-      DEV_WORKSPACE_ID,
-      DEV_USER_ID,
-      CHANNEL_ID,
-      'member',
-    )
-  })
-
-  it('認可後にmembershipが失効した場合はトランザクション内で投稿を拒否する', async () => {
-    mockRequireChannelAccess.mockResolvedValue(null)
-    mockSelectResults([])
-    mockLockActiveMembership.mockResolvedValue(false)
-    mockDbTransaction.mockImplementation(async (callback) => callback({ select: mockDbSelect }))
-
-    const { POST } = await import('./route')
-    const req = new Request('http://localhost/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: 'hi' }),
-    })
-    const res = await POST(req, ctxRouteParams())
-
-    expect(res.status).toBe(403)
-    expect(mockDbTransaction).toHaveBeenCalledOnce()
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID, 'member')
   })
 
   it('GET はリアクションごとの参加者名を返す', async () => {

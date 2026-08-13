@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const PROJECT_ID = '00000000-0000-0000-0000-000000000099'
 const USER_A = '00000000-0000-0000-0000-000000000011'
@@ -14,7 +14,6 @@ const {
   mockInngestSend,
   mockCreateServiceRoleClient,
   mockGetUserById,
-  mockRunForActiveMemberships,
 } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
@@ -31,7 +30,6 @@ const {
   }
   const mockInngestSend = vi.fn().mockResolvedValue(undefined)
   const mockGetUserById = vi.fn()
-  const mockRunForActiveMemberships = vi.fn()
   const mockCreateServiceRoleClient = vi.fn(() => ({
     auth: {
       admin: {
@@ -46,13 +44,8 @@ const {
     mockInngestSend,
     mockCreateServiceRoleClient,
     mockGetUserById,
-    mockRunForActiveMemberships,
   }
 })
-
-vi.mock('@/lib/access/active-membership-lock', () => ({
-  runForActiveMemberships: mockRunForActiveMemberships,
-}))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({ requireRole: mockRequireRole }))
@@ -96,12 +89,6 @@ function chain(result: unknown[]) {
 }
 
 describe('POST /api/projects/[id]/members', () => {
-  beforeEach(() => {
-    mockRunForActiveMemberships.mockImplementation(
-      async (_db: unknown, _workspaceId: string, _userIds: string[], action: (tx: unknown) => unknown) => action(mockDb),
-    )
-  })
-
   afterEach(() => {
     vi.clearAllMocks()
   })
@@ -113,6 +100,7 @@ describe('POST /api/projects/[id]/members', () => {
 
     mockDb.select
       .mockReturnValueOnce(chain([{ id: PROJECT_ID }]))
+      .mockReturnValueOnce(chain([{ userId: USER_A }, { userId: USER_B }]))
       .mockReturnValueOnce(chain([
         { userId: USER_A, displayName: 'Alice', avatarUrl: null },
         { userId: USER_B, displayName: 'Bob', avatarUrl: 'https://example.com/b.png' },
@@ -157,18 +145,13 @@ describe('POST /api/projects/[id]/members', () => {
         workspaceId: '00000000-0000-0000-0000-000000000010',
       },
     })
-    expect(mockRunForActiveMemberships).toHaveBeenCalledWith(
-      mockDb,
-      '00000000-0000-0000-0000-000000000010',
-      ['00000000-0000-0000-0000-000000000001', USER_A, USER_B],
-      expect.any(Function),
-    )
   })
 
   it('単一 userId でも従来どおり追加できる', async () => {
     mockGetUserById.mockResolvedValueOnce({ data: { user: { email: 'alice@example.com' } }, error: null })
     mockDb.select
       .mockReturnValueOnce(chain([{ id: PROJECT_ID }]))
+      .mockReturnValueOnce(chain([{ userId: USER_A }]))
       .mockReturnValueOnce(chain([{ userId: USER_A, displayName: 'Alice', avatarUrl: null }]))
 
     mockDb.insert.mockReturnValue({
@@ -212,24 +195,6 @@ describe('POST /api/projects/[id]/members', () => {
     expect(res.status).toBe(422)
     expect(await res.json()).toEqual({ error: 'userIds must be an array' })
     expect(mockDb.select).not.toHaveBeenCalled()
-    expect(mockDb.insert).not.toHaveBeenCalled()
-  })
-
-  it('退会済みユーザーはプロジェクトへ追加できない', async () => {
-    mockDb.select.mockReturnValueOnce(chain([{ id: PROJECT_ID }]))
-    mockRunForActiveMemberships.mockResolvedValue(null)
-
-    const { POST } = await import('./route')
-    const res = await POST(
-      new Request(`http://localhost/api/projects/${PROJECT_ID}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: USER_A }),
-      }),
-      { params: Promise.resolve({ id: PROJECT_ID }) },
-    )
-
-    expect(res.status).toBe(422)
     expect(mockDb.insert).not.toHaveBeenCalled()
   })
 

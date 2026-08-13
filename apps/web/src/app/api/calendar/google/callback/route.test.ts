@@ -8,7 +8,6 @@ const mockGetAuthContext = vi.fn()
 const mockExchangeCodeForTokens = vi.fn()
 const mockListCalendars = vi.fn()
 const mockEncryptToken = vi.fn((value: string) => `enc:${value}`)
-const mockRunForActiveMembership = vi.fn()
 
 const mockSelect = vi.fn()
 const mockUpdateSet = vi.fn()
@@ -21,9 +20,6 @@ const mockDb = {
 
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: mockGetAuthContext,
-}))
-vi.mock('@/lib/access/active-membership-lock', () => ({
-  runForActiveMembership: mockRunForActiveMembership,
 }))
 
 vi.mock('@/lib/google-calendar-api', () => ({
@@ -89,9 +85,6 @@ describe('/api/calendar/google/callback GET', () => {
     ])
     mockUpdateSet.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) })
     mockInsertValues.mockResolvedValue(undefined)
-    mockRunForActiveMembership.mockImplementation((_db, _workspaceId, _userId, callback) =>
-      callback(mockDb),
-    )
   })
 
   it('再接続時は既存の selectedCalendars を維持する', async () => {
@@ -135,16 +128,5 @@ describe('/api/calendar/google/callback GET', () => {
         ],
       },
     }))
-  })
-
-  it('退会済みなら取得したOAuth tokenを保存しない', async () => {
-    mockRunForActiveMembership.mockResolvedValue(null)
-
-    const { GET } = await import('./route')
-    const res = await GET(createRequest())
-
-    expect(res.headers.get('location')).toBe('http://localhost/settings/integrations?gcal=error')
-    expect(mockUpdateSet).not.toHaveBeenCalled()
-    expect(mockInsertValues).not.toHaveBeenCalled()
   })
 })

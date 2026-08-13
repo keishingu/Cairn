@@ -24,7 +24,6 @@ const {
   mockTransactionSelectLimit,
   mockTransactionExecute,
   mockDeleteWhere,
-  mockLockActiveMembership,
   mockHasAttachmentUploadRequestSchema,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
@@ -51,7 +50,6 @@ const {
     ],
   }),
   mockDeleteWhere: vi.fn().mockResolvedValue(undefined),
-  mockLockActiveMembership: vi.fn().mockResolvedValue(true),
   mockHasAttachmentUploadRequestSchema: vi.fn().mockResolvedValue(true),
   mockInsertValues: vi.fn((v: Record<string, unknown>) => ({
     onConflictDoNothing: () => ({ returning: () => mockInsertReturning(v) }),
@@ -80,9 +78,6 @@ vi.mock('@/lib/attachments/thumbnail', () => ({
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 vi.mock('@/lib/billing/storage-usage', () => ({
   recordStorageUsageDelta: mockRecordStorageUsageDelta,
-}))
-vi.mock('@/lib/access/active-membership-lock', () => ({
-  lockActiveMembership: mockLockActiveMembership,
 }))
 vi.mock('@/lib/uploads/schema-readiness', () => ({
   hasAttachmentUploadRequestSchema: mockHasAttachmentUploadRequestSchema,

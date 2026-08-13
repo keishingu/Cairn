@@ -7,7 +7,6 @@ import { createTaskSchema } from '@cairn/shared'
 import { getGuestVisibleProjectIds, requireProjectAccess, requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
-import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 export interface TaskDto {
   id: string
@@ -160,27 +159,19 @@ export async function POST(req: Request) {
       )
     }
 
-    const inserted = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async tx => {
-      const [task] = await tx
-        .insert(tasks)
-        .values({
-          workspaceId: ctx.workspaceId,
-          projectId,
-          title: parsed.data.title,
-          description: parsed.data.description ?? null,
-          priority: parsed.data.priority,
-          assigneeId,
-          dueDate: parsed.data.dueDate ?? null,
-          createdBy: ctx.userId,
-        })
-        .returning()
-
-      return task
-    })
-
-    if (inserted === null) {
-      return NextResponse.json({ error: 'ワークスペースに所属していません' }, { status: 403 })
-    }
+    const [inserted] = await db
+      .insert(tasks)
+      .values({
+        workspaceId: ctx.workspaceId,
+        projectId,
+        title: parsed.data.title,
+        description: parsed.data.description ?? null,
+        priority: parsed.data.priority,
+        assigneeId,
+        dueDate: parsed.data.dueDate ?? null,
+        createdBy: ctx.userId,
+      })
+      .returning()
 
     if (!inserted) throw new Error('Insert returned no rows')
 

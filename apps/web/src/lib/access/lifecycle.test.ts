@@ -33,10 +33,6 @@ vi.mock('@cairn/db', () => ({
   documentChunks,
 }))
 
-vi.mock('./account-lifecycle-lock', () => ({
-  lockUsableAccount: vi.fn().mockResolvedValue(true),
-}))
-
 vi.mock('drizzle-orm', () => ({
   and: vi.fn((...args: unknown[]) => ({ type: 'and', args })),
   eq: vi.fn((...args: unknown[]) => ({ type: 'eq', args })),
@@ -136,15 +132,6 @@ describe('access/lifecycle', () => {
   })
 
   describe('reactivateMembership', () => {
-    it('退会開始済みアカウントは再活性化しない', async () => {
-      const { lockUsableAccount } = await import('./account-lifecycle-lock')
-      vi.mocked(lockUsableAccount).mockResolvedValueOnce(false)
-      const { reactivateMembership } = await import('./lifecycle')
-      const res = await reactivateMembership('ws', 'u')
-      expect(res).toEqual({ ok: false, status: 410, error: 'このアカウントは退会処理中です' })
-      expect(mockDb.update).not.toHaveBeenCalled()
-    })
-
     it('既に活性なら 422', async () => {
       mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
       const { reactivateMembership } = await import('./lifecycle')

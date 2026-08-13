@@ -7,8 +7,6 @@ import type { AccentId, AppearanceTheme } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { UserStatus } from '@/lib/user-status'
-import { lockUsableAccount } from '@/lib/access/account-lifecycle-lock'
-import { lockActiveMembership } from '@/lib/access/active-membership-lock'
 
 export interface CurrentUserDto {
   id: string
@@ -110,16 +108,13 @@ export async function PATCH(req: Request) {
     const { db, aiNudges, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
-    const updated = await db.transaction(async (tx) => {
-      if (!(await lockUsableAccount(tx, ctx.userId))) return false
-      if (!(await lockActiveMembership(tx, ctx.workspaceId, ctx.userId))) return false
-
-      if (
-        hasBio
-        || b.aiNudgesEnabled !== undefined
-        || b.theme !== undefined
-        || b.accentId !== undefined
-      ) {
+    if (
+      hasBio
+      || b.aiNudgesEnabled !== undefined
+      || b.theme !== undefined
+      || b.accentId !== undefined
+    ) {
+      await db.transaction(async (tx) => {
         const profileUpdate: {
           bio?: string | null
           aiNudgesEnabled?: boolean
@@ -158,42 +153,24 @@ export async function PATCH(req: Request) {
               eq(aiNudges.status, 'dismissed'),
             ))
         }
-      }
+      })
+    }
 
-      if (b.displayName !== undefined) {
-        await tx
-          .update(workspaceMembers)
-          .set({ displayName: b.displayName.trim() })
-          .where(
-            and(
-              eq(workspaceMembers.userId, ctx.userId),
-              eq(workspaceMembers.workspaceId, ctx.workspaceId),
-            ),
-          )
-      }
+    if (b.displayName !== undefined) {
+      await db
+        .update(workspaceMembers)
+        .set({ displayName: b.displayName.trim() })
+        .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+    }
 
-      if (b.status !== undefined || hasStatusMessage) {
-        const set: { status?: UserStatus; statusMessage?: string | null } = {}
-        if (b.status !== undefined) set.status = b.status
-        if (hasStatusMessage) set.statusMessage = b.statusMessage?.trim() || null
-        await tx
-          .update(workspaceMembers)
-          .set(set)
-          .where(
-            and(
-              eq(workspaceMembers.userId, ctx.userId),
-              eq(workspaceMembers.workspaceId, ctx.workspaceId),
-            ),
-          )
-      }
-      return true
-    })
-
-    if (!updated) {
-      return NextResponse.json(
-        { error: 'ワークスペースへのアクセス権がありません' },
-        { status: 403 },
-      )
+    if (b.status !== undefined || hasStatusMessage) {
+      const set: { status?: UserStatus; statusMessage?: string | null } = {}
+      if (b.status !== undefined) set.status = b.status
+      if (hasStatusMessage) set.statusMessage = b.statusMessage?.trim() || null
+      await db
+        .update(workspaceMembers)
+        .set(set)
+        .where(and(eq(workspaceMembers.userId, ctx.userId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
     }
 
     return NextResponse.json({

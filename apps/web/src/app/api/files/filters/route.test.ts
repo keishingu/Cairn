@@ -24,18 +24,11 @@ const { mockGetAuthContext, mockDb, mockEq, state } = vi.hoisted(() => {
         }
       }),
     })),
-    transaction: vi.fn((callback: (tx: unknown) => unknown) => callback(mockDb)),
   }
   return { mockGetAuthContext, mockDb, mockEq, state }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/access/active-membership-lock', () => ({
-  runForActiveMembership: vi.fn(
-    async (db: typeof mockDb, _workspaceId: string, _userId: string, action: (tx: typeof mockDb) => unknown) =>
-      db.transaction((tx) => action(tx as typeof mockDb)),
-  ),
-}))
 vi.mock('@cairn/db', () => ({
   db: mockDb,
   savedFileFilters: {

@@ -7,7 +7,6 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
-import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 type RouteContext = { params: Promise<{ messageId: string }> }
 
@@ -36,129 +35,97 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     const { messages, channels } = await import('@cairn/db')
     const { eq, and, isNull, inArray } = await import('drizzle-orm')
 
+    // 送信者・ワークスペース・削除済み除外をすべて確認してから更新
+    const [target] = await db
+      .select({ id: messages.id, content: messages.content, channelId: messages.channelId })
+      .from(messages)
+      .innerJoin(channels, eq(messages.channelId, channels.id))
+      .where(and(
+        eq(messages.id, messageId),
+        eq(messages.senderId, ctx.userId),
+        eq(channels.workspaceId, ctx.workspaceId),
+        isNull(messages.deletedAt),
+      ))
+      .limit(1)
+
+    if (!target) {
+      return NextResponse.json({ error: 'メッセージが見つからないか編集権限がありません' }, { status: 404 })
+    }
+
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId, ctx.role)
+    if (forbidden) return forbidden
+
+    const [updated] = await db
+      .update(messages)
+      .set({ content, updatedAt: new Date() })
+      .where(eq(messages.id, messageId))
+      .returning({ id: messages.id, content: messages.content })
+
+    // チェックボックスの変化に応じてタスクを同期
     const { tasks, channels: channelsTable } = await import('@cairn/db')
-    const response = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async (tx) => {
-      // membership共有ロック取得後に削除状態を再確認する。退会匿名化が先に
-      // commitした場合、待機していた編集が本文や派生タスクを復活させない。
-      const [target] = await tx
-        .select({ id: messages.id, content: messages.content, channelId: messages.channelId })
+    const oldBoxes = parseCheckboxes(target.content)
+    const newBoxes = parseCheckboxes(content)
+
+    // 削除されたチェックボックスのタスクを一括削除
+    const newIndices = new Set(newBoxes.map(b => b.index))
+    const removedIndices = oldBoxes.filter(b => !newIndices.has(b.index)).map(b => b.index)
+    if (removedIndices.length > 0) {
+      await db.delete(tasks).where(and(
+        eq(tasks.sourceMessageId, messageId),
+        inArray(tasks.sourceCheckboxIndex, removedIndices),
+      ))
+    }
+
+    // 追加・変更されたチェックボックスをupsert
+    if (newBoxes.length > 0) {
+      const [ch] = await db
+        .select({ projectId: channelsTable.projectId })
         .from(messages)
-        .innerJoin(channels, eq(messages.channelId, channels.id))
-        .where(
-          and(
-            eq(messages.id, messageId),
-            eq(messages.senderId, ctx.userId),
-            eq(channels.workspaceId, ctx.workspaceId),
-            isNull(messages.deletedAt),
-          ),
-        )
+        .innerJoin(channelsTable, eq(messages.channelId, channelsTable.id))
+        .where(eq(messages.id, messageId))
         .limit(1)
 
-      if (!target) {
-        return NextResponse.json(
-          { error: 'メッセージが見つからないか編集権限がありません' },
-          { status: 404 },
-        )
-      }
+      if (ch?.projectId) {
+        const projectId = ch.projectId
 
-      const forbidden = await requireChannelAccess(
-        ctx.workspaceId,
-        ctx.userId,
-        target.channelId,
-        ctx.role,
-      )
-      if (forbidden) return forbidden
+        // 新規チェックボックスを一括インサート
+        const newToInsert = newBoxes.filter(nb => !oldBoxes.some(ob => ob.index === nb.index))
+        if (newToInsert.length > 0) {
+          await db.insert(tasks).values(
+            newToInsert.map(nb => ({
+              workspaceId: ctx.workspaceId,
+              projectId,
+              title: nb.text,
+              status: (nb.checked ? 'done' : 'todo') as 'done' | 'todo',
+              priority: 'medium' as const,
+              createdBy: ctx.userId,
+              sourceMessageId: messageId,
+              sourceCheckboxIndex: nb.index,
+            })),
+          )
+        }
 
-      const [updated] = await tx
-        .update(messages)
-        .set({ content, updatedAt: new Date() })
-        .where(and(eq(messages.id, messageId), isNull(messages.deletedAt)))
-        .returning({ id: messages.id, content: messages.content })
-      if (!updated) {
-        return NextResponse.json(
-          { error: 'メッセージが見つからないか編集権限がありません' },
-          { status: 404 },
-        )
-      }
-
-      const oldBoxes = parseCheckboxes(target.content)
-      const newBoxes = parseCheckboxes(content)
-      const newIndices = new Set(newBoxes.map((box) => box.index))
-      const removedIndices = oldBoxes
-        .filter((box) => !newIndices.has(box.index))
-        .map((box) => box.index)
-      if (removedIndices.length > 0) {
-        await tx
-          .delete(tasks)
-          .where(
-            and(
-              eq(tasks.sourceMessageId, messageId),
-              inArray(tasks.sourceCheckboxIndex, removedIndices),
+        // タイトルまたはチェック状態が変わった既存チェックボックスを並列更新（N+1 を避けるため Promise.all）
+        const changedBoxes = newBoxes.filter(nb => {
+          const existing = oldBoxes.find(ob => ob.index === nb.index)
+          return existing && (existing.text !== nb.text || existing.checked !== nb.checked)
+        })
+        if (changedBoxes.length > 0) {
+          await Promise.all(
+            changedBoxes.map(nb =>
+              db.update(tasks)
+                .set({ title: nb.text, status: nb.checked ? 'done' : 'todo', updatedAt: new Date() })
+                .where(and(
+                  eq(tasks.sourceMessageId, messageId),
+                  eq(tasks.sourceCheckboxIndex, nb.index),
+                )),
             ),
           )
-      }
-
-      if (newBoxes.length > 0) {
-        const [channel] = await tx
-          .select({ projectId: channelsTable.projectId })
-          .from(messages)
-          .innerJoin(channelsTable, eq(messages.channelId, channelsTable.id))
-          .where(eq(messages.id, messageId))
-          .limit(1)
-
-        if (channel?.projectId) {
-          const projectId = channel.projectId
-          const newToInsert = newBoxes.filter(
-            (box) => !oldBoxes.some((oldBox) => oldBox.index === box.index),
-          )
-          if (newToInsert.length > 0) {
-            await tx.insert(tasks).values(
-              newToInsert.map((box) => ({
-                workspaceId: ctx.workspaceId,
-                projectId,
-                title: box.text,
-                status: (box.checked ? 'done' : 'todo') as 'done' | 'todo',
-                priority: 'medium' as const,
-                createdBy: ctx.userId,
-                sourceMessageId: messageId,
-                sourceCheckboxIndex: box.index,
-              })),
-            )
-          }
-
-          const changedBoxes = newBoxes.filter((box) => {
-            const existing = oldBoxes.find((oldBox) => oldBox.index === box.index)
-            return existing && (existing.text !== box.text || existing.checked !== box.checked)
-          })
-          if (changedBoxes.length > 0) {
-            await Promise.all(
-              changedBoxes.map((box) =>
-                tx
-                  .update(tasks)
-                  .set({
-                    title: box.text,
-                    status: box.checked ? 'done' : 'todo',
-                    updatedAt: new Date(),
-                  })
-                  .where(
-                    and(
-                      eq(tasks.sourceMessageId, messageId),
-                      eq(tasks.sourceCheckboxIndex, box.index),
-                    ),
-                  ),
-              ),
-            )
-          }
         }
       }
+    }
 
-      return NextResponse.json({ id: updated.id, content: updated.content })
-    })
-
-    return (
-      response ??
-      NextResponse.json({ error: 'ワークスペースへのアクセス権がありません' }, { status: 403 })
-    )
+    return NextResponse.json({ id: updated!.id, content: updated!.content })
   } catch (err) {
     console.error('[/api/messages/[messageId] PATCH] DB query failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
