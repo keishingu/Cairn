@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess, requireRole } from '@/lib/permissions'
+import { lockActiveMemberships } from '@/lib/access/active-membership-lock'
 
 type RouteContext = { params: Promise<{ channelId: string }> }
 
@@ -69,6 +70,17 @@ export async function POST(req: Request, { params }: RouteContext) {
         .for('update')
         .limit(1)
 
+      const members = await tx
+        .select({ userId: channelMembers.userId })
+        .from(channelMembers)
+        .where(eq(channelMembers.channelId, parent.id))
+
+      if (!(await lockActiveMemberships(
+        tx,
+        ctx.workspaceId,
+        [ctx.userId, ...members.map(member => member.userId)],
+      ))) return null
+
       const [thread] = await tx
         .insert(channels)
         .values({
@@ -82,11 +94,6 @@ export async function POST(req: Request, { params }: RouteContext) {
 
       if (!thread) throw new Error('thread insert returned no rows')
 
-      const members = await tx
-        .select({ userId: channelMembers.userId })
-        .from(channelMembers)
-        .where(eq(channelMembers.channelId, parent.id))
-
       if (members.length > 0) {
         await tx
           .insert(channelMembers)
@@ -96,6 +103,10 @@ export async function POST(req: Request, { params }: RouteContext) {
 
       return thread.id
     })
+
+    if (!threadId) {
+      return NextResponse.json({ error: '参加者に退会済みユーザーが含まれています' }, { status: 422 })
+    }
 
     return NextResponse.json({ id: threadId }, { status: 201 })
   } catch (err) {

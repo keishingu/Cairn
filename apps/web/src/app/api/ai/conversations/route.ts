@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { runForActiveMembership } from '@/lib/access/active-membership-lock'
 
 export interface ConversationDto {
   id: string
@@ -49,13 +50,21 @@ export async function POST() {
   try {
     const { db, aiConversations } = await import('@cairn/db')
 
-    const [inserted] = await db
-      .insert(aiConversations)
-      .values({
-        workspaceId: ctx.workspaceId,
-        createdBy: ctx.userId,
-      })
-      .returning({ id: aiConversations.id, title: aiConversations.title, createdAt: aiConversations.createdAt })
+    const inserted = await runForActiveMembership(db, ctx.workspaceId, ctx.userId, async tx => {
+      const [conversation] = await tx
+        .insert(aiConversations)
+        .values({
+          workspaceId: ctx.workspaceId,
+          createdBy: ctx.userId,
+        })
+        .returning({ id: aiConversations.id, title: aiConversations.title, createdAt: aiConversations.createdAt })
+
+      return conversation
+    })
+
+    if (inserted === null) {
+      return NextResponse.json({ error: 'ワークスペースに所属していません' }, { status: 403 })
+    }
 
     if (!inserted) throw new Error('Insert returned no rows')
 

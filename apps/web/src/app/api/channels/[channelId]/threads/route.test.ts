@@ -11,6 +11,7 @@ const {
   mockDbTransaction,
   mockTxInsert,
   mockTxSelect,
+  mockLockActiveMemberships,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireRole: vi.fn(),
@@ -19,12 +20,16 @@ const {
   mockDbTransaction: vi.fn(),
   mockTxInsert: vi.fn(),
   mockTxSelect: vi.fn(),
+  mockLockActiveMemberships: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({
   requireRole: mockRequireRole,
   requireChannelAccess: mockRequireChannelAccess,
+}))
+vi.mock('@/lib/access/active-membership-lock', () => ({
+  lockActiveMemberships: mockLockActiveMemberships,
 }))
 vi.mock('@cairn/db', () => ({
   db: { select: mockDbSelect, transaction: mockDbTransaction },
@@ -106,6 +111,7 @@ describe('POST /api/channels/[channelId]/threads', () => {
     })
     mockRequireRole.mockReturnValue(null)
     mockRequireChannelAccess.mockResolvedValue(null)
+    mockLockActiveMemberships.mockResolvedValue(true)
   })
 
   afterEach(() => {
@@ -138,6 +144,23 @@ describe('POST /api/channels/[channelId]/threads', () => {
     expect(memberInsert.values).toHaveBeenCalledWith([
       { channelId: 'thread-1', userId: 'guest-1' },
     ])
+    expect(mockLockActiveMemberships).toHaveBeenCalledWith(
+      expect.objectContaining({ insert: mockTxInsert, select: mockTxSelect }),
+      'workspace-1',
+      ['user-1', 'guest-1'],
+    )
+  })
+
+  it('退会済みの親チャンネル参加者がいればスレッドを作成しない', async () => {
+    selectResult([parentRow()])
+    const { childInsert } = setupTransaction([{ userId: 'user-2' }])
+    mockLockActiveMemberships.mockResolvedValue(false)
+    const { POST } = await import('./route')
+
+    const response = await POST(request(), routeContext)
+
+    expect(response.status).toBe(422)
+    expect(childInsert.values).not.toHaveBeenCalled()
   })
 
   it('プライベートチャンネルでは親のメンバーをスレッドへ引き継ぐ', async () => {
