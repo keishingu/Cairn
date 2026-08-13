@@ -22,6 +22,7 @@ function LoginForm() {
   const searchParams = useSearchParams()
   const inviteToken = searchParams.get('invite')
   const nextPath = searchParams.get('next')
+  const accountDeleted = searchParams.get('accountDeleted') === '1'
   const safeNextPath = nextPath?.startsWith('/') && !nextPath.startsWith('//') ? nextPath : null
 
   const [email, setEmail] = React.useState('')
@@ -82,6 +83,21 @@ function LoginForm() {
         padding: '28px 28px 24px',
         boxShadow: 'var(--shadow-sm)',
       }}>
+        {accountDeleted && (
+          <div
+            role="status"
+            style={{
+              padding: '8px 12px',
+              marginBottom: 16,
+              borderRadius: 8,
+              background: 'var(--green-soft)',
+              color: 'var(--green-text)',
+              fontSize: 12.5,
+            }}
+          >
+            アカウントを削除しました。
+          </div>
+        )}
         <SocialAuthButtons inviteToken={inviteToken} nextPath={safeNextPath} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>

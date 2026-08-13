@@ -13,18 +13,27 @@ import {
   SettingsSectionContent,
 } from './settings'
 
-const { fetchWithAuth, processImageForUpload, toastError, toastSuccess, clipboardWriteText } =
-  vi.hoisted(() => ({
-    fetchWithAuth: vi.fn(),
-    processImageForUpload: vi.fn(),
-    toastError: vi.fn(),
-    toastSuccess: vi.fn(),
-    clipboardWriteText: vi.fn(),
-  }))
+const {
+  fetchWithAuth,
+  processImageForUpload,
+  toastError,
+  toastSuccess,
+  clipboardWriteText,
+  routerReplace,
+  supabaseSignOut,
+} = vi.hoisted(() => ({
+  fetchWithAuth: vi.fn(),
+  processImageForUpload: vi.fn(),
+  toastError: vi.fn(),
+  toastSuccess: vi.fn(),
+  clipboardWriteText: vi.fn(),
+  routerReplace: vi.fn(),
+  supabaseSignOut: vi.fn(),
+}))
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/settings/account',
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: routerReplace }),
 }))
 
 vi.mock('next-themes', () => ({
@@ -37,6 +46,10 @@ vi.mock('@/lib/fetch-with-auth', () => ({
 
 vi.mock('@/lib/process-image', () => ({
   processImageForUpload,
+}))
+
+vi.mock('@/lib/supabase/client', () => ({
+  createClient: () => ({ auth: { signOut: supabaseSignOut } }),
 }))
 
 vi.mock('@/lib/toast', () => ({
@@ -136,6 +149,9 @@ describe('SettingsSectionContent', () => {
     toastError.mockReset()
     toastSuccess.mockReset()
     clipboardWriteText.mockReset()
+    routerReplace.mockReset()
+    supabaseSignOut.mockReset()
+    supabaseSignOut.mockResolvedValue({ error: null })
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText: clipboardWriteText },
@@ -161,7 +177,47 @@ describe('SettingsSectionContent', () => {
         }
       }
 
+      if (input === '/api/me/account' && init?.method === 'DELETE') {
+        return {
+          ok: true,
+          json: async () => ({ deleted: true }),
+        }
+      }
+
       throw new Error(`unexpected fetch: ${input}`)
+    })
+  })
+
+  it('確認入力後にアカウントを削除しExpo側のセッション破棄も通知する', async () => {
+    const user = userEvent.setup()
+    const nativePostMessage = vi.fn()
+    Object.defineProperty(window, 'ReactNativeWebView', {
+      configurable: true,
+      value: { postMessage: nativePostMessage },
+    })
+
+    renderAccountSection()
+    await screen.findByText('山田 太郎')
+
+    await user.click(screen.getByRole('button', { name: 'アカウントを削除' }))
+    const confirmButton = screen.getByRole('button', { name: '完全に削除する' })
+    expect(confirmButton).toBeDisabled()
+
+    await user.type(screen.getByLabelText('アカウント削除の確認'), '削除')
+    expect(confirmButton).toBeEnabled()
+    await user.click(confirmButton)
+
+    await waitFor(() => {
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/me/account',
+        expect.objectContaining({
+          method: 'DELETE',
+          body: JSON.stringify({ confirmation: '削除' }),
+        }),
+      )
+      expect(nativePostMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'account-deleted' }))
+      expect(supabaseSignOut).toHaveBeenCalledWith({ scope: 'local' })
+      expect(routerReplace).toHaveBeenCalledWith('/auth/login?accountDeleted=1')
     })
   })
 

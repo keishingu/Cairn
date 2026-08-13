@@ -14,10 +14,14 @@ interface NativeWebViewScreenProps extends Omit<
   title: string
   subtitle?: string | undefined
   onBack?: (() => void) | undefined
+  requiresWorkspace?: boolean
 }
 
 export const NativeWebViewScreen = React.forwardRef<AppWebViewHandle, NativeWebViewScreenProps>(
-  function NativeWebViewScreen({ title, subtitle, onBack, ...webViewProps }, forwardedRef) {
+  function NativeWebViewScreen(
+    { title, subtitle, onBack, requiresWorkspace = true, ...webViewProps },
+    forwardedRef,
+  ) {
     const innerRef = React.useRef<AppWebViewHandle>(null)
     const { palette } = useAppAppearance()
     const workspaceQuery = useWorkspace()
@@ -25,6 +29,7 @@ export const NativeWebViewScreen = React.forwardRef<AppWebViewHandle, NativeWebV
       workspaceId: workspaceQuery.data?.id,
       isPending: workspaceQuery.isPending,
       error: workspaceQuery.error,
+      requiresWorkspace,
     })
     const [header, setHeader] = React.useState<NativeHeaderDescriptor>({
       title,

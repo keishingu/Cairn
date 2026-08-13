@@ -17,10 +17,22 @@ vi.mock('@cairn/db', () => ({
       }),
     }),
     delete: () => ({ where: mockDeleteWhere }),
+    transaction: (callback: (tx: unknown) => unknown) =>
+      callback({
+        select: () => ({
+          from: () => ({
+            where: () => ({
+              for: () => ({ limit: mockExpiredRequests }),
+            }),
+          }),
+        }),
+        delete: () => ({ where: mockDeleteWhere }),
+      }),
   },
   uploadRequests: {
     id: 'upload_requests.id',
     derivedStoragePath: 'upload_requests.derived_storage_path',
+    storageBucket: 'upload_requests.storage_bucket',
     originalStoragePath: 'upload_requests.original_storage_path',
     finalizedAt: 'upload_requests.finalized_at',
     expiresAt: 'upload_requests.expires_at',
@@ -32,6 +44,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   isNull: vi.fn(() => 'isNull'),
   lte: vi.fn(() => 'lte'),
+  sql: vi.fn(() => 'sql'),
 }))
 
 vi.mock('@/lib/supabase/service', () => ({
@@ -54,6 +67,7 @@ describe('cleanupExpiredUploadRequests', () => {
       {
         id: 'upload-1',
         derivedStoragePath: 'workspace/project/derived/image.jpg',
+        storageBucket: 'gallery',
         originalStoragePath: 'workspace/project/original/image.jpg',
       },
     ])
@@ -72,6 +86,7 @@ describe('cleanupExpiredUploadRequests', () => {
       {
         id: 'upload-1',
         derivedStoragePath: 'workspace/project/derived/image.jpg',
+        storageBucket: 'gallery',
         originalStoragePath: null,
       },
     ])
@@ -80,6 +95,16 @@ describe('cleanupExpiredUploadRequests', () => {
     const { cleanupExpiredUploadRequests } = await import('./cleanup')
     await expect(cleanupExpiredUploadRequests()).resolves.toEqual({ removed: 0, failed: 1 })
 
+    expect(mockDeleteWhere).not.toHaveBeenCalled()
+  })
+
+  it('ロック待ち中に確定されたintentは削除しない', async () => {
+    mockExpiredRequests.mockResolvedValueOnce([{ id: 'upload-1' }]).mockResolvedValueOnce([])
+
+    const { cleanupExpiredUploadRequests } = await import('./cleanup')
+    await expect(cleanupExpiredUploadRequests()).resolves.toEqual({ removed: 0, failed: 0 })
+
+    expect(mockRemove).not.toHaveBeenCalled()
     expect(mockDeleteWhere).not.toHaveBeenCalled()
   })
 })

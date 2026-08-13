@@ -57,17 +57,21 @@ async function getAuthenticatedUserId(
   return verifyAccessToken(supabase.auth)
 }
 
-/** ワークスペース所属を問わずユーザー認証だけを行う（招待受け入れ等で使用） */
+/**
+ * ワークスペース所属を問わずユーザー認証だけを行う（招待受け入れ等で使用）。
+ * Authサーバーへ再照合し、アカウント削除後も有効期限内のJWTだけで操作できないようにする。
+ */
 export async function getAuthUser(): Promise<UserResult> {
   const supabase = await createClient()
   const headersList = await headers()
   const authorization = headersList.get('Authorization')
+  const bearerToken = authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined
 
-  const userId = await getAuthenticatedUserId(authorization, supabase)
-  if (!userId) {
+  const { data: { user }, error } = await supabase.auth.getUser(bearerToken)
+  if (error || !user) {
     return { userId: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
-  return { userId, error: null }
+  return { userId: user.id, error: null }
 }
 
 export async function getAuthContext(options?: {

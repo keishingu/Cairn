@@ -15,9 +15,7 @@ export const uploadRequests = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     requestedBy: uuid('requested_by')
       .notNull()
       .references(() => profiles.id),
@@ -25,6 +23,7 @@ export const uploadRequests = pgTable(
     derivedMimeType: text('derived_mime_type').notNull(),
     originalMimeType: text('original_mime_type'),
     derivedStoragePath: text('derived_storage_path').notNull(),
+    storageBucket: text('storage_bucket').notNull().default('gallery'),
     originalStoragePath: text('original_storage_path'),
     fileId: uuid('file_id').references(() => files.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
