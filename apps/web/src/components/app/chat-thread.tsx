@@ -25,6 +25,7 @@ import {
   useDeleteMessage,
   useEditMessage,
   useEnsureMessageLoaded,
+  useLoadOlderChannelMessages,
   useMarkChannelRead,
   useSendChannelMessage,
   useToggleBookmark,
@@ -986,6 +987,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [nudgeActionError, setNudgeActionError] = React.useState<string | null>(null)
   const pendingDraftRef = React.useRef('')
   const scrollRef = React.useRef<HTMLDivElement>(null)
+  const pendingPrependScrollRef = React.useRef<{ scrollTop: number; scrollHeight: number } | null>(null)
+  const shouldScrollToBottomRef = React.useRef(true)
   const queryClient = useQueryClient()
   // displayName → userId map for structured mention serialization
   const mentionMapRef = React.useRef<Map<string, string>>(new Map())
@@ -1087,6 +1090,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const markChannelReadFn = markChannelRead.mutate
   const lastReadMessageIdRef = React.useRef<string | null>(null)
   const ensureMessageLoaded = useEnsureMessageLoaded(channelId)
+  const { loadOlder, hasMore: hasOlderMessages, isLoadingOlder, error: loadOlderError } = useLoadOlderChannelMessages(channelId)
 
   const timeline = React.useMemo(() => [
     ...messages.map((message, index) => ({ kind: 'message' as const, createdAt: message.createdAt, message, messageIndex: index })),
@@ -1217,9 +1221,38 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     if (sendMutation.isSuccess) setSendError(null)
   }, [sendMutation.isSuccess])
 
+  // チャンネル初期表示だけは末尾へ移動する。過去ページの追加中や、ユーザーが末尾以外を
+  // 読んでいるときは位置を動かさない。
   React.useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    shouldScrollToBottomRef.current = true
+  }, [channelId])
+
+  React.useLayoutEffect(() => {
+    const pending = pendingPrependScrollRef.current
+    const el = scrollRef.current
+    if (!pending || !el) return
+    el.scrollTop = pending.scrollTop + (el.scrollHeight - pending.scrollHeight)
+    pendingPrependScrollRef.current = null
+  }, [messages])
+
+  React.useEffect(() => {
+    const el = scrollRef.current
+    if (!el || pendingPrependScrollRef.current) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (shouldScrollToBottomRef.current || distanceFromBottom < 80) {
+      el.scrollTop = el.scrollHeight
+    }
+    shouldScrollToBottomRef.current = false
   }, [messages.length, nudges.length])
+
+  const handleMessageScroll = React.useCallback(() => {
+    const el = scrollRef.current
+    if (!el || el.scrollTop > 80 || !hasOlderMessages || isLoadingOlder) return
+    pendingPrependScrollRef.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight }
+    void loadOlder().then(loaded => {
+      if (!loaded) pendingPrependScrollRef.current = null
+    })
+  }, [hasOlderMessages, isLoadingOlder, loadOlder])
 
   // チャンネル切替時にフォーカスをリセット
   React.useEffect(() => { setFocusedMsgIdx(-1) }, [channelId])
@@ -1573,7 +1606,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)' }}>ファイルをドロップしてアップロード</span>
         </div>
       )}
-      <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
+      <div ref={scrollRef} onScroll={handleMessageScroll} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
         ) : isAccessDenied ? (
@@ -1589,7 +1622,17 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         ) : timeline.length === 0 ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>まだメッセージはありません。最初のメッセージを送ってみましょう！</div>
         ) : (
-          timeline.map(item => item.kind === 'nudge' ? (
+          <>
+          {isLoadingOlder && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 16px 10px', color: 'var(--text-3)', fontSize: 12 }}>過去のメッセージを読み込み中...</div>
+          )}
+          {loadOlderError && (
+            <div role="alert" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '4px 16px 10px', color: 'var(--red-text)', fontSize: 12 }}>
+              過去のメッセージを読み込めませんでした。
+              <button type="button" onClick={handleMessageScroll} className="btn btn-ghost" style={{ height: 26, padding: '0 8px', fontSize: 11.5 }}>再試行</button>
+            </div>
+          )}
+          {timeline.map(item => item.kind === 'nudge' ? (
             <AiNudgeCard
               key={`nudge:${item.nudge.id}`}
               nudge={item.nudge}
@@ -1630,7 +1673,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}
             />
-          ))
+          ))}
+          </>
         )}
         {(nudgesError || nudgeActionError) && (
           <div role="alert" style={{ margin: '8px 16px', color: 'var(--red-text)', fontSize: 12 }}>

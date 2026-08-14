@@ -6,6 +6,7 @@ import { Icon, UnreadBadge } from './primitives'
 import { Avatar } from './primitives'
 import { useAppShell } from './app-shell-context'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
+import { usePushNotifications } from '@/lib/push/client'
 import { createClient } from '@/lib/supabase/client'
 import type { UserStatus } from '@/lib/user-status'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
@@ -718,8 +719,14 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
 export function BellButton({ size = 16 }: { size?: number }) {
   const { openNotif } = useAppShell()
   const unreadCount = useUnreadNotificationCount()
+  const push = usePushNotifications()
+  const handleOpen = () => {
+    // クリックのユーザー操作中に許可を求める。effect からの要求を弾くブラウザでも確実に表示できる。
+    if (push.permission === 'default' && !push.loading) void push.subscribe()
+    openNotif()
+  }
   return (
-    <button onClick={openNotif} className="btn btn-ghost" style={{ width: 34, padding: 0, justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
+    <button onClick={handleOpen} className="btn btn-ghost" style={{ width: 34, padding: 0, justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
       <Icon name="bell" size={size}/>
       <UnreadBadge count={unreadCount} size="sm" style={{ position: 'absolute', top: 1, right: 1, border: '2px solid var(--card)' }} />
     </button>

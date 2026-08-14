@@ -2,18 +2,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChatDetailSidebar } from './chat-detail-sidebar'
 import { useChannelFiles } from '@/hooks/use-channel-files'
 
-const { renameMutateAsyncMock } = vi.hoisted(() => ({
+const { renameMutateAsyncMock, fetchWithAuthMock } = vi.hoisted(() => ({
   renameMutateAsyncMock: vi.fn(),
+  fetchWithAuthMock: vi.fn(),
 }))
 
 vi.mock('@/hooks/use-channel-files')
 vi.mock('@/hooks/use-rename-file', () => ({
   useRenameFile: vi.fn(() => ({ mutateAsync: renameMutateAsyncMock })),
+}))
+vi.mock('@/lib/fetch-with-auth', () => ({
+  fetchWithAuth: fetchWithAuthMock,
+}))
+vi.mock('../task-edit-dialog', () => ({
+  TaskEditDialog: ({ open }: { open: boolean }) => open ? <div data-testid="task-edit-dialog" /> : null,
 }))
 vi.mock('@/hooks/use-project-tasks', () => ({
   useProjectTasks: vi.fn(() => ({
@@ -26,8 +34,9 @@ vi.mock('@/hooks/use-project-tasks', () => ({
 const mockUseChannelFiles = vi.mocked(useChannelFiles)
 
 function renderSidebar(onJumpToMessage = vi.fn()) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
-    <ChatDetailSidebar
+    <QueryClientProvider client={queryClient}><ChatDetailSidebar
       isProject={false}
       isDm={false}
       isPrivate={false}
@@ -44,7 +53,7 @@ function renderSidebar(onJumpToMessage = vi.fn()) {
       onOpenProject={vi.fn()}
       onOpenMember={vi.fn()}
       onJumpToMessage={onJumpToMessage}
-    />,
+    /></QueryClientProvider>,
   )
   return onJumpToMessage
 }
@@ -53,6 +62,8 @@ describe('チャット詳細サイドバーのファイル一覧', () => {
   beforeEach(() => {
     renameMutateAsyncMock.mockReset()
     renameMutateAsyncMock.mockResolvedValue({ success: true, fileName: 'renamed.pdf' })
+    fetchWithAuthMock.mockReset()
+    fetchWithAuthMock.mockResolvedValue(new Response('# 見出し\n\nMarkdownです'))
     vi.spyOn(window, 'open').mockImplementation(() => null)
     mockUseChannelFiles.mockReturnValue({
       data: [
@@ -126,5 +137,25 @@ describe('チャット詳細サイドバーのファイル一覧', () => {
       fileId: 'file-1',
       fileName: 'renamed.pdf',
     }))
+  })
+
+  it('ファイルアイコンで Markdown プレビューを開き、ファイル名で共有元へ移動する', async () => {
+    mockUseChannelFiles.mockReturnValue({
+      data: [{
+        id: 'markdown-1', sourceMessageId: 'message-1', fileName: 'guide.md',
+        mimeType: 'text/markdown', fileSize: 120, fileType: 'document',
+        uploaderName: '山田 太郎', createdAt: '2026-08-07T03:45:00.000Z',
+      }],
+      isLoading: false, isError: false,
+    } as ReturnType<typeof useChannelFiles>)
+    const onJumpToMessage = renderSidebar()
+
+    await userEvent.click(screen.getByTitle('ファイルを開く'))
+    expect(await screen.findByRole('dialog', { name: 'guide.md のプレビュー' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '見出し' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByLabelText('プレビューを閉じる'))
+    await userEvent.click(screen.getByRole('button', { name: /guide\.md/ }))
+    expect(onJumpToMessage).toHaveBeenCalledWith('message-1')
   })
 })
