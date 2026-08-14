@@ -253,6 +253,9 @@ const TaskChecklist = ({ project, onJumpToMessage }: { project: ProjectDto; onJu
                       <button type="button" onClick={() => onJumpToMessage(t.sourceMessageId!)} title="タスクを登録したメッセージへ移動"
                         style={{ padding: 0, border: 'none', background: 'transparent', font: 'inherit', fontSize: 12.5, lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1, textAlign: 'left', cursor: 'pointer' }}>
                         {formatTaskTitleForDisplay(t.title)}
+                        <span aria-label="メッセージに紐付いています" style={{ display: 'inline-flex', marginLeft: 4, verticalAlign: 'text-bottom' }}>
+                          <Icon name="chat" size={11} color="var(--text-4)"/>
+                        </span>
                       </button>
                     ) : (
                       <span style={{ fontSize: 12.5, lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1 }}>
