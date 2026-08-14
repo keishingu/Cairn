@@ -30,7 +30,7 @@ export function AppleSignInButton({ buttonType, onError }: Props) {
     try {
       // キャンセルはログイン画面に戻る通常操作なので、エラーを表示しない。
       const result = await signInWithApple()
-      if (result === 'needs-workspace') router.replace('/(app)/onboarding')
+      if (result === 'needs-workspace') router.replace('/onboarding')
       else if (result === 'success') router.replace('/(app)/projects')
     } catch {
       onError('Appleでのサインインに失敗しました。しばらくしてからもう一度お試しください。')

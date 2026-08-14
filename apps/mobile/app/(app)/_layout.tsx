@@ -103,7 +103,6 @@ export default function AppLayout() {
                 <Tabs.Screen name="gallery/index" options={{ href: null }} />
                 <Tabs.Screen name="members/index" options={{ href: null }} />
                 <Tabs.Screen name="settings/index" options={{ href: null }} />
-                <Tabs.Screen name="onboarding/index" options={{ href: null }} />
                 <Tabs.Screen name="signout/index" options={{ href: null }} />
                 <Tabs.Screen name="menu/index" options={{ href: null }} />
               </Tabs>

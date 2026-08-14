@@ -19,7 +19,7 @@ export function GoogleSignInButton({ label, onError }: Props) {
     onError('')
     try {
       const result = await signInWithGoogle()
-      if (result === 'needs-workspace') router.replace('/(app)/onboarding')
+      if (result === 'needs-workspace') router.replace('/onboarding')
       else if (result === 'success') router.replace('/(app)/projects')
       // 成功時は _layout.tsx の onAuthStateChange が遷移する
     } catch (e) {
