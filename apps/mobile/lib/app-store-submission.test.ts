@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const app = JSON.parse(readFileSync(new URL('../app.json', import.meta.url), 'utf8')) as {
-  expo: { ios: { bundleIdentifier: string; icon: string; infoPlist: Record<string, unknown> } }
+  expo: { ios: { bundleIdentifier: string; icon: string; usesAppleSignIn: boolean; infoPlist: Record<string, unknown> }; plugins: unknown[] }
 }
 const eas = JSON.parse(readFileSync(new URL('../eas.json', import.meta.url), 'utf8')) as {
   build: { production: { autoIncrement: boolean; environment: string; channel: string } }
@@ -25,7 +25,9 @@ describe('iOS App Store申請設定', () => {
   it('本番Bundle IDと非透過用iOSアイコンを使う', () => {
     expect(app.expo.ios.bundleIdentifier).toBe('com.oss-cairn')
     expect(app.expo.ios.icon).toBe('./assets/icon-ios.png')
+    expect(app.expo.ios.usesAppleSignIn).toBe(true)
     expect(app.expo.ios.infoPlist['ITSAppUsesNonExemptEncryption']).toBe(false)
+    expect(app.expo.plugins).toContain('expo-apple-authentication')
   })
 
   it('production buildを自動採番して同名のsubmit profileへ渡せる', () => {

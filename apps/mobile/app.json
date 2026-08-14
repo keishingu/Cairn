@@ -14,6 +14,7 @@
     "ios": {
       "icon": "./assets/icon-ios.png",
       "bundleIdentifier": "com.oss-cairn",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSUserNotificationsUsageDescription": "プロジェクトのメンションやタスクの更新を通知します",
         "ITSAppUsesNonExemptEncryption": false
@@ -25,6 +26,7 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      "expo-apple-authentication",
       [
         "expo-image-picker",
         {

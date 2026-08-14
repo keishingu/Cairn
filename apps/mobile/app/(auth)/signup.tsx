@@ -4,6 +4,8 @@ import { Link, useRouter } from 'expo-router'
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/api-fetch'
 import { GoogleSignInButton } from '../../components/google-sign-in-button'
+import { AppleSignInButton } from '../../components/apple-sign-in-button'
+import * as AppleAuthentication from 'expo-apple-authentication'
 
 export default function SignupScreen() {
   const router = useRouter()
@@ -107,6 +109,10 @@ export default function SignupScreen() {
         </View>
 
         <GoogleSignInButton label="Google で続ける" onError={(m) => setError(m || null)} />
+        <AppleSignInButton
+          buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP}
+          onError={(m) => setError(m || null)}
+        />
 
         <View style={styles.legal}>
           <Text style={styles.legalText}>アカウントを作成することで、</Text>
