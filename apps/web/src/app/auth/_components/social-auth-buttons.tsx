@@ -29,15 +29,13 @@ export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
         options: { redirectTo: callbackUrl.toString() },
       })
 
-      if (oauthError) {
-        setError('サインインを開始できませんでした。しばらくしてからもう一度お試しください。')
-        setLoadingProvider(null)
-      }
+      if (!oauthError) return
     } catch {
-      setError('サインインを開始できませんでした。しばらくしてからもう一度お試しください。')
-      setLoadingProvider(null)
+      // SDKまたはネットワークエラーは同じ復帰導線へ進む
     }
-    // リダイレクトするのでローディングはリセットしない
+
+    setError('サインインを開始できませんでした。しばらくしてからもう一度お試しください。')
+    setLoadingProvider(null)
   }
 
   return (
