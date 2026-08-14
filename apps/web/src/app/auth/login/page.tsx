@@ -23,6 +23,7 @@ function LoginForm() {
   const inviteToken = searchParams.get('invite')
   const nextPath = searchParams.get('next')
   const accountDeleted = searchParams.get('accountDeleted') === '1'
+  const callbackError = searchParams.get('error') === 'callback'
   const safeNextPath = nextPath?.startsWith('/') && !nextPath.startsWith('//') ? nextPath : null
 
   const [email, setEmail] = React.useState('')
@@ -96,6 +97,22 @@ function LoginForm() {
             }}
           >
             アカウントを削除しました。
+          </div>
+        )}
+        {callbackError && (
+          <div
+            role="alert"
+            style={{
+              padding: '8px 12px',
+              marginBottom: 16,
+              borderRadius: 8,
+              background: 'var(--red-soft)',
+              border: '1px solid var(--red)',
+              color: 'var(--red-text)',
+              fontSize: 12.5,
+            }}
+          >
+            サインインを完了できませんでした。もう一度お試しください。
           </div>
         )}
         <SocialAuthButtons inviteToken={inviteToken} nextPath={safeNextPath} />
