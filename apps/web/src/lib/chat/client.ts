@@ -145,6 +145,15 @@ async function fetchChannelMessagesAround(channelId: string, messageId: string):
   return res.json()
 }
 
+async function fetchChannelMessagesBefore(channelId: string, messageId: string): Promise<{ messages: MessageDto[]; hasMore: boolean }> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}/messages?before=${encodeURIComponent(messageId)}`)
+  if (!res.ok) throw new Error('過去のメッセージの取得に失敗しました')
+  return {
+    messages: await res.json() as MessageDto[],
+    hasMore: res.headers.get('X-Cairn-Has-More') === 'true',
+  }
+}
+
 interface SendMessageInput {
   content: string
   attachmentFileIds?: string[]
@@ -335,6 +344,48 @@ export function useEnsureMessageLoaded(channelId: string | null) {
       // サイレントに失敗（ハイライト・スクロールされないだけで致命的ではない）
     }
   }, [channelId, queryClient])
+}
+
+/** 表示済みの最古メッセージをカーソルに、さらに古いページをキャッシュ先頭へ追加する。 */
+export function useLoadOlderChannelMessages(channelId: string | null) {
+  const queryClient = useQueryClient()
+  const [hasMore, setHasMore] = React.useState(true)
+  const [isLoadingOlder, setIsLoadingOlder] = React.useState(false)
+  const [error, setError] = React.useState<Error | null>(null)
+
+  React.useEffect(() => {
+    setHasMore(true)
+    setError(null)
+  }, [channelId])
+
+  const loadOlder = React.useCallback(async (): Promise<boolean> => {
+    if (!channelId || isLoadingOlder || !hasMore) return false
+    const current = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
+    const oldest = current?.[0]
+    if (!oldest) return false
+
+    setIsLoadingOlder(true)
+    setError(null)
+    try {
+      const page = await fetchChannelMessagesBefore(channelId, oldest.id)
+      if (page.messages.length > 0) {
+        queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), previous => {
+          const merged = new Map((previous ?? []).map(message => [message.id, message]))
+          for (const message of page.messages) merged.set(message.id, message)
+          return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+        })
+      }
+      setHasMore(page.hasMore)
+      return page.messages.length > 0
+    } catch (cause) {
+      setError(cause instanceof Error ? cause : new Error('過去のメッセージの取得に失敗しました'))
+      return false
+    } finally {
+      setIsLoadingOlder(false)
+    }
+  }, [channelId, hasMore, isLoadingOlder, queryClient])
+
+  return { loadOlder, hasMore, isLoadingOlder, error }
 }
 
 export function useSendChannelMessage(
