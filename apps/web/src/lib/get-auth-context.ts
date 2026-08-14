@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import type { User } from '@supabase/supabase-js'
 import { headers, cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { verifyAccessToken } from './auth-jwt'
@@ -40,8 +41,8 @@ type AuthResult =
   | { ctx: null; error: ReturnType<typeof NextResponse.json> }
 
 type UserResult =
-  | { userId: string; error: null }
-  | { userId: null; error: ReturnType<typeof NextResponse.json> }
+  | { userId: string; user: User; error: null }
+  | { userId: null; user: null; error: ReturnType<typeof NextResponse.json> }
 
 /**
  * Authorization ヘッダの Bearer トークン、なければ Cookie セッションを
@@ -69,9 +70,9 @@ export async function getAuthUser(): Promise<UserResult> {
 
   const { data: { user }, error } = await supabase.auth.getUser(bearerToken)
   if (error || !user) {
-    return { userId: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+    return { userId: null, user: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
-  return { userId: user.id, error: null }
+  return { userId: user.id, user, error: null }
 }
 
 export async function getAuthContext(options?: {

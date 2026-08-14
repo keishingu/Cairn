@@ -16,7 +16,17 @@ export type OAuthResult = 'success' | 'cancelled' | 'needs-workspace'
 
 async function setupProfile(): Promise<{ needsWorkspace: boolean }> {
   // OAuth初回ログインでもprofilesを作成する（省くと以降の全APIが403になる）。
-  const res = await apiFetch('/api/auth/setup', { method: 'POST', body: JSON.stringify({}) })
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const displayName =
+    user?.user_metadata?.['display_name'] ??
+    user?.user_metadata?.['full_name'] ??
+    user?.user_metadata?.['name']
+  const res = await apiFetch('/api/auth/setup', {
+    method: 'POST',
+    body: JSON.stringify(displayName ? { displayName } : {}),
+  })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error((body as { error?: string }).error ?? 'プロフィールの作成に失敗しました')

@@ -226,7 +226,7 @@ describe('get-auth-context', () => {
     const result = await getAuthUser()
 
     expect(mockSupabase.auth.getUser).toHaveBeenCalledWith(undefined)
-    expect(result).toEqual({ userId: 'user-1', error: null })
+    expect(result).toEqual({ userId: 'user-1', user: { id: 'user-1' }, error: null })
   })
 
   it('getAuthUser はAuthから削除済みなら有効期限内のBearer JWTでも401を返す', async () => {
