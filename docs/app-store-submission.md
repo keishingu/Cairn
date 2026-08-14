@@ -27,6 +27,27 @@
 
 App Store Connect API Keyや審査アカウントのパスワードはリポジトリへコミットしない。
 
+### Sign in with Apple
+
+ExpoアプリはiOSのログイン・新規登録画面にApple公式の「Sign in with Apple」ボタンを表示する。iOSネイティブ認証で取得したID tokenをSupabase Authへ渡すため、アプリスキームへのOAuth callbackやWebView認証ハンドオフは使わない。AndroidとWebにはこのネイティブボタンを表示しない。
+
+リリース前に、Apple Developerと各環境のSupabase Dashboardで次を設定する。Apple private key（`.p8`）、client secret、審査アカウントの資格情報はリポジトリ・Issue・PR・ログへ保存しない。
+
+1. Apple DeveloperのIdentifiersで、`com.oss-cairn.dev`、`com.oss-cairn.preview`、`com.oss-cairn` の各App IDにSign in with Apple capabilityを有効化する。EAS Buildで `ios.usesAppleSignIn` と `expo-apple-authentication` pluginがentitlementを生成する。
+2. 既存WebのApple OAuthを維持するため、primary App IDに紐付けたServices IDを確認する。Services IDにはWebドメインと `https://<Supabase project ref>.supabase.co/auth/v1/callback` を登録する。ネイティブiOS認証だけにはService IDやReturn URLは不要だが、CairnはWeb OAuthも提供するため必要である。
+3. Apple DeveloperでSign in with Apple用Keyを作成し、Key ID・Team ID・Services ID・各native App IDを安全な運用台帳で管理する。`.p8`を紛失・露出した場合は直ちにApple Developerで失効・再作成する。
+4. PreviewとProductionのSupabase DashboardでAuth → Providers → Appleを有効化する。Client IDsはWeb OAuth用Services IDを先頭に置き、続けて各native App IDを登録する。Apple Keyから生成したclient secretをDashboardだけに設定する。開発環境はローカルSupabaseでApple providerを有効化して試す場合だけ同等の値を安全に投入する。
+5. 「メールを非公開」を選ぶ利用者に確認・リセットメール等を送る場合は、Apple DeveloperのPrivate Email RelayへSupabase Authの実送信ドメイン／送信元を登録する。relay emailは通常の認証済みemailとして保存・利用し、アプリ側で変換しない。
+6. Associated DomainsはこのID token方式のApple認証には不要である（Universal Linksを追加する場合だけ別途設定する）。既存のSupabase Redirect URLsはメールリンク・Google OAuth用として維持する。
+
+Supabase Authは検証済みで同じメールアドレスのOAuth identityを既存userへ自動紐付けする。Apple relay emailは実メールアドレスとは別のため、その既存アカウントへは自動紐付けされず別アカウントになる。別メールの手動identity linkingは本リリースの対象外であり、現在のローカル設定でも無効のままとする。PreviewとProductionで、メール・パスワード既存userへの同一メール紐付けとrelay emailの挙動を実機で確認する。
+
+### Appleログインの確認状況
+
+- 2026-08-14: iPhone 17（iOS 26.2）シミュレータ向けDevelopment BuildをCNGで生成し、`com.apple.developer.applesignin = Default` entitlementの出力を確認した。
+- 同日: シミュレータのログイン画面・Apple公式ボタン表示とキャンセルは、ローカルSupabase Docker起動が応答待ちとなり、既存セッションの復元が完了しないため未確認。完了済みとは扱わない。
+- 未確認: 実機またはTestFlightでのAppleログイン成功、キャンセル、初回氏名保存、relay email、同一メール既存アカウントの自動紐付け、メール・パスワード／Googleログインへの回帰。
+
 ## App Store Connectメタデータ
 
 `store.config.json` の内容を検証してから同期する。
@@ -63,6 +84,11 @@ Review Notesには次を記載する。
 - Googleカレンダー連携、AI、決済など、審査アカウントで有効にしていない任意機能を明記する
 - 主要な確認導線（プロジェクト → チャット → タスク → ファイル → 設定）
 - アカウント削除の導線（設定 → アカウント → アカウントを削除）
+- Appleログインの確認手順（下記テンプレート）
+
+Appleログイン用のReview Notesテンプレート:
+
+> ログイン画面または新規登録画面で「Sign in with Apple」を選択し、Apple IDで認証してください。認証完了後はCairnのプロジェクト画面に遷移します。Apple認証をキャンセルした場合はログイン画面へ戻ります。メール・パスワードとGoogleログインも同じ画面で利用できます。審査用アカウントを使用する場合は、App Review Informationに記載した認証情報でログインしてください。
 
 ## App Privacyの申告候補
 
@@ -111,7 +137,9 @@ EAS SubmitはApp Store Connect / TestFlightへのアップロードまでを行�
 
 ### 本番相当の確認項目
 
-- 新規インストール、メールアドレスログイン、Googleログイン、サインアウト
+- 新規インストール、メールアドレスログイン、Googleログイン、Appleログイン、サインアウト
+- Appleログインで初回だけ返る氏名が表示名に反映され、再ログインで既存表示名を空値で上書きしないこと
+- Appleの「メールを非公開」を選ぶ場合にrelay emailでログインでき、同一実メールの既存アカウントとは別アカウントになること。検証済み同一メールの既存アカウントはSupabase Authでidentityが自動紐付けされること
 - プロジェクト・チャット・タスク・カレンダー・ファイル・ギャラリーの主要導線
 - 写真権限を許可／拒否した場合の添付操作
 - 通知権限を許可／拒否した場合、およびバックグラウンドでのPush通知
@@ -143,3 +171,6 @@ App Review Notesには、審査アカウントでチャットを開き、他者�
 - [ ] TestFlightの内部テスターで本番相当チェックを完了する
 - [ ] 6.9インチiPhone用スクリーンショットをアップロードする
 - [ ] Apple Developer / App Store Connectの契約、年齢区分、価格・配信地域を確定する
+- [ ] Apple Developerの全bundle IDでSign in with Apple capabilityを有効化し、Preview / ProductionのSupabase Apple ProviderへServices ID・native App ID・安全に保管したclient secretを設定する
+- [ ] Apple Private Email Relayの送信ドメイン／送信元を登録し、relay emailへのSupabase Authメールを確認する
+- [ ] 実機またはTestFlightでAppleログイン成功、同一メールの既存アカウント紐付け、relay email、キャンセルを確認する

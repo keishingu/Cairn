@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // --- vi.hoisted: vi.mock ファクトリから参照できるよう先に定義 ---
-const { mockUser, mockSupabase, mockDb } = vi.hoisted(() => {
+const { mockUser, mockSupabase, mockDb, mockHeaders } = vi.hoisted(() => {
   const mockUser = {
     id: 'user-00000001',
     email: 'test@example.com',
@@ -19,7 +19,8 @@ const { mockUser, mockSupabase, mockDb } = vi.hoisted(() => {
     select: vi.fn(),
     insert: vi.fn(),
   }
-  return { mockUser, mockSupabase, mockDb }
+  const mockHeaders = vi.fn().mockResolvedValue(new Headers())
+  return { mockUser, mockSupabase, mockDb, mockHeaders }
 })
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -28,7 +29,7 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('next/headers', () => ({
   cookies: vi.fn().mockResolvedValue({ get: vi.fn() }),
-  headers: vi.fn().mockResolvedValue(new Headers()),
+  headers: mockHeaders,
 }))
 
 vi.mock('@cairn/db', () => ({
@@ -101,6 +102,7 @@ describe('POST /api/auth/setup', () => {
   afterEach(() => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
+    mockHeaders.mockResolvedValue(new Headers())
   })
 
   it('不正な JSON には 400 を返す', async () => {
@@ -149,6 +151,25 @@ describe('POST /api/auth/setup', () => {
     )
 
     await expect(res.json()).resolves.toEqual({ ok: true, needsWorkspace: false })
+  })
+
+  it('Bearer token でもネイティブのセットアップを認証できる', async () => {
+    mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer native-access-token' }))
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('http://localhost/api/auth/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(mockSupabase.auth.getUser).toHaveBeenCalledWith('native-access-token')
   })
 
   it('workspaceName あり・既存メンバーシップがあっても新規ワークスペースを作成する', async () => {

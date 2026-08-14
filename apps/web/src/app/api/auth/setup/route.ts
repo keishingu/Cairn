@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthUser } from '@/lib/get-auth-context'
 
 const setupSchema = z.object({
   displayName: z.string().min(1).max(100).optional(),
@@ -23,11 +23,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
 
-  const supabase = await createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Native clients send their Supabase session as a Bearer token. getAuthUser
+  // accepts both that path and the web cookie session.
+  const { userId, user, error } = await getAuthUser()
+  if (error || !userId || !user) {
+    return error ?? NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     const { eq } = await import('drizzle-orm')
 
     const existing = await db.select({ id: profiles.id }).from(profiles).where(
-      eq(profiles.id, user.id)
+      eq(profiles.id, userId)
     ).limit(1)
 
     if (existing.length === 0) {
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
         (user.user_metadata?.['display_name'] as string | undefined) ??
         user.email ??
         'ユーザー'
-      await db.insert(profiles).values({ id: user.id, displayName })
+      await db.insert(profiles).values({ id: userId, displayName })
     }
 
     // workspaceName が指定されていれば必ず新規ワークスペースを作成（複数WS対応）
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       const existingMembership = await db
         .select({ workspaceId: activeWorkspaceMembers.workspaceId })
         .from(activeWorkspaceMembers)
-        .where(eq(activeWorkspaceMembers.userId, user.id))
+        .where(eq(activeWorkspaceMembers.userId, userId))
         .limit(1)
 
       return NextResponse.json({
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
 
     const [ws] = await db
       .insert(workspaces)
-      .values({ name: workspaceName, slug, createdBy: user.id })
+      .values({ name: workspaceName, slug, createdBy: userId })
       .returning({ id: workspaces.id })
     if (!ws) throw new Error('workspace insert failed')
 
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
 
     await db.insert(workspaceMembers).values({
       workspaceId: ws.id,
-      userId: user.id,
+      userId,
       role: 'owner',
     })
 
@@ -100,7 +100,7 @@ export async function POST(req: Request) {
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({
         name: 'member/upserted',
-        data: { userId: user.id, workspaceId: ws.id },
+        data: { userId, workspaceId: ws.id },
       })
     } catch (e) {
       console.warn('[/api/auth/setup] Inngest event send failed (indexing skipped):', e)
