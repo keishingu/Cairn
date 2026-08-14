@@ -55,7 +55,7 @@ describe('モバイルInternal Distribution', () => {
 
     expect(packageJson.dependencies['expo-network']).toBe('~8.0.8')
     expect(packageJson.dependencies['expo-sqlite']).toBe('~16.0.10')
-    expect(app.expo.runtimeVersion).toBe('1.1.0')
+    expect(app.expo.runtimeVersion).toBe('1.2.0')
     expect(app.expo.plugins).toContainEqual(['expo-sqlite', { enableFTS: true }])
   })
 })
