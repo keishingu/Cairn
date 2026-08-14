@@ -31,3 +31,8 @@ CREATE TABLE "content_reports" (
 );--> statement-breakpoint
 CREATE INDEX "idx_content_reports_status_created" ON "content_reports" USING btree ("status", "created_at");--> statement-breakpoint
 CREATE INDEX "idx_content_reports_workspace" ON "content_reports" USING btree ("workspace_id");
+
+-- 通報内容とブロック関係はサーバーAPIだけで扱い、Data API から公開しない。
+ALTER TABLE "user_blocks" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "content_reports" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+REVOKE ALL ON TABLE "user_blocks", "content_reports" FROM anon, authenticated;
