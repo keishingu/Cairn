@@ -722,7 +722,7 @@ export function BellButton({ size = 16 }: { size?: number }) {
   const push = usePushNotifications()
   const handleOpen = () => {
     // クリックのユーザー操作中に許可を求める。effect からの要求を弾くブラウザでも確実に表示できる。
-    if (push.permission === 'default' && !push.loading) void push.subscribe()
+    if (push.permission === 'default' && Notification.permission === 'default' && !push.loading) void push.subscribe()
     openNotif()
   }
   return (
