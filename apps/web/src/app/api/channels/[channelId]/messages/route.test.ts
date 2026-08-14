@@ -22,7 +22,6 @@ const {
   mockLte,
   mockLt,
   mockGt,
-  mockOr,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -38,7 +37,6 @@ const {
   mockLte: vi.fn(() => Symbol('lte')),
   mockLt: vi.fn(() => Symbol('lt')),
   mockGt: vi.fn(() => Symbol('gt')),
-  mockOr: vi.fn(() => Symbol('or')),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -115,7 +113,6 @@ vi.mock('drizzle-orm', () => ({
   lte: mockLte,
   lt: mockLt,
   gt: mockGt,
-  or: mockOr,
   sql: vi.fn(() => 'sql'),
 }))
 
