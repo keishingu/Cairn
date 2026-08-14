@@ -8,6 +8,7 @@ import { queryClient } from '../lib/query-client'
 import { supabase } from '../lib/supabase'
 import { SessionContext } from '../lib/session-context'
 import { initializeOfflineDatabase, OFFLINE_DATABASE_NAME } from '../lib/offline-database'
+import { isPostAuthNavigationPending } from '../lib/auth-navigation'
 import type { Session } from '@supabase/supabase-js'
 
 // SecureStore からのセッション復元が終わるまでスプラッシュを表示したままにする。
@@ -44,6 +45,7 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
     if (!session && !inAuthGroup) {
       router.replace('/(auth)/login')
     } else if (session && inAuthGroup) {
+      if (isPostAuthNavigationPending()) return
       router.replace('/(app)/projects')
     }
   }, [session, segments, router])

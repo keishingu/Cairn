@@ -1,7 +1,9 @@
 import React from 'react'
 import { Platform, StyleSheet } from 'react-native'
+import { useRouter } from 'expo-router'
 import * as AppleAuthentication from 'expo-apple-authentication'
 import { signInWithApple } from '../lib/oauth'
+import { completePostAuthNavigation } from '../lib/auth-navigation'
 
 interface Props {
   buttonType: AppleAuthentication.AppleAuthenticationButtonType
@@ -9,8 +11,10 @@ interface Props {
 }
 
 export function AppleSignInButton({ buttonType, onError }: Props) {
+  const router = useRouter()
   const [available, setAvailable] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
+  const loadingRef = React.useRef(false)
 
   React.useEffect(() => {
     if (Platform.OS !== 'ios') return
@@ -19,14 +23,20 @@ export function AppleSignInButton({ buttonType, onError }: Props) {
   }, [])
 
   async function handlePress() {
+    if (loadingRef.current) return
+    loadingRef.current = true
     setLoading(true)
     onError('')
     try {
       // キャンセルはログイン画面に戻る通常操作なので、エラーを表示しない。
-      await signInWithApple()
+      const result = await signInWithApple()
+      if (result === 'needs-workspace') router.replace('/(app)/onboarding')
+      else if (result === 'success') router.replace('/(app)/projects')
     } catch {
       onError('Appleでのサインインに失敗しました。しばらくしてからもう一度お試しください。')
     } finally {
+      completePostAuthNavigation()
+      loadingRef.current = false
       setLoading(false)
     }
   }

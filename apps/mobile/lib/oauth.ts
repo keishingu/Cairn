@@ -7,19 +7,23 @@ import { supabase } from './supabase'
 import { apiFetch } from './api-fetch'
 import { resolveOAuthScheme } from './oauth-scheme'
 import { getAppleDisplayName, isAppleAuthenticationCancelled } from './apple-auth'
+import { beginPostAuthNavigation, completePostAuthNavigation } from './auth-navigation'
 
 // 認可後に WebBrowser のセッションを確実に閉じる（iOS で必要）
 WebBrowser.maybeCompleteAuthSession()
 
-export type OAuthResult = 'success' | 'cancelled'
+export type OAuthResult = 'success' | 'cancelled' | 'needs-workspace'
 
-async function setupProfile() {
+async function setupProfile(): Promise<{ needsWorkspace: boolean }> {
   // OAuth初回ログインでもprofilesを作成する（省くと以降の全APIが403になる）。
   const res = await apiFetch('/api/auth/setup', { method: 'POST', body: JSON.stringify({}) })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error((body as { error?: string }).error ?? 'プロフィールの作成に失敗しました')
   }
+
+  const body = (await res.json().catch(() => ({}))) as { needsWorkspace?: boolean }
+  return { needsWorkspace: body.needsWorkspace === true }
 }
 
 // ネイティブの Google ログイン。
@@ -61,13 +65,17 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
     throw new Error('認可コードを取得できませんでした')
   }
 
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
-  if (exchangeError) throw exchangeError
+  beginPostAuthNavigation()
+  try {
+    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+    if (exchangeError) throw exchangeError
 
-  await setupProfile()
-
-  // 成功時は _layout.tsx の onAuthStateChange が /(app)/projects へリダイレクト
-  return 'success'
+    const { needsWorkspace } = await setupProfile()
+    return needsWorkspace ? 'needs-workspace' : 'success'
+  } catch (error) {
+    completePostAuthNavigation()
+    throw error
+  }
 }
 
 // iOSネイティブのAppleログイン。ID tokenをSupabaseへ直接渡すため、Web OAuthや
@@ -97,25 +105,31 @@ export async function signInWithApple(): Promise<OAuthResult> {
     throw new Error('Apple認証情報を取得できませんでした')
   }
 
-  const { error: authError } = await supabase.auth.signInWithIdToken({
-    provider: 'apple',
-    token: credential.identityToken,
-    nonce: rawNonce,
-    ...(credential.authorizationCode ? { access_token: credential.authorizationCode } : {}),
-  })
-  if (authError) throw authError
-
-  const displayName = getAppleDisplayName(credential.fullName)
-  if (displayName) {
-    // 初回だけ取得できる氏名を保存する。再ログイン時のnullでは既存データを変更しない。
-    const { error: metadataError } = await supabase.auth.updateUser({
-      data: { display_name: displayName, full_name: displayName },
+  beginPostAuthNavigation()
+  try {
+    const { error: authError } = await supabase.auth.signInWithIdToken({
+      provider: 'apple',
+      token: credential.identityToken,
+      nonce: rawNonce,
+      ...(credential.authorizationCode ? { access_token: credential.authorizationCode } : {}),
     })
-    if (metadataError) throw metadataError
+    if (authError) throw authError
+
+    const displayName = getAppleDisplayName(credential.fullName)
+    if (displayName) {
+      // 初回だけ取得できる氏名を保存する。再ログイン時のnullでは既存データを変更しない。
+      const { error: metadataError } = await supabase.auth.updateUser({
+        data: { display_name: displayName, full_name: displayName },
+      })
+      if (metadataError) throw metadataError
+    }
+
+    // emailはAppleのID tokenをSupabaseに任せる。relay emailも通常の認証済みemailとして扱う。
+    const { needsWorkspace } = await setupProfile()
+
+    return needsWorkspace ? 'needs-workspace' : 'success'
+  } catch (error) {
+    completePostAuthNavigation()
+    throw error
   }
-
-  // emailはAppleのID tokenをSupabaseに任せる。relay emailも通常の認証済みemailとして扱う。
-  await setupProfile()
-
-  return 'success'
 }
