@@ -84,6 +84,9 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
     return needsWorkspace ? 'needs-workspace' : 'success'
   } catch (error) {
     completePostAuthNavigation()
+    // セッションだけ残るとAuthGuardが未設定ユーザーを通常画面へ送るため、
+    // セットアップ失敗時は明示的にログイン前の状態へ戻す。
+    await supabase.auth.signOut().catch(() => undefined)
     throw error
   }
 }
@@ -140,6 +143,8 @@ export async function signInWithApple(): Promise<OAuthResult> {
     return needsWorkspace ? 'needs-workspace' : 'success'
   } catch (error) {
     completePostAuthNavigation()
+    // Apple認証後のプロフィール作成に失敗した場合も同じくセッションを残さない。
+    await supabase.auth.signOut().catch(() => undefined)
     throw error
   }
 }
