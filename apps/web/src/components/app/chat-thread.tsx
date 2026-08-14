@@ -962,6 +962,61 @@ const AiNudgeCard = ({
   </article>
 )
 
+function useMessageTimelineScroll({
+  channelId,
+  messages,
+  latestMessageId,
+  nudgeCount,
+  hasOlderMessages,
+  isLoadingOlder,
+  loadOlder,
+}: {
+  channelId: string | null
+  messages: Array<{ id: string }>
+  latestMessageId: string | undefined
+  nudgeCount: number
+  hasOlderMessages: boolean
+  isLoadingOlder: boolean
+  loadOlder: () => Promise<boolean>
+}) {
+  const scrollRef = React.useRef<HTMLDivElement>(null)
+  const pendingPrependScrollRef = React.useRef<{ scrollTop: number; scrollHeight: number } | null>(null)
+  const shouldScrollToBottomRef = React.useRef(true)
+
+  React.useEffect(() => {
+    shouldScrollToBottomRef.current = true
+  }, [channelId])
+
+  React.useLayoutEffect(() => {
+    const pending = pendingPrependScrollRef.current
+    const el = scrollRef.current
+    if (!pending || !el) return
+    el.scrollTop = pending.scrollTop + (el.scrollHeight - pending.scrollHeight)
+    pendingPrependScrollRef.current = null
+  }, [messages])
+
+  React.useEffect(() => {
+    const el = scrollRef.current
+    if (!el || pendingPrependScrollRef.current) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (shouldScrollToBottomRef.current || distanceFromBottom < 80) {
+      el.scrollTop = el.scrollHeight
+    }
+    shouldScrollToBottomRef.current = false
+  }, [latestMessageId, nudgeCount])
+
+  const handleMessageScroll = React.useCallback(() => {
+    const el = scrollRef.current
+    if (!el || el.scrollTop > 80 || !hasOlderMessages || isLoadingOlder) return
+    pendingPrependScrollRef.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight }
+    void loadOlder().then(loaded => {
+      if (!loaded) pendingPrependScrollRef.current = null
+    })
+  }, [hasOlderMessages, isLoadingOlder, loadOlder])
+
+  return { scrollRef, handleMessageScroll }
+}
+
 // ─── ChatThread ───────────────────────────────────────────────────
 
 export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile, targetMessage }: {
@@ -986,9 +1041,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [completingNudgeId, setCompletingNudgeId] = React.useState<string | null>(null)
   const [nudgeActionError, setNudgeActionError] = React.useState<string | null>(null)
   const pendingDraftRef = React.useRef('')
-  const scrollRef = React.useRef<HTMLDivElement>(null)
-  const pendingPrependScrollRef = React.useRef<{ scrollTop: number; scrollHeight: number } | null>(null)
-  const shouldScrollToBottomRef = React.useRef(true)
   const queryClient = useQueryClient()
   // displayName → userId map for structured mention serialization
   const mentionMapRef = React.useRef<Map<string, string>>(new Map())
@@ -1091,11 +1143,22 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const lastReadMessageIdRef = React.useRef<string | null>(null)
   const ensureMessageLoaded = useEnsureMessageLoaded(channelId)
   const { loadOlder, hasMore: hasOlderMessages, isLoadingOlder, error: loadOlderError } = useLoadOlderChannelMessages(channelId)
+  // 最新100件の再取得では件数が変わらないことがあるため、末尾の入れ替わりも追跡する。
+  const latestMessageId = messages[messages.length - 1]?.id
 
   const timeline = React.useMemo(() => [
     ...messages.map((message, index) => ({ kind: 'message' as const, createdAt: message.createdAt, message, messageIndex: index })),
     ...nudges.map(nudge => ({ kind: 'nudge' as const, createdAt: nudge.createdAt, nudge })),
   ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()), [messages, nudges])
+  const { scrollRef, handleMessageScroll } = useMessageTimelineScroll({
+    channelId,
+    messages,
+    latestMessageId,
+    nudgeCount: nudges.length,
+    hasOlderMessages,
+    isLoadingOlder,
+    loadOlder,
+  })
 
   const handleNudgeFeedback = React.useCallback((id: string, feedback: 'later' | 'not_helpful') => {
     setNudgeActionError(null)
@@ -1135,13 +1198,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   // 開いて読んでいるのにバッジが増え続ける問題への対処。タブ非表示時は既読にしない
   React.useEffect(() => {
     if (!channelId || messages.length === 0) return
-    const lastId = messages[messages.length - 1]?.id
-    if (!lastId || lastId.startsWith('optimistic-')) return
+    if (!latestMessageId || latestMessageId.startsWith('optimistic-')) return
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
-    if (lastReadMessageIdRef.current === lastId) return
-    lastReadMessageIdRef.current = lastId
+    if (lastReadMessageIdRef.current === latestMessageId) return
+    lastReadMessageIdRef.current = latestMessageId
     markChannelReadFn(channelId)
-  }, [channelId, messages, markChannelReadFn])
+  }, [channelId, latestMessageId, markChannelReadFn])
 
   const handleCheckboxToggle = React.useCallback(async (messageId: string, index: number, checked: boolean) => {
     try {
@@ -1220,39 +1282,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   React.useEffect(() => {
     if (sendMutation.isSuccess) setSendError(null)
   }, [sendMutation.isSuccess])
-
-  // チャンネル初期表示だけは末尾へ移動する。過去ページの追加中や、ユーザーが末尾以外を
-  // 読んでいるときは位置を動かさない。
-  React.useEffect(() => {
-    shouldScrollToBottomRef.current = true
-  }, [channelId])
-
-  React.useLayoutEffect(() => {
-    const pending = pendingPrependScrollRef.current
-    const el = scrollRef.current
-    if (!pending || !el) return
-    el.scrollTop = pending.scrollTop + (el.scrollHeight - pending.scrollHeight)
-    pendingPrependScrollRef.current = null
-  }, [messages])
-
-  React.useEffect(() => {
-    const el = scrollRef.current
-    if (!el || pendingPrependScrollRef.current) return
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    if (shouldScrollToBottomRef.current || distanceFromBottom < 80) {
-      el.scrollTop = el.scrollHeight
-    }
-    shouldScrollToBottomRef.current = false
-  }, [messages.length, nudges.length])
-
-  const handleMessageScroll = React.useCallback(() => {
-    const el = scrollRef.current
-    if (!el || el.scrollTop > 80 || !hasOlderMessages || isLoadingOlder) return
-    pendingPrependScrollRef.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight }
-    void loadOlder().then(loaded => {
-      if (!loaded) pendingPrependScrollRef.current = null
-    })
-  }, [hasOlderMessages, isLoadingOlder, loadOlder])
 
   // チャンネル切替時にフォーカスをリセット
   React.useEffect(() => { setFocusedMsgIdx(-1) }, [channelId])
