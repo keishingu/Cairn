@@ -4,7 +4,7 @@
 import { sql } from 'drizzle-orm'
 import { boolean, check, index, integer, pgTable, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
-import { channelTypeEnum, messageTypeEnum } from './enums'
+import { channelTypeEnum, contentReportReasonEnum, contentReportStatusEnum, messageTypeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
 import { milestones } from './milestones'
@@ -118,5 +118,46 @@ export const messageBookmarks = pgTable(
   (t) => [
     unique().on(t.messageId, t.userId),
     index('idx_message_bookmarks_user').on(t.userId, t.createdAt),
+  ],
+)
+
+export const userBlocks = pgTable(
+  'user_blocks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    blockerId: uuid('blocker_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
+    blockedId: uuid('blocked_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.blockerId, t.blockedId),
+    check('user_blocks_not_self', sql`${t.blockerId} <> ${t.blockedId}`),
+    index('idx_user_blocks_blocked').on(t.blockedId),
+  ],
+)
+
+export const contentReports = pgTable(
+  'content_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    channelId: uuid('channel_id').notNull().references(() => channels.id, { onDelete: 'cascade' }),
+    messageId: uuid('message_id').notNull().references(() => messages.id),
+    reporterId: uuid('reporter_id').notNull().references(() => profiles.id),
+    reportedUserId: uuid('reported_user_id').notNull().references(() => profiles.id),
+    reason: contentReportReasonEnum('reason').notNull(),
+    details: text('details'),
+    contentSnapshot: text('content_snapshot').notNull(),
+    status: contentReportStatusEnum('status').notNull().default('open'),
+    resolutionNote: text('resolution_note'),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedBy: uuid('resolved_by').references(() => profiles.id),
+    messageDeletedAt: timestamp('message_deleted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.messageId, t.reporterId),
+    index('idx_content_reports_status_created').on(t.status, t.createdAt),
+    index('idx_content_reports_workspace').on(t.workspaceId),
   ],
 )

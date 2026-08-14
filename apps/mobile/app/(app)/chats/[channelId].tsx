@@ -38,6 +38,7 @@ import { useSession } from '../../../lib/session-context'
 import { API_BASE_URL } from '../../../lib/env'
 import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
+import { apiFetch } from '../../../lib/api-fetch'
 
 // SDK 54 の legacy download API は安定した進捗不要ダウンロードに使える。
 // 型定義だけ build 配下から参照し、アプリコード側の exactOptionalPropertyTypes の影響を避ける。
@@ -208,7 +209,9 @@ function ChatMessageRow({
           </View>
         )}
 
-        {message.content.length > 0 && (
+        {message.blocked ? (
+          <Text style={[styles.messageText, { color: palette.text3 }]}>ブロックしたユーザーのメッセージ（長押しメニューから表示できます）</Text>
+        ) : message.content.length > 0 && (
           <Text style={[styles.messageText, { color: palette.text2 }]}>
             {parseMentions(message.content)}
           </Text>
@@ -602,6 +605,28 @@ export default function ChatThreadScreen() {
     })
   }
 
+  const report = async (message: MessageDto, reason: 'harassment' | 'discriminatory' | 'sexual' | 'violence' | 'spam' | 'other', details?: string) => {
+    setActionTarget(null)
+    const res = await apiFetch(`/api/messages/${message.id}/report`, { method: 'POST', body: JSON.stringify({ reason, ...(details ? { details } : {}) }) })
+    if (res.ok) Alert.alert('報告しました', '運営者が内容を確認します。')
+    else setSendError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? '報告に失敗しました')
+  }
+  const reportMenu = (message: MessageDto) => Alert.alert('報告理由', '理由を選択してください', [
+    { text: '嫌がらせ・いじめ', onPress: () => void report(message, 'harassment') },
+    { text: '差別的または攻撃的', onPress: () => void report(message, 'discriminatory') },
+    { text: '性的または不適切', onPress: () => void report(message, 'sexual') },
+    { text: '暴力・脅迫', onPress: () => void report(message, 'violence') },
+    { text: 'スパム', onPress: () => void report(message, 'spam') },
+    { text: 'その他', onPress: () => Alert.prompt('補足説明', '報告内容を入力してください', text => { if (text.trim()) void report(message, 'other', text.trim()) }) },
+    { text: 'キャンセル', style: 'cancel' },
+  ])
+  const blockUser = async (message: MessageDto) => {
+    setActionTarget(null)
+    const res = await apiFetch('/api/me/blocks', { method: 'POST', body: JSON.stringify({ userId: message.senderId }) })
+    if (res.ok) { await messagesQuery.refetch(); Alert.alert('ブロックしました') }
+    else setSendError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'ブロックに失敗しました')
+  }
+
   const canSubmit = editingMessage
     ? draft.trim().length > 0 && !editMessage.isPending
     : (draft.trim().length > 0 || upload.doneFileIds.length > 0) &&
@@ -961,6 +986,11 @@ export default function ChatThreadScreen() {
             palette={palette}
             onPress={() => actionTarget && beginReply(actionTarget)}
           />
+          {actionTarget?.blocked && <ActionButton icon="eye-outline" label="メッセージを一時表示" palette={palette} onPress={() => { Alert.alert('ブロックしたユーザーのメッセージ', actionTarget.content); setActionTarget(null) }} />}
+          {actionTarget?.senderId !== me?.id && <>
+            <ActionButton icon="flag-outline" label="報告" palette={palette} onPress={() => actionTarget && reportMenu(actionTarget)} />
+            <ActionButton icon="person-remove-outline" label="ブロック" palette={palette} destructive onPress={() => actionTarget && Alert.alert('ユーザーをブロックしますか？', '相手とのDMや通知も抑止します。', [{ text: 'キャンセル', style: 'cancel' }, { text: 'ブロック', style: 'destructive', onPress: () => void blockUser(actionTarget) }])} />
+          </>}
           <ActionButton
             icon={actionTarget?.bookmarked ? 'bookmark' : 'bookmark-outline'}
             label={actionTarget?.bookmarked ? 'ブックマークを解除' : 'ブックマーク'}

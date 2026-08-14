@@ -258,6 +258,9 @@ export async function getMessages({
     }
 
     const bookmarkedIds = new Set(bookmarkRows.map((bookmark) => bookmark.messageId))
+    const { filterUnblockedRecipients } = await import('@/lib/safety/blocks')
+    const senderIds = [...new Set(rows.map(row => row.senderId).filter(id => id !== userId))]
+    const visibleSenderIds = new Set(await filterUnblockedRecipients(userId, senderIds))
 
     // メンションは canonical な `<@userId>` で保存されているため、現在の表示名を read 時に解決して埋め込む。
     // これにより名前変更が全メッセージへ即座に反映される（Mobile の単純な置換クライアントも最新名で表示できる）。
@@ -316,6 +319,7 @@ export async function getMessages({
       parentMessageId: row.parentMessageId,
       replyTo: row.parentMessageId ? (parentMap.get(row.parentMessageId) ?? null) : null,
       bookmarked: bookmarkedIds.has(row.id),
+      blocked: row.senderId !== userId && !visibleSenderIds.has(row.senderId),
     }))
 
     return NextResponse.json(result)

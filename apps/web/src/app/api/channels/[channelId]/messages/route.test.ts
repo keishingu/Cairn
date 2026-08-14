@@ -16,6 +16,7 @@ const {
   mockIsNull,
   mockInArray,
   mockAnd,
+  mockOr,
   mockDesc,
   mockAsc,
   mockLte,
@@ -29,6 +30,7 @@ const {
   mockIsNull: vi.fn(() => Symbol('isNull')),
   mockInArray: vi.fn(() => Symbol('inArray')),
   mockAnd: vi.fn(() => Symbol('and')),
+  mockOr: vi.fn(() => Symbol('or')),
   mockDesc: vi.fn(() => Symbol('desc')),
   mockAsc: vi.fn(() => Symbol('asc')),
   mockLte: vi.fn(() => Symbol('lte')),
@@ -87,6 +89,10 @@ vi.mock('@cairn/db', () => ({
     messageId: 'messageBookmarks.messageId',
     userId: 'messageBookmarks.userId',
   },
+  userBlocks: {
+    blockerId: 'userBlocks.blockerId',
+    blockedId: 'userBlocks.blockedId',
+  },
   files: {
     id: 'files.id',
     fileName: 'files.fileName',
@@ -99,6 +105,7 @@ vi.mock('drizzle-orm', () => ({
   isNull: mockIsNull,
   inArray: mockInArray,
   and: mockAnd,
+  or: mockOr,
   desc: mockDesc,
   asc: mockAsc,
   lte: mockLte,
@@ -184,6 +191,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
         { messageId: 'msg-1', emoji: '👍', userId: DEV_USER_ID, userName: 'Kei' },
         { messageId: 'msg-1', emoji: '👍', userId: 'user-3', userName: 'Aki' },
       ],
+      [],
       [],
       [],
     )
