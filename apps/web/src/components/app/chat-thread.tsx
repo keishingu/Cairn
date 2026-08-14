@@ -1091,6 +1091,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const lastReadMessageIdRef = React.useRef<string | null>(null)
   const ensureMessageLoaded = useEnsureMessageLoaded(channelId)
   const { loadOlder, hasMore: hasOlderMessages, isLoadingOlder, error: loadOlderError } = useLoadOlderChannelMessages(channelId)
+  // 最新100件の再取得では件数が変わらないことがあるため、末尾の入れ替わりも追跡する。
+  const latestMessageId = messages[messages.length - 1]?.id
 
   const timeline = React.useMemo(() => [
     ...messages.map((message, index) => ({ kind: 'message' as const, createdAt: message.createdAt, message, messageIndex: index })),
@@ -1135,13 +1137,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   // 開いて読んでいるのにバッジが増え続ける問題への対処。タブ非表示時は既読にしない
   React.useEffect(() => {
     if (!channelId || messages.length === 0) return
-    const lastId = messages[messages.length - 1]?.id
-    if (!lastId || lastId.startsWith('optimistic-')) return
+    if (!latestMessageId || latestMessageId.startsWith('optimistic-')) return
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
-    if (lastReadMessageIdRef.current === lastId) return
-    lastReadMessageIdRef.current = lastId
+    if (lastReadMessageIdRef.current === latestMessageId) return
+    lastReadMessageIdRef.current = latestMessageId
     markChannelReadFn(channelId)
-  }, [channelId, messages, markChannelReadFn])
+  }, [channelId, latestMessageId, markChannelReadFn])
 
   const handleCheckboxToggle = React.useCallback(async (messageId: string, index: number, checked: boolean) => {
     try {
@@ -1243,7 +1244,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       el.scrollTop = el.scrollHeight
     }
     shouldScrollToBottomRef.current = false
-  }, [messages.length, nudges.length])
+  }, [latestMessageId, nudges.length])
 
   const handleMessageScroll = React.useCallback(() => {
     const el = scrollRef.current
