@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Linking } from 'react-native'
 import { Link, useRouter } from 'expo-router'
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/api-fetch'
@@ -107,6 +107,24 @@ export default function SignupScreen() {
         </View>
 
         <GoogleSignInButton label="Google で続ける" onError={(m) => setError(m || null)} />
+
+        <View style={styles.legal}>
+          <Text style={styles.legalText}>アカウントを作成することで、</Text>
+          <TouchableOpacity
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL('https://oss-cairn.com/terms')}
+          >
+            <Text style={styles.legalLink}>利用規約</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalText}>と</Text>
+          <TouchableOpacity
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL('https://oss-cairn.com/privacy')}
+          >
+            <Text style={styles.legalLink}>プライバシーポリシー</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalText}>に同意したものとみなします。</Text>
+        </View>
       </View>
 
       <Link href="/(auth)/login" style={styles.link}>
@@ -187,5 +205,20 @@ const styles = StyleSheet.create({
     marginTop: 24,
     color: '#0070f3',
     fontSize: 14,
+  },
+  legal: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 2,
+    marginTop: 4,
+  },
+  legalText: {
+    color: '#666',
+    fontSize: 12,
+  },
+  legalLink: {
+    color: '#0070f3',
+    fontSize: 12,
   },
 })
