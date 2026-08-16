@@ -23,9 +23,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
 
-  // Native clients send their Supabase session as a Bearer token. getAuthUser
-  // accepts both that path and the web cookie session.
-  const { userId, user, error } = await getAuthUser()
+  // Native clients send their Supabase session as a Bearer token. Request自身の
+  // ヘッダーを渡し、Route Handler外のリクエストコンテキストに依存しない。
+  const { userId, user, error } = await getAuthUser(req.headers.get('Authorization'))
   if (error || !userId || !user) {
     return error ?? NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

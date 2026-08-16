@@ -229,6 +229,19 @@ describe('get-auth-context', () => {
     expect(result).toEqual({ userId: 'user-1', user: { id: 'user-1' }, error: null })
   })
 
+  it('getAuthUser は渡されたリクエストヘッダーを優先する', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+      error: null,
+    })
+
+    const { getAuthUser } = await import('./get-auth-context')
+    await getAuthUser('Bearer request-token')
+
+    expect(mockSupabase.auth.getUser).toHaveBeenCalledWith('request-token')
+  })
+
   it('getAuthUser はAuthから削除済みなら有効期限内のBearer JWTでも401を返す', async () => {
     mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer deleted-user-token' }))
     mockSupabase.auth.getUser.mockResolvedValue({

@@ -154,7 +154,7 @@ describe('POST /api/auth/setup', () => {
   })
 
   it('Bearer token でもネイティブのセットアップを認証できる', async () => {
-    mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer native-access-token' }))
+    mockHeaders.mockResolvedValue(new Headers())
     mockDb.select
       .mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
       .mockReturnValueOnce(selectChain([]))
@@ -163,7 +163,10 @@ describe('POST /api/auth/setup', () => {
     const res = await POST(
       new Request('http://localhost/api/auth/setup', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer native-access-token',
+        },
         body: JSON.stringify({}),
       }),
     )

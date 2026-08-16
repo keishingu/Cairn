@@ -8,25 +8,31 @@ import { apiFetch } from './api-fetch'
 import { resolveOAuthScheme } from './oauth-scheme'
 import { getAppleDisplayName, isAppleAuthenticationCancelled } from './apple-auth'
 import { beginPostAuthNavigation, completePostAuthNavigation } from './auth-navigation'
+import type { Session } from '@supabase/supabase-js'
 
 // 認可後に WebBrowser のセッションを確実に閉じる（iOS で必要）
 WebBrowser.maybeCompleteAuthSession()
 
 export type OAuthResult = 'success' | 'cancelled' | 'needs-workspace'
 
-async function setupProfile(): Promise<{ needsWorkspace: boolean }> {
+async function setupProfile(
+  session: Session,
+  displayName?: string,
+): Promise<{ needsWorkspace: boolean }> {
   // OAuth初回ログインでもprofilesを作成する（省くと以降の全APIが403になる）。
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  const displayName =
-    user?.user_metadata?.['display_name'] ??
-    user?.user_metadata?.['full_name'] ??
-    user?.user_metadata?.['name']
-  const res = await apiFetch('/api/auth/setup', {
-    method: 'POST',
-    body: JSON.stringify(displayName ? { displayName } : {}),
-  })
+  const profileDisplayName =
+    displayName ??
+    session.user.user_metadata?.['display_name'] ??
+    session.user.user_metadata?.['full_name'] ??
+    session.user.user_metadata?.['name']
+  const res = await apiFetch(
+    '/api/auth/setup',
+    {
+      method: 'POST',
+      body: JSON.stringify(profileDisplayName ? { displayName: profileDisplayName } : {}),
+    },
+    session,
+  )
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error((body as { error?: string }).error ?? 'プロフィールの作成に失敗しました')
@@ -77,10 +83,11 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
 
   beginPostAuthNavigation()
   try {
-    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+    const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
     if (exchangeError) throw exchangeError
+    if (!data.session) throw new Error('認証セッションを確立できませんでした')
 
-    const { needsWorkspace } = await setupProfile()
+    const { needsWorkspace } = await setupProfile(data.session)
     return needsWorkspace ? 'needs-workspace' : 'success'
   } catch (error) {
     completePostAuthNavigation()
@@ -120,13 +127,14 @@ export async function signInWithApple(): Promise<OAuthResult> {
 
   beginPostAuthNavigation()
   try {
-    const { error: authError } = await supabase.auth.signInWithIdToken({
+    const { data, error: authError } = await supabase.auth.signInWithIdToken({
       provider: 'apple',
       token: credential.identityToken,
       nonce: rawNonce,
       ...(credential.authorizationCode ? { access_token: credential.authorizationCode } : {}),
     })
     if (authError) throw authError
+    if (!data.session) throw new Error('認証セッションを確立できませんでした')
 
     const displayName = getAppleDisplayName(credential.fullName)
     if (displayName) {
@@ -138,7 +146,7 @@ export async function signInWithApple(): Promise<OAuthResult> {
     }
 
     // emailはAppleのID tokenをSupabaseに任せる。relay emailも通常の認証済みemailとして扱う。
-    const { needsWorkspace } = await setupProfile()
+    const { needsWorkspace } = await setupProfile(data.session, displayName ?? undefined)
 
     return needsWorkspace ? 'needs-workspace' : 'success'
   } catch (error) {
