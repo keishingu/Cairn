@@ -62,6 +62,7 @@ const PATHS: Record<string, React.ReactNode> = {
   pin:         <><path d="M12 17v5"/><path d="M9 11l-3 3h12l-3-3V3H9z"/></>,
   flag:        <><path d="M4 21V4h14l-3 5 3 5H4"/></>,
   arrowUp:     <><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></>,
+  arrowDown:   <><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></>,
   mountain:    <><path d="M3 20l6-9 4 6 3-4 5 7z"/><circle cx="9" cy="6" r="1.5"/></>,
   folder:      <><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></>,
   download:    <><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 21h14"/></>,

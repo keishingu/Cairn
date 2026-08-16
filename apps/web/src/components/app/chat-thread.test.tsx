@@ -4,7 +4,12 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ChatMessage, copyMessageContent, copyMessageLink } from './chat-thread'
+import {
+  ChatMessage,
+  copyMessageContent,
+  copyMessageLink,
+  isNearMessageTimelineEnd,
+} from './chat-thread'
 
 const { toastSuccess, toastError } = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
@@ -153,5 +158,12 @@ describe('ChatMessage copy action', () => {
     expect(screen.getByText('重要').tagName).toBe('STRONG')
     expect(screen.getByRole('checkbox')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '詳細' })).toHaveAttribute('href', 'https://example.com/guide')
+  })
+})
+
+describe('isNearMessageTimelineEnd', () => {
+  it('末尾から80px以内を最新表示中として扱う', () => {
+    expect(isNearMessageTimelineEnd({ scrollHeight: 1_000, scrollTop: 720, clientHeight: 200 })).toBe(true)
+    expect(isNearMessageTimelineEnd({ scrollHeight: 1_000, scrollTop: 719, clientHeight: 200 })).toBe(false)
   })
 })
