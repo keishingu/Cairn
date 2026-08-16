@@ -14,6 +14,8 @@ type GetMessagesInput = {
   workspaceId: string
 }
 
+const PAGE_SIZE = 100
+
 export async function getMessages({
   channelId,
   requestUrl,
@@ -23,7 +25,10 @@ export async function getMessages({
   // ブックマーク・パーマリンクから開いた古いメッセージが直近100件の外にある場合、
   // その前後を中心としたウィンドウを取得する（無いと該当メッセージが読み込まれず、
   // ジャンプ先がスクロール表示されないまま静かに失敗する）
-  const aroundMessageId = new URL(requestUrl).searchParams.get('around')
+  const searchParams = new URL(requestUrl).searchParams
+  const aroundMessageId = searchParams.get('around')
+  // 最古の表示済みメッセージIDをカーソルとして、さらに古いページを取得する。
+  const beforeMessageId = aroundMessageId ? null : searchParams.get('before')
 
   try {
     const { db } = await import('@cairn/db')
@@ -36,7 +41,7 @@ export async function getMessages({
       files,
       workspaceMembers,
     } = await import('@cairn/db')
-    const { eq, isNull, inArray, and, lte, gt, desc, asc } = await import('drizzle-orm')
+    const { eq, isNull, inArray, and, lte, lt, gt, or, desc, asc } = await import('drizzle-orm')
 
     const selectFields = {
       id: messages.id,
@@ -61,6 +66,8 @@ export async function getMessages({
       createdAt: Date
       updatedAt: Date
     }>
+
+    let hasMore = false
 
     if (aroundMessageId) {
       const [anchor] = await db
@@ -125,7 +132,22 @@ export async function getMessages({
       beforeAndAnchor.reverse()
       rows = [...beforeAndAnchor, ...after]
     } else {
-      rows = await db
+      let cursor: { id: string; createdAt: Date } | null = null
+      if (beforeMessageId) {
+        const [found] = await db
+          .select({ id: messages.id, createdAt: messages.createdAt })
+          .from(messages)
+          .where(and(
+            eq(messages.id, beforeMessageId),
+            eq(messages.channelId, channelId),
+            isNull(messages.deletedAt),
+          ))
+          .limit(1)
+        if (!found) return NextResponse.json([] satisfies MessageDto[], { headers: { 'X-Cairn-Has-More': 'false' } })
+        cursor = found
+      }
+
+      const pageRows = await db
         .select(selectFields)
         .from(messages)
         .innerJoin(profiles, eq(messages.senderId, profiles.id))
@@ -136,10 +158,21 @@ export async function getMessages({
             eq(workspaceMembers.workspaceId, workspaceId),
           ),
         )
-        .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
-        .orderBy(desc(messages.createdAt))
-        .limit(100)
+        .where(and(
+          eq(messages.channelId, channelId),
+          isNull(messages.deletedAt),
+          ...(cursor
+            ? [or(
+                lt(messages.createdAt, cursor.createdAt),
+                and(eq(messages.createdAt, cursor.createdAt), lt(messages.id, cursor.id)),
+              )]
+            : []),
+        ))
+        .orderBy(desc(messages.createdAt), desc(messages.id))
+        .limit(PAGE_SIZE + 1)
 
+      hasMore = pageRows.length > PAGE_SIZE
+      rows = pageRows.slice(0, PAGE_SIZE)
       rows.reverse()
     }
 
@@ -258,6 +291,9 @@ export async function getMessages({
     }
 
     const bookmarkedIds = new Set(bookmarkRows.map((bookmark) => bookmark.messageId))
+    const { filterUnblockedRecipients } = await import('@/lib/safety/blocks')
+    const senderIds = [...new Set(rows.map(row => row.senderId).filter(id => id !== userId))]
+    const visibleSenderIds = new Set(await filterUnblockedRecipients(userId, senderIds))
 
     // メンションは canonical な `<@userId>` で保存されているため、現在の表示名を read 時に解決して埋め込む。
     // これにより名前変更が全メッセージへ即座に反映される（Mobile の単純な置換クライアントも最新名で表示できる）。
@@ -316,9 +352,12 @@ export async function getMessages({
       parentMessageId: row.parentMessageId,
       replyTo: row.parentMessageId ? (parentMap.get(row.parentMessageId) ?? null) : null,
       bookmarked: bookmarkedIds.has(row.id),
+      blocked: row.senderId !== userId && !visibleSenderIds.has(row.senderId),
     }))
 
-    return NextResponse.json(result)
+    return NextResponse.json(result, {
+      headers: { 'X-Cairn-Has-More': String(hasMore) },
+    })
   } catch (err) {
     console.error('[/api/channels/[channelId]/messages GET] DB query failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

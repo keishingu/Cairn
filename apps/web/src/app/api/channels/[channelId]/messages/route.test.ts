@@ -16,9 +16,11 @@ const {
   mockIsNull,
   mockInArray,
   mockAnd,
+  mockOr,
   mockDesc,
   mockAsc,
   mockLte,
+  mockLt,
   mockGt,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
@@ -29,9 +31,11 @@ const {
   mockIsNull: vi.fn(() => Symbol('isNull')),
   mockInArray: vi.fn(() => Symbol('inArray')),
   mockAnd: vi.fn(() => Symbol('and')),
+  mockOr: vi.fn(() => Symbol('or')),
   mockDesc: vi.fn(() => Symbol('desc')),
   mockAsc: vi.fn(() => Symbol('asc')),
   mockLte: vi.fn(() => Symbol('lte')),
+  mockLt: vi.fn(() => Symbol('lt')),
   mockGt: vi.fn(() => Symbol('gt')),
 }))
 
@@ -87,6 +91,10 @@ vi.mock('@cairn/db', () => ({
     messageId: 'messageBookmarks.messageId',
     userId: 'messageBookmarks.userId',
   },
+  userBlocks: {
+    blockerId: 'userBlocks.blockerId',
+    blockedId: 'userBlocks.blockedId',
+  },
   files: {
     id: 'files.id',
     fileName: 'files.fileName',
@@ -99,9 +107,11 @@ vi.mock('drizzle-orm', () => ({
   isNull: mockIsNull,
   inArray: mockInArray,
   and: mockAnd,
+  or: mockOr,
   desc: mockDesc,
   asc: mockAsc,
   lte: mockLte,
+  lt: mockLt,
   gt: mockGt,
   sql: vi.fn(() => 'sql'),
 }))
@@ -186,6 +196,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
       ],
       [],
       [],
+      [],
     )
 
     const { GET } = await import('./route')
@@ -205,5 +216,46 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
         ],
       }),
     ])
+  })
+
+  it('直近ページでは101件目を除外し、次ページの有無をヘッダーで返す', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    const rows = Array.from({ length: 101 }, (_, index) => ({
+      id: `message-${101 - index}`,
+      content: `message ${101 - index}`,
+      messageType: 'text',
+      parentMessageId: null,
+      senderId: 'user-2',
+      senderName: 'Sender',
+      senderAvatarUrl: null,
+      createdAt: new Date(`2026-01-01T00:${String(59 - (index % 60)).padStart(2, '0')}:00.000Z`),
+      updatedAt: new Date(`2026-01-01T00:${String(59 - (index % 60)).padStart(2, '0')}:00.000Z`),
+    }))
+    mockSelectResults(rows, [], [], [], [])
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/'), ctxRouteParams())
+
+    expect(res.headers.get('X-Cairn-Has-More')).toBe('true')
+    await expect(res.json()).resolves.toHaveLength(100)
+  })
+
+  it('beforeカーソルより古いメッセージだけを返す', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    const cursor = { id: 'cursor-1', createdAt: new Date('2026-01-01T01:00:00.000Z') }
+    const row = {
+      id: 'older-1', content: 'older', messageType: 'text', parentMessageId: null,
+      senderId: 'user-2', senderName: 'Sender', senderAvatarUrl: null,
+      createdAt: new Date('2026-01-01T00:59:00.000Z'), updatedAt: new Date('2026-01-01T00:59:00.000Z'),
+    }
+    mockSelectResults([cursor], [row], [], [], [], [])
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/?before=cursor-1'), ctxRouteParams())
+
+    expect(mockLt).toHaveBeenCalled()
+    expect(mockOr).toHaveBeenCalled()
+    expect(res.headers.get('X-Cairn-Has-More')).toBe('false')
+    await expect(res.json()).resolves.toEqual([expect.objectContaining({ id: 'older-1' })])
   })
 })

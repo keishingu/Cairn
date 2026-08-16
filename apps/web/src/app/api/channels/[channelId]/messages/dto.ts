@@ -33,4 +33,5 @@ export interface MessageDto {
   parentMessageId: string | null
   replyTo: ReplyToDto | null
   bookmarked: boolean
+  blocked?: boolean
 }

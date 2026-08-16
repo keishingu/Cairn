@@ -65,6 +65,17 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'ai',
 ])
 
+export const contentReportReasonEnum = pgEnum('content_report_reason', [
+  'harassment',
+  'discriminatory',
+  'sexual',
+  'violence',
+  'spam',
+  'other',
+])
+
+export const contentReportStatusEnum = pgEnum('content_report_status', ['open', 'resolved', 'dismissed'])
+
 // 課金プランの UI 名はブランド変更に備えてここへ持ち込まない。
 // individual は個人購読、workspace は将来のワークスペース定額を表す。
 export const billingPlanEnum = pgEnum('billing_plan', ['individual', 'workspace'])

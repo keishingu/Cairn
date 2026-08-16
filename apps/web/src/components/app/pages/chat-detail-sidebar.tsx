@@ -1,14 +1,19 @@
 'use client'
 
 import React from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Icon, Avatar, StatusChip } from '../primitives'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 import { FileTypeIcon, GoogleDocsIcon } from '../file-type-icon'
 import { InlineFileNameEditor } from '../inline-file-name-editor'
 import { RowActionMenu } from '../row-action-menu'
+import { TaskEditDialog } from '../task-edit-dialog'
+import { ImageLightbox, type LightboxImage } from '../image-lightbox'
+import { MarkdownContent } from '../markdown-content'
 import { useProjectTasks } from '@/hooks/use-project-tasks'
 import { useChannelFiles } from '@/hooks/use-channel-files'
 import { useRenameFile } from '@/hooks/use-rename-file'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
@@ -76,6 +81,57 @@ function formatFileTimestamp(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+function isMarkdownFile(file: ChannelFileDto): boolean {
+  return file.fileType !== 'link' && (
+    file.mimeType === 'text/markdown' || file.fileName.toLowerCase().endsWith('.md')
+  )
+}
+
+function isPlainTextFile(file: ChannelFileDto): boolean {
+  return file.fileType !== 'link' && (
+    file.mimeType === 'text/plain' || file.fileName.toLowerCase().endsWith('.txt')
+  )
+}
+
+function isPreviewableTextFile(file: ChannelFileDto): boolean {
+  return isMarkdownFile(file) || isPlainTextFile(file)
+}
+
+function isImageFile(file: ChannelFileDto): boolean {
+  return file.fileType !== 'link' && (file.mimeType?.startsWith('image/') ?? false)
+}
+
+const TextFilePreviewDialog = ({ file, onClose }: { file: ChannelFileDto; onClose: () => void }) => {
+  const { data: content, isLoading, isError } = useQuery<string>({
+    queryKey: ['attachment-text-preview', file.id],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/attachments/${file.id}`)
+      if (!res.ok) throw new Error('Failed to fetch text preview')
+      return res.text()
+    },
+  })
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label={`${file.fileName} のプレビュー`} onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(920px, 100%)', maxHeight: 'min(760px, 90vh)', display: 'flex', flexDirection: 'column', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id}/>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.fileName}</div>
+          <a href={`/api/attachments/${file.id}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>別タブで開く</a>
+          <button onClick={onClose} aria-label="プレビューを閉じる" style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', padding: 4 }}><Icon name="close" size={16}/></button>
+        </div>
+        <div style={{ padding: 24, overflowY: 'auto', color: 'var(--text)', fontSize: 14, lineHeight: 1.7 }}>
+          {isLoading ? <div style={{ color: 'var(--text-3)', fontSize: 13 }}>テキストを読み込んでいます...</div>
+            : isError ? <div style={{ color: 'var(--red-text)', fontSize: 13 }}>テキストプレビューを読み込めませんでした。</div>
+              : isMarkdownFile(file) ? <MarkdownContent content={content ?? ''} fontSize={14} lineHeight={1.7}/>
+                : <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit', fontSize: 14, lineHeight: 1.7 }}>{content ?? ''}</pre>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // 長い説明文は5行でクランプし、下端をフェードアウト → 「続きを読む」で全文展開する
 const ExpandableDescription = ({ text }: { text: string }) => {
   const ref = React.useRef<HTMLParagraphElement>(null)
@@ -119,11 +175,13 @@ const ExpandableDescription = ({ text }: { text: string }) => {
 }
 
 // チェックボックス付きのタスク箇条書き。チェックは PATCH で連動し、進捗にも反映される
-const TaskChecklist = ({ project }: { project: ProjectDto }) => {
+const TaskChecklist = ({ project, onJumpToMessage }: { project: ProjectDto; onJumpToMessage: (messageId: string) => void }) => {
   const { data: tasks = [], isLoading, toggleMutation } = useProjectTasks(project.id)
   const listRef = React.useRef<HTMLDivElement>(null)
   const [expanded, setExpanded] = React.useState(false)
   const [clamped, setClamped] = React.useState(false)
+  const [editingTask, setEditingTask] = React.useState<TaskDto | null>(null)
+  const [dialogMode, setDialogMode] = React.useState<'edit' | 'delete'>('edit')
 
   const toggle = (id: string, status: TaskDto['status']) =>
     toggleMutation.mutate({ id, newStatus: status === 'done' ? 'todo' : 'done' })
@@ -154,7 +212,7 @@ const TaskChecklist = ({ project }: { project: ProjectDto }) => {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <span style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          <Icon name="check" size={12} color="var(--emerald)"/>
+          <Icon name="check" size={12} color="var(--accent)"/>
           タスク
         </span>
         <span style={{ fontSize: 11.5, color: 'var(--text-3)', fontWeight: 600 }}>
@@ -162,7 +220,7 @@ const TaskChecklist = ({ project }: { project: ProjectDto }) => {
         </span>
       </div>
       <div style={{ height: 5, borderRadius: 999, background: 'var(--card-2)', overflow: 'hidden' }}>
-        <div style={{ width: `${progress}%`, height: '100%', borderRadius: 999, background: 'var(--emerald)', transition: 'width .2s' }}/>
+        <div style={{ width: `${progress}%`, height: '100%', borderRadius: 999, background: 'var(--accent)', transition: 'width .2s' }}/>
       </div>
 
       {isLoading ? (
@@ -176,7 +234,7 @@ const TaskChecklist = ({ project }: { project: ProjectDto }) => {
               {sortedTasks.map(t => {
                 const done = t.status === 'done'
                 return (
-                  <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0' }}>
+                  <div key={t.id} className="chat-detail-row" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0' }}>
                     <button
                       onClick={() => toggle(t.id, t.status)}
                       aria-pressed={done}
@@ -184,16 +242,35 @@ const TaskChecklist = ({ project }: { project: ProjectDto }) => {
                       style={{
                         flexShrink: 0, marginTop: 1, width: 16, height: 16, borderRadius: '50%',
                         border: done ? 'none' : '1.5px solid var(--border-2)',
-                        background: done ? 'var(--emerald)' : 'transparent',
+                        background: done ? 'var(--accent)' : 'transparent',
                         color: '#fff', cursor: 'pointer', padding: 0,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
                     >
                       {done && <Icon name="check" size={10} color="#fff" strokeWidth={3}/>}
                     </button>
-                    <span style={{ fontSize: 12.5, lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1 }}>
-                      {formatTaskTitleForDisplay(t.title)}
-                    </span>
+                    {t.sourceMessageId ? (
+                      <button type="button" onClick={() => onJumpToMessage(t.sourceMessageId!)} title="タスクを登録したメッセージへ移動"
+                        style={{ padding: 0, border: 'none', background: 'transparent', font: 'inherit', fontSize: 12.5, lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1, textAlign: 'left', cursor: 'pointer' }}>
+                        {formatTaskTitleForDisplay(t.title)}
+                        <span aria-label="メッセージに紐付いています" style={{ display: 'inline-flex', marginLeft: 4, verticalAlign: 'text-bottom' }}>
+                          <Icon name="chat" size={11} color="var(--text-4)"/>
+                        </span>
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: 12.5, lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1 }}>
+                        {formatTaskTitleForDisplay(t.title)}
+                      </span>
+                    )}
+                    <div className="chat-detail-row-action">
+                      <RowActionMenu
+                        triggerStyle={{ padding: '3px 4px' }}
+                        actions={[
+                          { icon: 'edit', label: '編集', onSelect: () => { setDialogMode('edit'); setEditingTask(t) } },
+                          ...(t.isLinkedToMessage ? [] : [{ icon: 'trash', label: '削除', danger: true, onSelect: () => { setDialogMode('delete'); setEditingTask(t) } }]),
+                        ]}
+                      />
+                    </div>
                   </div>
                 )
               })}
@@ -212,6 +289,7 @@ const TaskChecklist = ({ project }: { project: ProjectDto }) => {
           )}
         </div>
       )}
+      <TaskEditDialog open={editingTask !== null} task={editingTask} initialMode={dialogMode} onClose={() => setEditingTask(null)} />
     </div>
   )
 }
@@ -226,10 +304,31 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
   const renameFile = useRenameFile()
   const [expanded, setExpanded] = React.useState(false)
   const [renamingFileId, setRenamingFileId] = React.useState<string | null>(null)
+  const [textPreviewFile, setTextPreviewFile] = React.useState<ChannelFileDto | null>(null)
+  const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
 
   const VISIBLE_COUNT = 3
   const visibleFiles = expanded ? files : files.slice(0, VISIBLE_COUNT)
   const hasMore = files.length > VISIBLE_COUNT
+  const imageFiles = React.useMemo(() => files.filter(isImageFile), [files])
+  const lightboxImages = React.useMemo<LightboxImage[]>(() => imageFiles.map(file => ({
+    key: file.id,
+    src: `/api/attachments/${file.id}`,
+    caption: file.fileName,
+  })), [imageFiles])
+
+  const openFile = (file: ChannelFileDto) => {
+    if (isPreviewableTextFile(file)) {
+      setTextPreviewFile(file)
+      return
+    }
+    if (isImageFile(file)) {
+      const index = imageFiles.findIndex(image => image.id === file.id)
+      if (index >= 0) setLightboxIndex(index)
+      return
+    }
+    window.open(file.fileType === 'link' && file.externalUrl ? file.externalUrl : `/api/attachments/${file.id}`, '_blank', 'noopener,noreferrer')
+  }
 
   return (
     <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
@@ -248,7 +347,6 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
             const meta = isLink ? '外部リンク' : [sizeStr, formatFileTimestamp(f.createdAt)].filter(Boolean).join(' · ')
             const canJump = f.sourceMessageId !== null
             const isRenaming = renamingFileId === f.id
-            const openUrl = isLink && f.externalUrl ? f.externalUrl : `/api/attachments/${f.id}`
             const fileIcon = isLink && f.externalUrl
               ? <GoogleDocsIcon url={f.externalUrl} width={26} height={30}/>
               : <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName} fileId={f.id} width={26} height={30}/>
@@ -257,6 +355,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
             return (
               <div
                 key={f.id}
+                className="chat-detail-row"
                 style={{ width: 'calc(100% + 12px)', display: 'flex', alignItems: 'center', gap: 2, padding: '5px 2px 5px 6px', margin: '0 -6px', borderRadius: 7 }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
@@ -275,31 +374,35 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
                     </div>
                   </div>
                 ) : (
+                  <>
+                  <button type="button" onClick={() => openFile(f)} title="ファイルを開く"
+                    style={{ flexShrink: 0, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex' }}>
+                    {fileIcon}
+                  </button>
                   <button
                     type="button"
                     onClick={() => f.sourceMessageId && onJumpToMessage(f.sourceMessageId)}
                     disabled={!canJump}
                     title={canJump ? '共有されたメッセージへ移動' : '共有元のメッセージが見つかりません'}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit', cursor: canJump ? 'pointer' : 'default' }}
+                    style={{ flex: 1, minWidth: 0, padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit', cursor: canJump ? 'pointer' : 'default' }}
                   >
-                    {fileIcon}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {f.fileName}
                       </div>
                       {fileMeta}
                     </div>
-                    <Icon name="chat" size={12} color={canJump ? 'var(--text-4)' : 'var(--border-2)'}/>
                   </button>
+                  </>
                 )}
                 {!isRenaming && (
-                  <RowActionMenu
+                  <div className="chat-detail-row-action"><RowActionMenu
                     triggerStyle={{ padding: '3px 4px' }}
                     actions={[
-                      { icon: 'eye', label: 'ファイルを開く', onSelect: () => window.open(openUrl, '_blank', 'noopener,noreferrer') },
+                      { icon: 'eye', label: 'ファイルを開く', onSelect: () => openFile(f) },
                       { icon: 'edit', label: '名前を変更', onSelect: () => setRenamingFileId(f.id) },
                     ]}
-                  />
+                  /></div>
                 )}
               </div>
             )
@@ -314,12 +417,16 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
           )}
         </div>
       )}
+      {textPreviewFile && <TextFilePreviewDialog file={textPreviewFile} onClose={() => setTextPreviewFile(null)} />}
+      {lightboxIndex !== null && lightboxImages.length > 0 && (
+        <ImageLightbox images={lightboxImages} index={Math.min(lightboxIndex, lightboxImages.length - 1)} onIndexChange={setLightboxIndex} onClose={() => setLightboxIndex(null)} />
+      )}
     </div>
   )
 }
 
 // 紐づくプロジェクトの概要（ステータス・説明・タスク進捗）。期間・詳細パネルへの導線は見出し部分に表示
-const ProjectOverview = ({ project }: { project: ProjectDto }) => {
+const ProjectOverview = ({ project, onJumpToMessage }: { project: ProjectDto; onJumpToMessage: (messageId: string) => void }) => {
   return (
     <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', flexDirection: 'column', gap: 12 }}>
       {project.statusName && (
@@ -330,7 +437,7 @@ const ProjectOverview = ({ project }: { project: ProjectDto }) => {
 
       {project.description && <ExpandableDescription text={project.description}/>}
 
-      <TaskChecklist project={project}/>
+      <TaskChecklist project={project} onJumpToMessage={onJumpToMessage}/>
     </div>
   )
 }
@@ -420,7 +527,7 @@ const ChatDetailContent = ({
       </div>
     )}
 
-    {isProject && project && <ProjectOverview project={project}/>}
+    {isProject && project && <ProjectOverview project={project} onJumpToMessage={onJumpToMessage}/>}
 
     <ChannelFilesSection channelId={channelId} onJumpToMessage={onJumpToMessage}/>
 

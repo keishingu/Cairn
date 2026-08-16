@@ -61,5 +61,9 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.redirect(`${origin}/auth/login?error=callback`)
+  const loginUrl = new URL('/auth/login', origin)
+  loginUrl.searchParams.set('error', 'callback')
+  if (inviteToken) loginUrl.searchParams.set('invite', inviteToken)
+  if (safeNextPath) loginUrl.searchParams.set('next', safeNextPath)
+  return NextResponse.redirect(loginUrl)
 }

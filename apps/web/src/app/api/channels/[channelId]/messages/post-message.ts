@@ -8,6 +8,8 @@ import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
 import { canAccessFile, type WorkspaceRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasBlockBetween } from '@/lib/safety/blocks'
+import { unsafeMessageError } from '@/lib/safety/message-filter'
 import type { MessageDto } from './dto'
 
 type PostMessageInput = {
@@ -35,7 +37,7 @@ export async function postMessage({
 }: PostMessageArgs) {
   try {
     const { db } = await import('@cairn/db')
-    const { messages, profiles, messageAttachments, files, channels, tasks, workspaceMembers } =
+    const { messages, profiles, messageAttachments, files, channels, channelMembers, tasks, workspaceMembers } =
       await import('@cairn/db')
     const { eq, and, isNull, inArray, sql } = await import('drizzle-orm')
 
@@ -118,6 +120,24 @@ export async function postMessage({
     const attachmentFileIds = payload.attachmentFileIds ?? []
     // メンションは名前なしの canonical 形式で保存する（埋め込み名が来ても除去）
     const content = canonicalizeMentions(payload.content)
+    const safetyError = unsafeMessageError(content)
+    if (safetyError) return NextResponse.json({ error: safetyError }, { status: 422 })
+
+    // DM はチャンネル作成後にもブロック関係が変わりうるため、投稿ごとに再検証する。
+    const [channelForSafety] = await db
+      .select({ type: channels.type })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1)
+    if (channelForSafety?.type === 'dm') {
+      const participants = await db.select({ userId: channelMembers.userId })
+        .from(channelMembers)
+        .where(eq(channelMembers.channelId, channelId))
+      const other = participants.find(participant => participant.userId !== userId)
+      if (!other || await hasBlockBetween(userId, other.userId)) {
+        return NextResponse.json({ error: 'このユーザーとのDMは利用できません' }, { status: 403 })
+      }
+    }
 
     if (attachmentFileIds.length > 0) {
       const fileRows = await db

@@ -43,25 +43,46 @@ async function removeSubscription(sub: PushSubscription): Promise<void> {
 
 export type PushPermissionState = 'unsupported' | 'default' | 'granted' | 'denied'
 
+const PUSH_PERMISSION_CHANGE_EVENT = 'cairn:push-permission-change'
+
+function supportsPushNotifications(): boolean {
+  return typeof window !== 'undefined'
+    && 'serviceWorker' in navigator
+    && 'PushManager' in window
+    && 'Notification' in window
+}
+
 export function usePushNotifications() {
   const [permission, setPermission] = useState<PushPermissionState>('unsupported')
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
-    setPermission(Notification.permission as PushPermissionState)
+    if (!supportsPushNotifications()) return
+
+    const syncPermission = () => setPermission(Notification.permission as PushPermissionState)
+    const receivePermissionChange = (event: Event) => {
+      setPermission((event as CustomEvent<PushPermissionState>).detail)
+    }
+
+    syncPermission()
+    window.addEventListener(PUSH_PERMISSION_CHANGE_EVENT, receivePermissionChange)
+    return () => window.removeEventListener(PUSH_PERMISSION_CHANGE_EVENT, receivePermissionChange)
+  }, [])
+
+  const setSharedPermission = useCallback((nextPermission: PushPermissionState) => {
+    setPermission(nextPermission)
+    window.dispatchEvent(new CustomEvent<PushPermissionState>(PUSH_PERMISSION_CHANGE_EVENT, { detail: nextPermission }))
   }, [])
 
   const subscribe = useCallback(async () => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+    if (!supportsPushNotifications()) return
     setLoading(true)
     try {
       const vapidKey = await getVapidPublicKey()
       if (!vapidKey) return
 
       const permission = await Notification.requestPermission()
-      setPermission(permission as PushPermissionState)
+      setSharedPermission(permission as PushPermissionState)
       if (permission !== 'granted') return
 
       const reg = await navigator.serviceWorker.ready
@@ -79,10 +100,10 @@ export function usePushNotifications() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [setSharedPermission])
 
   const unsubscribe = useCallback(async () => {
-    if (!('serviceWorker' in navigator)) return
+    if (!supportsPushNotifications()) return
     setLoading(true)
     try {
       const reg = await navigator.serviceWorker.ready
@@ -91,11 +112,11 @@ export function usePushNotifications() {
         await removeSubscription(sub)
         await sub.unsubscribe()
       }
-      setPermission('default')
+      setSharedPermission('default')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [setSharedPermission])
 
   return { permission, loading, subscribe, unsubscribe }
 }

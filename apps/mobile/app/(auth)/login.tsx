@@ -3,6 +3,8 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator 
 import { Link, useLocalSearchParams } from 'expo-router'
 import { supabase } from '../../lib/supabase'
 import { GoogleSignInButton } from '../../components/google-sign-in-button'
+import { AppleSignInButton } from '../../components/apple-sign-in-button'
+import * as AppleAuthentication from 'expo-apple-authentication'
 
 export default function LoginScreen() {
   const { accountDeleted } = useLocalSearchParams<{ accountDeleted?: string }>()
@@ -74,6 +76,10 @@ export default function LoginScreen() {
         </View>
 
         <GoogleSignInButton label="Google でサインイン" onError={(m) => setError(m || null)} />
+        <AppleSignInButton
+          buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+          onError={(m) => setError(m || null)}
+        />
       </View>
 
       <Link href="/(auth)/signup" style={styles.link}>

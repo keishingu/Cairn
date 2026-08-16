@@ -47,7 +47,7 @@ pnpm build:internal:ios
 
 ## ネイティブ runtime と EAS Update
 
-`expo-sqlite` と `expo-network` を含む最初の runtime version は `1.1.0`。ネイティブ依存または `app.json` のネイティブ設定を変更した場合は、次の両方が必要になる。
+Apple Sign Inを含む現在の runtime version は `1.2.0`。ネイティブ依存または `app.json` のネイティブ設定を変更した場合は、次の両方が必要になる。
 
 1. `app.json` の `runtimeVersion` を上げる
 2. Development Build / Internal Distribution build を作り直して端末へ再インストールする

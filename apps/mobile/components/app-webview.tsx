@@ -33,6 +33,7 @@ export interface AppWebViewHandle {
 export interface AppWebViewProps {
   path: string
   onLoadEnd?: () => void
+  onWebPathChange?: (path: string) => void
   allowChatRoutes?: boolean
   includeSafeAreaTop?: boolean
   onNativeHeaderChange?: (header: NativeHeaderDescriptor) => void
@@ -43,7 +44,7 @@ export function webUrl(path: string): string {
 }
 
 export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(function AppWebView(
-  { path, onLoadEnd, allowChatRoutes = false, includeSafeAreaTop = true, onNativeHeaderChange },
+  { path, onLoadEnd, onWebPathChange, allowChatRoutes = false, includeSafeAreaTop = true, onNativeHeaderChange },
   ref,
 ) {
   const webViewRef = React.useRef<WebView>(null)
@@ -240,6 +241,13 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       supabase.auth.signOut().then(() => {
         router.replace('/(auth)/login')
       })
+      return
+    }
+    try {
+      const target = new URL(url)
+      if (target.origin === trustedOrigin) onWebPathChange?.(target.pathname)
+    } catch {
+      // WebViewが途中で返す非URL値は遷移イベントとして扱わない。
     }
   }
 

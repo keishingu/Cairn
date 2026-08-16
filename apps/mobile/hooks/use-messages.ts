@@ -16,6 +16,7 @@ export interface MessageDto {
   parentMessageId: string | null
   replyTo: { id: string; senderName: string; content: string; isDeleted: boolean } | null
   bookmarked: boolean
+  blocked?: boolean
 }
 
 // サーバーが read 時に `<@userId|表示名>` へ解決済みのため最新名を表示できる。
