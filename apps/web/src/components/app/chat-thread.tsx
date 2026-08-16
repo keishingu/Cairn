@@ -962,6 +962,16 @@ const AiNudgeCard = ({
   </article>
 )
 
+export const MESSAGE_TIMELINE_END_THRESHOLD = 80
+
+export function isNearMessageTimelineEnd({
+  scrollHeight,
+  scrollTop,
+  clientHeight,
+}: Pick<HTMLElement, 'scrollHeight' | 'scrollTop' | 'clientHeight'>) {
+  return scrollHeight - scrollTop - clientHeight <= MESSAGE_TIMELINE_END_THRESHOLD
+}
+
 function useMessageTimelineScroll({
   channelId,
   messages,
@@ -982,9 +992,11 @@ function useMessageTimelineScroll({
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const pendingPrependScrollRef = React.useRef<{ scrollTop: number; scrollHeight: number } | null>(null)
   const shouldScrollToBottomRef = React.useRef(true)
+  const [isAtLatest, setIsAtLatest] = React.useState(true)
 
   React.useEffect(() => {
     shouldScrollToBottomRef.current = true
+    setIsAtLatest(true)
   }, [channelId])
 
   React.useLayoutEffect(() => {
@@ -998,23 +1010,37 @@ function useMessageTimelineScroll({
   React.useEffect(() => {
     const el = scrollRef.current
     if (!el || pendingPrependScrollRef.current) return
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    if (shouldScrollToBottomRef.current || distanceFromBottom < 80) {
+    if (shouldScrollToBottomRef.current || isNearMessageTimelineEnd(el)) {
       el.scrollTop = el.scrollHeight
+      setIsAtLatest(true)
     }
     shouldScrollToBottomRef.current = false
   }, [latestMessageId, nudgeCount])
 
   const handleMessageScroll = React.useCallback(() => {
     const el = scrollRef.current
-    if (!el || el.scrollTop > 80 || !hasOlderMessages || isLoadingOlder) return
+    if (!el) return
+    setIsAtLatest(isNearMessageTimelineEnd(el))
+    if (el.scrollTop > MESSAGE_TIMELINE_END_THRESHOLD || !hasOlderMessages || isLoadingOlder) return
     pendingPrependScrollRef.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight }
     void loadOlder().then(loaded => {
       if (!loaded) pendingPrependScrollRef.current = null
     })
   }, [hasOlderMessages, isLoadingOlder, loadOlder])
 
-  return { scrollRef, handleMessageScroll }
+  const scrollToLatest = React.useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (prefersReducedMotion || typeof el.scrollTo !== 'function') {
+      el.scrollTop = el.scrollHeight
+    } else {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    }
+    setIsAtLatest(true)
+  }, [])
+
+  return { scrollRef, handleMessageScroll, showScrollToLatest: !isAtLatest, scrollToLatest }
 }
 
 // ─── ChatThread ───────────────────────────────────────────────────
@@ -1150,7 +1176,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     ...messages.map((message, index) => ({ kind: 'message' as const, createdAt: message.createdAt, message, messageIndex: index })),
     ...nudges.map(nudge => ({ kind: 'nudge' as const, createdAt: nudge.createdAt, nudge })),
   ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()), [messages, nudges])
-  const { scrollRef, handleMessageScroll } = useMessageTimelineScroll({
+  const { scrollRef, handleMessageScroll, showScrollToLatest, scrollToLatest } = useMessageTimelineScroll({
     channelId,
     messages,
     latestMessageId,
@@ -1711,6 +1737,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
           </div>
         )}
       </div>
+      {showScrollToLatest && !isAccessDenied && (
+        <div className="chat-scroll-to-latest-anchor">
+          <button
+            type="button"
+            className="chat-scroll-to-latest"
+            onClick={scrollToLatest}
+            aria-label="最新のメッセージへ移動"
+            title="最新のメッセージへ移動"
+          >
+            <Icon name="arrowDown" size={20} strokeWidth={1.8}/>
+          </button>
+        </div>
+      )}
       {!isAccessDenied && (
       <ChatInputBar
         placeholder={placeholder}

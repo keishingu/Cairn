@@ -167,6 +167,34 @@
 .app .chat-detail-row:hover .chat-detail-row-action,
 .app .chat-detail-row:focus-within .chat-detail-row-action { opacity:1; pointer-events:auto; }
 
+.app .chat-scroll-to-latest-anchor {
+  height: 0;
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+.app .chat-scroll-to-latest {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  width: 42px;
+  height: 42px;
+  transform: translateX(-50%);
+  border: none;
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--text-2);
+  box-shadow: 0 0 0 1px var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  transition: background 180ms ease-out, color 180ms ease-out, box-shadow 180ms ease-out;
+}
+.app .chat-scroll-to-latest:hover { background: var(--card-hover); color: var(--text); }
+.app .chat-scroll-to-latest:focus-visible { outline: none; box-shadow: var(--ring); }
+
 @media (hover: none) {
   .app .chat-sidebar-item-action { opacity:1; pointer-events:auto; }
   .app .chat-detail-row-action { opacity:1; pointer-events:auto; }
@@ -174,6 +202,7 @@
 @media (prefers-reduced-motion: reduce) {
   .app .chat-sidebar-item-action { transition:none; }
   .app .chat-detail-row-action { transition:none; }
+  .app .chat-scroll-to-latest { transition:none; }
 }
 
 @keyframes messageHighlight { 0% { background-color: var(--accent-soft-2); } 100% { background-color: transparent; } }
