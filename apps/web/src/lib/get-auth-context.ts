@@ -62,11 +62,10 @@ async function getAuthenticatedUserId(
  * ワークスペース所属を問わずユーザー認証だけを行う（招待受け入れ等で使用）。
  * Authサーバーへ再照合し、アカウント削除後も有効期限内のJWTだけで操作できないようにする。
  */
-export async function getAuthUser(): Promise<UserResult> {
+export async function getAuthUser(authorization?: string | null): Promise<UserResult> {
   const supabase = await createClient()
-  const headersList = await headers()
-  const authorization = headersList.get('Authorization')
-  const bearerToken = authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined
+  const header = authorization ?? (await headers()).get('Authorization')
+  const bearerToken = header?.startsWith('Bearer ') ? header.slice(7) : undefined
 
   const { data: { user }, error } = await supabase.auth.getUser(bearerToken)
   if (error || !user) {
