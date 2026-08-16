@@ -15,11 +15,12 @@ interface NativeWebViewScreenProps extends Omit<
   subtitle?: string | undefined
   onBack?: (() => void) | undefined
   requiresWorkspace?: boolean
+  showNotifications?: boolean
 }
 
 export const NativeWebViewScreen = React.forwardRef<AppWebViewHandle, NativeWebViewScreenProps>(
   function NativeWebViewScreen(
-    { title, subtitle, onBack, requiresWorkspace = true, ...webViewProps },
+    { title, subtitle, onBack, requiresWorkspace = true, showNotifications = true, ...webViewProps },
     forwardedRef,
   ) {
     const innerRef = React.useRef<AppWebViewHandle>(null)
@@ -58,6 +59,7 @@ export const NativeWebViewScreen = React.forwardRef<AppWebViewHandle, NativeWebV
         <NativeAppHeader
           title={header.title || title}
           subtitle={header.subtitle ?? subtitle}
+          showNotifications={showNotifications}
           {...(handleBack ? { onBack: handleBack } : {})}
         />
         {workspaceState.status === 'loading' ? (

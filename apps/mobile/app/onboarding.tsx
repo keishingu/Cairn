@@ -11,6 +11,7 @@ export default function OnboardingScreen() {
         path="/onboarding"
         title="ワークスペースを作成"
         requiresWorkspace={false}
+        showNotifications={false}
         onWebPathChange={(path) => {
           if (path === '/projects') router.replace('/(app)/projects')
         }}
