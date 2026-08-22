@@ -3,8 +3,12 @@
 
 import React from 'react'
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { MarkdownContent } from './markdown-content'
+
+vi.mock('./mermaid-diagram', () => ({
+  MermaidDiagram: ({ definition }: { definition: string }) => <div role="img" aria-label="Mermaid図">{definition}</div>,
+}))
 
 describe('Markdownコンテンツ', () => {
   it('見出し、リスト、リンクをMarkdownとして表示する', () => {
@@ -42,5 +46,20 @@ describe('Markdownコンテンツ', () => {
 
     expect(screen.getByRole('link', { name: '外部サイト' })).toHaveAttribute('target', '_blank')
     expect(screen.getByRole('link', { name: 'プロトコル相対URL' })).toHaveAttribute('target', '_blank')
+  })
+
+  it('mermaidコードブロックを図として表示する', () => {
+    render(<MarkdownContent content={'```mermaid\nflowchart LR\n  A --> B\n```'} />)
+
+    expect(screen.getByRole('img', { name: 'Mermaid図' })).toHaveTextContent('flowchart LR')
+    expect(screen.getByRole('img', { name: 'Mermaid図' })).toHaveTextContent('A --> B')
+    expect(screen.queryByText('flowchart LR', { selector: 'code' })).not.toBeInTheDocument()
+  })
+
+  it('通常のコードブロックはコードのまま表示する', () => {
+    const { container } = render(<MarkdownContent content={'```typescript\nconst answer = 42\n```'} />)
+
+    expect(container.querySelector('pre code.language-typescript')).toHaveTextContent('const answer = 42')
+    expect(screen.queryByRole('img', { name: 'Mermaid図' })).not.toBeInTheDocument()
   })
 })
