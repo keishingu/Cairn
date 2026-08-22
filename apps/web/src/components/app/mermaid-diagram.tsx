@@ -5,6 +5,7 @@
 
 import React from 'react'
 import { useTheme } from 'next-themes'
+import { useAccentColor } from '@/components/accent-color-provider'
 
 interface MermaidDiagramProps {
   definition: string
@@ -21,6 +22,7 @@ function readThemeColor(element: HTMLElement, property: string, fallback: string
 
 export function MermaidDiagram({ definition }: MermaidDiagramProps) {
   const { resolvedTheme } = useTheme()
+  const { accentId } = useAccentColor()
   const diagramId = React.useId().replace(/:/g, '')
   const containerRef = React.useRef<HTMLDivElement>(null)
   const [state, setState] = React.useState<DiagramState>({ svg: null, error: false })
@@ -78,7 +80,7 @@ export function MermaidDiagram({ definition }: MermaidDiagramProps) {
     return () => {
       cancelled = true
     }
-  }, [definition, diagramId, resolvedTheme])
+  }, [accentId, definition, diagramId, resolvedTheme])
 
   return (
     <div

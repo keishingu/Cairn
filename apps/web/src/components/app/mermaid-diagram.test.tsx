@@ -8,6 +8,11 @@ import { MermaidDiagram } from './mermaid-diagram'
 
 const initializeMock = vi.fn()
 const renderMock = vi.fn()
+const accent = vi.hoisted(() => ({ id: 'emerald' }))
+
+vi.mock('@/components/accent-color-provider', () => ({
+  useAccentColor: () => ({ accentId: accent.id }),
+}))
 
 vi.mock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'dark' }),
@@ -22,6 +27,7 @@ vi.mock('mermaid', () => ({
 
 describe('Mermaid図', () => {
   beforeEach(() => {
+    accent.id = 'emerald'
     initializeMock.mockReset()
     renderMock.mockReset()
   })
@@ -56,5 +62,16 @@ describe('Mermaid図', () => {
     await waitFor(() => expect(screen.getByText('Mermaid図を表示できません')).toBeInTheDocument())
     expect(screen.getByText('ソースを確認')).toBeInTheDocument()
     expect(screen.getByText('not a diagram')).toBeInTheDocument()
+  })
+
+  it('アクセントカラーが変わると図を再描画する', async () => {
+    renderMock.mockResolvedValue({ svg: '<svg><text>工程</text></svg>' })
+    const { rerender } = render(<MermaidDiagram definition="flowchart LR\nA --> B" />)
+    await screen.findByRole('img', { name: 'Mermaid図' })
+
+    accent.id = 'violet'
+    rerender(<MermaidDiagram definition="flowchart LR\nA --> B" />)
+
+    await waitFor(() => expect(renderMock).toHaveBeenCalledTimes(2))
   })
 })
