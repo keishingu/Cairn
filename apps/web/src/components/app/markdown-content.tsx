@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import { UNKNOWN_MENTION_NAME } from '@/lib/chat/mentions'
+import { MermaidDiagram } from './mermaid-diagram'
 
 // 構造化メンション。canonical な `<@userId>` と旧形式 `<@userId|displayName>` の両方を受理する
 const STRUCTURED_MENTION_RE = /<@([^|>\s]+)(?:\|([^>\n]+))?>/g
@@ -84,6 +85,13 @@ function processChildren(children: React.ReactNode, mentionNames?: Map<string, s
     })
   }
   return children
+}
+
+function mermaidDefinitionFromCodeBlock(children: React.ReactNode): string | null {
+  if (!React.isValidElement<{ className?: string; children?: React.ReactNode }>(children)) return null
+  const classNames = children.props.className?.split(/\s+/) ?? []
+  if (!classNames.some(className => className.toLowerCase() === 'language-mermaid')) return null
+  return React.Children.toArray(children.props.children).join('').replace(/\n$/, '')
 }
 
 interface MarkdownContentProps {
@@ -194,13 +202,17 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
             }}>{children}</code>
           )
         },
-        pre: ({ children }) => (
-          <pre style={{
-            background: 'var(--card-2)', border: '1px solid var(--border)',
-            borderRadius: 8, padding: '8px 12px', overflowX: 'auto',
-            margin: '4px 0', fontSize: fontSize * 0.9, fontFamily: 'monospace', lineHeight: 1.5,
-          }}>{children}</pre>
-        ),
+        pre: ({ children }) => {
+          const mermaidDefinition = mermaidDefinitionFromCodeBlock(children)
+          if (mermaidDefinition !== null) return <MermaidDiagram definition={mermaidDefinition} />
+          return (
+            <pre style={{
+              background: 'var(--card-2)', border: '1px solid var(--border)',
+              borderRadius: 8, padding: '8px 12px', overflowX: 'auto',
+              margin: '4px 0', fontSize: fontSize * 0.9, fontFamily: 'monospace', lineHeight: 1.5,
+            }}>{children}</pre>
+          )
+        },
         blockquote: ({ children }) => (
           <blockquote style={{
             borderLeft: '3px solid var(--border-2)', paddingLeft: 10,
