@@ -4,7 +4,7 @@
 >
 > Supabase Auth が生成する認証メールを Resend のカスタム SMTP で配送するための設定と運用をまとめる。
 
-導入状況（2026-08-22）: DNS 検証と Supabase Preview / Production の SMTP 設定・配信確認まで完了。メール内リンクによる認証完了とレート制限の運用確認は未完了。
+導入状況（2026-08-22）: DNS 検証と Supabase Preview / Production の SMTP 設定・配信確認まで完了。レート制限の運用確認は未完了。
 
 ## 方針
 
@@ -53,13 +53,15 @@ Supabase の `cairn-preview` で Authentication の SMTP 設定を開き、Custo
 1. Supabase Dashboard の Authentication → Users で管理下のテストユーザーを選び、`Send password recovery` を実行する。
 2. Resend の送信ログに記録され、テスト用受信箱へ届くことを確認する。
 3. From、Return-Path、SPF、DKIM、DMARC の結果を確認する。
-4. メール内リンクが `develop.oss-cairn.com` の正しい画面へ遷移し、期限内のトークンで処理を完了できることを確認する。
+4. メール内リンクの遷移先ホストが `develop.oss-cairn.com` であることを確認する。
+
+パスワード再設定 UI は現時点で提供していないため、リンク先でのパスワード変更完了は SMTP 移行の完了条件に含めない。再設定導線を実装する場合は、要求から変更完了までを別途検証する。
 
 ### 4. Supabase Production
 
 Preview の検証完了後、Supabase の `cairn-production` に同じ SMTP 設定を Production 用 Resend API キーで登録する。Auth の Site URL / Redirect URLs とメールテンプレート内リンクが `https://oss-cairn.com` を向くことを確認する。
 
-本番反映後は、Supabase Dashboard の Authentication → Users で管理下の実メールアドレスを持つユーザーを選び、`Send password recovery` を1件だけ実行する。Resend ログ、受信、認証完了まで確認する。
+本番反映後は、Supabase Dashboard の Authentication → Users で管理下の実メールアドレスを持つユーザーを選び、`Send password recovery` を1件だけ実行する。Resend ログ、受信、リンク先ホストが `oss-cairn.com` であることを確認する。
 
 ## ローカル開発
 
@@ -84,9 +86,9 @@ Resend 障害時は、Supabase の Custom SMTP を無効化してデフォルト
 - [x] Resend 指定の DNS レコードを追加し、ステータスが Verified
 - [x] Preview 用と Production 用の Resend API キーを分離
 - [x] `cairn-preview` の Custom SMTP を設定
-- [ ] Preview でパスワードリセットの送信・受信・リンク完了を確認
+- [x] Preview でパスワードリセットメールの送信・受信・リンク先ホストを確認
 - [x] `cairn-production` の Custom SMTP を設定
-- [ ] Production で管理下アドレスへの送信・受信・リンク完了を確認
+- [x] Production で管理下アドレスへの送信・受信・リンク先ホストを確認
 - [ ] Supabase / Resend のレート制限と障害時確認先を運用担当者間で共有
 
 ## 公式リファレンス

@@ -157,7 +157,7 @@ PostHog は production の利用状況を収集するインフラ接続なので
 
 - メール生成は Supabase Auth のまま維持し、配送を **Resend のカスタム SMTP** に切り替える。
 - 送信ドメインは `mail.oss-cairn.com`、送信元は `Cairn <no-reply@mail.oss-cairn.com>` とする。ルート `oss-cairn.com` の SPF は送信禁止のため変更しない。
-- Preview で送信・受信・リンク完了まで確認してから Production に設定する。API キーは環境ごとに分け、Supabase の SMTP password にだけ保存する。
+- Preview で送信・受信・リンク先ドメインまで確認してから Production に設定する。API キーは環境ごとに分け、Supabase の SMTP password にだけ保存する。
 - DNS、SMTP 値、検証、ローテーション、ロールバックの手順は [`resend-email-provider.md`](./resend-email-provider.md) を参照。
 
 ### 4. プライバシーポリシー・利用規約ページ
