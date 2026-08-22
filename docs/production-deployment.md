@@ -158,6 +158,7 @@ PostHog は production の利用状況を収集するインフラ接続なので
 - Supabase のデフォルト SMTP は**本番不可レベルのレート制限**（数通/時）。
 - サインアップ確認・パスワードリセット等を不特定多数に送るなら、**カスタム SMTP（SendGrid / Resend / SES 等）** を Auth に設定。
 - メールテンプレート内 URL が本番ドメインで動くか確認。
+- 具体的な導入手順（Resend をカスタム SMTP にする設定・DNS 検証・ローカル/本番の差分）は [`resend-email-provider-design.md`](./resend-email-provider-design.md) を参照。
 
 ### 4. プライバシーポリシー・利用規約ページ
 
