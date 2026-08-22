@@ -9,9 +9,12 @@ import {
   notifications,
   profiles,
   projects,
+  workspaces,
   type AiNudgeStatus,
 } from '@cairn/db'
+import { BILLING_CONFIG } from '@cairn/core/billing'
 import { and, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm'
+import { consumeCreditsForPassiveBenefit, lockWorkspaceCreditBalances } from '@/lib/billing/credits'
 import { startOfJstDay } from './rules'
 import {
   isUnansweredAskEligible,
@@ -19,6 +22,7 @@ import {
   nextJstDeliveryTime,
   passesPhaseTwoConfidence,
   PHASE_TWO_DAILY_LIMIT,
+  shouldAdvancePhaseTwoScanCursor,
   shouldResolveDueLlmRiskReminder,
 } from './llm-nudge-rules'
 import type { PhaseTwoChannelInput, PhaseTwoNudgeCandidate } from './llm-nudge-scan'
@@ -26,6 +30,15 @@ import type { PhaseTwoChannelInput, PhaseTwoNudgeCandidate } from './llm-nudge-s
 export interface PhaseTwoScanResult {
   input: PhaseTwoChannelInput
   candidates: PhaseTwoNudgeCandidate[]
+  preservedActiveRiskTargets?: string[]
+  fundingBlocked?: boolean
+}
+
+export function shouldReconcilePhaseTwoRisk(result: {
+  input: Pick<PhaseTwoChannelInput, 'isUnansweredAskRecheck'>
+  fundingBlocked?: boolean
+}): boolean {
+  return !result.input.isUnansweredAskRecheck && !result.fundingBlocked
 }
 
 function notificationData(candidate: PhaseTwoNudgeCandidate, nudgeId: string) {
@@ -55,12 +68,28 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
     // 状態遷移を一つの直列化点で決める。Phase 1 は別枠なので別lockを使う。
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext('ai-nudges-heartbeat-phase2'))`)
 
+    // sleep 中を含め、配信直前にワークスペースの opt-in を再確認する。これにより
+    // owner が OFF にした後の古い実行や再ナッジを配信しない。
+    const enabledWorkspaceIds = (
+      await tx
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .where(eq(workspaces.aiNudgesPhaseTwoEnabled, true))
+    ).map((workspace) => workspace.id)
+    if (enabledWorkspaceIds.length === 0) {
+      return { created: 0, reactivated: 0, discarded: 0, channels: 0 }
+    }
+    const enabledResults = results.filter((result) =>
+      enabledWorkspaceIds.includes(result.input.workspaceId),
+    )
+
     const existingToday = await tx
       .select({ userId: aiNudges.userId })
       .from(aiNudges)
       .where(
         and(
           inArray(aiNudges.detector, ['unanswered_ask', 'llm_risk']),
+          inArray(aiNudges.workspaceId, enabledWorkspaceIds),
           gte(aiNudges.createdAt, startOfJstDay(now)),
         ),
       )
@@ -69,26 +98,31 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       deliveriesToday.set(row.userId, (deliveriesToday.get(row.userId) ?? 0) + 1)
     }
 
-    const candidates = results
+    const candidates = enabledResults
       .flatMap((result) => result.candidates)
       .filter((candidate) => passesPhaseTwoConfidence(candidate.confidence))
       .sort((a, b) => {
         if (a.detector !== b.detector) return a.detector === 'unanswered_ask' ? -1 : 1
         return b.confidence - a.confidence
       })
-    const proposedTargets = new Set(
-      candidates.map((candidate) => `${candidate.detector}:${candidate.messageId}:${candidate.userId}`),
-    )
+    const proposedTargets = new Set([
+      ...candidates.map((candidate) => `${candidate.detector}:${candidate.messageId}:${candidate.userId}`),
+      ...enabledResults.flatMap((result) => result.preservedActiveRiskTargets ?? []),
+    ])
 
     let created = 0
     let reactivated = 0
     let discarded = 0
+    // 同じHeartbeat内で期限リマインダーが先に残高を使い切ることがある。
+    // その結果、新規候補の課金だけ失敗したチャンネルはカーソルを保持し、
+    // 買い増し後に同じ差分を再評価できるようにする。
+    const creditBlockedChannelIds = new Set<string>()
 
     // 直接返信はLLMに委ねず、未回答条件が解消した事実として決定論的にresolveする。
-    const scannedChannelIds = [...new Set(results.map((result) => result.input.channelId))]
+    const scannedChannelIds = [...new Set(enabledResults.map((result) => result.input.channelId))]
     const evaluatedRiskMessages = new Set(
-      results
-        .filter((result) => !result.input.isUnansweredAskRecheck)
+      enabledResults
+        .filter(shouldReconcilePhaseTwoRisk)
         .flatMap((result) =>
           result.input.newMessageIds.map((messageId) => `${result.input.channelId}:${messageId}`),
         ),
@@ -105,6 +139,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       .where(
         and(
           inArray(aiNudges.detector, ['unanswered_ask', 'llm_risk']),
+          inArray(aiNudges.workspaceId, enabledWorkspaceIds),
           eq(aiNudges.status, 'active'),
         ),
       )
@@ -113,7 +148,9 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       if (nudge.detector !== 'llm_risk') return []
       if (!nudge.channelId || !nudge.messageId) return []
       if (!evaluatedRiskMessages.has(`${nudge.channelId}:${nudge.messageId}`)) return []
-      return proposedTargets.has(`${nudge.detector}:${nudge.messageId}:${nudge.userId}`) ? [] : [nudge.id]
+      return proposedTargets.has(`${nudge.detector}:${nudge.messageId}:${nudge.userId}`)
+        ? []
+        : [nudge.id]
     })
     // ソースメッセージはsoft deleteされるため、チャンネルが静かなままでも削除済みの
     // 根拠を指すカードを残さないようheartbeatで解消する。
@@ -127,7 +164,9 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
               await tx
                 .select({ id: messages.id })
                 .from(messages)
-                .where(and(inArray(messages.id, activeSourceMessageIds), isNull(messages.deletedAt)))
+                .where(
+                  and(inArray(messages.id, activeSourceMessageIds), isNull(messages.deletedAt)),
+                )
             ).map((message) => message.id),
           )
         : new Set<string>()
@@ -186,7 +225,8 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
                   ),
                 )
             ).flatMap((row) =>
-              row.parentMessageId && sourceSendersByMessageId.get(row.parentMessageId) !== row.senderId
+              row.parentMessageId &&
+              sourceSendersByMessageId.get(row.parentMessageId) !== row.senderId
                 ? [row.parentMessageId]
                 : [],
             ),
@@ -222,10 +262,16 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       .where(
         and(
           inArray(aiNudges.detector, ['unanswered_ask', 'llm_risk']),
+          inArray(aiNudges.workspaceId, enabledWorkspaceIds),
           inArray(aiNudges.status, ['dismissed', 'suppressed']),
           or(isNull(aiNudges.remindAfter), lte(aiNudges.remindAfter, now)),
         ),
       )
+
+    await lockWorkspaceCreditBalances(tx, [
+      ...dueReminders.map((reminder) => reminder.workspaceId),
+      ...candidates.map((candidate) => candidate.workspaceId),
+    ])
 
     for (const reminder of dueReminders) {
       const delivered = deliveriesToday.get(reminder.userId) ?? 0
@@ -306,7 +352,9 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           const evaluatedThisRun = evaluatedRiskMessages.has(
             `${reminder.channelId}:${reminder.messageId}`,
           )
-          const proposedAgain = proposedTargets.has(`llm_risk:${reminder.messageId}:${reminder.userId}`)
+          const proposedAgain = proposedTargets.has(
+            `llm_risk:${reminder.messageId}:${reminder.userId}`,
+          )
           if (
             shouldResolveDueLlmRiskReminder({
               hasNewerMessage: true,
@@ -337,6 +385,14 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         .where(eq(profiles.id, reminder.userId))
         .limit(1)
       if (!recipient?.enabled || !recipient.canAccess) continue
+      if (
+        !(await consumeCreditsForPassiveBenefit(tx, {
+          workspaceId: reminder.workspaceId,
+          credits: BILLING_CONFIG.heartbeatAiDeliveryCredits,
+          refId: `heartbeat:${reminder.id}:${now.toISOString()}`,
+        }))
+      )
+        continue
 
       await tx
         .update(aiNudges)
@@ -426,7 +482,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         }
       } else {
         // 静寂時間帯のsleep中に会話が進んだリスクは、古い候補を配信せず次回巡回で再評価する。
-        const scanResult = results.find((result) => result.candidates.includes(candidate))
+        const scanResult = enabledResults.find((result) => result.candidates.includes(candidate))
         const scannedThroughAt = scanResult
           ? new Date(scanResult.input.scannedThroughCreatedAt)
           : source.createdAt
@@ -513,6 +569,17 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           discarded += 1
           continue
         }
+        if (
+          !(await consumeCreditsForPassiveBenefit(tx, {
+            workspaceId: candidate.workspaceId,
+            credits: BILLING_CONFIG.heartbeatAiDeliveryCredits,
+            refId: `heartbeat:${existing.id}:${now.toISOString()}`,
+          }))
+        ) {
+          creditBlockedChannelIds.add(candidate.channelId)
+          discarded += 1
+          continue
+        }
         await tx
           .update(aiNudges)
           .set({
@@ -583,6 +650,18 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         discarded += 1
         continue
       }
+      if (
+        !(await consumeCreditsForPassiveBenefit(tx, {
+          workspaceId: candidate.workspaceId,
+          credits: BILLING_CONFIG.heartbeatAiDeliveryCredits,
+          refId: `heartbeat:${inserted.id}`,
+        }))
+      ) {
+        await tx.delete(aiNudges).where(eq(aiNudges.id, inserted.id))
+        creditBlockedChannelIds.add(candidate.channelId)
+        discarded += 1
+        continue
+      }
       await tx.insert(notifications).values({
         userId: candidate.userId,
         workspaceId: candidate.workspaceId,
@@ -608,9 +687,14 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
             ).map((row) => row.id),
           )
         : new Set<string>()
-    for (const { input } of results) {
+    for (const { input } of enabledResults) {
       if (!existingChannelIds.has(input.channelId)) continue
-      if (!input.advancesCursor) {
+      if (
+        !shouldAdvancePhaseTwoScanCursor({
+          inputAllowsAdvance: input.advancesCursor,
+          creditBlocked: creditBlockedChannelIds.has(input.channelId),
+        })
+      ) {
         const nextCheckAt = input.nextUnansweredAskCheckAt
           ? new Date(input.nextUnansweredAskCheckAt)
           : null
@@ -668,11 +752,12 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
     }
 
     return {
-      channels: results.length,
+      channels: enabledResults.length,
       candidates: candidates.length,
       created,
       reactivated,
       discarded,
+      creditBlockedChannels: creditBlockedChannelIds.size,
     }
   })
 }

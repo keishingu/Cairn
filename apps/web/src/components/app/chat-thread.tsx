@@ -25,6 +25,7 @@ import {
   useDeleteMessage,
   useEditMessage,
   useEnsureMessageLoaded,
+  useLoadOlderChannelMessages,
   useMarkChannelRead,
   useSendChannelMessage,
   useToggleBookmark,
@@ -42,14 +43,8 @@ import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
 import { GENERIC_MIME_TYPES, resolveAttachmentMimeType } from '@/lib/attachments'
+import { extractGoogleDocsUrls } from '@/lib/google-docs-url'
 import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
-
-const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
-
-function extractGoogleDocsUrls(text: string): string[] {
-  const matches = text.match(GOOGLE_DOCS_URL_RE) ?? []
-  return [...new Set(matches.map(u => u.replace(/[.,;:!?)>]+$/, '')))]
-}
 
 // MIME タイプに加えて拡張子も列挙する。OS が拡張子→MIME のマッピングを持たない
 // 環境ではファイルピッカーが MIME 指定だけだと PDF 等を選択不可にしてしまうため。
@@ -106,6 +101,17 @@ export async function copyMessageContent(content: string): Promise<boolean> {
   }
 }
 
+export async function copyMessageLink(url: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(url)
+    toast.success('リンクをコピーしました')
+    return true
+  } catch {
+    toast.error('リンクをコピーできませんでした')
+    return false
+  }
+}
+
 interface PendingAttachment {
   fileId: string
   fileName: string
@@ -121,7 +127,7 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -136,6 +142,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   attachments: AttachmentDto[]
   replyTo: ReplyToDto | null
   bookmarked: boolean
+  blocked?: boolean | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
@@ -214,6 +221,23 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const handleCopy = React.useCallback(() => {
     void copyMessageContent(content)
   }, [content])
+  const reportMessage = () => {
+    const choice = window.prompt('報告理由を選択してください\n1: 嫌がらせ・いじめ\n2: 差別的または攻撃的\n3: 性的または不適切\n4: 暴力・脅迫\n5: スパム\n6: その他')
+    const reasons = ['harassment', 'discriminatory', 'sexual', 'violence', 'spam', 'other'] as const
+    const reason = choice ? reasons[Number(choice) - 1] : undefined
+    if (!reason) return
+    const details = reason === 'other' ? window.prompt('補足説明を入力してください')?.trim() : undefined
+    if (reason === 'other' && !details) return
+    void fetchWithAuth(`/api/messages/${messageId}/report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason, ...(details ? { details } : {}) }) })
+      .then(res => res.ok ? toast.success('メッセージを報告しました') : res.json().then(data => toast.error(data.error ?? '報告に失敗しました')))
+      .catch(() => toast.error('報告に失敗しました'))
+  }
+  const blockUser = () => {
+    if (!window.confirm(`${senderName} をブロックしますか？`)) return
+    void fetchWithAuth('/api/me/blocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: senderId }) })
+      .then(res => res.ok ? toast.success('ユーザーをブロックしました') : res.json().then(data => toast.error(data.error ?? 'ブロックに失敗しました')))
+      .catch(() => toast.error('ブロックに失敗しました'))
+  }
 
   // MarkdownContent の React.memo を効かせるため、チェックボックストグルを安定参照で渡す
   const handleCheckboxToggle = React.useCallback(
@@ -235,6 +259,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const menuActions = [
     { icon: 'link' as const, label: 'リンクをコピー', onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: 'コピー', onSelect: handleCopy }] : []),
+    ...(!isOwn ? [{ icon: 'flag' as const, label: '報告', onSelect: reportMessage }, { icon: 'user' as const, label: 'ブロック', danger: true, onSelect: blockUser }] : []),
     ...(isOwn ? [
       { icon: 'edit' as const, label: '編集', onSelect: startEdit },
       { icon: 'trash' as const, label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
@@ -294,7 +319,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             </span>
           </button>
         )}
-        {editMode ? (
+        {blocked ? (
+          <details><summary style={{ cursor: 'pointer', color: 'var(--text-3)', fontSize: 13 }}>ブロックしたユーザーのメッセージ</summary><div style={{ marginTop: 6, fontSize: 13, color: 'var(--text-3)' }}>{content}</div></details>
+        ) : editMode ? (
           <div style={{ marginBottom: 4 }}>
             <textarea
               ref={editTextareaRef}
@@ -935,15 +962,96 @@ const AiNudgeCard = ({
   </article>
 )
 
+export const MESSAGE_TIMELINE_END_THRESHOLD = 80
+
+export function isNearMessageTimelineEnd({
+  scrollHeight,
+  scrollTop,
+  clientHeight,
+}: Pick<HTMLElement, 'scrollHeight' | 'scrollTop' | 'clientHeight'>) {
+  return scrollHeight - scrollTop - clientHeight <= MESSAGE_TIMELINE_END_THRESHOLD
+}
+
+function useMessageTimelineScroll({
+  channelId,
+  messages,
+  latestMessageId,
+  nudgeCount,
+  hasOlderMessages,
+  isLoadingOlder,
+  loadOlder,
+}: {
+  channelId: string | null
+  messages: Array<{ id: string }>
+  latestMessageId: string | undefined
+  nudgeCount: number
+  hasOlderMessages: boolean
+  isLoadingOlder: boolean
+  loadOlder: () => Promise<boolean>
+}) {
+  const scrollRef = React.useRef<HTMLDivElement>(null)
+  const pendingPrependScrollRef = React.useRef<{ scrollTop: number; scrollHeight: number } | null>(null)
+  const shouldScrollToBottomRef = React.useRef(true)
+  const [isAtLatest, setIsAtLatest] = React.useState(true)
+
+  React.useEffect(() => {
+    shouldScrollToBottomRef.current = true
+    setIsAtLatest(true)
+  }, [channelId])
+
+  React.useLayoutEffect(() => {
+    const pending = pendingPrependScrollRef.current
+    const el = scrollRef.current
+    if (!pending || !el) return
+    el.scrollTop = pending.scrollTop + (el.scrollHeight - pending.scrollHeight)
+    pendingPrependScrollRef.current = null
+  }, [messages])
+
+  React.useEffect(() => {
+    const el = scrollRef.current
+    if (!el || pendingPrependScrollRef.current) return
+    if (shouldScrollToBottomRef.current || isNearMessageTimelineEnd(el)) {
+      el.scrollTop = el.scrollHeight
+      setIsAtLatest(true)
+    }
+    shouldScrollToBottomRef.current = false
+  }, [latestMessageId, nudgeCount])
+
+  const handleMessageScroll = React.useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    setIsAtLatest(isNearMessageTimelineEnd(el))
+    if (el.scrollTop > MESSAGE_TIMELINE_END_THRESHOLD || !hasOlderMessages || isLoadingOlder) return
+    pendingPrependScrollRef.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight }
+    void loadOlder().then(loaded => {
+      if (!loaded) pendingPrependScrollRef.current = null
+    })
+  }, [hasOlderMessages, isLoadingOlder, loadOlder])
+
+  const scrollToLatest = React.useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (prefersReducedMotion || typeof el.scrollTo !== 'function') {
+      el.scrollTop = el.scrollHeight
+    } else {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    }
+    setIsAtLatest(true)
+  }, [])
+
+  return { scrollRef, handleMessageScroll, showScrollToLatest: !isAtLatest, scrollToLatest }
+}
+
 // ─── ChatThread ───────────────────────────────────────────────────
 
-export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile, targetMessageId }: {
+export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile, targetMessage }: {
   channelId: string | null
   channelName?: string
   isPrivate?: boolean
   compact?: boolean
   isMobile?: boolean
-  targetMessageId?: string | null
+  targetMessage?: { id: string } | null
 }) => {
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
@@ -959,7 +1067,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [completingNudgeId, setCompletingNudgeId] = React.useState<string | null>(null)
   const [nudgeActionError, setNudgeActionError] = React.useState<string | null>(null)
   const pendingDraftRef = React.useRef('')
-  const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   // displayName → userId map for structured mention serialization
   const mentionMapRef = React.useRef<Map<string, string>>(new Map())
@@ -1061,11 +1168,23 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const markChannelReadFn = markChannelRead.mutate
   const lastReadMessageIdRef = React.useRef<string | null>(null)
   const ensureMessageLoaded = useEnsureMessageLoaded(channelId)
+  const { loadOlder, hasMore: hasOlderMessages, isLoadingOlder, error: loadOlderError } = useLoadOlderChannelMessages(channelId)
+  // 最新100件の再取得では件数が変わらないことがあるため、末尾の入れ替わりも追跡する。
+  const latestMessageId = messages[messages.length - 1]?.id
 
   const timeline = React.useMemo(() => [
     ...messages.map((message, index) => ({ kind: 'message' as const, createdAt: message.createdAt, message, messageIndex: index })),
     ...nudges.map(nudge => ({ kind: 'nudge' as const, createdAt: nudge.createdAt, nudge })),
   ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()), [messages, nudges])
+  const { scrollRef, handleMessageScroll, showScrollToLatest, scrollToLatest } = useMessageTimelineScroll({
+    channelId,
+    messages,
+    latestMessageId,
+    nudgeCount: nudges.length,
+    hasOlderMessages,
+    isLoadingOlder,
+    loadOlder,
+  })
 
   const handleNudgeFeedback = React.useCallback((id: string, feedback: 'later' | 'not_helpful') => {
     setNudgeActionError(null)
@@ -1105,13 +1224,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   // 開いて読んでいるのにバッジが増え続ける問題への対処。タブ非表示時は既読にしない
   React.useEffect(() => {
     if (!channelId || messages.length === 0) return
-    const lastId = messages[messages.length - 1]?.id
-    if (!lastId || lastId.startsWith('optimistic-')) return
+    if (!latestMessageId || latestMessageId.startsWith('optimistic-')) return
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
-    if (lastReadMessageIdRef.current === lastId) return
-    lastReadMessageIdRef.current = lastId
+    if (lastReadMessageIdRef.current === latestMessageId) return
+    lastReadMessageIdRef.current = latestMessageId
     markChannelReadFn(channelId)
-  }, [channelId, messages, markChannelReadFn])
+  }, [channelId, latestMessageId, markChannelReadFn])
 
   const handleCheckboxToggle = React.useCallback(async (messageId: string, index: number, checked: boolean) => {
     try {
@@ -1191,10 +1309,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     if (sendMutation.isSuccess) setSendError(null)
   }, [sendMutation.isSuccess])
 
-  React.useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [messages.length, nudges.length])
-
   // チャンネル切替時にフォーカスをリセット
   React.useEffect(() => { setFocusedMsgIdx(-1) }, [channelId])
 
@@ -1261,15 +1375,15 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     setHighlightId(null)
   }, [channelId])
 
-  // 親（PageChat）からの targetMessageId（パーマリンク・ブックマーク・検索）を内部のハイライト状態へ取り込む。
+  // 親（PageChat）からの targetMessage（パーマリンク・ブックマーク・検索）を内部のハイライト状態へ取り込む。
   // 直近100件の外にある古いメッセージの場合は、前後ウィンドウを取得してキャッシュへマージする
   React.useEffect(() => {
-    if (!targetMessageId) return
-    setHighlightId(targetMessageId)
-    void ensureMessageLoaded(targetMessageId)
-  }, [targetMessageId, ensureMessageLoaded])
+    if (!targetMessage) return
+    setHighlightId(targetMessage.id)
+    void ensureMessageLoaded(targetMessage.id)
+  }, [targetMessage, ensureMessageLoaded])
 
-  // 引用バー（返信先プレビュー）クリックでのジャンプ。targetMessageId 同様、
+  // 引用バー（返信先プレビュー）クリックでのジャンプ。targetMessage 同様、
   // 直近100件の外にある古い親メッセージの場合は前後ウィンドウを取得してから表示する
   const jumpToMessage = React.useCallback((messageId: string) => {
     setHighlightId(messageId)
@@ -1319,7 +1433,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const handleCopyLink = React.useCallback((messageId: string) => {
     if (!channelId) return
     const url = `${window.location.origin}/chats/${channelId}?m=${messageId}`
-    void navigator.clipboard?.writeText(url)
+    void copyMessageLink(url)
   }, [channelId])
 
   const uploadFile = async (file: File): Promise<PendingAttachment | null> => {
@@ -1547,7 +1661,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)' }}>ファイルをドロップしてアップロード</span>
         </div>
       )}
-      <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
+      <div ref={scrollRef} onScroll={handleMessageScroll} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
         ) : isAccessDenied ? (
@@ -1563,7 +1677,17 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         ) : timeline.length === 0 ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>まだメッセージはありません。最初のメッセージを送ってみましょう！</div>
         ) : (
-          timeline.map(item => item.kind === 'nudge' ? (
+          <>
+          {isLoadingOlder && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 16px 10px', color: 'var(--text-3)', fontSize: 12 }}>過去のメッセージを読み込み中...</div>
+          )}
+          {loadOlderError && (
+            <div role="alert" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '4px 16px 10px', color: 'var(--red-text)', fontSize: 12 }}>
+              過去のメッセージを読み込めませんでした。
+              <button type="button" onClick={handleMessageScroll} className="btn btn-ghost" style={{ height: 26, padding: '0 8px', fontSize: 11.5 }}>再試行</button>
+            </div>
+          )}
+          {timeline.map(item => item.kind === 'nudge' ? (
             <AiNudgeCard
               key={`nudge:${item.nudge.id}`}
               nudge={item.nudge}
@@ -1589,6 +1713,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               attachments={item.message.attachments}
               replyTo={item.message.replyTo}
               bookmarked={item.message.bookmarked}
+              blocked={item.message.blocked}
               onReact={handleReact}
               onEdit={handleEdit}
               onDelete={handleDelete}
@@ -1603,7 +1728,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}
             />
-          ))
+          ))}
+          </>
         )}
         {(nudgesError || nudgeActionError) && (
           <div role="alert" style={{ margin: '8px 16px', color: 'var(--red-text)', fontSize: 12 }}>
@@ -1611,6 +1737,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
           </div>
         )}
       </div>
+      {showScrollToLatest && !isAccessDenied && (
+        <div className="chat-scroll-to-latest-anchor">
+          <button
+            type="button"
+            className="chat-scroll-to-latest"
+            onClick={scrollToLatest}
+            aria-label="最新のメッセージへ移動"
+            title="最新のメッセージへ移動"
+          >
+            <Icon name="arrowDown" size={20} strokeWidth={1.8}/>
+          </button>
+        </div>
+      )}
       {!isAccessDenied && (
       <ChatInputBar
         placeholder={placeholder}

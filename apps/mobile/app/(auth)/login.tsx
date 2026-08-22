@@ -1,10 +1,13 @@
 import React from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
-import { Link } from 'expo-router'
+import { Link, useLocalSearchParams } from 'expo-router'
 import { supabase } from '../../lib/supabase'
 import { GoogleSignInButton } from '../../components/google-sign-in-button'
+import { AppleSignInButton } from '../../components/apple-sign-in-button'
+import * as AppleAuthentication from 'expo-apple-authentication'
 
 export default function LoginScreen() {
+  const { accountDeleted } = useLocalSearchParams<{ accountDeleted?: string }>()
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
@@ -29,6 +32,11 @@ export default function LoginScreen() {
       <Text style={styles.subtitle}>サインイン</Text>
 
       <View style={styles.form}>
+        {accountDeleted === '1' && (
+          <View style={styles.successBox}>
+            <Text style={styles.successText}>アカウントを削除しました。</Text>
+          </View>
+        )}
         <TextInput
           style={styles.input}
           placeholder="メールアドレス"
@@ -68,6 +76,10 @@ export default function LoginScreen() {
         </View>
 
         <GoogleSignInButton label="Google でサインイン" onError={(m) => setError(m || null)} />
+        <AppleSignInButton
+          buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+          onError={(m) => setError(m || null)}
+        />
       </View>
 
       <Link href="/(auth)/signup" style={styles.link}>
@@ -115,6 +127,17 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#b91c1c',
+    fontSize: 14,
+  },
+  successBox: {
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#6ee7b7',
+    borderRadius: 8,
+    padding: 12,
+  },
+  successText: {
+    color: '#047857',
     fontSize: 14,
   },
   button: {

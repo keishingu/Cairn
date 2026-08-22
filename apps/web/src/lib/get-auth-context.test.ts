@@ -3,19 +3,21 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockHeaders, mockCookies, mockSupabase, mockDb } = vi.hoisted(() => {
+const { mockHeaders, mockCookies, mockSupabase, mockDb, mockEq } = vi.hoisted(() => {
   const mockHeaders = vi.fn()
   const mockCookies = vi.fn()
   const mockSupabase = {
     auth: {
       getClaims: vi.fn(),
       getSession: vi.fn(),
+      getUser: vi.fn(),
     },
   }
   const mockDb = {
     select: vi.fn(),
   }
-  return { mockHeaders, mockCookies, mockSupabase, mockDb }
+  const mockEq = vi.fn(() => 'eq')
+  return { mockHeaders, mockCookies, mockSupabase, mockDb, mockEq }
 })
 
 // verifyAccessToken 内の JWKS 取得は Cookie 認証の検証経路に影響しないよう、
@@ -47,7 +49,7 @@ vi.mock('@cairn/db', () => ({
 }))
 
 vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => 'eq'),
+  eq: mockEq,
   and: vi.fn(() => 'and'),
 }))
 
@@ -125,15 +127,134 @@ describe('get-auth-context', () => {
     expect(mockDb.select).not.toHaveBeenCalled()
   })
 
-  it('getAuthUser も Cookie 認証で getClaims() を使う', async () => {
+  it('PATはMCPの検証済み実行コンテキスト外では許可ルートでも拒否する', async () => {
+    mockHeaders.mockResolvedValue(
+      new Headers({ Authorization: 'Bearer cairn_pat_not-a-real-token' }),
+    )
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext({
+      allowApiToken: true,
+      requiredApiTokenScope: 'read',
+    })
+
+    expect(result.ctx).toBeNull()
+    expect(result.error?.status).toBe(401)
+    expect(mockSupabase.auth.getClaims).not.toHaveBeenCalled()
+    expect(mockDb.select).not.toHaveBeenCalled()
+  })
+
+  it('OAuth access tokenは通常RESTの認証情報として受け付けない', async () => {
+    mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer cairn_oauth_at_test' }))
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext({ allowApiToken: true, requiredApiTokenScope: 'read' })
+
+    expect(result.ctx).toBeNull()
+    expect(result.error?.status).toBe(401)
+    expect(mockSupabase.auth.getClaims).not.toHaveBeenCalled()
+    expect(mockDb.select).not.toHaveBeenCalled()
+  })
+
+  it('検証済みMCPリクエスト内ではOAuth write tokenをread/write両方に使える', async () => {
+    mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer cairn_oauth_at_test' }))
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+
+    const { runWithVerifiedMcpRequest } = await import('./mcp-request-context')
+    const { getAuthContext } = await import('./get-auth-context')
+    const credential = {
+      rawToken: 'cairn_oauth_at_test',
+      tokenId: 'token-1',
+      clientId: 'client-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      role: 'member' as const,
+      scope: 'write' as const,
+      expiresAt: new Date(Date.now() + 60_000),
+    }
+
+    await runWithVerifiedMcpRequest(credential, async () => {
+      await expect(
+        getAuthContext({ allowApiToken: true, requiredApiTokenScope: 'read' }),
+      ).resolves.toEqual({
+        ctx: { userId: 'user-1', workspaceId: 'workspace-1', role: 'member' },
+        error: null,
+      })
+      await expect(
+        getAuthContext({ allowApiToken: true, requiredApiTokenScope: 'write' }),
+      ).resolves.toEqual({
+        ctx: { userId: 'user-1', workspaceId: 'workspace-1', role: 'member' },
+        error: null,
+      })
+    })
+  })
+
+  it('検証済みOAuth read tokenによるwrite操作を拒否する', async () => {
+    mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer cairn_oauth_at_read' }))
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+
+    const { runWithVerifiedMcpRequest } = await import('./mcp-request-context')
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await runWithVerifiedMcpRequest(
+      {
+        rawToken: 'cairn_oauth_at_read',
+        tokenId: 'token-1',
+        clientId: 'client-1',
+        userId: 'user-1',
+        workspaceId: 'workspace-1',
+        role: 'member',
+        scope: 'read',
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+      () => getAuthContext({ allowApiToken: true, requiredApiTokenScope: 'write' }),
+    )
+
+    expect(result.ctx).toBeNull()
+    expect(result.error?.status).toBe(403)
+  })
+
+  it('getAuthUser はAuthサーバーへ再照合して削除済みユーザーを許可しない', async () => {
     mockHeaders.mockResolvedValue(new Headers())
-    mockSupabase.auth.getClaims.mockResolvedValue(okClaims)
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+      error: null,
+    })
 
     const { getAuthUser } = await import('./get-auth-context')
     const result = await getAuthUser()
 
-    expect(mockSupabase.auth.getClaims).toHaveBeenCalledWith(SESSION_TOKEN, undefined)
-    expect(result).toEqual({ userId: 'user-1', error: null })
+    expect(mockSupabase.auth.getUser).toHaveBeenCalledWith(undefined)
+    expect(result).toEqual({ userId: 'user-1', user: { id: 'user-1' }, error: null })
+  })
+
+  it('getAuthUser は渡されたリクエストヘッダーを優先する', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+      error: null,
+    })
+
+    const { getAuthUser } = await import('./get-auth-context')
+    await getAuthUser('Bearer request-token')
+
+    expect(mockSupabase.auth.getUser).toHaveBeenCalledWith('request-token')
+  })
+
+  it('getAuthUser はAuthから削除済みなら有効期限内のBearer JWTでも401を返す', async () => {
+    mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer deleted-user-token' }))
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: null },
+      error: { message: 'User not found' },
+    })
+
+    const { getAuthUser } = await import('./get-auth-context')
+    const result = await getAuthUser()
+
+    expect(mockSupabase.auth.getUser).toHaveBeenCalledWith('deleted-user-token')
+    expect(result.userId).toBeNull()
+    expect(result.error?.status).toBe(401)
   })
 
   it('非活性な preferred workspace cookie は無視して active 所属へフォールバックする', async () => {
@@ -149,6 +270,33 @@ describe('get-auth-context', () => {
     const result = await getAuthContext()
 
     expect(result).toEqual({ ctx: { userId: 'user-1', workspaceId: 'ws-active' }, error: null })
+  })
+
+  it('ネイティブの workspace header を Cookie より優先する', async () => {
+    mockHeaders.mockResolvedValue(
+      new Headers({
+        Authorization: 'Bearer token-123',
+        'X-Cairn-Workspace-Id': 'ws-native',
+      }),
+    )
+    mockCookies.mockResolvedValue({
+      get: vi.fn().mockReturnValue({ value: 'ws-cookie' }),
+    })
+    mockSupabase.auth.getClaims.mockResolvedValue(okClaims)
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-native', role: 'member' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext()
+
+    expect(mockEq).toHaveBeenCalledWith('awm.workspaceId', 'ws-native')
+    expect(result).toEqual({
+      ctx: {
+        userId: 'user-1',
+        workspaceId: 'ws-native',
+        role: 'member',
+      },
+      error: null,
+    })
   })
 
   it('warm cache があっても active membership を毎回再照合し、非活性化を即時反映する', async () => {

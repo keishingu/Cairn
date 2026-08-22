@@ -1,11 +1,14 @@
 import React from 'react'
 import { Slot, useRouter, useSegments } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
+import { SQLiteProvider } from 'expo-sqlite'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { queryClient } from '../lib/query-client'
 import { supabase } from '../lib/supabase'
 import { SessionContext } from '../lib/session-context'
+import { initializeOfflineDatabase, OFFLINE_DATABASE_NAME } from '../lib/offline-database'
+import { isPostAuthNavigationPending } from '../lib/auth-navigation'
 import type { Session } from '@supabase/supabase-js'
 
 // SecureStore からのセッション復元が終わるまでスプラッシュを表示したままにする。
@@ -22,7 +25,9 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
       setSession(data.session)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession)
     })
 
@@ -40,6 +45,7 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
     if (!session && !inAuthGroup) {
       router.replace('/(auth)/login')
     } else if (session && inAuthGroup) {
+      if (isPostAuthNavigationPending()) return
       router.replace('/(app)/projects')
     }
   }, [session, segments, router])
@@ -53,11 +59,13 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <AuthGuard>
-          <Slot />
-        </AuthGuard>
-      </QueryClientProvider>
+      <SQLiteProvider databaseName={OFFLINE_DATABASE_NAME} onInit={initializeOfflineDatabase}>
+        <QueryClientProvider client={queryClient}>
+          <AuthGuard>
+            <Slot />
+          </AuthGuard>
+        </QueryClientProvider>
+      </SQLiteProvider>
     </SafeAreaProvider>
   )
 }

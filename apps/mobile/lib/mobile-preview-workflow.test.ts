@@ -31,14 +31,27 @@ describe('モバイルプレビューの環境同期', () => {
     expect(workflow).toContain('--name EXPO_PUBLIC_API_BASE_URL')
     expect(workflow).toContain('--name EXPO_PUBLIC_SUPABASE_URL')
     expect(workflow).toContain('--name EXPO_PUBLIC_SUPABASE_ANON_KEY')
-    expect(workflow.match(/--force/g)).toHaveLength(3)
+    expect(workflow).toContain('--name EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV')
+    expect(workflow.match(/eas env:set preview/g)).toHaveLength(4)
+    expect(workflow).not.toContain('eas env:create')
   })
 
-  it('EAS Updateをpreview環境かつDevelopment Build向けに配信する', () => {
+  it('EAS UpdateをDevelopment BuildとInternal Distributionへ配信する', () => {
     expect(workflow).not.toContain('qr-target:')
     expect(mobilePackage.dependencies['expo-dev-client']).toBeDefined()
     expect(workflow).toContain('--environment preview')
+    expect(workflow).toContain('--branch pr-${{ github.event.number }}')
+    expect(workflow).toContain('Publish Internal Distribution EAS Update')
+    expect(workflow).toContain('--channel preview')
+    expect(workflow).toContain('EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV: preview')
     expect(workflow).toContain('ref: ${{ github.event.pull_request.head.sha }}')
+  })
+
+  it('Vercel認証を避けるため初回から固定のdevelop Web APIを利用する', () => {
+    expect(workflow).toContain('MOBILE_PREVIEW_API_BASE_URL: https://develop.oss-cairn.com')
+    expect(workflow).not.toContain('github.rest.repos.listDeployments')
+    expect(workflow).not.toContain('steps.web-api-base.outputs.url')
+    expect(workflow).not.toContain('deployments: read')
   })
 
   it('異なるPRの実行をEAS同期前にFIFOで待機させる', () => {

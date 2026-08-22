@@ -10,12 +10,11 @@
       "resizeMode": "contain",
       "backgroundColor": "#0B0F14"
     },
-    "platforms": [
-      "ios",
-      "android"
-    ],
+    "platforms": ["ios", "android"],
     "ios": {
+      "icon": "./assets/icon-ios.png",
       "bundleIdentifier": "com.oss-cairn",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSUserNotificationsUsageDescription": "プロジェクトのメンションやタスクの更新を通知します",
         "ITSAppUsesNonExemptEncryption": false
@@ -26,7 +25,20 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "チャットに添付する画像を選択するため、写真へのアクセスを使用します"
+        }
+      ],
+      [
+        "expo-sqlite",
+        {
+          "enableFTS": true
+        }
+      ]
     ],
     "extra": {
       "router": {},
@@ -35,7 +47,7 @@
       }
     },
     "owner": "keishingu",
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "1.2.0",
     "updates": {
       "url": "https://u.expo.dev/46195650-8dc8-4c73-9b32-c1b5134c0326"
     }

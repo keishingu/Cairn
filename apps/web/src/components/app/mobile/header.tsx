@@ -20,7 +20,7 @@ interface MobileHeaderProps {
 }
 
 export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderProps) {
-  const { openNotif } = useAppShell()
+  const { openNotif, isWebView } = useAppShell()
   const unreadCount = useUnreadNotificationCount()
   const [wsSwitcherOpen, setWsSwitcherOpen] = React.useState(false)
 
@@ -42,10 +42,49 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
     window.location.href = '/projects'
   }
 
+  React.useEffect(() => {
+    if (!isWebView) return
+    window.ReactNativeWebView?.postMessage(
+      JSON.stringify({
+        type: 'native-header',
+        title,
+        subtitle,
+        canGoBack: Boolean(onBack),
+      }),
+    )
+    if (!onBack) return
+    const handleNativeBack = () => onBack()
+    window.addEventListener('cairn:native-header-back', handleNativeBack)
+    return () => window.removeEventListener('cairn:native-header-back', handleNativeBack)
+  }, [isWebView, onBack, subtitle, title])
+
+  if (isWebView) {
+    if (!right) return null
+    return (
+      <div
+        aria-label={`${title}の操作`}
+        style={{
+          minHeight: 42,
+          padding: '5px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          background: 'var(--card)',
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+        }}
+      >
+        {right}
+      </div>
+    )
+  }
+
   return (
     <header style={{
       display: 'flex', alignItems: 'center', gap: 8,
       padding: '10px 16px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+      paddingLeft: 'calc(16px + env(safe-area-inset-left))',
+      paddingRight: 'calc(16px + env(safe-area-inset-right))',
       background: 'var(--card)', borderBottom: '1px solid var(--border)',
       position: 'sticky', top: 0, zIndex: 20,
     }}>

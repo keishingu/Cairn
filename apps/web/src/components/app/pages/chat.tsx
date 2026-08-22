@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { usePathname, useRouter } from 'next/navigation'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MobileHeader } from '../mobile/header'
@@ -24,13 +25,18 @@ import {
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 import { CreateChannelModal } from './create-channel-modal'
+import { CreateMilestoneModal, EditMilestoneModal } from './create-milestone-modal'
+import { CreateChannelThreadModal } from './create-channel-thread-modal'
 import { BellButton } from '../sidebar'
 import { useDebounce } from '@/hooks/use-debounce'
 import { ChannelList } from './chat-channel-list'
 import { ChatDetailSidebar, ChatInfoDrawer, type ChatDetailMember } from './chat-detail-sidebar'
 import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
+import { usePatchProjectMilestone } from '@/hooks/use-project-milestones'
+import { toast } from '@/lib/toast'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import { useCommand } from '@/lib/command-registry'
 import {
@@ -57,7 +63,6 @@ function highlightMatch(rawText: string, query: string) {
     </>
   )
 }
-
 function formatSearchDate(iso: string) {
   const d = new Date(iso)
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -320,15 +325,34 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
   const [bookmarksOpen, setBookmarksOpen] = React.useState(false)
-  const [targetMessageId, setTargetMessageId] = React.useState<string | null>(null)
+  const [targetMessage, setTargetMessage] = React.useState<{ id: string } | null>(null)
   const [detailOpen, setDetailOpen] = React.useState(true)
+  const [milestoneProject, setMilestoneProject] = React.useState<{ id: string; title: string } | null>(null)
+  const [editingMilestone, setEditingMilestone] = React.useState<ProjectChannelDto | null>(null)
+  const [threadChannel, setThreadChannel] = React.useState<{ id: string; name: string } | null>(null)
+  const patchMilestone = usePatchProjectMilestone()
 
   // パーマリンク (/chats/<channelId>?m=<messageId>) で開いたとき、該当メッセージへジャンプする。
   // useSearchParams は Suspense 境界を要求するため、クライアント側で location から読む
   React.useEffect(() => {
     if (typeof window === 'undefined') return
-    const m = new URLSearchParams(window.location.search).get('m')
-    if (m) setTargetMessageId(m)
+    const params = new URLSearchParams(window.location.search)
+    const m = params.get('m')
+    if (m) setTargetMessage({ id: m })
+    switch (params.get('panel')) {
+      case 'search':
+        setSearchOpen(true)
+        break
+      case 'info':
+        setShowInfo(true)
+        break
+      case 'global-search':
+        setGlobalSearchOpen(true)
+        break
+      case 'bookmarks':
+        setBookmarksOpen(true)
+        break
+    }
   }, [pathname])
 
   // ブラウザの戻る/進むでURLが変わったとき状態を同期
@@ -339,7 +363,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // 全チャンネル横断ジャンプで設定されたpendingJumpを消費
   React.useEffect(() => {
     if (_pendingJump && _pendingJump.channelId === channelId) {
-      setTargetMessageId(_pendingJump.messageId)
+      setTargetMessage({ id: _pendingJump.messageId })
       _pendingJump = null
     }
   }, [channelId])
@@ -364,7 +388,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     ],
     [projectChannels, workspaceChannels, dms],
   )
-  const hasResolvedInitialChannelLists = isProjectChannelsFetched && isWorkspaceChannelsFetched && isDmsFetched
+  const hasResolvedInitialChannelLists = isProjectChannelsFetched && isWorkspaceChannelsFetched && (isDmsFetched || !FEATURE_FLAGS.dm)
 
   React.useEffect(() => {
     if (channelId) setLastVisitedChatChannelId(channelId)
@@ -391,14 +415,17 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setSearchOpen(false)
     setGlobalSearchOpen(false)
     setBookmarksOpen(false)
-    setTargetMessageId(null)
+    setTargetMessage(null)
     router.push('/chats/' + id)
     markChannelRead.mutate(id)
   }
 
   const jumpToMessage = (messageId: string) => {
     setSearchOpen(false)
-    setTargetMessageId(messageId)
+    setGlobalSearchOpen(false)
+    setBookmarksOpen(false)
+    // 同じメッセージへの再ジャンプでも新しいオブジェクトにして、ChatThread の effect を再実行する。
+    setTargetMessage({ id: messageId })
   }
 
   // ⌥N 新規チャンネル / ⌥S 検索 / ⌥D 詳細パネル（PC のみ）
@@ -437,9 +464,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setGlobalSearchOpen(false)
     setBookmarksOpen(false)
     // 既に開いているチャンネルへのジャンプは channelId が変化しないため、
-    // _pendingJump 消費用 effect（[channelId] 依存）が発火しない。その場合は直接 targetMessageId を設定する
+    // _pendingJump 消費用 effect（[channelId] 依存）が発火しない。その場合は直接ジャンプ先を設定する
     if (chanId === channelId) {
-      setTargetMessageId(messageId)
+      setTargetMessage({ id: messageId })
     } else {
       _pendingJump = { channelId: chanId, messageId }
       setChannelId(chanId)
@@ -452,6 +479,17 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     createDmMutation.mutate(targetUserId, {
       onSuccess: (data) => selectChannel(data.id),
     })
+  }
+
+  const handleSetMilestoneCompleted = (milestone: ProjectChannelDto, completed: boolean) => {
+    if (!milestone.milestoneId || patchMilestone.isPending) return
+    patchMilestone.mutate(
+      { projectId: milestone.projectId, id: milestone.milestoneId, input: { completed } },
+      {
+        onSuccess: () => toast.success(completed ? 'マイルストーンを完了にしました' : 'マイルストーンを未完了に戻しました'),
+        onError: error => toast.error(error.message),
+      },
+    )
   }
 
   const currentChannel = projectChannels.find(c => c.channelId === channelId)
@@ -468,6 +506,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const currentChannelMemberCount = currentGeneral?.memberCount
 
   const { data: currentUser } = useCurrentUser()
+  const canCreateChildChannel = currentUser != null && currentUser.wsRole !== 'guest'
   // 非公開チャンネルのみ「チャンネル参加者」を表示するためメンバーを取得する
   const { data: channelMemberIds = [] } = useChannelMembers(isPrivate ? channelId : null)
 
@@ -545,6 +584,10 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       isMobile={isMobile}
       onAddChannel={() => setShowCreateChannel(true)}
       onStartDm={handleStartDm}
+      {...(canCreateChildChannel ? { onCreateMilestone: setMilestoneProject } : {})}
+      {...(canCreateChildChannel ? { onEditMilestone: setEditingMilestone } : {})}
+      {...(canCreateChildChannel ? { onSetMilestoneCompleted: handleSetMilestoneCompleted } : {})}
+      {...(canCreateChildChannel ? { onCreateThread: setThreadChannel } : {})}
     />
   )
 
@@ -552,6 +595,33 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     isMobile
       ? <CreateChannelSheet onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
       : <CreateChannelModal onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
+  )
+
+  const createMilestoneUI = milestoneProject && (
+    <CreateMilestoneModal
+      projectId={milestoneProject.id}
+      projectTitle={milestoneProject.title}
+      onClose={() => setMilestoneProject(null)}
+      onCreated={milestone => selectChannel(milestone.channelId)}
+    />
+  )
+
+  const createThreadUI = threadChannel && (
+    <CreateChannelThreadModal
+      channelId={threadChannel.id}
+      channelName={threadChannel.name}
+      onClose={() => setThreadChannel(null)}
+      onCreated={selectChannel}
+    />
+  )
+
+  const editMilestoneUI = editingMilestone?.milestoneId && (
+    <EditMilestoneModal
+      projectId={editingMilestone.projectId}
+      projectTitle={editingMilestone.projectTitle}
+      milestoneId={editingMilestone.milestoneId}
+      onClose={() => setEditingMilestone(null)}
+    />
   )
 
   // ─── モバイル ─────────────────────────────────────────────────
@@ -580,6 +650,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
               : channelListNode
           }
           {createChannelUI}
+          {createMilestoneUI}
+          {editMilestoneUI}
+          {createThreadUI}
         </div>
       )
     }
@@ -605,7 +678,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         />
         {searchOpen && channelId
           ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-          : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
+          : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessage={targetMessage}/>
         }
         {showMemberInvite && channelId && (
           <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
@@ -629,6 +702,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             onCloseMemberInvite={() => setShowMemberInvite(false)}
             onOpenProject={handleOpenProject}
             onOpenMember={handleOpenMember}
+            onJumpToMessage={(messageId) => { setShowInfo(false); jumpToMessage(messageId) }}
           />
         )}
       </div>
@@ -639,6 +713,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       {createChannelUI}
+      {createMilestoneUI}
+      {editMilestoneUI}
+      {createThreadUI}
       <aside style={{ width: 240, background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>チャット</h2>
@@ -696,7 +773,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                 ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
                 : searchOpen && channelId
                   ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-                  : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
+                  : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessage={targetMessage}/>
             }
           </main>
 
@@ -716,6 +793,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             onCloseMemberInvite={() => setShowMemberInvite(false)}
             onOpenProject={handleOpenProject}
             onOpenMember={handleOpenMember}
+            onJumpToMessage={jumpToMessage}
           />}
         </div>
       </div>

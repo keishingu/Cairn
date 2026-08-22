@@ -21,6 +21,10 @@ function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const inviteToken = searchParams.get('invite')
+  const nextPath = searchParams.get('next')
+  const accountDeleted = searchParams.get('accountDeleted') === '1'
+  const callbackError = searchParams.get('error') === 'callback'
+  const safeNextPath = nextPath?.startsWith('/') && !nextPath.startsWith('//') ? nextPath : null
 
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
@@ -59,7 +63,7 @@ function LoginForm() {
     if (body.needsWorkspace) {
       router.push('/onboarding')
     } else {
-      router.push('/projects')
+      router.push(safeNextPath ?? '/projects')
     }
     router.refresh()
   }
@@ -80,7 +84,38 @@ function LoginForm() {
         padding: '28px 28px 24px',
         boxShadow: 'var(--shadow-sm)',
       }}>
-        <SocialAuthButtons inviteToken={inviteToken} />
+        {accountDeleted && (
+          <div
+            role="status"
+            style={{
+              padding: '8px 12px',
+              marginBottom: 16,
+              borderRadius: 8,
+              background: 'var(--green-soft)',
+              color: 'var(--green-text)',
+              fontSize: 12.5,
+            }}
+          >
+            アカウントを削除しました。
+          </div>
+        )}
+        {callbackError && (
+          <div
+            role="alert"
+            style={{
+              padding: '8px 12px',
+              marginBottom: 16,
+              borderRadius: 8,
+              background: 'var(--red-soft)',
+              border: '1px solid var(--red)',
+              color: 'var(--red-text)',
+              fontSize: 12.5,
+            }}
+          >
+            サインインを完了できませんでした。もう一度お試しください。
+          </div>
+        )}
+        <SocialAuthButtons inviteToken={inviteToken} nextPath={safeNextPath} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
@@ -182,4 +217,3 @@ function LoginForm() {
     </div>
   )
 }
-

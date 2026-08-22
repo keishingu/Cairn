@@ -23,7 +23,10 @@ type RouteContext = { params: Promise<{ id: string }> }
 
 export async function GET(_req: Request, { params }: RouteContext) {
   const { id: projectId } = await params
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({
+    allowApiToken: true,
+    requiredApiTokenScope: 'read',
+  })
   if (error) return error
 
   try {

@@ -11,6 +11,7 @@ import { ServiceWorkerRegistrar } from '@/components/service-worker-registrar'
 import { ThemeCookieSync } from '@/components/theme-cookie-sync'
 import { DynamicAppleTouchIcon } from '@/components/dynamic-apple-touch-icon'
 import { DynamicFavicon } from '@/components/dynamic-favicon'
+import { PostHogProvider } from '@/components/posthog-provider'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -30,6 +31,9 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
+  // iOS PWA でノッチ・ホームインジケータの領域まで描画し、
+  // env(safe-area-inset-*) を使って各UI側で安全な余白を確保する
+  viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#4F8EF7' },
     { media: '(prefers-color-scheme: dark)', color: '#0B1622' },
@@ -47,12 +51,14 @@ export default function RootLayout({
     <html lang="ja" suppressHydrationWarning>
       <body className={`${inter.variable} ${notoSansJP.variable}`} style={{ margin: 0, padding: 0, height: '100%' }}>
         <ThemeProvider attribute={['class', 'data-theme']} defaultTheme="system" enableSystem disableTransitionOnChange>
-          <AccentColorProvider>
-            <QueryProvider>{children}</QueryProvider>
-            <ThemeCookieSync />
-            <DynamicAppleTouchIcon />
-            <DynamicFavicon />
-          </AccentColorProvider>
+          <PostHogProvider>
+            <AccentColorProvider>
+              <QueryProvider>{children}</QueryProvider>
+              <ThemeCookieSync />
+              <DynamicAppleTouchIcon />
+              <DynamicFavicon />
+            </AccentColorProvider>
+          </PostHogProvider>
           <Toaster />
         </ThemeProvider>
         <ServiceWorkerRegistrar />

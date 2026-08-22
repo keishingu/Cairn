@@ -1,7 +1,7 @@
 # 課金実装設計書
 
-> **ステータス**: 現行の設計合意（作成: 2026-06-12 / 改訂: 2026-06-16、実装未着手）
-> [`pricing-plan-design.md`](./pricing-plan-design.md) のケルン消費モデルを実装に落とすための設計。実装着手時に本書を更新する。関連: [`10_ai_member_design.md`](./10_ai_member_design.md)（AI の消費主体）
+> **ステータス**: Phase 1/2 実装済み（作成: 2026-06-12 / 改訂: 2026-08-05）
+> [`pricing-plan-design.md`](./pricing-plan-design.md) のケルン消費モデルを実装に落とすための設計。関連: [`10_ai_member_design.md`](./10_ai_member_design.md)（AIサーフェスの境界）、[`ai-pmo-design.md`](./ai-pmo-design.md)（受動AIの現行仕様）
 
 ---
 
@@ -36,7 +36,7 @@
 | チャット添付の音声・動画・ZIP | 不可（現状 MIME whitelist 自体が非対応） | `resolveUploadRights` 実装後に開放予定（本人帰属の能動権として扱う） | attachments 系（`upload/route.ts`） |
 | ストレージ保有 | 10GB まで | ケルンの石が家賃を払える限り | 家賃 cron（→ §6） |
 | AI 能動利用 | お試しぶんのみ | 石を消費 | AI メッセージ生成 API |
-| AI 受動利用（Heartbeat） | ケルンに残高があれば受信 | 受信 | AIメンバーのハートビート（→ doc 10） |
+| AI 受動利用（AI PMO） | ケルンに残高があれば受信 | 受信 | AI PMO Phase 1/2（→ `ai-pmo-design.md`） |
 
 画像の自動圧縮は**アップロード前のクライアントサイド圧縮**を基本とする（ingress 帯域と処理コストの節約。`process-image.ts` の EXIF 抽出と統合）。圧縮で撮影日時・GPS を失わないこと（ギャラリーの地図・タイムライン機能の前提）。**すべてのオリジナルに表示用の圧縮派生を持たせる**（サムネイル兼、風化時のフォールバック配信に使う）。
 
@@ -50,7 +50,7 @@
 
 アバター・ワークスペースロゴ・カバー写真（`me/avatar`, `workspaces/logo`, `workspaces/cover-photos`）は**家賃対象外**（サイズ上限の個別チェックのみ。プロフィール設定が課金で詰まる体験を避けるため）。
 
-AI の執行ポイント: `apps/web/src/app/api/ai/conversations/[id]/messages/route.ts`（能動依頼の前に残高チェック、応答後に消費記録）。AIメンバー実装後はメンション応答・ハートビート発言も同経路（→ §6, doc 10）。
+AI能動利用の執行ポイントは `apps/web/src/app/api/ai/conversations/[id]/messages/route.ts`。モデル呼び出し前に独立したトランザクションでクレジットを予約（`ai_consumption` のデビットを記帳）し、生成・ストリーム・応答保存に失敗した場合は `adjustment` で冪等に返金する。AI PMOは Inngest と `apps/web/src/lib/ai-nudges/` の別経路で配信予算を確認し、Phase 1/2 ともナッジ配信時に消費を記帳する。将来のAIメンバーも発話経路は別になり得るが、残高解決と台帳記帳の共通サービスを利用する。
 
 ## 4. データモデル（`packages/db/src/schema/billing.ts` 新設）
 
@@ -63,7 +63,7 @@ subscriptions              支援サブスクリプション（UI: 積み石 / S
   id             PK
   workspace_id   → workspaces.id (cascade)
   supporter_user_id → profiles.id        ※ WS 退会後も継続可（OB積み石）
-  plan           enum: solo / team
+  plan           enum: individual / workspace  ※ UI 表示は Solo / Team
   stripe_subscription_id  unique
   quantity       int                     ※ 重ね掛け口数（Solo）
   status         enum: active / past_due / canceled
@@ -96,6 +96,8 @@ stripe_events              Webhook 冪等性
 - **貢献の記録**: 「誰がいつ石を積んだか」は `subscriptions` + `credit_ledger(reason=subscription_grant/pack_purchase)` から導出できる。ケルン UI の礎石・タイムライン（永続表示）はこのクエリ。専用テーブルは当面不要
 - **`files.file_size` は実装済み**（`gallery_items.fileId` → `files.id` の join で取得可能。当初想定していた `gallery` テーブルへの追加は不要だった）。既存行の NULL は `storage.objects.metadata->>'size'` からのバックフィルで補正する（Phase 0 で実施済み）
 - **オリジナル別保存は未実装**: `process-image.ts` はアップロード前にクライアント側でオリジナルを圧縮版へ置き換えており、圧縮前のオリジナルは保存されない。そのため Phase 0 の `original_bytes` は「現状唯一の実体（圧縮後ファイル）」の合計であり、`derived_bytes` は常に 0。真のオリジナル保存・表示用派生の生成は Phase 1 でアップロード権判定と合わせて実装する
+- **2026-07-24 の Phase 1 実装**: `billing_customers` / `subscriptions` / `credit_ledger` / `stripe_events` / `workspace_storage_usage` を追加した。Stripe Checkout・Webhook・クレジット台帳・ストレージ家賃 cron・日次 reconciliation・アップロード執行・風化時の圧縮版フォールバックを実装済み。使用量カウンタはアップロード/削除で更新し、CASCADE 等の経路は reconciliation で補正する
+- **2026-07-25 の Phase 2 実装**: 能動AIは支援者かつ funded のワークスペースだけが利用し、応答保存と同一トランザクションで `ai_consumption` を記帳する。単発クレジットパックは `mode=payment` のCheckoutとWebhookで `pack_purchase` を記帳する。AI PMOのHeartbeatは funded のワークスペースだけで巡回・配信し、配信ごとに `ai_consumption` を記帳する
 
 ## 5. エンタイトルメント解決
 
@@ -134,8 +136,9 @@ Team（WS 定額）は「**全メンバーがオリジナルをアップロー�
 
 ### AI 能動消費
 
-- リクエスト前に残高 > 0 をチェック → 応答完了後に実測で `ai_consumption`（負）を記帳。事後記録のため僅かなマイナスは許容し、次回をブロック（リザーブ方式は初期は採らない・複雑すぎる）
-- 単位: 「1依頼 = N クレジット」を基本とし、内部でモデル別係数（gpt-4o / gpt-4o-mini / embedding）で原価換算。**消費しないもの**: ハートビートの一次巡回（gpt-4o-mini・原価僅少）、RAG の embedding 検索。**消費するもの**: 応答生成・ツール実行・HTML テンプレート生成・ハートビートの発言時の gpt-4o
+- `/ai` はモデル呼び出し前に独立したトランザクションで `ai_consumption`（負）を記帳してクレジットを予約する。生成・ストリーム・応答保存に失敗した場合は、別の `adjustment`（正）を冪等に記帳して返金する。応答保存とデビットは同一トランザクションではない
+- 単位: 「1依頼 / 1配信 = N クレジット」を基本とし、内部でモデル別係数と実測原価へ対応できるようにする。**消費しないもの**: AI PMO Phase 1 のルール巡回、RAG の embedding 検索。**消費するもの**: `/ai` の応答生成、ツール実行、HTMLテンプレート生成、AI PMO Phase 1/2 のナッジ配信
+- 初期仮値は能動AI 1依頼・Heartbeat 1配信ともに **10 クレジット**。`packages/core/src/domain/billing-config.ts` の定数だけを参照し、原価計測後に見直す
 
 ### アップロード時の判定
 
@@ -164,6 +167,7 @@ Team（WS 定額）は「**全メンバーがオリジナルをアップロー�
   - `customer.subscription.updated` / `deleted` → status・quantity・plan 同期
   - 署名検証必須。`stripe_events` による冪等化
 - Webhook は Vercel 上で同期処理できる軽さに保つ。重い後続処理は Inngest に流す
+- 初期パックは **¥500 / 400 クレジット**。Stripe の単発 Price ID は `STRIPE_CREDIT_PACK_PRICE_ID` に設定する
 
 ## 9. packages/core への配置（CQRS 命名）
 
@@ -193,14 +197,14 @@ Team（WS 定額）は「**全メンバーがオリジナルをアップロー�
 
 | Phase | 内容 | 備考 |
 |---|---|---|
-| **0: 計測**（実装着手済み） | `files.file_size` の NULL バックフィル、`files(workspace_id)` インデックス、`SUM(file_size)` 集約 API + 使用量メーター表示。**制限はかけない。カウンタは持たない**（→ 設計判断） | 実データで 10GB / 文書5MB / 圧縮パラメータ / 家賃レートの妥当性を検証してから執行する。オリジナル別保存・圧縮派生の生成は行わず、現状唯一の実体（アップロード前クライアント圧縮版）を `original_bytes` として計測する。true オリジナル保存とその差分化、カウンタ + reconciliation は Phase 1 のアップロード権判定・enforcement と合わせて実装する |
-| **1: Solo + ストレージ家賃 + 風化** | Stripe 購読・Webhook・クレジット台帳・家賃 cron・アップロード執行・風化時の圧縮版フォールバック・ケルン画面（簡素版） | ここで初めて課金が動く |
-| **2: AI 消費 + 買い増し** | AI 能動消費の記帳・石パック購入・受動 Heartbeat の原資化 | AIメンバー Stage 1 と同期して出すのが理想（doc 10） |
+| **0: 計測**（実装済み） | `files.file_size` の NULL バックフィル、`files(workspace_id)` インデックス、`SUM(file_size)` 集約 API + 使用量メーター表示。**制限はかけない。カウンタは持たない**（→ 設計判断） | 実データで 10GB / 文書5MB / 圧縮パラメータ / 家賃レートの妥当性を検証してから執行する。オリジナル別保存・圧縮派生の生成は行わず、現状唯一の実体（アップロード前クライアント圧縮版）を `original_bytes` として計測する。true オリジナル保存とその差分化、カウンタ + reconciliation は Phase 1 のアップロード権判定・enforcement と合わせて実装する |
+| **1: Solo + ストレージ家賃 + 風化**（実装済み） | Stripe 購読・Webhook・クレジット台帳・家賃 cron・アップロード執行・風化時の圧縮版フォールバック・ケルン画面（簡素版） | 課金の基盤とストレージ執行を実装済み |
+| **2: AI 消費 + 買い増し**（実装済み） | `/ai` の能動消費記帳・石パック購入・AI PMOの原資化 | AIメンバーを待たず、`/ai` とAI PMOの別経路で実装済み |
 | **3: ミニゲーム / Team / Expedition** | ケルン積みミニゲーム、Team プラン、請求書払い・SSO・監査ログ | 引き合い・余力が出てから |
 
 ## 12. 未決事項
 
-- 石の単価・月次付与数・家賃レート（石/GB/月）・AI 1依頼あたりの消費数（原価シミュレーション要）
+- クレジット単価・月次付与数・家賃レート（石/GB/月）・AI 1依頼あたりの消費数の本決定（現時点は `BILLING_CONFIG` の初期仮値。原価シミュレーション要）
 - AI 天井の見せ方（減る残高 or 毎月リセットの上限。後者推奨）
 - 画像圧縮の最終パラメータと文書 5MB 上限の妥当性（Phase 0 の計測で検証）
 - チャット添付で開放する音声・動画・ZIP の対応 MIME タイプ・サイズ上限（動画は gallery 系の上限と揃えるか個別設定か含めて未決）

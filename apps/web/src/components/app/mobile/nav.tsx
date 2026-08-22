@@ -80,10 +80,6 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
 
   const isMenuActive = MENU_PAGES.has(page)
 
-  // Index of projects tab for popup positioning
-  const projectsTabIndex = 0
-  const TAB_COUNT = TABS.length
-
   return (
     <>
       {/* Overlay backdrop for any open popup */}
@@ -99,7 +95,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
         <div style={{
           position: 'fixed',
           bottom: 'calc(65px + env(safe-area-inset-bottom))',
-          left: `calc(${(projectsTabIndex / TAB_COUNT) * 100}% - 8px)`,
+          left: 'calc(8px + env(safe-area-inset-left))',
           zIndex: 50,
           background: 'var(--card)',
           border: '1px solid var(--border)',
@@ -137,7 +133,8 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
         <div style={{
           position: 'fixed',
           bottom: 'calc(65px + env(safe-area-inset-bottom))',
-          left: 12, right: 12,
+          left: 'calc(12px + env(safe-area-inset-left))',
+          right: 'calc(12px + env(safe-area-inset-right))',
           zIndex: 50,
           background: 'var(--card)',
           border: '1px solid var(--border)',
@@ -222,7 +219,10 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
       <nav style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
         background: 'var(--card)', borderTop: '1px solid var(--border)',
-        display: 'flex', paddingBottom: 'env(safe-area-inset-bottom)',
+        display: 'flex',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+        paddingLeft: 'env(safe-area-inset-left)',
+        paddingRight: 'env(safe-area-inset-right)',
       }}>
         {TABS.map(tab => {
           const active =

@@ -8,23 +8,34 @@ import { createClient } from '@/lib/supabase/client'
 
 interface Props {
   inviteToken?: string | null
+  nextPath?: string | null
 }
 
-export function SocialAuthButtons({ inviteToken }: Props) {
+export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
   const [loadingProvider, setLoadingProvider] = React.useState<'google' | 'apple' | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
 
   async function handleOAuth(provider: 'google' | 'apple') {
     setLoadingProvider(provider)
+    setError(null)
     const supabase = createClient()
-    const callbackUrl = inviteToken
-      ? `${window.location.origin}/api/auth/callback?invite=${inviteToken}`
-      : `${window.location.origin}/api/auth/callback`
+    const callbackUrl = new URL('/api/auth/callback', window.location.origin)
+    if (inviteToken) callbackUrl.searchParams.set('invite', inviteToken)
+    if (nextPath) callbackUrl.searchParams.set('next', nextPath)
 
-    await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: callbackUrl },
-    })
-    // リダイレクトするのでローディングはリセットしない
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: callbackUrl.toString() },
+      })
+
+      if (!oauthError) return
+    } catch {
+      // SDKまたはネットワークエラーは同じ復帰導線へ進む
+    }
+
+    setError('サインインを開始できませんでした。しばらくしてからもう一度お試しください。')
+    setLoadingProvider(null)
   }
 
   return (
@@ -90,6 +101,22 @@ export function SocialAuthButtons({ inviteToken }: Props) {
           </>
         )}
       </button>
+
+      {error && (
+        <div
+          role="alert"
+          style={{
+            padding: '8px 12px',
+            borderRadius: 8,
+            background: 'var(--red-soft)',
+            border: '1px solid var(--red)',
+            color: 'var(--red-text)',
+            fontSize: 12.5,
+          }}
+        >
+          {error}
+        </div>
+      )}
     </div>
   )
 }

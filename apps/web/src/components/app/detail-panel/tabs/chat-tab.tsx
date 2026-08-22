@@ -3,15 +3,26 @@
 import React from 'react'
 import { Icon } from '../../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import { findProjectChannelById, useProjectChannels } from '@/lib/chat/client'
 import { ChatThread } from '../../chat-thread'
+
+export function filterProjectChatTabChannels(
+  channels: ProjectChannelDto[] | undefined,
+  projectId: string,
+): ProjectChannelDto[] {
+  return channels?.filter(channel =>
+    channel.projectId === projectId &&
+    (channel.milestoneId === null || channel.milestoneCompleted !== true)
+  ) ?? []
+}
 
 export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?: boolean }) => {
   const { data: projectChannels, isLoading, isError } = useProjectChannels()
   const [selectedChannelId, setSelectedChannelId] = React.useState<string | null>(null)
 
   const projectScopedChannels = React.useMemo(
-    () => projectChannels?.filter(channel => channel.projectId === project.id) ?? [],
+    () => filterProjectChatTabChannels(projectChannels, project.id),
     [projectChannels, project.id],
   )
 

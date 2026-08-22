@@ -35,6 +35,8 @@ export const attendanceStatusEnum = pgEnum('attendance_status', [
 
 export const messageTypeEnum = pgEnum('message_type', ['text', 'html', 'system'])
 
+export const apiTokenScopeEnum = pgEnum('api_token_scope', ['read', 'write'])
+
 export const fileTypeEnum = pgEnum('file_type', [
   'document',
   'image',
@@ -61,4 +63,33 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'invite',
   'reaction',
   'ai',
+])
+
+export const contentReportReasonEnum = pgEnum('content_report_reason', [
+  'harassment',
+  'discriminatory',
+  'sexual',
+  'violence',
+  'spam',
+  'other',
+])
+
+export const contentReportStatusEnum = pgEnum('content_report_status', ['open', 'resolved', 'dismissed'])
+
+// 課金プランの UI 名はブランド変更に備えてここへ持ち込まない。
+// individual は個人購読、workspace は将来のワークスペース定額を表す。
+export const billingPlanEnum = pgEnum('billing_plan', ['individual', 'workspace'])
+
+export const subscriptionStatusEnum = pgEnum('subscription_status', [
+  'active',
+  'past_due',
+  'canceled',
+])
+
+export const creditLedgerReasonEnum = pgEnum('credit_ledger_reason', [
+  'subscription_grant',
+  'pack_purchase',
+  'ai_consumption',
+  'storage_rent',
+  'adjustment',
 ])

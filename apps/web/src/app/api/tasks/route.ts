@@ -19,14 +19,24 @@ export interface TaskDto {
   assigneeId: string | null
   assigneeName: string | null
   assigneeAvatarUrl: string | null
+  /** チャット由来タスクの共有元メッセージ。未紐付けなら null。 */
+  sourceMessageId?: string | null
   isLinkedToMessage: boolean
 }
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId') ?? undefined
+  const assignee = searchParams.get('assignee') ?? undefined
 
-  const { ctx, error } = await getAuthContext()
+  if (assignee && assignee !== 'me') {
+    return NextResponse.json({ error: 'assignee must be "me"' }, { status: 422 })
+  }
+
+  const { ctx, error } = await getAuthContext({
+    allowApiToken: true,
+    requiredApiTokenScope: 'read',
+  })
   if (error) return error
 
   try {
@@ -47,6 +57,7 @@ export async function GET(req: Request) {
     // 全件スキャンにならないように、また guest が見えないタスクを読まないようにする）
     const conditions = [eq(tasks.workspaceId, ctx.workspaceId)]
     if (projectId) conditions.push(eq(tasks.projectId, projectId))
+    if (assignee === 'me') conditions.push(eq(tasks.assigneeId, ctx.userId))
     if (guestProjectIds) conditions.push(inArray(tasks.projectId, guestProjectIds))
 
     const taskRows = await db
@@ -80,6 +91,7 @@ export async function GET(req: Request) {
       assigneeId: r.assigneeId,
       assigneeName: r.assigneeName ?? null,
       assigneeAvatarUrl: r.assigneeAvatarUrl ?? null,
+      sourceMessageId: r.sourceMessageId,
       isLinkedToMessage: r.sourceMessageId != null,
     }))
 
@@ -91,7 +103,10 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { ctx, error: authError } = await getAuthContext()
+  const { ctx, error: authError } = await getAuthContext({
+    allowApiToken: true,
+    requiredApiTokenScope: 'write',
+  })
   if (authError) return authError
 
   let body: unknown
@@ -185,6 +200,7 @@ export async function POST(req: Request) {
       assigneeId: inserted.assigneeId,
       assigneeName: assigneeRow?.displayName ?? null,
       assigneeAvatarUrl: assigneeRow?.avatarUrl ?? null,
+      sourceMessageId: null,
       isLinkedToMessage: false,
     }
 

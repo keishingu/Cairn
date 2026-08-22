@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { z } from 'zod'
+import { ACCENT_IDS, APPEARANCE_THEMES } from '../config/appearance'
 
 const timeStringSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
 
@@ -51,6 +52,7 @@ export const postMessageSchema = z
     channelId: z.string().uuid(),
     content: z.string().max(10000).default(''),
     messageType: z.enum(['text', 'html']).default('text'),
+    clientMessageId: z.string().uuid().optional(),
     parentMessageId: z.string().uuid().optional(),
     attachmentFileIds: z.array(z.string().uuid()).max(10).optional(),
   })
@@ -114,6 +116,8 @@ export const patchMeSchema = z.object({
   status: z.enum(['online', 'away', 'busy', 'offline']).optional(),
   statusMessage: z.string().max(100).nullable().optional(),
   aiNudgesEnabled: z.boolean().optional(),
+  theme: z.enum(APPEARANCE_THEMES).optional(),
+  accentId: z.enum(ACCENT_IDS).optional(),
 }).refine(
   data => Object.values(data).some(value => value !== undefined),
   { message: 'At least one field is required' },
@@ -123,6 +127,16 @@ export const createProjectStatusSchema = z.object({
   name: z.string().trim().min(1).max(100),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
 })
+
+export const patchWorkspaceSettingsSchema = z.object({
+  // 空欄はUIの既定表示「プロジェクト」へ戻す意図なので、DBには null として保存する。
+  projectLabel: z.string().trim().max(100).transform(value => value || null).nullable().optional(),
+  aiNudgesPhaseOneEnabled: z.boolean().optional(),
+  aiNudgesPhaseTwoEnabled: z.boolean().optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
 export type CreateProjectStatusInput = z.infer<typeof createProjectStatusSchema>
 
 export const patchProjectStatusSchema = z.object({
@@ -154,6 +168,7 @@ export type UpdateTaskInput = z.infer<typeof updateTaskSchema>
 export type UploadGalleryItemInput = z.infer<typeof uploadGalleryItemSchema>
 export type PatchProjectInput = z.infer<typeof patchProjectSchema>
 export type PatchWorkspaceInput = z.infer<typeof patchWorkspaceSchema>
+export type PatchWorkspaceSettingsInput = z.infer<typeof patchWorkspaceSettingsSchema>
 export type PatchMeInput = z.infer<typeof patchMeSchema>
 export type PatchProjectStatusInput = z.infer<typeof patchProjectStatusSchema>
 

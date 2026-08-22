@@ -8,10 +8,13 @@ import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
 import { canAccessFile, type WorkspaceRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasBlockBetween } from '@/lib/safety/blocks'
+import { unsafeMessageError } from '@/lib/safety/message-filter'
 import type { MessageDto } from './dto'
 
 type PostMessageInput = {
   attachmentFileIds?: string[] | undefined
+  clientMessageId?: string | undefined
   content: string
   messageType?: MessageDto['messageType'] | undefined
   parentMessageId?: string | null | undefined
@@ -25,12 +28,75 @@ type PostMessageArgs = {
   role: WorkspaceRole
 }
 
-export async function postMessage({ channelId, payload, userId, workspaceId, role }: PostMessageArgs) {
+export async function postMessage({
+  channelId,
+  payload,
+  userId,
+  workspaceId,
+  role,
+}: PostMessageArgs) {
   try {
     const { db } = await import('@cairn/db')
-    const { messages, profiles, messageAttachments, files, channels, tasks, workspaceMembers } =
+    const { messages, profiles, messageAttachments, files, channels, channelMembers, tasks, workspaceMembers } =
       await import('@cairn/db')
-    const { eq, and, isNull, inArray } = await import('drizzle-orm')
+    const { eq, and, isNull, inArray, sql } = await import('drizzle-orm')
+
+    // モバイルのオフラインキューは最初の送信から同じ UUID を使い続ける。
+    // 応答が端末へ届く前に回線が切れて再送されても、既存行を返して二重投稿を防ぐ。
+    if (payload.clientMessageId) {
+      const [existing] = await db
+        .select({
+          id: messages.id,
+          channelId: messages.channelId,
+          content: messages.content,
+          messageType: messages.messageType,
+          senderId: messages.senderId,
+          createdAt: messages.createdAt,
+          parentMessageId: messages.parentMessageId,
+        })
+        .from(messages)
+        .where(eq(messages.id, payload.clientMessageId))
+        .limit(1)
+
+      if (existing) {
+        if (existing.channelId !== channelId || existing.senderId !== userId) {
+          return NextResponse.json({ error: 'clientMessageId が競合しています' }, { status: 409 })
+        }
+        const [existingProfile] = await db
+          .select({
+            displayName: workspaceMemberDisplayName(
+              workspaceMembers.displayName,
+              profiles.displayName,
+            ),
+            avatarUrl: workspaceMembers.avatarUrl,
+          })
+          .from(profiles)
+          .leftJoin(
+            workspaceMembers,
+            and(
+              eq(workspaceMembers.userId, profiles.id),
+              eq(workspaceMembers.workspaceId, workspaceId),
+            ),
+          )
+          .where(eq(profiles.id, existing.senderId))
+
+        return NextResponse.json({
+          id: existing.id,
+          content: existing.content,
+          messageType: existing.messageType,
+          senderId: existing.senderId,
+          senderName: existingProfile?.displayName ?? '不明',
+          senderAvatarUrl: existingProfile?.avatarUrl ?? null,
+          createdAt: existing.createdAt.toISOString(),
+          isEdited: false,
+          reactions: [],
+          attachments: [],
+          parentMessageId: existing.parentMessageId,
+          replyTo: null,
+          bookmarked: false,
+        } satisfies MessageDto)
+      }
+    }
 
     // 引用返信の親は、同一チャンネルの未削除メッセージに限定する。
     // 他チャンネルの ID を親に偽装して内容を引用バーに漏らす攻撃を防ぐ
@@ -54,6 +120,24 @@ export async function postMessage({ channelId, payload, userId, workspaceId, rol
     const attachmentFileIds = payload.attachmentFileIds ?? []
     // メンションは名前なしの canonical 形式で保存する（埋め込み名が来ても除去）
     const content = canonicalizeMentions(payload.content)
+    const safetyError = unsafeMessageError(content)
+    if (safetyError) return NextResponse.json({ error: safetyError }, { status: 422 })
+
+    // DM はチャンネル作成後にもブロック関係が変わりうるため、投稿ごとに再検証する。
+    const [channelForSafety] = await db
+      .select({ type: channels.type })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1)
+    if (channelForSafety?.type === 'dm') {
+      const participants = await db.select({ userId: channelMembers.userId })
+        .from(channelMembers)
+        .where(eq(channelMembers.channelId, channelId))
+      const other = participants.find(participant => participant.userId !== userId)
+      if (!other || await hasBlockBetween(userId, other.userId)) {
+        return NextResponse.json({ error: 'このユーザーとのDMは利用できません' }, { status: 403 })
+      }
+    }
 
     if (attachmentFileIds.length > 0) {
       const fileRows = await db
@@ -93,14 +177,25 @@ export async function postMessage({ channelId, payload, userId, workspaceId, rol
         : [undefined]
 
     const inserted = await db.transaction(async (tx) => {
+      // 既読スナップショットと投稿順をチャンネル単位で直列化する。
+      await tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(eq(channels.id, channelId))
+        .for('update')
+
       const [message] = await tx
         .insert(messages)
         .values({
+          ...(payload.clientMessageId ? { id: payload.clientMessageId } : {}),
           channelId,
           senderId: userId,
           content,
           messageType: payload.messageType ?? 'text',
           parentMessageId: payload.parentMessageId ?? null,
+          // default now() はトランザクション開始時刻なので、ロック取得後の時刻を使う。
+          createdAt: sql`clock_timestamp()`,
+          updatedAt: sql`clock_timestamp()`,
         })
         .returning({
           id: messages.id,

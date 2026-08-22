@@ -23,7 +23,6 @@ jobs:
     permissions:
       actions: read
       contents: read
-      deployments: read
       pull-requests: write
 
     steps:
@@ -69,54 +68,6 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Wait for Vercel Preview
-        id: vercel-preview
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const sha = context.payload.pull_request.head.sha
-            const deadline = Date.now() + 5 * 60 * 1000
-
-            while (Date.now() < deadline) {
-              const deployments = await github.paginate(
-                github.rest.repos.listDeployments,
-                {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  sha,
-                  per_page: 100,
-                },
-              )
-
-              for (const deployment of deployments) {
-                if (!deployment.environment?.toLowerCase().includes('preview')) {
-                  continue
-                }
-
-                const statuses = await github.rest.repos.listDeploymentStatuses({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  deployment_id: deployment.id,
-                  per_page: 100,
-                })
-                const success = statuses.data.find(
-                  (status) => status.state === 'success' && status.environment_url,
-                )
-
-                if (success) {
-                  const url = success.environment_url.replace(/\/$/, '')
-                  core.setOutput('url', url)
-                  core.info(`Using Vercel Preview: ${url}`)
-                  return
-                }
-              }
-
-              core.info('Vercel Preview is not ready yet; retrying in 10 seconds.')
-              await new Promise((resolve) => setTimeout(resolve, 10_000))
-            }
-
-            core.setFailed('Timed out waiting for a successful Vercel Preview deployment.')
-
       - name: Wait for earlier Mobile Preview runs
         uses: actions/github-script@v8
         with:
@@ -160,37 +111,55 @@ jobs:
       - name: Sync EAS preview environment
         working-directory: apps/mobile
         env:
-          MOBILE_PREVIEW_API_BASE_URL: ${{ steps.vercel-preview.outputs.url }}
+          # PR 固有の *.vercel.app は Deployment Protection で Vercel 認証へ
+          # リダイレクトされ得るため、モバイル WebView は公開済みの固定ドメインを使う。
+          MOBILE_PREVIEW_API_BASE_URL: https://develop.oss-cairn.com
           MOBILE_PREVIEW_SUPABASE_URL: ${{ vars.MOBILE_PREVIEW_SUPABASE_URL }}
           MOBILE_PREVIEW_SUPABASE_ANON_KEY: ${{ secrets.MOBILE_PREVIEW_SUPABASE_ANON_KEY }}
         run: |
-          eas env:create \
+          eas env:set preview \
+            --name EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV \
+            --value preview \
+            --visibility plaintext \
+            --scope project \
+            --non-interactive
+          eas env:set preview \
             --name EXPO_PUBLIC_API_BASE_URL \
-            --environment preview \
             --value "$MOBILE_PREVIEW_API_BASE_URL" \
             --visibility plaintext \
             --scope project \
-            --force \
             --non-interactive
-          eas env:create \
+          eas env:set preview \
             --name EXPO_PUBLIC_SUPABASE_URL \
-            --environment preview \
             --value "$MOBILE_PREVIEW_SUPABASE_URL" \
             --visibility plaintext \
             --scope project \
-            --force \
             --non-interactive
-          eas env:create \
+          eas env:set preview \
             --name EXPO_PUBLIC_SUPABASE_ANON_KEY \
-            --environment preview \
             --value "$MOBILE_PREVIEW_SUPABASE_ANON_KEY" \
             --visibility sensitive \
             --scope project \
-            --force \
             --non-interactive
 
       - name: Publish EAS Update
         uses: expo/expo-github-action/preview@v8
+        env:
+          # EAS CLI は --environment preview の値を内部で読み込むが、Action が
+          # PR コメント用の Expo config を再評価するときにも同じvariantを使わせる。
+          EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV: preview
         with:
           working-directory: apps/mobile
           command: eas update --auto --branch pr-${{ github.event.number }} --environment preview --non-interactive
+
+      # PR固有QRとは別に、Internal Distribution buildが購読するpreviewチャネルへも
+      # 同じrevisionを配信する。異なるPRは上のFIFOゲートで直列化され、最後に成功した
+      # Mobile Previewが検証端末の最新版になる。
+      - name: Publish Internal Distribution EAS Update
+        working-directory: apps/mobile
+        run: |
+          eas update \
+            --channel preview \
+            --message "PR #${{ github.event.number }} ${{ github.event.pull_request.head.sha }}" \
+            --environment preview \
+            --non-interactive

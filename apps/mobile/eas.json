@@ -1,5 +1,6 @@
 {
   "cli": {
+    "version": ">= 21.0.2",
     "appVersionSource": "remote"
   },
   "build": {
@@ -7,6 +8,9 @@
       "developmentClient": true,
       "distribution": "internal",
       "environment": "development",
+      "env": {
+        "EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV": "development"
+      },
       "channel": "development",
       "ios": {
         "simulator": true
@@ -21,12 +25,26 @@
     "preview": {
       "distribution": "internal",
       "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV": "preview"
+      },
       "channel": "preview"
     },
     "production": {
       "autoIncrement": true,
       "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV": "production"
+      },
       "channel": "production"
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "6800673777",
+        "metadataPath": "./store.config.json"
+      }
     }
   }
 }

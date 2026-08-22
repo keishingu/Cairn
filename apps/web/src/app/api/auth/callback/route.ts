@@ -9,6 +9,8 @@ export async function GET(request: Request) {
   const code = searchParams.get('code')
   // 招待トークンが付いている場合は受け入れフローへ
   const inviteToken = searchParams.get('invite')
+  const nextPath = searchParams.get('next')
+  const safeNextPath = nextPath?.startsWith('/') && !nextPath.startsWith('//') ? nextPath : null
 
   if (code) {
     const supabase = await createClient()
@@ -52,9 +54,16 @@ export async function GET(request: Request) {
       if (isNewUser) {
         return NextResponse.redirect(`${origin}/onboarding`)
       }
+      if (safeNextPath) {
+        return NextResponse.redirect(`${origin}${safeNextPath}`)
+      }
       return NextResponse.redirect(`${origin}/projects`)
     }
   }
 
-  return NextResponse.redirect(`${origin}/auth/login?error=callback`)
+  const loginUrl = new URL('/auth/login', origin)
+  loginUrl.searchParams.set('error', 'callback')
+  if (inviteToken) loginUrl.searchParams.set('invite', inviteToken)
+  if (safeNextPath) loginUrl.searchParams.set('next', safeNextPath)
+  return NextResponse.redirect(loginUrl)
 }
