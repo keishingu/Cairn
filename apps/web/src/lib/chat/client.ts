@@ -185,6 +185,28 @@ export function mergeChannelMessages(current: MessageDto[] | undefined, incoming
   return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
 }
 
+export function reconcileChannelMessageList(
+  messages: MessageDto[],
+  messageId: string,
+  refreshed: MessageDto | undefined,
+): MessageDto[] {
+  return messages.flatMap(message => {
+    if (message.id === messageId) return refreshed ? [refreshed] : []
+    if (message.parentMessageId !== messageId || !message.replyTo) return [message]
+    return [{
+      ...message,
+      replyTo: refreshed
+        ? {
+            id: refreshed.id,
+            senderName: refreshed.senderName,
+            content: refreshed.content,
+            isDeleted: false,
+          }
+        : { ...message.replyTo, content: '', isDeleted: true },
+    }]
+  })
+}
+
 export async function reconcileCachedChannelMessage(
   queryClient: QueryClient,
   channelId: string,
@@ -198,9 +220,7 @@ export async function reconcileCachedChannelMessage(
   const refreshed = refreshedWindow.find(message => message.id === messageId)
   queryClient.setQueryData<MessageDto[]>(queryKey, previous => {
     if (!previous) return previous
-    return refreshed
-      ? previous.map(message => message.id === messageId ? refreshed : message)
-      : previous.filter(message => message.id !== messageId)
+    return reconcileChannelMessageList(previous, messageId, refreshed)
   })
   return true
 }

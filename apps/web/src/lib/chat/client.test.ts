@@ -1,6 +1,12 @@
 import { QueryClient } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { chatQueryKeys, findProjectChannelById, mergeChannelMessages, reconcileCachedChannelMessage } from './client'
+import {
+  chatQueryKeys,
+  findProjectChannelById,
+  mergeChannelMessages,
+  reconcileCachedChannelMessage,
+  reconcileChannelMessageList,
+} from './client'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 
@@ -85,5 +91,23 @@ describe('reconcileCachedChannelMessage', () => {
     await expect(reconcileCachedChannelMessage(queryClient, 'channel-1', original.id)).resolves.toBe(true)
     expect(queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages('channel-1')))
       .toEqual([untouched])
+  })
+})
+
+describe('reconcileChannelMessageList', () => {
+  it('親メッセージの更新と削除を返信プレビューにも反映する', () => {
+    const parent = {
+      id: 'parent', senderName: 'Parent', content: 'before', parentMessageId: null, replyTo: null,
+    } as MessageDto
+    const reply = {
+      id: 'reply', parentMessageId: parent.id,
+      replyTo: { id: parent.id, senderName: parent.senderName, content: parent.content, isDeleted: false },
+    } as MessageDto
+    const updated = { ...parent, content: 'after' }
+
+    expect(reconcileChannelMessageList([parent, reply], parent.id, updated))
+      .toEqual([updated, expect.objectContaining({ replyTo: expect.objectContaining({ content: 'after', isDeleted: false }) })])
+    expect(reconcileChannelMessageList([parent, reply], parent.id, undefined))
+      .toEqual([expect.objectContaining({ replyTo: expect.objectContaining({ content: '', isDeleted: true }) })])
   })
 })
