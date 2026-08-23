@@ -549,6 +549,7 @@ export function useLoadOlderChannelMessages(channelId: string | null) {
       const latest = await fetchChannelMessages(channelId)
       messageWindowRef.current = null
       queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), latest)
+      setHasMore(true)
       setHasNewer(false)
       return true
     } catch (cause) {
