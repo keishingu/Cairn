@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findProjectChannelById } from './client'
+import { chatQueryKeys, findProjectChannelById } from './client'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 
 describe('findProjectChannelById', () => {
@@ -38,5 +38,16 @@ describe('findProjectChannelById', () => {
     ]
 
     expect(findProjectChannelById(channels, 'project-1')?.channelId).toBe('general-channel')
+  })
+})
+
+describe('chatQueryKeys', () => {
+  it('最新100件と履歴を別のキャッシュに分ける', () => {
+    expect(chatQueryKeys.messages('channel-1')).toEqual(['messages', 'channel-1'])
+    expect(chatQueryKeys.messageHistory('channel-1', 'message-1')).toEqual([
+      'message-history',
+      'channel-1',
+      'message-1',
+    ])
   })
 })

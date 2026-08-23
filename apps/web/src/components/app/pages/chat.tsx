@@ -18,7 +18,6 @@ import {
   useWorkspaceDms,
   useChannelMembers,
   useCreateDm,
-  useMarkChannelRead,
   useCurrentUser,
   useBookmarks,
 } from '@/lib/chat/client'
@@ -338,7 +337,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const m = params.get('m')
-    if (m) setTargetMessage({ id: m })
+    setTargetMessage(m ? { id: m } : null)
     switch (params.get('panel')) {
       case 'search':
         setSearchOpen(true)
@@ -372,7 +371,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const { data: workspaceChannels = [], isFetched: isWorkspaceChannelsFetched } = useWorkspaceChannels()
   const { data: members = [] } = useWorkspaceMembers()
   const { data: dms = [], isFetched: isDmsFetched } = useWorkspaceDms()
-  const markChannelRead = useMarkChannelRead()
   const createDmMutation = useCreateDm()
 
   const fallbackChannelId = React.useMemo(
@@ -417,7 +415,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setBookmarksOpen(false)
     setTargetMessage(null)
     router.push('/chats/' + id)
-    markChannelRead.mutate(id)
   }
 
   const jumpToMessage = (messageId: string) => {
@@ -469,10 +466,10 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       setTargetMessage({ id: messageId })
     } else {
       _pendingJump = { channelId: chanId, messageId }
+      setTargetMessage({ id: messageId })
       setChannelId(chanId)
     }
     router.push('/chats/' + chanId)
-    markChannelRead.mutate(chanId)
   }
 
   const handleStartDm = (targetUserId: string) => {
@@ -678,7 +675,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         />
         {searchOpen && channelId
           ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-          : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessage={targetMessage}/>
+          : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition/>
         }
         {showMemberInvite && channelId && (
           <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
@@ -773,7 +770,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                 ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
                 : searchOpen && channelId
                   ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-                  : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessage={targetMessage}/>
+                  : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition/>
             }
           </main>
 
