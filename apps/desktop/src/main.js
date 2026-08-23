@@ -5,7 +5,6 @@ const { registerExternalNavigation } = require('./external-navigation')
 const { registerPermissionPolicy } = require('./permission-policy')
 
 const APP_URL = process.env.DESKTOP_APP_URL || pkg.config?.appUrl || 'https://develop.oss-cairn.com'
-const APP_START_URL = new URL('/chats', APP_URL).toString()
 const isDev = process.env.NODE_ENV === 'development'
 const isMac = process.platform === 'darwin'
 
@@ -103,7 +102,7 @@ function createWindow() {
   })
 
   registerExternalNavigation(win.webContents, APP_URL, url => shell.openExternal(url))
-  win.loadURL(APP_START_URL)
+  win.loadURL(APP_URL)
 
   // Desktop 特権: ブラウザがタブ切替に使う Ctrl+Tab / Ctrl+Shift+Tab を横取りし、
   // チャンネル・会話の順送りに割り当てる（Web 版ではブラウザに奪われ実現できない）
