@@ -18,7 +18,6 @@ import {
   useWorkspaceDms,
   useChannelMembers,
   useCreateDm,
-  useMarkChannelRead,
   useCurrentUser,
   useBookmarks,
 } from '@/lib/chat/client'
@@ -372,7 +371,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const { data: workspaceChannels = [], isFetched: isWorkspaceChannelsFetched } = useWorkspaceChannels()
   const { data: members = [] } = useWorkspaceMembers()
   const { data: dms = [], isFetched: isDmsFetched } = useWorkspaceDms()
-  const markChannelRead = useMarkChannelRead()
   const createDmMutation = useCreateDm()
 
   const fallbackChannelId = React.useMemo(
@@ -417,7 +415,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setBookmarksOpen(false)
     setTargetMessage(null)
     router.push('/chats/' + id)
-    markChannelRead.mutate(id)
   }
 
   const jumpToMessage = (messageId: string) => {
@@ -472,7 +469,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       setChannelId(chanId)
     }
     router.push('/chats/' + chanId)
-    markChannelRead.mutate(chanId)
   }
 
   const handleStartDm = (targetUserId: string) => {
