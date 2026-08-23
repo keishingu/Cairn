@@ -184,7 +184,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
     document.cookie = `cairn_workspace_id=${id}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     setSwitcherOpen(false)
     // サーバーキャッシュ・TanStack Query・ルーターキャッシュをすべて破棄
-    window.location.href = '/projects'
+    window.location.href = '/chats'
   }
   const projectChildren: SidebarGroupItem[] = [
     { id: 'projects', icon: 'list',     label: '一覧' },
@@ -318,11 +318,11 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
 
         {/* アイコンナビ */}
         <nav style={{ flex: 1, overflow: 'auto', padding: '10px 6px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <CollapsedNavItem icon="chat"     label="チャット一覧"   badge={totalChatUnread || undefined} active={page === 'chats'}   onClick={() => setPage('chats')} onPrefetch={() => prefetchPage?.('chats')}/>
           <CollapsedNavItem icon="list"     label={`${projectLabel}：一覧`}       active={page === 'projects'} onClick={() => setPage('projects')} onPrefetch={() => prefetchPage?.('projects')}/>
           <CollapsedNavItem icon="calendar" label={`${projectLabel}：カレンダー`} active={page === 'calendar'} onClick={() => setPage('calendar')} onPrefetch={() => prefetchPage?.('calendar')}/>
           <CollapsedNavItem icon="kanban"   label={`${projectLabel}：カンバン`}   active={page === 'kanban'}   onClick={() => setPage('kanban')} onPrefetch={() => prefetchPage?.('kanban')}/>
           <CollapsedNavItem icon="check"    label="マイタスク"     active={page === 'tasks'}   onClick={() => setPage('tasks')} onPrefetch={() => prefetchPage?.('tasks')}/>
-          <CollapsedNavItem icon="chat"     label="チャット一覧"   badge={totalChatUnread || undefined} active={page === 'chats'}   onClick={() => setPage('chats')} onPrefetch={() => prefetchPage?.('chats')}/>
           <div style={{ margin: '6px 0', height: 1, background: 'var(--divider)' }}/>
           <CollapsedNavItem icon="file"     label="ファイル"       active={page === 'files'}   onClick={() => setPage('files')} onPrefetch={() => prefetchPage?.('files')}/>
           <CollapsedNavItem icon="image"    label="ギャラリー"     active={page === 'gallery'} onClick={() => setPage('gallery')} onPrefetch={() => prefetchPage?.('gallery')}/>
@@ -451,9 +451,9 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
       <nav style={{ flex: 1, overflow: 'auto', padding: '12px 12px' }}>
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase' }}>ワークスペース</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <SidebarItem icon="chat" label="チャット一覧" badge={totalChatUnread || undefined} active={page === 'chats'} onClick={() => setPage('chats')} onPrefetch={() => prefetchPage?.('chats')}/>
           <SidebarGroup icon="folder" label={projectLabel} page={page} setPage={setPage} prefetchPage={prefetchPage} items={projectChildren}/>
           <SidebarItem icon="check" label="マイタスク" active={page === 'tasks'} onClick={() => setPage('tasks')} onPrefetch={() => prefetchPage?.('tasks')}/>
-          <SidebarItem icon="chat" label="チャット一覧" badge={totalChatUnread || undefined} active={page === 'chats'} onClick={() => setPage('chats')} onPrefetch={() => prefetchPage?.('chats')}/>
         </div>
 
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '14px 10px 6px', textTransform: 'uppercase' }}>ライブラリ</div>

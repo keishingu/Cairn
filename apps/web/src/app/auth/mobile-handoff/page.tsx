@@ -39,8 +39,8 @@ function MobileHandoffInner() {
   const params = useSearchParams()
 
   useEffect(() => {
-    const rawRedirect = params.get('redirect') ?? '/projects'
-    const redirect = isSafeRedirect(rawRedirect) ? rawRedirect : '/projects'
+    const rawRedirect = params.get('redirect') ?? '/chats'
+    const redirect = isSafeRedirect(rawRedirect) ? rawRedirect : '/chats'
     const workspaceId = params.get('workspaceId')
 
     // ワンタイムトークン（magiclink の hashed_token）は URL フラグメント（#th=...）で受け取る。

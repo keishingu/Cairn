@@ -39,7 +39,7 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
   function switchWorkspace(id: string) {
     document.cookie = `cairn_workspace_id=${id}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     setWsSwitcherOpen(false)
-    window.location.href = '/projects'
+    window.location.href = '/chats'
   }
 
   React.useEffect(() => {

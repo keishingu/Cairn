@@ -39,7 +39,7 @@ export default function Index() {
   // 無条件に login へ飛ばすとログイン済みでも一瞬ログイン画面が表示されるため、
   // セッションの有無で直接行き先を分岐する
   if (session && needsWorkspace === null) return null
-  return <Redirect href={session ? (needsWorkspace ? '/onboarding' : '/(app)/projects') : '/(auth)/login'} />
+  return <Redirect href={session ? (needsWorkspace ? '/onboarding' : '/(app)/chats') : '/(auth)/login'} />
 }
 
 const styles = StyleSheet.create({

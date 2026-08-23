@@ -56,11 +56,11 @@ const is = (...pages: PageId[]) => (p: PageId) => pages.includes(p)
 // ── カタログ ──────────────────────────────────────────────────────
 export const COMMANDS: CommandDef[] = [
   // ── ナビゲーション（app 層・数字） ──
-  { id: 'nav.projects', title: 'プロジェクト一覧', layer: 'app', key: { code: 'Digit1' }, hintKeys: ['1'], inPalette: true },
-  { id: 'nav.calendar', title: 'カレンダー',       layer: 'app', key: { code: 'Digit2' }, hintKeys: ['2'], inPalette: true },
-  { id: 'nav.kanban',   title: 'カンバン',         layer: 'app', key: { code: 'Digit3' }, hintKeys: ['3'], inPalette: true },
-  { id: 'nav.tasks',    title: 'マイタスク',       layer: 'app', key: { code: 'Digit4' }, hintKeys: ['4'], inPalette: true },
-  { id: 'nav.chats',    title: 'チャット',         layer: 'app', key: { code: 'Digit5' }, hintKeys: ['5'], inPalette: true },
+  { id: 'nav.chats',    title: 'チャット',         layer: 'app', key: { code: 'Digit1' }, hintKeys: ['1'], inPalette: true },
+  { id: 'nav.projects', title: 'プロジェクト一覧', layer: 'app', key: { code: 'Digit2' }, hintKeys: ['2'], inPalette: true },
+  { id: 'nav.calendar', title: 'カレンダー',       layer: 'app', key: { code: 'Digit3' }, hintKeys: ['3'], inPalette: true },
+  { id: 'nav.kanban',   title: 'カンバン',         layer: 'app', key: { code: 'Digit4' }, hintKeys: ['4'], inPalette: true },
+  { id: 'nav.tasks',    title: 'マイタスク',       layer: 'app', key: { code: 'Digit5' }, hintKeys: ['5'], inPalette: true },
   { id: 'nav.files',    title: 'ファイル',         layer: 'app', key: { code: 'Digit6' }, hintKeys: ['6'], inPalette: true },
   { id: 'nav.gallery',  title: 'ギャラリー',       layer: 'app', key: { code: 'Digit7' }, hintKeys: ['7'], inPalette: true },
   { id: 'nav.ai',       title: 'AIアシスタント',   layer: 'app', key: { code: 'Digit8' }, hintKeys: ['8'], inPalette: true },

@@ -63,7 +63,7 @@ function LoginForm() {
     if (body.needsWorkspace) {
       router.push('/onboarding')
     } else {
-      router.push(safeNextPath ?? '/projects')
+      router.push(safeNextPath ?? '/chats')
     }
     router.refresh()
   }
