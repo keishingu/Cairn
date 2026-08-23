@@ -92,6 +92,21 @@ describe('reconcileCachedChannelMessage', () => {
     expect(queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages('channel-1')))
       .toEqual([untouched])
   })
+
+  it('親本体が範囲外でもキャッシュ済み返信のプレビューを更新する', async () => {
+    const queryClient = new QueryClient()
+    const reply = {
+      id: 'reply', parentMessageId: 'parent',
+      replyTo: { id: 'parent', senderName: 'Parent', content: 'before', isDeleted: false },
+    } as MessageDto
+    const parent = { id: 'parent', senderName: 'Parent', content: 'after' } as MessageDto
+    queryClient.setQueryData(chatQueryKeys.messages('channel-1'), [reply])
+    mockFetchWithAuth.mockResolvedValueOnce(new Response(JSON.stringify([parent]), { status: 200 }))
+
+    await expect(reconcileCachedChannelMessage(queryClient, 'channel-1', parent.id)).resolves.toBe(true)
+    expect(queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages('channel-1')))
+      .toEqual([expect.objectContaining({ replyTo: expect.objectContaining({ content: 'after' }) })])
+  })
 })
 
 describe('reconcileChannelMessageList', () => {

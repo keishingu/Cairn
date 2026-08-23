@@ -214,7 +214,7 @@ export async function reconcileCachedChannelMessage(
 ): Promise<boolean> {
   const queryKey = chatQueryKeys.messages(channelId)
   const current = queryClient.getQueryData<MessageDto[]>(queryKey)
-  if (!current?.some(message => message.id === messageId)) return false
+  if (!current?.some(message => message.id === messageId || message.parentMessageId === messageId)) return false
 
   const refreshedWindow = await fetchChannelMessagesAround(channelId, messageId)
   const refreshed = refreshedWindow.find(message => message.id === messageId)
