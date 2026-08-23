@@ -13,10 +13,15 @@ import {
   isNearMessageTimelineEnd,
 } from './chat-thread'
 
-const { toastSuccess, toastError, markChannelRead } = vi.hoisted(() => ({
+const { toastSuccess, toastError, markChannelRead, bookmarkMessage, chatThreadState } = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   markChannelRead: vi.fn(),
+  bookmarkMessage: vi.fn(),
+  chatThreadState: {
+    initialMessageId: null as string | null,
+    historyMessages: undefined as Array<Record<string, unknown>> | undefined,
+  },
 }))
 
 let clipboardWriteText: ReturnType<typeof vi.fn>
@@ -24,8 +29,8 @@ let clipboardWriteText: ReturnType<typeof vi.fn>
 vi.mock('@/lib/chat/client', () => ({
   ChannelMessagesError: class ChannelMessagesError extends Error {},
   formatChatMessageTime: () => '12:34',
-  useChannelInitialMessage: () => ({ data: { messageId: null }, isFetched: true, isFetching: false, isError: false }),
-  useChannelMessageHistory: () => ({ data: undefined, isFetched: true, isLoading: false, isError: false }),
+  useChannelInitialMessage: () => ({ data: { messageId: chatThreadState.initialMessageId }, isFetched: true, isFetching: false, isError: false }),
+  useChannelMessageHistory: () => ({ data: chatThreadState.historyMessages, isFetched: true, isLoading: false, isError: false }),
   useChannelMembers: () => ({ data: [] }),
   useChannelMessages: () => ({
     data: [{
@@ -46,7 +51,7 @@ vi.mock('@/lib/chat/client', () => ({
   useMarkChannelRead: () => ({ mutate: markChannelRead }),
   useProjectChannels: () => ({ data: [] }),
   useSendChannelMessage: () => ({ mutate: vi.fn(), isError: false, isSuccess: false, isPending: false, error: null }),
-  useToggleBookmark: () => ({ mutate: vi.fn() }),
+  useToggleBookmark: () => ({ mutate: bookmarkMessage }),
   useToggleMessageReaction: () => ({ mutate: vi.fn() }),
   useWorkspaceMembers: () => ({ data: [] }),
 }))
@@ -199,6 +204,9 @@ describe('isNearMessageTimelineEnd', () => {
 describe('ChatThreadの初期既読', () => {
   beforeEach(() => {
     markChannelRead.mockReset()
+    bookmarkMessage.mockReset()
+    chatThreadState.initialMessageId = null
+    chatThreadState.historyMessages = undefined
     localStorage.clear()
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
@@ -222,6 +230,30 @@ describe('ChatThreadの初期既読', () => {
     act(() => document.dispatchEvent(new Event('visibilitychange')))
 
     expect(markChannelRead).toHaveBeenCalledWith('channel-1')
+  })
+
+  it('履歴表示中に更新操作をしたら最新100件の表示へ戻す', async () => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    chatThreadState.initialMessageId = 'history-message'
+    chatThreadState.historyMessages = [{
+      id: 'history-message', content: 'old message', messageType: 'text', senderId: 'user-2', senderName: 'Alice', senderAvatarUrl: null,
+      createdAt: '2026-08-20T12:00:00.000Z', isEdited: false, reactions: [], attachments: [], parentMessageId: null,
+      replyTo: null, bookmarked: false, blocked: false,
+    }]
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const user = userEvent.setup()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" initialUnreadPosition isMobile />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText('old message')).toBeInTheDocument()
+    await user.click(screen.getByTitle('ブックマーク'))
+
+    expect(bookmarkMessage).toHaveBeenCalledWith('history-message')
+    expect(screen.getByText('hello')).toBeInTheDocument()
+    expect(screen.queryByText('old message')).toBeNull()
   })
 
 })

@@ -1234,6 +1234,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     scrollToLatest()
   }, [isHistoryView, scrollToLatest])
 
+  const leaveHistoryView = React.useCallback(() => {
+    if (isHistoryView) setShowLatestMessages(true)
+  }, [isHistoryView])
+
   React.useLayoutEffect(() => {
     if (showLatestMessages && initialPositioned) scrollToLatest()
   }, [initialPositioned, scrollToLatest, showLatestMessages])
@@ -1337,6 +1341,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   }, [channelId, initialPositioned, initialUnreadPosition, isHistoryView, latestMessageId, markChannelReadFn, showScrollToLatest])
 
   const handleCheckboxToggle = React.useCallback(async (messageId: string, index: number, checked: boolean) => {
+    leaveHistoryView()
     try {
       const res = await fetchWithAuth(`/api/messages/${messageId}/checkbox`, {
         method: 'PATCH',
@@ -1349,7 +1354,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     } catch {
       // サイレントに失敗
     }
-  }, [channelId, queryClient])
+  }, [channelId, leaveHistoryView, queryClient])
 
   // スレッド内の全画像添付をフラットに集約し、ライトボックスで前後に送れるようにする
   const lightboxImages = React.useMemo<(LightboxImage & { attachmentId: string })[]>(() => {
@@ -1534,25 +1539,29 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
 
   const handleBookmark = React.useCallback((messageId: string) => {
     if (messageId.startsWith('optimistic-')) return
+    leaveHistoryView()
     bookmarkMutation.mutate(messageId)
-  }, [bookmarkMutation])
+  }, [bookmarkMutation, leaveHistoryView])
 
   // リアクション・編集・削除のハンドラも安定参照にする。インラインの矢印関数だと毎レンダーで
   // 関数の同一性が変わり React.memo(ChatMessage) が無効化され、全メッセージが再パースされる
   const reactMutate = reactMutation.mutate
   const handleReact = React.useCallback((messageId: string, emoji: string) => {
+    leaveHistoryView()
     reactMutate({ messageId, emoji })
-  }, [reactMutate])
+  }, [leaveHistoryView, reactMutate])
 
   const editMutate = editMutation.mutate
   const handleEdit = React.useCallback((messageId: string, content: string) => {
+    leaveHistoryView()
     editMutate({ messageId, content })
-  }, [editMutate])
+  }, [editMutate, leaveHistoryView])
 
   const deleteMutate = deleteMutation.mutate
   const handleDelete = React.useCallback((messageId: string) => {
+    leaveHistoryView()
     deleteMutate(messageId)
-  }, [deleteMutate])
+  }, [deleteMutate, leaveHistoryView])
 
   const handleCopyLink = React.useCallback((messageId: string) => {
     if (!channelId) return
@@ -1737,6 +1746,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     setReplyTarget(null)
 
     const postMessage = () => {
+      leaveHistoryView()
       sendMutation.mutate({
         content: text,
         attachmentFileIds: optimisticAttachments.map(a => a.fileId),
