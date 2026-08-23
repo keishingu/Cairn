@@ -7,6 +7,57 @@ import { requireChannelAccess } from '@/lib/permissions'
 
 type RouteContext = { params: Promise<{ channelId: string }> }
 
+export interface ChannelReadPositionDto {
+  lastReadMessageId: string | null
+  firstUnreadMessageId: string | null
+}
+
+export async function GET(_req: Request, { params }: RouteContext) {
+  const { channelId } = await params
+  const { ctx, error } = await getAuthContext()
+  if (error) return error
+
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
+  if (forbidden) return forbidden
+
+  try {
+    const { db, channelReadStates, messages } = await import('@cairn/db')
+    const { eq, and, isNull, gt, ne, asc } = await import('drizzle-orm')
+
+    const [readState] = await db
+      .select({
+        lastReadAt: channelReadStates.lastReadAt,
+        lastReadMessageId: channelReadStates.lastReadMessageId,
+      })
+      .from(channelReadStates)
+      .where(and(
+        eq(channelReadStates.userId, ctx.userId),
+        eq(channelReadStates.channelId, channelId),
+      ))
+      .limit(1)
+
+    const [firstUnread] = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(and(
+        eq(messages.channelId, channelId),
+        isNull(messages.deletedAt),
+        ne(messages.senderId, ctx.userId),
+        ...(readState ? [gt(messages.createdAt, readState.lastReadAt)] : []),
+      ))
+      .orderBy(asc(messages.createdAt), asc(messages.id))
+      .limit(1)
+
+    return NextResponse.json({
+      lastReadMessageId: readState?.lastReadMessageId ?? null,
+      firstUnreadMessageId: firstUnread?.id ?? null,
+    } satisfies ChannelReadPositionDto)
+  } catch (err) {
+    console.error('[GET /api/channels/[channelId]/read]', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 export async function POST(_req: Request, { params }: RouteContext) {
   const { channelId } = await params
   const { ctx, error } = await getAuthContext()

@@ -21,6 +21,7 @@ import {
   formatChatMessageTime,
   useChannelMessages,
   useChannelMembers,
+  useChannelReadPosition,
   useCurrentUser,
   useDeleteMessage,
   useEditMessage,
@@ -972,11 +973,29 @@ export function isNearMessageTimelineEnd({
   return scrollHeight - scrollTop - clientHeight <= MESSAGE_TIMELINE_END_THRESHOLD
 }
 
+export function positionInitialMessage(
+  container: HTMLElement,
+  targetMessageId: string | null,
+): 'target' | 'latest' | 'pending' {
+  if (targetMessageId) {
+    const target = Array.from(container.querySelectorAll<HTMLElement>('[data-message-id]'))
+      .find(element => element.dataset['messageId'] === targetMessageId)
+    if (!target) return 'pending'
+    target.scrollIntoView({ block: 'start' })
+    return 'target'
+  }
+
+  container.scrollTop = container.scrollHeight
+  return 'latest'
+}
+
 function useMessageTimelineScroll({
   channelId,
   messages,
   latestMessageId,
   nudgeCount,
+  initialMessageId,
+  isInitialPositionReady,
   hasOlderMessages,
   isLoadingOlder,
   loadOlder,
@@ -985,19 +1004,16 @@ function useMessageTimelineScroll({
   messages: Array<{ id: string }>
   latestMessageId: string | undefined
   nudgeCount: number
+  initialMessageId: string | null
+  isInitialPositionReady: boolean
   hasOlderMessages: boolean
   isLoadingOlder: boolean
   loadOlder: () => Promise<boolean>
 }) {
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const pendingPrependScrollRef = React.useRef<{ scrollTop: number; scrollHeight: number } | null>(null)
-  const shouldScrollToBottomRef = React.useRef(true)
+  const [positionedChannelId, setPositionedChannelId] = React.useState<string | null>(null)
   const [isAtLatest, setIsAtLatest] = React.useState(true)
-
-  React.useEffect(() => {
-    shouldScrollToBottomRef.current = true
-    setIsAtLatest(true)
-  }, [channelId])
 
   React.useLayoutEffect(() => {
     const pending = pendingPrependScrollRef.current
@@ -1007,15 +1023,23 @@ function useMessageTimelineScroll({
     pendingPrependScrollRef.current = null
   }, [messages])
 
+  React.useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!channelId || positionedChannelId === channelId || !isInitialPositionReady || !el) return
+    const result = positionInitialMessage(el, initialMessageId)
+    if (result === 'pending') return
+    setPositionedChannelId(channelId)
+    setIsAtLatest(result === 'latest' || isNearMessageTimelineEnd(el))
+  }, [channelId, initialMessageId, isInitialPositionReady, messages, positionedChannelId])
+
   React.useEffect(() => {
     const el = scrollRef.current
-    if (!el || pendingPrependScrollRef.current) return
-    if (shouldScrollToBottomRef.current || isNearMessageTimelineEnd(el)) {
+    if (positionedChannelId !== channelId || !el || pendingPrependScrollRef.current) return
+    if (isNearMessageTimelineEnd(el)) {
       el.scrollTop = el.scrollHeight
       setIsAtLatest(true)
     }
-    shouldScrollToBottomRef.current = false
-  }, [latestMessageId, nudgeCount])
+  }, [channelId, latestMessageId, nudgeCount, positionedChannelId])
 
   const handleMessageScroll = React.useCallback(() => {
     const el = scrollRef.current
@@ -1040,7 +1064,13 @@ function useMessageTimelineScroll({
     setIsAtLatest(true)
   }, [])
 
-  return { scrollRef, handleMessageScroll, showScrollToLatest: !isAtLatest, scrollToLatest }
+  return {
+    scrollRef,
+    handleMessageScroll,
+    positionedChannelId,
+    showScrollToLatest: positionedChannelId === channelId && !isAtLatest,
+    scrollToLatest,
+  }
 }
 
 // ─── ChatThread ───────────────────────────────────────────────────
@@ -1144,7 +1174,18 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   }
 
   const { data: currentUser } = useCurrentUser()
-  const { data: messages = [], isLoading, isError, error: messagesError } = useChannelMessages(channelId)
+  const {
+    data: messages = [],
+    isLoading,
+    isFetching: isMessagesFetching,
+    isError,
+    error: messagesError,
+  } = useChannelMessages(channelId)
+  const {
+    data: readPosition,
+    isFetching: isReadPositionFetching,
+    isError: isReadPositionError,
+  } = useChannelReadPosition(channelId)
   const { data: nudges = [], isError: nudgesError } = useAiNudges(channelId)
   const nudgeFeedback = useAiNudgeFeedback(channelId)
   // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。
@@ -1169,18 +1210,39 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const lastReadMessageIdRef = React.useRef<string | null>(null)
   const ensureMessageLoaded = useEnsureMessageLoaded(channelId)
   const { loadOlder, hasMore: hasOlderMessages, isLoadingOlder, error: loadOlderError } = useLoadOlderChannelMessages(channelId)
+  const [unavailableInitialUnreadId, setUnavailableInitialUnreadId] = React.useState<string | null>(null)
   // 最新100件の再取得では件数が変わらないことがあるため、末尾の入れ替わりも追跡する。
   const latestMessageId = messages[messages.length - 1]?.id
+  const firstUnreadMessageId = readPosition?.firstUnreadMessageId ?? null
+  const initialMessageId = targetMessage?.id
+    ?? (unavailableInitialUnreadId === firstUnreadMessageId ? null : firstUnreadMessageId)
+  const isInitialPositionReady = !isMessagesFetching && !isReadPositionFetching
+
+  React.useEffect(() => {
+    setUnavailableInitialUnreadId(null)
+  }, [channelId])
+
+  React.useEffect(() => {
+    if (!channelId || isMessagesFetching || isReadPositionFetching || !firstUnreadMessageId) return
+    if (messages.some(message => message.id === firstUnreadMessageId)) return
+    let active = true
+    void ensureMessageLoaded(firstUnreadMessageId).then(loaded => {
+      if (active && !loaded) setUnavailableInitialUnreadId(firstUnreadMessageId)
+    })
+    return () => { active = false }
+  }, [channelId, ensureMessageLoaded, firstUnreadMessageId, isMessagesFetching, isReadPositionFetching, messages])
 
   const timeline = React.useMemo(() => [
     ...messages.map((message, index) => ({ kind: 'message' as const, createdAt: message.createdAt, message, messageIndex: index })),
     ...nudges.map(nudge => ({ kind: 'nudge' as const, createdAt: nudge.createdAt, nudge })),
   ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()), [messages, nudges])
-  const { scrollRef, handleMessageScroll, showScrollToLatest, scrollToLatest } = useMessageTimelineScroll({
+  const { scrollRef, handleMessageScroll, positionedChannelId, showScrollToLatest, scrollToLatest } = useMessageTimelineScroll({
     channelId,
     messages,
     latestMessageId,
     nudgeCount: nudges.length,
+    initialMessageId,
+    isInitialPositionReady,
     hasOlderMessages,
     isLoadingOlder,
     loadOlder,
@@ -1224,12 +1286,13 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   // 開いて読んでいるのにバッジが増え続ける問題への対処。タブ非表示時は既読にしない
   React.useEffect(() => {
     if (!channelId || messages.length === 0) return
+    if (positionedChannelId !== channelId) return
     if (!latestMessageId || latestMessageId.startsWith('optimistic-')) return
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
     if (lastReadMessageIdRef.current === latestMessageId) return
     lastReadMessageIdRef.current = latestMessageId
     markChannelReadFn(channelId)
-  }, [channelId, latestMessageId, markChannelReadFn])
+  }, [channelId, latestMessageId, markChannelReadFn, messages.length, positionedChannelId])
 
   const handleCheckboxToggle = React.useCallback(async (messageId: string, index: number, checked: boolean) => {
     try {
@@ -1378,10 +1441,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   // 親（PageChat）からの targetMessage（パーマリンク・ブックマーク・検索）を内部のハイライト状態へ取り込む。
   // 直近100件の外にある古いメッセージの場合は、前後ウィンドウを取得してキャッシュへマージする
   React.useEffect(() => {
-    if (!targetMessage) return
+    if (!targetMessage || isMessagesFetching) return
     setHighlightId(targetMessage.id)
     void ensureMessageLoaded(targetMessage.id)
-  }, [targetMessage, ensureMessageLoaded])
+  }, [targetMessage, ensureMessageLoaded, isMessagesFetching])
 
   // 引用バー（返信先プレビュー）クリックでのジャンプ。targetMessage 同様、
   // 直近100件の外にある古い親メッセージの場合は前後ウィンドウを取得してから表示する
@@ -1391,14 +1454,14 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   }, [ensureMessageLoaded])
 
   React.useEffect(() => {
-    if (!highlightId || isLoading || !scrollRef.current) return
+    if (!highlightId || isMessagesFetching || !scrollRef.current) return
     const el = scrollRef.current.querySelector<HTMLElement>(`[data-message-id="${highlightId}"]`)
     if (!el) return
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     el.classList.add('message-highlight')
     const t = setTimeout(() => { el.classList.remove('message-highlight'); setHighlightId(null) }, 2000)
     return () => { clearTimeout(t); el.classList.remove('message-highlight') }
-  }, [highlightId, isLoading, messages.length])
+  }, [highlightId, isMessagesFetching, messages.length])
 
   const handleReply = React.useCallback((messageId: string) => {
     // 送信中（楽観的更新）のメッセージはまだサーバーに存在しないため返信対象にしない
@@ -1685,6 +1748,11 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
             <div role="alert" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '4px 16px 10px', color: 'var(--red-text)', fontSize: 12 }}>
               過去のメッセージを読み込めませんでした。
               <button type="button" onClick={handleMessageScroll} className="btn btn-ghost" style={{ height: 26, padding: '0 8px', fontSize: 11.5 }}>再試行</button>
+            </div>
+          )}
+          {(isReadPositionError || unavailableInitialUnreadId) && (
+            <div role="alert" style={{ display: 'flex', justifyContent: 'center', padding: '4px 16px 10px', color: 'var(--red-text)', fontSize: 12 }}>
+              既読位置を読み込めなかったため、最新のメッセージを表示しています。
             </div>
           )}
           {timeline.map(item => item.kind === 'nudge' ? (

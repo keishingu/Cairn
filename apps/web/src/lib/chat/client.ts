@@ -11,6 +11,7 @@ import type { DmChannelDto } from '@/app/api/workspaces/dms/route'
 import type { MessageDto, ReactionDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { BookmarkDto } from '@/app/api/me/bookmarks/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
+import type { ChannelReadPositionDto } from '@/app/api/channels/[channelId]/read/route'
 
 export const chatQueryKeys = {
   projectChannels: ['project-channels'] as const,
@@ -135,6 +136,12 @@ async function fetchChannelMessages(channelId: string): Promise<MessageDto[]> {
     const data = await res.json().catch(() => ({})) as { error?: string }
     throw new ChannelMessagesError(data.error ?? 'メッセージの取得に失敗しました', res.status)
   }
+  return res.json()
+}
+
+async function fetchChannelReadPosition(channelId: string): Promise<ChannelReadPositionDto> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}/read`)
+  if (!res.ok) throw new Error('既読位置の取得に失敗しました')
   return res.json()
 }
 
@@ -323,25 +330,35 @@ export function useChannelMessages(channelId: string | null) {
   })
 }
 
+export function useChannelReadPosition(channelId: string | null) {
+  return useQuery({
+    queryKey: ['channel-read-position', channelId] as const,
+    queryFn: () => fetchChannelReadPosition(channelId!),
+    enabled: !!channelId,
+  })
+}
+
 // 既存のキャッシュに無い古いメッセージ（ブックマーク・パーマリンクのジャンプ先）を
 // 前後のウィンドウごと取得してキャッシュへマージする。直近100件の外にあるメッセージへ
 // ジャンプしても表示されず静かに失敗する問題への対処
 export function useEnsureMessageLoaded(channelId: string | null) {
   const queryClient = useQueryClient()
   return React.useCallback(async (messageId: string) => {
-    if (!channelId) return
+    if (!channelId) return false
     const current = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
-    if (current?.some(m => m.id === messageId)) return
+    if (current?.some(m => m.id === messageId)) return true
     try {
       const windowMessages = await fetchChannelMessagesAround(channelId, messageId)
-      if (windowMessages.length === 0) return
+      if (windowMessages.length === 0) return false
       queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), prev => {
         const merged = new Map((prev ?? []).map(m => [m.id, m]))
         for (const m of windowMessages) merged.set(m.id, m)
         return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       })
+      return windowMessages.some(message => message.id === messageId)
     } catch {
       // サイレントに失敗（ハイライト・スクロールされないだけで致命的ではない）
+      return false
     }
   }, [channelId, queryClient])
 }

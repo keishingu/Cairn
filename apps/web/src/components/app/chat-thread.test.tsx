@@ -9,6 +9,7 @@ import {
   copyMessageContent,
   copyMessageLink,
   isNearMessageTimelineEnd,
+  positionInitialMessage,
 } from './chat-thread'
 
 const { toastSuccess, toastError } = vi.hoisted(() => ({
@@ -165,5 +166,32 @@ describe('isNearMessageTimelineEnd', () => {
   it('末尾から80px以内を最新表示中として扱う', () => {
     expect(isNearMessageTimelineEnd({ scrollHeight: 1_000, scrollTop: 720, clientHeight: 200 })).toBe(true)
     expect(isNearMessageTimelineEnd({ scrollHeight: 1_000, scrollTop: 719, clientHeight: 200 })).toBe(false)
+  })
+})
+
+describe('positionInitialMessage', () => {
+  it('未読メッセージがなければ会話末尾へ移動する', () => {
+    const container = document.createElement('div')
+    Object.defineProperty(container, 'scrollHeight', { value: 1_000 })
+
+    expect(positionInitialMessage(container, null)).toBe('latest')
+    expect(container.scrollTop).toBe(1_000)
+  })
+
+  it('最初の未読メッセージがあればその位置へ移動する', () => {
+    const container = document.createElement('div')
+    const firstUnread = document.createElement('article')
+    firstUnread.dataset['messageId'] = 'message-unread'
+    firstUnread.scrollIntoView = vi.fn()
+    container.append(firstUnread)
+
+    expect(positionInitialMessage(container, 'message-unread')).toBe('target')
+    expect(firstUnread.scrollIntoView).toHaveBeenCalledWith({ block: 'start' })
+  })
+
+  it('最初の未読メッセージが未取得なら読み込み完了を待つ', () => {
+    const container = document.createElement('div')
+
+    expect(positionInitialMessage(container, 'message-outside-page')).toBe('pending')
   })
 })
