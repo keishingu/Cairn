@@ -1258,6 +1258,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const markChannelRead = useMarkChannelRead()
   const markChannelReadFn = markChannelRead.mutate
   const lastReadMessageIdRef = React.useRef<string | null>(null)
+  const markReadAttemptRef = React.useRef<{ channelId: string; messageId: string } | null>(null)
+  const [readUpdateError, setReadUpdateError] = React.useState<string | null>(null)
   const ensureMessageLoaded = useEnsureMessageLoaded(channelId)
   const [unavailableInitialMessageIds, setUnavailableInitialMessageIds] = React.useState<Set<string>>(() => new Set())
   // 最新100件の再取得では件数が変わらないことがあるため、末尾の入れ替わりも追跡する。
@@ -1273,6 +1275,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
 
   React.useEffect(() => {
     setUnavailableInitialMessageIds(new Set())
+    setReadUpdateError(null)
   }, [channelId])
 
   React.useEffect(() => {
@@ -1287,6 +1290,18 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     })
     return () => { active = false }
   }, [channelId, ensureMessageLoaded, firstUnreadMessageId, initializeFrom, initialMessageId, isMessagesFetching, isReadPositionFetching, messages, requestedMessageId])
+
+  const retryLoadNewer = React.useCallback(() => {
+    if (firstUnreadMessageId && unavailableInitialMessageIds.has(firstUnreadMessageId)) {
+      setUnavailableInitialMessageIds(current => {
+        const next = new Set(current)
+        next.delete(firstUnreadMessageId)
+        return next
+      })
+      return
+    }
+    void loadNewer()
+  }, [firstUnreadMessageId, loadNewer, unavailableInitialMessageIds])
 
   const timeline = React.useMemo(() => [
     ...messages.map((message, index) => ({ kind: 'message' as const, createdAt: message.createdAt, message, messageIndex: index })),
@@ -1342,17 +1357,40 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     }
   }, [channelId, queryClient])
 
-  // 表示中チャンネルに新着が届いたら自動で既読化する。
-  // 開いて読んでいるのにバッジが増え続ける問題への対処。タブ非表示時は既読にしない
-  React.useEffect(() => {
+  const markVisibleChannelRead = React.useCallback(() => {
     if (!channelId || messages.length === 0) return
     if (positionedChannelId !== channelId) return
     if (!latestMessageId || latestMessageId.startsWith('optimistic-')) return
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
     if (lastReadMessageIdRef.current === latestMessageId) return
-    lastReadMessageIdRef.current = latestMessageId
-    markChannelReadFn(channelId)
+    const pending = markReadAttemptRef.current
+    if (pending?.channelId === channelId && pending.messageId === latestMessageId) return
+
+    const attempt = { channelId, messageId: latestMessageId }
+    markReadAttemptRef.current = attempt
+    setReadUpdateError(null)
+    markChannelReadFn(channelId, {
+      onSuccess: () => {
+        if (markReadAttemptRef.current !== attempt) return
+        lastReadMessageIdRef.current = latestMessageId
+      },
+      onError: (cause) => {
+        if (markReadAttemptRef.current !== attempt) return
+        setReadUpdateError(cause instanceof Error ? cause.message : '既読処理に失敗しました')
+      },
+      onSettled: () => {
+        if (markReadAttemptRef.current === attempt) markReadAttemptRef.current = null
+      },
+    })
   }, [channelId, latestMessageId, markChannelReadFn, messages.length, positionedChannelId])
+
+  // 表示中チャンネルに新着が届いたら自動で既読化する。
+  // タブ非表示中は既読にせず、再表示された時点で更新する。
+  React.useEffect(() => {
+    markVisibleChannelRead()
+    document.addEventListener('visibilitychange', markVisibleChannelRead)
+    return () => document.removeEventListener('visibilitychange', markVisibleChannelRead)
+  }, [markVisibleChannelRead])
 
   const handleCheckboxToggle = React.useCallback(async (messageId: string, index: number, checked: boolean) => {
     try {
@@ -1789,6 +1827,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
             指定されたメッセージまたは既読位置を読み込めなかったため、利用可能な位置を表示しています。
           </div>
         )}
+        {readUpdateError && (
+          <div role="alert" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '4px 16px 10px', color: 'var(--red-text)', fontSize: 12 }}>
+            {readUpdateError}
+            <button type="button" onClick={markVisibleChannelRead} className="btn btn-ghost" style={{ height: 26, padding: '0 8px', fontSize: 11.5 }}>再試行</button>
+          </div>
+        )}
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
         ) : isAccessDenied ? (
@@ -1822,7 +1866,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
           {loadNewerError && (
             <div role="alert" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '4px 16px 10px', color: 'var(--red-text)', fontSize: 12 }}>
               新しいメッセージを読み込めませんでした。
-              <button type="button" onClick={() => void loadNewer()} className="btn btn-ghost" style={{ height: 26, padding: '0 8px', fontSize: 11.5 }}>再試行</button>
+              <button type="button" onClick={retryLoadNewer} className="btn btn-ghost" style={{ height: 26, padding: '0 8px', fontSize: 11.5 }}>再試行</button>
             </div>
           )}
           {timeline.map(item => item.kind === 'nudge' ? (
