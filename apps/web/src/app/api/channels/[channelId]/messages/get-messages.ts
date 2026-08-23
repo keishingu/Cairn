@@ -71,7 +71,7 @@ export async function getMessages({
 
     if (aroundMessageId) {
       const [anchor] = await db
-        .select({ createdAt: messages.createdAt })
+        .select({ id: messages.id, createdAt: messages.createdAt })
         .from(messages)
         .where(
           and(
@@ -102,10 +102,13 @@ export async function getMessages({
             and(
               eq(messages.channelId, channelId),
               isNull(messages.deletedAt),
-              lte(messages.createdAt, anchor.createdAt),
+              or(
+                lt(messages.createdAt, anchor.createdAt),
+                and(eq(messages.createdAt, anchor.createdAt), lte(messages.id, anchor.id)),
+              ),
             ),
           )
-          .orderBy(desc(messages.createdAt))
+          .orderBy(desc(messages.createdAt), desc(messages.id))
           .limit(50),
         db
           .select(selectFields)
@@ -122,10 +125,13 @@ export async function getMessages({
             and(
               eq(messages.channelId, channelId),
               isNull(messages.deletedAt),
-              gt(messages.createdAt, anchor.createdAt),
+              or(
+                gt(messages.createdAt, anchor.createdAt),
+                and(eq(messages.createdAt, anchor.createdAt), gt(messages.id, anchor.id)),
+              ),
             ),
           )
-          .orderBy(asc(messages.createdAt))
+          .orderBy(asc(messages.createdAt), asc(messages.id))
           .limit(50),
       ])
 
