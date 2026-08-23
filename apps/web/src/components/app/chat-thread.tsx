@@ -1203,6 +1203,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const markChannelRead = useMarkChannelRead()
   const markChannelReadFn = markChannelRead.mutate
   const lastReadMessageIdRef = React.useRef<string | null>(null)
+  const pendingInitialReadRef = React.useRef(false)
   const previousChannelIdRef = React.useRef(channelId)
   const ensureMessageLoaded = useEnsureMessageLoaded(channelId)
   const { loadOlder, hasMore: hasOlderMessages, isLoadingOlder, error: loadOlderError } = useLoadOlderChannelMessages(channelId, isHistoryView ? historyMessageId : null)
@@ -1293,6 +1294,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     setInitialPositioned(true)
     const latestMessageId = latestMessages[latestMessages.length - 1]?.id
     if (!latestMessageId || latestMessageId.startsWith('optimistic-')) return
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      pendingInitialReadRef.current = true
+      return
+    }
     lastReadMessageIdRef.current = latestMessageId
     markChannelReadFn(channelId)
   }, [
@@ -1306,6 +1311,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     requestedMessageId,
     scrollRef,
   ])
+
+  React.useEffect(() => {
+    if (!channelId || typeof document === 'undefined') return
+    const markPendingInitialRead = () => {
+      if (!pendingInitialReadRef.current || document.visibilityState !== 'visible') return
+      pendingInitialReadRef.current = false
+      if (latestMessageId) lastReadMessageIdRef.current = latestMessageId
+      markChannelReadFn(channelId)
+    }
+    document.addEventListener('visibilitychange', markPendingInitialRead)
+    markPendingInitialRead()
+    return () => document.removeEventListener('visibilitychange', markPendingInitialRead)
+  }, [channelId, latestMessageId, markChannelReadFn])
 
   // 最新表示中に新着が届いたら自動で既読化する。履歴表示中・タブ非表示時は既読にしない。
   React.useEffect(() => {
@@ -1466,6 +1484,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     setShowLatestMessages(false)
     setInitialPositioned(false)
     lastReadMessageIdRef.current = null
+    pendingInitialReadRef.current = false
   }, [channelId])
 
   // 親（PageChat）からの targetMessage（パーマリンク・ブックマーク・検索）を内部のハイライト状態へ取り込む。

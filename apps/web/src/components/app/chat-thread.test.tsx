@@ -1,35 +1,63 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ChatMessage,
+  ChatThread,
   copyMessageContent,
   copyMessageLink,
   isNearMessageTimelineEnd,
 } from './chat-thread'
 
-const { toastSuccess, toastError } = vi.hoisted(() => ({
+const { toastSuccess, toastError, markChannelRead } = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
+  markChannelRead: vi.fn(),
 }))
 
 let clipboardWriteText: ReturnType<typeof vi.fn>
 
 vi.mock('@/lib/chat/client', () => ({
+  ChannelMessagesError: class ChannelMessagesError extends Error {},
   formatChatMessageTime: () => '12:34',
-  useChannelMembers: vi.fn(),
-  useChannelMessages: vi.fn(),
-  useCurrentUser: vi.fn(),
-  useDeleteMessage: vi.fn(),
-  useEditMessage: vi.fn(),
-  useMarkChannelRead: vi.fn(),
-  useSendChannelMessage: vi.fn(),
-  useToggleMessageReaction: vi.fn(),
-  useWorkspaceMembers: vi.fn(),
+  useChannelInitialMessage: () => ({ data: { messageId: null }, isFetched: true, isFetching: false, isError: false }),
+  useChannelMessageHistory: () => ({ data: undefined, isFetched: true, isLoading: false, isError: false }),
+  useChannelMembers: () => ({ data: [] }),
+  useChannelMessages: () => ({
+    data: [{
+      id: 'message-1', content: 'hello', messageType: 'text', senderId: 'user-2', senderName: 'Alice', senderAvatarUrl: null,
+      createdAt: '2026-08-23T12:00:00.000Z', isEdited: false, reactions: [], attachments: [], parentMessageId: null,
+      replyTo: null, bookmarked: false, blocked: false,
+    }],
+    isLoading: false,
+    isError: false,
+    isSuccess: true,
+    error: null,
+  }),
+  useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Kei', avatarUrl: null } }),
+  useDeleteMessage: () => ({ mutate: vi.fn() }),
+  useEditMessage: () => ({ mutate: vi.fn() }),
+  useEnsureMessageLoaded: () => vi.fn(),
+  useLoadOlderChannelMessages: () => ({ loadOlder: vi.fn(), hasMore: false, isLoadingOlder: false, error: null }),
+  useMarkChannelRead: () => ({ mutate: markChannelRead }),
+  useProjectChannels: () => ({ data: [] }),
+  useSendChannelMessage: () => ({ mutate: vi.fn(), isError: false, isSuccess: false, isPending: false, error: null }),
+  useToggleBookmark: () => ({ mutate: vi.fn() }),
+  useToggleMessageReaction: () => ({ mutate: vi.fn() }),
+  useWorkspaceMembers: () => ({ data: [] }),
 }))
+
+vi.mock('@/hooks/use-ai-nudges', () => ({
+  aiNudgeQueryKey: () => ['ai-nudges'],
+  useAiNudgeFeedback: () => ({ mutate: vi.fn(), isPending: false }),
+  useAiNudges: () => ({ data: [], isError: false }),
+}))
+vi.mock('@/hooks/use-project-members', () => ({ useProjectMembers: () => ({ data: [] }) }))
+vi.mock('@/lib/command-registry', () => ({ useCommand: vi.fn() }))
 
 vi.mock('@/lib/toast', () => ({
   toast: {
@@ -166,4 +194,34 @@ describe('isNearMessageTimelineEnd', () => {
     expect(isNearMessageTimelineEnd({ scrollHeight: 1_000, scrollTop: 720, clientHeight: 200 })).toBe(true)
     expect(isNearMessageTimelineEnd({ scrollHeight: 1_000, scrollTop: 719, clientHeight: 200 })).toBe(false)
   })
+})
+
+describe('ChatThreadの初期既読', () => {
+  beforeEach(() => {
+    markChannelRead.mockReset()
+    localStorage.clear()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
+  })
+
+  afterEach(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+  })
+
+  it('非表示タブでは既読にせず、表示された時点で既読にする', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" initialUnreadPosition isMobile />
+      </QueryClientProvider>,
+    )
+
+    expect(markChannelRead).not.toHaveBeenCalled()
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+
+    expect(markChannelRead).toHaveBeenCalledWith('channel-1')
+  })
+
 })
