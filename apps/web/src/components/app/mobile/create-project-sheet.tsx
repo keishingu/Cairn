@@ -4,6 +4,7 @@ import React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { PlacePhoto } from '@/app/api/places/photos/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -15,6 +16,7 @@ async function createProject(body: {
   startDate?: string | undefined
   endDate?: string | undefined
   coverPhotoUrl?: string | undefined
+  statusId?: string | undefined
   location?: string | undefined
   placeId?: string | undefined
   placePhotoName?: string | undefined
@@ -33,6 +35,12 @@ async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
   const res = await fetchWithAuth(`/api/places/photos?placeId=${encodeURIComponent(placeId)}`)
   if (!res.ok) return []
   return res.json() as Promise<PlacePhoto[]>
+}
+
+async function fetchStatuses(): Promise<ProjectStatusDto[]> {
+  const res = await fetchWithAuth('/api/projects/statuses')
+  if (!res.ok) throw new Error('ステータスの取得に失敗しました')
+  return res.json() as Promise<ProjectStatusDto[]>
 }
 
 async function fetchWorkspaceMembers(): Promise<WorkspaceMemberDto[]> {
@@ -58,12 +66,28 @@ const inputErrorStyle: React.CSSProperties = {
 interface CreateProjectSheetProps {
   onClose: () => void
   onCreated: (project: ProjectDto) => void
+  requireStatus?: boolean
   initialStartDate?: string
   initialEndDate?: string
 }
 
-export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', initialEndDate = '' }: CreateProjectSheetProps) {
+export function CreateProjectSheet({
+  onClose,
+  onCreated,
+  requireStatus = false,
+  initialStartDate = '',
+  initialEndDate = '',
+}: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
+  const {
+    data: statuses = [],
+    isLoading: statusesLoading,
+    error: statusesError,
+    refetch: refetchStatuses,
+  } = useQuery<ProjectStatusDto[]>({
+    queryKey: ['statuses'],
+    queryFn: fetchStatuses,
+  })
   const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members', 'active'], queryFn: fetchWorkspaceMembers })
 
   const [title, setTitle] = React.useState('')
@@ -91,6 +115,10 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
     },
     onError: (err: Error) => setTitleError(err.message),
   })
+  const statusFetchErrorMessage =
+    requireStatus && statusesError
+      ? statusesError instanceof Error ? statusesError.message : 'ステータスの取得に失敗しました'
+      : ''
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -110,9 +138,15 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
     } else {
       setEndDateError('')
     }
+    const initialStatusId = statuses[0]?.id
+    if (requireStatus && !initialStatusId) {
+      setTitleError('ステータスの読み込み後に作成してください')
+      hasError = true
+    }
     if (hasError) return
 
     mutation.mutate({
+      statusId: requireStatus ? initialStatusId : undefined,
       title: title.trim(),
       description: description.trim() || undefined,
       startDate: startDate || undefined,
@@ -428,16 +462,57 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
           >
             キャンセル
           </button>
+          {statusFetchErrorMessage && (
+            <div
+              role="alert"
+              style={{
+                flex: 1.5,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                padding: '10px 12px',
+                borderRadius: 12,
+                border: '1px solid color-mix(in srgb, var(--red) 35%, var(--border))',
+                background: 'color-mix(in srgb, var(--red) 8%, var(--card))',
+                color: 'var(--text)',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--red)' }}>ステータスを読み込めませんでした</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{statusFetchErrorMessage}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { void refetchStatuses() }}
+                style={{
+                  flexShrink: 0,
+                  height: 32,
+                  padding: '0 10px',
+                  borderRadius: 999,
+                  border: '1px solid var(--border)',
+                  background: 'var(--card)',
+                  color: 'var(--text-2)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  fontFamily: 'inherit',
+                  cursor: 'pointer',
+                }}
+              >
+                再試行
+              </button>
+            </div>
+          )}
           <button
             onClick={handleSubmit}
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || (requireStatus && (statusesLoading || Boolean(statusesError)))}
             style={{
               flex: 2, height: 46, borderRadius: 12,
               border: 'none',
-              background: mutation.isPending ? 'var(--card-2)' : 'var(--accent)',
-              color: mutation.isPending ? 'var(--text-4)' : 'var(--on-accent)',
+              background: mutation.isPending || (requireStatus && (statusesLoading || Boolean(statusesError))) ? 'var(--card-2)' : 'var(--accent)',
+              color: mutation.isPending || (requireStatus && (statusesLoading || Boolean(statusesError))) ? 'var(--text-4)' : 'var(--on-accent)',
               fontSize: 15, fontWeight: 700,
-              cursor: mutation.isPending ? 'not-allowed' : 'pointer',
+              cursor: mutation.isPending || (requireStatus && (statusesLoading || Boolean(statusesError))) ? 'not-allowed' : 'pointer',
               fontFamily: 'inherit', transition: 'background 0.15s',
             }}
           >
