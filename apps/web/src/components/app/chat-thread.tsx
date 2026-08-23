@@ -1784,6 +1784,11 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         </div>
       )}
       <div ref={scrollRef} onScroll={handleMessageScroll} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
+        {!isLoading && !isAccessDenied && !isError && (isReadPositionError || unavailableInitialMessageId) && (
+          <div role="alert" style={{ display: 'flex', justifyContent: 'center', padding: '4px 16px 10px', color: 'var(--red-text)', fontSize: 12 }}>
+            指定されたメッセージまたは既読位置を読み込めなかったため、利用可能な位置を表示しています。
+          </div>
+        )}
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
         ) : isAccessDenied ? (
@@ -1818,11 +1823,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
             <div role="alert" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '4px 16px 10px', color: 'var(--red-text)', fontSize: 12 }}>
               新しいメッセージを読み込めませんでした。
               <button type="button" onClick={() => void loadNewer()} className="btn btn-ghost" style={{ height: 26, padding: '0 8px', fontSize: 11.5 }}>再試行</button>
-            </div>
-          )}
-          {(isReadPositionError || unavailableInitialMessageId) && (
-            <div role="alert" style={{ display: 'flex', justifyContent: 'center', padding: '4px 16px 10px', color: 'var(--red-text)', fontSize: 12 }}>
-              指定されたメッセージまたは既読位置を読み込めなかったため、利用可能な位置を表示しています。
             </div>
           )}
           {timeline.map(item => item.kind === 'nudge' ? (
