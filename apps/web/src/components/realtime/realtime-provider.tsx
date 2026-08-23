@@ -9,6 +9,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import {
   chatQueryKeys,
+  reconcileCachedChannelMessage,
   useCurrentUser,
   useProjectChannels,
   useWorkspaceChannels,
@@ -55,6 +56,17 @@ function tableOf(payload: unknown): string | undefined {
   if (typeof payload !== 'object' || payload === null) return undefined
   const table = (payload as { table?: unknown }).table
   return typeof table === 'string' ? table : undefined
+}
+
+function recordIdOf(payload: unknown, field: 'id' | 'message_id'): string | undefined {
+  if (typeof payload !== 'object' || payload === null) return undefined
+  const { record, old_record: oldRecord } = payload as { record?: unknown; old_record?: unknown }
+  for (const candidate of [record, oldRecord]) {
+    if (typeof candidate !== 'object' || candidate === null) continue
+    const value = (candidate as Record<string, unknown>)[field]
+    if (typeof value === 'string') return value
+  }
+  return undefined
 }
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
@@ -217,15 +229,28 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       const ch = supabase
         .channel(`channel:${id}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
-          const table = tableOf((message as { payload?: unknown }).payload)
-          if (table === 'messages') {
+          const payload = (message as { payload?: unknown }).payload
+          const table = tableOf(payload)
+          const invalidateMessages = () => {
             void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
+          }
+          const reconcileMessage = (messageId: string | undefined) => {
+            if (!messageId) {
+              invalidateMessages()
+              return
+            }
+            void reconcileCachedChannelMessage(queryClient, id, messageId)
+              .then(reconciled => { if (!reconciled) invalidateMessages() })
+              .catch(invalidateMessages)
+          }
+          if (table === 'messages') {
+            reconcileMessage(recordIdOf(payload, 'id'))
             // 添付ファイル・Google Docs リンクの有無はペイロードから判別できないため、
             // 新着メッセージのたびに無効化して他クライアントのアップロードも反映する
             void queryClient.invalidateQueries({ queryKey: ['channel-files', id] })
             scheduleListInvalidate()
           } else if (table === 'message_reactions') {
-            void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
+            reconcileMessage(recordIdOf(payload, 'message_id'))
           }
         })
       ch.subscribe((subStatus, err) => {

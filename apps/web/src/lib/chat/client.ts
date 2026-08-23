@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { generateId } from '@/lib/generate-id'
@@ -183,6 +183,26 @@ export function mergeChannelMessages(current: MessageDto[] | undefined, incoming
   const merged = new Map((current ?? []).map(message => [message.id, message]))
   for (const message of incoming) merged.set(message.id, message)
   return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+}
+
+export async function reconcileCachedChannelMessage(
+  queryClient: QueryClient,
+  channelId: string,
+  messageId: string,
+): Promise<boolean> {
+  const queryKey = chatQueryKeys.messages(channelId)
+  const current = queryClient.getQueryData<MessageDto[]>(queryKey)
+  if (!current?.some(message => message.id === messageId)) return false
+
+  const refreshedWindow = await fetchChannelMessagesAround(channelId, messageId)
+  const refreshed = refreshedWindow.find(message => message.id === messageId)
+  queryClient.setQueryData<MessageDto[]>(queryKey, previous => {
+    if (!previous) return previous
+    return refreshed
+      ? previous.map(message => message.id === messageId ? refreshed : message)
+      : previous.filter(message => message.id !== messageId)
+  })
+  return true
 }
 
 type ChannelMessageWindow = {
