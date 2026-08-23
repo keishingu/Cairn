@@ -518,7 +518,7 @@ export function useLoadOlderChannelMessages(channelId: string | null) {
   const loadNewer = React.useCallback(async (): Promise<boolean> => {
     if (!channelId || isLoadingNewer || !hasNewer) return false
     const current = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
-    const newest = current?.[current.length - 1]
+    const newest = current?.findLast(message => !message.id.startsWith('optimistic-'))
     if (!newest) return false
 
     setIsLoadingNewer(true)
