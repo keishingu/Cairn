@@ -104,6 +104,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   }, [status])
 
   const listTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const messageReconcileQueueRef = React.useRef(new Map<string, Promise<void>>())
   const scheduleListInvalidate = React.useCallback(() => {
     if (listTimerRef.current) clearTimeout(listTimerRef.current)
     listTimerRef.current = setTimeout(() => invalidateChannelLists(queryClient), LIST_DEBOUNCE_MS)
@@ -239,9 +240,24 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
               invalidateMessages()
               return
             }
-            void reconcileCachedChannelMessage(queryClient, id, messageId)
-              .then(reconciled => { if (!reconciled) invalidateMessages() })
-              .catch(invalidateMessages)
+            const queueKey = `${id}:${messageId}`
+            const previous = messageReconcileQueueRef.current.get(queueKey) ?? Promise.resolve()
+            const run = async () => {
+              await previous.catch(() => undefined)
+              try {
+                const reconciled = await reconcileCachedChannelMessage(queryClient, id, messageId)
+                if (!reconciled) invalidateMessages()
+              } catch {
+                invalidateMessages()
+              }
+            }
+            const current = run()
+            messageReconcileQueueRef.current.set(queueKey, current)
+            void current.finally(() => {
+              if (messageReconcileQueueRef.current.get(queueKey) === current) {
+                messageReconcileQueueRef.current.delete(queueKey)
+              }
+            })
           }
           if (table === 'messages') {
             reconcileMessage(recordIdOf(payload, 'id'))
