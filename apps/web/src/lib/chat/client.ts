@@ -337,6 +337,7 @@ export function useChannelInitialMessage(channelId: string | null) {
     queryFn: () => fetchChannelInitialMessage(channelId!),
     enabled: !!channelId,
     staleTime: 0,
+    refetchOnWindowFocus: false,
   })
 }
 
