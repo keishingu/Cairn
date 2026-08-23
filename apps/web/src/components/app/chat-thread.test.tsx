@@ -199,11 +199,16 @@ describe('positionInitialMessage', () => {
 
 describe('resolveInitialMessageId', () => {
   it('無効な明示ターゲットは最初の未読メッセージへフォールバックする', () => {
-    expect(resolveInitialMessageId('missing-target', 'first-unread', 'missing-target'))
+    expect(resolveInitialMessageId('missing-target', 'first-unread', new Set(['missing-target'])))
       .toBe('first-unread')
   })
 
   it('未読位置も利用できなければ会話末尾を選ぶ', () => {
-    expect(resolveInitialMessageId(null, 'missing-unread', 'missing-unread')).toBeNull()
+    expect(resolveInitialMessageId(null, 'missing-unread', new Set(['missing-unread']))).toBeNull()
+  })
+
+  it('明示ターゲットと未読位置の両方が利用不可なら会話末尾を選ぶ', () => {
+    expect(resolveInitialMessageId('missing-target', 'missing-unread', new Set(['missing-target', 'missing-unread'])))
+      .toBeNull()
   })
 })

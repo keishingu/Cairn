@@ -992,10 +992,10 @@ export function positionInitialMessage(
 export function resolveInitialMessageId(
   requestedMessageId: string | null,
   firstUnreadMessageId: string | null,
-  unavailableMessageId: string | null,
+  unavailableMessageIds: ReadonlySet<string>,
 ) {
-  if (requestedMessageId && requestedMessageId !== unavailableMessageId) return requestedMessageId
-  if (firstUnreadMessageId && firstUnreadMessageId !== unavailableMessageId) return firstUnreadMessageId
+  if (requestedMessageId && !unavailableMessageIds.has(requestedMessageId)) return requestedMessageId
+  if (firstUnreadMessageId && !unavailableMessageIds.has(firstUnreadMessageId)) return firstUnreadMessageId
   return null
 }
 
@@ -1259,7 +1259,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const markChannelReadFn = markChannelRead.mutate
   const lastReadMessageIdRef = React.useRef<string | null>(null)
   const ensureMessageLoaded = useEnsureMessageLoaded(channelId)
-  const [unavailableInitialMessageId, setUnavailableInitialMessageId] = React.useState<string | null>(null)
+  const [unavailableInitialMessageIds, setUnavailableInitialMessageIds] = React.useState<Set<string>>(() => new Set())
   // 最新100件の再取得では件数が変わらないことがあるため、末尾の入れ替わりも追跡する。
   const latestMessageId = messages[messages.length - 1]?.id
   const firstUnreadMessageId = readPosition?.firstUnreadMessageId ?? null
@@ -1267,12 +1267,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const initialMessageId = resolveInitialMessageId(
     requestedMessageId,
     firstUnreadMessageId,
-    unavailableInitialMessageId,
+    unavailableInitialMessageIds,
   )
   const isInitialPositionReady = !isMessagesFetching && !isReadPositionFetching && !isLoadingNewer
 
   React.useEffect(() => {
-    setUnavailableInitialMessageId(null)
+    setUnavailableInitialMessageIds(new Set())
   }, [channelId])
 
   React.useEffect(() => {
@@ -1282,7 +1282,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     const load = initialMessageId === firstUnreadMessageId ? initializeFrom : ensureMessageLoaded
     void load(initialMessageId).then(loaded => {
       if (!active || loaded) return
-      setUnavailableInitialMessageId(initialMessageId)
+      setUnavailableInitialMessageIds(current => new Set(current).add(initialMessageId))
       if (initialMessageId === requestedMessageId) setHighlightId(null)
     })
     return () => { active = false }
@@ -1784,7 +1784,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         </div>
       )}
       <div ref={scrollRef} onScroll={handleMessageScroll} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
-        {!isLoading && !isAccessDenied && !isError && (isReadPositionError || unavailableInitialMessageId) && (
+        {!isLoading && !isAccessDenied && !isError && (isReadPositionError || unavailableInitialMessageIds.size > 0) && (
           <div role="alert" style={{ display: 'flex', justifyContent: 'center', padding: '4px 16px 10px', color: 'var(--red-text)', fontSize: 12 }}>
             指定されたメッセージまたは既読位置を読み込めなかったため、利用可能な位置を表示しています。
           </div>
