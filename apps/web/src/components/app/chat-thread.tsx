@@ -1212,12 +1212,25 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
 
   const { data: currentUser } = useCurrentUser()
   const {
+    getMessageWindow,
+    initializeFrom,
+    loadOlder,
+    loadNewer,
+    loadLatest,
+    hasMore: hasOlderMessages,
+    hasNewer: hasNewerMessages,
+    isLoadingOlder,
+    isLoadingNewer,
+    error: loadOlderError,
+    newerError: loadNewerError,
+  } = useLoadOlderChannelMessages(channelId)
+  const {
     data: messages = [],
     isLoading,
     isFetching: isMessagesFetching,
     isError,
     error: messagesError,
-  } = useChannelMessages(channelId)
+  } = useChannelMessages(channelId, getMessageWindow)
   const {
     data: readPosition,
     isFetching: isReadPositionFetching,
@@ -1246,18 +1259,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const markChannelReadFn = markChannelRead.mutate
   const lastReadMessageIdRef = React.useRef<string | null>(null)
   const ensureMessageLoaded = useEnsureMessageLoaded(channelId)
-  const {
-    initializeFrom,
-    loadOlder,
-    loadNewer,
-    loadLatest,
-    hasMore: hasOlderMessages,
-    hasNewer: hasNewerMessages,
-    isLoadingOlder,
-    isLoadingNewer,
-    error: loadOlderError,
-    newerError: loadNewerError,
-  } = useLoadOlderChannelMessages(channelId)
   const [unavailableInitialMessageId, setUnavailableInitialMessageId] = React.useState<string | null>(null)
   // 最新100件の再取得では件数が変わらないことがあるため、末尾の入れ替わりも追跡する。
   const latestMessageId = messages[messages.length - 1]?.id

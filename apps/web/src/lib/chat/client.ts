@@ -179,6 +179,17 @@ async function fetchChannelMessagesAfter(channelId: string, messageId: string): 
   }
 }
 
+export function mergeChannelMessages(current: MessageDto[] | undefined, incoming: MessageDto[]): MessageDto[] {
+  const merged = new Map((current ?? []).map(message => [message.id, message]))
+  for (const message of incoming) merged.set(message.id, message)
+  return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+}
+
+type ChannelMessageWindow = {
+  anchorId: string
+  reachesLatest: boolean
+}
+
 interface SendMessageInput {
   content: string
   attachmentFileIds?: string[]
@@ -338,12 +349,25 @@ export function useCurrentUser() {
   })
 }
 
-export function useChannelMessages(channelId: string | null) {
+export function useChannelMessages(
+  channelId: string | null,
+  getMessageWindow?: () => ChannelMessageWindow | null,
+) {
+  const queryClient = useQueryClient()
   // 新着・編集・削除・リアクションは RealtimeProvider が messages / message_reactions の
   // 購読で invalidate するためポーリングしない
   return useQuery({
     queryKey: chatQueryKeys.messages(channelId),
-    queryFn: () => fetchChannelMessages(channelId!),
+    queryFn: async () => {
+      const messageWindow = getMessageWindow?.()
+      if (!messageWindow) return fetchChannelMessages(channelId!)
+
+      const refreshed = messageWindow.reachesLatest
+        ? await fetchChannelMessages(channelId!)
+        : (await fetchChannelMessagesFrom(channelId!, messageWindow.anchorId)).messages
+      const current = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
+      return mergeChannelMessages(current, refreshed)
+    },
     enabled: !!channelId,
   })
 }
@@ -368,11 +392,9 @@ export function useEnsureMessageLoaded(channelId: string | null) {
     try {
       const windowMessages = await fetchChannelMessagesAround(channelId, messageId)
       if (windowMessages.length === 0) return false
-      queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), prev => {
-        const merged = new Map((prev ?? []).map(m => [m.id, m]))
-        for (const m of windowMessages) merged.set(m.id, m)
-        return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-      })
+      queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), prev => (
+        mergeChannelMessages(prev, windowMessages)
+      ))
       return windowMessages.some(message => message.id === messageId)
     } catch {
       // サイレントに失敗（ハイライト・スクロールされないだけで致命的ではない）
@@ -384,6 +406,7 @@ export function useEnsureMessageLoaded(channelId: string | null) {
 /** 表示済みの最古メッセージをカーソルに、さらに古いページをキャッシュ先頭へ追加する。 */
 export function useLoadOlderChannelMessages(channelId: string | null) {
   const queryClient = useQueryClient()
+  const messageWindowRef = React.useRef<ChannelMessageWindow | null>(null)
   const [hasMore, setHasMore] = React.useState(true)
   const [hasNewer, setHasNewer] = React.useState(false)
   const [isLoadingOlder, setIsLoadingOlder] = React.useState(false)
@@ -392,11 +415,14 @@ export function useLoadOlderChannelMessages(channelId: string | null) {
   const [newerError, setNewerError] = React.useState<Error | null>(null)
 
   React.useEffect(() => {
+    messageWindowRef.current = null
     setHasMore(true)
     setHasNewer(false)
     setError(null)
     setNewerError(null)
   }, [channelId])
+
+  const getMessageWindow = React.useCallback(() => messageWindowRef.current, [])
 
   const initializeFrom = React.useCallback(async (messageId: string): Promise<boolean> => {
     if (!channelId) return false
@@ -411,6 +437,7 @@ export function useLoadOlderChannelMessages(channelId: string | null) {
     try {
       const page = await fetchChannelMessagesFrom(channelId, messageId)
       if (!page.messages.some(message => message.id === messageId)) return false
+      messageWindowRef.current = { anchorId: messageId, reachesLatest: !page.hasNewer }
       queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), page.messages)
       setHasMore(true)
       setHasNewer(page.hasNewer)
@@ -434,11 +461,9 @@ export function useLoadOlderChannelMessages(channelId: string | null) {
     try {
       const page = await fetchChannelMessagesBefore(channelId, oldest.id)
       if (page.messages.length > 0) {
-        queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), previous => {
-          const merged = new Map((previous ?? []).map(message => [message.id, message]))
-          for (const message of page.messages) merged.set(message.id, message)
-          return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
-        })
+        queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), previous => (
+          mergeChannelMessages(previous, page.messages)
+        ))
       }
       setHasMore(page.hasMore)
       return page.messages.length > 0
@@ -461,12 +486,11 @@ export function useLoadOlderChannelMessages(channelId: string | null) {
     try {
       const page = await fetchChannelMessagesAfter(channelId, newest.id)
       if (page.messages.length > 0) {
-        queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), previous => {
-          const merged = new Map((previous ?? []).map(message => [message.id, message]))
-          for (const message of page.messages) merged.set(message.id, message)
-          return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
-        })
+        queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), previous => (
+          mergeChannelMessages(previous, page.messages)
+        ))
       }
+      if (messageWindowRef.current) messageWindowRef.current.reachesLatest = !page.hasNewer
       setHasNewer(page.hasNewer)
       return page.messages.length > 0
     } catch (cause) {
@@ -483,6 +507,7 @@ export function useLoadOlderChannelMessages(channelId: string | null) {
     setNewerError(null)
     try {
       const latest = await fetchChannelMessages(channelId)
+      messageWindowRef.current = null
       queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), latest)
       setHasNewer(false)
       return true
@@ -495,6 +520,7 @@ export function useLoadOlderChannelMessages(channelId: string | null) {
   }, [channelId, isLoadingNewer, queryClient])
 
   return {
+    getMessageWindow,
     initializeFrom,
     loadOlder,
     loadNewer,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { findProjectChannelById } from './client'
+import { findProjectChannelById, mergeChannelMessages } from './client'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
+import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 
 describe('findProjectChannelById', () => {
   it('マイルストーンチャンネルが先にあっても General を返す', () => {
@@ -38,5 +39,22 @@ describe('findProjectChannelById', () => {
     ]
 
     expect(findProjectChannelById(channels, 'project-1')?.channelId).toBe('general-channel')
+  })
+})
+
+describe('mergeChannelMessages', () => {
+  it('再取得したページで未読起点の表示範囲を上書きしない', () => {
+    const message = (id: string, createdAt: string) => ({ id, createdAt }) as MessageDto
+    const current = [
+      message('first-unread', '2026-01-01T00:00:00.000Z'),
+      message('next-unread', '2026-01-01T00:01:00.000Z'),
+    ]
+    const refreshed = [
+      message('next-unread', '2026-01-01T00:01:00.000Z'),
+      message('new-message', '2026-01-01T00:02:00.000Z'),
+    ]
+
+    expect(mergeChannelMessages(current, refreshed).map(item => item.id))
+      .toEqual(['first-unread', 'next-unread', 'new-message'])
   })
 })
