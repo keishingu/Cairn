@@ -10,6 +10,7 @@ import {
   copyMessageLink,
   isNearMessageTimelineEnd,
   positionInitialMessage,
+  resolveInitialMessageId,
 } from './chat-thread'
 
 const { toastSuccess, toastError } = vi.hoisted(() => ({
@@ -193,5 +194,16 @@ describe('positionInitialMessage', () => {
     const container = document.createElement('div')
 
     expect(positionInitialMessage(container, 'message-outside-page')).toBe('pending')
+  })
+})
+
+describe('resolveInitialMessageId', () => {
+  it('無効な明示ターゲットは最初の未読メッセージへフォールバックする', () => {
+    expect(resolveInitialMessageId('missing-target', 'first-unread', 'missing-target'))
+      .toBe('first-unread')
+  })
+
+  it('未読位置も利用できなければ会話末尾を選ぶ', () => {
+    expect(resolveInitialMessageId(null, 'missing-unread', 'missing-unread')).toBeNull()
   })
 })

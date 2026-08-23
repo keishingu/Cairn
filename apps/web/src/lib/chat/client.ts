@@ -161,6 +161,24 @@ async function fetchChannelMessagesBefore(channelId: string, messageId: string):
   }
 }
 
+async function fetchChannelMessagesFrom(channelId: string, messageId: string): Promise<{ messages: MessageDto[]; hasNewer: boolean }> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}/messages?from=${encodeURIComponent(messageId)}`)
+  if (!res.ok) throw new Error('未読メッセージの取得に失敗しました')
+  return {
+    messages: await res.json() as MessageDto[],
+    hasNewer: res.headers.get('X-Cairn-Has-Newer') === 'true',
+  }
+}
+
+async function fetchChannelMessagesAfter(channelId: string, messageId: string): Promise<{ messages: MessageDto[]; hasNewer: boolean }> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}/messages?after=${encodeURIComponent(messageId)}`)
+  if (!res.ok) throw new Error('新しいメッセージの取得に失敗しました')
+  return {
+    messages: await res.json() as MessageDto[],
+    hasNewer: res.headers.get('X-Cairn-Has-Newer') === 'true',
+  }
+}
+
 interface SendMessageInput {
   content: string
   attachmentFileIds?: string[]
@@ -367,13 +385,43 @@ export function useEnsureMessageLoaded(channelId: string | null) {
 export function useLoadOlderChannelMessages(channelId: string | null) {
   const queryClient = useQueryClient()
   const [hasMore, setHasMore] = React.useState(true)
+  const [hasNewer, setHasNewer] = React.useState(false)
   const [isLoadingOlder, setIsLoadingOlder] = React.useState(false)
+  const [isLoadingNewer, setIsLoadingNewer] = React.useState(false)
   const [error, setError] = React.useState<Error | null>(null)
+  const [newerError, setNewerError] = React.useState<Error | null>(null)
 
   React.useEffect(() => {
     setHasMore(true)
+    setHasNewer(false)
     setError(null)
+    setNewerError(null)
   }, [channelId])
+
+  const initializeFrom = React.useCallback(async (messageId: string): Promise<boolean> => {
+    if (!channelId) return false
+    const current = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
+    if (current?.some(message => message.id === messageId)) {
+      setHasNewer(false)
+      return true
+    }
+
+    setIsLoadingNewer(true)
+    setNewerError(null)
+    try {
+      const page = await fetchChannelMessagesFrom(channelId, messageId)
+      if (!page.messages.some(message => message.id === messageId)) return false
+      queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), page.messages)
+      setHasMore(true)
+      setHasNewer(page.hasNewer)
+      return true
+    } catch (cause) {
+      setNewerError(cause instanceof Error ? cause : new Error('未読メッセージの取得に失敗しました'))
+      return false
+    } finally {
+      setIsLoadingNewer(false)
+    }
+  }, [channelId, queryClient])
 
   const loadOlder = React.useCallback(async (): Promise<boolean> => {
     if (!channelId || isLoadingOlder || !hasMore) return false
@@ -402,7 +450,62 @@ export function useLoadOlderChannelMessages(channelId: string | null) {
     }
   }, [channelId, hasMore, isLoadingOlder, queryClient])
 
-  return { loadOlder, hasMore, isLoadingOlder, error }
+  const loadNewer = React.useCallback(async (): Promise<boolean> => {
+    if (!channelId || isLoadingNewer || !hasNewer) return false
+    const current = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
+    const newest = current?.[current.length - 1]
+    if (!newest) return false
+
+    setIsLoadingNewer(true)
+    setNewerError(null)
+    try {
+      const page = await fetchChannelMessagesAfter(channelId, newest.id)
+      if (page.messages.length > 0) {
+        queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), previous => {
+          const merged = new Map((previous ?? []).map(message => [message.id, message]))
+          for (const message of page.messages) merged.set(message.id, message)
+          return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+        })
+      }
+      setHasNewer(page.hasNewer)
+      return page.messages.length > 0
+    } catch (cause) {
+      setNewerError(cause instanceof Error ? cause : new Error('新しいメッセージの取得に失敗しました'))
+      return false
+    } finally {
+      setIsLoadingNewer(false)
+    }
+  }, [channelId, hasNewer, isLoadingNewer, queryClient])
+
+  const loadLatest = React.useCallback(async (): Promise<boolean> => {
+    if (!channelId || isLoadingNewer) return false
+    setIsLoadingNewer(true)
+    setNewerError(null)
+    try {
+      const latest = await fetchChannelMessages(channelId)
+      queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), latest)
+      setHasNewer(false)
+      return true
+    } catch (cause) {
+      setNewerError(cause instanceof Error ? cause : new Error('最新メッセージの取得に失敗しました'))
+      return false
+    } finally {
+      setIsLoadingNewer(false)
+    }
+  }, [channelId, isLoadingNewer, queryClient])
+
+  return {
+    initializeFrom,
+    loadOlder,
+    loadNewer,
+    loadLatest,
+    hasMore,
+    hasNewer,
+    isLoadingOlder,
+    isLoadingNewer,
+    error,
+    newerError,
+  }
 }
 
 export function useSendChannelMessage(

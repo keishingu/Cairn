@@ -27,8 +27,13 @@ export async function getMessages({
   // ジャンプ先がスクロール表示されないまま静かに失敗する）
   const searchParams = new URL(requestUrl).searchParams
   const aroundMessageId = searchParams.get('around')
+  // 未読起点では対象を含む連続ページを取得し、以降は after で新しい方向へ読み進める。
+  const fromMessageId = aroundMessageId ? null : searchParams.get('from')
   // 最古の表示済みメッセージIDをカーソルとして、さらに古いページを取得する。
-  const beforeMessageId = aroundMessageId ? null : searchParams.get('before')
+  const beforeMessageId = aroundMessageId || fromMessageId ? null : searchParams.get('before')
+  const afterMessageId = aroundMessageId || fromMessageId || beforeMessageId
+    ? null
+    : searchParams.get('after')
 
   try {
     const { db } = await import('@cairn/db')
@@ -41,7 +46,7 @@ export async function getMessages({
       files,
       workspaceMembers,
     } = await import('@cairn/db')
-    const { eq, isNull, inArray, and, lte, lt, gt, or, desc, asc } = await import('drizzle-orm')
+    const { eq, isNull, inArray, and, lte, lt, gt, gte, or, desc, asc } = await import('drizzle-orm')
 
     const selectFields = {
       id: messages.id,
@@ -68,6 +73,7 @@ export async function getMessages({
     }>
 
     let hasMore = false
+    let hasNewer = false
 
     if (aroundMessageId) {
       const [anchor] = await db
@@ -131,6 +137,50 @@ export async function getMessages({
 
       beforeAndAnchor.reverse()
       rows = [...beforeAndAnchor, ...after]
+    } else if (fromMessageId || afterMessageId) {
+      const cursorId = fromMessageId ?? afterMessageId!
+      const [cursor] = await db
+        .select({ id: messages.id, createdAt: messages.createdAt })
+        .from(messages)
+        .where(and(
+          eq(messages.id, cursorId),
+          eq(messages.channelId, channelId),
+          isNull(messages.deletedAt),
+        ))
+        .limit(1)
+      if (!cursor) {
+        return NextResponse.json([] satisfies MessageDto[], {
+          headers: { 'X-Cairn-Has-More': 'false', 'X-Cairn-Has-Newer': 'false' },
+        })
+      }
+
+      const pageRows = await db
+        .select(selectFields)
+        .from(messages)
+        .innerJoin(profiles, eq(messages.senderId, profiles.id))
+        .leftJoin(
+          workspaceMembers,
+          and(
+            eq(workspaceMembers.userId, messages.senderId),
+            eq(workspaceMembers.workspaceId, workspaceId),
+          ),
+        )
+        .where(and(
+          eq(messages.channelId, channelId),
+          isNull(messages.deletedAt),
+          or(
+            gt(messages.createdAt, cursor.createdAt),
+            and(
+              eq(messages.createdAt, cursor.createdAt),
+              fromMessageId ? gte(messages.id, cursor.id) : gt(messages.id, cursor.id),
+            ),
+          ),
+        ))
+        .orderBy(asc(messages.createdAt), asc(messages.id))
+        .limit(PAGE_SIZE + 1)
+
+      hasNewer = pageRows.length > PAGE_SIZE
+      rows = pageRows.slice(0, PAGE_SIZE)
     } else {
       let cursor: { id: string; createdAt: Date } | null = null
       if (beforeMessageId) {
@@ -356,7 +406,10 @@ export async function getMessages({
     }))
 
     return NextResponse.json(result, {
-      headers: { 'X-Cairn-Has-More': String(hasMore) },
+      headers: {
+        'X-Cairn-Has-More': String(hasMore),
+        'X-Cairn-Has-Newer': String(hasNewer),
+      },
     })
   } catch (err) {
     console.error('[/api/channels/[channelId]/messages GET] DB query failed:', err)

@@ -22,6 +22,7 @@ const {
   mockLte,
   mockLt,
   mockGt,
+  mockGte,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -37,6 +38,7 @@ const {
   mockLte: vi.fn(() => Symbol('lte')),
   mockLt: vi.fn(() => Symbol('lt')),
   mockGt: vi.fn(() => Symbol('gt')),
+  mockGte: vi.fn(() => Symbol('gte')),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -113,6 +115,7 @@ vi.mock('drizzle-orm', () => ({
   lte: mockLte,
   lt: mockLt,
   gt: mockGt,
+  gte: mockGte,
   sql: vi.fn(() => 'sql'),
 }))
 
@@ -257,5 +260,49 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     expect(mockOr).toHaveBeenCalled()
     expect(res.headers.get('X-Cairn-Has-More')).toBe('false')
     await expect(res.json()).resolves.toEqual([expect.objectContaining({ id: 'older-1' })])
+  })
+
+  it('fromカーソルを含む連続ページと新しいページの有無を返す', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    const cursor = { id: 'cursor-1', createdAt: new Date('2026-01-01T01:00:00.000Z') }
+    const rows = Array.from({ length: 101 }, (_, index) => ({
+      id: index === 0 ? cursor.id : `newer-${index}`,
+      content: `message ${index}`,
+      messageType: 'text',
+      parentMessageId: null,
+      senderId: 'user-2',
+      senderName: 'Sender',
+      senderAvatarUrl: null,
+      createdAt: new Date(cursor.createdAt.getTime() + index * 1_000),
+      updatedAt: new Date(cursor.createdAt.getTime() + index * 1_000),
+    }))
+    mockSelectResults([cursor], rows, [], [], [], [])
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/?from=cursor-1'), ctxRouteParams())
+
+    expect(mockGte).toHaveBeenCalledWith('messages.id', cursor.id)
+    expect(res.headers.get('X-Cairn-Has-Newer')).toBe('true')
+    const body = await res.json()
+    expect(body).toHaveLength(100)
+    expect(body[0]).toEqual(expect.objectContaining({ id: cursor.id }))
+  })
+
+  it('afterカーソルより新しいメッセージだけを返す', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    const cursor = { id: 'cursor-1', createdAt: new Date('2026-01-01T01:00:00.000Z') }
+    const row = {
+      id: 'newer-1', content: 'newer', messageType: 'text', parentMessageId: null,
+      senderId: 'user-2', senderName: 'Sender', senderAvatarUrl: null,
+      createdAt: new Date('2026-01-01T01:01:00.000Z'), updatedAt: new Date('2026-01-01T01:01:00.000Z'),
+    }
+    mockSelectResults([cursor], [row], [], [], [], [])
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/?after=cursor-1'), ctxRouteParams())
+
+    expect(mockGt).toHaveBeenCalled()
+    expect(res.headers.get('X-Cairn-Has-Newer')).toBe('false')
+    await expect(res.json()).resolves.toEqual([expect.objectContaining({ id: 'newer-1' })])
   })
 })
