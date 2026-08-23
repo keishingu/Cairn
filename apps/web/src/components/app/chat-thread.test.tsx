@@ -21,6 +21,7 @@ const { toastSuccess, toastError, markChannelRead, bookmarkMessage, chatThreadSt
   chatThreadState: {
     initialMessageId: null as string | null,
     historyMessages: undefined as Array<Record<string, unknown>> | undefined,
+    historyIsError: false,
   },
 }))
 
@@ -30,7 +31,7 @@ vi.mock('@/lib/chat/client', () => ({
   ChannelMessagesError: class ChannelMessagesError extends Error {},
   formatChatMessageTime: () => '12:34',
   useChannelInitialMessage: () => ({ data: { messageId: chatThreadState.initialMessageId }, isFetched: true, isFetching: false, isError: false }),
-  useChannelMessageHistory: () => ({ data: chatThreadState.historyMessages, isFetched: true, isLoading: false, isError: false }),
+  useChannelMessageHistory: () => ({ data: chatThreadState.historyMessages, isFetched: true, isLoading: false, isError: chatThreadState.historyIsError }),
   useChannelMembers: () => ({ data: [] }),
   useChannelMessages: () => ({
     data: [{
@@ -207,6 +208,7 @@ describe('ChatThreadの初期既読', () => {
     bookmarkMessage.mockReset()
     chatThreadState.initialMessageId = null
     chatThreadState.historyMessages = undefined
+    chatThreadState.historyIsError = false
     localStorage.clear()
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
@@ -254,6 +256,21 @@ describe('ChatThreadの初期既読', () => {
     expect(bookmarkMessage).toHaveBeenCalledWith('history-message')
     expect(screen.getByText('hello')).toBeInTheDocument()
     expect(screen.queryByText('old message')).toBeNull()
+  })
+
+  it('未読周辺の取得に失敗したら既読にせずエラーを表示する', () => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    chatThreadState.initialMessageId = 'history-message'
+    chatThreadState.historyIsError = true
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" initialUnreadPosition isMobile />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText('メッセージの取得に失敗しました')).toBeInTheDocument()
+    expect(markChannelRead).not.toHaveBeenCalled()
   })
 
 })

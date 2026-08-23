@@ -1168,7 +1168,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const historyMessagesQuery = useChannelMessageHistory(channelId, historyMessageId)
   const historyUnavailable = needsHistory
     && historyMessagesQuery.isFetched
-    && (historyMessagesQuery.isError || historyMessagesQuery.data?.length === 0)
+    && historyMessagesQuery.data?.length === 0
   const isHistoryView = needsHistory && !historyUnavailable
   const historyMessages = historyMessagesQuery.data ?? EMPTY_MESSAGES
   const messages = React.useMemo(
@@ -1180,6 +1180,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     || (isHistoryView && historyMessagesQuery.isLoading)
   const isError = latestMessagesQuery.isError
     || (initialUnreadPosition && !targetMessage && initialMessageQuery.isError)
+    || historyMessagesQuery.isError
   const messagesError = latestMessagesQuery.error
   const { data: nudges = [], isError: nudgesError } = useAiNudges(channelId)
   const nudgeFeedback = useAiNudgeFeedback(channelId)
