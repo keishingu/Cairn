@@ -1,7 +1,8 @@
 # ランディングページ導入とルーティング再構成 設計
 
-- **ステータス**: PR1（`/` での LP 直配信）実装済み
+- **ステータス**: PR1（`/` での LP 直配信）+ `/chats` 既定化を実装済み
 - **作成**: 2026-06-13
+- **更新**: 2026-08-23
 - **対象**: `apps/web`（Next.js 15 App Router）
 
 > 本ドキュメントは設計案であり、実装の現状を保証しない。矛盾する場合はコードと [`CLAUDE.md`](../CLAUDE.md) を正とする。
@@ -9,7 +10,7 @@
 
 ## 1. 背景と目的
 
-巷の SaaS は「`/` がランディングページ（LP）、`/login` がログイン、ログイン後は `/dashboard` 等にリダイレクト」という構成が一般的。Cairn の場合、ログイン後の入口は `/projects`。
+巷の SaaS は「`/` がランディングページ（LP）、`/login` がログイン、ログイン後は `/dashboard` 等にリダイレクト」という構成が一般的。Cairn の場合、ログイン後の入口は `/chats`。
 
 導入前の Cairn は **LP を `/lp` 配下に静的ファイルとして持つが、トップ `/` には置いていなかった**:
 
@@ -25,8 +26,8 @@
 ### ゴール
 
 - `/` を**未認証でも閲覧できる公開 LP** にする
-- 認証済みユーザーが `/` に来た場合は従来どおりアプリ（`/projects`）へ誘導する
-- ログイン後の遷移先（`/onboarding` / `/projects` の振り分け）は**変更しない**
+- 認証済みユーザーが `/` に来た場合はアプリ（`/chats`）へ誘導する
+- ログイン後の遷移先は、ワークスペース未作成なら `/onboarding`、作成済みなら `/chats` とする
 - 認証ガードの一元管理（`middleware.ts`）の構造を崩さない
 
 ### 非ゴール
@@ -46,8 +47,8 @@
 未認証ユーザー  →  /            （LP を表示）
                    /auth/login  （ログイン）
                    /auth/signup （サインアップ）
-認証済みユーザー →  /            （/projects へリダイレクト）
-                   /projects    （アプリ本体）
+認証済みユーザー →  /            （/chats へリダイレクト）
+                   /chats       （アプリの既定画面）
 ```
 
 ### 3.2 実装方式（採用: 既存静的アセットを `/` の Route Handler で配信）
@@ -57,12 +58,12 @@
 `apps/web/src/middleware.ts`:
 
 - 未認証で `/` にアクセス → middleware は通過し、`apps/web/src/app/route.ts` が `public/index.html` を `text/html` として返す
-- 認証済みで `/` にアクセス → `/projects` へリダイレクト
+- 認証済みで `/` にアクセス → `/chats` へリダイレクト
 - LP の静的アセット（`/cairn-lp.css`・`/cairn-lp.js`・`/og-image.png` など）は未認証でもアクセス可能
 - 旧 `/lp` 配下や `/index.html` の互換リダイレクトは持たない。公開 LP は最初から `/` を正規 URL とする
 - `/robots.txt`・`/sitemap.xml` は公開 SEO ルートとして未認証でもアクセス可能
 
-この方式では、旧 `apps/web/src/app/page.tsx` の `/projects` リダイレクトは削除し、`apps/web/src/app/route.ts` が `/` のレスポンスを担当する。ログイン済みユーザーの `/projects` 誘導は引き続き middleware に集約する。
+この方式では、旧 `apps/web/src/app/page.tsx` の `/projects` リダイレクトは削除し、`apps/web/src/app/route.ts` が `/` のレスポンスを担当する。ログイン済みユーザーの `/chats` 誘導は middleware に集約する。
 
 ### 3.3 デバイス出し分け
 
@@ -84,9 +85,9 @@ LP は単一レイアウト（B 案）。既存の静的 HTML をそのまま配
 
 ## 4. 触らないもの
 
-- `auth/login` / `auth/signup` / `onboarding` / `invite/[token]` のパスと中身
-- ログイン後の `/projects` 誘導ロジック
-- `/projects` 等のハードコード参照（約 100 箇所）— 遷移先は変わらないため修正不要
+- `auth/login` / `auth/signup` / `onboarding` / `invite/[token]` のパス（完了後の既定遷移先だけ `/chats` に変更）
+- `/projects` 自体のルートとプロジェクト詳細への導線
+- プロジェクト機能としての `/projects` 参照 — 既定画面の変更とは独立しているため修正不要
 
 
 ## 5. 影響範囲
@@ -96,10 +97,11 @@ LP は単一レイアウト（B 案）。既存の静的 HTML をそのまま配
 | `middleware.ts` | 修正 | 認証済み `/` の誘導分岐 + LP 静的アセット / SEO ルート公開 |
 | `app/route.ts` | 追加 | `/` で `public/index.html` を直接配信 |
 | `app/page.tsx` | 削除 | `/` は Route Handler が担当 |
-| `(app)/*` | なし | 認証シェル内は不変 |
-| `auth/*`, `onboarding/*`, `invite/*` | なし | パス・遷移先とも不変 |
+| `(app)/*` | 修正 | サイドメニュー・モバイルタブの先頭をチャットにし、旧 `/dashboard` を `/chats` へ転送 |
+| `auth/*`, `onboarding/*`, `invite/*` | 修正 | ワークスペース作成済みユーザーの既定遷移を `/chats` に統一 |
+| `manifest.ts`, `public/sw.js` | 修正 | PWA の起動先・オフラインフォールバック・通知URL既定値を `/chats` に統一 |
 | `public/index.html` | CTA / SEO 変更 | `#demo` → `/auth/login`、ラベル変更、OGP/canonical 追加、フッター導線の一部を要望受付ワークスペースへ接続 |
-| `/projects` 等のハードコード参照 | なし | 遷移先が変わらない |
+| `/projects` の機能内参照 | なし | プロジェクト画面への明示的な導線は維持 |
 | OGP / SEO / sitemap | 修正 | LP の `<head>` に OGP/canonical を追加し、`robots.ts` / `sitemap.ts` を追加 |
 
 
@@ -130,9 +132,9 @@ LP は単一レイアウト（B 案）。既存の静的 HTML をそのまま配
 ## 8. 受け入れ条件（PR1・実装済み）
 
 - [x] 未認証ユーザーが `/` にアクセスして LP が表示される（`/auth/login` に飛ばされない）
-- [x] 認証済みユーザーが `/` にアクセスすると `/projects` にリダイレクトされる
+- [x] 認証済みユーザーが `/` にアクセスすると `/chats` にリダイレクトされる
 - [x] 未認証ユーザーが `/projects` 等の保護ルートに来たら従来どおり `/auth/login` に飛ぶ
-- [x] ログイン後の `/onboarding` / `/projects` 振り分けが従来どおり動く
+- [x] ログイン後にワークスペース未作成なら `/onboarding`、作成済みなら `/chats` に遷移する
 - [x] LP が `(app)` の認証前提コンテキストに依存していない（静的アセットのため無関係）
 - [x] 公開 LP が `/` を正規 URL として直接配信されている
 - [x] LP の主要 CTA（旧「Try Demo」）が `/auth/login` に遷移する（`#demo` アンカー止まりでない）

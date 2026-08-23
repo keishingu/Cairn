@@ -68,7 +68,7 @@ export default function InvitePage() {
     if (data.workspaceId) {
       document.cookie = `cairn_workspace_id=${data.workspaceId}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     }
-    window.location.href = '/projects'
+    window.location.href = '/chats'
   }
 
   if (notFound) {

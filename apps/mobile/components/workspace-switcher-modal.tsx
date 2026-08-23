@@ -75,7 +75,7 @@ export function WorkspaceSwitcherModal({
       await queryClient.resetQueries({
         predicate: (query) => query.queryKey[0] !== 'workspace',
       })
-      router.replace('/(app)/projects')
+      router.replace('/(app)/chats')
     } catch (error) {
       setSwitchingId(null)
       setSwitchError(

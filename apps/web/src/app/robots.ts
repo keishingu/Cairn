@@ -8,7 +8,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/projects', '/settings', '/tasks', '/chats', '/files', '/gallery', '/ai', '/auth'],
+      disallow: ['/chats', '/projects', '/settings', '/tasks', '/files', '/gallery', '/ai', '/auth'],
     },
     sitemap: 'https://oss-cairn.com/sitemap.xml',
   }

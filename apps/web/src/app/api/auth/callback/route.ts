@@ -57,7 +57,7 @@ export async function GET(request: Request) {
       if (safeNextPath) {
         return NextResponse.redirect(`${origin}${safeNextPath}`)
       }
-      return NextResponse.redirect(`${origin}/projects`)
+      return NextResponse.redirect(`${origin}/chats`)
     }
   }
 

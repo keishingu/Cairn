@@ -1,5 +1,5 @@
-const CACHE_NAME = 'cairn-v1';
-const SHELL_URLS = ['/dashboard', '/', '/auth/login'];
+const CACHE_NAME = 'cairn-v2';
+const SHELL_URLS = ['/chats', '/', '/auth/login'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -44,11 +44,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation: Network First, fallback to /dashboard cache
+  // Navigation: Network First, fallback to /chats cache
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request).catch(() =>
-        caches.match('/dashboard').then((cached) => cached ?? new Response('Offline', { status: 503 }))
+        caches.match('/chats').then((cached) => cached ?? new Response('Offline', { status: 503 }))
       )
     );
     return;
@@ -67,7 +67,7 @@ self.addEventListener('push', (event) => {
       body: data.body ?? '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      data: { url: data.url ?? '/dashboard' },
+      data: { url: data.url ?? '/chats' },
     }),
   ];
 
@@ -88,7 +88,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = event.notification.data?.url ?? '/dashboard';
+  const url = event.notification.data?.url ?? '/chats';
   event.waitUntil(
     (async () => {
       const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });

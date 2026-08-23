@@ -60,6 +60,7 @@ pnpm dev
 - **DM と AI PMO は環境別 feature flag でリリースを制御する**: `packages/shared/src/config/feature-flags.ts` の `FEATURE_FLAGS` を Web・API・Expo で共有する。`VERCEL_ENV === 'production'` のときだけ `dm` / `aiPmo` を `false`、それ以外では `true` とする。Productionへ公開する際はこの条件を変更して再ビルド・再リリースする。背景は [`docs/telecom-business-filing-research.md`](docs/telecom-business-filing-research.md)
 
 - **Web のプロダクト分析は production 限定の PostHog**: Vercel Production のみに `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` を設定し、環境変数がある場合だけ初期化する。ページビューは History API の変化を自動捕捉し、認証後は Supabase の user ID を distinct ID として `identify`、サインアウト時は `reset` する。Feature Flag は市場投入判断による機能公開制御に使い、インフラ接続の環境差には使わない
+- **認証後の既定画面は `/chats`**: Web のサイドメニュー先頭・モバイル（Web / Expo）の左端タブをチャットとし、通常ログイン、認証済みでの `/` / `/auth/*`、オンボーディング完了、ワークスペース作成・切替、PWA / Electron / Expo の起動先をチャットへ統一する。数字ナビは表示順と揃え、チャットを `1`、プロジェクト一覧・カレンダー・カンバン・マイタスクを `2`〜`5` とする。個別会話の `/chats/[channelId]` は維持する
 - **tsconfig の extends は相対パス**で書く（`../../packages/config/tsconfig/base.json`）
   - Vite/Vitest の `tsconfck` が workspace パッケージ参照を解決できないため
 - **AIモデルは OpenAI**（gpt-5 / gpt-5-mini）。Claude は使用しない

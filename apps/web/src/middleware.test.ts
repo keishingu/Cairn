@@ -48,12 +48,12 @@ describe('middleware', () => {
     expect(res.headers.get('location')).toBeNull()
   })
 
-  it('認証済みで / にアクセスすると /projects にリダイレクトされる', async () => {
+  it('認証済みで / にアクセスすると /chats にリダイレクトされる', async () => {
     getClaims.mockResolvedValue(authed())
     const { middleware } = await import('./middleware')
     const res = await middleware(makeRequest('/'))
     expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toContain('/projects')
+    expect(res.headers.get('location')).toContain('/chats')
   })
 
   it('未認証で旧 LP パスにアクセスすると /auth/login にリダイレクトされる', async () => {
@@ -121,14 +121,14 @@ describe('middleware', () => {
     expect(res.headers.get('x-middleware-request-x-webview')).toBe('1')
   })
 
-  it('認証済みでも /auth/mobile-handoff は /projects に潰さない', async () => {
+  it('認証済みでも /auth/mobile-handoff は /chats に潰さない', async () => {
     getClaims.mockResolvedValue(authed())
     const { middleware } = await import('./middleware')
     const res = await middleware(makeRequest('/auth/mobile-handoff?redirect=%2Fai%3Fwebview%3D1'))
     expect(res.headers.get('location')).toBeNull()
   })
 
-  it('認証済みでも /auth/mobile-signout は /projects に潰さない', async () => {
+  it('認証済みでも /auth/mobile-signout は /chats に潰さない', async () => {
     getClaims.mockResolvedValue(authed())
     const { middleware } = await import('./middleware')
     const res = await middleware(makeRequest('/auth/mobile-signout?webview=1'))

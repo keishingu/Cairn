@@ -46,7 +46,7 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
       router.replace('/(auth)/login')
     } else if (session && inAuthGroup) {
       if (isPostAuthNavigationPending()) return
-      router.replace('/(app)/projects')
+      router.replace('/(app)/chats')
     }
   }, [session, segments, router])
 

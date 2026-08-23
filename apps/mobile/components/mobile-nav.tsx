@@ -21,16 +21,16 @@ const TABS: {
   label: string
 }[] = [
   {
-    id: 'projects',
-    route: 'projects/index',
-    icon: 'grid-outline',
-    label: 'プロジェクト',
-  },
-  {
     id: 'chats',
     route: 'chats/index',
     icon: 'chatbubble-outline',
     label: 'チャット',
+  },
+  {
+    id: 'projects',
+    route: 'projects/index',
+    icon: 'grid-outline',
+    label: 'プロジェクト',
   },
   {
     id: 'tasks',
@@ -81,7 +81,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [navHeight, setNavHeight] = React.useState(64 + insets.bottom)
 
-  const current = state.routes[state.index]?.name ?? 'projects/index'
+  const current = state.routes[state.index]?.name ?? 'chats/index'
   const projectsActive = current.startsWith('projects/')
   const chatsActive = current.startsWith('chats/')
   // チャットタブのバッジは一覧画面（chats/index.tsx）が表示する3系統

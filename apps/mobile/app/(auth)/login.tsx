@@ -23,7 +23,7 @@ export default function LoginScreen() {
       setError(authError.message)
       setLoading(false)
     }
-    // 成功時は _layout.tsx の onAuthStateChange が /(app)/projects へリダイレクト
+    // 成功時は _layout.tsx の onAuthStateChange が /(app)/chats へリダイレクト
   }
 
   return (

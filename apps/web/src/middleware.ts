@@ -73,7 +73,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
   if (userId && isLandingRoute) {
-    return NextResponse.redirect(new URL('/projects', request.url))
+    return NextResponse.redirect(new URL('/chats', request.url))
   }
   if (
     userId &&
@@ -82,7 +82,7 @@ export async function middleware(request: NextRequest) {
     !isMobileHandoffRoute &&
     !isMobileSignoutRoute
   ) {
-    return NextResponse.redirect(new URL('/projects', request.url))
+    return NextResponse.redirect(new URL('/chats', request.url))
   }
 
   if (isWebView) {
