@@ -88,6 +88,16 @@ describe('通常チャンネルのタスク', () => {
     expect(mockFetch).toHaveBeenCalledWith('/api/tasks?channelId=channel-1')
   })
 
+  it('タスク一覧の非成功レスポンスをquery errorにする', async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ error: 'チャンネルタスクを準備中です' }), { status: 503 }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useTasksByScope({ channelId: 'channel-1' }), { wrapper })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.error?.message).toBe('チャンネルタスクを準備中です')
+    expect(result.current.data).toBeUndefined()
+  })
+
   it('channelIdを付けてタスクを追加する', async () => {
     mockFetch.mockResolvedValue(new Response(JSON.stringify(STUB_TASKS[0]), { status: 201 }))
     const { wrapper } = makeWrapper()

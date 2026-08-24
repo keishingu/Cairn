@@ -231,7 +231,7 @@ const TaskChecklist = ({ project, channel, onJumpToMessage }: {
   onJumpToMessage: (messageId: string) => void
 }) => {
   const scope = project ? { projectId: project.id } : { channelId: channel!.id }
-  const { data: tasks = [], isLoading, toggleMutation } = useTasksByScope(scope)
+  const { data: tasks = [], isLoading, isError, error, toggleMutation } = useTasksByScope(scope)
   const listRef = React.useRef<HTMLDivElement>(null)
   const [expanded, setExpanded] = React.useState(false)
   const [clamped, setClamped] = React.useState(false)
@@ -293,6 +293,8 @@ const TaskChecklist = ({ project, channel, onJumpToMessage }: {
 
       {isLoading ? (
         <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '8px 0 2px' }}>読み込み中…</div>
+      ) : isError ? (
+        <div style={{ fontSize: 11.5, color: 'var(--red-text)', padding: '8px 0 2px' }}>{error.message}</div>
       ) : tasks.length === 0 ? (
         <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '8px 0 2px' }}>タスクはまだありません</div>
       ) : (

@@ -16,7 +16,12 @@ export function useTasksByScope(scope: TaskScope) {
 
   const query = useQuery<TaskDto[]>({
     queryKey,
-    queryFn: () => fetchWithAuth(`/api/tasks?${search}`).then(r => r.json()),
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/tasks?${search}`)
+      const body = await res.json().catch(() => ({})) as TaskDto[] | { error?: string }
+      if (!res.ok) throw new Error(Array.isArray(body) ? 'タスクの取得に失敗しました' : (body.error ?? 'タスクの取得に失敗しました'))
+      return body as TaskDto[]
+    },
   })
 
   const toggleMutation = useMutation({
