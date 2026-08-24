@@ -98,7 +98,7 @@ vi.mock('@cairn/db', () => {
     },
     projects: { id: 'projects.id', title: 'projects.title', workspaceId: 'projects.workspaceId' },
     messages: { id: 'messages.id', content: 'messages.content', channelId: 'messages.channelId', senderId: 'messages.senderId' },
-    channels: { id: 'channels.id', workspaceId: 'channels.workspaceId', isPrivate: 'channels.isPrivate' },
+    channels: { id: 'channels.id', name: 'channels.name', workspaceId: 'channels.workspaceId', isPrivate: 'channels.isPrivate' },
     channelMembers: { channelId: 'channelMembers.channelId', userId: 'channelMembers.userId' },
     aiNudges: {
       workspaceId: 'aiNudges.workspaceId',
@@ -217,6 +217,48 @@ describe('PATCH /api/tasks/[id]', () => {
       'member',
     )
     expect(mockDbUpdateReturning).not.toHaveBeenCalled()
+  })
+
+  it('チャンネルタスクの担当者通知にはチャンネル名を含める', async () => {
+    const assigneeId = '00000000-0000-0000-0000-0000000000aa'
+    mockDbSelectLimit.mockResolvedValueOnce([{
+      id: TASK_ID,
+      projectId: null,
+      channelId: 'channel-1',
+      projectTitle: null,
+      channelName: '折り紙',
+      title: 'バックアップを取る',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId: null,
+      sourceMessageId: null,
+      sourceCheckboxIndex: null,
+    }])
+    mockDbUpdateReturning.mockResolvedValue([{
+      id: TASK_ID,
+      title: 'バックアップを取る',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId,
+      sourceMessageId: null,
+      sourceCheckboxIndex: null,
+    }])
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ assigneeId }),
+      headers: { 'content-type': 'application/json' },
+    }), { params: Promise.resolve({ id: TASK_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockNotifyTaskAssigned).toHaveBeenCalledWith(expect.objectContaining({
+      assigneeId,
+      projectId: null,
+      scopeTitle: '折り紙',
+    }))
   })
 
   it('参加外プロジェクトの手動タスク更新は 403 で拒否する', async () => {

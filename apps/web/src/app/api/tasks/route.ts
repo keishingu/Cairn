@@ -7,7 +7,7 @@ import { createTaskSchema } from '@cairn/shared'
 import { getGuestVisibleProjectIds, requireChannelAccess, requireProjectAccess, requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
-import { taskChannelVisibilityCondition } from '@/lib/tasks/visibility'
+import { guestTaskScopeCondition, taskChannelVisibilityCondition } from '@/lib/tasks/visibility'
 
 export interface TaskDto {
   id: string
@@ -61,7 +61,7 @@ export async function GET(req: Request) {
   try {
     const { db } = await import('@cairn/db')
     const { tasks, projects, channels, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, and, inArray, isNotNull, or } = await import('drizzle-orm')
+    const { eq, and } = await import('drizzle-orm')
 
     // ゲストは参加プロジェクトのタスクのみ閲覧可。プロジェクト未所属タスクは見せない。
     const guestProjectIds = ctx.role === 'guest'
@@ -74,9 +74,7 @@ export async function GET(req: Request) {
     if (channelId) conditions.push(eq(tasks.channelId, channelId))
     if (assignee === 'me') conditions.push(eq(tasks.assigneeId, ctx.userId))
     if (guestProjectIds && !projectId && !channelId) {
-      const guestScopes = [and(isNotNull(tasks.channelId), eq(channels.type, 'workspace'))]
-      if (guestProjectIds.length > 0) guestScopes.push(inArray(tasks.projectId, guestProjectIds))
-      conditions.push(or(...guestScopes)!)
+      conditions.push(guestTaskScopeCondition(ctx.userId, guestProjectIds))
     }
     conditions.push(taskChannelVisibilityCondition(ctx.userId))
 
@@ -262,7 +260,7 @@ export async function POST(req: Request) {
         taskId: inserted.id,
         taskTitle: inserted.title,
         projectId: inserted.projectId,
-        projectTitle: projectTitle ?? '',
+        scopeTitle: projectTitle ?? channelName ?? '',
       })
     }
 

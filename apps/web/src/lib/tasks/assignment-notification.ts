@@ -12,7 +12,7 @@ export async function notifyTaskAssigned(params: {
   taskId: string
   taskTitle: string
   projectId: string | null
-  projectTitle: string
+  scopeTitle: string
 }): Promise<void> {
   if (params.assigneeId === params.assignerId) return
 
@@ -35,7 +35,8 @@ export async function notifyTaskAssigned(params: {
         taskTitle: params.taskTitle,
         assigneeId: params.assigneeId,
         projectId: params.projectId ?? '',
-        projectTitle: params.projectTitle,
+        // 既存・処理待ちイベントとの互換性のためイベント字段名は維持する。
+        projectTitle: params.scopeTitle,
         workspaceId: params.workspaceId,
         assignerName: assigner?.displayName ?? '不明',
       },

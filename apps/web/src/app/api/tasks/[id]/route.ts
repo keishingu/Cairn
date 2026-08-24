@@ -27,7 +27,7 @@ export async function PATCH(
 
   try {
     const { db } = await import('@cairn/db')
-    const { aiNudges, tasks, projects } = await import('@cairn/db')
+    const { aiNudges, tasks, projects, channels } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
     const { getAuthContext } = await import('@/lib/get-auth-context')
 
@@ -44,6 +44,7 @@ export async function PATCH(
         projectId: tasks.projectId,
         channelId: tasks.channelId,
         projectTitle: projects.title,
+        channelName: channels.name,
         title: tasks.title,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
@@ -54,6 +55,7 @@ export async function PATCH(
       })
       .from(tasks)
       .leftJoin(projects, eq(tasks.projectId, projects.id))
+      .leftJoin(channels, eq(tasks.channelId, channels.id))
       .where(and(eq(tasks.id, id), eq(tasks.workspaceId, ctx.workspaceId)))
       .limit(1)
 
@@ -185,7 +187,7 @@ export async function PATCH(
         taskId: updated.id,
         taskTitle: updated.title,
         projectId: taskRow.projectId,
-        projectTitle: taskRow.projectTitle ?? '',
+        scopeTitle: taskRow.projectTitle ?? taskRow.channelName ?? '',
       })
     }
 
