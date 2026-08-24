@@ -7,7 +7,7 @@ import { createTaskSchema } from '@cairn/shared'
 import { getGuestVisibleProjectIds, requireChannelAccess, requireProjectAccess, requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
-import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
+import { hasTaskChannelSchema, insertLegacyTasks } from '@/lib/tasks/schema-readiness'
 import { guestTaskScopeCondition, taskChannelVisibilityCondition } from '@/lib/tasks/visibility'
 
 export interface TaskDto {
@@ -227,28 +227,30 @@ export async function POST(req: Request) {
       )
     }
 
-    const [inserted] = await db
-      .insert(tasks)
-      .values({
+    const taskValues = {
         workspaceId: ctx.workspaceId,
         projectId,
-        ...(channelSchemaReady ? { channelId } : {}),
         title: parsed.data.title,
         description: parsed.data.description ?? null,
         priority: parsed.data.priority,
         assigneeId,
         dueDate: parsed.data.dueDate ?? null,
         createdBy: ctx.userId,
-      })
-      .returning({
-        id: tasks.id,
-        projectId: tasks.projectId,
-        title: tasks.title,
-        status: tasks.status,
-        priority: tasks.priority,
-        dueDate: tasks.dueDate,
-        assigneeId: tasks.assigneeId,
-      })
+      }
+    const [inserted] = channelSchemaReady
+      ? await db
+          .insert(tasks)
+          .values({ ...taskValues, channelId })
+          .returning({
+            id: tasks.id,
+            projectId: tasks.projectId,
+            title: tasks.title,
+            status: tasks.status,
+            priority: tasks.priority,
+            dueDate: tasks.dueDate,
+            assigneeId: tasks.assigneeId,
+          })
+      : await insertLegacyTasks(db, [taskValues])
 
     if (!inserted) throw new Error('Insert returned no rows')
 
