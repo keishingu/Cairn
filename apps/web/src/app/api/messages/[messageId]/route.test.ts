@@ -3,11 +3,12 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const { mockGetAuthContext, mockRequireChannelAccess, mockHasTaskChannelSchema, mockDb } =
+const { mockGetAuthContext, mockRequireChannelAccess, mockHasTaskChannelSchema, mockEq, mockDb } =
   vi.hoisted(() => ({
     mockGetAuthContext: vi.fn(),
     mockRequireChannelAccess: vi.fn(),
     mockHasTaskChannelSchema: vi.fn(async () => true),
+    mockEq: vi.fn(() => 'eq'),
     mockDb: {
       select: vi.fn(),
       transaction: vi.fn(),
@@ -22,11 +23,11 @@ vi.mock('@/lib/tasks/schema-readiness', async (importOriginal) => ({
 }))
 vi.mock('@/lib/chat/mentions', () => ({ canonicalizeMentions: (content: string) => content }))
 vi.mock('@cairn/shared', () => ({
-  editMessageSchema: { safeParse: () => ({ success: true, data: { content: '- [ ] task' } }) },
+  editMessageSchema: { safeParse: (data: unknown) => ({ success: true, data }) },
 }))
 vi.mock('drizzle-orm', async (importOriginal) => ({
   ...(await importOriginal<typeof import('drizzle-orm')>()),
-  eq: vi.fn(() => 'eq'),
+  eq: mockEq,
   and: vi.fn(() => 'and'),
   isNull: vi.fn(() => 'isNull'),
   inArray: vi.fn(() => 'inArray'),
@@ -47,6 +48,7 @@ vi.mock('@cairn/db', () => ({
     type: 'channels.type',
   },
   tasks: {
+    id: 'tasks.id',
     sourceMessageId: 'tasks.sourceMessageId',
     sourceCheckboxIndex: 'tasks.sourceCheckboxIndex',
   },
@@ -80,6 +82,9 @@ describe('PATCH /api/messages/[messageId]', () => {
     })
 
     const tx = {
+      select: vi.fn(() => ({
+        from: () => ({ where: async () => [] }),
+      })),
       update: vi.fn(() => ({
         set: () => ({
           where: () => ({
@@ -116,5 +121,74 @@ describe('PATCH /api/messages/[messageId]', () => {
     expect(tx.update).toHaveBeenCalledOnce()
     expect(tx.insert).toHaveBeenCalledOnce()
     expect(committed).toBe(false)
+  })
+
+  it('並べ替えたチェックボックスを既存task IDへ再対応させる', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: 'user-id', workspaceId: 'workspace-id', role: 'member' },
+      error: null,
+    })
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockDb.select.mockReturnValue({
+      from: () => ({
+        innerJoin: () => ({
+          where: () => ({
+            limit: async () => [{
+              id: 'message-id',
+              content: '- [ ] A\n- [x] B',
+              channelId: 'channel-id',
+              projectId: null,
+              channelType: 'workspace',
+            }],
+          }),
+        }),
+      }),
+    })
+
+    const taskUpdates: Array<Record<string, unknown>> = []
+    const tx = {
+      select: vi.fn(() => ({
+        from: () => ({
+          where: async () => [
+            { id: 'task-a', sourceCheckboxIndex: 0 },
+            { id: 'task-b', sourceCheckboxIndex: 1 },
+          ],
+        }),
+      })),
+      update: vi.fn(() => ({
+        set: (values: Record<string, unknown>) => {
+          if ('content' in values) {
+            return {
+              where: () => ({
+                returning: async () => [{ id: 'message-id', content: '- [x] B\n- [ ] A' }],
+              }),
+            }
+          }
+          taskUpdates.push(values)
+          return { where: async () => undefined }
+        },
+      })),
+      insert: vi.fn(),
+      delete: vi.fn(),
+    }
+    mockDb.transaction.mockImplementation(callback => callback(tx))
+
+    const { PATCH } = await import('./route')
+    const response = await PATCH(
+      new Request('http://localhost/api/messages/message-id', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '- [x] B\n- [ ] A' }),
+      }),
+      { params: Promise.resolve({ messageId: 'message-id' }) },
+    )
+
+    expect(response.status).toBe(200)
+    expect(taskUpdates).toEqual([
+      expect.objectContaining({ sourceCheckboxIndex: 0, title: 'B', status: 'done' }),
+      expect.objectContaining({ sourceCheckboxIndex: 1, title: 'A', status: 'todo' }),
+    ])
+    expect(mockEq).toHaveBeenCalledWith('tasks.id', 'task-b')
+    expect(mockEq).toHaveBeenCalledWith('tasks.id', 'task-a')
   })
 })

@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { editMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
-import { canExtractTasksFromChannel, parseCheckboxes } from '@/lib/chat/checkboxes'
+import { canExtractTasksFromChannel, parseCheckboxes, reconcileCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
 import { hasTaskChannelSchema, insertLegacyTasks } from '@/lib/tasks/schema-readiness'
 
@@ -65,19 +65,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     // チェックボックスの変化に応じてタスクを同期
     const oldBoxes = parseCheckboxes(target.content)
     const newBoxes = parseCheckboxes(content)
-    const newIndices = new Set(newBoxes.map(b => b.index))
-    const removedIndices = oldBoxes.filter(b => !newIndices.has(b.index)).map(b => b.index)
     const extractsTasks = canExtractTasksFromChannel(target.channelType)
-    const newToInsert = extractsTasks
-      ? newBoxes.filter(nb => !oldBoxes.some(ob => ob.index === nb.index))
-      : []
-    const changedBoxes = extractsTasks
-      ? newBoxes.filter(nb => {
-          const existing = oldBoxes.find(ob => ob.index === nb.index)
-          return existing && (existing.text !== nb.text || existing.checked !== nb.checked)
-        })
-      : []
-    const channelSchemaReady = newToInsert.length === 0 || await hasTaskChannelSchema(db)
+    const reconciliation = reconcileCheckboxes(oldBoxes, newBoxes)
 
     const updated = await db.transaction(async (tx) => {
       const [message] = await tx
@@ -88,24 +77,56 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
       if (!message) throw new Error('Update returned no rows')
 
-      if (removedIndices.length > 0) {
-        await tx.delete(tasks).where(and(
-          eq(tasks.sourceMessageId, messageId),
-          inArray(tasks.sourceCheckboxIndex, removedIndices),
-        ))
+      if (!extractsTasks) return message
+
+      const taskRows = await tx
+        .select({ id: tasks.id, sourceCheckboxIndex: tasks.sourceCheckboxIndex })
+        .from(tasks)
+        .where(eq(tasks.sourceMessageId, messageId))
+      const taskByIndex = new Map(taskRows.map(task => [task.sourceCheckboxIndex, task]))
+
+      const removedTaskIds = reconciliation.removed
+        .map(box => taskByIndex.get(box.index)?.id)
+        .filter((id): id is string => id != null)
+      if (removedTaskIds.length > 0) {
+        await tx.delete(tasks).where(inArray(tasks.id, removedTaskIds))
       }
 
-      if (newToInsert.length > 0) {
-        const taskValues = newToInsert.map(nb => ({
+      const boxesToInsert = [...reconciliation.added]
+      for (const { oldBox, newBox } of reconciliation.matched) {
+        const task = taskByIndex.get(oldBox.index)
+        if (!task) {
+          boxesToInsert.push(newBox)
+          continue
+        }
+        if (
+          oldBox.index === newBox.index
+          && oldBox.text === newBox.text
+          && oldBox.checked === newBox.checked
+        ) continue
+
+        await tx.update(tasks)
+          .set({
+            sourceCheckboxIndex: newBox.index,
+            title: newBox.text,
+            status: newBox.checked ? 'done' : 'todo',
+            updatedAt: new Date(),
+          })
+          .where(eq(tasks.id, task.id))
+      }
+
+      if (boxesToInsert.length > 0) {
+        const taskValues = boxesToInsert.map(box => ({
           workspaceId: ctx.workspaceId,
           projectId: target.projectId,
-          title: nb.text,
-          status: (nb.checked ? 'done' : 'todo') as 'done' | 'todo',
+          title: box.text,
+          status: (box.checked ? 'done' : 'todo') as 'done' | 'todo',
           priority: 'medium' as const,
           createdBy: ctx.userId,
           sourceMessageId: messageId,
-          sourceCheckboxIndex: nb.index,
+          sourceCheckboxIndex: box.index,
         }))
+        const channelSchemaReady = await hasTaskChannelSchema(tx)
         if (channelSchemaReady) {
           await tx.insert(tasks).values(taskValues.map(value => ({
             ...value,
@@ -114,15 +135,6 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         } else {
           await insertLegacyTasks(tx, taskValues)
         }
-      }
-
-      for (const nb of changedBoxes) {
-        await tx.update(tasks)
-          .set({ title: nb.text, status: nb.checked ? 'done' : 'todo', updatedAt: new Date() })
-          .where(and(
-            eq(tasks.sourceMessageId, messageId),
-            eq(tasks.sourceCheckboxIndex, nb.index),
-          ))
       }
 
       return message

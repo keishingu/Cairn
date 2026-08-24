@@ -27,6 +27,56 @@ export function parseCheckboxes(content: string): ParsedCheckbox[] {
   return result
 }
 
+/** 内容が同じチェックボックスを先に対応させ、挿入・削除・並べ替えでもタスクの同一性を保つ。 */
+export function reconcileCheckboxes(oldBoxes: ParsedCheckbox[], newBoxes: ParsedCheckbox[]) {
+  const unmatchedOld = new Set(oldBoxes.map(box => box.index))
+  const unmatchedNew = new Set(newBoxes.map(box => box.index))
+  const matched: Array<{ oldBox: ParsedCheckbox; newBox: ParsedCheckbox }> = []
+
+  const match = (oldBox: ParsedCheckbox, newBox: ParsedCheckbox) => {
+    unmatchedOld.delete(oldBox.index)
+    unmatchedNew.delete(newBox.index)
+    matched.push({ oldBox, newBox })
+  }
+
+  for (const newBox of newBoxes) {
+    const oldBox = oldBoxes.find(box =>
+      unmatchedOld.has(box.index)
+      && box.text === newBox.text
+      && box.checked === newBox.checked,
+    )
+    if (oldBox) match(oldBox, newBox)
+  }
+
+  // 完了状態だけの変更は、位置が動いても同じタイトルで対応させる。
+  for (const newBox of newBoxes) {
+    const oldBox = oldBoxes.find(box =>
+      unmatchedOld.has(box.index)
+      && unmatchedNew.has(newBox.index)
+      && box.text === newBox.text,
+    )
+    if (oldBox) match(oldBox, newBox)
+  }
+
+  // 追加・削除がない残りは内容編集とみなし、同じ位置を優先して1対1対応させる。
+  if (unmatchedOld.size === unmatchedNew.size) {
+    for (const newBox of newBoxes) {
+      if (!unmatchedNew.has(newBox.index)) continue
+      const oldBox = oldBoxes.find(box => unmatchedOld.has(box.index) && box.index === newBox.index)
+      if (oldBox) match(oldBox, newBox)
+    }
+    const remainingOld = oldBoxes.filter(box => unmatchedOld.has(box.index))
+    const remainingNew = newBoxes.filter(box => unmatchedNew.has(box.index))
+    remainingOld.forEach((oldBox, index) => match(oldBox, remainingNew[index]!))
+  }
+
+  return {
+    matched,
+    added: newBoxes.filter(box => unmatchedNew.has(box.index)),
+    removed: oldBoxes.filter(box => unmatchedOld.has(box.index)),
+  }
+}
+
 export function toggleCheckboxAt(content: string, checkboxIndex: number, checked: boolean): string {
   let current = 0
   return content.replace(CHECKBOX_RE, (_, before, _state, after) => {
