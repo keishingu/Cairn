@@ -5,19 +5,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 type SubscribeCallback = (status: 'SUBSCRIBED' | 'CHANNEL_ERROR' | 'TIMED_OUT' | 'CLOSED', err?: { message?: string }) => void
 
-const { channelRecords, mockCreateClient } = vi.hoisted(() => {
-  const channelRecords: Array<{ topic: string; callback?: SubscribeCallback }> = []
+const { channelRecords, workspaceChannels, mockCreateClient } = vi.hoisted(() => {
+  const channelRecords: Array<{
+    topic: string
+    callback?: SubscribeCallback
+    broadcastCallback?: (message: unknown) => void
+  }> = []
+  const workspaceChannels: Array<{ id: string }> = []
   const mockCreateClient = vi.fn(() => ({
     channel: vi.fn((topic: string) => {
-      const record: { topic: string; callback?: SubscribeCallback } = { topic }
+      const record: (typeof channelRecords)[number] = { topic }
       channelRecords.push(record)
-      return {
-        on: vi.fn().mockReturnThis(),
+      const channel = {
+        on: vi.fn((_type, _filter, callback) => {
+          record.broadcastCallback = callback
+          return channel
+        }),
         subscribe: vi.fn((callback: SubscribeCallback) => {
           record.callback = callback
           return record
         }),
       }
+      return channel
     }),
     removeChannel: vi.fn().mockResolvedValue(undefined),
     realtime: { setAuth: vi.fn().mockResolvedValue(undefined) },
@@ -26,7 +35,7 @@ const { channelRecords, mockCreateClient } = vi.hoisted(() => {
       onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
     },
   }))
-  return { channelRecords, mockCreateClient }
+  return { channelRecords, workspaceChannels, mockCreateClient }
 })
 
 vi.mock('@/lib/supabase/client', () => ({
@@ -42,7 +51,7 @@ vi.mock('@/lib/chat/client', () => ({
   },
   useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Tester' } }),
   useProjectChannels: () => ({ data: [] }),
-  useWorkspaceChannels: () => ({ data: [] }),
+  useWorkspaceChannels: () => ({ data: workspaceChannels }),
   useWorkspaceDms: () => ({ data: [] }),
 }))
 
@@ -51,7 +60,7 @@ function renderProvider() {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
 
-  return render(
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <React.Suspense fallback={null}>
         <RealtimeProvider>
@@ -60,6 +69,7 @@ function renderProvider() {
       </React.Suspense>
     </QueryClientProvider>,
   )
+  return { ...result, queryClient }
 }
 
 import { RealtimeProvider } from './realtime-provider'
@@ -68,6 +78,7 @@ describe('RealtimeProvider', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     channelRecords.length = 0
+    workspaceChannels.length = 0
     mockCreateClient.mockClear()
   })
 
@@ -172,5 +183,28 @@ describe('RealtimeProvider', () => {
     })
 
     expect(channelRecords).toHaveLength(2)
+  })
+
+  it('チャンネルのtask broadcastでタスクqueryを再取得する', async () => {
+    workspaceChannels.push({ id: 'channel-1' })
+    const { queryClient } = renderProvider()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const topic = channelRecords.find(record => record.topic === 'channel:channel-1')
+    act(() => {
+      topic?.broadcastCallback?.({ payload: { table: 'tasks' } })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tasks'] })
   })
 })
