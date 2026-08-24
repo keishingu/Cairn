@@ -65,6 +65,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
+    if (!channelSchemaReady && taskRow.sourceMessageId && !taskRow.projectId) {
+      return NextResponse.json({ error: 'チャンネルタスクを準備中です' }, { status: 503 })
+    }
+
     if (taskRow.channelId) {
       const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, taskRow.channelId, ctx.role)
       if (forbidden) return forbidden
@@ -229,6 +233,10 @@ export async function DELETE(
 
     if (!taskRow) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+    }
+
+    if (!channelSchemaReady && taskRow.sourceMessageId && !taskRow.projectId) {
+      return NextResponse.json({ error: 'チャンネルタスクを準備中です' }, { status: 503 })
     }
 
     if (taskRow.channelId) {

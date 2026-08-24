@@ -19,6 +19,7 @@ const {
   mockRequireRole,
   mockIsAssignableTaskMember,
   mockNotifyTaskAssigned,
+  mockHasTaskChannelSchema,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockDbSelectLimit: vi.fn(),
@@ -30,6 +31,7 @@ const {
   mockRequireRole: vi.fn(),
   mockIsAssignableTaskMember: vi.fn(),
   mockNotifyTaskAssigned: vi.fn(),
+  mockHasTaskChannelSchema: vi.fn(async () => true),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -46,7 +48,7 @@ vi.mock('@/lib/tasks/assignment-notification', () => ({
   isAssignableTaskMember: mockIsAssignableTaskMember,
   notifyTaskAssigned: mockNotifyTaskAssigned,
 }))
-vi.mock('@/lib/tasks/schema-readiness', () => ({ hasTaskChannelSchema: vi.fn(async () => true) }))
+vi.mock('@/lib/tasks/schema-readiness', () => ({ hasTaskChannelSchema: mockHasTaskChannelSchema }))
 vi.mock('@cairn/shared', async () => {
   const actual = await vi.importActual<typeof import('@cairn/shared')>('@cairn/shared')
   return actual
@@ -185,6 +187,34 @@ describe('PATCH /api/tasks/[id]', () => {
   })
 
   afterEach(() => vi.clearAllMocks())
+
+  it('migration待機中の通常チャンネルタスクは更新せず503を返す', async () => {
+    mockHasTaskChannelSchema.mockResolvedValueOnce(false)
+    mockDbSelectLimit.mockResolvedValueOnce([{
+      id: TASK_ID,
+      projectId: null,
+      channelId: null,
+      projectTitle: null,
+      channelName: null,
+      title: '保留中タスク',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId: null,
+      sourceMessageId: 'message-1',
+      sourceCheckboxIndex: 0,
+    }])
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: '更新しない' }),
+      headers: { 'content-type': 'application/json' },
+    }), { params: Promise.resolve({ id: TASK_ID }) })
+
+    expect(res.status).toBe(503)
+    expect(mockDbUpdateReturning).not.toHaveBeenCalled()
+  })
 
   it('非公開チャンネルへアクセスできない利用者の更新は403で拒否する', async () => {
     mockDbSelectLimit.mockResolvedValueOnce([{

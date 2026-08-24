@@ -67,7 +67,7 @@ export async function GET(req: Request) {
     }
 
     const { tasks, projects, channels, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, and, inArray, sql } = await import('drizzle-orm')
+    const { eq, and, or, inArray, isNull, isNotNull, sql } = await import('drizzle-orm')
 
     // ゲストは参加プロジェクトのタスクのみ閲覧可。プロジェクト未所属タスクは見せない。
     const guestProjectIds = ctx.role === 'guest'
@@ -79,6 +79,11 @@ export async function GET(req: Request) {
     if (projectId) conditions.push(eq(tasks.projectId, projectId))
     if (channelId && channelSchemaReady) conditions.push(eq(tasks.channelId, channelId))
     if (assignee === 'me') conditions.push(eq(tasks.assigneeId, ctx.userId))
+    // migration待機中に通常チャンネルから作られたタスクは source_message_id だけを保持する。
+    // channel_id がbackfillされるまで未所属タスクとして露出させない。
+    if (!channelSchemaReady) {
+      conditions.push(or(isNull(tasks.sourceMessageId), isNotNull(tasks.projectId))!)
+    }
     if (guestProjectIds && !projectId && !channelId) {
       if (channelSchemaReady) {
         conditions.push(guestTaskScopeCondition(ctx.userId, guestProjectIds))

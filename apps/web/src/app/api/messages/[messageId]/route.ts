@@ -87,11 +87,12 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         .where(eq(messages.id, messageId))
         .limit(1)
 
-      if (ch && canExtractTasksFromChannel(ch.type) && (ch.projectId || channelSchemaReady)) {
+      if (ch && canExtractTasksFromChannel(ch.type)) {
 
         // 新規チェックボックスを一括インサート
         const newToInsert = newBoxes.filter(nb => !oldBoxes.some(ob => ob.index === nb.index))
         if (newToInsert.length > 0) {
+          // migration待機中はsource_message_idを残し、channel_idのbackfill対象にする。
           await db.insert(tasks).values(
             newToInsert.map(nb => ({
               workspaceId: ctx.workspaceId,

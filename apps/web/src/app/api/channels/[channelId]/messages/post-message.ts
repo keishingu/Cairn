@@ -220,7 +220,8 @@ export async function postMessage({
 
       // メッセージ本文のチェックボックスとタスクの作成を同一トランザクションにし、
       // タスク作成が失敗した場合にメッセージだけが残る不整合を防ぐ
-      if (channel && canExtractTasksFromChannel(channel.type) && (channel.projectId || channelSchemaReady)) {
+      // migration待機中はchannel_idを省略し、source_message_id経由でmigrationにbackfillさせる。
+      if (channel && canExtractTasksFromChannel(channel.type)) {
         await tx.insert(tasks).values(
           checkboxes.map((checkbox) => ({
             workspaceId,
