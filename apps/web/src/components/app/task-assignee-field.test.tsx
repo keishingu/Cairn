@@ -12,6 +12,12 @@ vi.mock('@/hooks/use-project-members', () => ({
         avatarUrl: null,
         role: 'member',
       },
+      {
+        userId: 'guest-1',
+        displayName: '未参加ゲスト',
+        avatarUrl: null,
+        role: 'guest',
+      },
     ],
   }),
   useProjectMembers: () => ({ data: [], isFetching: false }),
@@ -56,5 +62,19 @@ describe('TaskAssigneeField', () => {
 
     await user.click(screen.getByRole('button', { name: /山田太郎/ }))
     expect(onChange).toHaveBeenCalledWith('user-1')
+  })
+
+  it('公開チャンネルでも未参加guestを候補に表示しない', async () => {
+    const user = userEvent.setup()
+    render(
+      <div className="app-root">
+        <TaskAssigneeField value={null} onChange={vi.fn()} channelId="channel-1" />
+      </div>,
+    )
+
+    await user.click(screen.getByRole('button', { name: /担当者を選択/ }))
+
+    expect(screen.getByRole('button', { name: /山田太郎/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /未参加ゲスト/ })).not.toBeInTheDocument()
   })
 })

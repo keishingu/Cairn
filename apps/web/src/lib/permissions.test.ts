@@ -194,6 +194,20 @@ describe('permissions', () => {
     await expect(canAccessChannel('ws-1', 'user-2', 'channel-1', 'member')).resolves.toBe(false)
   })
 
+  it('requireChannelAccess は通常チャンネルでも未参加guestを拒否する', async () => {
+    pushResults(
+      [{ isPrivate: false, type: 'workspace', projectId: null, effectiveWorkspaceId: 'ws-1' }],
+      [],
+      [{ isPrivate: false, type: 'workspace', projectId: null, effectiveWorkspaceId: 'ws-1' }],
+      [{ userId: 'guest-1' }],
+    )
+    const { requireChannelAccess } = await import('./permissions')
+
+    const denied = await requireChannelAccess('ws-1', 'guest-1', 'channel-1', 'guest')
+    expect(denied?.status).toBe(403)
+    await expect(requireChannelAccess('ws-1', 'guest-1', 'channel-1', 'guest')).resolves.toBeNull()
+  })
+
   it('canAccessFile は別ワークスペースのファイルを拒否する', async () => {
     const { canAccessFile } = await import('./permissions')
 

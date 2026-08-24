@@ -50,6 +50,7 @@ export async function notifyTaskAssigned(params: {
 // 割り当てられた本人がそのタスクを閲覧・操作できることを担保するため、閲覧範囲と揃える。
 // - active な member 以上: 常に可
 // - active な guest: プロジェクトタスクなら当該プロジェクトのメンバーの場合のみ可
+//   チャンネルタスクなら当該チャンネルのメンバーの場合のみ可
 //   （guest の閲覧は参加プロジェクトに限定され、参加外は requireProjectAccess で編集も弾かれるため）。
 //   プロジェクト未所属タスクは guest には見えないため不可
 // - 非active・非メンバー: 不可
@@ -65,17 +66,7 @@ export async function isAssignableTaskMember(
 
   if (channelId) {
     const { canAccessChannel } = await import('@/lib/permissions')
-    if (!(await canAccessChannel(workspaceId, userId, channelId, role))) return false
-    if (isWorkspaceMember(role)) return true
-
-    const { db, channelMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
-    const [membership] = await db
-      .select({ userId: channelMembers.userId })
-      .from(channelMembers)
-      .where(and(eq(channelMembers.channelId, channelId), eq(channelMembers.userId, userId)))
-      .limit(1)
-    return !!membership
+    return canAccessChannel(workspaceId, userId, channelId, role)
   }
 
   if (isWorkspaceMember(role)) return true
