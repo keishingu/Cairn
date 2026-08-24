@@ -6,6 +6,7 @@ import { updateTaskSchema } from '@cairn/shared'
 import { replaceCheckboxLabelAt, toggleCheckboxAt } from '@/lib/chat/checkboxes'
 import { requireChannelAccess, requireProjectAccess, requireRole } from '@/lib/permissions'
 import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
+import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
 
 export async function PATCH(
   req: Request,
@@ -28,7 +29,7 @@ export async function PATCH(
   try {
     const { db } = await import('@cairn/db')
     const { aiNudges, tasks, projects, channels } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, sql } = await import('drizzle-orm')
     const { getAuthContext } = await import('@/lib/get-auth-context')
 
     const { ctx, error } = await getAuthContext({
@@ -36,15 +37,16 @@ export async function PATCH(
       requiredApiTokenScope: 'write',
     })
     if (error) return error
+    const channelSchemaReady = await hasTaskChannelSchema(db)
 
     // タスクが自ワークスペースに属するか確認（IDOR対策）。project 未所属もあるため projects は leftJoin。
     const [taskRow] = await db
       .select({
         id: tasks.id,
         projectId: tasks.projectId,
-        channelId: tasks.channelId,
+        channelId: channelSchemaReady ? tasks.channelId : sql<string | null>`null`,
         projectTitle: projects.title,
-        channelName: channels.name,
+        channelName: channelSchemaReady ? channels.name : sql<string | null>`null`,
         title: tasks.title,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
@@ -55,7 +57,7 @@ export async function PATCH(
       })
       .from(tasks)
       .leftJoin(projects, eq(tasks.projectId, projects.id))
-      .leftJoin(channels, eq(tasks.channelId, channels.id))
+      .leftJoin(channels, channelSchemaReady ? eq(tasks.channelId, channels.id) : sql`false`)
       .where(and(eq(tasks.id, id), eq(tasks.workspaceId, ctx.workspaceId)))
       .limit(1)
 
@@ -207,14 +209,20 @@ export async function DELETE(
   try {
     const { db } = await import('@cairn/db')
     const { aiNudges, tasks } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, sql } = await import('drizzle-orm')
     const { getAuthContext } = await import('@/lib/get-auth-context')
 
     const { ctx, error } = await getAuthContext()
     if (error) return error
+    const channelSchemaReady = await hasTaskChannelSchema(db)
 
     const [taskRow] = await db
-      .select({ id: tasks.id, projectId: tasks.projectId, channelId: tasks.channelId, sourceMessageId: tasks.sourceMessageId })
+      .select({
+        id: tasks.id,
+        projectId: tasks.projectId,
+        channelId: channelSchemaReady ? tasks.channelId : sql<string | null>`null`,
+        sourceMessageId: tasks.sourceMessageId,
+      })
       .from(tasks)
       .where(and(eq(tasks.id, id), eq(tasks.workspaceId, ctx.workspaceId)))
       .limit(1)

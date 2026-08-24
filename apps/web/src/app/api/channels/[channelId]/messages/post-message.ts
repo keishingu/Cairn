@@ -10,6 +10,7 @@ import { canAccessFile, type WorkspaceRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { hasBlockBetween } from '@/lib/safety/blocks'
 import { unsafeMessageError } from '@/lib/safety/message-filter'
+import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
 import type { MessageDto } from './dto'
 
 type PostMessageInput = {
@@ -167,6 +168,7 @@ export async function postMessage({
 
     // DM 以外のチャンネルでは、- [ ] チェックボックスをタスクに自動変換する。
     const checkboxes = parseCheckboxes(content)
+    const channelSchemaReady = checkboxes.length > 0 && await hasTaskChannelSchema(db)
     const [channel] =
       checkboxes.length > 0
         ? await db
@@ -218,12 +220,12 @@ export async function postMessage({
 
       // メッセージ本文のチェックボックスとタスクの作成を同一トランザクションにし、
       // タスク作成が失敗した場合にメッセージだけが残る不整合を防ぐ
-      if (channel && canExtractTasksFromChannel(channel.type)) {
+      if (channel && canExtractTasksFromChannel(channel.type) && (channel.projectId || channelSchemaReady)) {
         await tx.insert(tasks).values(
           checkboxes.map((checkbox) => ({
             workspaceId,
             projectId: channel.projectId,
-            channelId: channel.id,
+            ...(channelSchemaReady ? { channelId: channel.id } : {}),
             title: checkbox.text,
             status: (checkbox.checked ? 'done' : 'todo') as 'done' | 'todo',
             priority: 'medium' as const,

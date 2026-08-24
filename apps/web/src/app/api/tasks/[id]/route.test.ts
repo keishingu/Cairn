@@ -46,6 +46,7 @@ vi.mock('@/lib/tasks/assignment-notification', () => ({
   isAssignableTaskMember: mockIsAssignableTaskMember,
   notifyTaskAssigned: mockNotifyTaskAssigned,
 }))
+vi.mock('@/lib/tasks/schema-readiness', () => ({ hasTaskChannelSchema: vi.fn(async () => true) }))
 vi.mock('@cairn/shared', async () => {
   const actual = await vi.importActual<typeof import('@cairn/shared')>('@cairn/shared')
   return actual
@@ -53,6 +54,7 @@ vi.mock('@cairn/shared', async () => {
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   and: vi.fn(() => 'and'),
+  sql: vi.fn(() => 'sql'),
 }))
 vi.mock('@cairn/db', () => {
   mockDbUpdateSet.mockImplementation(() => ({

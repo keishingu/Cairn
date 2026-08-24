@@ -7,6 +7,7 @@ import { createTaskSchema } from '@cairn/shared'
 import { getGuestVisibleProjectIds, requireChannelAccess, requireProjectAccess, requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
+import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
 import { guestTaskScopeCondition, taskChannelVisibilityCondition } from '@/lib/tasks/visibility'
 
 export interface TaskDto {
@@ -48,11 +49,6 @@ export async function GET(req: Request) {
   })
   if (error) return error
 
-  if (channelId) {
-    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
-    if (forbidden) return forbidden
-  }
-
   if (projectId) {
     const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
     if (forbidden) return forbidden
@@ -60,8 +56,18 @@ export async function GET(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
+    const channelSchemaReady = await hasTaskChannelSchema(db)
+
+    if (channelId) {
+      if (!channelSchemaReady) {
+        return NextResponse.json({ error: 'チャンネルタスクを準備中です' }, { status: 503 })
+      }
+      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
+      if (forbidden) return forbidden
+    }
+
     const { tasks, projects, channels, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, inArray, sql } = await import('drizzle-orm')
 
     // ゲストは参加プロジェクトのタスクのみ閲覧可。プロジェクト未所属タスクは見せない。
     const guestProjectIds = ctx.role === 'guest'
@@ -71,21 +77,27 @@ export async function GET(req: Request) {
     // 全件スキャンにならないように、また guest が見えないタスクを読まないようにする）
     const conditions = [eq(tasks.workspaceId, ctx.workspaceId)]
     if (projectId) conditions.push(eq(tasks.projectId, projectId))
-    if (channelId) conditions.push(eq(tasks.channelId, channelId))
+    if (channelId && channelSchemaReady) conditions.push(eq(tasks.channelId, channelId))
     if (assignee === 'me') conditions.push(eq(tasks.assigneeId, ctx.userId))
     if (guestProjectIds && !projectId && !channelId) {
-      conditions.push(guestTaskScopeCondition(ctx.userId, guestProjectIds))
+      if (channelSchemaReady) {
+        conditions.push(guestTaskScopeCondition(ctx.userId, guestProjectIds))
+      } else if (guestProjectIds.length === 0) {
+        return NextResponse.json([])
+      } else {
+        conditions.push(inArray(tasks.projectId, guestProjectIds))
+      }
     }
-    conditions.push(taskChannelVisibilityCondition(ctx.userId))
+    if (channelSchemaReady) conditions.push(taskChannelVisibilityCondition(ctx.userId))
 
     const taskRows = await db
       .select({
         id: tasks.id,
         projectId: tasks.projectId,
         projectTitle: projects.title,
-        channelId: tasks.channelId,
-        channelName: channels.name,
-        channelIsPrivate: channels.isPrivate,
+        channelId: channelSchemaReady ? tasks.channelId : sql<string | null>`null`,
+        channelName: channelSchemaReady ? channels.name : sql<string | null>`null`,
+        channelIsPrivate: channelSchemaReady ? channels.isPrivate : sql<boolean>`false`,
         title: tasks.title,
         status: tasks.status,
         priority: tasks.priority,
@@ -97,7 +109,7 @@ export async function GET(req: Request) {
       })
       .from(tasks)
       .leftJoin(projects, eq(tasks.projectId, projects.id))
-      .leftJoin(channels, eq(tasks.channelId, channels.id))
+      .leftJoin(channels, channelSchemaReady ? eq(tasks.channelId, channels.id) : sql`false`)
       .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, tasks.assigneeId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(and(...conditions))
@@ -165,6 +177,10 @@ export async function POST(req: Request) {
     const { db } = await import('@cairn/db')
     const { tasks, projects, channels, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
+    const channelSchemaReady = await hasTaskChannelSchema(db)
+    if (channelId && !channelSchemaReady) {
+      return NextResponse.json({ error: 'チャンネルタスクを準備中です' }, { status: 503 })
+    }
 
     // projectId を受け付ける前に、そのプロジェクトが ctx.workspaceId に属することを明示的に確認する。
     // requireProjectAccess は member 以上を素通しするため、別ワークスペースの projectId を
@@ -211,7 +227,7 @@ export async function POST(req: Request) {
       .values({
         workspaceId: ctx.workspaceId,
         projectId,
-        channelId,
+        ...(channelSchemaReady ? { channelId } : {}),
         title: parsed.data.title,
         description: parsed.data.description ?? null,
         priority: parsed.data.priority,
@@ -219,7 +235,15 @@ export async function POST(req: Request) {
         dueDate: parsed.data.dueDate ?? null,
         createdBy: ctx.userId,
       })
-      .returning()
+      .returning({
+        id: tasks.id,
+        projectId: tasks.projectId,
+        title: tasks.title,
+        status: tasks.status,
+        priority: tasks.priority,
+        dueDate: tasks.dueDate,
+        assigneeId: tasks.assigneeId,
+      })
 
     if (!inserted) throw new Error('Insert returned no rows')
 
@@ -238,7 +262,7 @@ export async function POST(req: Request) {
       id: inserted.id,
       projectId: inserted.projectId,
       projectTitle,
-      channelId: inserted.channelId,
+      channelId,
       channelName,
       channelIsPrivate,
       title: inserted.title,

@@ -7,13 +7,14 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const PROJECT_ID = '30000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockRequireProjectAccess, mockRequireChannelAccess, mockGetWorkspaceMemberRole, mockGetGuestVisibleProjectIds } =
+const { mockGetAuthContext, mockRequireProjectAccess, mockRequireChannelAccess, mockGetWorkspaceMemberRole, mockGetGuestVisibleProjectIds, mockHasTaskChannelSchema } =
   vi.hoisted(() => ({
     mockGetAuthContext: vi.fn(),
     mockRequireProjectAccess: vi.fn(),
     mockRequireChannelAccess: vi.fn(),
     mockGetWorkspaceMemberRole: vi.fn(),
     mockGetGuestVisibleProjectIds: vi.fn(),
+    mockHasTaskChannelSchema: vi.fn(async () => true),
   }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -28,6 +29,7 @@ vi.mock('@/lib/tasks/assignment-notification', () => ({
   isAssignableTaskMember: vi.fn(async () => true),
   notifyTaskAssigned: vi.fn(async () => undefined),
 }))
+vi.mock('@/lib/tasks/schema-readiness', () => ({ hasTaskChannelSchema: mockHasTaskChannelSchema }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
 vi.mock('@cairn/shared', () => ({
   createTaskSchema: { safeParse: () => ({ success: true, data: { projectId: PROJECT_ID, title: 'task', priority: 'medium' } }) },
@@ -98,5 +100,19 @@ describe('GET /api/tasks のチャンネルアクセス制御', () => {
       'private-channel',
       'member',
     )
+  })
+
+  it('migration適用前はチャンネルタスクの取得だけを一時保留する', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
+      error: null,
+    })
+    mockHasTaskChannelSchema.mockResolvedValueOnce(false)
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/tasks?channelId=channel'))
+
+    expect(res.status).toBe(503)
+    expect(mockRequireChannelAccess).not.toHaveBeenCalled()
   })
 })

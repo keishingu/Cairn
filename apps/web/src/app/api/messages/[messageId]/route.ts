@@ -7,6 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { canExtractTasksFromChannel, parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
+import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
 
 type RouteContext = { params: Promise<{ messageId: string }> }
 
@@ -78,6 +79,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
     // 追加・変更されたチェックボックスをupsert
     if (newBoxes.length > 0) {
+      const channelSchemaReady = await hasTaskChannelSchema(db)
       const [ch] = await db
         .select({ id: channelsTable.id, projectId: channelsTable.projectId, type: channelsTable.type })
         .from(messages)
@@ -85,7 +87,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         .where(eq(messages.id, messageId))
         .limit(1)
 
-      if (ch && canExtractTasksFromChannel(ch.type)) {
+      if (ch && canExtractTasksFromChannel(ch.type) && (ch.projectId || channelSchemaReady)) {
 
         // 新規チェックボックスを一括インサート
         const newToInsert = newBoxes.filter(nb => !oldBoxes.some(ob => ob.index === nb.index))
@@ -94,7 +96,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
             newToInsert.map(nb => ({
               workspaceId: ctx.workspaceId,
               projectId: ch.projectId,
-              channelId: ch.id,
+              ...(channelSchemaReady ? { channelId: ch.id } : {}),
               title: nb.text,
               status: (nb.checked ? 'done' : 'todo') as 'done' | 'todo',
               priority: 'medium' as const,

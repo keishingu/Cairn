@@ -20,6 +20,7 @@ const { mockGetAuthContext, mockDb, selectChains } = vi.hoisted(() => {
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
+vi.mock('@/lib/tasks/schema-readiness', () => ({ hasTaskChannelSchema: vi.fn(async () => true) }))
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
