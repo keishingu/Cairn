@@ -65,7 +65,17 @@ export async function isAssignableTaskMember(
 
   if (channelId) {
     const { canAccessChannel } = await import('@/lib/permissions')
-    return canAccessChannel(workspaceId, userId, channelId, role)
+    if (!(await canAccessChannel(workspaceId, userId, channelId, role))) return false
+    if (isWorkspaceMember(role)) return true
+
+    const { db, channelMembers } = await import('@cairn/db')
+    const { eq, and } = await import('drizzle-orm')
+    const [membership] = await db
+      .select({ userId: channelMembers.userId })
+      .from(channelMembers)
+      .where(and(eq(channelMembers.channelId, channelId), eq(channelMembers.userId, userId)))
+      .limit(1)
+    return !!membership
   }
 
   if (isWorkspaceMember(role)) return true
