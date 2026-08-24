@@ -2,7 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { parseCheckboxes, replaceCheckboxLabelAt, toggleCheckboxAt } from './checkboxes'
+import { canExtractTasksFromChannel, parseCheckboxes, replaceCheckboxLabelAt, toggleCheckboxAt } from './checkboxes'
+
+describe('canExtractTasksFromChannel', () => {
+  it('通常・プロジェクトチャンネルを対象にし、DMは除外する', () => {
+    expect(canExtractTasksFromChannel('workspace')).toBe(true)
+    expect(canExtractTasksFromChannel('project')).toBe(true)
+    expect(canExtractTasksFromChannel('dm')).toBe(false)
+  })
+})
 
 describe('replaceCheckboxLabelAt', () => {
   it('指定インデックスの文言だけを差し替え、チェック状態は保持する', () => {

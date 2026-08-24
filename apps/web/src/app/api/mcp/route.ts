@@ -140,6 +140,7 @@ const mcpHandler = createMcpHandler(
         inputSchema: z.object({
           title: z.string().min(1).max(200),
           projectId: z.uuid().optional(),
+          channelId: z.uuid().optional(),
           description: z.string().max(2000).optional(),
           priority: z.enum(['high', 'medium', 'low']).default('medium'),
           assigneeId: z.uuid().optional(),

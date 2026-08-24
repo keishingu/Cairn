@@ -4,14 +4,18 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { createTaskSchema } from '@cairn/shared'
-import { getGuestVisibleProjectIds, requireProjectAccess, requireRole } from '@/lib/permissions'
+import { getGuestVisibleProjectIds, requireChannelAccess, requireProjectAccess, requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
+import { taskChannelVisibilityCondition } from '@/lib/tasks/visibility'
 
 export interface TaskDto {
   id: string
   projectId: string | null
   projectTitle: string | null
+  channelId: string | null
+  channelName: string | null
+  channelIsPrivate: boolean
   title: string
   status: 'todo' | 'in_progress' | 'done'
   priority: 'high' | 'medium' | 'low'
@@ -27,7 +31,12 @@ export interface TaskDto {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId') ?? undefined
+  const channelId = searchParams.get('channelId') ?? undefined
   const assignee = searchParams.get('assignee') ?? undefined
+
+  if (projectId && channelId) {
+    return NextResponse.json({ error: 'projectId and channelId cannot both be specified' }, { status: 422 })
+  }
 
   if (assignee && assignee !== 'me') {
     return NextResponse.json({ error: 'assignee must be "me"' }, { status: 422 })
@@ -39,32 +48,46 @@ export async function GET(req: Request) {
   })
   if (error) return error
 
+  if (channelId) {
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
+    if (forbidden) return forbidden
+  }
+
+  if (projectId) {
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
+    if (forbidden) return forbidden
+  }
+
   try {
     const { db } = await import('@cairn/db')
-    const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, and, inArray } = await import('drizzle-orm')
+    const { tasks, projects, channels, profiles, workspaceMembers } = await import('@cairn/db')
+    const { eq, and, inArray, isNotNull, or } = await import('drizzle-orm')
 
     // ゲストは参加プロジェクトのタスクのみ閲覧可。プロジェクト未所属タスクは見せない。
     const guestProjectIds = ctx.role === 'guest'
       ? await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId)
       : null
-    // ゲストで可視プロジェクトが無ければ SQL を実行せず空を返す（inArray の空配列を避ける）
-    if (guestProjectIds && guestProjectIds.length === 0) {
-      return NextResponse.json([])
-    }
-
     // 絞り込みは SQL 側で行う（タスク数の多いワークスペースで単一プロジェクト表示が
     // 全件スキャンにならないように、また guest が見えないタスクを読まないようにする）
     const conditions = [eq(tasks.workspaceId, ctx.workspaceId)]
     if (projectId) conditions.push(eq(tasks.projectId, projectId))
+    if (channelId) conditions.push(eq(tasks.channelId, channelId))
     if (assignee === 'me') conditions.push(eq(tasks.assigneeId, ctx.userId))
-    if (guestProjectIds) conditions.push(inArray(tasks.projectId, guestProjectIds))
+    if (guestProjectIds && !projectId && !channelId) {
+      const guestScopes = [and(isNotNull(tasks.channelId), eq(channels.type, 'workspace'))]
+      if (guestProjectIds.length > 0) guestScopes.push(inArray(tasks.projectId, guestProjectIds))
+      conditions.push(or(...guestScopes)!)
+    }
+    conditions.push(taskChannelVisibilityCondition(ctx.userId))
 
     const taskRows = await db
       .select({
         id: tasks.id,
         projectId: tasks.projectId,
         projectTitle: projects.title,
+        channelId: tasks.channelId,
+        channelName: channels.name,
+        channelIsPrivate: channels.isPrivate,
         title: tasks.title,
         status: tasks.status,
         priority: tasks.priority,
@@ -76,6 +99,7 @@ export async function GET(req: Request) {
       })
       .from(tasks)
       .leftJoin(projects, eq(tasks.projectId, projects.id))
+      .leftJoin(channels, eq(tasks.channelId, channels.id))
       .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, tasks.assigneeId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(and(...conditions))
@@ -84,6 +108,9 @@ export async function GET(req: Request) {
       id: r.id,
       projectId: r.projectId,
       projectTitle: r.projectTitle ?? null,
+      channelId: r.channelId,
+      channelName: r.channelName ?? null,
+      channelIsPrivate: r.channelIsPrivate ?? false,
       title: r.title,
       status: r.status,
       priority: r.priority,
@@ -123,9 +150,13 @@ export async function POST(req: Request) {
 
   try {
     const projectId = parsed.data.projectId ?? null
+    const channelId = parsed.data.channelId ?? null
     if (projectId) {
       // ゲストは参加プロジェクトにのみタスクを作成できる
       const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
+      if (forbidden) return forbidden
+    } else if (channelId) {
+      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
       if (forbidden) return forbidden
     } else {
       // プロジェクト未所属タスクは member 以上のみ作成可（ゲストはプロジェクト必須）
@@ -134,7 +165,7 @@ export async function POST(req: Request) {
     }
 
     const { db } = await import('@cairn/db')
-    const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
+    const { tasks, projects, channels, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
     // projectId を受け付ける前に、そのプロジェクトが ctx.workspaceId に属することを明示的に確認する。
@@ -142,6 +173,8 @@ export async function POST(req: Request) {
     // tasks.workspace_id=自WS と組み合わせて保存できてしまい（別WSのタイトル・件数の漏洩や
     // 越境データ汚染につながる）。FK はプロジェクトの存在しか保証しないためここで所属を検証する。
     let projectTitle: string | null = null
+    let channelName: string | null = null
+    let channelIsPrivate = false
     if (projectId) {
       const [projectRow] = await db
         .select({ title: projects.title })
@@ -154,8 +187,21 @@ export async function POST(req: Request) {
       projectTitle = projectRow.title
     }
 
+    if (channelId) {
+      const [channelRow] = await db
+        .select({ name: channels.name, isPrivate: channels.isPrivate, type: channels.type })
+        .from(channels)
+        .where(and(eq(channels.id, channelId), eq(channels.workspaceId, ctx.workspaceId)))
+        .limit(1)
+      if (!channelRow || channelRow.type !== 'workspace') {
+        return NextResponse.json({ error: '通常チャンネルが見つかりません' }, { status: 404 })
+      }
+      channelName = channelRow.name
+      channelIsPrivate = channelRow.isPrivate
+    }
+
     const assigneeId = parsed.data.assigneeId ?? null
-    if (assigneeId && !(await isAssignableTaskMember(ctx.workspaceId, assigneeId, projectId))) {
+    if (assigneeId && !(await isAssignableTaskMember(ctx.workspaceId, assigneeId, projectId, channelId))) {
       return NextResponse.json(
         { error: '指定された担当者はこのタスクに割り当てできません' },
         { status: 422 },
@@ -167,6 +213,7 @@ export async function POST(req: Request) {
       .values({
         workspaceId: ctx.workspaceId,
         projectId,
+        channelId,
         title: parsed.data.title,
         description: parsed.data.description ?? null,
         priority: parsed.data.priority,
@@ -193,6 +240,9 @@ export async function POST(req: Request) {
       id: inserted.id,
       projectId: inserted.projectId,
       projectTitle,
+      channelId: inserted.channelId,
+      channelName,
+      channelIsPrivate,
       title: inserted.title,
       status: inserted.status,
       priority: inserted.priority,

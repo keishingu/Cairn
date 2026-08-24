@@ -15,6 +15,7 @@ const {
   mockDbUpdateReturning,
   mockDbUpdateSet,
   mockRequireProjectAccess,
+  mockRequireChannelAccess,
   mockRequireRole,
   mockIsAssignableTaskMember,
   mockNotifyTaskAssigned,
@@ -25,6 +26,7 @@ const {
   mockDbUpdateReturning: vi.fn(),
   mockDbUpdateSet: vi.fn(),
   mockRequireProjectAccess: vi.fn(),
+  mockRequireChannelAccess: vi.fn(),
   mockRequireRole: vi.fn(),
   mockIsAssignableTaskMember: vi.fn(),
   mockNotifyTaskAssigned: vi.fn(),
@@ -37,6 +39,7 @@ vi.mock('@/lib/chat/checkboxes', () => ({
 }))
 vi.mock('@/lib/permissions', () => ({
   requireProjectAccess: mockRequireProjectAccess,
+  requireChannelAccess: mockRequireChannelAccess,
   requireRole: mockRequireRole,
 }))
 vi.mock('@/lib/tasks/assignment-notification', () => ({
@@ -84,6 +87,7 @@ vi.mock('@cairn/db', () => {
       id: 'tasks.id',
       workspaceId: 'tasks.workspaceId',
       projectId: 'tasks.projectId',
+      channelId: 'tasks.channelId',
       title: 'tasks.title',
       priority: 'tasks.priority',
       dueDate: 'tasks.dueDate',
@@ -111,6 +115,7 @@ describe('DELETE /api/tasks/[id]', () => {
       error: null,
     })
     mockRequireProjectAccess.mockResolvedValue(null)
+    mockRequireChannelAccess.mockResolvedValue(null)
     mockRequireRole.mockReturnValue(null)
   })
 
@@ -172,11 +177,47 @@ describe('PATCH /api/tasks/[id]', () => {
       error: null,
     })
     mockRequireProjectAccess.mockResolvedValue(null)
+    mockRequireChannelAccess.mockResolvedValue(null)
     mockRequireRole.mockReturnValue(null)
     mockIsAssignableTaskMember.mockResolvedValue(true)
   })
 
   afterEach(() => vi.clearAllMocks())
+
+  it('非公開チャンネルへアクセスできない利用者の更新は403で拒否する', async () => {
+    mockDbSelectLimit.mockResolvedValueOnce([{
+      id: TASK_ID,
+      projectId: null,
+      channelId: 'private-channel',
+      projectTitle: null,
+      title: '非公開タスク',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId: null,
+      sourceMessageId: null,
+      sourceCheckboxIndex: null,
+    }])
+    mockRequireChannelAccess.mockResolvedValue(
+      NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 }),
+    )
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: '見えてはいけない更新' }),
+      headers: { 'content-type': 'application/json' },
+    }), { params: Promise.resolve({ id: TASK_ID }) })
+
+    expect(res.status).toBe(403)
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(
+      DEV_WORKSPACE_ID,
+      DEV_USER_ID,
+      'private-channel',
+      'member',
+    )
+    expect(mockDbUpdateReturning).not.toHaveBeenCalled()
+  })
 
   it('参加外プロジェクトの手動タスク更新は 403 で拒否する', async () => {
     mockDbSelectLimit.mockResolvedValue([{

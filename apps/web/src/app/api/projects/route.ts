@@ -6,6 +6,7 @@ import { createProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { taskChannelVisibilityCondition } from '@/lib/tasks/visibility'
 
 export interface ProjectDto {
   id: string
@@ -44,7 +45,7 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers, tasks, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { projects, projectStatuses, projectMembers, tasks, channels, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, count, and, inArray } = await import('drizzle-orm')
     const { sql } = await import('drizzle-orm')
 
@@ -123,7 +124,11 @@ export async function GET() {
           completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
         })
         .from(tasks)
-        .where(inArray(tasks.projectId, visibleProjectIds))
+        .leftJoin(channels, eq(tasks.channelId, channels.id))
+        .where(and(
+          inArray(tasks.projectId, visibleProjectIds),
+          taskChannelVisibilityCondition(ctx.userId),
+        ))
         .groupBy(tasks.projectId),
     ])
 

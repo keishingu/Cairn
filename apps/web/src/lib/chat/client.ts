@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { generateId } from '@/lib/generate-id'
+import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import type { AttachmentDto } from '@cairn/shared'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
@@ -474,6 +475,9 @@ export function useSendChannelMessage(
       if ((input.optimisticAttachments?.length ?? 0) > 0) {
         void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
       }
+      if (parseCheckboxes(input.content).length > 0) {
+        void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      }
     },
   })
 }
@@ -515,6 +519,7 @@ export function useEditMessage(channelId: string | null) {
         chatQueryKeys.messages(channelId),
         (old) => (old ?? []).map((m) => m.id === updated.id ? { ...m, content: updated.content, isEdited: true } : m),
       )
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
     onError: (_err, _vars, context) => {
       if (context?.prev !== undefined) {
@@ -542,6 +547,9 @@ export function useDeleteMessage(channelId: string | null) {
       if (context?.prev !== undefined) {
         queryClient.setQueryData(chatQueryKeys.messages(channelId), context.prev)
       }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
 }

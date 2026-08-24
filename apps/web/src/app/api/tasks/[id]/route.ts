@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { updateTaskSchema } from '@cairn/shared'
 import { replaceCheckboxLabelAt, toggleCheckboxAt } from '@/lib/chat/checkboxes'
-import { requireProjectAccess, requireRole } from '@/lib/permissions'
+import { requireChannelAccess, requireProjectAccess, requireRole } from '@/lib/permissions'
 import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
 
 export async function PATCH(
@@ -42,6 +42,7 @@ export async function PATCH(
       .select({
         id: tasks.id,
         projectId: tasks.projectId,
+        channelId: tasks.channelId,
         projectTitle: projects.title,
         title: tasks.title,
         priority: tasks.priority,
@@ -60,7 +61,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
-    if (taskRow.projectId) {
+    if (taskRow.channelId) {
+      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, taskRow.channelId, ctx.role)
+      if (forbidden) return forbidden
+    } else if (taskRow.projectId) {
       const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, taskRow.projectId, ctx.role)
       if (forbidden) return forbidden
     } else {
@@ -75,7 +79,7 @@ export async function PATCH(
     const assigneeChanged =
       parsed.data.assigneeId !== undefined && parsed.data.assigneeId !== taskRow.assigneeId
     if (assigneeChanged && parsed.data.assigneeId != null) {
-      if (!(await isAssignableTaskMember(ctx.workspaceId, parsed.data.assigneeId, taskRow.projectId))) {
+      if (!(await isAssignableTaskMember(ctx.workspaceId, parsed.data.assigneeId, taskRow.projectId, taskRow.channelId))) {
         return NextResponse.json(
           { error: '指定された担当者はこのタスクに割り当てできません' },
           { status: 422 },
@@ -135,31 +139,19 @@ export async function PATCH(
     const titleChanged = parsed.data.title !== undefined && updated.title !== taskRow.title
     const statusChanged = parsed.data.status !== undefined
     if ((titleChanged || statusChanged) && updated.sourceMessageId != null && updated.sourceCheckboxIndex != null) {
-      const { messages, channels, channelMembers } = await import('@cairn/db')
+      const { messages, channels } = await import('@cairn/db')
       const [msg] = await db
         .select({
           content: messages.content,
           channelId: messages.channelId,
           senderId: messages.senderId,
-          isPrivate: channels.isPrivate,
         })
         .from(messages)
         .innerJoin(channels, eq(messages.channelId, channels.id))
         .where(and(eq(messages.id, updated.sourceMessageId), eq(channels.workspaceId, ctx.workspaceId)))
         .limit(1)
 
-      // プライベートチャンネルは参加者のみ逆同期する（非参加者はタスク側の更新のみ反映）
-      let canSync = !!msg
-      if (msg?.isPrivate) {
-        const [membership] = await db
-          .select({ userId: channelMembers.userId })
-          .from(channelMembers)
-          .where(and(eq(channelMembers.channelId, msg.channelId), eq(channelMembers.userId, ctx.userId)))
-          .limit(1)
-        canSync = !!membership
-      }
-
-      if (msg && canSync) {
+      if (msg) {
         let newContent = msg.content
         if (statusChanged) {
           // チェック状態の toggle は共同作業の基本操作なので投稿者以外でも反映する
@@ -220,7 +212,7 @@ export async function DELETE(
     if (error) return error
 
     const [taskRow] = await db
-      .select({ id: tasks.id, projectId: tasks.projectId, sourceMessageId: tasks.sourceMessageId })
+      .select({ id: tasks.id, projectId: tasks.projectId, channelId: tasks.channelId, sourceMessageId: tasks.sourceMessageId })
       .from(tasks)
       .where(and(eq(tasks.id, id), eq(tasks.workspaceId, ctx.workspaceId)))
       .limit(1)
@@ -229,7 +221,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
-    if (taskRow.projectId) {
+    if (taskRow.channelId) {
+      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, taskRow.channelId, ctx.role)
+      if (forbidden) return forbidden
+    } else if (taskRow.projectId) {
       const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, taskRow.projectId, ctx.role)
       if (forbidden) return forbidden
     } else {

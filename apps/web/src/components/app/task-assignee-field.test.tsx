@@ -17,6 +17,10 @@ vi.mock('@/hooks/use-project-members', () => ({
   useProjectMembers: () => ({ data: [], isFetching: false }),
 }))
 
+vi.mock('@/lib/chat/client', () => ({
+  useChannelMembers: () => ({ data: [], isFetching: false }),
+}))
+
 describe('TaskAssigneeField', () => {
   it('画面下の空きが足りない場合は、ダイアログの外へ上向きに候補を表示する', async () => {
     const user = userEvent.setup()

@@ -7,10 +7,11 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const PROJECT_ID = '30000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockRequireProjectAccess, mockGetWorkspaceMemberRole, mockGetGuestVisibleProjectIds } =
+const { mockGetAuthContext, mockRequireProjectAccess, mockRequireChannelAccess, mockGetWorkspaceMemberRole, mockGetGuestVisibleProjectIds } =
   vi.hoisted(() => ({
     mockGetAuthContext: vi.fn(),
     mockRequireProjectAccess: vi.fn(),
+    mockRequireChannelAccess: vi.fn(),
     mockGetWorkspaceMemberRole: vi.fn(),
     mockGetGuestVisibleProjectIds: vi.fn(),
   }))
@@ -18,6 +19,7 @@ const { mockGetAuthContext, mockRequireProjectAccess, mockGetWorkspaceMemberRole
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({
   requireProjectAccess: mockRequireProjectAccess,
+  requireChannelAccess: mockRequireChannelAccess,
   requireRole: vi.fn(() => null),
   getWorkspaceMemberRole: mockGetWorkspaceMemberRole,
   getGuestVisibleProjectIds: mockGetGuestVisibleProjectIds,
@@ -71,5 +73,30 @@ describe('GET /api/tasks の担当者フィルター', () => {
     expect(res.status).toBe(422)
     await expect(res.json()).resolves.toEqual({ error: 'assignee must be "me"' })
     expect(mockGetAuthContext).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /api/tasks のチャンネルアクセス制御', () => {
+  afterEach(() => vi.clearAllMocks())
+
+  it('参加していない非公開チャンネルのタスク一覧は403で拒否する', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
+      error: null,
+    })
+    mockRequireChannelAccess.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 }),
+    )
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/tasks?channelId=private-channel'))
+
+    expect(res.status).toBe(403)
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(
+      DEV_WORKSPACE_ID,
+      DEV_USER_ID,
+      'private-channel',
+      'member',
+    )
   })
 })

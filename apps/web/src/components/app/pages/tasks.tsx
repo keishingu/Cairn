@@ -93,7 +93,7 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
           textDecoration: isDone ? 'line-through' : 'none',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{displayTitle}</div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{task.projectTitle ?? 'プロジェクトなし'}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{task.projectTitle ?? task.channelName ?? 'プロジェクトなし'}</div>
       </div>
 
       {task.priority && !isDone && (
@@ -259,8 +259,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     const projectOrder: string[] = []
     const projectMap = new Map<string, TaskDto[]>()
     for (const t of filtered) {
-      // プロジェクト未所属タスクは 'none' キーでまとめる
-      const key = t.projectId ?? 'none'
+      const key = t.projectId ? `project:${t.projectId}` : t.channelId ? `channel:${t.channelId}` : 'none'
       if (!projectMap.has(key)) {
         projectMap.set(key, [])
         projectOrder.push(key)
@@ -269,7 +268,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     }
     return projectOrder.map(pid => ({
       key: pid,
-      label: projectMap.get(pid)![0]!.projectTitle ?? 'プロジェクトなし',
+      label: projectMap.get(pid)![0]!.projectTitle ?? projectMap.get(pid)![0]!.channelName ?? 'プロジェクトなし',
       tasks: projectMap.get(pid)!,
     }))
   }, [filtered])

@@ -126,7 +126,7 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
       {showEditDialog && (
         <TaskDialog
           title="タスクを編集"
-          subtitle={task.projectTitle ?? 'プロジェクトなし'}
+          subtitle={task.projectTitle ?? task.channelName ?? 'プロジェクトなし'}
           onClose={onClose}
           onSubmit={handleSubmit}
           submitLabel="保存"
@@ -156,6 +156,8 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
             assigneeId={assigneeId}
             onAssigneeChange={setAssigneeId}
             assigneeProjectId={task.projectId}
+            assigneeChannelId={task.channelId}
+            assigneeChannelIsPrivate={task.channelIsPrivate}
             {...(task.assigneeId
               ? { currentAssignee: { userId: task.assigneeId, displayName: task.assigneeName ?? '不明なメンバー', avatarUrl: task.assigneeAvatarUrl } }
               : {})}

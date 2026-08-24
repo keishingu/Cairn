@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import type { MessageCreatedEvent } from '@/lib/inngest/events'
 import { inngest } from '@/lib/inngest/client'
-import { parseCheckboxes } from '@/lib/chat/checkboxes'
+import { canExtractTasksFromChannel, parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
 import { canAccessFile, type WorkspaceRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
@@ -165,12 +165,12 @@ export async function postMessage({
       }
     }
 
-    // プロジェクトチャンネルの場合、- [ ] チェックボックスをタスクに自動変換するため先にプロジェクトを解決しておく
+    // DM 以外のチャンネルでは、- [ ] チェックボックスをタスクに自動変換する。
     const checkboxes = parseCheckboxes(content)
     const [channel] =
       checkboxes.length > 0
         ? await db
-            .select({ projectId: channels.projectId })
+            .select({ id: channels.id, projectId: channels.projectId, type: channels.type })
             .from(channels)
             .where(eq(channels.id, channelId))
             .limit(1)
@@ -218,12 +218,12 @@ export async function postMessage({
 
       // メッセージ本文のチェックボックスとタスクの作成を同一トランザクションにし、
       // タスク作成が失敗した場合にメッセージだけが残る不整合を防ぐ
-      if (channel?.projectId) {
-        const projectId = channel.projectId
+      if (channel && canExtractTasksFromChannel(channel.type)) {
         await tx.insert(tasks).values(
           checkboxes.map((checkbox) => ({
             workspaceId,
-            projectId,
+            projectId: channel.projectId,
+            channelId: channel.id,
             title: checkbox.text,
             status: (checkbox.checked ? 'done' : 'todo') as 'done' | 'todo',
             priority: 'medium' as const,

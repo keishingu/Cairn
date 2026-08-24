@@ -4,6 +4,7 @@ import React from 'react'
 import { createPortal } from 'react-dom'
 import { Avatar, Icon, fieldInputStyle } from './primitives'
 import { useWorkspaceMembers, useProjectMembers } from '@/hooks/use-project-members'
+import { useChannelMembers } from '@/lib/chat/client'
 
 interface AssigneeCandidate {
   userId: string
@@ -20,6 +21,8 @@ interface TaskAssigneeFieldProps {
   onChange: (userId: string | null) => void
   // 選択中プロジェクト。指定するとそのプロジェクトのメンバーを候補上部に優先表示する。
   projectId?: string | null
+  channelId?: string | null
+  channelIsPrivate?: boolean
   // 現在の担当者表示。非活性化などで active メンバー一覧に出ない担当者でも
   // 「担当者なし」に見えないようフォールバック表示する。
   currentAssignee?: { userId: string; displayName: string; avatarUrl: string | null } | null
@@ -35,7 +38,7 @@ const labelStyle: React.CSSProperties = {
 
 // ワークスペース全体から担当者を検索・選択する。プロジェクト選択時はプロジェクト内メンバーを
 // 上部に優先表示し「プロジェクト内」ラベルを付ける。
-export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee }: TaskAssigneeFieldProps) => {
+export const TaskAssigneeField = ({ value, onChange, projectId, channelId, channelIsPrivate = false, currentAssignee }: TaskAssigneeFieldProps) => {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const [menuPosition, setMenuPosition] = React.useState<{
@@ -52,6 +55,11 @@ export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee 
   const { data: workspaceMembers = [] } = useWorkspaceMembers()
   const projectMembersQuery = useProjectMembers(projectId ?? null)
   const projectMembers = projectMembersQuery.data ?? []
+  const channelMembersQuery = useChannelMembers(channelIsPrivate ? (channelId ?? null) : null)
+  const channelMemberIds = React.useMemo(
+    () => new Set((channelMembersQuery.data ?? []).map(member => member.userId)),
+    [channelMembersQuery.data],
+  )
 
   const projectMemberIds = React.useMemo(
     () => new Set(projectMembers.map(m => m.userId)),
@@ -63,7 +71,9 @@ export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee 
     const list = workspaceMembers.map(m => {
       const inProject = projectMemberIds.has(m.userId)
       // guest はプロジェクトタスクかつ当該プロジェクトのメンバーのときだけ担当者にできる
-      const assignable = m.role !== 'guest' || (projectId != null && projectId !== '' && inProject)
+      const assignable = channelId
+        ? (!channelIsPrivate || channelMemberIds.has(m.userId))
+        : m.role !== 'guest' || (projectId != null && projectId !== '' && inProject)
       return {
         userId: m.userId,
         displayName: m.displayName,
@@ -76,7 +86,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee 
       if (a.inProject !== b.inProject) return a.inProject ? -1 : 1
       return a.displayName.localeCompare(b.displayName, 'ja')
     })
-  }, [workspaceMembers, projectMemberIds, projectId])
+  }, [workspaceMembers, projectMemberIds, projectId, channelId, channelIsPrivate, channelMemberIds])
 
   // 選択肢には担当者に設定できるメンバーのみを出す（不可なゲストは 422 になるため除外）
   const assignableCandidates = React.useMemo(
@@ -106,10 +116,10 @@ export const TaskAssigneeField = ({ value, onChange, projectId, currentAssignee 
   React.useEffect(() => {
     if (value == null) return
     if (currentAssignee && currentAssignee.userId === value) return
-    if (projectMembersQuery.isFetching) return
+    if (projectMembersQuery.isFetching || channelMembersQuery.isFetching) return
     const c = candidates.find(x => x.userId === value)
     if (c && !c.assignable) onChange(null)
-  }, [value, candidates, currentAssignee, projectMembersQuery.isFetching, onChange])
+  }, [value, candidates, currentAssignee, projectMembersQuery.isFetching, channelMembersQuery.isFetching, onChange])
 
   React.useEffect(() => {
     if (!open) return

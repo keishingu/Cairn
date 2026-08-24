@@ -56,10 +56,17 @@ export async function isAssignableTaskMember(
   workspaceId: string,
   userId: string,
   projectId: string | null,
+  channelId: string | null = null,
 ): Promise<boolean> {
   const { getWorkspaceRole, isWorkspaceMember } = await import('@/lib/access/membership')
   const role = await getWorkspaceRole(workspaceId, userId)
   if (!role) return false
+
+  if (channelId) {
+    const { canAccessChannel } = await import('@/lib/permissions')
+    return canAccessChannel(workspaceId, userId, channelId, role)
+  }
+
   if (isWorkspaceMember(role)) return true
 
   // ここに来るのは active な guest のみ。未所属タスクは不可、プロジェクトタスクは参加メンバーのみ。

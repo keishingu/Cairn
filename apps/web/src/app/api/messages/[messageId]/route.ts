@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { editMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
-import { parseCheckboxes } from '@/lib/chat/checkboxes'
+import { canExtractTasksFromChannel, parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
 
 type RouteContext = { params: Promise<{ messageId: string }> }
@@ -79,14 +79,13 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     // 追加・変更されたチェックボックスをupsert
     if (newBoxes.length > 0) {
       const [ch] = await db
-        .select({ projectId: channelsTable.projectId })
+        .select({ id: channelsTable.id, projectId: channelsTable.projectId, type: channelsTable.type })
         .from(messages)
         .innerJoin(channelsTable, eq(messages.channelId, channelsTable.id))
         .where(eq(messages.id, messageId))
         .limit(1)
 
-      if (ch?.projectId) {
-        const projectId = ch.projectId
+      if (ch && canExtractTasksFromChannel(ch.type)) {
 
         // 新規チェックボックスを一括インサート
         const newToInsert = newBoxes.filter(nb => !oldBoxes.some(ob => ob.index === nb.index))
@@ -94,7 +93,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
           await db.insert(tasks).values(
             newToInsert.map(nb => ({
               workspaceId: ctx.workspaceId,
-              projectId,
+              projectId: ch.projectId,
+              channelId: ch.id,
               title: nb.text,
               status: (nb.checked ? 'done' : 'todo') as 'done' | 'todo',
               priority: 'medium' as const,

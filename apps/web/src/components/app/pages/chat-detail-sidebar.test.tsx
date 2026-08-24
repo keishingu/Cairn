@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChatDetailSidebar } from './chat-detail-sidebar'
 import { useChannelFiles } from '@/hooks/use-channel-files'
-import { useProjectTasks } from '@/hooks/use-project-tasks'
+import { useTasksByScope } from '@/hooks/use-project-tasks'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 const { renameMutateAsyncMock, fetchWithAuthMock } = vi.hoisted(() => ({
@@ -26,15 +26,16 @@ vi.mock('../task-edit-dialog', () => ({
   TaskEditDialog: ({ open }: { open: boolean }) => open ? <div data-testid="task-edit-dialog" /> : null,
 }))
 vi.mock('@/hooks/use-project-tasks', () => ({
-  useProjectTasks: vi.fn(() => ({
+  useTasksByScope: vi.fn(() => ({
     data: [],
     isLoading: false,
     toggleMutation: { mutate: vi.fn() },
   })),
+  useCreateTaskByScope: vi.fn(() => ({ mutate: vi.fn(), isPending: false, isError: false })),
 }))
 
 const mockUseChannelFiles = vi.mocked(useChannelFiles)
-const mockUseProjectTasks = vi.mocked(useProjectTasks)
+const mockUseTasksByScope = vi.mocked(useTasksByScope)
 
 const project: ProjectDto = {
   id: 'project-1', title: 'プロジェクト', description: null, statusName: null, statusColor: null,
@@ -100,11 +101,11 @@ describe('チャット詳細サイドバーのファイル一覧', () => {
     fetchWithAuthMock.mockReset()
     fetchWithAuthMock.mockResolvedValue(new Response('# 見出し\n\nMarkdownです'))
     vi.spyOn(window, 'open').mockImplementation(() => null)
-    mockUseProjectTasks.mockReturnValue({
+    mockUseTasksByScope.mockReturnValue({
       data: [],
       isLoading: false,
       toggleMutation: { mutate: vi.fn() },
-    } as unknown as ReturnType<typeof useProjectTasks>)
+    } as unknown as ReturnType<typeof useTasksByScope>)
     mockUseChannelFiles.mockReturnValue({
       data: [
         {
@@ -202,7 +203,7 @@ describe('チャット詳細サイドバーのファイル一覧', () => {
 
 describe('チャット詳細サイドバーのタスク一覧', () => {
   beforeEach(() => {
-    mockUseProjectTasks.mockReturnValue({
+    mockUseTasksByScope.mockReturnValue({
       data: [
         {
           id: 'linked-task', projectId: 'project-1', projectTitle: 'プロジェクト', title: 'メッセージ由来のタスク',
@@ -217,12 +218,19 @@ describe('チャット詳細サイドバーのタスク一覧', () => {
       ],
       isLoading: false,
       toggleMutation: { mutate: vi.fn() },
-    } as unknown as ReturnType<typeof useProjectTasks>)
+    } as unknown as ReturnType<typeof useTasksByScope>)
   })
 
   it('メッセージに紐付くタスクだけに吹き出しアイコンを表示する', () => {
     renderProjectSidebar()
 
     expect(screen.getAllByLabelText('メッセージに紐付いています')).toHaveLength(1)
+  })
+
+  it('通常チャンネルにもタスク一覧と追加ボタンを表示する', () => {
+    renderSidebar()
+
+    expect(screen.getByText('タスク')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'タスクを追加' })).toBeInTheDocument()
   })
 })
