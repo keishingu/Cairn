@@ -143,6 +143,22 @@ describe('MCP Route Handler', () => {
     })
     expect(toolCall.status).toBe(200)
     expect(await toolCall.text()).toContain('project-1')
+
+    const invalidTask = await send({
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'tools/call',
+      params: {
+        name: 'create_task',
+        arguments: {
+          title: 'invalid scope',
+          projectId: '30000000-0000-0000-0000-000000000001',
+          channelId: '40000000-0000-0000-0000-000000000001',
+        },
+      },
+    })
+    expect(invalidTask.status).toBe(200)
+    expect(await invalidTask.text()).toContain('projectId and channelId cannot both be specified')
     expect(mockVerifyOAuthToken).toHaveBeenCalledWith(
       'cairn_oauth_at_test',
       expect.objectContaining({ resource: 'http://localhost/api/mcp', consumeRateLimit: true }),
