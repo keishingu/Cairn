@@ -368,9 +368,11 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
                       <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {member.displayName}
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 1 }}>
-                        {member.email ?? 'メール未設定'}
-                      </div>
+                      {member.email && (
+                        <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 1 }}>
+                          {member.email}
+                        </div>
+                      )}
                     </div>
                   </button>
                 )

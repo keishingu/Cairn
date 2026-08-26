@@ -244,9 +244,11 @@ const MemberPicker = ({ members, value, onChange }: MemberPickerProps) => (
             <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {member.displayName}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 1 }}>
-              {member.email ?? 'メール未設定'}
-            </div>
+            {member.email && (
+              <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 1 }}>
+                {member.email}
+              </div>
+            )}
           </div>
         </button>
       )
