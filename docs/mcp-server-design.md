@@ -2,7 +2,7 @@
 
 作成日: 2026-07-19
 
-最終更新: 2026-08-05
+最終更新: 2026-08-27
 
 ステータス: リモート MCP + PAT / OAuth 実装済み（stdio/npm 版は後続）
 
@@ -67,11 +67,26 @@ bearer_token_env_var = "CAIRN_TOKEN"
 
 `CAIRN_TOKEN` には設定画面で一度だけ表示される `cairn_pat_...` を設定する。
 
+### Cursor（IDE / Agents / Grok Bot）
+
+Cursor のドキュメントが案内する MCP OAuth callback は次の2つである。DCR の
+`redirect_uris` と認可リクエストの `redirect_uri` は、使う面の URI だけを**完全一致**で送る。
+
+| 面 | redirect URI |
+| --- | --- |
+| Web / Cursor Agents / Grok Bot | `https://www.cursor.com/agents/mcp/oauth/callback` |
+| Desktop IDE | `http://localhost:8787/callback` |
+
+`cursor://`（例: `cursor://anysphere.cursor-mcp/oauth/callback`）、本番 HTTP、相対パス、
+カスタムスキームは登録も認可も拒否する。Grok Bot が DCR でこれらを1件でも混ぜると、
+サインイン UI の前に `invalid_redirect_uri` で止まる。Grok Bot はクラウド側から接続するため
+loopback も使えない。許可すべきなのは HTTPS callback のみである。
+
 ## 3. PAT と OAuth の使い分け
 
 | 方式  | 主な client                              | 資格情報の取得                        |
 | ----- | ---------------------------------------- | ------------------------------------- |
-| OAuth | Claude Web / Desktop、Claude Code、Codex | URL 登録後に Cairn へログインして認可 |
+| OAuth | Claude、Codex、Cursor（IDE / Grok Bot は HTTPS callback のみ） | URL 登録後に Cairn へログインして認可 |
 | PAT   | 固定 Bearer header を設定できる client   | `/settings/integrations` で手動発行   |
 
 両方式とも workspace 固定、`read` / `write`（`write` は `read` を包含）、guest 不可、1 token
