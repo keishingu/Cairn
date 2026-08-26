@@ -65,5 +65,8 @@ describe('MCP OAuth', () => {
     expect(isValidRedirectUri('http://127.0.0.1:6274/oauth/callback')).toBe(true)
     expect(isValidRedirectUri('http://example.com/callback')).toBe(false)
     expect(isValidRedirectUri('https://example.com/callback#fragment')).toBe(false)
+    expect(isValidRedirectUri('https://www.cursor.com/agents/mcp/oauth/callback')).toBe(true)
+    expect(isValidRedirectUri('http://localhost:8787/callback')).toBe(true)
+    expect(isValidRedirectUri('cursor://anysphere.cursor-mcp/oauth/callback')).toBe(false)
   })
 })

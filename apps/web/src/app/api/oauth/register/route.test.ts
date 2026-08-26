@@ -55,7 +55,55 @@ describe('OAuth Dynamic Client Registration', () => {
     )
 
     expect(response.status).toBe(400)
-    await expect(response.json()).resolves.toMatchObject({ error: 'invalid_redirect_uri' })
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'invalid_redirect_uri',
+      error_description: expect.stringContaining('http://example.com/callback'),
+    })
+    expect(mockValues).not.toHaveBeenCalled()
+  })
+
+  it('client_name欠落や未知のgrantでもHTTPS callbackを登録する', async () => {
+    const { POST } = await import('./route')
+    const response = await POST(
+      new Request('https://develop.oss-cairn.com/api/oauth/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          redirect_uris: 'https://www.cursor.com/agents/mcp/oauth/callback',
+          grant_types: ['authorization_code', 'refresh_token', 'custom'],
+          token_endpoint_auth_method: 'none',
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(201)
+    await expect(response.json()).resolves.toMatchObject({
+      client_name: 'MCP Client',
+      redirect_uris: ['https://www.cursor.com/agents/mcp/oauth/callback'],
+      token_endpoint_auth_method: 'none',
+    })
+  })
+
+  it('cursor:// を含むredirect URIを拒否し、拒否したURIを返す', async () => {
+    const { POST } = await import('./route')
+    const response = await POST(
+      new Request('https://develop.oss-cairn.com/api/oauth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          client_name: 'Cursor Grok Bot',
+          redirect_uris: [
+            'https://www.cursor.com/agents/mcp/oauth/callback',
+            'cursor://anysphere.cursor-mcp/oauth/callback',
+          ],
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'invalid_redirect_uri',
+      error_description: expect.stringContaining('cursor://anysphere.cursor-mcp/oauth/callback'),
+    })
     expect(mockValues).not.toHaveBeenCalled()
   })
 })

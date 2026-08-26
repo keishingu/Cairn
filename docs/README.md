@@ -43,7 +43,7 @@
 | [`10_ai_member_design.md`](./10_ai_member_design.md) | `/ai` 調査ワークベンチ・AI PMO・将来のチャンネル参加型AIメンバーの責務境界とロードマップ | 2026-08-05 |
 | [`product-help/README.md`](./product-help/README.md) | `/ai` がCairn自体の使い方（マイルストーンの使い方等）に答えるための静的ヘルプ文書と実装方式 | 2026-08-10 |
 | [`ai-pmo-design.md`](./ai-pmo-design.md) | AI常駐PMOの現行仕様（Phase 1/2 実装済み、feature flag + workspace設定で段階ロールアウト） | 2026-08-05 |
-| [`mcp-server-design.md`](./mcp-server-design.md) | リモート MCP + PAT / OAuth の現行仕様（stdio/npm 版は後続） | 2026-08-05 |
+| [`mcp-server-design.md`](./mcp-server-design.md) | リモート MCP + PAT / OAuth の現行仕様（stdio/npm 版は後続） | 2026-08-27 |
 | [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) | 定期ジョブ（cron・自然言語で定義）+ アプリ内投票機能の設計（構想段階） | 2026-06-25 |
 | [`milestone-design.md`](./milestone-design.md) | マイルストーン機能の実装設計（現実装との差分分析・DB/API/UI 設計・フェーズ計画。実装未着手） | 2026-07-09 |
 | [`production-deployment.md`](./production-deployment.md) | 本番環境構成・残タスク・一般公開に向けた設定 | 2026-08-22 |
