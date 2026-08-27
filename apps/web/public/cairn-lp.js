@@ -57,7 +57,8 @@
   var state = Object.assign({}, TWEAK_DEFAULTS);
   apply(state);
 
-  /* ── persona variant (?p=team|alpineclub, default team) ────────── */
+  /* ── persona variant (?p=team|alpineclub, default team) ──────────
+     Kept for old URLs. The public LP story is no longer persona-switched. */
   var persona = 'team';
   try {
     var pParam = new URLSearchParams(location.search).get('p');
@@ -143,7 +144,7 @@
         ACCENTS.map(function (c) { return '<button data-v="' + c + '" style="background:' + c + '"></button>'; }).join('') +
       '</div></div>' +
     '</div>' +
-    '<div class="cl-foot"><a href="#top">Cairn — One Project. One Place.</a></div>';
+    '<div class="cl-foot"><a href="#top">Cairn — Comments become chat.</a></div>';
   document.body.appendChild(panel);
 
   function paint() {

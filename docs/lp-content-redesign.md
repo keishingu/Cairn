@@ -1,7 +1,8 @@
-# LP コンテンツ再構築（利用者ファースト化）
+# LP コンテンツ再構築（三人称順・誠実コピー）
 
 - **ステータス**: 実装済み
 - **作成**: 2026-07-03
+- **更新**: 2026-08-27
 - **対象**: `apps/web/public/index.html` / `apps/web/public/cairn-lp.css` / `apps/web/public/cairn-lp.js`（静的 LP）
 
 > 実装と矛盾する場合はコードと [`CLAUDE.md`](../CLAUDE.md) を正とする。
@@ -10,28 +11,77 @@
 
 ## 1. 背景
 
-旧 LP の訴求軸は「100% Open Source / Self-Hosted / Bring Your Own AI / Extensible」と技術者向けに偏っており、導入を決める一般利用者（部活・サークル・小さなチーム）に刺さらなかった。また `docker compose up` や Bring Your Own AI など**実装と乖離した記述**があり、[`09_product_strategy_notes.md`](./09_product_strategy_notes.md) と [PR #282](https://github.com/keishingu/Cairn/pull/282)（マーケ自己改善ループ設計）が指摘する「嘘広告リスク」の解消が集客の前提だった。
+旧 LP の訴求軸は「100% Open Source / Self-Hosted / Bring Your Own AI / Extensible」と技術者向けに偏っており、導入を決める一般利用者に刺さらなかった。その後の再構築（2026-07）は「One Project. One Place」と 6 機能カタログ、`?p=team|alpineclub` のペルソナ切替を主物語にした。
 
-マージ済み PR の機能群から「利用者に刺さる体験」を選び、LP を利用者ファーストに再構築した。
-
-
-## 2. ターゲット（二段構え）
-
-- **主役**: 汎用の小さなチーム（イベント運営・制作進行）
-- **サブ**: 現場のあるチーム（山岳部・サークル・地域団体）。Cairn の出自（山岳部の山行計画）を必要に応じて見せる
-
-### ペルソナ切替パラメータ
-
-言語切替（`data-lang` / `data-i`）と同じ CSS 方式で、**`?p=team|alpineclub`** による文言切替を実装した。
-
-- ルート要素に `data-persona` 属性（デフォルト `team`）、可変文言に `data-p="team|alpineclub"` を付与
-- 切替箇所: ヒーローのリード文・ヒーロー内の製品サンプル・Problem 導入文・Gallery カード・Everywhere / Guests セクションの説明文
-- PR #282 の LP コピー PDCA で、ペルソナ別 CVR を比較する A/B の受け皿になる。山岳部向けは `?p=alpineclub` で表示する（旧 `?p=club` も後方互換として受け付ける）
+2026-08 の再構築は、そのカタログ物語をやめて **一枚のページを三人の読み順** にする。公開 LP は初回訪問者向けであり、実装していない能力・人数課金・ケルン課金 UX を出さない。競合製品名は **Hero / セクション1–2 の本文には出さず**、検索で見つかる場所（title・meta・ページ下部 FAQ）にだけ置く。
 
 
-## 3. 機能訴求の根拠（マージ済み PR → LP コピー）
+## 2. 三人の読み順（現行の主物語）
 
-| LP の訴求 | 根拠 PR |
+`?p=team|alpineclub` は **主物語にしない**。JS は古い URL 互換のため `data-persona` を残すが、コピーは切替に依存しない。現場の例はイラストとして出してよい。競合製品名は Hero・セクション1–2・まとめ役本文には付けない。
+
+| 順 | 読み手 | セクション | 伝えること |
+|---|---|---|---|
+| 1 | 一般メンバー（全員が得する） | Hero `#stay` | 案件のコメントスレッドがリアルタイムチャットとして進む。話したことは消えない。仕事として残る。人数では料金が増えない。有料は大きなファイルと、自分から使う AI だけ。会話は無料。CTA は「無料で始める」 |
+| 2 | これまで「まとめ役」だった人 | `#admin` | 遅れを指摘しなくていい。進捗を聞きに回る時間をやめられる。管理ツールの売り込みにしない。短い |
+| 3 | エンジニア / アーリーアダプターだけ | `#ai` | ネイティブのチーム AI（MCP を知らない人向け）が先。会話とファイルを読んで出典つきで答える。チャットの ☑ がタスクになる。能動利用は有料。MCP は任意でその下。Claude / Cursor からタスクとメッセージを読み書きできる |
+
+Hero と最終 CTA のラベルは「**無料で始める / Start for free**」。`/auth/login` に `data-cta` と `?utm_source=lp&utm_content=<cta-id>`（`nav` / `hero` / `final` / `footer-product`）。
+
+GitHub リンクは維持する。Hero の二次 CTA も実リポジトリへ向ける。
+
+
+## 3. 誠実化（Soul ゲート）
+
+公開 LP に書いてよいのは、**本番で動いていること**だけ。望む一文が未出荷なら、いちばん近い本当のループに落とす。
+
+### 書いてよい（コードで確認済み）
+
+| コピー | 根拠 |
+|---|---|
+| 案件コメントがリアルタイムチャットになる | `RealtimeProvider` + `realtime.broadcast_changes()`。ポーリングなし |
+| チャットの ☑ がタスクになる | `parseCheckboxes` → プロジェクトチャンネル投稿時にタスク化（`post-message.ts`） |
+| `/ai` がファイル・会話を読み、出典つきで答える | RAG `rag-sources` + 読み取り専用 research tools。書き込み・自動リスケはしない |
+| リモート MCP でタスクとメッセージの読み書き | `GET`/`POST /api/mcp`。`list_my_tasks` / `create_task` / `complete_task` / `search_messages` / `post_message` ほか |
+| 会話メンバーは人数無制限。人数では課金しない | [`pricing-plan-design.md`](./pricing-plan-design.md)（メンバー数 / チャット履歴 / ゲストは全プラン無制限） |
+| 有料 = 大きなファイル + 能動 AI | [`billing-implementation-design.md`](./billing-implementation-design.md)。能動 AI は `/ai` 依頼。チャット本文は無料 |
+| ゲストはリンク招待（メール不要） | 招待リンク。ゲストは参加プロジェクトのみ |
+| スマホと PC、同じ場所 | Web / iOS / Android / Desktop |
+| Apache-2.0 / GitHub | 公開リポジトリ |
+| セルフホストは事実ベース | ローカルは `git clone` + `supabase start && pnpm dev`。Docker / On-Premise は `roadmap` |
+
+### 書いてはいけない
+
+- **未出荷の約束**: 自律エージェント、予定の自動変更、チャンネル内 AI メンバー、Bring Your Own AI、動く `docker compose up`
+- **AI PMO / 監視**: 「誰が遅いか」ダッシュボード、遅れの自動指摘を売りにしない（`FEATURE_FLAGS.aiPmo` は production で `false`。受動ナッジを LP の機能として出さない）
+- **人数課金**: per-seat / 席課金の暗示も禁止
+- **ケルン課金 UX**: 石積み・風化・Solo プラン名は初回訪問者向け LP に出さない。入口では「会話は無料、大きなファイルと能動 AI だけ有料」まで
+- **競合製品名を主物語にしない**: Backlog / Chatwork / Slack / Notion / LINE を Hero、H1、セクション1–2、まとめ役本文に置かない。検索で見つかるように `<title>` / `meta description` / `og:description` とページ下部 FAQ（`#faq`）に自然な日本語で置く。FAQ は「案件コメント + 仕事チャットが分かれている状態の置き場所」まで。機能比較表や `/vs/` ページは作らない
+- **非公開の顧客名**: パブリックリポジトリのため固有名詞を出さない
+- **MCP の実装詳細を Hero に置かない**: OAuth / PAT / API / `/api/mcp` は Hero 禁止。MCP 自体はセクション 3 の任意枠だけ
+- **機能カタログを主物語にしない**: Chat / Tasks / Calendar / Files / Gallery / AI の 6 枚並べは廃止。Gallery は「残ることの証拠」として降格
+
+
+## 4. 降格して残すもの
+
+主物語のあと、小さめに残す。
+
+- ゲスト招待（リンク、メール不要）
+- スマホと PC、同じ場所
+- Apache-2.0 / GitHub
+- Gallery は機能一覧ではなく、「写真も会話の隣に残る」証拠
+- セルフホストは事実ベース / roadmap
+- 法人向けサポート（フッター近く）
+- 下部 FAQ（競合名はここ。Hero には出さない）
+
+
+## 5. 履歴（2026-07 の再構築）
+
+当時の二段構え（小さなチームが主役、山岳部は `?p=alpineclub`）と 6 機能カタログは、2026-08 の三人称順に置き換えた。CTA ラベル「無料で始める」、UTM、GitHub 実リンク、BYO AI 削除、偽 `docker compose up` 削除は維持している。
+
+当時の機能→PR 対応表は参考用:
+
+| 体験 | 根拠 PR |
 |---|---|
 | Chat: 返信・ブックマーク・下書き自動保存 | #225, #106, #76 |
 | Tasks: チャットの ☑ がタスクに同期 | #112 |
@@ -39,29 +89,21 @@
 | Files & Search: 最新版フラグ・全チャンネル横断検索 | #155, #89, #237 |
 | Gallery: プロジェクトごとのアルバム | 既存 + #92 |
 | AI: ファイル・Google Docs を読み出典つきで回答 | #59, #263 |
-| Everywhere: Web / iOS / Android / Desktop・閲覧状態に応じた Push / バッジ制御 | Expo, #115, #130 |
-| Guests & Roles: 招待リンク・ゲスト制限・ロール権限・リンク無効化 | #120, #140, #93, #102 |
+| Everywhere: Web / iOS / Android / Desktop | Expo, #115, #130 |
+| Guests & Roles: 招待リンク・ゲスト制限・ロール権限 | #120, #140, #93, #102 |
 
 
-## 4. 誠実化（Soul ゲート対応）
+## 6. CTA とパラメータ規約
 
-PR #282 の原則「実装と乖離した約束の禁止」に基づく修正:
-
-- **Bring Your Own AI を LP から削除**（実装は OpenAI のみ）。ただし **BYO AI は引き続きロードマップ目標**であり、[`09_product_strategy_notes.md`](./09_product_strategy_notes.md) §3 の展開課題 2（AI のプロバイダ非依存化）として維持する。実装され次第 LP に復帰させる
-- **Self-Hosted は事実ベースに軟化して存続**（FDE 戦略・カスタマイズ訴求として重要なため削除しない）: `docker compose up` の偽ターミナルを実際に動く `git clone` + `supabase start && pnpm dev` に差し替え、Docker / On-Premise は `roadmap` 表記に変更
-- フッターの Documentation / Release Notes / Issues は実在する GitHub リンクへ接続（旧: ページ内アンカーの空リンク）
-- GitHub リンク（`href="#"` だった箇所含む）を実リポジトリ URL に接続
-
-## 5. CTA とパラメータ規約（#282 の PDCA 下地）
-
-- 主要 CTA ラベルは「クラウド版を試す」→「**無料で始める / Start for free**」に変更（[`landing-page-routing-design.md`](./landing-page-routing-design.md) §3.4 の決定を上書き。Free プランの存在を訴求する方が非技術者に刺さるため）
-- `/auth/login` CTA に `data-cta` 属性と `?utm_source=lp&utm_content=<cta-id>` を付与: `nav` / `hero` / `final` / `footer-product`
-- フッターの Cairn アイコンと Community の `Cairn Cloud` は、要望受付ワークスペースの招待リンクへ接続する
-- 計測（PostHog 集約イベント）は**後回し**と決定。導入時はこの `data-cta` / UTM をそのままイベントプロパティに使う
+- 主要 CTA: 「**無料で始める / Start for free**」→ `/auth/login?utm_source=lp&utm_content=<cta-id>`
+- `data-cta`: `nav` / `hero` / `final` / `footer-product`（フッターアイコン・コミュニティは要望受付ワークスペース招待）
+- 計測（PostHog 集約イベント）は後回し。導入時はこの `data-cta` / UTM をイベントプロパティに使う
+- 認証ルーティングとアプリ本体の UI は LP 再構築の対象外（[`landing-page-routing-design.md`](./landing-page-routing-design.md)）
 
 
-## 6. 今後
+## 7. 今後
 
-- LP コピーの PDCA 運用（実験カード issue・`marketing.policy.yaml`）は PR #282 のスコープ
-- OGP 画像・canonical・robots・sitemap は整備済み。ペルソナ別 OGP が必要になった場合は、静的 HTML ではなくリクエストパラメータに応じて `<head>` を出し分ける構成を検討する
-- BYO AI・Docker セルフホストが実装されたら LP の該当記述を復帰・昇格させる
+- LP コピーの PDCA 運用（実験カード issue・`marketing.policy.yaml`）は PR #282 のスコープ。ペルソナ別 CVR 比較の受け皿として `?p=` は残っているが、**現行コピーはペルソナ切替を使わない**
+- BYO AI・Docker セルフホストが実装されたら、事実として昇格させてよい
+- AI PMO を production で出すまでは、受動 AI を LP の機能として書かない
+- OGP 画像・canonical・robots・sitemap は整備済み。title / description / FAQ の競合名は検索用であり、Hero のコピー実験とは分けて扱う
