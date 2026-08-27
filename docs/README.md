@@ -53,7 +53,7 @@
 | [`billing-minigame-design.md`](./billing-minigame-design.md) | 課金体験の石積みミニゲーム設計（貢献レイヤー・持ち越しキュー・2D物理。実装未着手、Phase 3） | 2026-07-20 |
 | [`keyboard-shortcuts.md`](./keyboard-shortcuts.md) | キーボードショートカット設計（3層モデル・全画面マッピング。第2.5段まで実装済み、Vim モードは未実装） | 2026-08-23 |
 | [`landing-page-routing-design.md`](./landing-page-routing-design.md) | ランディングページ導入とルーティング再構成（`/` を公開 LP 化、認証後は `/chats`。実装済み） | 2026-08-23 |
-| [`lp-content-redesign.md`](./lp-content-redesign.md) | LP コンテンツの利用者ファースト化（ペルソナ切替 `?p=`、誠実化、CTA/UTM 規約） | 2026-07-03 |
+| [`lp-content-redesign.md`](./lp-content-redesign.md) | LP コンテンツ（メンバー→まとめ役→アーリーアダプターの三人称順、誠実化、CTA/UTM 規約） | 2026-08-27 |
 | [`ui-consistency-checklist.md`](./ui-consistency-checklist.md) | UI 一貫性統一の進捗管理チェックリスト（方針本文は `frontend-guidelines.md`） | 2026-06 |
 | [`performance-improvement-plan.md`](./performance-improvement-plan.md) | フロントエンド体感速度の改善施策（認証往復・認可クエリ・API集約のボトルネック分析と実施計画。実装未着手） | 2026-07-12 |
 
