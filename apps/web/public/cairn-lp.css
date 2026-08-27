@@ -493,6 +493,26 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.03em; line-height: 
 .ent-svc span { font-size: 13px; color: var(--ink-3); }
 .ent-cta { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 
+/* ── FAQ (bottom; competitor names for findability, not the pitch) ── */
+.faq-list { max-width: 720px; margin: 28px auto 0; display: flex; flex-direction: column; gap: 10px; }
+.faq-item {
+  border: 1px solid var(--hair); border-radius: var(--radius); background: var(--card);
+  overflow: hidden;
+}
+.faq-item::before { content: ""; display: block; height: 1px; background: linear-gradient(90deg, transparent, color-mix(in srgb, #fff calc(var(--card-sheen)*100%), transparent), transparent); }
+.faq-item summary {
+  list-style: none; cursor: pointer; padding: 18px 22px;
+  font-size: 16px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.45;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after {
+  content: "+"; flex: none; font-family: var(--font-mono); font-weight: 500;
+  color: var(--ink-4); line-height: 1;
+}
+.faq-item[open] summary::after { content: "–"; }
+.faq-item .faq-a { margin: 0; padding: 0 22px 20px; font-size: 15px; color: var(--ink-2); line-height: 1.65; }
+
 /* ── final cta ─────────────────────────────────────────────────────── */
 .final { text-align: center; position: relative; overflow: hidden; }
 .final-glow { position: absolute; inset: auto 0 -30% 0; height: 460px; z-index: 0; pointer-events: none; opacity: var(--hero-glow);

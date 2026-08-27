@@ -13,12 +13,12 @@
 
 旧 LP の訴求軸は「100% Open Source / Self-Hosted / Bring Your Own AI / Extensible」と技術者向けに偏っており、導入を決める一般利用者に刺さらなかった。その後の再構築（2026-07）は「One Project. One Place」と 6 機能カタログ、`?p=team|alpineclub` のペルソナ切替を主物語にした。
 
-2026-08 の再構築は、そのカタログ物語をやめて **一枚のページを三人の読み順** にする。公開 LP は初回訪問者向けであり、実装していない能力・競合製品名・人数課金・ケルン課金 UX を出さない。
+2026-08 の再構築は、そのカタログ物語をやめて **一枚のページを三人の読み順** にする。公開 LP は初回訪問者向けであり、実装していない能力・人数課金・ケルン課金 UX を出さない。競合製品名は **Hero / セクション1–2 の本文には出さず**、検索で見つかる場所（title・meta・ページ下部 FAQ）にだけ置く。
 
 
 ## 2. 三人の読み順（現行の主物語）
 
-`?p=team|alpineclub` は **主物語にしない**。JS は古い URL 互換のため `data-persona` を残すが、コピーは切替に依存しない。現場の例はイラストとして出してよい（競合製品名は付けない）。
+`?p=team|alpineclub` は **主物語にしない**。JS は古い URL 互換のため `data-persona` を残すが、コピーは切替に依存しない。現場の例はイラストとして出してよい。競合製品名は Hero・セクション1–2・まとめ役本文には付けない。
 
 | 順 | 読み手 | セクション | 伝えること |
 |---|---|---|---|
@@ -56,7 +56,7 @@ GitHub リンクは維持する。Hero の二次 CTA も実リポジトリへ向
 - **AI PMO / 監視**: 「誰が遅いか」ダッシュボード、遅れの自動指摘を売りにしない（`FEATURE_FLAGS.aiPmo` は production で `false`。受動ナッジを LP の機能として出さない）
 - **人数課金**: per-seat / 席課金の暗示も禁止
 - **ケルン課金 UX**: 石積み・風化・Solo プラン名は初回訪問者向け LP に出さない。入口では「会話は無料、大きなファイルと能動 AI だけ有料」まで
-- **競合製品名**: Backlog / Chatwork / Slack / Notion / LINE 等を LP に書かない
+- **競合製品名を主物語にしない**: Backlog / Chatwork / Slack / Notion / LINE を Hero、H1、セクション1–2、まとめ役本文に置かない。検索で見つかるように `<title>` / `meta description` / `og:description` とページ下部 FAQ（`#faq`）に自然な日本語で置く。FAQ は「案件コメント + 仕事チャットが分かれている状態の置き場所」まで。機能比較表や `/vs/` ページは作らない
 - **非公開の顧客名**: パブリックリポジトリのため固有名詞を出さない
 - **MCP の実装詳細を Hero に置かない**: OAuth / PAT / API / `/api/mcp` は Hero 禁止。MCP 自体はセクション 3 の任意枠だけ
 - **機能カタログを主物語にしない**: Chat / Tasks / Calendar / Files / Gallery / AI の 6 枚並べは廃止。Gallery は「残ることの証拠」として降格
@@ -72,6 +72,7 @@ GitHub リンクは維持する。Hero の二次 CTA も実リポジトリへ向
 - Gallery は機能一覧ではなく、「写真も会話の隣に残る」証拠
 - セルフホストは事実ベース / roadmap
 - 法人向けサポート（フッター近く）
+- 下部 FAQ（競合名はここ。Hero には出さない）
 
 
 ## 5. 履歴（2026-07 の再構築）
@@ -105,4 +106,4 @@ GitHub リンクは維持する。Hero の二次 CTA も実リポジトリへ向
 - LP コピーの PDCA 運用（実験カード issue・`marketing.policy.yaml`）は PR #282 のスコープ。ペルソナ別 CVR 比較の受け皿として `?p=` は残っているが、**現行コピーはペルソナ切替を使わない**
 - BYO AI・Docker セルフホストが実装されたら、事実として昇格させてよい
 - AI PMO を production で出すまでは、受動 AI を LP の機能として書かない
-- OGP 画像・canonical・robots・sitemap は整備済み
+- OGP 画像・canonical・robots・sitemap は整備済み。title / description / FAQ の競合名は検索用であり、Hero のコピー実験とは分けて扱う
