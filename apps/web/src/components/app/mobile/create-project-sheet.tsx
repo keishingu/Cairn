@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { PlacePhoto } from '@/app/api/places/photos/route'
+import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { LocationInput } from '../location-input'
@@ -12,6 +13,7 @@ import { LocationInput } from '../location-input'
 async function createProject(body: {
   title: string
   description?: string | undefined
+  statusId?: string | undefined
   startDate?: string | undefined
   endDate?: string | undefined
   coverPhotoUrl?: string | undefined
@@ -27,6 +29,12 @@ async function createProject(body: {
   })
   if (!res.ok) throw new Error('プロジェクトの作成に失敗しました')
   return res.json() as Promise<ProjectDto>
+}
+
+async function fetchStatuses(): Promise<ProjectStatusDto[]> {
+  const res = await fetchWithAuth('/api/projects/statuses')
+  if (!res.ok) throw new Error('ステータスの取得に失敗しました')
+  return res.json() as Promise<ProjectStatusDto[]>
 }
 
 async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
@@ -64,7 +72,11 @@ interface CreateProjectSheetProps {
 
 export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', initialEndDate = '' }: CreateProjectSheetProps) {
   const queryClient = useQueryClient()
+  const statusesQuery = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
+  const statuses = statusesQuery.data ?? []
   const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members', 'active'], queryFn: fetchWorkspaceMembers })
+  const defaultStatusId = statuses[0]?.id
+  const waitingForStatuses = statusesQuery.isPending
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
@@ -110,11 +122,16 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
     } else {
       setEndDateError('')
     }
+    if (waitingForStatuses) {
+      setTitleError('ステータスの取得後に作成してください')
+      hasError = true
+    }
     if (hasError) return
 
     mutation.mutate({
       title: title.trim(),
       description: description.trim() || undefined,
+      statusId: defaultStatusId ?? undefined,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       location: location.trim() || undefined,
@@ -432,14 +449,14 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
           </button>
           <button
             onClick={handleSubmit}
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || waitingForStatuses}
             style={{
               flex: 2, height: 46, borderRadius: 12,
               border: 'none',
-              background: mutation.isPending ? 'var(--card-2)' : 'var(--accent)',
-              color: mutation.isPending ? 'var(--text-4)' : 'var(--on-accent)',
+              background: (mutation.isPending || waitingForStatuses) ? 'var(--card-2)' : 'var(--accent)',
+              color: (mutation.isPending || waitingForStatuses) ? 'var(--text-4)' : 'var(--on-accent)',
               fontSize: 15, fontWeight: 700,
-              cursor: mutation.isPending ? 'not-allowed' : 'pointer',
+              cursor: (mutation.isPending || waitingForStatuses) ? 'not-allowed' : 'pointer',
               fontFamily: 'inherit', transition: 'background 0.15s',
             }}
           >
