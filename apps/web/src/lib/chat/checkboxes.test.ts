@@ -67,4 +67,22 @@ describe('reconcileCheckboxes', () => {
     expect(result.added).toEqual([])
     expect(result.removed).toEqual([])
   })
+
+  it('追加・削除と同時の内容変更でも同じ位置のタスクを維持する', () => {
+    const added = reconcileCheckboxes(
+      parseCheckboxes('- [ ] before'),
+      parseCheckboxes('- [x] after\n- [ ] added'),
+    )
+    expect(added.matched.map(({ oldBox, newBox }) => [oldBox.text, newBox.text]))
+      .toEqual([['before', 'after']])
+    expect(added.added.map(box => box.text)).toEqual(['added'])
+
+    const removed = reconcileCheckboxes(
+      parseCheckboxes('- [ ] before\n- [ ] removed'),
+      parseCheckboxes('- [x] after'),
+    )
+    expect(removed.matched.map(({ oldBox, newBox }) => [oldBox.text, newBox.text]))
+      .toEqual([['before', 'after']])
+    expect(removed.removed.map(box => box.text)).toEqual(['removed'])
+  })
 })

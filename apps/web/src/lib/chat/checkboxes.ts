@@ -54,13 +54,15 @@ export function reconcileCheckboxes(oldBoxes: ParsedCheckbox[], newBoxes: Parsed
     if (oldBox) match(oldBox, newBox)
   }
 
-  // 追加・削除がない残りは内容編集とみなし、同じ位置を優先して1対1対応させる。
+  // 追加・削除と同時でも、同じ位置に残ったチェックボックスは内容編集として扱う。
+  for (const newBox of newBoxes) {
+    if (!unmatchedNew.has(newBox.index)) continue
+    const oldBox = oldBoxes.find(box => unmatchedOld.has(box.index) && box.index === newBox.index)
+    if (oldBox) match(oldBox, newBox)
+  }
+
+  // 残数が同じなら、位置も変わった内容編集を順番に1対1対応させる。
   if (unmatchedOld.size === unmatchedNew.size) {
-    for (const newBox of newBoxes) {
-      if (!unmatchedNew.has(newBox.index)) continue
-      const oldBox = oldBoxes.find(box => unmatchedOld.has(box.index) && box.index === newBox.index)
-      if (oldBox) match(oldBox, newBox)
-    }
     const remainingOld = oldBoxes.filter(box => unmatchedOld.has(box.index))
     const remainingNew = newBoxes.filter(box => unmatchedNew.has(box.index))
     remainingOld.forEach((oldBox, index) => match(oldBox, remainingNew[index]!))
