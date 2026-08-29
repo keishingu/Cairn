@@ -10,6 +10,7 @@ import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { DmChannelDto } from '@/app/api/workspaces/dms/route'
 import type { MessageDto, ReactionDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { ChannelMemberDto } from '@/app/api/channels/[channelId]/members/route'
 import type { BookmarkDto } from '@/app/api/me/bookmarks/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 
@@ -67,7 +68,7 @@ async function fetchDms(): Promise<DmChannelDto[]> {
   return res.json()
 }
 
-async function fetchChannelMembers(channelId: string): Promise<{ userId: string }[]> {
+async function fetchChannelMembers(channelId: string): Promise<ChannelMemberDto[]> {
   const res = await fetchWithAuth(`/api/channels/${channelId}/members`)
   if (!res.ok) throw new Error('チャンネルメンバーの取得に失敗しました')
   return res.json()

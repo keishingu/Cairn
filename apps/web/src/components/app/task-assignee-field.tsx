@@ -68,7 +68,13 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
 
   // プロジェクト内メンバーを先頭に、以降を名前順で並べる
   const candidates = React.useMemo<AssigneeCandidate[]>(() => {
-    const list = workspaceMembers.map(m => {
+    const availableMembers = channelId
+      ? [...new Map(
+          [...workspaceMembers, ...(channelMembersQuery.data ?? [])]
+            .map(member => [member.userId, member]),
+        ).values()]
+      : workspaceMembers
+    const list = availableMembers.map(m => {
       const inProject = projectMemberIds.has(m.userId)
       // チャンネルタスクはprivateなら参加者のみ、publicならmember以上または参加guestを許可する
       const assignable = channelId
@@ -86,7 +92,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
       if (a.inProject !== b.inProject) return a.inProject ? -1 : 1
       return a.displayName.localeCompare(b.displayName, 'ja')
     })
-  }, [workspaceMembers, projectMemberIds, projectId, channelId, channelIsPrivate, channelMemberIds])
+  }, [workspaceMembers, projectMemberIds, projectId, channelId, channelIsPrivate, channelMemberIds, channelMembersQuery.data])
 
   // 選択肢には担当者に設定できるメンバーのみを出す（不可なゲストは 422 になるため除外）
   const assignableCandidates = React.useMemo(
