@@ -6,6 +6,8 @@ import { createProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
+import { taskChannelVisibilityCondition } from '@/lib/tasks/visibility'
 
 export interface ProjectDto {
   id: string
@@ -44,9 +46,10 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers, tasks, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { projects, projectStatuses, projectMembers, tasks, channels, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, count, and, inArray } = await import('drizzle-orm')
     const { sql } = await import('drizzle-orm')
+    const channelSchemaReady = await hasTaskChannelSchema(db)
 
     // ゲストは参加中のプロジェクトのみ参照可能（getAuthContext が再照合した ctx.role で判定）
     const isGuest = ctx.role === 'guest'
@@ -123,7 +126,10 @@ export async function GET() {
           completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
         })
         .from(tasks)
-        .where(inArray(tasks.projectId, visibleProjectIds))
+        .leftJoin(channels, channelSchemaReady ? eq(tasks.channelId, channels.id) : sql`false`)
+        .where(channelSchemaReady
+          ? and(inArray(tasks.projectId, visibleProjectIds), taskChannelVisibilityCondition(ctx.userId))
+          : inArray(tasks.projectId, visibleProjectIds))
         .groupBy(tasks.projectId),
     ])
 

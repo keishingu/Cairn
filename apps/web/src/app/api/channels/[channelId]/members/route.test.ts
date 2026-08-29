@@ -57,7 +57,14 @@ vi.mock('@cairn/db', () => ({
     updatedAt: 'channelReadStates.updatedAt',
   },
   workspaceMembers: { userId: 'workspaceMembers.userId', workspaceId: 'workspaceMembers.workspaceId' },
-  activeWorkspaceMembers: { userId: 'activeWorkspaceMembers.userId', workspaceId: 'activeWorkspaceMembers.workspaceId' },
+  activeWorkspaceMembers: {
+    userId: 'activeWorkspaceMembers.userId',
+    workspaceId: 'activeWorkspaceMembers.workspaceId',
+    displayName: 'activeWorkspaceMembers.displayName',
+    avatarUrl: 'activeWorkspaceMembers.avatarUrl',
+    role: 'activeWorkspaceMembers.role',
+  },
+  profiles: { id: 'profiles.id', displayName: 'profiles.displayName' },
   channels: { id: 'channels.id', parentChannelId: 'channels.parentChannelId' },
 }))
 

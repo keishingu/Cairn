@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { parseCheckboxes, replaceCheckboxLabelAt, toggleCheckboxAt } from './checkboxes'
+import { parseCheckboxes, reconcileCheckboxes, replaceCheckboxLabelAt, toggleCheckboxAt } from './checkboxes'
 
 describe('replaceCheckboxLabelAt', () => {
   it('指定インデックスの文言だけを差し替え、チェック状態は保持する', () => {
@@ -26,5 +26,63 @@ describe('replaceCheckboxLabelAt', () => {
     const replaced = replaceCheckboxLabelAt(content, 1, 'B')
     expect(parseCheckboxes(replaced)[1]!.text).toBe('B')
     expect(toggleCheckboxAt(replaced, 1, true)).toBe('- [ ] a\n- [x] B')
+  })
+})
+
+describe('reconcileCheckboxes', () => {
+  it('先頭への挿入と並べ替えでも既存チェックボックスを内容で対応させる', () => {
+    const oldBoxes = parseCheckboxes('- [ ] A\n- [x] B')
+    const inserted = reconcileCheckboxes(oldBoxes, parseCheckboxes('- [ ] X\n- [ ] A\n- [x] B'))
+
+    expect(inserted.matched.map(({ oldBox, newBox }) => [oldBox.index, newBox.index])).toEqual([
+      [0, 1],
+      [1, 2],
+    ])
+    expect(inserted.added.map(box => box.text)).toEqual(['X'])
+
+    const insertedAndToggled = reconcileCheckboxes(
+      oldBoxes,
+      parseCheckboxes('- [ ] X\n- [x] A\n- [x] B'),
+    )
+    expect(insertedAndToggled.matched.map(({ oldBox, newBox }) => [oldBox.index, newBox.index])).toEqual([
+      [1, 2],
+      [0, 1],
+    ])
+    expect(insertedAndToggled.added.map(box => box.text)).toEqual(['X'])
+
+    const reordered = reconcileCheckboxes(oldBoxes, parseCheckboxes('- [x] B\n- [ ] A'))
+    expect(reordered.matched.map(({ oldBox, newBox }) => [oldBox.index, newBox.index])).toEqual([
+      [1, 0],
+      [0, 1],
+    ])
+  })
+
+  it('内容変更は残った同じ位置のタスクへ対応させる', () => {
+    const result = reconcileCheckboxes(
+      parseCheckboxes('- [ ] before'),
+      parseCheckboxes('- [x] after'),
+    )
+
+    expect(result.matched).toHaveLength(1)
+    expect(result.added).toEqual([])
+    expect(result.removed).toEqual([])
+  })
+
+  it('追加・削除と同時の内容変更でも同じ位置のタスクを維持する', () => {
+    const added = reconcileCheckboxes(
+      parseCheckboxes('- [ ] before'),
+      parseCheckboxes('- [x] after\n- [ ] added'),
+    )
+    expect(added.matched.map(({ oldBox, newBox }) => [oldBox.text, newBox.text]))
+      .toEqual([['before', 'after']])
+    expect(added.added.map(box => box.text)).toEqual(['added'])
+
+    const removed = reconcileCheckboxes(
+      parseCheckboxes('- [ ] before\n- [ ] removed'),
+      parseCheckboxes('- [x] after'),
+    )
+    expect(removed.matched.map(({ oldBox, newBox }) => [oldBox.text, newBox.text]))
+      .toEqual([['before', 'after']])
+    expect(removed.removed.map(box => box.text)).toEqual(['removed'])
   })
 })

@@ -12,7 +12,7 @@ export async function notifyTaskAssigned(params: {
   taskId: string
   taskTitle: string
   projectId: string | null
-  projectTitle: string
+  scopeTitle: string
 }): Promise<void> {
   if (params.assigneeId === params.assignerId) return
 
@@ -35,7 +35,8 @@ export async function notifyTaskAssigned(params: {
         taskTitle: params.taskTitle,
         assigneeId: params.assigneeId,
         projectId: params.projectId ?? '',
-        projectTitle: params.projectTitle,
+        // 既存・処理待ちイベントとの互換性のためイベント字段名は維持する。
+        projectTitle: params.scopeTitle,
         workspaceId: params.workspaceId,
         assignerName: assigner?.displayName ?? '不明',
       },
@@ -49,6 +50,7 @@ export async function notifyTaskAssigned(params: {
 // 割り当てられた本人がそのタスクを閲覧・操作できることを担保するため、閲覧範囲と揃える。
 // - active な member 以上: 常に可
 // - active な guest: プロジェクトタスクなら当該プロジェクトのメンバーの場合のみ可
+//   チャンネルタスクなら当該チャンネルのメンバーの場合のみ可
 //   （guest の閲覧は参加プロジェクトに限定され、参加外は requireProjectAccess で編集も弾かれるため）。
 //   プロジェクト未所属タスクは guest には見えないため不可
 // - 非active・非メンバー: 不可
@@ -56,10 +58,17 @@ export async function isAssignableTaskMember(
   workspaceId: string,
   userId: string,
   projectId: string | null,
+  channelId: string | null = null,
 ): Promise<boolean> {
   const { getWorkspaceRole, isWorkspaceMember } = await import('@/lib/access/membership')
   const role = await getWorkspaceRole(workspaceId, userId)
   if (!role) return false
+
+  if (channelId) {
+    const { canAccessChannel } = await import('@/lib/permissions')
+    return canAccessChannel(workspaceId, userId, channelId, role)
+  }
+
   if (isWorkspaceMember(role)) return true
 
   // ここに来るのは active な guest のみ。未所属タスクは不可、プロジェクトタスクは参加メンバーのみ。

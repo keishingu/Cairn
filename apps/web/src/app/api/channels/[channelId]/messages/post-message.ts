@@ -10,6 +10,7 @@ import { canAccessFile, type WorkspaceRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { hasBlockBetween } from '@/lib/safety/blocks'
 import { unsafeMessageError } from '@/lib/safety/message-filter'
+import { hasTaskChannelSchema, insertLegacyTasks } from '@/lib/tasks/schema-readiness'
 import type { MessageDto } from './dto'
 
 type PostMessageInput = {
@@ -165,12 +166,13 @@ export async function postMessage({
       }
     }
 
-    // プロジェクトチャンネルの場合、- [ ] チェックボックスをタスクに自動変換するため先にプロジェクトを解決しておく
+    // DM 以外のチャンネルでは、- [ ] チェックボックスをタスクに自動変換する。
     const checkboxes = parseCheckboxes(content)
+    const channelSchemaReady = checkboxes.length > 0 && await hasTaskChannelSchema(db)
     const [channel] =
       checkboxes.length > 0
         ? await db
-            .select({ projectId: channels.projectId })
+            .select({ id: channels.id, projectId: channels.projectId, type: channels.type })
             .from(channels)
             .where(eq(channels.id, channelId))
             .limit(1)
@@ -218,20 +220,23 @@ export async function postMessage({
 
       // メッセージ本文のチェックボックスとタスクの作成を同一トランザクションにし、
       // タスク作成が失敗した場合にメッセージだけが残る不整合を防ぐ
-      if (channel?.projectId) {
-        const projectId = channel.projectId
-        await tx.insert(tasks).values(
-          checkboxes.map((checkbox) => ({
+      // migration待機中はchannel_idを省略し、source_message_id経由でmigrationにbackfillさせる。
+      if (channel && channel.type !== 'dm') {
+        const taskValues = checkboxes.map((checkbox) => ({
             workspaceId,
-            projectId,
+            projectId: channel.projectId,
             title: checkbox.text,
             status: (checkbox.checked ? 'done' : 'todo') as 'done' | 'todo',
             priority: 'medium' as const,
             createdBy: userId,
             sourceMessageId: message.id,
             sourceCheckboxIndex: checkbox.index,
-          })),
-        )
+          }))
+        if (channelSchemaReady) {
+          await tx.insert(tasks).values(taskValues.map(value => ({ ...value, channelId: channel.id })))
+        } else {
+          await insertLegacyTasks(tx, taskValues)
+        }
       }
 
       return message

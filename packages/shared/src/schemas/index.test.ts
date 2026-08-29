@@ -102,6 +102,23 @@ describe('createTaskSchema', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it('通常チャンネルを指定できる', () => {
+    const result = createTaskSchema.safeParse({
+      channelId: '00000000-0000-0000-0000-000000000002',
+      title: '最後にバックアップを取る',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('プロジェクトと通常チャンネルの同時指定は拒否する', () => {
+    const result = createTaskSchema.safeParse({
+      projectId: '00000000-0000-0000-0000-000000000001',
+      channelId: '00000000-0000-0000-0000-000000000002',
+      title: '曖昧な所属',
+    })
+    expect(result.success).toBe(false)
+  })
 })
 
 describe('createMilestoneSchema', () => {

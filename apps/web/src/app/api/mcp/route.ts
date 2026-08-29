@@ -140,11 +140,15 @@ const mcpHandler = createMcpHandler(
         inputSchema: z.object({
           title: z.string().min(1).max(200),
           projectId: z.uuid().optional(),
+          channelId: z.uuid().optional(),
           description: z.string().max(2000).optional(),
           priority: z.enum(['high', 'medium', 'low']).default('medium'),
           assigneeId: z.uuid().optional(),
           dueDate: z.iso.date().optional(),
-        }),
+        }).refine(
+          input => !(input.projectId && input.channelId),
+          { message: 'projectId and channelId cannot both be specified' },
+        ),
         annotations: { readOnlyHint: false, destructiveHint: false },
       },
       async (input) =>

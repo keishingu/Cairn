@@ -1,11 +1,11 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { date, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { date, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import { taskPriorityEnum, taskStatusEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
-import { messages } from './channels'
+import { channels, messages } from './channels'
 
 export const tasks = pgTable('tasks', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -14,6 +14,7 @@ export const tasks = pgTable('tasks', {
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   // プロジェクト未所属のタスクを許可するため任意（NULL 可）。ワークスペースへの所属は workspace_id で担保する
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  channelId: uuid('channel_id').references(() => channels.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   description: text('description'),
   status: taskStatusEnum('status').notNull().default('todo'),
@@ -27,4 +28,4 @@ export const tasks = pgTable('tasks', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   sourceMessageId: uuid('source_message_id').references(() => messages.id, { onDelete: 'set null' }),
   sourceCheckboxIndex: integer('source_checkbox_index'),
-})
+}, (t) => [index('idx_tasks_channel').on(t.channelId)])

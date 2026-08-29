@@ -3,12 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { generateId } from '@/lib/generate-id'
+import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import type { AttachmentDto } from '@cairn/shared'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { DmChannelDto } from '@/app/api/workspaces/dms/route'
 import type { MessageDto, ReactionDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { ChannelMemberDto } from '@/app/api/channels/[channelId]/members/route'
 import type { BookmarkDto } from '@/app/api/me/bookmarks/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 
@@ -66,7 +68,7 @@ async function fetchDms(): Promise<DmChannelDto[]> {
   return res.json()
 }
 
-async function fetchChannelMembers(channelId: string): Promise<{ userId: string }[]> {
+async function fetchChannelMembers(channelId: string): Promise<ChannelMemberDto[]> {
   const res = await fetchWithAuth(`/api/channels/${channelId}/members`)
   if (!res.ok) throw new Error('チャンネルメンバーの取得に失敗しました')
   return res.json()
@@ -474,6 +476,9 @@ export function useSendChannelMessage(
       if ((input.optimisticAttachments?.length ?? 0) > 0) {
         void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
       }
+      if (parseCheckboxes(input.content).length > 0) {
+        void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      }
     },
   })
 }
@@ -515,6 +520,7 @@ export function useEditMessage(channelId: string | null) {
         chatQueryKeys.messages(channelId),
         (old) => (old ?? []).map((m) => m.id === updated.id ? { ...m, content: updated.content, isEdited: true } : m),
       )
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
     onError: (_err, _vars, context) => {
       if (context?.prev !== undefined) {
@@ -542,6 +548,9 @@ export function useDeleteMessage(channelId: string | null) {
       if (context?.prev !== undefined) {
         queryClient.setQueryData(chatQueryKeys.messages(channelId), context.prev)
       }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
 }

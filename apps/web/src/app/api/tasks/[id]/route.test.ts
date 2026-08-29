@@ -15,9 +15,11 @@ const {
   mockDbUpdateReturning,
   mockDbUpdateSet,
   mockRequireProjectAccess,
+  mockRequireChannelAccess,
   mockRequireRole,
   mockIsAssignableTaskMember,
   mockNotifyTaskAssigned,
+  mockHasTaskChannelSchema,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockDbSelectLimit: vi.fn(),
@@ -25,9 +27,11 @@ const {
   mockDbUpdateReturning: vi.fn(),
   mockDbUpdateSet: vi.fn(),
   mockRequireProjectAccess: vi.fn(),
+  mockRequireChannelAccess: vi.fn(),
   mockRequireRole: vi.fn(),
   mockIsAssignableTaskMember: vi.fn(),
   mockNotifyTaskAssigned: vi.fn(),
+  mockHasTaskChannelSchema: vi.fn(async () => true),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -37,12 +41,14 @@ vi.mock('@/lib/chat/checkboxes', () => ({
 }))
 vi.mock('@/lib/permissions', () => ({
   requireProjectAccess: mockRequireProjectAccess,
+  requireChannelAccess: mockRequireChannelAccess,
   requireRole: mockRequireRole,
 }))
 vi.mock('@/lib/tasks/assignment-notification', () => ({
   isAssignableTaskMember: mockIsAssignableTaskMember,
   notifyTaskAssigned: mockNotifyTaskAssigned,
 }))
+vi.mock('@/lib/tasks/schema-readiness', () => ({ hasTaskChannelSchema: mockHasTaskChannelSchema }))
 vi.mock('@cairn/shared', async () => {
   const actual = await vi.importActual<typeof import('@cairn/shared')>('@cairn/shared')
   return actual
@@ -50,6 +56,7 @@ vi.mock('@cairn/shared', async () => {
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   and: vi.fn(() => 'and'),
+  sql: vi.fn(() => 'sql'),
 }))
 vi.mock('@cairn/db', () => {
   mockDbUpdateSet.mockImplementation(() => ({
@@ -84,6 +91,7 @@ vi.mock('@cairn/db', () => {
       id: 'tasks.id',
       workspaceId: 'tasks.workspaceId',
       projectId: 'tasks.projectId',
+      channelId: 'tasks.channelId',
       title: 'tasks.title',
       priority: 'tasks.priority',
       dueDate: 'tasks.dueDate',
@@ -94,7 +102,7 @@ vi.mock('@cairn/db', () => {
     },
     projects: { id: 'projects.id', title: 'projects.title', workspaceId: 'projects.workspaceId' },
     messages: { id: 'messages.id', content: 'messages.content', channelId: 'messages.channelId', senderId: 'messages.senderId' },
-    channels: { id: 'channels.id', workspaceId: 'channels.workspaceId', isPrivate: 'channels.isPrivate' },
+    channels: { id: 'channels.id', name: 'channels.name', workspaceId: 'channels.workspaceId', isPrivate: 'channels.isPrivate' },
     channelMembers: { channelId: 'channelMembers.channelId', userId: 'channelMembers.userId' },
     aiNudges: {
       workspaceId: 'aiNudges.workspaceId',
@@ -111,6 +119,7 @@ describe('DELETE /api/tasks/[id]', () => {
       error: null,
     })
     mockRequireProjectAccess.mockResolvedValue(null)
+    mockRequireChannelAccess.mockResolvedValue(null)
     mockRequireRole.mockReturnValue(null)
   })
 
@@ -172,11 +181,117 @@ describe('PATCH /api/tasks/[id]', () => {
       error: null,
     })
     mockRequireProjectAccess.mockResolvedValue(null)
+    mockRequireChannelAccess.mockResolvedValue(null)
     mockRequireRole.mockReturnValue(null)
     mockIsAssignableTaskMember.mockResolvedValue(true)
   })
 
   afterEach(() => vi.clearAllMocks())
+
+  it('migration待機中の通常チャンネルタスクは更新せず503を返す', async () => {
+    mockHasTaskChannelSchema.mockResolvedValueOnce(false)
+    mockDbSelectLimit.mockResolvedValueOnce([{
+      id: TASK_ID,
+      projectId: null,
+      channelId: null,
+      projectTitle: null,
+      channelName: null,
+      title: '保留中タスク',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId: null,
+      sourceMessageId: 'message-1',
+      sourceCheckboxIndex: 0,
+    }])
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: '更新しない' }),
+      headers: { 'content-type': 'application/json' },
+    }), { params: Promise.resolve({ id: TASK_ID }) })
+
+    expect(res.status).toBe(503)
+    expect(mockDbUpdateReturning).not.toHaveBeenCalled()
+  })
+
+  it('非公開チャンネルへアクセスできない利用者の更新は403で拒否する', async () => {
+    mockDbSelectLimit.mockResolvedValueOnce([{
+      id: TASK_ID,
+      projectId: null,
+      channelId: 'private-channel',
+      projectTitle: null,
+      title: '非公開タスク',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId: null,
+      sourceMessageId: null,
+      sourceCheckboxIndex: null,
+    }])
+    mockRequireChannelAccess.mockResolvedValue(
+      NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 }),
+    )
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: '見えてはいけない更新' }),
+      headers: { 'content-type': 'application/json' },
+    }), { params: Promise.resolve({ id: TASK_ID }) })
+
+    expect(res.status).toBe(403)
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(
+      DEV_WORKSPACE_ID,
+      DEV_USER_ID,
+      'private-channel',
+      'member',
+    )
+    expect(mockDbUpdateReturning).not.toHaveBeenCalled()
+  })
+
+  it('チャンネルタスクの担当者通知にはチャンネル名を含める', async () => {
+    const assigneeId = '00000000-0000-0000-0000-0000000000aa'
+    mockDbSelectLimit.mockResolvedValueOnce([{
+      id: TASK_ID,
+      projectId: null,
+      channelId: 'channel-1',
+      projectTitle: null,
+      channelName: '折り紙',
+      title: 'バックアップを取る',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId: null,
+      sourceMessageId: null,
+      sourceCheckboxIndex: null,
+    }])
+    mockDbUpdateReturning.mockResolvedValue([{
+      id: TASK_ID,
+      title: 'バックアップを取る',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId,
+      sourceMessageId: null,
+      sourceCheckboxIndex: null,
+    }])
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ assigneeId }),
+      headers: { 'content-type': 'application/json' },
+    }), { params: Promise.resolve({ id: TASK_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockNotifyTaskAssigned).toHaveBeenCalledWith(expect.objectContaining({
+      assigneeId,
+      projectId: null,
+      scopeTitle: '折り紙',
+    }))
+  })
 
   it('参加外プロジェクトの手動タスク更新は 403 で拒否する', async () => {
     mockDbSelectLimit.mockResolvedValue([{
