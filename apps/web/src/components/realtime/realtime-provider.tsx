@@ -156,7 +156,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           setStatus('connected')
           // (再)接続直後に一括 invalidate して切断中の取りこぼしを回収する
           void queryClient.invalidateQueries({ queryKey: ['messages'] })
-          void queryClient.invalidateQueries({ queryKey: ['tasks'] })
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
           invalidateChannelLists(queryClient)
@@ -227,8 +226,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             scheduleListInvalidate()
           } else if (table === 'message_reactions') {
             void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
-          } else if (table === 'tasks') {
-            void queryClient.invalidateQueries({ queryKey: ['tasks'] })
           }
         })
       ch.subscribe((subStatus, err) => {

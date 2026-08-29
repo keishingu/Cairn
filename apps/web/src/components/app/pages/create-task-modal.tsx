@@ -12,9 +12,12 @@ import { useWorkspacePermissions } from '@/hooks/use-current-user'
 
 interface CreateTaskModalProps {
   onClose: () => void
+  channel?: CreateTaskChannel
 }
 
-export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
+export type CreateTaskChannel = { id: string; name: string; isPrivate: boolean }
+
+export const CreateTaskModal = ({ onClose, channel }: CreateTaskModalProps) => {
   const queryClient = useQueryClient()
   const [title, setTitle] = React.useState('')
   const [projectId, setProjectId] = React.useState('')
@@ -28,10 +31,11 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
   const { data: projects = [] } = useQuery<ProjectDto[]>({
     queryKey: ['projects'],
     queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
+    enabled: !channel,
   })
 
   const mutation = useMutation({
-    mutationFn: async (data: { title: string; projectId?: string; priority: string; dueDate?: string; assigneeId?: string }) => {
+    mutationFn: async (data: { title: string; projectId?: string; channelId?: string; priority: string; dueDate?: string; assigneeId?: string }) => {
       const res = await fetchWithAuth('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -42,6 +46,9 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
     },
     onSuccess: (newTask) => {
       queryClient.setQueryData<TaskDto[]>(['tasks'], old => old ? [newTask, ...old] : [newTask])
+      if (channel) {
+        queryClient.setQueryData<TaskDto[]>(['tasks', 'channel', channel.id], old => old ? [newTask, ...old] : [newTask])
+      }
       onClose()
     },
   })
@@ -51,7 +58,7 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
     if (!title.trim()) return
     mutation.mutate({
       title: title.trim(),
-      ...(projectId ? { projectId } : {}),
+      ...(channel ? { channelId: channel.id } : projectId ? { projectId } : {}),
       priority,
       ...(dueDate ? { dueDate } : {}),
       ...(assigneeId ? { assigneeId } : {}),
@@ -63,12 +70,13 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
   return (
     <TaskDialog
       title="タスクを追加"
+      {...(channel ? { subtitle: channel.name } : {})}
       onClose={onClose}
       onSubmit={handleSubmit}
       submitLabel="追加"
       submittingLabel="追加中..."
       isSubmitting={mutation.isPending}
-      submitDisabled={!title.trim() || (isGuest && !projectId)}
+      submitDisabled={!title.trim() || (!channel && isGuest && !projectId)}
       disableClose={mutation.isPending}
       {...(errorMessage ? { errorMessage } : {})}
     >
@@ -81,9 +89,11 @@ export const CreateTaskModal = ({ onClose }: CreateTaskModalProps) => {
         onDueDateChange={setDueDate}
         assigneeId={assigneeId}
         onAssigneeChange={setAssigneeId}
-        assigneeProjectId={projectId || null}
+        assigneeProjectId={channel ? null : projectId || null}
+        assigneeChannelId={channel?.id ?? null}
+        assigneeChannelIsPrivate={channel?.isPrivate ?? false}
         titlePlaceholder="タスク名を入力..."
-        afterTitle={(
+        afterTitle={channel ? null : (
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
               プロジェクト{' '}

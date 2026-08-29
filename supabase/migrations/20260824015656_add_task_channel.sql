@@ -69,28 +69,3 @@ AS $$
       )
   );
 $$;
---> statement-breakpoint
-CREATE OR REPLACE FUNCTION public.broadcast_tasks_changes()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_channel_id uuid := coalesce(NEW.channel_id, OLD.channel_id);
-BEGIN
-  IF v_channel_id IS NULL THEN
-    RETURN NULL;
-  END IF;
-
-  PERFORM realtime.broadcast_changes(
-    'channel:' || v_channel_id::text,
-    TG_OP, TG_OP, TG_TABLE_NAME, TG_TABLE_SCHEMA, NEW, OLD
-  );
-  RETURN NULL;
-END;
-$$;
---> statement-breakpoint
-CREATE TRIGGER broadcast_tasks_changes
-AFTER INSERT OR UPDATE OR DELETE ON public.tasks
-FOR EACH ROW EXECUTE FUNCTION public.broadcast_tasks_changes();

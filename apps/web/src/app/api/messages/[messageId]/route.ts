@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { editMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
-import { canExtractTasksFromChannel, parseCheckboxes, reconcileCheckboxes } from '@/lib/chat/checkboxes'
+import { parseCheckboxes, reconcileCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
 import { hasTaskChannelSchema, insertLegacyTasks } from '@/lib/tasks/schema-readiness'
 
@@ -65,7 +65,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     // チェックボックスの変化に応じてタスクを同期
     const oldBoxes = parseCheckboxes(target.content)
     const newBoxes = parseCheckboxes(content)
-    const extractsTasks = canExtractTasksFromChannel(target.channelType)
+    const extractsTasks = target.channelType !== 'dm'
     const reconciliation = reconcileCheckboxes(oldBoxes, newBoxes)
 
     const updated = await db.transaction(async (tx) => {

@@ -8,11 +8,10 @@ import { FileTypeIcon, GoogleDocsIcon } from '../file-type-icon'
 import { InlineFileNameEditor } from '../inline-file-name-editor'
 import { RowActionMenu } from '../row-action-menu'
 import { TaskEditDialog } from '../task-edit-dialog'
-import { TaskDialog } from '../task-dialog'
-import { TaskFormFields } from '../task-form-fields'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import { MarkdownContent } from '../markdown-content'
-import { useCreateTaskByScope, useTasksByScope } from '@/hooks/use-project-tasks'
+import { CreateTaskModal, type CreateTaskChannel } from './create-task-modal'
+import { useTasksByScope } from '@/hooks/use-project-tasks'
 import { useChannelFiles } from '@/hooks/use-channel-files'
 import { useRenameFile } from '@/hooks/use-rename-file'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -176,58 +175,10 @@ const ExpandableDescription = ({ text }: { text: string }) => {
   )
 }
 
-type ChannelTaskScope = { id: string; name: string; isPrivate: boolean }
-
-const ChannelTaskCreateDialog = ({ channel, onClose }: { channel: ChannelTaskScope; onClose: () => void }) => {
-  const [title, setTitle] = React.useState('')
-  const [priority, setPriority] = React.useState<TaskDto['priority']>('medium')
-  const [dueDate, setDueDate] = React.useState('')
-  const [assigneeId, setAssigneeId] = React.useState<string | null>(null)
-  const mutation = useCreateTaskByScope({ channelId: channel.id }, onClose)
-
-  return (
-    <TaskDialog
-      title="タスクを追加"
-      subtitle={channel.name}
-      onClose={onClose}
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (!title.trim()) return
-        mutation.mutate({
-          title: title.trim(),
-          priority,
-          ...(dueDate ? { dueDate } : {}),
-          ...(assigneeId ? { assigneeId } : {}),
-        })
-      }}
-      submitLabel="追加"
-      submittingLabel="追加中..."
-      isSubmitting={mutation.isPending}
-      submitDisabled={!title.trim()}
-      disableClose={mutation.isPending}
-      {...(mutation.isError ? { errorMessage: 'タスクの作成に失敗しました。もう一度お試しください。' } : {})}
-    >
-      <TaskFormFields
-        title={title}
-        onTitleChange={setTitle}
-        priority={priority}
-        onPriorityChange={setPriority}
-        dueDate={dueDate}
-        onDueDateChange={setDueDate}
-        assigneeId={assigneeId}
-        onAssigneeChange={setAssigneeId}
-        assigneeChannelId={channel.id}
-        assigneeChannelIsPrivate={channel.isPrivate}
-        titlePlaceholder="タスク名を入力..."
-      />
-    </TaskDialog>
-  )
-}
-
 // チェックボックス付きのタスク箇条書き。チェックは PATCH で連動し、進捗にも反映される
 const TaskChecklist = ({ project, channel, onJumpToMessage }: {
   project: ProjectDto | null
-  channel: ChannelTaskScope | null
+  channel: CreateTaskChannel | null
   onJumpToMessage: (messageId: string) => void
 }) => {
   const scope = project ? { projectId: project.id } : { channelId: channel!.id }
@@ -360,7 +311,7 @@ const TaskChecklist = ({ project, channel, onJumpToMessage }: {
         </div>
       )}
       <TaskEditDialog open={editingTask !== null} task={editingTask} initialMode={dialogMode} onClose={() => setEditingTask(null)} />
-      {showCreateDialog && channel && <ChannelTaskCreateDialog channel={channel} onClose={() => setShowCreateDialog(false)}/>}
+      {showCreateDialog && channel && <CreateTaskModal channel={channel} onClose={() => setShowCreateDialog(false)}/>}
     </div>
   )
 }

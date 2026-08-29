@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import type { MessageCreatedEvent } from '@/lib/inngest/events'
 import { inngest } from '@/lib/inngest/client'
-import { canExtractTasksFromChannel, parseCheckboxes } from '@/lib/chat/checkboxes'
+import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
 import { canAccessFile, type WorkspaceRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
@@ -221,7 +221,7 @@ export async function postMessage({
       // メッセージ本文のチェックボックスとタスクの作成を同一トランザクションにし、
       // タスク作成が失敗した場合にメッセージだけが残る不整合を防ぐ
       // migration待機中はchannel_idを省略し、source_message_id経由でmigrationにbackfillさせる。
-      if (channel && canExtractTasksFromChannel(channel.type)) {
+      if (channel && channel.type !== 'dm') {
         const taskValues = checkboxes.map((checkbox) => ({
             workspaceId,
             projectId: channel.projectId,

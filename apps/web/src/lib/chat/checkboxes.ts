@@ -9,10 +9,6 @@ export interface ParsedCheckbox {
   checked: boolean
 }
 
-export function canExtractTasksFromChannel(channelType: 'workspace' | 'project' | 'dm'): boolean {
-  return channelType !== 'dm'
-}
-
 export function parseCheckboxes(content: string): ParsedCheckbox[] {
   const result: ParsedCheckbox[] = []
   let index = 0
