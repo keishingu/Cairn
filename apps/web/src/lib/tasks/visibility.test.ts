@@ -10,6 +10,7 @@ describe('taskChannelVisibilityCondition', () => {
     const query = new PgDialect().sqlToQuery(taskChannelVisibilityCondition('user-1'))
 
     expect(query.sql).toContain('"tasks"."channel_id" is null')
+    expect(query.sql).toContain('"channels"."id" = "tasks"."channel_id"')
     expect(query.sql).toContain('"channels"."is_private" = false')
     expect(query.sql).toContain('"channel_members"."channel_id" = "tasks"."channel_id"')
     expect(query.sql).toContain('"channel_members"."user_id" = $1')

@@ -18,8 +18,11 @@ export function taskChannelVisibilityCondition(userId: string) {
   const isChannelMember = taskChannelMembershipCondition(userId)
   return sql<boolean>`(
     ${tasks.channelId} is null
-    or ${channels.isPrivate} = false
-    or ${isChannelMember}
+    or exists (
+      select 1 from ${channels}
+      where ${channels.id} = ${tasks.channelId}
+        and (${channels.isPrivate} = false or ${isChannelMember})
+    )
   )`
 }
 

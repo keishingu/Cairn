@@ -7,10 +7,18 @@ const WORKSPACE_ID = '10000000-0000-4000-8000-000000000001'
 const USER_ID = '20000000-0000-4000-8000-000000000001'
 const PROJECT_ID = '30000000-0000-4000-8000-000000000001'
 
-const { mockGetWorkspaceRole, mockGetGuestVisibleProjectIds, mockDbSelect } = vi.hoisted(() => ({
+const {
+  mockGetWorkspaceRole,
+  mockGetGuestVisibleProjectIds,
+  mockDbSelect,
+  mockHasTaskChannelSchema,
+  mockTaskChannelVisibilityCondition,
+} = vi.hoisted(() => ({
   mockGetWorkspaceRole: vi.fn(),
   mockGetGuestVisibleProjectIds: vi.fn(),
   mockDbSelect: vi.fn(),
+  mockHasTaskChannelSchema: vi.fn(),
+  mockTaskChannelVisibilityCondition: vi.fn(() => 'taskVisibility'),
 }))
 
 vi.mock('@/lib/access/membership', () => ({ getWorkspaceRole: mockGetWorkspaceRole }))
@@ -18,6 +26,8 @@ vi.mock('@/lib/permissions', () => ({
   getGuestVisibleProjectIds: mockGetGuestVisibleProjectIds,
 }))
 vi.mock('@/lib/ai/search-chunks', () => ({ searchChunks: vi.fn() }))
+vi.mock('@/lib/tasks/schema-readiness', () => ({ hasTaskChannelSchema: mockHasTaskChannelSchema }))
+vi.mock('@/lib/tasks/visibility', () => ({ taskChannelVisibilityCondition: mockTaskChannelVisibilityCondition }))
 vi.mock('@cairn/db', () => ({
   db: { select: mockDbSelect },
   projects: {
@@ -27,6 +37,15 @@ vi.mock('@cairn/db', () => ({
     endDate: 'projects.endDate',
     archived: 'projects.archived',
     updatedAt: 'projects.updatedAt',
+  },
+  profiles: {
+    id: 'profiles.id',
+    displayName: 'profiles.displayName',
+  },
+  workspaceMembers: {
+    userId: 'workspaceMembers.userId',
+    workspaceId: 'workspaceMembers.workspaceId',
+    displayName: 'workspaceMembers.displayName',
   },
   tasks: {
     id: 'tasks.id',
@@ -72,6 +91,7 @@ describe('AI横断調査の認可', () => {
   beforeEach(() => {
     mockGetWorkspaceRole.mockResolvedValue('member')
     mockGetGuestVisibleProjectIds.mockResolvedValue([])
+    mockHasTaskChannelSchema.mockResolvedValue(true)
   })
 
   afterEach(() => vi.clearAllMocks())
@@ -100,6 +120,17 @@ describe('AI横断調査の認可', () => {
       listResearchProjectTasks(ctx(), { projectId: PROJECT_ID }),
     ).rejects.toBeInstanceOf(ResearchAccessError)
     expect(mockDbSelect).toHaveBeenCalledTimes(1)
+  })
+
+  test('プロジェクトタスクにもチャンネル可視条件を適用する', async () => {
+    mockDbSelect
+      .mockReturnValueOnce(chain([{ id: PROJECT_ID, title: 'プロジェクト' }]))
+      .mockReturnValueOnce(chain([]))
+    const { listResearchProjectTasks } = await import('./workspace-research')
+
+    await listResearchProjectTasks(ctx(), { projectId: PROJECT_ID })
+
+    expect(mockTaskChannelVisibilityCondition).toHaveBeenCalledWith(USER_ID)
   })
 
   test('リスクスナップショットは50件を超えるプロジェクトの候補も集計する', async () => {

@@ -7,6 +7,8 @@ import { getGuestVisibleProjectIds } from '@/lib/permissions'
 import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
 import { DUE_SOON_DAYS, STALLED_DAYS } from '@/lib/ai-nudges/rules'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
+import { taskChannelVisibilityCondition } from '@/lib/tasks/visibility'
 import { searchChunks } from './search-chunks'
 import {
   AI_RESEARCH_LIMITS,
@@ -99,6 +101,9 @@ export async function listResearchProjects(
     tasks,
   } = await import('@cairn/db')
   const { and, count, eq, inArray, sql } = await import('drizzle-orm')
+  const taskVisibility = await hasTaskChannelSchema(db)
+    ? taskChannelVisibilityCondition(ctx.userId)
+    : undefined
   const conditions = [eq(projects.workspaceId, ctx.workspaceId)]
   if (!includeArchived) conditions.push(eq(projects.archived, false))
   if (scope.guestProjectIds) conditions.push(inArray(projects.id, scope.guestProjectIds))
@@ -160,7 +165,11 @@ export async function listResearchProjects(
         overdueTaskCount: sql<number>`count(*) filter (where ${tasks.status} <> 'done' and ${tasks.dueDate} < ${today})`,
       })
       .from(tasks)
-      .where(and(eq(tasks.workspaceId, ctx.workspaceId), inArray(tasks.projectId, projectIds)))
+      .where(and(
+        eq(tasks.workspaceId, ctx.workspaceId),
+        inArray(tasks.projectId, projectIds),
+        taskVisibility,
+      ))
       .groupBy(tasks.projectId),
   ])
   const members = new Map(memberRows.map((row) => [row.projectId, Number(row.memberCount)]))
@@ -251,6 +260,9 @@ export async function listResearchProjectTasks(
   const filters = [...new Set(input.filters ?? [])]
   const { db, profiles, tasks, workspaceMembers } = await import('@cairn/db')
   const { and, eq, gte, isNull, lt, lte, ne, or, sql } = await import('drizzle-orm')
+  const taskVisibility = await hasTaskChannelSchema(db)
+    ? taskChannelVisibilityCondition(ctx.userId)
+    : undefined
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Tokyo',
     year: 'numeric',
@@ -279,6 +291,7 @@ export async function listResearchProjectTasks(
   const conditions = [
     eq(tasks.workspaceId, ctx.workspaceId),
     eq(tasks.projectId, input.projectId),
+    taskVisibility,
     filters.length > 0 ? or(...filterConditions) : undefined,
   ]
   const rows = await db
@@ -364,6 +377,9 @@ export async function getResearchRiskSnapshot(
 
   const { db, projects, tasks } = await import('@cairn/db')
   const { and, eq, gte, inArray, isNull, lt, lte, ne, or, sql } = await import('drizzle-orm')
+  const taskVisibility = await hasTaskChannelSchema(db)
+    ? taskChannelVisibilityCondition(ctx.userId)
+    : undefined
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Tokyo',
     year: 'numeric',
@@ -402,6 +418,7 @@ export async function getResearchRiskSnapshot(
       .where(
         and(
           eq(tasks.workspaceId, ctx.workspaceId),
+          taskVisibility,
           ...projectConditions,
           ne(tasks.status, 'done'),
           or(
@@ -442,7 +459,11 @@ export async function getResearchRiskSnapshot(
       .from(projects)
       .leftJoin(
         tasks,
-        and(eq(tasks.projectId, projects.id), eq(tasks.workspaceId, ctx.workspaceId)),
+        and(
+          eq(tasks.projectId, projects.id),
+          eq(tasks.workspaceId, ctx.workspaceId),
+          taskVisibility,
+        ),
       )
       .where(and(...projectConditions))
       .groupBy(projects.id),
