@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TaskAssigneeField } from './task-assignee-field'
 
-const { channelMembers } = vi.hoisted(() => ({
+const { channelMembers, projectMembers } = vi.hoisted(() => ({
   channelMembers: [] as Array<{
     userId: string
     channelId: string
@@ -11,6 +11,7 @@ const { channelMembers } = vi.hoisted(() => ({
     avatarUrl: string | null
     role: 'owner' | 'admin' | 'member' | 'guest'
   }>,
+  projectMembers: [] as Array<{ userId: string }>,
 }))
 
 vi.mock('@/hooks/use-project-members', () => ({
@@ -30,7 +31,7 @@ vi.mock('@/hooks/use-project-members', () => ({
       },
     ],
   }),
-  useProjectMembers: () => ({ data: [], isFetching: false }),
+  useProjectMembers: () => ({ data: projectMembers, isFetching: false }),
 }))
 
 vi.mock('@/lib/chat/client', () => ({
@@ -40,6 +41,7 @@ vi.mock('@/lib/chat/client', () => ({
 describe('TaskAssigneeField', () => {
   beforeEach(() => {
     channelMembers.length = 0
+    projectMembers.length = 0
   })
 
   it('画面下の空きが足りない場合は、ダイアログの外へ上向きに候補を表示する', async () => {
@@ -98,5 +100,23 @@ describe('TaskAssigneeField', () => {
     expect(screen.getByRole('button', { name: /山田太郎/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /チャンネル参加者/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /未参加ゲスト/ })).not.toBeInTheDocument()
+  })
+
+  it('公開project channelではproject参加guestを候補に表示する', async () => {
+    projectMembers.push({ userId: 'guest-1' })
+    render(
+      <div className="app-root">
+        <TaskAssigneeField
+          value={null}
+          onChange={vi.fn()}
+          projectId="project-1"
+          channelId="channel-1"
+        />
+      </div>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /担当者を選択/ }))
+
+    expect(screen.getByRole('button', { name: /未参加ゲスト/ })).toBeInTheDocument()
   })
 })

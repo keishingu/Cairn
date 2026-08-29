@@ -54,7 +54,6 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
 
   const { data: workspaceMembers = [] } = useWorkspaceMembers()
   const projectMembersQuery = useProjectMembers(projectId ?? null)
-  const projectMembers = projectMembersQuery.data ?? []
   const channelMembersQuery = useChannelMembers(channelId ?? null)
   const channelMemberIds = React.useMemo(
     () => new Set((channelMembersQuery.data ?? []).map(member => member.userId)),
@@ -62,8 +61,8 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
   )
 
   const projectMemberIds = React.useMemo(
-    () => new Set(projectMembers.map(m => m.userId)),
-    [projectMembers],
+    () => new Set((projectMembersQuery.data ?? []).map(m => m.userId)),
+    [projectMembersQuery.data],
   )
 
   // プロジェクト内メンバーを先頭に、以降を名前順で並べる
@@ -76,9 +75,14 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
       : workspaceMembers
     const list = availableMembers.map(m => {
       const inProject = projectMemberIds.has(m.userId)
-      // チャンネルタスクはprivateなら参加者のみ、publicならmember以上または参加guestを許可する
+      // project channel のguestはproject参加が前提で、privateの場合だけchannel参加も必要。
+      // workspace channel のguestは公開/非公開ともchannel参加が必要。
       const assignable = channelId
-        ? ((!channelIsPrivate && m.role !== 'guest') || channelMemberIds.has(m.userId))
+        ? m.role === 'guest'
+          ? projectId
+            ? inProject && (!channelIsPrivate || channelMemberIds.has(m.userId))
+            : channelMemberIds.has(m.userId)
+          : !channelIsPrivate || channelMemberIds.has(m.userId)
         : m.role !== 'guest' || (projectId != null && projectId !== '' && inProject)
       return {
         userId: m.userId,
