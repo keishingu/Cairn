@@ -1,6 +1,6 @@
 # 本番デプロイ・運用リファレンス
 
-> ステータス: **現行リファレンス** ／ 最終更新: 2026-07-22
+> ステータス: **現行リファレンス** ／ 最終更新: 2026-08-22
 >
 > 本番環境（Vercel + Supabase）の構成・残タスク・将来の一般公開に向けた設定をまとめる。
 > 実装・設定が変わったら本ファイルを更新すること。
@@ -155,9 +155,10 @@ PostHog は production の利用状況を収集するインフラ接続なので
 
 ### 3. 本番用 SMTP（メール送信）
 
-- Supabase のデフォルト SMTP は**本番不可レベルのレート制限**（数通/時）。
-- サインアップ確認・パスワードリセット等を不特定多数に送るなら、**カスタム SMTP（SendGrid / Resend / SES 等）** を Auth に設定。
-- メールテンプレート内 URL が本番ドメインで動くか確認。
+- メール生成は Supabase Auth のまま維持し、配送を **Resend のカスタム SMTP** に切り替える。
+- 送信ドメインは `mail.oss-cairn.com`、送信元は `Cairn <no-reply@mail.oss-cairn.com>` とする。ルート `oss-cairn.com` の SPF は送信禁止のため変更しない。
+- Preview で送信・受信・リンク先ドメインまで確認してから Production に設定する。API キーは環境ごとに分け、Supabase の SMTP password にだけ保存する。
+- DNS、SMTP 値、検証、ローテーション、ロールバックの手順は [`resend-email-provider.md`](./resend-email-provider.md) を参照。
 
 ### 4. プライバシーポリシー・利用規約ページ
 

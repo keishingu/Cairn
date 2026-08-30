@@ -4,7 +4,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { isWorkspaceAdmin } from '@/lib/permissions'
-import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface WorkspaceMemberDto {
@@ -24,7 +23,6 @@ export async function GET(req: Request) {
 
   try {
     const statusParam = new URL(req.url).searchParams.get('status')
-    const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
     const { profiles, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
     const { eq, and, count, sql, inArray } = await import('drizzle-orm')
@@ -102,12 +100,12 @@ export async function GET(req: Request) {
       )
       .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
 
-    const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
-
     const result: WorkspaceMemberDto[] = rows.map(r => ({
       userId: r.userId,
       displayName: r.displayName,
-      email: emails.get(r.userId) ?? null,
+      // Email is intentionally not exposed by the general member-list API.
+      // Keep the field temporarily for DTO compatibility while callers migrate away from it.
+      email: null,
       avatarUrl: r.avatarUrl ?? null,
       role: r.role,
       membershipStatus: r.membershipStatus,

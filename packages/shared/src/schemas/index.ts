@@ -67,12 +67,16 @@ export const editMessageSchema = z.object({
 
 export const createTaskSchema = z.object({
   projectId: z.string().uuid().optional(),
+  channelId: z.string().uuid().optional(),
   title: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
   priority: z.enum(['high', 'medium', 'low']).default('medium'),
   assigneeId: z.string().uuid().optional(),
   dueDate: z.string().date().optional(),
-})
+}).refine(
+  data => !(data.projectId && data.channelId),
+  { message: 'projectId and channelId cannot both be specified' },
+)
 
 export const updateTaskSchema = z.object({
   title: z.string().min(1).max(200).optional(),

@@ -3,12 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { generateId } from '@/lib/generate-id'
+import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import type { AttachmentDto } from '@cairn/shared'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { DmChannelDto } from '@/app/api/workspaces/dms/route'
 import type { MessageDto, ReactionDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { ChannelMemberDto } from '@/app/api/channels/[channelId]/members/route'
 import type { BookmarkDto } from '@/app/api/me/bookmarks/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 
@@ -19,6 +21,8 @@ export const chatQueryKeys = {
   dms: ['dms'] as const,
   messagesRoot: ['messages'] as const,
   messages: (channelId: string | null) => ['messages', channelId] as const,
+  messageHistory: (channelId: string | null, messageId: string | null) => ['message-history', channelId, messageId] as const,
+  initialMessage: (channelId: string | null) => ['channel-initial-message', channelId] as const,
   currentUser: ['current-user'] as const,
 }
 
@@ -64,7 +68,7 @@ async function fetchDms(): Promise<DmChannelDto[]> {
   return res.json()
 }
 
-async function fetchChannelMembers(channelId: string): Promise<{ userId: string }[]> {
+async function fetchChannelMembers(channelId: string): Promise<ChannelMemberDto[]> {
   const res = await fetchWithAuth(`/api/channels/${channelId}/members`)
   if (!res.ok) throw new Error('チャンネルメンバーの取得に失敗しました')
   return res.json()
@@ -142,6 +146,12 @@ async function fetchChannelMessages(channelId: string): Promise<MessageDto[]> {
 async function fetchChannelMessagesAround(channelId: string, messageId: string): Promise<MessageDto[]> {
   const res = await fetchWithAuth(`/api/channels/${channelId}/messages?around=${messageId}`)
   if (!res.ok) throw new Error('メッセージの取得に失敗しました')
+  return res.json()
+}
+
+async function fetchChannelInitialMessage(channelId: string): Promise<{ messageId: string | null }> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}/read`)
+  if (!res.ok) throw new Error('既読位置の取得に失敗しました')
   return res.json()
 }
 
@@ -323,31 +333,48 @@ export function useChannelMessages(channelId: string | null) {
   })
 }
 
-// 既存のキャッシュに無い古いメッセージ（ブックマーク・パーマリンクのジャンプ先）を
-// 前後のウィンドウごと取得してキャッシュへマージする。直近100件の外にあるメッセージへ
-// ジャンプしても表示されず静かに失敗する問題への対処
+export function useChannelInitialMessage(channelId: string | null) {
+  return useQuery({
+    queryKey: chatQueryKeys.initialMessage(channelId),
+    queryFn: () => fetchChannelInitialMessage(channelId!),
+    enabled: !!channelId,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  })
+}
+
+// 最新100件とは別キャッシュにし、Realtime の通常 invalidate で履歴表示を上書きしない。
+export function useChannelMessageHistory(channelId: string | null, messageId: string | null) {
+  return useQuery({
+    queryKey: chatQueryKeys.messageHistory(channelId, messageId),
+    queryFn: () => fetchChannelMessagesAround(channelId!, messageId!),
+    enabled: !!channelId && !!messageId,
+  })
+}
+
+// /chats 以外の既存 ChatThread は、従来どおり古いジャンプ先を最新キャッシュへ足す。
 export function useEnsureMessageLoaded(channelId: string | null) {
   const queryClient = useQueryClient()
   return React.useCallback(async (messageId: string) => {
     if (!channelId) return
     const current = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
-    if (current?.some(m => m.id === messageId)) return
+    if (current?.some(message => message.id === messageId)) return
     try {
       const windowMessages = await fetchChannelMessagesAround(channelId, messageId)
       if (windowMessages.length === 0) return
-      queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), prev => {
-        const merged = new Map((prev ?? []).map(m => [m.id, m]))
-        for (const m of windowMessages) merged.set(m.id, m)
+      queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), previous => {
+        const merged = new Map((previous ?? []).map(message => [message.id, message]))
+        for (const message of windowMessages) merged.set(message.id, message)
         return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       })
     } catch {
-      // サイレントに失敗（ハイライト・スクロールされないだけで致命的ではない）
+      // ジャンプできないだけで会話の通常表示は継続する。
     }
   }, [channelId, queryClient])
 }
 
 /** 表示済みの最古メッセージをカーソルに、さらに古いページをキャッシュ先頭へ追加する。 */
-export function useLoadOlderChannelMessages(channelId: string | null) {
+export function useLoadOlderChannelMessages(channelId: string | null, historyMessageId: string | null = null) {
   const queryClient = useQueryClient()
   const [hasMore, setHasMore] = React.useState(true)
   const [isLoadingOlder, setIsLoadingOlder] = React.useState(false)
@@ -356,11 +383,14 @@ export function useLoadOlderChannelMessages(channelId: string | null) {
   React.useEffect(() => {
     setHasMore(true)
     setError(null)
-  }, [channelId])
+  }, [channelId, historyMessageId])
 
   const loadOlder = React.useCallback(async (): Promise<boolean> => {
     if (!channelId || isLoadingOlder || !hasMore) return false
-    const current = queryClient.getQueryData<MessageDto[]>(chatQueryKeys.messages(channelId))
+    const queryKey = historyMessageId
+      ? chatQueryKeys.messageHistory(channelId, historyMessageId)
+      : chatQueryKeys.messages(channelId)
+    const current = queryClient.getQueryData<MessageDto[]>(queryKey)
     const oldest = current?.[0]
     if (!oldest) return false
 
@@ -369,7 +399,7 @@ export function useLoadOlderChannelMessages(channelId: string | null) {
     try {
       const page = await fetchChannelMessagesBefore(channelId, oldest.id)
       if (page.messages.length > 0) {
-        queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), previous => {
+        queryClient.setQueryData<MessageDto[]>(queryKey, previous => {
           const merged = new Map((previous ?? []).map(message => [message.id, message]))
           for (const message of page.messages) merged.set(message.id, message)
           return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
@@ -383,7 +413,7 @@ export function useLoadOlderChannelMessages(channelId: string | null) {
     } finally {
       setIsLoadingOlder(false)
     }
-  }, [channelId, hasMore, isLoadingOlder, queryClient])
+  }, [channelId, hasMore, historyMessageId, isLoadingOlder, queryClient])
 
   return { loadOlder, hasMore, isLoadingOlder, error }
 }
@@ -446,6 +476,9 @@ export function useSendChannelMessage(
       if ((input.optimisticAttachments?.length ?? 0) > 0) {
         void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
       }
+      if (parseCheckboxes(input.content).length > 0) {
+        void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      }
     },
   })
 }
@@ -487,6 +520,7 @@ export function useEditMessage(channelId: string | null) {
         chatQueryKeys.messages(channelId),
         (old) => (old ?? []).map((m) => m.id === updated.id ? { ...m, content: updated.content, isEdited: true } : m),
       )
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
     onError: (_err, _vars, context) => {
       if (context?.prev !== undefined) {
@@ -514,6 +548,9 @@ export function useDeleteMessage(channelId: string | null) {
       if (context?.prev !== undefined) {
         queryClient.setQueryData(chatQueryKeys.messages(channelId), context.prev)
       }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
 }

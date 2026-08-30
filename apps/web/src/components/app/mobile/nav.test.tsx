@@ -28,20 +28,32 @@ function renderMobileNav() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
+  const onNavigate = vi.fn()
 
-  return render(
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <MobileNav
         page="projects"
         projectsView="list"
-        onNavigate={vi.fn()}
+        onNavigate={onNavigate}
         onChangeView={vi.fn()}
       />
     </QueryClientProvider>,
   )
+
+  return { ...result, onNavigate }
 }
 
 describe('MobileNav', () => {
+  it('チャットを左端に表示して /chats へ遷移する', async () => {
+    const { onNavigate } = renderMobileNav()
+    const chatTab = screen.getByRole('button', { name: 'チャット' })
+
+    expect(chatTab.parentElement?.firstElementChild).toBe(chatTab)
+    await userEvent.click(chatTab)
+    expect(onNavigate).toHaveBeenCalledWith('/chats')
+  })
+
   it('プロジェクト表示切替を左右のセーフエリア内に配置する', async () => {
     renderMobileNav()
 

@@ -19,8 +19,8 @@ interface MobileNavProps {
 }
 
 const BASE_TABS = [
-  { id: 'projects',  path: '/projects',  icon: 'kanban',    label: null },
   { id: 'chats',     path: '/chats',     icon: 'chat',      label: 'チャット' },
+  { id: 'projects',  path: '/projects',  icon: 'kanban',    label: null },
   { id: 'tasks',     path: '/tasks',     icon: 'check',     label: 'タスク' },
   { id: 'ai',        path: '/ai',        icon: 'sparkles',  label: 'AI' },
   { id: 'menu',      path: null,         icon: 'list',      label: 'メニュー' },

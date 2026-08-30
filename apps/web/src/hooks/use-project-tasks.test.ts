@@ -2,7 +2,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
-import { useProjectTasks, useCreateTask } from './use-project-tasks'
+import { useProjectTasks, useCreateTask, useCreateTaskByScope, useTasksByScope } from './use-project-tasks'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { TaskDto } from '@/app/api/tasks/route'
 
@@ -19,8 +19,8 @@ function makeWrapper() {
 }
 
 const STUB_TASKS: TaskDto[] = [
-  { id: 't1', projectId: 'p1', projectTitle: 'P', title: 'タスク1', status: 'todo', priority: 'medium', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
-  { id: 't2', projectId: 'p1', projectTitle: 'P', title: 'タスク2', status: 'done', priority: 'low', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
+  { id: 't1', projectId: 'p1', projectTitle: 'P', channelId: null, channelName: null, channelIsPrivate: false, title: 'タスク1', status: 'todo', priority: 'medium', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
+  { id: 't2', projectId: 'p1', projectTitle: 'P', channelId: null, channelName: null, channelIsPrivate: false, title: 'タスク2', status: 'done', priority: 'low', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
 ]
 
 describe('useProjectTasks', () => {
@@ -76,11 +76,50 @@ describe('useProjectTasks', () => {
   })
 })
 
+describe('通常チャンネルのタスク', () => {
+  beforeEach(() => { mockFetch.mockClear() })
+
+  it('channelIdでチャンネル内タスクを取得する', async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify(STUB_TASKS), { status: 200 }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useTasksByScope({ channelId: 'channel-1' }), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockFetch).toHaveBeenCalledWith('/api/tasks?channelId=channel-1')
+  })
+
+  it('タスク一覧の非成功レスポンスをquery errorにする', async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ error: 'チャンネルタスクを準備中です' }), { status: 503 }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useTasksByScope({ channelId: 'channel-1' }), { wrapper })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.error?.message).toBe('チャンネルタスクを準備中です')
+    expect(result.current.data).toBeUndefined()
+  })
+
+  it('channelIdを付けてタスクを追加する', async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify(STUB_TASKS[0]), { status: 201 }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useCreateTaskByScope({ channelId: 'channel-1' }, vi.fn()), { wrapper })
+
+    act(() => result.current.mutate({ title: '通常チャンネルのタスク', priority: 'medium' }))
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const [, init] = mockFetch.mock.calls[0]!
+    expect(JSON.parse(init!.body as string)).toEqual({
+      title: '通常チャンネルのタスク',
+      priority: 'medium',
+      channelId: 'channel-1',
+    })
+  })
+})
+
 describe('useCreateTask', () => {
   beforeEach(() => { mockFetch.mockClear() })
 
   it('タスクを作成して onSuccess コールバックを呼ぶ', async () => {
-    const newTask: TaskDto = { id: 't3', projectId: 'p1', projectTitle: 'P', title: '新タスク', status: 'todo', priority: 'high', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false }
+    const newTask: TaskDto = { id: 't3', projectId: 'p1', projectTitle: 'P', channelId: null, channelName: null, channelIsPrivate: false, title: '新タスク', status: 'todo', priority: 'high', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false }
     mockFetch.mockResolvedValue(new Response(JSON.stringify(newTask), { status: 200 }))
     const onSuccess = vi.fn()
     const { wrapper } = makeWrapper()

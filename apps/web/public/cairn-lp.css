@@ -249,8 +249,9 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.03em; line-height: 
 
 .hero h1 { margin-bottom: 22px; }
 .hero h1 .row2 { color: var(--ink-3); }
-.hero-lead { font-size: clamp(16px, 1.9vw, 20px); color: var(--ink-2); max-width: 30ch; line-height: 1.6; margin: 0 auto 14px; }
+.hero-lead { font-size: clamp(16px, 1.9vw, 20px); color: var(--ink-2); max-width: 42ch; line-height: 1.65; margin: 0 auto 14px; }
 .hero-lead .jp { display: block; font-size: 15px; color: var(--ink-3); max-width: 40ch; margin: 12px auto 0; }
+.hero-money { font-size: 14.5px; color: var(--ink-3); max-width: 42ch; line-height: 1.6; margin: 0 auto; }
 .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 30px; }
 
 .hero-meta { display: flex; flex-wrap: wrap; gap: 8px 26px; justify-content: center; margin-top: 30px; color: var(--ink-3); font-size: 13.5px; }
@@ -414,6 +415,13 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.03em; line-height: 
 .prob-arrow b { color: var(--ink); font-weight: 500; white-space: nowrap; }
 .prob-arrow span { white-space: nowrap; }
 
+.stay-grid { margin-top: 8px; }
+.admin .sec-head { max-width: 36em; }
+.admin .sec-head p { max-width: 36ch; margin-inline: auto; }
+.ai-split { margin-top: 48px; }
+.panel-card--quiet { background: var(--bg-2); }
+.proof-grid { margin-top: 0; }
+
 /* ── solution / one place ──────────────────────────────────────────── */
 .solution { text-align: center; }
 .solution .big { font-size: clamp(34px, 5.6vw, 66px); font-weight: 600; letter-spacing: -0.04em; line-height: 1.02; }
@@ -485,6 +493,26 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.03em; line-height: 
 .ent-svc span { font-size: 13px; color: var(--ink-3); }
 .ent-cta { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 
+/* ── FAQ (bottom; competitor names for findability, not the pitch) ── */
+.faq-list { max-width: 720px; margin: 28px auto 0; display: flex; flex-direction: column; gap: 10px; }
+.faq-item {
+  border: 1px solid var(--hair); border-radius: var(--radius); background: var(--card);
+  overflow: hidden;
+}
+.faq-item::before { content: ""; display: block; height: 1px; background: linear-gradient(90deg, transparent, color-mix(in srgb, #fff calc(var(--card-sheen)*100%), transparent), transparent); }
+.faq-item summary {
+  list-style: none; cursor: pointer; padding: 18px 22px;
+  font-size: 16px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.45;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after {
+  content: "+"; flex: none; font-family: var(--font-mono); font-weight: 500;
+  color: var(--ink-4); line-height: 1;
+}
+.faq-item[open] summary::after { content: "–"; }
+.faq-item .faq-a { margin: 0; padding: 0 22px 20px; font-size: 15px; color: var(--ink-2); line-height: 1.65; }
+
 /* ── final cta ─────────────────────────────────────────────────────── */
 .final { text-align: center; position: relative; overflow: hidden; }
 .final-glow { position: absolute; inset: auto 0 -30% 0; height: 460px; z-index: 0; pointer-events: none; opacity: var(--hero-glow);
@@ -532,7 +560,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.03em; line-height: 
   .feat-grid { grid-template-columns: 1fr 1fr; }
   .split { grid-template-columns: 1fr; }
   .app { grid-template-columns: 1fr; }
-  .detail { display: none; }
+  .cal { display: none; }
+  .detail { display: flex; min-height: 480px; }
   .shot { max-width: 640px; }
 }
 @media (max-width: 560px) {

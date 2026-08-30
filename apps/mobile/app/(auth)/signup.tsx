@@ -54,7 +54,7 @@ export default function SignupScreen() {
       return
     }
 
-    router.replace('/(app)/projects')
+    router.replace('/(app)/chats')
   }
 
   return (

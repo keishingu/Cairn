@@ -126,7 +126,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       background: active && !mobile ? 'var(--card-hover)' : 'transparent',
       color: active ? 'var(--text)' : 'var(--text-2)',
       fontSize: mobile ? 15 : 13,
-      fontWeight: badge && badge > 0 ? 600 : 500,
+      fontWeight: badge && badge > 0 ? 700 : 500,
       cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
     }}
       onMouseEnter={e => { if (!active && !mobile) (e.currentTarget as HTMLElement).style.background = 'var(--card)' }}

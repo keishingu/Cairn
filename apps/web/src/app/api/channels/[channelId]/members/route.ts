@@ -4,10 +4,14 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ChannelMemberDto {
   userId: string
   channelId: string
+  displayName: string
+  avatarUrl: string | null
+  role: 'owner' | 'admin' | 'member' | 'guest'
 }
 
 export async function GET(
@@ -24,16 +28,23 @@ export async function GET(
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { channelMembers, activeWorkspaceMembers, profiles } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
 
     const rows = await db
-      .select({ userId: channelMembers.userId, channelId: channelMembers.channelId })
+      .select({
+        userId: channelMembers.userId,
+        channelId: channelMembers.channelId,
+        displayName: workspaceMemberDisplayName(activeWorkspaceMembers.displayName, profiles.displayName),
+        avatarUrl: activeWorkspaceMembers.avatarUrl,
+        role: activeWorkspaceMembers.role,
+      })
       .from(channelMembers)
       .innerJoin(activeWorkspaceMembers, and(
         eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
         eq(activeWorkspaceMembers.userId, channelMembers.userId),
       ))
+      .innerJoin(profiles, eq(profiles.id, channelMembers.userId))
       .where(eq(channelMembers.channelId, channelId))
 
     return NextResponse.json(rows satisfies ChannelMemberDto[])
@@ -132,7 +143,7 @@ export async function POST(
         })
     })
 
-    return NextResponse.json({ userId, channelId } satisfies ChannelMemberDto, { status: 201 })
+    return NextResponse.json({ userId, channelId }, { status: 201 })
   } catch (err) {
     console.error('[/api/channels/[channelId]/members POST] DB error:', err)
     return NextResponse.json({ error: 'メンバーの追加に失敗しました' }, { status: 500 })

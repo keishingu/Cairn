@@ -258,4 +258,41 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     expect(res.headers.get('X-Cairn-Has-More')).toBe('false')
     await expect(res.json()).resolves.toEqual([expect.objectContaining({ id: 'older-1' })])
   })
+
+  it('aroundでは同一時刻のメッセージもID順でアンカーの前後に分ける', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    const createdAt = new Date('2026-01-01T01:00:00.000Z')
+    const message = (id: string) => ({
+      id,
+      content: id,
+      messageType: 'text',
+      parentMessageId: null,
+      senderId: 'user-2',
+      senderName: 'Sender',
+      senderAvatarUrl: null,
+      createdAt,
+      updatedAt: createdAt,
+    })
+    mockSelectResults(
+      [{ id: 'message-2', createdAt }],
+      [message('message-2'), message('message-1')],
+      [message('message-3')],
+      [],
+      [],
+      [],
+      [],
+    )
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/?around=message-2'), ctxRouteParams())
+
+    expect(mockOr).toHaveBeenCalled()
+    expect(mockLt).toHaveBeenCalled()
+    expect(mockGt).toHaveBeenCalled()
+    await expect(res.json()).resolves.toEqual([
+      expect.objectContaining({ id: 'message-1' }),
+      expect.objectContaining({ id: 'message-2' }),
+      expect.objectContaining({ id: 'message-3' }),
+    ])
+  })
 })

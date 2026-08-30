@@ -20,13 +20,16 @@ const { mockGetAuthContext, mockDb, selectChains } = vi.hoisted(() => {
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
+vi.mock('@/lib/tasks/schema-readiness', () => ({ hasTaskChannelSchema: vi.fn(async () => true) }))
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
   projects:       { id: 'p.id', workspaceId: 'p.workspaceId', title: 'p.title', description: 'p.description', startDate: 'p.startDate', endDate: 'p.endDate', archived: 'p.archived', createdBy: 'p.createdBy', coverPhotoUrl: 'p.coverPhotoUrl', location: 'p.location', placeId: 'p.placeId' },
   projectStatuses:{ id: 'ps.id', name: 'ps.name', color: 'ps.color' },
   projectMembers: { projectId: 'pm.projectId', userId: 'pm.userId', createdAt: 'pm.createdAt' },
-  tasks:          { projectId: 'tk.projectId', status: 'tk.status' },
+  tasks:          { projectId: 'tk.projectId', channelId: 'tk.channelId', status: 'tk.status' },
+  channels:       { id: 'ch.id', isPrivate: 'ch.isPrivate' },
+  channelMembers: { channelId: 'cm.channelId', userId: 'cm.userId' },
   profiles:       { id: 'pr.id', displayName: 'pr.displayName' },
   workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role', displayName: 'wm.displayName', avatarUrl: 'wm.avatarUrl' },
   activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', userId: 'awm.userId', role: 'awm.role' },

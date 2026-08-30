@@ -242,7 +242,7 @@ export default function OnboardingInvitePage() {
 
         <button
           type="button"
-          onClick={() => router.push('/projects')}
+          onClick={() => router.push('/chats')}
           style={{
             width: '100%',
             marginTop: 16,

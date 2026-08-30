@@ -5,8 +5,9 @@ import { NextResponse } from 'next/server'
 import { editMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
-import { parseCheckboxes } from '@/lib/chat/checkboxes'
+import { parseCheckboxes, reconcileCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
+import { hasTaskChannelSchema, insertLegacyTasks } from '@/lib/tasks/schema-readiness'
 
 type RouteContext = { params: Promise<{ messageId: string }> }
 
@@ -32,12 +33,18 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages, channels } = await import('@cairn/db')
+    const { messages, channels, tasks } = await import('@cairn/db')
     const { eq, and, isNull, inArray } = await import('drizzle-orm')
 
     // 送信者・ワークスペース・削除済み除外をすべて確認してから更新
     const [target] = await db
-      .select({ id: messages.id, content: messages.content, channelId: messages.channelId })
+      .select({
+        id: messages.id,
+        content: messages.content,
+        channelId: messages.channelId,
+        projectId: channels.projectId,
+        channelType: channels.type,
+      })
       .from(messages)
       .innerJoin(channels, eq(messages.channelId, channels.id))
       .where(and(
@@ -55,75 +62,83 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId, ctx.role)
     if (forbidden) return forbidden
 
-    const [updated] = await db
-      .update(messages)
-      .set({ content, updatedAt: new Date() })
-      .where(eq(messages.id, messageId))
-      .returning({ id: messages.id, content: messages.content })
-
     // チェックボックスの変化に応じてタスクを同期
-    const { tasks, channels: channelsTable } = await import('@cairn/db')
     const oldBoxes = parseCheckboxes(target.content)
     const newBoxes = parseCheckboxes(content)
+    const extractsTasks = target.channelType !== 'dm'
+    const reconciliation = reconcileCheckboxes(oldBoxes, newBoxes)
 
-    // 削除されたチェックボックスのタスクを一括削除
-    const newIndices = new Set(newBoxes.map(b => b.index))
-    const removedIndices = oldBoxes.filter(b => !newIndices.has(b.index)).map(b => b.index)
-    if (removedIndices.length > 0) {
-      await db.delete(tasks).where(and(
-        eq(tasks.sourceMessageId, messageId),
-        inArray(tasks.sourceCheckboxIndex, removedIndices),
-      ))
-    }
-
-    // 追加・変更されたチェックボックスをupsert
-    if (newBoxes.length > 0) {
-      const [ch] = await db
-        .select({ projectId: channelsTable.projectId })
-        .from(messages)
-        .innerJoin(channelsTable, eq(messages.channelId, channelsTable.id))
+    const updated = await db.transaction(async (tx) => {
+      const [message] = await tx
+        .update(messages)
+        .set({ content, updatedAt: new Date() })
         .where(eq(messages.id, messageId))
-        .limit(1)
+        .returning({ id: messages.id, content: messages.content })
 
-      if (ch?.projectId) {
-        const projectId = ch.projectId
+      if (!message) throw new Error('Update returned no rows')
 
-        // 新規チェックボックスを一括インサート
-        const newToInsert = newBoxes.filter(nb => !oldBoxes.some(ob => ob.index === nb.index))
-        if (newToInsert.length > 0) {
-          await db.insert(tasks).values(
-            newToInsert.map(nb => ({
-              workspaceId: ctx.workspaceId,
-              projectId,
-              title: nb.text,
-              status: (nb.checked ? 'done' : 'todo') as 'done' | 'todo',
-              priority: 'medium' as const,
-              createdBy: ctx.userId,
-              sourceMessageId: messageId,
-              sourceCheckboxIndex: nb.index,
-            })),
-          )
+      if (!extractsTasks) return message
+
+      const taskRows = await tx
+        .select({ id: tasks.id, sourceCheckboxIndex: tasks.sourceCheckboxIndex })
+        .from(tasks)
+        .where(eq(tasks.sourceMessageId, messageId))
+      const taskByIndex = new Map(taskRows.map(task => [task.sourceCheckboxIndex, task]))
+
+      const removedTaskIds = reconciliation.removed
+        .map(box => taskByIndex.get(box.index)?.id)
+        .filter((id): id is string => id != null)
+      if (removedTaskIds.length > 0) {
+        await tx.delete(tasks).where(inArray(tasks.id, removedTaskIds))
+      }
+
+      const boxesToInsert = [...reconciliation.added]
+      for (const { oldBox, newBox } of reconciliation.matched) {
+        const task = taskByIndex.get(oldBox.index)
+        if (!task) {
+          boxesToInsert.push(newBox)
+          continue
         }
+        if (
+          oldBox.index === newBox.index
+          && oldBox.text === newBox.text
+          && oldBox.checked === newBox.checked
+        ) continue
 
-        // タイトルまたはチェック状態が変わった既存チェックボックスを並列更新（N+1 を避けるため Promise.all）
-        const changedBoxes = newBoxes.filter(nb => {
-          const existing = oldBoxes.find(ob => ob.index === nb.index)
-          return existing && (existing.text !== nb.text || existing.checked !== nb.checked)
-        })
-        if (changedBoxes.length > 0) {
-          await Promise.all(
-            changedBoxes.map(nb =>
-              db.update(tasks)
-                .set({ title: nb.text, status: nb.checked ? 'done' : 'todo', updatedAt: new Date() })
-                .where(and(
-                  eq(tasks.sourceMessageId, messageId),
-                  eq(tasks.sourceCheckboxIndex, nb.index),
-                )),
-            ),
-          )
+        await tx.update(tasks)
+          .set({
+            sourceCheckboxIndex: newBox.index,
+            title: newBox.text,
+            status: newBox.checked ? 'done' : 'todo',
+            updatedAt: new Date(),
+          })
+          .where(eq(tasks.id, task.id))
+      }
+
+      if (boxesToInsert.length > 0) {
+        const taskValues = boxesToInsert.map(box => ({
+          workspaceId: ctx.workspaceId,
+          projectId: target.projectId,
+          title: box.text,
+          status: (box.checked ? 'done' : 'todo') as 'done' | 'todo',
+          priority: 'medium' as const,
+          createdBy: ctx.userId,
+          sourceMessageId: messageId,
+          sourceCheckboxIndex: box.index,
+        }))
+        const channelSchemaReady = await hasTaskChannelSchema(tx)
+        if (channelSchemaReady) {
+          await tx.insert(tasks).values(taskValues.map(value => ({
+            ...value,
+            channelId: target.channelId,
+          })))
+        } else {
+          await insertLegacyTasks(tx, taskValues)
         }
       }
-    }
+
+      return message
+    })
 
     return NextResponse.json({ id: updated!.id, content: updated!.content })
   } catch (err) {

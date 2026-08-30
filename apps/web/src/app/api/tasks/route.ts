@@ -4,14 +4,19 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { createTaskSchema } from '@cairn/shared'
-import { getGuestVisibleProjectIds, requireProjectAccess, requireRole } from '@/lib/permissions'
+import { getGuestVisibleProjectIds, requireChannelAccess, requireProjectAccess, requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
+import { hasTaskChannelSchema, insertLegacyTasks } from '@/lib/tasks/schema-readiness'
+import { guestTaskScopeCondition, taskChannelVisibilityCondition } from '@/lib/tasks/visibility'
 
 export interface TaskDto {
   id: string
   projectId: string | null
   projectTitle: string | null
+  channelId: string | null
+  channelName: string | null
+  channelIsPrivate: boolean
   title: string
   status: 'todo' | 'in_progress' | 'done'
   priority: 'high' | 'medium' | 'low'
@@ -27,7 +32,12 @@ export interface TaskDto {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId') ?? undefined
+  const channelId = searchParams.get('channelId') ?? undefined
   const assignee = searchParams.get('assignee') ?? undefined
+
+  if (projectId && channelId) {
+    return NextResponse.json({ error: 'projectId and channelId cannot both be specified' }, { status: 422 })
+  }
 
   if (assignee && assignee !== 'me') {
     return NextResponse.json({ error: 'assignee must be "me"' }, { status: 422 })
@@ -39,32 +49,60 @@ export async function GET(req: Request) {
   })
   if (error) return error
 
+  if (projectId) {
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
+    if (forbidden) return forbidden
+  }
+
   try {
     const { db } = await import('@cairn/db')
-    const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, and, inArray } = await import('drizzle-orm')
+    const channelSchemaReady = await hasTaskChannelSchema(db)
+
+    if (channelId) {
+      if (!channelSchemaReady) {
+        return NextResponse.json({ error: 'チャンネルタスクを準備中です' }, { status: 503 })
+      }
+      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
+      if (forbidden) return forbidden
+    }
+
+    const { tasks, projects, channels, profiles, workspaceMembers } = await import('@cairn/db')
+    const { eq, and, or, inArray, isNull, isNotNull, sql } = await import('drizzle-orm')
 
     // ゲストは参加プロジェクトのタスクのみ閲覧可。プロジェクト未所属タスクは見せない。
     const guestProjectIds = ctx.role === 'guest'
       ? await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId)
       : null
-    // ゲストで可視プロジェクトが無ければ SQL を実行せず空を返す（inArray の空配列を避ける）
-    if (guestProjectIds && guestProjectIds.length === 0) {
-      return NextResponse.json([])
-    }
-
     // 絞り込みは SQL 側で行う（タスク数の多いワークスペースで単一プロジェクト表示が
     // 全件スキャンにならないように、また guest が見えないタスクを読まないようにする）
     const conditions = [eq(tasks.workspaceId, ctx.workspaceId)]
     if (projectId) conditions.push(eq(tasks.projectId, projectId))
+    if (channelId && channelSchemaReady) conditions.push(eq(tasks.channelId, channelId))
     if (assignee === 'me') conditions.push(eq(tasks.assigneeId, ctx.userId))
-    if (guestProjectIds) conditions.push(inArray(tasks.projectId, guestProjectIds))
+    // migration待機中に通常チャンネルから作られたタスクは source_message_id だけを保持する。
+    // channel_id がbackfillされるまで未所属タスクとして露出させない。
+    if (!channelSchemaReady) {
+      conditions.push(or(isNull(tasks.sourceMessageId), isNotNull(tasks.projectId))!)
+    }
+    if (guestProjectIds && !projectId && !channelId) {
+      if (channelSchemaReady) {
+        conditions.push(guestTaskScopeCondition(ctx.userId, guestProjectIds))
+      } else if (guestProjectIds.length === 0) {
+        return NextResponse.json([])
+      } else {
+        conditions.push(inArray(tasks.projectId, guestProjectIds))
+      }
+    }
+    if (channelSchemaReady) conditions.push(taskChannelVisibilityCondition(ctx.userId))
 
     const taskRows = await db
       .select({
         id: tasks.id,
         projectId: tasks.projectId,
         projectTitle: projects.title,
+        channelId: channelSchemaReady ? tasks.channelId : sql<string | null>`null`,
+        channelName: channelSchemaReady ? channels.name : sql<string | null>`null`,
+        channelIsPrivate: channelSchemaReady ? channels.isPrivate : sql<boolean>`false`,
         title: tasks.title,
         status: tasks.status,
         priority: tasks.priority,
@@ -76,6 +114,7 @@ export async function GET(req: Request) {
       })
       .from(tasks)
       .leftJoin(projects, eq(tasks.projectId, projects.id))
+      .leftJoin(channels, channelSchemaReady ? eq(tasks.channelId, channels.id) : sql`false`)
       .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, tasks.assigneeId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(and(...conditions))
@@ -84,6 +123,9 @@ export async function GET(req: Request) {
       id: r.id,
       projectId: r.projectId,
       projectTitle: r.projectTitle ?? null,
+      channelId: r.channelId,
+      channelName: r.channelName ?? null,
+      channelIsPrivate: r.channelIsPrivate ?? false,
       title: r.title,
       status: r.status,
       priority: r.priority,
@@ -123,9 +165,13 @@ export async function POST(req: Request) {
 
   try {
     const projectId = parsed.data.projectId ?? null
+    const channelId = parsed.data.channelId ?? null
     if (projectId) {
       // ゲストは参加プロジェクトにのみタスクを作成できる
       const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
+      if (forbidden) return forbidden
+    } else if (channelId) {
+      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
       if (forbidden) return forbidden
     } else {
       // プロジェクト未所属タスクは member 以上のみ作成可（ゲストはプロジェクト必須）
@@ -134,14 +180,20 @@ export async function POST(req: Request) {
     }
 
     const { db } = await import('@cairn/db')
-    const { tasks, projects, profiles, workspaceMembers } = await import('@cairn/db')
+    const { tasks, projects, channels, profiles, workspaceMembers } = await import('@cairn/db')
     const { eq, and } = await import('drizzle-orm')
+    const channelSchemaReady = await hasTaskChannelSchema(db)
+    if (channelId && !channelSchemaReady) {
+      return NextResponse.json({ error: 'チャンネルタスクを準備中です' }, { status: 503 })
+    }
 
     // projectId を受け付ける前に、そのプロジェクトが ctx.workspaceId に属することを明示的に確認する。
     // requireProjectAccess は member 以上を素通しするため、別ワークスペースの projectId を
     // tasks.workspace_id=自WS と組み合わせて保存できてしまい（別WSのタイトル・件数の漏洩や
     // 越境データ汚染につながる）。FK はプロジェクトの存在しか保証しないためここで所属を検証する。
     let projectTitle: string | null = null
+    let channelName: string | null = null
+    let channelIsPrivate = false
     if (projectId) {
       const [projectRow] = await db
         .select({ title: projects.title })
@@ -154,17 +206,28 @@ export async function POST(req: Request) {
       projectTitle = projectRow.title
     }
 
+    if (channelId) {
+      const [channelRow] = await db
+        .select({ name: channels.name, isPrivate: channels.isPrivate, type: channels.type })
+        .from(channels)
+        .where(and(eq(channels.id, channelId), eq(channels.workspaceId, ctx.workspaceId)))
+        .limit(1)
+      if (!channelRow || channelRow.type !== 'workspace') {
+        return NextResponse.json({ error: '通常チャンネルが見つかりません' }, { status: 404 })
+      }
+      channelName = channelRow.name
+      channelIsPrivate = channelRow.isPrivate
+    }
+
     const assigneeId = parsed.data.assigneeId ?? null
-    if (assigneeId && !(await isAssignableTaskMember(ctx.workspaceId, assigneeId, projectId))) {
+    if (assigneeId && !(await isAssignableTaskMember(ctx.workspaceId, assigneeId, projectId, channelId))) {
       return NextResponse.json(
         { error: '指定された担当者はこのタスクに割り当てできません' },
         { status: 422 },
       )
     }
 
-    const [inserted] = await db
-      .insert(tasks)
-      .values({
+    const taskValues = {
         workspaceId: ctx.workspaceId,
         projectId,
         title: parsed.data.title,
@@ -173,8 +236,21 @@ export async function POST(req: Request) {
         assigneeId,
         dueDate: parsed.data.dueDate ?? null,
         createdBy: ctx.userId,
-      })
-      .returning()
+      }
+    const [inserted] = channelSchemaReady
+      ? await db
+          .insert(tasks)
+          .values({ ...taskValues, channelId })
+          .returning({
+            id: tasks.id,
+            projectId: tasks.projectId,
+            title: tasks.title,
+            status: tasks.status,
+            priority: tasks.priority,
+            dueDate: tasks.dueDate,
+            assigneeId: tasks.assigneeId,
+          })
+      : await insertLegacyTasks(db, [taskValues])
 
     if (!inserted) throw new Error('Insert returned no rows')
 
@@ -193,6 +269,9 @@ export async function POST(req: Request) {
       id: inserted.id,
       projectId: inserted.projectId,
       projectTitle,
+      channelId,
+      channelName,
+      channelIsPrivate,
       title: inserted.title,
       status: inserted.status,
       priority: inserted.priority,
@@ -212,7 +291,7 @@ export async function POST(req: Request) {
         taskId: inserted.id,
         taskTitle: inserted.title,
         projectId: inserted.projectId,
-        projectTitle: projectTitle ?? '',
+        scopeTitle: projectTitle ?? channelName ?? '',
       })
     }
 

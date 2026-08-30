@@ -18,7 +18,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     name: 'Cairn',
     short_name: 'Cairn',
     description: 'プロジェクト管理・チャット・カレンダーを統合したコラボレーションアプリ',
-    start_url: '/dashboard',
+    start_url: '/chats',
     display: 'standalone',
     orientation: 'portrait',
     theme_color: preset.swatch,

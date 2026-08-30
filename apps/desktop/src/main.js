@@ -11,11 +11,11 @@ const isMac = process.platform === 'darwin'
 // サイドメニューへのジャンプ（⌘/Ctrl + 数字）。番号は表示順と一致させる。
 // クリック時はフォーカス中ウィンドウへ navigate アクションを送る（preload 経由で Web が受ける）。
 const NAV_ITEMS = [
-  { label: 'プロジェクト一覧', accelerator: 'CmdOrCtrl+1', action: 'projects' },
-  { label: 'カレンダー',       accelerator: 'CmdOrCtrl+2', action: 'calendar' },
-  { label: 'カンバン',         accelerator: 'CmdOrCtrl+3', action: 'kanban' },
-  { label: 'マイタスク',       accelerator: 'CmdOrCtrl+4', action: 'tasks' },
-  { label: 'チャット一覧',     accelerator: 'CmdOrCtrl+5', action: 'chats' },
+  { label: 'チャット一覧',     accelerator: 'CmdOrCtrl+1', action: 'chats' },
+  { label: 'プロジェクト一覧', accelerator: 'CmdOrCtrl+2', action: 'projects' },
+  { label: 'カレンダー',       accelerator: 'CmdOrCtrl+3', action: 'calendar' },
+  { label: 'カンバン',         accelerator: 'CmdOrCtrl+4', action: 'kanban' },
+  { label: 'マイタスク',       accelerator: 'CmdOrCtrl+5', action: 'tasks' },
   { label: 'ファイル',         accelerator: 'CmdOrCtrl+6', action: 'files' },
   { label: 'ギャラリー',       accelerator: 'CmdOrCtrl+7', action: 'gallery' },
   { label: 'AIアシスタント',   accelerator: 'CmdOrCtrl+8', action: 'ai' },

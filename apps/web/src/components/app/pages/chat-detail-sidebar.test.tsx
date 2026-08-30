@@ -1,13 +1,13 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChatDetailSidebar } from './chat-detail-sidebar'
 import { useChannelFiles } from '@/hooks/use-channel-files'
-import { useProjectTasks } from '@/hooks/use-project-tasks'
+import { useTasksByScope } from '@/hooks/use-project-tasks'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 const { renameMutateAsyncMock, fetchWithAuthMock } = vi.hoisted(() => ({
@@ -22,11 +22,21 @@ vi.mock('@/hooks/use-rename-file', () => ({
 vi.mock('@/lib/fetch-with-auth', () => ({
   fetchWithAuth: fetchWithAuthMock,
 }))
+vi.mock('@/hooks/use-current-user', () => ({
+  useWorkspacePermissions: () => ({ isGuest: false }),
+}))
+vi.mock('@/hooks/use-project-members', () => ({
+  useWorkspaceMembers: () => ({ data: [] }),
+  useProjectMembers: () => ({ data: [], isFetching: false }),
+}))
+vi.mock('@/lib/chat/client', () => ({
+  useChannelMembers: () => ({ data: [], isFetching: false }),
+}))
 vi.mock('../task-edit-dialog', () => ({
   TaskEditDialog: ({ open }: { open: boolean }) => open ? <div data-testid="task-edit-dialog" /> : null,
 }))
 vi.mock('@/hooks/use-project-tasks', () => ({
-  useProjectTasks: vi.fn(() => ({
+  useTasksByScope: vi.fn(() => ({
     data: [],
     isLoading: false,
     toggleMutation: { mutate: vi.fn() },
@@ -34,7 +44,7 @@ vi.mock('@/hooks/use-project-tasks', () => ({
 }))
 
 const mockUseChannelFiles = vi.mocked(useChannelFiles)
-const mockUseProjectTasks = vi.mocked(useProjectTasks)
+const mockUseTasksByScope = vi.mocked(useTasksByScope)
 
 const project: ProjectDto = {
   id: 'project-1', title: 'プロジェクト', description: null, statusName: null, statusColor: null,
@@ -100,11 +110,11 @@ describe('チャット詳細サイドバーのファイル一覧', () => {
     fetchWithAuthMock.mockReset()
     fetchWithAuthMock.mockResolvedValue(new Response('# 見出し\n\nMarkdownです'))
     vi.spyOn(window, 'open').mockImplementation(() => null)
-    mockUseProjectTasks.mockReturnValue({
+    mockUseTasksByScope.mockReturnValue({
       data: [],
       isLoading: false,
       toggleMutation: { mutate: vi.fn() },
-    } as unknown as ReturnType<typeof useProjectTasks>)
+    } as unknown as ReturnType<typeof useTasksByScope>)
     mockUseChannelFiles.mockReturnValue({
       data: [
         {
@@ -202,7 +212,7 @@ describe('チャット詳細サイドバーのファイル一覧', () => {
 
 describe('チャット詳細サイドバーのタスク一覧', () => {
   beforeEach(() => {
-    mockUseProjectTasks.mockReturnValue({
+    mockUseTasksByScope.mockReturnValue({
       data: [
         {
           id: 'linked-task', projectId: 'project-1', projectTitle: 'プロジェクト', title: 'メッセージ由来のタスク',
@@ -217,12 +227,33 @@ describe('チャット詳細サイドバーのタスク一覧', () => {
       ],
       isLoading: false,
       toggleMutation: { mutate: vi.fn() },
-    } as unknown as ReturnType<typeof useProjectTasks>)
+    } as unknown as ReturnType<typeof useTasksByScope>)
   })
 
   it('メッセージに紐付くタスクだけに吹き出しアイコンを表示する', () => {
     renderProjectSidebar()
 
     expect(screen.getAllByLabelText('メッセージに紐付いています')).toHaveLength(1)
+  })
+
+  it('通常チャンネルにもタスク一覧を表示し、チャンネルタスクを追加できる', async () => {
+    fetchWithAuthMock.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'new-task' }), {
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    renderSidebar()
+
+    expect(screen.getByText('タスク')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'タスクを追加' }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('全体')).toBeInTheDocument()
+    expect(within(dialog).queryByText('プロジェクト')).not.toBeInTheDocument()
+
+    await userEvent.type(screen.getByPlaceholderText('タスク名を入力...'), 'チャンネルタスク')
+    await userEvent.click(screen.getByRole('button', { name: '追加' }))
+
+    await waitFor(() => expect(fetchWithAuthMock).toHaveBeenCalledWith('/api/tasks', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ title: 'チャンネルタスク', channelId: 'channel-1', priority: 'medium' }),
+    })))
   })
 })

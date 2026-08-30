@@ -37,7 +37,7 @@ export default function NewWorkspacePage() {
       document.cookie = `${WORKSPACE_COOKIE}=${body.workspaceId}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     }
     // キャッシュをすべて破棄するためフルリロード
-    window.location.href = '/projects'
+    window.location.href = '/chats'
   }
 
   return (

@@ -33,6 +33,7 @@ function isValidView(v: string | null | undefined): v is ProjectsView {
 // navigate と prefetch で同じ対応表を使うために切り出す。
 function pagePath(p: PageId): string {
   if (p === 'calendar' || p === 'kanban' || p === 'projects') return '/projects'
+  if (p === 'chats') return '/chats'
   return `/${p}`
 }
 

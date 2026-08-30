@@ -10,7 +10,8 @@ import { RowActionMenu } from '../row-action-menu'
 import { TaskEditDialog } from '../task-edit-dialog'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import { MarkdownContent } from '../markdown-content'
-import { useProjectTasks } from '@/hooks/use-project-tasks'
+import { CreateTaskModal, type CreateTaskChannel } from './create-task-modal'
+import { useTasksByScope } from '@/hooks/use-project-tasks'
 import { useChannelFiles } from '@/hooks/use-channel-files'
 import { useRenameFile } from '@/hooks/use-rename-file'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -175,13 +176,19 @@ const ExpandableDescription = ({ text }: { text: string }) => {
 }
 
 // チェックボックス付きのタスク箇条書き。チェックは PATCH で連動し、進捗にも反映される
-const TaskChecklist = ({ project, onJumpToMessage }: { project: ProjectDto; onJumpToMessage: (messageId: string) => void }) => {
-  const { data: tasks = [], isLoading, toggleMutation } = useProjectTasks(project.id)
+const TaskChecklist = ({ project, channel, onJumpToMessage }: {
+  project: ProjectDto | null
+  channel: CreateTaskChannel | null
+  onJumpToMessage: (messageId: string) => void
+}) => {
+  const scope = project ? { projectId: project.id } : { channelId: channel!.id }
+  const { data: tasks = [], isLoading, isError, error, toggleMutation } = useTasksByScope(scope)
   const listRef = React.useRef<HTMLDivElement>(null)
   const [expanded, setExpanded] = React.useState(false)
   const [clamped, setClamped] = React.useState(false)
   const [editingTask, setEditingTask] = React.useState<TaskDto | null>(null)
   const [dialogMode, setDialogMode] = React.useState<'edit' | 'delete'>('edit')
+  const [showCreateDialog, setShowCreateDialog] = React.useState(false)
 
   const toggle = (id: string, status: TaskDto['status']) =>
     toggleMutation.mutate({ id, newStatus: status === 'done' ? 'todo' : 'done' })
@@ -193,8 +200,8 @@ const TaskChecklist = ({ project, onJumpToMessage }: { project: ProjectDto; onJu
   )
 
   // 読み込み済みなら実データ、未読込なら ProjectDto の集計値を使う
-  const total = isLoading ? project.taskCount : tasks.length
-  const completed = isLoading ? project.completedTaskCount : tasks.filter(t => t.status === 'done').length
+  const total = isLoading && project ? project.taskCount : tasks.length
+  const completed = isLoading && project ? project.completedTaskCount : tasks.filter(t => t.status === 'done').length
   const progress = total > 0 ? Math.round((completed / total) * 100) : 0
 
   React.useLayoutEffect(() => {
@@ -215,9 +222,21 @@ const TaskChecklist = ({ project, onJumpToMessage }: { project: ProjectDto; onJu
           <Icon name="check" size={12} color="var(--accent)"/>
           タスク
         </span>
-        <span style={{ fontSize: 11.5, color: 'var(--text-3)', fontWeight: 600 }}>
-          {completed} / {total}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-3)', fontWeight: 600 }}>
+            {completed} / {total}
+          </span>
+          {channel && (
+            <button
+              type="button"
+              onClick={() => setShowCreateDialog(true)}
+              aria-label="タスクを追加"
+              style={{ width: 24, height: 24, borderRadius: 999, border: '1px solid var(--border)', background: 'var(--card-2)', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+            >
+              <Icon name="plus" size={12}/>
+            </button>
+          )}
+        </div>
       </div>
       <div style={{ height: 5, borderRadius: 999, background: 'var(--card-2)', overflow: 'hidden' }}>
         <div style={{ width: `${progress}%`, height: '100%', borderRadius: 999, background: 'var(--accent)', transition: 'width .2s' }}/>
@@ -225,6 +244,8 @@ const TaskChecklist = ({ project, onJumpToMessage }: { project: ProjectDto; onJu
 
       {isLoading ? (
         <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '8px 0 2px' }}>読み込み中…</div>
+      ) : isError ? (
+        <div style={{ fontSize: 11.5, color: 'var(--red-text)', padding: '8px 0 2px' }}>{error.message}</div>
       ) : tasks.length === 0 ? (
         <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '8px 0 2px' }}>タスクはまだありません</div>
       ) : (
@@ -290,6 +311,7 @@ const TaskChecklist = ({ project, onJumpToMessage }: { project: ProjectDto; onJu
         </div>
       )}
       <TaskEditDialog open={editingTask !== null} task={editingTask} initialMode={dialogMode} onClose={() => setEditingTask(null)} />
+      {showCreateDialog && channel && <CreateTaskModal channel={channel} onClose={() => setShowCreateDialog(false)}/>}
     </div>
   )
 }
@@ -437,7 +459,7 @@ const ProjectOverview = ({ project, onJumpToMessage }: { project: ProjectDto; on
 
       {project.description && <ExpandableDescription text={project.description}/>}
 
-      <TaskChecklist project={project} onJumpToMessage={onJumpToMessage}/>
+      <TaskChecklist project={project} channel={null} onJumpToMessage={onJumpToMessage}/>
     </div>
   )
 }
@@ -528,6 +550,16 @@ const ChatDetailContent = ({
     )}
 
     {isProject && project && <ProjectOverview project={project} onJumpToMessage={onJumpToMessage}/>}
+
+    {!isProject && !isDm && channelId && (
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
+        <TaskChecklist
+          project={null}
+          channel={{ id: channelId, name: channelName, isPrivate }}
+          onJumpToMessage={onJumpToMessage}
+        />
+      </div>
+    )}
 
     <ChannelFilesSection channelId={channelId} onJumpToMessage={onJumpToMessage}/>
 

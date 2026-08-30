@@ -15,6 +15,28 @@ interface NativeAppHeaderProps {
   showNotifications?: boolean
 }
 
+function NotificationButton() {
+  const { palette } = useAppAppearance()
+  const { unreadCount, openNotifications } = useNotificationPanel()
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={unreadCount > 0 ? `通知、未読${unreadCount}件` : '通知'}
+      onPress={openNotifications}
+      style={styles.notificationButton}
+      hitSlop={6}
+    >
+      <Ionicons name="notifications-outline" size={19} color={palette.text3} />
+      {unreadCount > 0 ? (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+        </View>
+      ) : null}
+    </Pressable>
+  )
+}
+
 export function NativeAppHeader({
   title,
   subtitle,
@@ -25,7 +47,6 @@ export function NativeAppHeader({
 }: NativeAppHeaderProps) {
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
-  const { unreadCount, openNotifications } = useNotificationPanel()
 
   return (
     <View
@@ -72,22 +93,7 @@ export function NativeAppHeader({
         </View>
 
         {right ? <View style={styles.right}>{right}</View> : null}
-        {showNotifications ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={unreadCount > 0 ? `通知、未読${unreadCount}件` : '通知'}
-            onPress={openNotifications}
-            style={styles.notificationButton}
-            hitSlop={6}
-          >
-            <Ionicons name="notifications-outline" size={19} color={palette.text3} />
-            {unreadCount > 0 ? (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
-              </View>
-            ) : null}
-          </Pressable>
-        ) : null}
+        {showNotifications ? <NotificationButton /> : null}
       </View>
     </View>
   )

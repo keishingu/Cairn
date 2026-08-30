@@ -47,6 +47,27 @@ describe('formatChannelPeriod', () => {
 describe('ChannelList', () => {
   beforeEach(() => localStorage.clear())
 
+  it('未読があるチャンネル名を明確な太字で表示する', () => {
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[
+          workspaceChannel({ name: '既読チャンネル' }),
+          workspaceChannel({ id: 'unread-channel', name: '未読チャンネル', unreadCount: 1 }),
+        ]}
+        dms={[]}
+        members={[]}
+        onAddChannel={vi.fn()}
+        onStartDm={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /既読チャンネル/ })).toHaveStyle({ fontWeight: 500 })
+    expect(screen.getByRole('button', { name: /未読チャンネル/ })).toHaveStyle({ fontWeight: 700 })
+  })
+
   it('プロジェクトメニューから完了済みマイルストーンを個別に表示・非表示にする', () => {
     render(
       <ChannelList

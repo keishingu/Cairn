@@ -72,22 +72,26 @@ export async function requireProjectAccess(
   return null
 }
 
-// チャンネルへのアクセス可否を検証する。
+type ChannelAccessDecision =
+  | { allowed: true }
+  | { allowed: false; status: 403 | 404; error: string }
+
+// チャンネルへのアクセス可否を判定する。
 // - 指定ワークスペースに属さないチャンネルは 403（チャンネルID総当たりによる越境アクセスを防ぐ）
 //   旧データのプロジェクトチャンネルは channels.workspace_id が null のことがあるため、
 //   project の workspace_id にフォールバックして判定する（migration 0033 と同じ coalesce）。
-// - プライベートチャンネルと DM は channel_members に参加しているユーザーのみ許可。
+// - プライベートチャンネルと DM、および guest の通常チャンネルは
+//   channel_members に参加しているユーザーのみ許可。
 //   DM は is_private=false でも参加者を channel_members で管理するため、type も判定に含める。
 // - プロジェクトチャンネルはゲストの場合、参加プロジェクト（project_members）のみ許可。
 //   非プライベートでもゲストが参加外プロジェクトのチャットを閲覧/投稿できないようにする。
-// アクセス可なら null、不可なら 403 の NextResponse を返す。
-export async function requireChannelAccess(
+async function getChannelAccessDecision(
   workspaceId: string,
   userId: string,
   channelId: string,
   // ctx.role を渡すとゲスト判定時の getWorkspaceRole を省く（未指定なら DB 解決）
   knownRole?: WorkspaceRole | null,
-): Promise<NextResponse | null> {
+): Promise<ChannelAccessDecision> {
   const [channel] = await db
     .select({
       isPrivate: channels.isPrivate,
@@ -101,14 +105,17 @@ export async function requireChannelAccess(
     .limit(1)
 
   if (!channel || channel.effectiveWorkspaceId !== workspaceId) {
-    return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+    return { allowed: false, status: 403, error: 'このチャンネルにアクセスする権限がありません' }
   }
 
   if (channel.type === 'dm' && !FEATURE_FLAGS.dm) {
-    return NextResponse.json({ error: 'DM機能は現在利用できません' }, { status: 404 })
+    return { allowed: false, status: 404, error: 'DM機能は現在利用できません' }
   }
 
-  const membersOnly = channel.isPrivate || channel.type === 'dm'
+  const role = channel.type === 'workspace' || channel.type === 'project'
+    ? (knownRole !== undefined ? knownRole : await getWorkspaceRole(workspaceId, userId))
+    : knownRole
+  const membersOnly = channel.isPrivate || channel.type === 'dm' || (channel.type === 'workspace' && role === 'guest')
   if (membersOnly) {
     const [membership] = await db
       .select({ userId: channelMembers.userId })
@@ -117,13 +124,12 @@ export async function requireChannelAccess(
       .limit(1)
 
     if (!membership) {
-      return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+      return { allowed: false, status: 403, error: 'このチャンネルにアクセスする権限がありません' }
     }
   }
 
   // プロジェクトチャンネルはゲストの場合、参加プロジェクトに限定する
   if (channel.type === 'project' && channel.projectId) {
-    const role = knownRole !== undefined ? knownRole : await getWorkspaceRole(workspaceId, userId)
     if (role === 'guest') {
       const [pm] = await db
         .select({ id: projectMembers.id })
@@ -132,12 +138,33 @@ export async function requireChannelAccess(
         .limit(1)
 
       if (!pm) {
-        return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+        return { allowed: false, status: 403, error: 'このチャンネルにアクセスする権限がありません' }
       }
     }
   }
 
-  return null
+  return { allowed: true }
+}
+
+export async function canAccessChannel(
+  workspaceId: string,
+  userId: string,
+  channelId: string,
+  knownRole?: WorkspaceRole | null,
+): Promise<boolean> {
+  return (await getChannelAccessDecision(workspaceId, userId, channelId, knownRole)).allowed
+}
+
+// Route Handler 用。アクセス可なら null、不可なら判定理由に対応するレスポンスを返す。
+export async function requireChannelAccess(
+  workspaceId: string,
+  userId: string,
+  channelId: string,
+  knownRole?: WorkspaceRole | null,
+): Promise<NextResponse | null> {
+  const decision = await getChannelAccessDecision(workspaceId, userId, channelId, knownRole)
+  if (decision.allowed) return null
+  return NextResponse.json({ error: decision.error }, { status: decision.status })
 }
 
 export interface FileAccessRow {
@@ -236,12 +263,10 @@ async function canAccessViaAnyChannel(
   // member以上: 非プライベート・非DMチャンネルが1つでもあれば即時許可
   if (!isGuest && wsChannels.some(c => !c.isPrivate && c.type !== 'dm')) return true
 
-  // guest: 非プライベート・非DM・非プロジェクトの一般ワークスペースチャンネルは即時許可
-  // requireChannelAccess はゲストの一般チャンネルを制限しない
-  if (isGuest && wsChannels.some(c => !c.isPrivate && c.type !== 'dm' && c.type !== 'project')) return true
-
-  // プライベートまたはDMはチャンネルメンバーシップが必要
-  const needsChannelCheck = wsChannels.filter(c => c.isPrivate || c.type === 'dm')
+  // プライベートまたはDMと、guestの通常チャンネルはチャンネルメンバーシップが必要
+  const needsChannelCheck = wsChannels.filter(c =>
+    c.isPrivate || c.type === 'dm' || (isGuest && c.type === 'workspace'),
+  )
   // ゲストのプロジェクトチャンネルはプロジェクトメンバーシップが必要（open/private 両方）
   const guestProjectChannels = isGuest ? wsChannels.filter(c => c.type === 'project' && c.projectId) : []
   const guestProjectIds = [...new Set(guestProjectChannels.map(c => c.projectId!))]
@@ -282,8 +307,9 @@ async function canAccessViaAnyChannel(
     } else if (ch.isPrivate || ch.type === 'dm') {
       // プライベート/DM（非プロジェクト）: チャンネルメンバーシップのみ
       if (joinedChannelIds.has(ch.id)) return true
+    } else if (ch.type === 'workspace' && joinedChannelIds.has(ch.id)) {
+      return true
     }
-    // 非プライベート・非DM・非プロジェクト: 上の early return で処理済み
   }
 
   return false
