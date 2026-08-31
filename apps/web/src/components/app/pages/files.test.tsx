@@ -185,6 +185,42 @@ describe('ファイル一覧ページ', () => {
     expect(screen.queryByText('general.pdf')).toBeNull()
   })
 
+  it('保存フィルターは確認後だけ削除し、失敗時は再試行できる', async () => {
+    const fallback = fetchWithAuthMock.getMockImplementation()!
+    let shouldFail = true
+    fetchWithAuthMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/files/filters/filter-1' && init?.method === 'DELETE') {
+        return shouldFail
+          ? new Response(JSON.stringify({ error: '削除できませんでした' }), { status: 500 })
+          : new Response(null, { status: 204 })
+      }
+      return fallback(input, init)
+    })
+    renderPageFiles()
+    await userEvent.click(await screen.findByRole('button', { name: 'フィルター' }))
+    await userEvent.type(screen.getByLabelText('現在の条件を保存'), '計画書')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    const deleteButton = await screen.findByRole('button', { name: '保存済みフィルター「計画書」を削除' })
+    const deleteCalls = () => fetchWithAuthMock.mock.calls.filter(([, init]) => init?.method === 'DELETE')
+
+    await userEvent.click(deleteButton)
+    expect(screen.getByRole('alertdialog', { name: '保存済みフィルターを削除' })).toBeVisible()
+    expect(deleteCalls()).toHaveLength(0)
+    await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+    expect(deleteCalls()).toHaveLength(0)
+    expect(deleteButton).toBeInTheDocument()
+
+    await userEvent.click(deleteButton)
+    await userEvent.click(screen.getByRole('button', { name: '削除する' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('削除できませんでした')
+    expect(deleteButton).toBeInTheDocument()
+    shouldFail = false
+    await userEvent.click(screen.getByRole('button', { name: '削除する' }))
+    await waitFor(() => expect(deleteButton).not.toBeInTheDocument())
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(deleteCalls()).toHaveLength(2)
+  })
+
   it('保存フィルターの取得エラーをスクロール領域外に表示する', async () => {
     fetchWithAuthMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input)

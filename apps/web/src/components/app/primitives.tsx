@@ -396,7 +396,7 @@ export const ModalHeader = ({ icon, title, subtitle, onClose }: {
       <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
       {subtitle && <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>{subtitle}</div>}
     </div>
-    <button type="button" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    <button type="button" aria-label="閉じる" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
     >
@@ -435,7 +435,7 @@ export function fieldInputStyle(invalid: boolean): React.CSSProperties {
     width: '100%', height: 36, padding: '0 12px',
     border: `1px solid ${invalid ? 'var(--red)' : 'var(--border)'}`,
     borderRadius: 8, background: 'var(--card)', color: 'var(--text)',
-    fontSize: 13, fontFamily: 'inherit', outline: 'none',
+    fontSize: 13, fontFamily: 'inherit',
     transition: 'border-color .12s, box-shadow .12s',
     boxSizing: 'border-box',
   }
