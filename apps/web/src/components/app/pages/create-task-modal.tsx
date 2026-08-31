@@ -18,6 +18,7 @@ interface CreateTaskModalProps {
 export type CreateTaskChannel = { id: string; name: string; isPrivate: boolean }
 
 export const CreateTaskModal = ({ onClose, channel }: CreateTaskModalProps) => {
+  const projectSelectId = React.useId()
   const queryClient = useQueryClient()
   const [title, setTitle] = React.useState('')
   const [projectId, setProjectId] = React.useState('')
@@ -95,13 +96,15 @@ export const CreateTaskModal = ({ onClose, channel }: CreateTaskModalProps) => {
         titlePlaceholder="タスク名を入力..."
         afterTitle={channel ? null : (
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
+            <label htmlFor={projectSelectId} style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
               プロジェクト{' '}
               {isGuest
                 ? <span style={{ color: 'var(--red)' }}>*</span>
                 : <span style={{ fontWeight: 500, color: 'var(--text-4)' }}>（任意）</span>}
             </label>
             <select
+              id={projectSelectId}
+              className="form-control"
               value={projectId}
               onChange={e => setProjectId(e.target.value)}
               required={isGuest}

@@ -141,5 +141,6 @@ pnpm dev
 特定の作業時に参照:
 
 - [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md) — コンポーネント設計・Domain Hook パターン・UIディレクトリ構成
+- [`.interface-design/system.md`](.interface-design/system.md) — UI変更・レビュー時に読む統一ルール。`interface-design` を設計基準、Vercel公式 `web-design-guidelines` を品質確認に使い、部品・寸法・作成導線・アイコンの意味を揃える
 - [`docs/api-conventions.md`](docs/api-conventions.md) — API ルート実装規約・認証・サインアップフロー
 - [`docs/notification-design.md`](docs/notification-design.md) — 通知設計（メンション・Push・アプリ内通知）

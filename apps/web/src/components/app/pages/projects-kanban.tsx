@@ -2,11 +2,13 @@
 
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Icon } from '../primitives'
+import { Icon, Fab } from '../primitives'
 import { KanbanBoard } from '../kanban'
 import { MobileHeader } from '@/components/app/mobile/header'
 import { PageToolbar } from './page-toolbar'
 import { CreateProjectModal } from './create-project-modal'
+import { CreateProjectSheet } from '../mobile/create-project-sheet'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { FilterPopover } from './filter-popover'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
@@ -23,10 +25,11 @@ interface PageKanbanProps {
 export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => {
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
+  const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const [showCreate, setShowCreate] = React.useState(false)
 
   // ⌥N: 新規プロジェクト / ⌥F: フィルタトグル
-  useCommand('ctx.create', () => setShowCreate(true))
+  useCommand('ctx.create', () => { if (canCreateProject) setShowCreate(true) })
   useCommand('ctx.filter', () => setFilterOpen(o => !o))
 
   const [filterOpen, setFilterOpen] = React.useState(false)
@@ -80,17 +83,25 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <KanbanBoard onCardClick={openPanel} isMobile />
         </div>
+        {canCreateProject && <Fab onClick={() => setShowCreate(true)} label={`新規${projectLabel}`} />}
+        {showCreate && canCreateProject && (
+          <CreateProjectSheet
+            onClose={() => setShowCreate(false)}
+            onCreated={project => { setShowCreate(false); openPanel(project) }}
+          />
+        )}
       </div>
     )
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px 24px', overflow: 'hidden' }}>
-      {showCreate && (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '12px 24px 20px', overflow: 'hidden' }}>
+      {showCreate && canCreateProject && (
         <CreateProjectModal onClose={() => setShowCreate(false)} onCreated={handleCreated} />
       )}
       <PageToolbar
-        style={{ marginBottom: 14 }}
+        inset
+        style={{ marginBottom: 20 }}
         right={
           <>
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
@@ -115,7 +126,8 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
                 />
               )}
             </div>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+            <button className="btn btn-primary" onClick={() => setShowCreate(true)} disabled={!canCreateProject}
+              title={canCreateProject ? undefined : `${projectLabel}の作成には管理者以上の権限が必要です`}>
               <Icon name="plus" size={13} /> 新規{projectLabel}
             </button>
           </>

@@ -206,6 +206,7 @@ export function FileFilterToolbar({
                 <button
                   onClick={() => onDeleteSavedFilter(filter.id)}
                   aria-label={`保存済みフィルター「${filter.name}」を削除`}
+                  title={`保存済みフィルター「${filter.name}」を削除`}
                   style={{
                     border: 'none',
                     background: 'transparent',
@@ -215,7 +216,7 @@ export function FileFilterToolbar({
                     display: 'flex',
                   }}
                 >
-                  <Icon name="close" size={10} />
+                  <Icon name="trash" size={13} />
                 </button>
               </div>
             )
