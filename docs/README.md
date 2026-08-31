@@ -17,6 +17,7 @@
 |---|---|---|
 | API ルートの追加・変更 | `api-conventions.md` | — |
 | フロントエンド・UI 実装 | `frontend-guidelines.md` | `ui-consistency-checklist.md`（統一の進捗） |
+| プロフィール属性・チャット上のメンバー表示 | `profile-attributes-design.md`（実装前の確定設計） | `user-deactivation-design.md`（非活性メンバーの扱い） |
 | 通知・未読・Push・Realtime | `notification-design.md`（現行仕様） | `notification-ux-redesign.md`（Phase 設計・Realtime 方針の根拠）、`07_notifications_and_unread.md` |
 | モバイル（Expo） | CLAUDE.md「決定済みの技術判断」、`mobile-internal-distribution.md` | `08_expo_roadmap.md`、`mobile-webview-auth-handoff.md`（WebView 認証） |
 | キーボードショートカット | `keyboard-shortcuts.md` | — |
@@ -35,6 +36,7 @@
 |---|---|---|
 | [`api-conventions.md`](./api-conventions.md) | API ルート実装規約・認証・サインアップフロー | 2026-07-03 |
 | [`frontend-guidelines.md`](./frontend-guidelines.md) | コンポーネント設計・Domain Hook パターン・UIディレクトリ構成 | 2026-06-10 |
+| [`profile-attributes-design.md`](./profile-attributes-design.md) | プロジェクト横断のプロフィール属性、管理権限、チャット表示の実装設計（未実装） | 2026-09-01 |
 | [`notification-design.md`](./notification-design.md) | 通知・未読の現行仕様 | 2026-07-03 |
 | [`notification-ux-redesign.md`](./notification-ux-redesign.md) | 通知・未読・Push の再設計。**Phase 1〜3 実装済み**（現行 Realtime 方針 = Broadcast from Database はここの Phase 2）。Phase 4〜5 は構想 | 2026-07-03 |
 | [`mobile-webview-auth-handoff.md`](./mobile-webview-auth-handoff.md) | モバイル WebView 認証のワンタイムトークンハンドオフ（実装済み） | 2026-07-03 |
