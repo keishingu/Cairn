@@ -7,6 +7,7 @@ import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { toast } from '@/lib/toast'
 
 const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -189,6 +190,14 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     (viewerRole === 'owner' || (viewerRole === 'admin' && currentRole !== 'owner'))
   const allowedRoles: WorkspaceMemberDto['role'][] =
     viewerRole === 'owner' ? ['owner', 'admin', 'member'] : ['admin', 'member']
+  // 唯一の active owner を降格すると API が 422 になるため、選択肢から外す
+  const activeOwnerCount = allMembers.filter(
+    m => m.role === 'owner' && m.membershipStatus === 'active',
+  ).length
+  const selectableRoles =
+    currentRole === 'owner' && activeOwnerCount <= 1
+      ? allowedRoles.filter(role => role === 'owner')
+      : allowedRoles
 
   const roleMutation = useMutation({
     mutationFn: (newRole: WorkspaceMemberDto['role']) =>
@@ -197,7 +206,10 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: newRole }),
       }).then(async r => {
-        if (!r.ok) { const e = await r.json() as { error?: string }; throw e }
+        if (!r.ok) {
+          const e = await r.json() as { error?: string }
+          throw new Error(e.error ?? 'ロールの変更に失敗しました')
+        }
         return r.json() as Promise<{ userId: string; role: WorkspaceMemberDto['role'] }>
       }),
     onSuccess: () => {
@@ -210,7 +222,12 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     const prev = currentRole
     setCurrentRole(newRole)
     setShowRoleMenu(false)
-    roleMutation.mutate(newRole, { onError: () => setCurrentRole(prev) })
+    roleMutation.mutate(newRole, {
+      onError: (err) => {
+        setCurrentRole(prev)
+        toast.error(err instanceof Error ? err.message : 'ロールの変更に失敗しました')
+      },
+    })
   }
   // ---- /ロール変更 ----
 
@@ -248,7 +265,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             zIndex: 100, overflow: 'hidden', minWidth: isMobile ? 128 : 110,
           }}
         >
-          {allowedRoles.map(role => (
+          {selectableRoles.map(role => (
             <button
               key={role}
               type="button"

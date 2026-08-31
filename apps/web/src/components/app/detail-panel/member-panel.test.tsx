@@ -3,11 +3,12 @@
 
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { MemberDetailPanel } from './member-panel'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
+import { __resetToastsForTest, subscribeToasts } from '@/lib/toast'
 
 const fetchWithAuth = vi.fn()
 
@@ -37,6 +38,17 @@ const ADMIN: WorkspaceMemberDto = {
   projectCount: 0,
 }
 
+const OWNER: WorkspaceMemberDto = {
+  userId: 'owner-1',
+  displayName: 'オーナー',
+  email: 'owner@example.com',
+  avatarUrl: null,
+  role: 'owner',
+  membershipStatus: 'active',
+  joinedAt: '2024-01-01',
+  projectCount: 0,
+}
+
 const GUEST: WorkspaceMemberDto = {
   ...TARGET,
   userId: 'guest-1',
@@ -51,11 +63,15 @@ function jsonResponse(data: unknown, ok = true) {
   }
 }
 
-function renderPanel(member: WorkspaceMemberDto, opts: { isMobile?: boolean; viewer?: WorkspaceMemberDto } = {}) {
+function renderPanel(
+  member: WorkspaceMemberDto,
+  opts: { isMobile?: boolean; viewer?: WorkspaceMemberDto; members?: WorkspaceMemberDto[] } = {},
+) {
   const viewer = opts.viewer ?? ADMIN
+  const members = opts.members ?? [viewer, member]
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   qc.setQueryData(['me'], { id: viewer.userId })
-  qc.setQueryData(['workspace-members'], [viewer, member])
+  qc.setQueryData(['workspace-members'], members)
   qc.setQueryData(['member-projects', member.userId], [])
 
   return render(
@@ -70,7 +86,11 @@ function renderPanel(member: WorkspaceMemberDto, opts: { isMobile?: boolean; vie
   )
 }
 
-function mockApis(members: WorkspaceMemberDto[], meId: string) {
+function mockApis(
+  members: WorkspaceMemberDto[],
+  meId: string,
+  patch?: (body: { role: string }) => { ok: boolean; data: unknown },
+) {
   fetchWithAuth.mockReset()
   fetchWithAuth.mockImplementation((url: string, init?: RequestInit) => {
     if (typeof url === 'string' && url === '/api/me') {
@@ -84,6 +104,10 @@ function mockApis(members: WorkspaceMemberDto[], meId: string) {
     }
     if (init?.method === 'PATCH') {
       const body = JSON.parse(String(init.body)) as { role: string }
+      if (patch) {
+        const result = patch(body)
+        return Promise.resolve(jsonResponse(result.data, result.ok))
+      }
       return Promise.resolve(jsonResponse({ userId: TARGET.userId, role: body.role }))
     }
     return Promise.resolve(jsonResponse([]))
@@ -91,6 +115,10 @@ function mockApis(members: WorkspaceMemberDto[], meId: string) {
 }
 
 describe('MemberDetailPanel — ロール変更', () => {
+  beforeEach(() => {
+    __resetToastsForTest()
+  })
+
   it('モバイルでも管理者はロール変更ドロップダウンを開ける', async () => {
     mockApis([ADMIN, TARGET], ADMIN.userId)
     renderPanel(TARGET, { isMobile: true })
@@ -125,5 +153,39 @@ describe('MemberDetailPanel — ロール変更', () => {
 
     await screen.findByText('ゲスト')
     expect(screen.queryByRole('button', { name: 'ワークスペース権限を変更' })).toBeNull()
+  })
+
+  it('唯一の owner は降格候補を出さない', async () => {
+    mockApis([OWNER, TARGET], OWNER.userId)
+    renderPanel(OWNER, { isMobile: true, viewer: OWNER, members: [OWNER, TARGET] })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'ワークスペース権限を変更' }))
+    expect(screen.getByRole('option', { name: 'オーナー' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: '管理者' })).toBeNull()
+    expect(screen.queryByRole('option', { name: 'メンバー' })).toBeNull()
+  })
+
+  it('ロール変更が失敗したらトーストで理由を表示する', async () => {
+    const seen: string[] = []
+    const unsubscribe = subscribeToasts((items) => {
+      for (const item of items) {
+        if (item.variant === 'error') seen.push(item.message)
+      }
+    })
+
+    mockApis([ADMIN, TARGET], ADMIN.userId, () => ({
+      ok: false,
+      data: { error: 'ワークスペースには最低1人の owner が必要です' },
+    }))
+    renderPanel(TARGET, { isMobile: true })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'ワークスペース権限を変更' }))
+    await userEvent.click(screen.getByRole('option', { name: '管理者' }))
+
+    await waitFor(() => {
+      expect(seen).toContain('ワークスペースには最低1人の owner が必要です')
+    })
+    expect(screen.getByRole('button', { name: 'ワークスペース権限を変更' })).toHaveTextContent('メンバー')
+    unsubscribe()
   })
 })
