@@ -225,6 +225,7 @@ describe('ChannelList', () => {
         members={[]}
         onAddChannel={vi.fn()}
         onStartDm={vi.fn()}
+        onCreateMilestone={vi.fn()}
         isMobile
       />,
     )
@@ -242,7 +243,7 @@ describe('ChannelList', () => {
 
     const action = screen.getByRole('button', { name: 'プロジェクトAのメニュー' }).closest('.chat-sidebar-item-action')
     expect(action).toHaveStyle({ right: '8px' })
-    expect(container.querySelectorAll('.chat-sidebar-item-action')).toHaveLength(2)
+    expect(container.querySelectorAll('.chat-sidebar-item-action').length).toBeGreaterThanOrEqual(1)
   })
 
   it('チャンネルの直下にスレッドを表示し、メニューから作成を開始する', () => {

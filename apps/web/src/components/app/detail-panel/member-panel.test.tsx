@@ -3,7 +3,7 @@
 
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { MemberDetailPanel } from './member-panel'
@@ -70,34 +70,42 @@ function renderPanel(member: WorkspaceMemberDto, opts: { isMobile?: boolean; vie
   )
 }
 
-describe('MemberDetailPanel — ロール変更', () => {
-  beforeEach(() => {
-    fetchWithAuth.mockReset()
-    fetchWithAuth.mockImplementation((url: string, init?: RequestInit) => {
-      if (typeof url === 'string' && url.includes('/projects')) {
-        return Promise.resolve(jsonResponse([]))
-      }
-      if (init?.method === 'PATCH') {
-        const body = JSON.parse(String(init.body)) as { role: string }
-        return Promise.resolve(jsonResponse({ userId: TARGET.userId, role: body.role }))
-      }
+function mockApis(members: WorkspaceMemberDto[], meId: string) {
+  fetchWithAuth.mockReset()
+  fetchWithAuth.mockImplementation((url: string, init?: RequestInit) => {
+    if (typeof url === 'string' && url === '/api/me') {
+      return Promise.resolve(jsonResponse({ id: meId }))
+    }
+    if (typeof url === 'string' && url === '/api/workspaces/members') {
+      return Promise.resolve(jsonResponse(members))
+    }
+    if (typeof url === 'string' && url.includes('/projects')) {
       return Promise.resolve(jsonResponse([]))
-    })
+    }
+    if (init?.method === 'PATCH') {
+      const body = JSON.parse(String(init.body)) as { role: string }
+      return Promise.resolve(jsonResponse({ userId: TARGET.userId, role: body.role }))
+    }
+    return Promise.resolve(jsonResponse([]))
   })
+}
 
+describe('MemberDetailPanel — ロール変更', () => {
   it('モバイルでも管理者はロール変更ドロップダウンを開ける', async () => {
+    mockApis([ADMIN, TARGET], ADMIN.userId)
     renderPanel(TARGET, { isMobile: true })
 
-    await userEvent.click(screen.getByRole('button', { name: 'ワークスペース権限を変更' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'ワークスペース権限を変更' }))
     expect(screen.getByRole('option', { name: '管理者' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'メンバー' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'ゲスト' })).toBeNull()
   })
 
   it('モバイルでロールを選ぶと PATCH する', async () => {
+    mockApis([ADMIN, TARGET], ADMIN.userId)
     renderPanel(TARGET, { isMobile: true })
 
-    await userEvent.click(screen.getByRole('button', { name: 'ワークスペース権限を変更' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'ワークスペース権限を変更' }))
     await userEvent.click(screen.getByRole('option', { name: '管理者' }))
 
     await waitFor(() => {
@@ -111,10 +119,11 @@ describe('MemberDetailPanel — ロール変更', () => {
     })
   })
 
-  it('ゲストのロールは変更できない（読み取り専用バッジ）', () => {
+  it('ゲストのロールは変更できない（読み取り専用バッジ）', async () => {
+    mockApis([ADMIN, GUEST], ADMIN.userId)
     renderPanel(GUEST, { isMobile: true })
 
+    await screen.findByText('ゲスト')
     expect(screen.queryByRole('button', { name: 'ワークスペース権限を変更' })).toBeNull()
-    expect(screen.getByText('ゲスト')).toBeInTheDocument()
   })
 })
