@@ -7,6 +7,7 @@ import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { toast } from '@/lib/toast'
 
 const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -183,9 +184,20 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
   })
   const viewerRole = allMembers.find(m => m.userId === me?.id)?.role ?? null
-  const canChangeRole = !isMobile && (viewerRole === 'owner' || (viewerRole === 'admin' && currentRole !== 'owner'))
+  // ゲスト↔通常ロールは API が拒否するため UI からも除外する（PC / モバイル共通）
+  const canChangeRole =
+    currentRole !== 'guest' &&
+    (viewerRole === 'owner' || (viewerRole === 'admin' && currentRole !== 'owner'))
   const allowedRoles: WorkspaceMemberDto['role'][] =
-    viewerRole === 'owner' ? ['owner', 'admin', 'member', 'guest'] : ['admin', 'member', 'guest']
+    viewerRole === 'owner' ? ['owner', 'admin', 'member'] : ['admin', 'member']
+  // 唯一の active owner を降格すると API が 422 になるため、選択肢から外す
+  const activeOwnerCount = allMembers.filter(
+    m => m.role === 'owner' && m.membershipStatus === 'active',
+  ).length
+  const selectableRoles =
+    currentRole === 'owner' && activeOwnerCount <= 1
+      ? allowedRoles.filter(role => role === 'owner')
+      : allowedRoles
 
   const roleMutation = useMutation({
     mutationFn: (newRole: WorkspaceMemberDto['role']) =>
@@ -194,7 +206,10 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: newRole }),
       }).then(async r => {
-        if (!r.ok) { const e = await r.json() as { error?: string }; throw e }
+        if (!r.ok) {
+          const e = await r.json() as { error?: string }
+          throw new Error(e.error ?? 'ロールの変更に失敗しました')
+        }
         return r.json() as Promise<{ userId: string; role: WorkspaceMemberDto['role'] }>
       }),
     onSuccess: () => {
@@ -207,11 +222,78 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     const prev = currentRole
     setCurrentRole(newRole)
     setShowRoleMenu(false)
-    roleMutation.mutate(newRole, { onError: () => setCurrentRole(prev) })
+    roleMutation.mutate(newRole, {
+      onError: (err) => {
+        setCurrentRole(prev)
+        toast.error(err instanceof Error ? err.message : 'ロールの変更に失敗しました')
+      },
+    })
   }
   // ---- /ロール変更 ----
 
   const rs = WS_ROLE_STYLE[currentRole]
+
+  const roleBadge = canChangeRole ? (
+    <div ref={dropdownRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setShowRoleMenu(v => !v)}
+        disabled={roleMutation.isPending}
+        aria-haspopup="listbox"
+        aria-expanded={showRoleMenu}
+        aria-label="ワークスペース権限を変更"
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          fontSize: isMobile ? 11 : 10.5, fontWeight: 700,
+          color: rs.c, background: rs.bg,
+          padding: isMobile ? '2px 6px 2px 8px' : '2px 6px 2px 8px', borderRadius: 4,
+          border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+          opacity: roleMutation.isPending ? 0.6 : 1,
+        }}
+      >
+        {WS_ROLE_LABEL[currentRole]}
+        <Icon name="chevDown" size={isMobile ? 10 : 9}/>
+      </button>
+      {showRoleMenu && (
+        <div
+          role="listbox"
+          aria-label="ワークスペース権限"
+          style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0,
+            background: 'var(--card)', border: '1px solid var(--border)',
+            borderRadius: 8, boxShadow: 'var(--shadow-lg)',
+            zIndex: 100, overflow: 'hidden', minWidth: isMobile ? 128 : 110,
+          }}
+        >
+          {selectableRoles.map(role => (
+            <button
+              key={role}
+              type="button"
+              role="option"
+              aria-selected={currentRole === role}
+              onClick={() => handleRoleChange(role)}
+              style={{
+                display: 'block', width: '100%',
+                padding: isMobile ? '10px 14px' : '7px 12px', border: 'none',
+                background: currentRole === role ? 'var(--card-2)' : 'transparent',
+                color: currentRole === role ? 'var(--text)' : 'var(--text-2)',
+                fontSize: isMobile ? 14 : 12.5, fontWeight: currentRole === role ? 600 : 500,
+                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+              }}
+              onMouseEnter={e => { if (currentRole !== role) (e.currentTarget.style.background = 'var(--card-hover)') }}
+              onMouseLeave={e => { if (currentRole !== role) (e.currentTarget.style.background = 'transparent') }}
+            >
+              {WS_ROLE_LABEL[role]}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  ) : (
+    <span style={{ fontSize: isMobile ? 11 : 10.5, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
+      {WS_ROLE_LABEL[currentRole]}
+    </span>
+  )
 
   const { data: projects = [], isLoading } = useQuery<MemberProjectDto[]>({
     queryKey: ['member-projects', member.userId],
@@ -289,9 +371,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
-                  {WS_ROLE_LABEL[currentRole]}
-                </span>
+                {roleBadge}
                 <span style={{ fontSize: 12, color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                   <Icon name="clock" size={11}/> {formatJoinedAt(member.joinedAt)}
                 </span>
@@ -331,56 +411,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              {canChangeRole ? (
-                <div ref={dropdownRef} style={{ position: 'relative' }}>
-                  <button
-                    onClick={() => setShowRoleMenu(v => !v)}
-                    disabled={roleMutation.isPending}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      fontSize: 10.5, fontWeight: 700,
-                      color: rs.c, background: rs.bg,
-                      padding: '2px 6px 2px 8px', borderRadius: 4,
-                      border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                      opacity: roleMutation.isPending ? 0.6 : 1,
-                    }}
-                  >
-                    {WS_ROLE_LABEL[currentRole]}
-                    <Icon name="chevDown" size={9}/>
-                  </button>
-                  {showRoleMenu && (
-                    <div style={{
-                      position: 'absolute', top: 'calc(100% + 4px)', left: 0,
-                      background: 'var(--card)', border: '1px solid var(--border)',
-                      borderRadius: 8, boxShadow: 'var(--shadow-lg)',
-                      zIndex: 100, overflow: 'hidden', minWidth: 110,
-                    }}>
-                      {allowedRoles.map(role => (
-                        <button
-                          key={role}
-                          onClick={() => handleRoleChange(role)}
-                          style={{
-                            display: 'block', width: '100%',
-                            padding: '7px 12px', border: 'none',
-                            background: currentRole === role ? 'var(--card-2)' : 'transparent',
-                            color: currentRole === role ? 'var(--text)' : 'var(--text-2)',
-                            fontSize: 12.5, fontWeight: currentRole === role ? 600 : 500,
-                            cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                          }}
-                          onMouseEnter={e => { if (currentRole !== role) (e.currentTarget.style.background = 'var(--card-hover)') }}
-                          onMouseLeave={e => { if (currentRole !== role) (e.currentTarget.style.background = 'transparent') }}
-                        >
-                          {WS_ROLE_LABEL[role]}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
-                  {WS_ROLE_LABEL[currentRole]}
-                </span>
-              )}
+              {roleBadge}
               <span style={{ fontSize: 11, color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                 <Icon name="clock" size={10}/>
                 {formatJoinedAt(member.joinedAt)}

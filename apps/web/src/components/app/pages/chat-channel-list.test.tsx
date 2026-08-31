@@ -211,6 +211,39 @@ describe('ChannelList', () => {
 
     const mobileAction = screen.getByRole('button', { name: 'プロジェクトAのメニュー' }).closest('.chat-sidebar-item-action')
     expect(mobileAction).toHaveAttribute('data-always-visible', 'true')
+    expect(mobileAction).toHaveStyle({ right: '8px' })
+  })
+
+  it('モバイル一覧では行末の > を出さず … を右端寄せにする', () => {
+    const { container } = render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[projectChannel({})]}
+        workspaceChannels={[workspaceChannel({})]}
+        dms={[]}
+        members={[]}
+        onAddChannel={vi.fn()}
+        onStartDm={vi.fn()}
+        onCreateMilestone={vi.fn()}
+        isMobile
+      />,
+    )
+
+    // chevRight は SVG path の data 属性ではなく aria もないので、行ボタン内に右矢印用の svg が無いことを確認
+    const rowButtons = screen.getAllByRole('button').filter(btn =>
+      /プロジェクトA|雑談/.test(btn.textContent ?? ''),
+    )
+    expect(rowButtons.length).toBeGreaterThanOrEqual(2)
+    for (const button of rowButtons) {
+      const svgs = button.querySelectorAll('svg')
+      // 先頭アイコン（# 等）以外の行内装飾として chevron を持たない
+      expect(svgs.length).toBeLessThanOrEqual(1)
+    }
+
+    const action = screen.getByRole('button', { name: 'プロジェクトAのメニュー' }).closest('.chat-sidebar-item-action')
+    expect(action).toHaveStyle({ right: '8px' })
+    expect(container.querySelectorAll('.chat-sidebar-item-action').length).toBeGreaterThanOrEqual(1)
   })
 
   it('チャンネルの直下にスレッドを表示し、メニューから作成を開始する', () => {
