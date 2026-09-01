@@ -193,6 +193,49 @@ describe('ChatMessage copy action', () => {
     expect(screen.getByRole('checkbox')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '詳細' })).toHaveAttribute('href', 'https://example.com/guide')
   })
+
+  it('プロジェクトロールと属性を表示し、通常メンバーロールは省略する', () => {
+    const props = {
+      messageId: 'message-3',
+      messageType: 'text' as const,
+      senderId: 'user-2',
+      currentUserId: 'user-1',
+      senderName: 'Alice',
+      createdAt: '2026-06-25T12:00:00.000Z',
+      isEdited: false,
+      content: 'hello',
+      reactions: [],
+      attachments: [],
+      replyTo: null,
+      bookmarked: false,
+      onReact: vi.fn(),
+      onEdit: vi.fn(),
+      onDelete: vi.fn(),
+      onCheckboxToggle: vi.fn(),
+      onReply: vi.fn(),
+      onBookmark: vi.fn(),
+      onJumpToMessage: vi.fn(),
+      onCopyLink: vi.fn(),
+      onImageClick: vi.fn(),
+    }
+    const { rerender } = render(
+      <ChatMessage
+        {...props}
+        senderProjectRole="subleader"
+        senderProfileAttributes={[
+          { id: 'attribute-1', name: '3年生', color: 'blue' },
+          { id: 'attribute-2', name: '経済学部', color: 'emerald' },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('サブリーダー')).toBeInTheDocument()
+    expect(screen.getByText('3年生')).toBeInTheDocument()
+    expect(screen.getByText('経済学部')).toBeInTheDocument()
+
+    rerender(<ChatMessage {...props} senderProjectRole="member" senderProfileAttributes={[]} />)
+    expect(screen.queryByText('メンバー')).toBeNull()
+  })
 })
 
 describe('isNearMessageTimelineEnd', () => {

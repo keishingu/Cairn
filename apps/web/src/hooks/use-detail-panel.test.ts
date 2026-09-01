@@ -51,6 +51,7 @@ const STUB_MEMBER: WorkspaceMemberDto = {
   avatarUrl: null,
   role: 'member',
   membershipStatus: 'active',
+  profileAttributes: [],
   joinedAt: '2026-01-01',
   projectCount: 0,
 }

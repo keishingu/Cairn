@@ -5,6 +5,7 @@ import {
   createTaskSchema,
   patchMilestoneSchema,
   patchMeSchema,
+  patchProfileAttributesSchema,
   patchWorkspaceSettingsSchema,
   postMessageSchema,
   uploadGalleryItemSchema,
@@ -17,6 +18,36 @@ describe('patchMeSchema', () => {
 
   it('未定義のハイライトカラーを拒否する', () => {
     expect(patchMeSchema.safeParse({ accentId: 'unknown' }).success).toBe(false)
+  })
+})
+
+describe('patchProfileAttributesSchema', () => {
+  it('属性IDの順序を保つ', () => {
+    const result = patchProfileAttributesSchema.safeParse({
+      attributeIds: [
+        '00000000-0000-0000-0000-000000000001',
+        '00000000-0000-0000-0000-000000000002',
+      ],
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.attributeIds).toEqual([
+        '00000000-0000-0000-0000-000000000001',
+        '00000000-0000-0000-0000-000000000002',
+      ])
+    }
+  })
+
+  it('重複・6件以上・UUID以外を拒否する', () => {
+    const first = '00000000-0000-0000-0000-000000000001'
+    expect(patchProfileAttributesSchema.safeParse({ attributeIds: [first, first] }).success).toBe(false)
+    expect(patchProfileAttributesSchema.safeParse({
+      attributeIds: Array.from(
+        { length: 6 },
+        (_, index) => `00000000-0000-0000-0000-${String(index + 1).padStart(12, '0')}`,
+      ),
+    }).success).toBe(false)
+    expect(patchProfileAttributesSchema.safeParse({ attributeIds: ['not-a-uuid'] }).success).toBe(false)
   })
 })
 

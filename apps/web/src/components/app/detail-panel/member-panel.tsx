@@ -8,6 +8,11 @@ import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/pro
 import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { toast } from '@/lib/toast'
+import { ProfileAttributeBadges } from '../profile-attribute-badges'
+import {
+  useProfileAttributes,
+  useUpdateMemberProfileAttributes,
+} from '@/hooks/use-profile-attributes'
 
 const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -184,6 +189,8 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
   })
   const viewerRole = allMembers.find(m => m.userId === me?.id)?.role ?? null
+  const canEditAttributes =
+    member.membershipStatus === 'active' && (viewerRole === 'owner' || viewerRole === 'admin')
   // ゲスト↔通常ロールは API が拒否するため UI からも除外する（PC / モバイル共通）
   const canChangeRole =
     currentRole !== 'guest' &&
@@ -230,6 +237,50 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     })
   }
   // ---- /ロール変更 ----
+
+  const [profileAttributes, setProfileAttributes] = React.useState(member.profileAttributes)
+  const [draftAttributeIds, setDraftAttributeIds] = React.useState(
+    member.profileAttributes.map(attribute => attribute.id),
+  )
+  const [attributeError, setAttributeError] = React.useState<string | null>(null)
+  const [editingAttributes, setEditingAttributes] = React.useState(false)
+  React.useEffect(() => {
+    setProfileAttributes(member.profileAttributes)
+    setDraftAttributeIds(member.profileAttributes.map(attribute => attribute.id))
+    setEditingAttributes(false)
+  }, [member.userId, member.profileAttributes])
+
+  const {
+    data: attributeOptions = [],
+    isLoading: attributeOptionsLoading,
+    error: attributeOptionsError,
+  } = useProfileAttributes(editingAttributes)
+
+  const attributeMutation = useUpdateMemberProfileAttributes(member.userId)
+
+  const toggleAttribute = (attributeId: string) => {
+    setDraftAttributeIds(current =>
+      current.includes(attributeId)
+        ? current.filter(id => id !== attributeId)
+        : [...current, attributeId],
+    )
+    setAttributeError(null)
+  }
+
+  const handleSaveAttributes = () => {
+    attributeMutation.mutate(draftAttributeIds, {
+      onSuccess: attributes => {
+        setProfileAttributes(attributes)
+        setDraftAttributeIds(attributes.map(attribute => attribute.id))
+        setEditingAttributes(false)
+        setAttributeError(null)
+        toast.success('属性を保存しました')
+      },
+      onError: error => setAttributeError(
+        error instanceof Error ? error.message : '属性の保存に失敗しました',
+      ),
+    })
+  }
 
   const rs = WS_ROLE_STYLE[currentRole]
 
@@ -433,6 +484,87 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
           </button>
         </div>
       )}
+
+      <div style={{ padding: isMobile ? '12px 16px' : '10px 16px', borderBottom: '1px solid var(--divider)', background: isMobile ? 'var(--card)' : undefined }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: profileAttributes.length > 0 || editingAttributes ? 8 : 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', letterSpacing: '0.06em' }}>属性</span>
+          {canEditAttributes && !editingAttributes && (
+            <button
+              type="button"
+              onClick={() => { setDraftAttributeIds(profileAttributes.map(attribute => attribute.id)); setEditingAttributes(true); setAttributeError(null) }}
+              style={{ border: 'none', background: 'transparent', color: 'var(--accent)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', padding: 2, fontFamily: 'inherit' }}
+            >
+              編集
+            </button>
+          )}
+        </div>
+        {editingAttributes ? (
+          <div>
+            {attributeOptionsLoading ? (
+              <div style={{ color: 'var(--text-4)', fontSize: 12 }}>読み込み中…</div>
+            ) : attributeOptionsError ? (
+              <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5 }}>属性一覧を取得できませんでした</div>
+            ) : attributeOptions.length === 0 ? (
+              <div style={{ color: 'var(--text-4)', fontSize: 12 }}>設定画面で属性を作成してください。</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {attributeOptions.map(attribute => {
+                  const checked = draftAttributeIds.includes(attribute.id)
+                  const disabled = !checked && draftAttributeIds.length >= 5
+                  return (
+                    <label
+                      key={attribute.id}
+                      style={{
+                        minHeight: 36,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '4px 6px',
+                        borderRadius: 6,
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        opacity: disabled ? 0.5 : 1,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={() => toggleAttribute(attribute.id)}
+                      />
+                      <ProfileAttributeBadges attributes={[attribute]} />
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+            <div style={{ marginTop: 6, color: 'var(--text-4)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>{draftAttributeIds.length}/5件</div>
+            {attributeError && <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5, marginTop: 6 }}>{attributeError}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 10 }}>
+              <button
+                type="button"
+                onClick={() => { setDraftAttributeIds(profileAttributes.map(attribute => attribute.id)); setEditingAttributes(false); setAttributeError(null) }}
+                className="btn btn-ghost"
+                style={{ height: 30, padding: '0 10px', fontSize: 12 }}
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAttributes}
+                disabled={attributeMutation.isPending || attributeOptionsLoading || !!attributeOptionsError}
+                className="btn btn-primary"
+                style={{ height: 30, padding: '0 12px', fontSize: 12 }}
+              >
+                {attributeMutation.isPending ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+        ) : profileAttributes.length > 0 ? (
+          <ProfileAttributeBadges attributes={profileAttributes} />
+        ) : (
+          <span style={{ fontSize: 12, color: 'var(--text-4)' }}>未設定</span>
+        )}
+      </div>
 
       {/* Stats row */}
       <div style={{

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AttachmentDto, MessageType } from '@cairn/shared'
+import type { AttachmentDto, MessageType, ProfileAttributeDto, ProjectMemberRole } from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
 
 export interface MessageDto {
@@ -9,6 +9,8 @@ export interface MessageDto {
   senderId: string
   senderName: string
   senderAvatarUrl: string | null
+  senderProfileAttributes?: ProfileAttributeDto[]
+  senderProjectRole?: ProjectMemberRole | null
   createdAt: string
   isEdited: boolean
   reactions: { emoji: string; count: number; mine: boolean; userNames: string[] }[]

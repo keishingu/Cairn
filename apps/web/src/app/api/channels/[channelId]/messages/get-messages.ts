@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import type { MessageType } from '@cairn/shared'
+import type { MessageType, ProjectMemberRole } from '@cairn/shared'
 import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
 import type { MessageDto, ReactionDto, ReplyToDto } from './dto'
 
 type GetMessagesInput = {
@@ -40,6 +41,8 @@ export async function getMessages({
       messageBookmarks,
       files,
       workspaceMembers,
+      channels,
+      projectMembers,
     } = await import('@cairn/db')
     const { eq, isNull, inArray, and, lte, lt, gt, or, desc, asc } = await import('drizzle-orm')
 
@@ -51,6 +54,7 @@ export async function getMessages({
       senderId: messages.senderId,
       senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
       senderAvatarUrl: workspaceMembers.avatarUrl,
+      senderProjectRole: projectMembers.role,
       createdAt: messages.createdAt,
       updatedAt: messages.updatedAt,
     }
@@ -63,6 +67,7 @@ export async function getMessages({
       senderId: string
       senderName: string
       senderAvatarUrl: string | null
+      senderProjectRole: ProjectMemberRole | null
       createdAt: Date
       updatedAt: Date
     }>
@@ -91,11 +96,19 @@ export async function getMessages({
           .select(selectFields)
           .from(messages)
           .innerJoin(profiles, eq(messages.senderId, profiles.id))
+          .innerJoin(channels, eq(messages.channelId, channels.id))
           .leftJoin(
             workspaceMembers,
             and(
               eq(workspaceMembers.userId, messages.senderId),
               eq(workspaceMembers.workspaceId, workspaceId),
+            ),
+          )
+          .leftJoin(
+            projectMembers,
+            and(
+              eq(projectMembers.userId, messages.senderId),
+              eq(projectMembers.projectId, channels.projectId),
             ),
           )
           .where(
@@ -114,11 +127,19 @@ export async function getMessages({
           .select(selectFields)
           .from(messages)
           .innerJoin(profiles, eq(messages.senderId, profiles.id))
+          .innerJoin(channels, eq(messages.channelId, channels.id))
           .leftJoin(
             workspaceMembers,
             and(
               eq(workspaceMembers.userId, messages.senderId),
               eq(workspaceMembers.workspaceId, workspaceId),
+            ),
+          )
+          .leftJoin(
+            projectMembers,
+            and(
+              eq(projectMembers.userId, messages.senderId),
+              eq(projectMembers.projectId, channels.projectId),
             ),
           )
           .where(
@@ -157,11 +178,19 @@ export async function getMessages({
         .select(selectFields)
         .from(messages)
         .innerJoin(profiles, eq(messages.senderId, profiles.id))
+        .innerJoin(channels, eq(messages.channelId, channels.id))
         .leftJoin(
           workspaceMembers,
           and(
             eq(workspaceMembers.userId, messages.senderId),
             eq(workspaceMembers.workspaceId, workspaceId),
+          ),
+        )
+        .leftJoin(
+          projectMembers,
+          and(
+            eq(projectMembers.userId, messages.senderId),
+            eq(projectMembers.projectId, channels.projectId),
           ),
         )
         .where(and(
@@ -297,6 +326,10 @@ export async function getMessages({
     }
 
     const bookmarkedIds = new Set(bookmarkRows.map((bookmark) => bookmark.messageId))
+    const profileAttributes = await getProfileAttributesByUserIds(
+      workspaceId,
+      [...new Set(rows.map(row => row.senderId))],
+    )
     const { filterUnblockedRecipients } = await import('@/lib/safety/blocks')
     const senderIds = [...new Set(rows.map(row => row.senderId).filter(id => id !== userId))]
     const visibleSenderIds = new Set(await filterUnblockedRecipients(userId, senderIds))
@@ -351,6 +384,8 @@ export async function getMessages({
       senderId: row.senderId,
       senderName: row.senderName,
       senderAvatarUrl: row.senderAvatarUrl ?? null,
+      senderProfileAttributes: profileAttributes.get(row.senderId) ?? [],
+      senderProjectRole: row.senderProjectRole ?? null,
       createdAt: row.createdAt.toISOString(),
       isEdited: row.updatedAt.getTime() > row.createdAt.getTime(),
       reactions: reactionMap.get(row.id) ?? [],
