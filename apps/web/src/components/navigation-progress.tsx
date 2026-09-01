@@ -32,11 +32,33 @@ export function NavigationProgress() {
   const tickRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const resetRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const activeRef = useRef(false)
+  const startScheduledRef = useRef(false)
+  const completionPendingRef = useRef(false)
+
+  const complete = useCallback(() => {
+    if (!activeRef.current) {
+      if (startScheduledRef.current) completionPendingRef.current = true
+      return
+    }
+
+    activeRef.current = false
+    clearTimeout(tickRef.current)
+    clearTimeout(timeoutRef.current)
+    setCompleting(true)
+    setWidth(100)
+    resetRef.current = setTimeout(() => {
+      setVisible(false)
+      setWidth(0)
+      setCompleting(false)
+    }, 380)
+  }, [])
 
   const start = useCallback(() => {
     clearTimeout(tickRef.current)
     clearTimeout(resetRef.current)
     clearTimeout(timeoutRef.current)
+    activeRef.current = true
     setCompleting(false)
     setVisible(true)
     setWidth(0)
@@ -51,29 +73,25 @@ export function NavigationProgress() {
 
     // Safety: auto-complete after 10 seconds
     timeoutRef.current = setTimeout(() => complete(), 10_000)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const complete = useCallback(() => {
-    clearTimeout(tickRef.current)
-    clearTimeout(timeoutRef.current)
-    setCompleting(true)
-    setWidth(100)
-    resetRef.current = setTimeout(() => {
-      setVisible(false)
-      setWidth(0)
-      setCompleting(false)
-    }, 380)
-  }, [])
+    if (completionPendingRef.current) {
+      completionPendingRef.current = false
+      complete()
+    }
+  }, [complete])
 
   // Intercept history.pushState to detect navigation start
   useEffect(() => {
     const orig = window.history.pushState.bind(window.history)
     window.history.pushState = (...args: Parameters<typeof orig>) => {
+      startScheduledRef.current = true
       const ret = orig(...args)
       // nuqs などは useInsertionEffect 内で pushState を呼ぶ。その同期実行中に
       // start() が setState すると "useInsertionEffect must not schedule updates" になるため、
       // 状態更新を commit フェーズ外のマイクロタスクへ逃がす
-      queueMicrotask(start)
+      queueMicrotask(() => {
+        startScheduledRef.current = false
+        start()
+      })
       return ret
     }
     return () => { window.history.pushState = orig }
