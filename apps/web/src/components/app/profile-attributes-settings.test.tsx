@@ -69,4 +69,42 @@ describe('ProfileAttributesSettings', () => {
     expect(screen.queryByRole('button', { name: '属性を追加' })).toBeNull()
     expect(screen.getByText('属性の追加・編集・削除は管理者が行います。')).toBeInTheDocument()
   })
+
+  it('追加・編集をキャンセルすると以前のエラーを表示しない', async () => {
+    fetchWithAuth.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/workspaces/profile-attributes' && !init) {
+        return new Response(JSON.stringify([
+          { id: 'attribute-1', name: '3年生', color: 'blue' },
+        ]))
+      }
+      if (init?.method === 'POST' || init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ error: '同じ名前の属性がすでにあります' }), {
+          status: 409,
+        })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+
+    const user = userEvent.setup()
+    renderSettings()
+    expect(await screen.findByText('3年生')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '属性を追加' }))
+    await user.type(screen.getByLabelText('属性名'), '3年生')
+    await user.click(screen.getByRole('button', { name: '追加' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('同じ名前の属性がすでにあります')
+    await user.click(screen.getByRole('button', { name: 'キャンセル' }))
+    await user.click(screen.getByRole('button', { name: '属性を追加' }))
+    expect(screen.queryByRole('alert')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'キャンセル' }))
+
+    await user.click(screen.getByRole('button', { name: '操作' }))
+    await user.click(screen.getByRole('button', { name: '編集' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('同じ名前の属性がすでにあります')
+    await user.click(screen.getByRole('button', { name: 'キャンセル' }))
+    await user.click(screen.getByRole('button', { name: '操作' }))
+    await user.click(screen.getByRole('button', { name: '編集' }))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
 })

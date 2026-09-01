@@ -9,7 +9,10 @@ import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { toast } from '@/lib/toast'
 import { ProfileAttributeBadges } from '../profile-attribute-badges'
-import type { ProfileAttributeDto } from '@cairn/shared'
+import {
+  useProfileAttributes,
+  useUpdateMemberProfileAttributes,
+} from '@/hooks/use-profile-attributes'
 
 const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -251,38 +254,9 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     data: attributeOptions = [],
     isLoading: attributeOptionsLoading,
     error: attributeOptionsError,
-  } = useQuery<ProfileAttributeDto[]>({
-    queryKey: ['profile-attributes'],
-    queryFn: async () => {
-      const response = await fetchWithAuth('/api/workspaces/profile-attributes')
-      if (!response.ok) throw new Error('属性一覧を取得できませんでした')
-      return response.json() as Promise<ProfileAttributeDto[]>
-    },
-    enabled: editingAttributes,
-  })
+  } = useProfileAttributes(editingAttributes)
 
-  const attributeMutation = useMutation({
-    mutationFn: async (attributeIds: string[]) => {
-      const res = await fetchWithAuth(`/api/workspaces/members/${member.userId}/profile-attributes`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ attributeIds }),
-      })
-      const body = await res.json() as { error?: string; profileAttributes?: ProfileAttributeDto[] }
-      if (!res.ok || !body.profileAttributes) throw new Error(body.error ?? '属性の保存に失敗しました')
-      return body.profileAttributes
-    },
-    onSuccess: attributes => {
-      setProfileAttributes(attributes)
-      setDraftAttributeIds(attributes.map(attribute => attribute.id))
-      setEditingAttributes(false)
-      setAttributeError(null)
-      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
-      void queryClient.invalidateQueries({ queryKey: ['messages'] })
-      toast.success('属性を保存しました')
-    },
-    onError: error => setAttributeError(error instanceof Error ? error.message : '属性の保存に失敗しました'),
-  })
+  const attributeMutation = useUpdateMemberProfileAttributes(member.userId)
 
   const toggleAttribute = (attributeId: string) => {
     setDraftAttributeIds(current =>
@@ -291,6 +265,21 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         : [...current, attributeId],
     )
     setAttributeError(null)
+  }
+
+  const handleSaveAttributes = () => {
+    attributeMutation.mutate(draftAttributeIds, {
+      onSuccess: attributes => {
+        setProfileAttributes(attributes)
+        setDraftAttributeIds(attributes.map(attribute => attribute.id))
+        setEditingAttributes(false)
+        setAttributeError(null)
+        toast.success('属性を保存しました')
+      },
+      onError: error => setAttributeError(
+        error instanceof Error ? error.message : '属性の保存に失敗しました',
+      ),
+    })
   }
 
   const rs = WS_ROLE_STYLE[currentRole]
@@ -561,7 +550,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
               </button>
               <button
                 type="button"
-                onClick={() => attributeMutation.mutate(draftAttributeIds)}
+                onClick={handleSaveAttributes}
                 disabled={attributeMutation.isPending || attributeOptionsLoading || !!attributeOptionsError}
                 className="btn btn-primary"
                 style={{ height: 30, padding: '0 12px', fontSize: 12 }}

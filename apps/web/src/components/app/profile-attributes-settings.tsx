@@ -4,29 +4,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ProfileAttributeColor, ProfileAttributeDto } from '@cairn/shared'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import {
+  useCreateProfileAttribute,
+  useDeleteProfileAttribute,
+  useProfileAttributes,
+  useUpdateProfileAttribute,
+} from '@/hooks/use-profile-attributes'
 import { ConfirmDialog } from './confirm-dialog'
 import { RowActionMenu } from './row-action-menu'
 import {
   PROFILE_ATTRIBUTE_COLOR_OPTIONS,
   ProfileAttributeBadges,
 } from './profile-attribute-badges'
-
-const QUERY_KEY = ['profile-attributes'] as const
-
-async function readError(response: Response, fallback: string) {
-  const body = await response.json().catch(() => null) as { error?: string } | null
-  return body?.error ?? fallback
-}
-
-async function fetchProfileAttributes(): Promise<ProfileAttributeDto[]> {
-  const response = await fetchWithAuth('/api/workspaces/profile-attributes')
-  if (!response.ok) throw new Error(await readError(response, '属性を取得できませんでした'))
-  return response.json() as Promise<ProfileAttributeDto[]>
-}
 
 function ColorPicker({
   value,
@@ -78,11 +69,9 @@ function ColorPicker({
 function AttributeRow({
   attribute,
   canManage,
-  onChanged,
 }: {
   attribute: ProfileAttributeDto
   canManage: boolean
-  onChanged: () => void
 }) {
   const [editing, setEditing] = React.useState(false)
   const [confirmDelete, setConfirmDelete] = React.useState(false)
@@ -94,29 +83,22 @@ function AttributeRow({
     setColor(attribute.color)
   }, [attribute.name, attribute.color])
 
-  const update = useMutation({
-    mutationFn: async () => {
-      const response = await fetchWithAuth(`/api/workspaces/profile-attributes/${attribute.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), color }),
-      })
-      if (!response.ok) throw new Error(await readError(response, '属性を更新できませんでした'))
-    },
-    onSuccess: () => {
-      setEditing(false)
-      onChanged()
-    },
-  })
-  const remove = useMutation({
-    mutationFn: async () => {
-      const response = await fetchWithAuth(`/api/workspaces/profile-attributes/${attribute.id}`, {
-        method: 'DELETE',
-      })
-      if (!response.ok) throw new Error(await readError(response, '属性を削除できませんでした'))
-    },
-    onSuccess: onChanged,
-  })
+  const update = useUpdateProfileAttribute(attribute.id)
+  const remove = useDeleteProfileAttribute(attribute.id)
+
+  const handleCancelEditing = () => {
+    setName(attribute.name)
+    setColor(attribute.color)
+    setEditing(false)
+    update.reset()
+  }
+  const handleUpdate = () => {
+    update.mutate({ name: name.trim(), color }, {
+      onSuccess: () => {
+        setEditing(false)
+      },
+    })
+  }
 
   if (editing) {
     return (
@@ -134,18 +116,18 @@ function AttributeRow({
           aria-invalid={update.isError}
           onChange={event => setName(event.target.value)}
           onKeyDown={event => {
-            if (event.key === 'Enter' && name.trim()) update.mutate()
-            if (event.key === 'Escape') setEditing(false)
+            if (event.key === 'Enter' && name.trim()) handleUpdate()
+            if (event.key === 'Escape') handleCancelEditing()
           }}
           style={{ width: '100%', marginBottom: 8 }}
         />
         <ColorPicker value={color} onChange={setColor} />
         {update.error && <p role="alert" style={{ margin: '6px 0 0', color: 'var(--red-text)', fontSize: 12 }}>{update.error.message}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-          <button type="button" className="btn" onClick={() => { setName(attribute.name); setColor(attribute.color); setEditing(false) }}>
+          <button type="button" className="btn" onClick={handleCancelEditing}>
             キャンセル
           </button>
-          <button type="button" className="btn btn-primary" disabled={!name.trim() || update.isPending} onClick={() => update.mutate()}>
+          <button type="button" className="btn btn-primary" disabled={!name.trim() || update.isPending} onClick={handleUpdate}>
             {update.isPending ? '保存中…' : '保存'}
           </button>
         </div>
@@ -160,7 +142,7 @@ function AttributeRow({
       </div>
       {canManage && (
         <RowActionMenu actions={[
-          { icon: 'edit', label: '編集', onSelect: () => { setName(attribute.name); setColor(attribute.color); setEditing(true) } },
+          { icon: 'edit', label: '編集', onSelect: () => { setName(attribute.name); setColor(attribute.color); update.reset(); setEditing(true) } },
           { icon: 'trash', label: '削除', danger: true, onSelect: () => setConfirmDelete(true) },
         ]} />
       )}
@@ -176,42 +158,28 @@ function AttributeRow({
 }
 
 export function ProfileAttributesSettings() {
-  const queryClient = useQueryClient()
   const { isAdmin } = useWorkspacePermissions()
-  const { data: attributes = [], isLoading, error } = useQuery({
-    queryKey: QUERY_KEY,
-    queryFn: fetchProfileAttributes,
-  })
+  const { data: attributes = [], isLoading, error } = useProfileAttributes()
   const [adding, setAdding] = React.useState(false)
   const [name, setName] = React.useState('')
   const [color, setColor] = React.useState<ProfileAttributeColor>('slate')
+  const create = useCreateProfileAttribute()
   const cancelAdding = () => {
     setName('')
     setColor('slate')
     setAdding(false)
+    create.reset()
   }
 
-  const invalidate = () => Promise.all([
-    queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
-    queryClient.invalidateQueries({ queryKey: ['workspace-members'] }),
-    queryClient.invalidateQueries({ queryKey: ['messages'] }),
-  ])
-  const create = useMutation({
-    mutationFn: async () => {
-      const response = await fetchWithAuth('/api/workspaces/profile-attributes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), color }),
-      })
-      if (!response.ok) throw new Error(await readError(response, '属性を追加できませんでした'))
-    },
-    onSuccess: async () => {
-      setName('')
-      setColor('slate')
-      setAdding(false)
-      await invalidate()
-    },
-  })
+  const handleCreate = () => {
+    create.mutate({ name: name.trim(), color }, {
+      onSuccess: () => {
+        setName('')
+        setColor('slate')
+        setAdding(false)
+      },
+    })
+  }
 
   return (
     <div style={{ maxWidth: 780 }}>
@@ -223,7 +191,7 @@ export function ProfileAttributesSettings() {
           </p>
         </div>
         {isAdmin && !adding && (
-          <button type="button" className="btn btn-primary" onClick={() => setAdding(true)} style={{ flexShrink: 0 }}>
+          <button type="button" className="btn btn-primary" onClick={() => { create.reset(); setAdding(true) }} style={{ flexShrink: 0 }}>
             属性を追加
           </button>
         )}
@@ -246,7 +214,7 @@ export function ProfileAttributesSettings() {
                 aria-invalid={create.isError}
                 onChange={event => setName(event.target.value)}
                 onKeyDown={event => {
-                  if (event.key === 'Enter' && name.trim()) create.mutate()
+                  if (event.key === 'Enter' && name.trim()) handleCreate()
                   if (event.key === 'Escape') cancelAdding()
                 }}
                 style={{ width: '100%', marginBottom: 8 }}
@@ -255,7 +223,7 @@ export function ProfileAttributesSettings() {
               {create.error && <p role="alert" style={{ margin: '6px 0 0', color: 'var(--red-text)', fontSize: 12 }}>{create.error.message}</p>}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
                 <button type="button" className="btn" onClick={cancelAdding}>キャンセル</button>
-                <button type="button" className="btn btn-primary" disabled={!name.trim() || create.isPending} onClick={() => create.mutate()}>
+                <button type="button" className="btn btn-primary" disabled={!name.trim() || create.isPending} onClick={handleCreate}>
                   {create.isPending ? '追加中…' : '追加'}
                 </button>
               </div>
@@ -269,7 +237,7 @@ export function ProfileAttributesSettings() {
             <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>属性はまだありません。</div>
           ) : attributes.map((attribute, index) => (
             <div key={attribute.id} style={{ borderBottom: index < attributes.length - 1 ? '1px solid var(--divider)' : 'none' }}>
-              <AttributeRow attribute={attribute} canManage={isAdmin} onChanged={() => { void invalidate() }} />
+              <AttributeRow attribute={attribute} canManage={isAdmin} />
             </div>
           ))}
         </div>
