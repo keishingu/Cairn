@@ -64,7 +64,7 @@ describe('Markdownコンテンツ', () => {
   })
 
   it('表を罫線とセル余白つきで表示する', () => {
-    render(<MarkdownContent content={'| ロール | 作成 |\n|---|---|\n| owner | ○ |'} />)
+    render(<MarkdownContent content={'| ロール | 作成 |\n|:---|---:|\n| owner | ○ |'} />)
 
     const table = screen.getByRole('table')
     expect(table).toHaveStyle({ borderCollapse: 'collapse' })
@@ -77,5 +77,7 @@ describe('Markdownコンテンツ', () => {
       border: '1px solid var(--border-2)',
       padding: '6px 10px',
     })
+    expect(screen.getByRole('columnheader', { name: '作成' })).toHaveStyle({ textAlign: 'right' })
+    expect(screen.getByRole('cell', { name: '○' })).toHaveStyle({ textAlign: 'right' })
   })
 })

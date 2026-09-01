@@ -224,11 +224,11 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
             <table style={{ width: '100%', minWidth: 480, borderCollapse: 'collapse' }}>{children}</table>
           </div>
         ),
-        th: ({ children }) => (
-          <th style={{ border: '1px solid var(--border-2)', background: 'var(--card-2)', padding: '6px 10px', textAlign: 'left', whiteSpace: 'nowrap' }}>{children}</th>
+        th: ({ children, style }) => (
+          <th style={{ border: '1px solid var(--border-2)', background: 'var(--card-2)', padding: '6px 10px', textAlign: 'left', whiteSpace: 'nowrap', ...style }}>{children}</th>
         ),
-        td: ({ children }) => (
-          <td style={{ border: '1px solid var(--border-2)', padding: '6px 10px', verticalAlign: 'top' }}>{processChildren(children, mentionNames)}</td>
+        td: ({ children, style }) => (
+          <td style={{ border: '1px solid var(--border-2)', padding: '6px 10px', textAlign: 'left', verticalAlign: 'top', ...style }}>{processChildren(children, mentionNames)}</td>
         ),
         hr: () => (
           <hr style={{ border: 'none', borderTop: '1px solid var(--divider)', margin: '8px 0' }} />
