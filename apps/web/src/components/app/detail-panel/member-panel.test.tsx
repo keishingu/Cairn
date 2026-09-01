@@ -23,6 +23,7 @@ const TARGET: WorkspaceMemberDto = {
   avatarUrl: null,
   role: 'member',
   membershipStatus: 'active',
+  profileAttributes: ['3年生', '経済学部'],
   joinedAt: '2026-01-01',
   projectCount: 1,
 }
@@ -34,6 +35,7 @@ const ADMIN: WorkspaceMemberDto = {
   avatarUrl: null,
   role: 'admin',
   membershipStatus: 'active',
+  profileAttributes: [],
   joinedAt: '2025-01-01',
   projectCount: 0,
 }
@@ -45,6 +47,7 @@ const OWNER: WorkspaceMemberDto = {
   avatarUrl: null,
   role: 'owner',
   membershipStatus: 'active',
+  profileAttributes: [],
   joinedAt: '2024-01-01',
   projectCount: 0,
 }
@@ -101,6 +104,10 @@ function mockApis(
     }
     if (typeof url === 'string' && url.includes('/projects')) {
       return Promise.resolve(jsonResponse([]))
+    }
+    if (typeof url === 'string' && url.endsWith('/profile-attributes') && init?.method === 'PATCH') {
+      const body = JSON.parse(String(init.body)) as { attributes: string[] }
+      return Promise.resolve(jsonResponse({ userId: TARGET.userId, profileAttributes: body.attributes }))
     }
     if (init?.method === 'PATCH') {
       const body = JSON.parse(String(init.body)) as { role: string }
@@ -187,5 +194,40 @@ describe('MemberDetailPanel — ロール変更', () => {
     })
     expect(screen.getByRole('button', { name: 'ワークスペース権限を変更' })).toHaveTextContent('メンバー')
     unsubscribe()
+  })
+})
+
+describe('MemberDetailPanel — 属性編集', () => {
+  beforeEach(() => {
+    __resetToastsForTest()
+  })
+
+  it('admin は属性を追加して保存できる', async () => {
+    mockApis([ADMIN, TARGET], ADMIN.userId)
+    renderPanel(TARGET)
+
+    await userEvent.click(await screen.findByRole('button', { name: '編集' }))
+    await userEvent.type(screen.getByRole('textbox', { name: '追加する属性' }), '山岳部')
+    await userEvent.click(screen.getByRole('button', { name: '追加' }))
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        `/api/workspaces/members/${TARGET.userId}/profile-attributes`,
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ attributes: ['3年生', '経済学部', '山岳部'] }),
+        }),
+      )
+    })
+  })
+
+  it('非活性メンバーの属性は表示のみになる', async () => {
+    const inactive = { ...TARGET, membershipStatus: 'inactive' as const }
+    mockApis([ADMIN, inactive], ADMIN.userId)
+    renderPanel(inactive)
+
+    await screen.findByText('経済学部')
+    expect(screen.queryByRole('button', { name: '編集' })).toBeNull()
   })
 })

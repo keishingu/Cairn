@@ -8,6 +8,7 @@ import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/pro
 import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { toast } from '@/lib/toast'
+import { ProfileAttributeBadges } from '../profile-attribute-badges'
 
 const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -184,6 +185,8 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
   })
   const viewerRole = allMembers.find(m => m.userId === me?.id)?.role ?? null
+  const canEditAttributes =
+    member.membershipStatus === 'active' && (viewerRole === 'owner' || viewerRole === 'admin')
   // ゲスト↔通常ロールは API が拒否するため UI からも除外する（PC / モバイル共通）
   const canChangeRole =
     currentRole !== 'guest' &&
@@ -230,6 +233,52 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     })
   }
   // ---- /ロール変更 ----
+
+  const [profileAttributes, setProfileAttributes] = React.useState(member.profileAttributes)
+  const [draftAttributes, setDraftAttributes] = React.useState(member.profileAttributes)
+  const [attributeInput, setAttributeInput] = React.useState('')
+  const [attributeError, setAttributeError] = React.useState<string | null>(null)
+  const [editingAttributes, setEditingAttributes] = React.useState(false)
+  React.useEffect(() => {
+    setProfileAttributes(member.profileAttributes)
+    setDraftAttributes(member.profileAttributes)
+    setEditingAttributes(false)
+  }, [member.userId, member.profileAttributes])
+
+  const attributeMutation = useMutation({
+    mutationFn: async (attributes: string[]) => {
+      const res = await fetchWithAuth(`/api/workspaces/members/${member.userId}/profile-attributes`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attributes }),
+      })
+      const body = await res.json() as { error?: string; profileAttributes?: string[] }
+      if (!res.ok || !body.profileAttributes) throw new Error(body.error ?? '属性の保存に失敗しました')
+      return body.profileAttributes
+    },
+    onSuccess: attributes => {
+      setProfileAttributes(attributes)
+      setDraftAttributes(attributes)
+      setEditingAttributes(false)
+      setAttributeInput('')
+      setAttributeError(null)
+      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+      void queryClient.invalidateQueries({ queryKey: ['messages'] })
+      toast.success('属性を保存しました')
+    },
+    onError: error => setAttributeError(error instanceof Error ? error.message : '属性の保存に失敗しました'),
+  })
+
+  const addAttribute = () => {
+    const attribute = attributeInput.trim()
+    if (!attribute) return setAttributeError('属性を入力してください')
+    if (attribute.length > 20) return setAttributeError('属性は20文字以内で入力してください')
+    if (draftAttributes.length >= 5) return setAttributeError('属性は5件まで設定できます')
+    if (draftAttributes.includes(attribute)) return setAttributeError('同じ属性は設定できません')
+    setDraftAttributes(current => [...current, attribute])
+    setAttributeInput('')
+    setAttributeError(null)
+  }
 
   const rs = WS_ROLE_STYLE[currentRole]
 
@@ -433,6 +482,84 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
           </button>
         </div>
       )}
+
+      <div style={{ padding: isMobile ? '12px 16px' : '10px 16px', borderBottom: '1px solid var(--divider)', background: isMobile ? 'var(--card)' : undefined }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: profileAttributes.length > 0 || editingAttributes ? 8 : 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', letterSpacing: '0.06em' }}>属性</span>
+          {canEditAttributes && !editingAttributes && (
+            <button
+              type="button"
+              onClick={() => { setDraftAttributes(profileAttributes); setEditingAttributes(true); setAttributeError(null) }}
+              style={{ border: 'none', background: 'transparent', color: 'var(--accent)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', padding: 2, fontFamily: 'inherit' }}
+            >
+              編集
+            </button>
+          )}
+        </div>
+        {editingAttributes ? (
+          <div>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+              {draftAttributes.map(attribute => (
+                <span key={attribute} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 4px 2px 8px', borderRadius: 4, background: 'var(--card-2)', color: 'var(--text-3)', fontSize: 11, fontWeight: 600 }}>
+                  {attribute}
+                  <button
+                    type="button"
+                    aria-label={`${attribute}を削除`}
+                    onClick={() => setDraftAttributes(current => current.filter(item => item !== attribute))}
+                    style={{ width: 20, height: 20, border: 'none', background: 'transparent', color: 'var(--text-4)', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                value={attributeInput}
+                name="profileAttribute"
+                autoComplete="off"
+                maxLength={20}
+                placeholder="例: 3年生、経済学部…"
+                aria-label="追加する属性"
+                aria-invalid={attributeError !== null}
+                onChange={event => { setAttributeInput(event.target.value); setAttributeError(null) }}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') { event.preventDefault(); addAttribute() }
+                  if (event.key === 'Escape') { setEditingAttributes(false); setAttributeError(null) }
+                }}
+                style={{ flex: 1, minWidth: 0, height: 32, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--card)', color: 'var(--text)', padding: '0 10px', fontSize: 12.5, fontFamily: 'inherit' }}
+              />
+              <button type="button" onClick={addAttribute} disabled={draftAttributes.length >= 5} className="btn btn-ghost" style={{ height: 32, padding: '0 10px', fontSize: 12 }}>
+                追加
+              </button>
+            </div>
+            {attributeError && <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5, marginTop: 6 }}>{attributeError}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 10 }}>
+              <button
+                type="button"
+                onClick={() => { setDraftAttributes(profileAttributes); setEditingAttributes(false); setAttributeInput(''); setAttributeError(null) }}
+                className="btn btn-ghost"
+                style={{ height: 30, padding: '0 10px', fontSize: 12 }}
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={() => attributeMutation.mutate(draftAttributes)}
+                disabled={attributeMutation.isPending}
+                className="btn btn-primary"
+                style={{ height: 30, padding: '0 12px', fontSize: 12 }}
+              >
+                {attributeMutation.isPending ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+        ) : profileAttributes.length > 0 ? (
+          <ProfileAttributeBadges attributes={profileAttributes} />
+        ) : (
+          <span style={{ fontSize: 12, color: 'var(--text-4)' }}>未設定</span>
+        )}
+      </div>
 
       {/* Stats row */}
       <div style={{

@@ -22,6 +22,7 @@ import {
 } from '@/hooks/use-project-members'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
+import { ProfileAttributeBadges } from '../profile-attribute-badges'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -156,10 +157,11 @@ const MemberCard = ({ member, projectCount, selected, onClick, canManage, onArch
                 {member.email}
               </div>
             )}
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 10.5, fontWeight: 700, color: role.c, background: role.bg, padding: '2px 8px', borderRadius: 4 }}>
                 {ROLE_LABEL[member.role]}
               </span>
+              <ProfileAttributeBadges attributes={member.profileAttributes} compact />
               {isArchived && <ArchivedBadge />}
             </div>
           </div>

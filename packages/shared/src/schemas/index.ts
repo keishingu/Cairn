@@ -132,6 +132,17 @@ export const createProjectStatusSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
 })
 
+export const patchProfileAttributesSchema = z.object({
+  attributes: z
+    .array(z.string().trim().min(1).max(20))
+    .max(5)
+    .superRefine((attributes, ctx) => {
+      if (new Set(attributes).size !== attributes.length) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: '同じ属性は設定できません' })
+      }
+    }),
+})
+
 export const patchWorkspaceSettingsSchema = z.object({
   // 空欄はUIの既定表示「プロジェクト」へ戻す意図なので、DBには null として保存する。
   projectLabel: z.string().trim().max(100).transform(value => value || null).nullable().optional(),
@@ -174,6 +185,7 @@ export type PatchProjectInput = z.infer<typeof patchProjectSchema>
 export type PatchWorkspaceInput = z.infer<typeof patchWorkspaceSchema>
 export type PatchWorkspaceSettingsInput = z.infer<typeof patchWorkspaceSettingsSchema>
 export type PatchMeInput = z.infer<typeof patchMeSchema>
+export type PatchProfileAttributesInput = z.infer<typeof patchProfileAttributesSchema>
 export type PatchProjectStatusInput = z.infer<typeof patchProjectStatusSchema>
 
 export interface AttachmentDto {

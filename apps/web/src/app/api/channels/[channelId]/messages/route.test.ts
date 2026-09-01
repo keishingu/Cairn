@@ -74,7 +74,10 @@ vi.mock('@cairn/db', () => ({
     workspaceId: 'workspaceMembers.workspaceId',
     displayName: 'workspaceMembers.displayName',
     avatarUrl: 'workspaceMembers.avatarUrl',
+    profileAttributes: 'workspaceMembers.profileAttributes',
   },
+  channels: { id: 'channels.id', projectId: 'channels.projectId' },
+  projectMembers: { userId: 'projectMembers.userId', projectId: 'projectMembers.projectId', role: 'projectMembers.role' },
   messageReactions: {
     messageId: 'messageReactions.messageId',
     emoji: 'messageReactions.emoji',
@@ -186,6 +189,8 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
           senderId: 'user-2',
           senderName: 'Sender',
           senderAvatarUrl: null,
+          senderProfileAttributes: ['3年生', '経済学部'],
+          senderProjectRole: 'subleader',
           createdAt: new Date('2026-06-24T01:00:00.000Z'),
           updatedAt: new Date('2026-06-24T01:00:00.000Z'),
         },
@@ -206,6 +211,8 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     await expect(res.json()).resolves.toEqual([
       expect.objectContaining({
         id: 'msg-1',
+        senderProfileAttributes: ['3年生', '経済学部'],
+        senderProjectRole: 'subleader',
         reactions: [
           {
             emoji: '👍',

@@ -48,6 +48,13 @@ const FileSystem = require('expo-file-system/legacy') as typeof FileSystemTypes
 type Palette = ThemePalette
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
 
+const PROJECT_ROLE_LABEL = {
+  leader: 'リーダー',
+  subleader: 'サブリーダー',
+  reviewer: 'レビュワー',
+  observer: 'オブザーバー',
+} as const
+
 function formatTime(value: string) {
   const source = new Date(value)
   return `${source.getMonth() + 1}/${source.getDate()} ${String(source.getHours()).padStart(2, '0')}:${String(source.getMinutes()).padStart(2, '0')}`
@@ -183,9 +190,14 @@ function ChatMessageRow({
         delayLongPress={350}
       >
         <View style={styles.messageMeta}>
-          <Text style={[styles.senderName, { color: palette.text }]} numberOfLines={1}>
+          <Text style={[styles.senderName, { color: palette.text }]}>
             {message.senderName}
           </Text>
+          {message.senderProjectRole && message.senderProjectRole !== 'member' && (
+            <Text style={[styles.projectRole, { backgroundColor: palette.accentSoft, color: palette.accentText }]}>
+              {PROJECT_ROLE_LABEL[message.senderProjectRole]}
+            </Text>
+          )}
           <Text style={[styles.messageTime, { color: palette.text4 }]}>
             {formatTime(message.createdAt)}
           </Text>
@@ -194,6 +206,16 @@ function ChatMessageRow({
           )}
           {message.bookmarked && <Ionicons name="bookmark" size={12} color={palette.accent} />}
         </View>
+
+        {(message.senderProfileAttributes?.length ?? 0) > 0 && (
+          <View style={styles.profileAttributes}>
+            {message.senderProfileAttributes?.map(attribute => (
+              <Text key={attribute} style={[styles.profileAttribute, { backgroundColor: palette.card2, color: palette.text3 }]}>
+                {attribute}
+              </Text>
+            ))}
+          </View>
+        )}
 
         {message.replyTo && (
           <View style={[styles.replyPreview, { borderLeftColor: palette.accent }]}>
@@ -1096,10 +1118,13 @@ const styles = StyleSheet.create({
   avatar: { width: 36, height: 36, borderRadius: 18 },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   avatarInitial: { fontSize: 13, fontWeight: '700' },
-  messageMeta: { flexDirection: 'row', alignItems: 'baseline', gap: 7, marginBottom: 3 },
+  messageMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, marginBottom: 3 },
   senderName: { fontSize: 14, fontWeight: '700', flexShrink: 1 },
+  projectRole: { fontSize: 10, fontWeight: '700', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, overflow: 'hidden' },
   messageTime: { fontSize: 11 },
   edited: { fontSize: 10, fontStyle: 'italic' },
+  profileAttributes: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 4 },
+  profileAttribute: { fontSize: 10, fontWeight: '600', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, overflow: 'hidden' },
   messageText: { fontSize: 14, lineHeight: 22 },
   queueStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
   queueStatus: { fontSize: 11.5, flexShrink: 1 },

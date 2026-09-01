@@ -5,6 +5,7 @@ import {
   createTaskSchema,
   patchMilestoneSchema,
   patchMeSchema,
+  patchProfileAttributesSchema,
   patchWorkspaceSettingsSchema,
   postMessageSchema,
   uploadGalleryItemSchema,
@@ -17,6 +18,22 @@ describe('patchMeSchema', () => {
 
   it('未定義のハイライトカラーを拒否する', () => {
     expect(patchMeSchema.safeParse({ accentId: 'unknown' }).success).toBe(false)
+  })
+})
+
+describe('patchProfileAttributesSchema', () => {
+  it('属性を trim して順序を保つ', () => {
+    const result = patchProfileAttributesSchema.safeParse({
+      attributes: [' 3年生 ', '経済学部'],
+    })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.attributes).toEqual(['3年生', '経済学部'])
+  })
+
+  it('重複・6件以上・21文字以上を拒否する', () => {
+    expect(patchProfileAttributesSchema.safeParse({ attributes: ['3年生', ' 3年生 '] }).success).toBe(false)
+    expect(patchProfileAttributesSchema.safeParse({ attributes: ['1', '2', '3', '4', '5', '6'] }).success).toBe(false)
+    expect(patchProfileAttributesSchema.safeParse({ attributes: ['a'.repeat(21)] }).success).toBe(false)
   })
 })
 
