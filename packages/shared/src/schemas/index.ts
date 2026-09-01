@@ -3,6 +3,7 @@
 
 import { z } from 'zod'
 import { ACCENT_IDS, APPEARANCE_THEMES } from '../config/appearance'
+import { PROFILE_ATTRIBUTE_COLOR_IDS } from '../config/profile-attributes'
 
 const timeStringSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
 
@@ -132,12 +133,28 @@ export const createProjectStatusSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
 })
 
+const profileAttributeNameSchema = z.string().trim().min(1).max(20)
+export const profileAttributeColorSchema = z.enum(PROFILE_ATTRIBUTE_COLOR_IDS)
+
+export const createProfileAttributeSchema = z.object({
+  name: profileAttributeNameSchema,
+  color: profileAttributeColorSchema,
+})
+
+export const patchProfileAttributeSchema = z.object({
+  name: profileAttributeNameSchema.optional(),
+  color: profileAttributeColorSchema.optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
 export const patchProfileAttributesSchema = z.object({
-  attributes: z
-    .array(z.string().trim().min(1).max(20))
+  attributeIds: z
+    .array(z.string().uuid())
     .max(5)
-    .superRefine((attributes, ctx) => {
-      if (new Set(attributes).size !== attributes.length) {
+    .superRefine((attributeIds, ctx) => {
+      if (new Set(attributeIds).size !== attributeIds.length) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: '同じ属性は設定できません' })
       }
     }),
@@ -185,6 +202,8 @@ export type PatchProjectInput = z.infer<typeof patchProjectSchema>
 export type PatchWorkspaceInput = z.infer<typeof patchWorkspaceSchema>
 export type PatchWorkspaceSettingsInput = z.infer<typeof patchWorkspaceSettingsSchema>
 export type PatchMeInput = z.infer<typeof patchMeSchema>
+export type CreateProfileAttributeInput = z.infer<typeof createProfileAttributeSchema>
+export type PatchProfileAttributeInput = z.infer<typeof patchProfileAttributeSchema>
 export type PatchProfileAttributesInput = z.infer<typeof patchProfileAttributesSchema>
 export type PatchProjectStatusInput = z.infer<typeof patchProjectStatusSchema>
 

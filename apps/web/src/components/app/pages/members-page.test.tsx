@@ -48,7 +48,7 @@ const STUB_MEMBER: WorkspaceMemberDto = {
   avatarUrl: null,
   role: 'member',
   membershipStatus: 'active',
-  profileAttributes: ['3年生'],
+  profileAttributes: [{ id: 'attribute-1', name: '3年生', color: 'blue' }],
   joinedAt: '2026-01-01',
   projectCount: 3,
 }

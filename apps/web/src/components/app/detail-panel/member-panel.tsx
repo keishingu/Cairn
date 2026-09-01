@@ -9,6 +9,7 @@ import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { toast } from '@/lib/toast'
 import { ProfileAttributeBadges } from '../profile-attribute-badges'
+import type { ProfileAttributeDto } from '@cairn/shared'
 
 const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -235,32 +236,46 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
   // ---- /ロール変更 ----
 
   const [profileAttributes, setProfileAttributes] = React.useState(member.profileAttributes)
-  const [draftAttributes, setDraftAttributes] = React.useState(member.profileAttributes)
-  const [attributeInput, setAttributeInput] = React.useState('')
+  const [draftAttributeIds, setDraftAttributeIds] = React.useState(
+    member.profileAttributes.map(attribute => attribute.id),
+  )
   const [attributeError, setAttributeError] = React.useState<string | null>(null)
   const [editingAttributes, setEditingAttributes] = React.useState(false)
   React.useEffect(() => {
     setProfileAttributes(member.profileAttributes)
-    setDraftAttributes(member.profileAttributes)
+    setDraftAttributeIds(member.profileAttributes.map(attribute => attribute.id))
     setEditingAttributes(false)
   }, [member.userId, member.profileAttributes])
 
+  const {
+    data: attributeOptions = [],
+    isLoading: attributeOptionsLoading,
+    error: attributeOptionsError,
+  } = useQuery<ProfileAttributeDto[]>({
+    queryKey: ['profile-attributes'],
+    queryFn: async () => {
+      const response = await fetchWithAuth('/api/workspaces/profile-attributes')
+      if (!response.ok) throw new Error('属性一覧を取得できませんでした')
+      return response.json() as Promise<ProfileAttributeDto[]>
+    },
+    enabled: editingAttributes,
+  })
+
   const attributeMutation = useMutation({
-    mutationFn: async (attributes: string[]) => {
+    mutationFn: async (attributeIds: string[]) => {
       const res = await fetchWithAuth(`/api/workspaces/members/${member.userId}/profile-attributes`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ attributes }),
+        body: JSON.stringify({ attributeIds }),
       })
-      const body = await res.json() as { error?: string; profileAttributes?: string[] }
+      const body = await res.json() as { error?: string; profileAttributes?: ProfileAttributeDto[] }
       if (!res.ok || !body.profileAttributes) throw new Error(body.error ?? '属性の保存に失敗しました')
       return body.profileAttributes
     },
     onSuccess: attributes => {
       setProfileAttributes(attributes)
-      setDraftAttributes(attributes)
+      setDraftAttributeIds(attributes.map(attribute => attribute.id))
       setEditingAttributes(false)
-      setAttributeInput('')
       setAttributeError(null)
       void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
       void queryClient.invalidateQueries({ queryKey: ['messages'] })
@@ -269,14 +284,12 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     onError: error => setAttributeError(error instanceof Error ? error.message : '属性の保存に失敗しました'),
   })
 
-  const addAttribute = () => {
-    const attribute = attributeInput.trim()
-    if (!attribute) return setAttributeError('属性を入力してください')
-    if (attribute.length > 20) return setAttributeError('属性は20文字以内で入力してください')
-    if (draftAttributes.length >= 5) return setAttributeError('属性は5件まで設定できます')
-    if (draftAttributes.includes(attribute)) return setAttributeError('同じ属性は設定できません')
-    setDraftAttributes(current => [...current, attribute])
-    setAttributeInput('')
+  const toggleAttribute = (attributeId: string) => {
+    setDraftAttributeIds(current =>
+      current.includes(attributeId)
+        ? current.filter(id => id !== attributeId)
+        : [...current, attributeId],
+    )
     setAttributeError(null)
   }
 
@@ -489,7 +502,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
           {canEditAttributes && !editingAttributes && (
             <button
               type="button"
-              onClick={() => { setDraftAttributes(profileAttributes); setEditingAttributes(true); setAttributeError(null) }}
+              onClick={() => { setDraftAttributeIds(profileAttributes.map(attribute => attribute.id)); setEditingAttributes(true); setAttributeError(null) }}
               style={{ border: 'none', background: 'transparent', color: 'var(--accent)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', padding: 2, fontFamily: 'inherit' }}
             >
               編集
@@ -498,46 +511,49 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         </div>
         {editingAttributes ? (
           <div>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
-              {draftAttributes.map(attribute => (
-                <span key={attribute} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 4px 2px 8px', borderRadius: 4, background: 'var(--card-2)', color: 'var(--text-3)', fontSize: 11, fontWeight: 600 }}>
-                  {attribute}
-                  <button
-                    type="button"
-                    aria-label={`${attribute}を削除`}
-                    onClick={() => setDraftAttributes(current => current.filter(item => item !== attribute))}
-                    style={{ width: 20, height: 20, border: 'none', background: 'transparent', color: 'var(--text-4)', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input
-                value={attributeInput}
-                name="profileAttribute"
-                autoComplete="off"
-                maxLength={20}
-                placeholder="例: 3年生、経済学部…"
-                aria-label="追加する属性"
-                aria-invalid={attributeError !== null}
-                onChange={event => { setAttributeInput(event.target.value); setAttributeError(null) }}
-                onKeyDown={event => {
-                  if (event.key === 'Enter') { event.preventDefault(); addAttribute() }
-                  if (event.key === 'Escape') { setEditingAttributes(false); setAttributeError(null) }
-                }}
-                style={{ flex: 1, minWidth: 0, height: 32, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--card)', color: 'var(--text)', padding: '0 10px', fontSize: 12.5, fontFamily: 'inherit' }}
-              />
-              <button type="button" onClick={addAttribute} disabled={draftAttributes.length >= 5} className="btn btn-ghost" style={{ height: 32, padding: '0 10px', fontSize: 12 }}>
-                追加
-              </button>
-            </div>
+            {attributeOptionsLoading ? (
+              <div style={{ color: 'var(--text-4)', fontSize: 12 }}>読み込み中…</div>
+            ) : attributeOptionsError ? (
+              <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5 }}>属性一覧を取得できませんでした</div>
+            ) : attributeOptions.length === 0 ? (
+              <div style={{ color: 'var(--text-4)', fontSize: 12 }}>設定画面で属性を作成してください。</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {attributeOptions.map(attribute => {
+                  const checked = draftAttributeIds.includes(attribute.id)
+                  const disabled = !checked && draftAttributeIds.length >= 5
+                  return (
+                    <label
+                      key={attribute.id}
+                      style={{
+                        minHeight: 36,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '4px 6px',
+                        borderRadius: 6,
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        opacity: disabled ? 0.5 : 1,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={() => toggleAttribute(attribute.id)}
+                      />
+                      <ProfileAttributeBadges attributes={[attribute]} />
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+            <div style={{ marginTop: 6, color: 'var(--text-4)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>{draftAttributeIds.length}/5件</div>
             {attributeError && <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5, marginTop: 6 }}>{attributeError}</div>}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 10 }}>
               <button
                 type="button"
-                onClick={() => { setDraftAttributes(profileAttributes); setEditingAttributes(false); setAttributeInput(''); setAttributeError(null) }}
+                onClick={() => { setDraftAttributeIds(profileAttributes.map(attribute => attribute.id)); setEditingAttributes(false); setAttributeError(null) }}
                 className="btn btn-ghost"
                 style={{ height: 30, padding: '0 10px', fontSize: 12 }}
               >
@@ -545,8 +561,8 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
               </button>
               <button
                 type="button"
-                onClick={() => attributeMutation.mutate(draftAttributes)}
-                disabled={attributeMutation.isPending}
+                onClick={() => attributeMutation.mutate(draftAttributeIds)}
+                disabled={attributeMutation.isPending || attributeOptionsLoading || !!attributeOptionsError}
                 className="btn btn-primary"
                 style={{ height: 30, padding: '0 12px', fontSize: 12 }}
               >

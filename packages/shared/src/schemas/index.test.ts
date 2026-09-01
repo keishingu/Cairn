@@ -22,18 +22,32 @@ describe('patchMeSchema', () => {
 })
 
 describe('patchProfileAttributesSchema', () => {
-  it('属性を trim して順序を保つ', () => {
+  it('属性IDの順序を保つ', () => {
     const result = patchProfileAttributesSchema.safeParse({
-      attributes: [' 3年生 ', '経済学部'],
+      attributeIds: [
+        '00000000-0000-0000-0000-000000000001',
+        '00000000-0000-0000-0000-000000000002',
+      ],
     })
     expect(result.success).toBe(true)
-    if (result.success) expect(result.data.attributes).toEqual(['3年生', '経済学部'])
+    if (result.success) {
+      expect(result.data.attributeIds).toEqual([
+        '00000000-0000-0000-0000-000000000001',
+        '00000000-0000-0000-0000-000000000002',
+      ])
+    }
   })
 
-  it('重複・6件以上・21文字以上を拒否する', () => {
-    expect(patchProfileAttributesSchema.safeParse({ attributes: ['3年生', ' 3年生 '] }).success).toBe(false)
-    expect(patchProfileAttributesSchema.safeParse({ attributes: ['1', '2', '3', '4', '5', '6'] }).success).toBe(false)
-    expect(patchProfileAttributesSchema.safeParse({ attributes: ['a'.repeat(21)] }).success).toBe(false)
+  it('重複・6件以上・UUID以外を拒否する', () => {
+    const first = '00000000-0000-0000-0000-000000000001'
+    expect(patchProfileAttributesSchema.safeParse({ attributeIds: [first, first] }).success).toBe(false)
+    expect(patchProfileAttributesSchema.safeParse({
+      attributeIds: Array.from(
+        { length: 6 },
+        (_, index) => `00000000-0000-0000-0000-${String(index + 1).padStart(12, '0')}`,
+      ),
+    }).success).toBe(false)
+    expect(patchProfileAttributesSchema.safeParse({ attributeIds: ['not-a-uuid'] }).success).toBe(false)
   })
 })
 

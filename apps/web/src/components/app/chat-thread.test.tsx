@@ -219,7 +219,14 @@ describe('ChatMessage copy action', () => {
       onImageClick: vi.fn(),
     }
     const { rerender } = render(
-      <ChatMessage {...props} senderProjectRole="subleader" senderProfileAttributes={['3年生', '経済学部']} />,
+      <ChatMessage
+        {...props}
+        senderProjectRole="subleader"
+        senderProfileAttributes={[
+          { id: 'attribute-1', name: '3年生', color: 'blue' },
+          { id: 'attribute-2', name: '経済学部', color: 'emerald' },
+        ]}
+      />,
     )
 
     expect(screen.getByText('サブリーダー')).toBeInTheDocument()

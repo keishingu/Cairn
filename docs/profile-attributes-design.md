@@ -1,6 +1,6 @@
 # プロフィール属性機能 設計
 
-> **ステータス**: 実装前の確定設計（作成: 2026-09-01）
+> **ステータス**: 実装済みの現行設計（作成・最終更新: 2026-09-01）
 >
 > 実装後に本書とコードが乖離した場合は、コードと [`CLAUDE.md`](../CLAUDE.md) を正とする。
 
@@ -38,27 +38,24 @@
 
 ## 3. データモデル
 
-既存の `workspace_members` に JSON 配列を追加する。
+属性定義とメンバーへの割当を分離する。
 
 ```ts
-profileAttributes: jsonb('profile_attributes')
-  .$type<string[]>()
-  .notNull()
-  .default([])
+workspaceProfileAttributes     // workspace_id / name / color
+workspaceMemberProfileAttributes // workspace_member_id / profile_attribute_id
 ```
 
-DB上の例:
+`workspace_profile_attributes` はワークスペース単位の属性マスターで、名称と固定パレットの色IDを保持する。`workspace_member_profile_attributes` はメンバーと属性の多対多割当を保持する。
 
-```json
-["3年生", "経済学部"]
-```
+先行実装の `workspace_members.profile_attributes` JSON配列は、デプロイ順序差やロールバック時の旧コード互換のため削除しない。初回migrationで既存文字列をマスターと割当に移し、新コードで割当を変更・名称を変更・属性を削除した際も旧列を同期する。新コードは旧列を読み取り元にしない。
 
-### 3.1 `workspace_members` に持たせる理由
+### 3.1 マスターと割当に分ける理由
 
 - `workspace_members` には既にワークスペース固有の表示名・アバター・ステータスがある。
 - 同じ人物でも、所属先ごとに学年やプロフィール表現が異なりうる。
-- チャットメッセージ取得は既に `workspace_members` を結合しているため、属性取得の追加クエリが不要になる。
-- 属性マスターテーブルと割当テーブルを新設せず、入力順を保った配列を1回で更新できる。
+- 同名属性の表記と色をワークスペース内で統一できる。
+- 名称・色の変更を、割当済みの全メンバーと過去メッセージ表示へ即時反映できる。
+- 属性削除時は外部キーのcascadeで全メンバーの割当も削除できる。
 
 既存の以下の概念は流用しない。
 
@@ -69,13 +66,14 @@ DB上の例:
 
 - 1メンバーにつき最大5件
 - 1件につき1〜20文字
-- 保存前に前後の空白を除去
+- マスター名称は保存前に前後の空白を除去
 - 空文字列は禁止
 - 空白除去後の完全一致を重複とみなし、重複は禁止
-- 配列順を表示順として保持
-- 色・アイコンは保存しない
+- 属性割当は属性IDで受け取り、同一ワークスペースのマスターに存在するIDだけを許可
+- 色は `slate / blue / emerald / amber / violet / rose` の固定パレットから選ぶ
+- アイコンは保存しない
 
-Zodスキーマを `packages/shared` に置き、管理APIの入力を一箇所で検証する。DB migration は後方互換なカラム追加とし、既存行には空配列を設定する。
+Zodスキーマと色IDを `packages/shared` に置き、Web・Expo・管理APIで共有する。新テーブルはData APIから直接利用せず、RLSを有効化して `anon` / `authenticated` の権限をrevokeする。アクセスは認証・認可済みのNext.js Route Handlerから行う。
 
 `active_workspace_members` は `workspace_members` を元にしたビューである。Drizzle側のビュー定義にも新カラムが現れるため、migration ではビューを再作成し、DB上の列定義とのずれを残さない。
 
@@ -84,7 +82,8 @@ Zodスキーマを `packages/shared` に置き、管理APIの入力を一箇所�
 | 操作 | owner | admin | member | guest |
 | --- | --- | --- | --- | --- |
 | 閲覧 | 可 | 可 | 可 | 既存のメンバー可視範囲内で可 |
-| 属性の設定・削除 | 可 | 可 | 不可 | 不可 |
+| マスターの追加・編集・削除 | 可 | 可 | 不可 | 不可 |
+| メンバーへの属性設定・削除 | 可 | 可 | 不可 | 不可 |
 
 - 管理者は同一ワークスペースの active メンバーだけを編集できる。
 - 非活性メンバーの属性は履歴表示のため保持するが、再活性化まで編集不可とする。
@@ -95,14 +94,14 @@ Zodスキーマを `packages/shared` に置き、管理APIの入力を一箇所�
 
 ### 5.1 管理API
 
-属性配列全体を置き換える専用エンドポイントを追加する。
+属性ID配列全体を置き換える専用エンドポイントを追加する。
 
 ```http
 PATCH /api/workspaces/members/:userId/profile-attributes
 Content-Type: application/json
 
 {
-  "attributes": ["3年生", "経済学部"]
+  "attributeIds": ["...", "..."]
 }
 ```
 
@@ -111,11 +110,23 @@ Content-Type: application/json
 ```json
 {
   "userId": "...",
-  "profileAttributes": ["3年生", "経済学部"]
+  "profileAttributes": [
+    { "id": "...", "name": "3年生", "color": "blue" },
+    { "id": "...", "name": "経済学部", "color": "emerald" }
+  ]
 }
 ```
 
 専用エンドポイントにする理由は、既存の `PATCH /api/workspaces/members/:userId` がロール変更と非活性化を扱っているためである。属性更新を同じ分岐へ混ぜず、認可と入力検証を独立させる。
+
+属性マスターは次のAPIで管理する。
+
+```http
+GET    /api/workspaces/profile-attributes
+POST   /api/workspaces/profile-attributes
+PATCH  /api/workspaces/profile-attributes/:attributeId
+DELETE /api/workspaces/profile-attributes/:attributeId
+```
 
 更新後は編集したクライアントの以下のQueryをinvalidateする。
 
@@ -175,8 +186,8 @@ senderProjectRole?: ProjectMemberRole | null
 ### 6.2 見た目
 
 - プロジェクトロールは既存のロール色を再利用する。
-- プロフィール属性は `--card-2` / `--text-3` の中立色とし、権限や状態を示す色と区別する。
-- 属性ごとの色指定は設けない。
+- プロフィール属性はマスターで選んだ固定パレット色を表示する。背景色と文字色を組にし、ライト・ダーク両テーマで可読性を保つ。
+- 自由なHEX入力は設けず、色IDをWebのCSS変数とExpoのテーマパレットへ対応付ける。
 - PC / Webモバイルでは共通の属性表示コンポーネントを利用する。
 - Expoネイティブチャットは同じ情報設計で、React Native側の既存テーマ色を利用する。
 
@@ -185,12 +196,14 @@ senderProjectRole?: ProjectMemberRole | null
 メンバー詳細パネルに「プロフィール属性」セクションを追加する。
 
 - owner / admin にだけ「編集」を表示する。
-- 編集時は既存属性をチップとして並べ、削除とテキスト入力による追加を行える。
+- 編集時は属性マスターをチェックボックス付き一覧で表示し、最大5件を選択する。
 - 複数項目をまとめて変更するフォームなので、「保存」「キャンセル」で確定する。
 - 保存失敗は入力内容を保持したままインラインエラーを表示する。
 - 非活性メンバーでは属性を表示するが編集操作を出さない。
 
-初期スコープでは、属性マスターの設定画面、候補のオートコンプリート、ユーザー自身の設定画面は作らない。
+設定の「プロフィール属性」セクションで、owner / admin は属性名と色を追加・編集・削除できる。member / guest は一覧だけを閲覧できる。使用中の属性を削除すると全メンバーの割当からも外れるため、確認ダイアログを表示する。
+
+ユーザー自身による属性編集は作らない。
 
 ## 7. Realtime・履歴・AI
 
@@ -217,17 +230,17 @@ senderProjectRole?: ProjectMemberRole | null
 
 ## 8. 実装対象
 
-### Phase 1: 保存・管理
+### Phase 1: 保存・管理（実装済み）
 
-- `workspace_members.profile_attributes` とmigration
-- `active_workspace_members` ビューの再作成
+- 属性マスター・割当テーブルと既存JSON属性の移行migration
 - Zod入力スキーマ
 - 管理API
+- 属性マスター設定UI
 - `WorkspaceMemberDto` への追加
 - メンバー詳細の表示・管理UI
 - メンバーカードへの属性表示
 
-### Phase 2: チャット表示
+### Phase 2: チャット表示（実装済み）
 
 - Webのメッセージ取得・投稿DTO
 - Webチャットの属性表示
@@ -240,7 +253,8 @@ DB変更は後方互換であり、Phase 1とPhase 2を同一リリースに含�
 
 ### 自動テスト
 
-- 5件・20文字・空白除去・重複拒否の入力検証
+- 5件・属性ID形式・重複拒否の割当入力検証
+- 属性名20文字・色ID・同一ワークスペース内の名称重複拒否
 - owner / admin はactiveメンバーを更新できる
 - member / guest は更新できない
 - 別ワークスペースと非活性メンバーは更新できない
@@ -257,16 +271,16 @@ DB変更は後方互換であり、Phase 1とPhase 2を同一リリースに含�
 - WebモバイルとExpoで、属性が名前の下へ折り返される
 - プロジェクトを切り替えるとプロジェクトロールだけが切り替わり、属性は共通して残る
 - 属性更新後、メンバー詳細・カード・チャットに最新値が表示される
-- ダークテーマと各アクセント色で、属性が権限・ロールより控えめに見える
+- ダークテーマで固定パレット6色の背景・文字が読める
 
 ## 10. 初期スコープ外
 
-- 属性マスター・カテゴリ・キーと値の構造化
-- 属性ごとの色・アイコン
+- 属性カテゴリ・キーと値の構造化
+- 属性ごとのアイコン
 - 属性による検索・絞り込み
 - 本人による自己編集
 - 変更履歴・監査ログ
 - 他クライアントへの即時Realtime同期
 - AI検索・推薦への利用
 
-これらが必要になった時点で、JSON配列から属性定義テーブル + メンバー割当テーブルへの移行を検討する。現時点では、最大5件の表示・一括編集には1カラムで十分である。
+これらが必要になった時点で、現在の属性マスターと割当を拡張する。自由色やカテゴリは、検索・可読性・管理負荷の要件が明確になるまで追加しない。

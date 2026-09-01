@@ -11,6 +11,7 @@ import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { hasBlockBetween } from '@/lib/safety/blocks'
 import { unsafeMessageError } from '@/lib/safety/message-filter'
 import { hasTaskChannelSchema, insertLegacyTasks } from '@/lib/tasks/schema-readiness'
+import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
 import type { MessageDto } from './dto'
 
 type PostMessageInput = {
@@ -76,7 +77,6 @@ export async function postMessage({
               profiles.displayName,
             ),
             avatarUrl: workspaceMembers.avatarUrl,
-            profileAttributes: workspaceMembers.profileAttributes,
             projectRole: projectMembers.role,
           })
           .from(profiles)
@@ -98,6 +98,7 @@ export async function postMessage({
           )
           .where(eq(profiles.id, existing.senderId))
 
+        const profileAttributes = await getProfileAttributesByUserIds(workspaceId, [existing.senderId])
         return NextResponse.json({
           id: existing.id,
           content: existing.content,
@@ -105,7 +106,7 @@ export async function postMessage({
           senderId: existing.senderId,
           senderName: existingProfile?.displayName ?? '不明',
           senderAvatarUrl: existingProfile?.avatarUrl ?? null,
-          senderProfileAttributes: existingProfile?.profileAttributes ?? [],
+          senderProfileAttributes: profileAttributes.get(existing.senderId) ?? [],
           senderProjectRole: existingProfile?.projectRole ?? null,
           createdAt: existing.createdAt.toISOString(),
           isEdited: false,
@@ -260,7 +261,6 @@ export async function postMessage({
       .select({
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
-        profileAttributes: workspaceMembers.profileAttributes,
         projectRole: projectMembers.role,
       })
       .from(profiles)
@@ -283,6 +283,7 @@ export async function postMessage({
       .where(eq(profiles.id, inserted.senderId))
 
     const senderName = profile?.displayName ?? '不明'
+    const profileAttributes = await getProfileAttributesByUserIds(workspaceId, [inserted.senderId])
 
     inngest
       .send({
@@ -309,7 +310,7 @@ export async function postMessage({
         senderId: inserted.senderId,
         senderName,
         senderAvatarUrl: profile?.avatarUrl ?? null,
-        senderProfileAttributes: profile?.profileAttributes ?? [],
+        senderProfileAttributes: profileAttributes.get(inserted.senderId) ?? [],
         senderProjectRole: profile?.projectRole ?? null,
         createdAt: inserted.createdAt.toISOString(),
         isEdited: false,

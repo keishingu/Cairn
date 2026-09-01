@@ -22,6 +22,7 @@ const {
   mockLte,
   mockLt,
   mockGt,
+  mockGetProfileAttributes,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -37,6 +38,7 @@ const {
   mockLte: vi.fn(() => Symbol('lte')),
   mockLt: vi.fn(() => Symbol('lt')),
   mockGt: vi.fn(() => Symbol('gt')),
+  mockGetProfileAttributes: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({
@@ -50,6 +52,7 @@ vi.mock('@/lib/permissions', () => ({
 
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
 vi.mock('@/lib/chat/checkboxes', () => ({ parseCheckboxes: () => [] }))
+vi.mock('@/lib/profile-attributes', () => ({ getProfileAttributesByUserIds: mockGetProfileAttributes }))
 vi.mock('@cairn/shared', () => ({
   postMessageSchema: {
     safeParse: () => ({ success: true, data: { content: 'hi', channelId: CHANNEL_ID } }),
@@ -147,6 +150,10 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
+    mockGetProfileAttributes.mockResolvedValue(new Map([['user-2', [
+      { id: 'attribute-1', name: '3年生', color: 'blue' },
+      { id: 'attribute-2', name: '経済学部', color: 'emerald' },
+    ]]]))
   })
 
   afterEach(() => {
@@ -189,7 +196,6 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
           senderId: 'user-2',
           senderName: 'Sender',
           senderAvatarUrl: null,
-          senderProfileAttributes: ['3年生', '経済学部'],
           senderProjectRole: 'subleader',
           createdAt: new Date('2026-06-24T01:00:00.000Z'),
           updatedAt: new Date('2026-06-24T01:00:00.000Z'),
@@ -211,7 +217,10 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     await expect(res.json()).resolves.toEqual([
       expect.objectContaining({
         id: 'msg-1',
-        senderProfileAttributes: ['3年生', '経済学部'],
+        senderProfileAttributes: [
+          { id: 'attribute-1', name: '3年生', color: 'blue' },
+          { id: 'attribute-2', name: '経済学部', color: 'emerald' },
+        ],
         senderProjectRole: 'subleader',
         reactions: [
           {

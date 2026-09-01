@@ -210,8 +210,17 @@ function ChatMessageRow({
         {(message.senderProfileAttributes?.length ?? 0) > 0 && (
           <View style={styles.profileAttributes}>
             {message.senderProfileAttributes?.map(attribute => (
-              <Text key={attribute} style={[styles.profileAttribute, { backgroundColor: palette.card2, color: palette.text3 }]}>
-                {attribute}
+              <Text
+                key={attribute.id}
+                style={[
+                  styles.profileAttribute,
+                  {
+                    backgroundColor: palette.profileAttributeColors[attribute.color].background,
+                    color: palette.profileAttributeColors[attribute.color].text,
+                  },
+                ]}
+              >
+                {attribute.name}
               </Text>
             ))}
           </View>

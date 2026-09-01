@@ -23,7 +23,10 @@ const TARGET: WorkspaceMemberDto = {
   avatarUrl: null,
   role: 'member',
   membershipStatus: 'active',
-  profileAttributes: ['3年生', '経済学部'],
+  profileAttributes: [
+    { id: '00000000-0000-0000-0000-000000000011', name: '3年生', color: 'blue' },
+    { id: '00000000-0000-0000-0000-000000000012', name: '経済学部', color: 'emerald' },
+  ],
   joinedAt: '2026-01-01',
   projectCount: 1,
 }
@@ -105,9 +108,15 @@ function mockApis(
     if (typeof url === 'string' && url.includes('/projects')) {
       return Promise.resolve(jsonResponse([]))
     }
+    if (typeof url === 'string' && url === '/api/workspaces/profile-attributes') {
+      return Promise.resolve(jsonResponse(TARGET.profileAttributes))
+    }
     if (typeof url === 'string' && url.endsWith('/profile-attributes') && init?.method === 'PATCH') {
-      const body = JSON.parse(String(init.body)) as { attributes: string[] }
-      return Promise.resolve(jsonResponse({ userId: TARGET.userId, profileAttributes: body.attributes }))
+      const body = JSON.parse(String(init.body)) as { attributeIds: string[] }
+      return Promise.resolve(jsonResponse({
+        userId: TARGET.userId,
+        profileAttributes: TARGET.profileAttributes.filter(attribute => body.attributeIds.includes(attribute.id)),
+      }))
     }
     if (init?.method === 'PATCH') {
       const body = JSON.parse(String(init.body)) as { role: string }
@@ -202,13 +211,12 @@ describe('MemberDetailPanel — 属性編集', () => {
     __resetToastsForTest()
   })
 
-  it('admin は属性を追加して保存できる', async () => {
+  it('admin はマスターから属性を選んで保存できる', async () => {
     mockApis([ADMIN, TARGET], ADMIN.userId)
     renderPanel(TARGET)
 
     await userEvent.click(await screen.findByRole('button', { name: '編集' }))
-    await userEvent.type(screen.getByRole('textbox', { name: '追加する属性' }), '山岳部')
-    await userEvent.click(screen.getByRole('button', { name: '追加' }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: '経済学部' }))
     await userEvent.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => {
@@ -216,7 +224,7 @@ describe('MemberDetailPanel — 属性編集', () => {
         `/api/workspaces/members/${TARGET.userId}/profile-attributes`,
         expect.objectContaining({
           method: 'PATCH',
-          body: JSON.stringify({ attributes: ['3年生', '経済学部', '山岳部'] }),
+          body: JSON.stringify({ attributeIds: ['00000000-0000-0000-0000-000000000011'] }),
         }),
       )
     })

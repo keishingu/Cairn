@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import type { AttachmentDto, MessageType, ProjectMemberRole } from '@cairn/shared'
+import type { AttachmentDto, MessageType, ProfileAttributeDto, ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
@@ -147,7 +147,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   senderName: string
   senderAvatarUrl?: string | null
   senderEmail?: string | null
-  senderProfileAttributes?: string[]
+  senderProfileAttributes?: ProfileAttributeDto[]
   senderProjectRole?: ProjectMemberRole | null
   createdAt: string
   isEdited: boolean

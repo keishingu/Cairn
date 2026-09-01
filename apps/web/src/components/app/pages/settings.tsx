@@ -26,6 +26,7 @@ import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import type { AccentId } from '@cairn/shared'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
+import { ProfileAttributesSettings } from '../profile-attributes-settings'
 
 const CreditPlacementBoard = dynamic(
   () =>
@@ -3173,6 +3174,7 @@ export function getSettingsNavGroups(
   const workspaceItems: SettingsSectionMeta[] = [
     { id: 'general', label: 'ワークスペース設定', icon: 'settings' },
     { id: 'workflow', label: 'ワークフロー', icon: 'flag' },
+    { id: 'profile-attributes', label: 'プロフィール属性', icon: 'hash' },
     { id: 'ai', label: 'AIエージェント', icon: 'sparkles' },
     { id: 'members', label: 'メンバー', icon: 'users' },
     { id: 'integrations', label: '連携', icon: 'layers' },
@@ -3221,6 +3223,7 @@ const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   safety: SettingsSafety,
   general: SettingsWorkspaceGeneral,
   workflow: SettingsWorkflow,
+  'profile-attributes': ProfileAttributesSettings,
   ai: SettingsAI,
   integrations: SettingsIntegrations,
   billing: SettingsBilling,

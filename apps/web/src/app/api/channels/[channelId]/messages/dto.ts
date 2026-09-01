@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import type { AttachmentDto, MessageType, ProjectMemberRole } from '@cairn/shared'
+import type { AttachmentDto, MessageType, ProfileAttributeDto, ProjectMemberRole } from '@cairn/shared'
 
 export interface ReactionDto {
   emoji: string
@@ -26,7 +26,7 @@ export interface MessageDto {
   senderId: string
   senderName: string
   senderAvatarUrl: string | null
-  senderProfileAttributes?: string[]
+  senderProfileAttributes?: ProfileAttributeDto[]
   senderProjectRole?: ProjectMemberRole | null
   createdAt: string
   isEdited: boolean

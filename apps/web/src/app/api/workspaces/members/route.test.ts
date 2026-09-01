@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const USER_ID = '00000000-0000-0000-0000-000000000001'
 const WS_ID = 'ws-00000001'
 
-const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockIsWorkspaceAdmin, mockDb } = vi.hoisted(() => {
+const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockIsWorkspaceAdmin, mockGetProfileAttributes, mockDb } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
@@ -18,11 +18,13 @@ const { mockGetAuthContext, mockGetWorkspaceMemberRole, mockIsWorkspaceAdmin, mo
   const mockGetWorkspaceMemberRole = vi.fn().mockResolvedValue('member')
   const mockIsWorkspaceAdmin = vi.fn((role: string | null) => role === 'owner' || role === 'admin')
   const mockDb = { select: vi.fn() }
-  return { mockGetAuthContext, mockGetWorkspaceMemberRole, mockIsWorkspaceAdmin, mockDb }
+  const mockGetProfileAttributes = vi.fn().mockResolvedValue(new Map())
+  return { mockGetAuthContext, mockGetWorkspaceMemberRole, mockIsWorkspaceAdmin, mockGetProfileAttributes, mockDb }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({ getWorkspaceMemberRole: mockGetWorkspaceMemberRole, isWorkspaceAdmin: mockIsWorkspaceAdmin }))
+vi.mock('@/lib/profile-attributes', () => ({ getProfileAttributesByUserIds: mockGetProfileAttributes }))
 vi.mock('@cairn/db', () => ({
   db: mockDb,
   profiles: { id: 'profiles.id', displayName: 'profiles.displayName' },
@@ -79,6 +81,11 @@ describe('GET /api/workspaces/members', () => {
   })
 
   it('一覧レスポンスでは email を公開しない', async () => {
+    const attributes = [
+      { id: 'attribute-1', name: '3年生', color: 'blue' },
+      { id: 'attribute-2', name: '経済学部', color: 'emerald' },
+    ]
+    mockGetProfileAttributes.mockResolvedValueOnce(new Map([[USER_ID, attributes]]))
     mockDb.select
       .mockReturnValueOnce(chain([]))
       .mockReturnValueOnce(chain([{
@@ -87,7 +94,6 @@ describe('GET /api/workspaces/members', () => {
         avatarUrl: null,
         role: 'member',
         membershipStatus: 'active',
-        profileAttributes: ['3年生', '経済学部'],
         joinedAt: new Date('2026-01-01T00:00:00.000Z'),
         projectCount: 3,
       }]))
@@ -103,7 +109,7 @@ describe('GET /api/workspaces/members', () => {
       avatarUrl: null,
       role: 'member',
       membershipStatus: 'active',
-      profileAttributes: ['3年生', '経済学部'],
+      profileAttributes: attributes,
       joinedAt: '2026-01-01',
       projectCount: 3,
     }])
@@ -111,6 +117,8 @@ describe('GET /api/workspaces/members', () => {
 
   it('複数メンバーでも email は常に null にする', async () => {
     const secondUserId = '00000000-0000-0000-0000-000000000002'
+    const attributes = [{ id: 'attribute-1', name: '3年生', color: 'blue' }]
+    mockGetProfileAttributes.mockResolvedValueOnce(new Map([[USER_ID, attributes]]))
     mockDb.select
       .mockReturnValueOnce(chain([]))
       .mockReturnValueOnce(chain([
@@ -120,7 +128,6 @@ describe('GET /api/workspaces/members', () => {
           avatarUrl: null,
           role: 'member',
           membershipStatus: 'active',
-          profileAttributes: ['3年生'],
           joinedAt: new Date('2026-01-01T00:00:00.000Z'),
           projectCount: 3,
         },
@@ -130,7 +137,6 @@ describe('GET /api/workspaces/members', () => {
           avatarUrl: null,
           role: 'admin',
           membershipStatus: 'active',
-          profileAttributes: [],
           joinedAt: new Date('2026-01-02T00:00:00.000Z'),
           projectCount: 5,
         },
@@ -148,7 +154,7 @@ describe('GET /api/workspaces/members', () => {
         avatarUrl: null,
         role: 'member',
         membershipStatus: 'active',
-        profileAttributes: ['3年生'],
+        profileAttributes: attributes,
         joinedAt: '2026-01-01',
         projectCount: 3,
       },

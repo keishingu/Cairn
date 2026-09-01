@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { bigint, boolean, check, integer, jsonb, pgTable, pgView, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { bigint, boolean, check, index, integer, jsonb, pgTable, pgView, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { eq, sql } from 'drizzle-orm'
 import { memberStatusEnum, userStatusEnum, workspaceRoleEnum } from './enums'
 
@@ -92,6 +92,48 @@ export const workspaceMembers = pgTable(
 // active の定義を変える場合（例: deactivated_at IS NULL も条件に足す）もこのビューだけを直せばよい。
 export const activeWorkspaceMembers = pgView('active_workspace_members').as((qb) =>
   qb.select().from(workspaceMembers).where(eq(workspaceMembers.membershipStatus, 'active')),
+)
+
+export const workspaceProfileAttributes = pgTable(
+  'workspace_profile_attributes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    color: text('color').notNull().default('slate'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('workspace_profile_attributes_workspace_id_name_unique').on(t.workspaceId, t.name),
+    check(
+      'workspace_profile_attributes_color_check',
+      sql`${t.color} in ('slate', 'blue', 'emerald', 'amber', 'violet', 'rose')`,
+    ),
+  ],
+)
+
+export const workspaceMemberProfileAttributes = pgTable(
+  'workspace_member_profile_attributes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceMemberId: uuid('workspace_member_id')
+      .notNull()
+      .references(() => workspaceMembers.id, { onDelete: 'cascade' }),
+    profileAttributeId: uuid('profile_attribute_id')
+      .notNull()
+      .references(() => workspaceProfileAttributes.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('workspace_member_profile_attributes_member_attribute_unique').on(
+      t.workspaceMemberId,
+      t.profileAttributeId,
+    ),
+    index('workspace_member_profile_attributes_attribute_idx').on(t.profileAttributeId),
+  ],
 )
 
 export const tags = pgTable(
