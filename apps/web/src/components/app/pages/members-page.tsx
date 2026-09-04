@@ -38,6 +38,19 @@ const ROLE_STYLE: Record<WorkspaceMemberDto['role'], { c: string; bg: string }> 
   guest:  { c: 'var(--text-4)',       bg: 'var(--card-2)' },
 }
 
+const desktopPanelSlotStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 0,
+  right: 0,
+  bottom: 0,
+  width: 'min(420px, 100%)',
+  display: 'flex',
+  justifyContent: 'flex-end',
+  minHeight: 0,
+  minWidth: 0,
+  zIndex: 20,
+}
+
 function formatJoinedAt(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00')
   return `${d.getFullYear()}年${d.getMonth() + 1}月参加`
@@ -444,7 +457,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+    <div data-testid="members-page-desktop-root" style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
       {/* Left: list */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {/* Toolbar */}
@@ -531,16 +544,20 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
 
       {/* Right: detail panel — project takes priority over member */}
       {selectedProject ? (
-        <ProjectPanel
-          project={selectedProject}
-          onClose={() => setSelectedProject(null)}
-        />
+        <div data-testid="desktop-detail-panel-slot" style={desktopPanelSlotStyle}>
+          <ProjectPanel
+            project={selectedProject}
+            onClose={() => setSelectedProject(null)}
+          />
+        </div>
       ) : selectedMember ? (
-        <MemberDetailPanel
-          member={selectedMember}
-          onProjectClick={handleProjectClick}
-          onClose={() => { setSelectedMember(null); router.push('/members') }}
-        />
+        <div data-testid="desktop-detail-panel-slot" style={desktopPanelSlotStyle}>
+          <MemberDetailPanel
+            member={selectedMember}
+            onProjectClick={handleProjectClick}
+            onClose={() => { setSelectedMember(null); router.push('/members') }}
+          />
+        </div>
       ) : null}
       {archiveDialog}
     </div>
