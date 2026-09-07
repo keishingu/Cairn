@@ -32,7 +32,7 @@ supabase start
 cp apps/web/.env.local.example apps/web/.env.local
 
 # 4. 未適用の DB マイグレーションを適用
-supabase migration up --local
+supabase migration up --local --include-all
 
 # 5. 開発サーバー起動
 pnpm dev
@@ -40,7 +40,7 @@ pnpm dev
 
 ブラウザで http://localhost:3128 を開く。
 
-既存環境での pull・ブランチ切り替え後も、Supabase を起動して `supabase migration up --local` で差分を適用する。環境変数ファイルを再コピーしたり、DB を reset したりする必要はない。DB の再構築が必要な場合は下記の「DBマイグレーション」を参照。
+既存環境での pull・ブランチ切り替え後も、Supabase を起動して `supabase migration up --local --include-all` で差分を適用する。環境変数ファイルを再コピーしたり、DB を reset したりする必要はない。DB の再構築が必要な場合は下記の「DBマイグレーション」を参照。
 
 > **初回のみ**: `/auth/signup` でアカウントを作成する。ローカル Supabase ではメール確認が不要なため、登録直後にダッシュボードへ遷移する。
 
@@ -168,17 +168,17 @@ pnpm format     # コードフォーマット
 
 ```bash
 supabase start
-supabase migration up --local  # 未適用のマイグレーションのみ適用
+supabase migration up --local --include-all  # 未適用のマイグレーションのみ適用
 ```
 
-DB 全体を作り直さず差分を適用する。SQL 自体にデータ削除・カラム削除が含まれる場合の影響は別途確認する。
+DB 全体を作り直さず差分を適用する。`--include-all` は、並行開発でマージ順とタイムスタンプ順が前後しても、履歴にないマイグレーションを適用対象に含めるために指定する（[既存のマイグレーションCI](.github/workflows/migrate.yml)と同じ方針）。SQL 自体にデータ削除・カラム削除が含まれる場合の影響は別途確認する。
 
 **スキーマを変更する場合のみ SQL を生成**:
 
 ```bash
 pnpm --filter @cairn/db db:generate  # supabase/migrations/ に出力
 # 生成された SQL を確認してから適用
-supabase migration up --local
+supabase migration up --local --include-all
 ```
 
 生成設定は [`packages/db/drizzle.config.ts`](packages/db/drizzle.config.ts)。ファイル名の timestamp を維持し、変更内容が分かる英語の snake_case 名にする（詳細は [`CLAUDE.md`](CLAUDE.md)）。Drizzle Studio は `pnpm --filter @cairn/db db:studio` で起動できる。
