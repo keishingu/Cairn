@@ -1,6 +1,7 @@
 # フロントエンドコンポーネント設計ガイドライン
 
 > **ステータス**: 現行リファレンス（実装に追従して更新する）
+> **規約整理**: 2026-09-07。Domain Hook に通信を集約する方針を維持し、page / container / 表示コンポーネントの適用範囲を明確化した。既存実装の移行状況は「既存実装への適用」を参照。
 
 ## コンポーネントの3層構造
 
@@ -10,33 +11,38 @@ page → organism/container（省略可）→ molecule/atom の3層を原則と�
 
 | 層 | ディレクトリ例 | 役割 |
 |---|---|---|
-| page | `components/app/pages/*.tsx` | データ取得・イベント定義のみ。UIマークアップを書かない |
-| organism | `components/app/detail-panel/tabs/*.tsx` など | データ取得可。子コンポーネントへ受け渡す |
-| molecule/atom | `components/app/primitives/` など | props のみで動く純粋な表示コンポーネント |
+| page | `components/app/pages/*.tsx` | 画面の構成、Domain Hook の呼び出し、イベントとデータの受け渡し |
+| organism/container | `components/app/detail-panel/tabs/*.tsx` など | 必要な場合に機能単位をまとめ、Domain Hook 経由のデータとイベントを表示コンポーネントへ渡す |
+| molecule/atom（表示） | `components/app/primitives.tsx` など | props を受けて表示する。入力・開閉などの UI 状態は持てるが、API 通信や query を持たない |
+
+層はファイルの配置だけでなく責務で判断する。同じ `components/` 配下でも、container と表示コンポーネントには異なるルールが適用される。
 
 ### ページ層の責務
 
-- 子コンポーネントの呼び出しとデータ・イベントの受け渡しのみ
-- UIマークアップはファイル内にインラインで定義しない
-- ページ固有のロジックも Domain Hook として `src/hooks/` に切り出す
+- 子コンポーネントを組み合わせ、画面のレイアウトとデータ・イベントの受け渡しを担う
+- 子を配置する JSX やレイアウト用のラッパーは書ける。フォーム・一覧行など機能固有の表示をページ内に抱え込まず、表示コンポーネントへ分ける
+- API 通信・キャッシュ操作はページ固有でも Domain Hook に切り出す。日付計算など React に依存しない処理は純粋関数にし、Hook 化だけを目的としたラッパーは作らない
 
-### コンポーネント層のルール
+### 表示コンポーネントのルール
 
-- `useQuery` / `useMutation` などの副作用は持たせない。必要なデータは props 経由
-- `margin` / `width` を固定値で設定しない（「どこに置いても動くべき」）
-  - どうしても必要な場合は props で切り替えできるようにする
-- コンポーネントがコンポーネントを呼び出すのは極力避ける
+- API 通信・query・mutation は持たせず、データと操作コールバックを props で受ける。入力・開閉状態やフォーカス制御など表示に閉じた処理は持てる
+- 外側の余白や画面内での配置・幅は親が決める。ボタン高・アイコンサイズ・内側の余白など部品固有の寸法は [UI 統一ルール](../.interface-design/system.md) に従う。固定値を避けるためだけに寸法ごとの props を増やさない
+- 共通の表示部品を組み合わせてよい。表示部品から page やデータ取得用 container に依存させない
+
+従来の「UIマークアップを書かない」「コンポーネントがコンポーネントを呼び出すのは極力避ける」は、画面構成や共通部品の再利用まで妨げないよう、上記の責務分離へ置き換える。container のデータ取得可と表示層の通信禁止を区別し、通信の直接記述を許可する例外は追加しない。
 
 ---
 
 ## Domain Hook パターン
 
-コンポーネント内で直接 `useQuery` / `useMutation` / `fetchWithAuth` を呼び出さず、必ず Domain Hook にカプセル化する。
+page・container を含め、コンポーネント内で直接 `useQuery` / `useMutation` / `fetchWithAuth` 等による API 通信を記述せず、必ず Domain Hook にカプセル化する。単一画面専用でもこの方針を適用する。
 
 ### 配置と命名
 
 - 場所: `apps/web/src/hooks/`
 - 命名: `use-{resource}-{action}.ts`
+
+以下のパス例は Web 向け。Expo でも通信・購読と表示を分ける責務は共通とし、ネイティブ固有の状態管理は `apps/mobile/hooks/` などアプリ側に置く。
 
 ```
 hooks/
@@ -45,6 +51,7 @@ hooks/
   use-project-tasks.ts       # タスク一覧・トグル・作成
   use-project-files.ts       # ファイル一覧・削除
   use-project-members.ts     # メンバー一覧・追加・削除
+  use-project-milestones.ts  # マイルストーン一覧・作成・更新・削除
 ```
 
 ### フックが担うこと
@@ -53,11 +60,13 @@ hooks/
 - ローディング・エラー状態の管理
 - キャッシュ操作（楽観的更新・invalidation）
 
-### コンポーネントが担うこと
+### page / container が担うこと
 
 - フックの呼び出し
 - UIステート（モーダルの開閉・選択状態など）
 - `mutate()` の第2引数を使ったUI側コールバック
+
+例えば [`overview-tab.tsx`](../apps/web/src/components/app/detail-panel/tabs/overview-tab.tsx) の `MilestoneSection` は `useProjectMilestones` を呼び、`MilestoneRow` に値と操作を渡す。表示側の行は API を知らなくてよい。既存 Hook・表示部品を先に探し、単に props を中継するだけの container は追加しない。
 
 ```ts
 // ✅ Good
@@ -73,6 +82,21 @@ const { data } = useQuery({
   queryFn: () => fetchWithAuth(`/api/tasks?projectId=${id}`).then(r => r.json()),
 })
 ```
+
+---
+
+## 既存実装への適用
+
+本書は新規実装・改修時の規約であり、全画面の適合を保証するものではない。既存ページに直接 query や表示処理が残っていても、それを規約の例外とはしない。2026-09-07 時点で以下の移行 Issue は Open であり、本書の整理によって完了扱いにしたり、元の受け入れ条件を緩めたりしない。
+
+| 対象 | 既存 Issue と整理する責務 |
+|---|---|
+| Web 設定 | [#251](https://github.com/keishingu/Cairn/issues/251): データ取得・更新を Domain Hook に分離 |
+| Web チャット | [#252](https://github.com/keishingu/Cairn/issues/252): メッセージ等の Domain Hook 化と表示コンポーネント分割 |
+| Expo チャット | [#479](https://github.com/keishingu/Cairn/issues/479): 通信・購読・状態管理と表示を分離 |
+| カレンダー | [#501](https://github.com/keishingu/Cairn/issues/501): 日付・配置の純粋関数、Domain Hook、PC・モバイル表示に分離 |
+
+改修では既存の Hook や [`TaskFormFields`](../apps/web/src/components/app/task-form-fields.tsx) などを再利用する。3層すべてを必須にするための中継コンポーネントや、個別フォームの共通化だけを目的とした汎用フォーム基盤は追加しない。
 
 ---
 
@@ -133,13 +157,11 @@ components/app/
 
   detail-panel/      PC 右側 Detail Panel（Inspector）の中身
                      モバイルのプロジェクト詳細画面でも同じコンポーネントを再利用する
-                     panel.tsx        … PC Detail Panel のシェル（420px 固定パネル）
+                     project-panel.tsx … プロジェクト詳細パネル
                      tabs/            … プロジェクト詳細のタブ内容（chat / tasks / files など）
-                     pages/           … モバイルナビバーの行き先ページ（暫定置き場）
 
   mobile/            モバイルブラウザ専用 UI（PC とナビゲーション構造が根本的に違う場合のみ）
-                     project-screen.tsx … モバイル用プロジェクト詳細シェル
-                                          （中身は detail-panel/tabs/* を使用）
+                     nav.tsx / settings.tsx … モバイル用ナビゲーション・設定画面
 ```
 
 ### 「共用」「個別」の判断基準
@@ -155,7 +177,8 @@ components/app/
 
 - Detail Panel コンポーネントは PC シェルへの依存（`AppShellContext` の `openPanel` 等）を持たないよう設計する
 - PC 固有の機能が必要な場合は props や Context 経由で注入する
-- `MobileShell` / `MobileNav` はモバイルブラウザ専用のラッパーのため `_shells/` 配下に残す
+- モバイルブラウザ専用の `MobileShell` は `src/app/(app)/_shells/mobile-shell.tsx`、ナビゲーションは `src/components/app/mobile/nav.tsx` に置く
+- プロジェクト詳細は PC・モバイル双方のシェルが `?open=project-{id}` を読み、共通の `ProjectPanel` を表示する
 
 ### チャットとタスクのスコープ
 
