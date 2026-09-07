@@ -1,8 +1,35 @@
-# マイルストーン機能 実装設計
+# マイルストーン機能 — 実装状況と設計記録
 
-> **ステータス**: 実装前の確定設計（作成: 2026-07-09）
-> 元となる設計ドラフト（基本思想）と、現実装との差分分析、実装計画をまとめる。
-> 実装後に本書と実装が乖離した場合はコードを正とする。
+> **ステータス**: 冒頭は現行リファレンス、§1〜8 は設計時の記録（初稿: 2026-07-09）。
+> **実装確認**: 2026-09-07、`develop` の `46805dd3892fd503d7ad10d54049f855679b9135` をコードで確認。本番反映・実機動作の確認を意味しない。
+> 本書と実装が乖離した場合はコードを正とする。
+
+## 現在の実装状況
+
+マイルストーンは実装済み。プロジェクト内の期間・完了状態と、専用のチャットチャンネルを持つ。以下を現状の参照先とする。
+
+| 領域 | 実装済みの範囲 | コード |
+|---|---|---|
+| DB | プロジェクト配下のマイルストーン、開始・終了の日付と時刻、完了状態。専用チャンネルは `milestoneId` で一意に対応し、削除時に cascade する | [milestones.ts](../packages/db/src/schema/milestones.ts)、[channels.ts](../packages/db/src/schema/channels.ts) |
+| API | プロジェクト別の取得・作成・更新・削除、ワークスペース内の横断一覧。作成時はマイルストーンとチャンネルを同一 transaction で追加。読み取りはプロジェクトアクセス権、書き込みは member 以上を検証 | [一覧・作成](../apps/web/src/app/api/projects/[id]/milestones/route.ts)、[更新・削除](../apps/web/src/app/api/projects/[id]/milestones/[milestoneId]/route.ts)、[横断一覧](../apps/web/src/app/api/milestones/route.ts) |
+| Web 管理 UI | 概要タブの一覧・作成・編集・完了切替・削除確認・チャット遷移、作成／編集モーダル。取得・更新処理を Domain Hook に集約 | [概要タブ](../apps/web/src/components/app/detail-panel/tabs/overview-tab.tsx)、[モーダル](../apps/web/src/components/app/pages/create-milestone-modal.tsx)、[use-project-milestones.ts](../apps/web/src/hooks/use-project-milestones.ts) |
+| Web チャット | General と未完了のマイルストーンチャンネルを切り替え、選択したチャンネルの会話を表示 | [チャットタブ](../apps/web/src/components/app/detail-panel/tabs/chat-tab.tsx) |
+| カレンダー | PC・モバイルWebでマイルストーンを表示し、表示／非表示を切り替え | [projects-calendar.tsx](../apps/web/src/components/app/pages/projects-calendar.tsx) |
+| Expo チャット | プロジェクトの下に未完了のマイルストーンを表示し、専用の `channelId` へ遷移 | [チャット一覧](<../apps/mobile/app/(app)/chats/index.tsx>) |
+
+### 残課題
+
+以下は確認日時点で Open の既存 Issue。実装済みの画面・API があることと、これらの課題が解消済みであることは区別する。
+
+- [#453](https://github.com/keishingu/Cairn/issues/453): 開始・終了の順序を共有スキーマで検証する。現状は日付・時刻の形式検証のみで、API に逆転した期間を送れる。
+- [#455](https://github.com/keishingu/Cairn/issues/455): 同時編集の競合検出。現状の PATCH は更新バージョンを比較せず、他ユーザーの変更を上書きし得る。
+- [#454](https://github.com/keishingu/Cairn/issues/454): チャンネル構成変更の他クライアントへの Realtime 反映。既存チャンネルのメッセージ配信とは別の課題で、作成者側のキャッシュ更新だけでは他クライアントの一覧に反映されない。
+
+§7 のフェーズ計画は現在の未完了チェックリストではない。とくに Phase 5 は当時の将来案であり、各項目の採用・実装状況はコードと個別 Issue で確認する。
+
+## 設計時の記録（§1〜8）
+
+以下は初期設計とその後の追記を保存した記録。「現実装」「新規」「修正する」などは各記述の執筆時点を指す。未作成テーブル・未実装 API・Expo の General のみ表示などの記述を、現在の未実装範囲として読まないこと。現在の実装状況は上記を参照する。
 
 ---
 
