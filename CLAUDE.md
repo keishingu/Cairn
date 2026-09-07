@@ -41,19 +41,22 @@ packages/config/   tsconfig / ESLint の共有設定
 
 - **Supabase CLI + Docker** を使う。`supabase start` で PostgreSQL / Auth / Storage / Realtime / Studio が一括起動する
 - 環境変数は `apps/web/.env.local.example` をコピーして使う。`supabase start` のデフォルトキーが事前入力済み
-- DBスキーマは `packages/db/src/schema/` で管理（Drizzle が正）→ `pnpm db:generate` で `supabase/migrations/` にSQLを生成 → `supabase migration up` でローカルに差分適用（データを保持したまま未適用マイグレーションだけ実行）。新規 migration ファイル名は `packages/db/drizzle.config.ts` の `migrations.prefix = 'timestamp'` で timestamp 方式に統一する。**生成されたランダムな形容詞名はそのまま使わず、timestamp を維持したまま変更内容が分かる英語の snake_case 名へ変更する**（例: `20260804115423_add_api_tokens.sql`）
-- **ブランチ切り替え後は `supabase migration up` を実行する**。未適用マイグレーションがあると enum 不一致や Realtime 認可ポリシー欠如などで API が 500・Realtime が接続不能になるが、原因がマイグレーション未適用だと気づきにくい
-- `supabase db reset` はデータを全削除して再構築するため、CI や初回セットアップ専用
+- DBスキーマは `packages/db/src/schema/` で管理（Drizzle が正）→ `pnpm --filter @cairn/db db:generate` で `supabase/migrations/` にSQLを生成 → `supabase migration up --local --include-all` でローカルに差分適用（データを保持したまま未適用マイグレーションだけ実行）。新規 migration ファイル名は `packages/db/drizzle.config.ts` の `migrations.prefix = 'timestamp'` で timestamp 方式に統一する。**生成されたランダムな形容詞名はそのまま使わず、timestamp を維持したまま変更内容が分かる英語の snake_case 名へ変更する**（例: `20260804115423_add_api_tokens.sql`）
+- **ブランチ切り替え後は `supabase migration up --local --include-all` を実行する**。未適用マイグレーションがあると enum 不一致や Realtime 認可ポリシー欠如などで API が 500・Realtime が接続不能になるが、原因がマイグレーション未適用だと気づきにくい
+- DB 用コマンドはリポジトリルートから実行する。初回起動・取得済み SQL の適用では生成し直さない
+- `supabase db reset --local` は既存データとマイグレーションに残していない変更を破棄して再構築するため、CI や初回の検証など、破棄してよい環境に限る。初回セットアップにも必須ではなく、通常更新には使わない
 
 起動順序:
 
 ```bash
 supabase start
 cp apps/web/.env.local.example apps/web/.env.local
+supabase migration up --local --include-all
 pnpm dev
 ```
 
 - **通知・AIインデックスは Inngest ジョブ経由**。ローカルで Inngest dev server を起動していないと、メンション・DM・ファイルの通知が**サイレントに生成されない**（API は `inngest.send()` 失敗を warn ログに残すのみ）。通知周りを動作確認する際は Inngest dev server を併せて起動すること
+- **Electron は `apps/desktop/`**。リポジトリルートから `pnpm desktop:dev` / `pnpm desktop:build:prod` / `pnpm desktop:build:dev` を使う。アイコン生成は `pnpm --filter @cairn/desktop generate-icons`。接続先と生成パスは [`README.md`](README.md#electron-デスクトップアプリ) を参照
 
 ## 決定済みの技術判断
 
