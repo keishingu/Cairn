@@ -519,6 +519,7 @@ export interface ChannelListProps {
   dms: DmChannelDto[]
   members: WorkspaceMemberDto[]
   isMobile?: boolean
+  onAddProject?: () => void
   onAddChannel: () => void
   onStartDm: (userId: string) => void
   onCreateMilestone?: (project: { id: string; title: string }) => void
@@ -529,7 +530,7 @@ export interface ChannelListProps {
 
 export const ChannelList = ({
   channelId, onSelectChannel, projectChannels, workspaceChannels,
-  dms, members, isMobile = false, onAddChannel, onStartDm, onCreateMilestone, onEditMilestone,
+  dms, members, isMobile = false, onAddProject, onAddChannel, onStartDm, onCreateMilestone, onEditMilestone,
   onSetMilestoneCompleted, onCreateThread,
 }: ChannelListProps) => {
   const activeProjectChannels = projectChannels.filter(c => !c.archived)
@@ -552,7 +553,7 @@ export const ChannelList = ({
     }))
   return (
   <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
-    <ChatSidebarSection title="プロジェクト">
+    <ChatSidebarSection title="プロジェクト" {...(onAddProject ? { onAdd: onAddProject } : {})}>
       {projectGroups.map(({ general, activeMilestones, completedMilestones }) => (
         <ProjectChannelGroup
           key={general.channelId}

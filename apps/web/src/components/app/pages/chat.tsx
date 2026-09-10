@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MobileHeader } from '../mobile/header'
 import { ChatThread } from '../chat-thread'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { MessageSearchResultDto } from '@/app/api/search/messages/route'
@@ -20,10 +20,13 @@ import {
   useCreateDm,
   useCurrentUser,
   useBookmarks,
+  chatQueryKeys,
 } from '@/lib/chat/client'
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
+import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 import { CreateChannelModal } from './create-channel-modal'
+import { CreateProjectModal } from './create-project-modal'
 import { CreateMilestoneModal, EditMilestoneModal } from './create-milestone-modal'
 import { CreateChannelThreadModal } from './create-channel-thread-modal'
 import { BellButton } from '../sidebar'
@@ -308,6 +311,7 @@ let _pendingJump: { channelId: string; messageId: string } | null = null
 export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const router = useRouter()
   const pathname = usePathname()
+  const queryClient = useQueryClient()
 
   // /chats/<channelId> → channelId, /chats → null
   const urlChannelId = React.useMemo(() => {
@@ -319,6 +323,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
 
   const [channelId, setChannelId] = React.useState<string | null>(urlChannelId)
   const [showCreateChannel, setShowCreateChannel] = React.useState(false)
+  const [showCreateProject, setShowCreateProject] = React.useState(false)
   const [showMemberInvite, setShowMemberInvite] = React.useState(false)
   const [showInfo, setShowInfo] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
@@ -503,6 +508,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const currentChannelMemberCount = currentGeneral?.memberCount
 
   const { data: currentUser } = useCurrentUser()
+  const canCreateProject = currentUser?.wsRole === 'owner' || currentUser?.wsRole === 'admin'
   const canCreateChildChannel = currentUser != null && currentUser.wsRole !== 'guest'
   // 非公開チャンネルのみ「チャンネル参加者」を表示するためメンバーを取得する
   const { data: channelMemberIds = [] } = useChannelMembers(isPrivate ? channelId : null)
@@ -579,6 +585,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       dms={dms}
       members={members}
       isMobile={isMobile}
+      {...(canCreateProject ? { onAddProject: () => setShowCreateProject(true) } : {})}
       onAddChannel={() => setShowCreateChannel(true)}
       onStartDm={handleStartDm}
       {...(canCreateChildChannel ? { onCreateMilestone: setMilestoneProject } : {})}
@@ -592,6 +599,17 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     isMobile
       ? <CreateChannelSheet onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
       : <CreateChannelModal onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
+  )
+
+  const handleProjectCreated = () => {
+    void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
+  }
+
+  const createProjectUI = showCreateProject && (
+    isMobile
+      ? <CreateProjectSheet onClose={() => setShowCreateProject(false)} onCreated={handleProjectCreated}/>
+      : <CreateProjectModal onClose={() => setShowCreateProject(false)} onCreated={handleProjectCreated}/>
   )
 
   const createMilestoneUI = milestoneProject && (
@@ -647,6 +665,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
               : channelListNode
           }
           {createChannelUI}
+          {createProjectUI}
           {createMilestoneUI}
           {editMilestoneUI}
           {createThreadUI}
@@ -710,6 +729,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       {createChannelUI}
+      {createProjectUI}
       {createMilestoneUI}
       {editMilestoneUI}
       {createThreadUI}

@@ -47,6 +47,27 @@ describe('formatChannelPeriod', () => {
 describe('ChannelList', () => {
   beforeEach(() => localStorage.clear())
 
+  it('プロジェクト見出しの追加ボタンから作成を開始する', () => {
+    const onAddProject = vi.fn()
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[]}
+        dms={[]}
+        members={[]}
+        onAddProject={onAddProject}
+        onAddChannel={vi.fn()}
+        onStartDm={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'プロジェクトを追加' }))
+
+    expect(onAddProject).toHaveBeenCalledOnce()
+  })
+
   it('未読があるチャンネル名を明確な太字で表示する', () => {
     render(
       <ChannelList
