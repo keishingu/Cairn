@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -22,6 +22,7 @@ const { toastSuccess, toastError, markChannelRead, bookmarkMessage, chatThreadSt
     initialMessageId: null as string | null,
     historyMessages: undefined as Array<Record<string, unknown>> | undefined,
     historyIsError: false,
+    workspaceMembers: [] as Array<{ userId: string; displayName: string; role: 'member' }>,
   },
 }))
 
@@ -54,7 +55,7 @@ vi.mock('@/lib/chat/client', () => ({
   useSendChannelMessage: () => ({ mutate: vi.fn(), isError: false, isSuccess: false, isPending: false, error: null }),
   useToggleBookmark: () => ({ mutate: bookmarkMessage }),
   useToggleMessageReaction: () => ({ mutate: vi.fn() }),
-  useWorkspaceMembers: () => ({ data: [] }),
+  useWorkspaceMembers: () => ({ data: chatThreadState.workspaceMembers }),
 }))
 
 vi.mock('@/hooks/use-ai-nudges', () => ({
@@ -316,4 +317,57 @@ describe('ChatThreadの初期既読', () => {
     expect(markChannelRead).not.toHaveBeenCalled()
   })
 
+})
+
+describe('ChatThreadのメンション候補', () => {
+  beforeEach(() => {
+    chatThreadState.initialMessageId = null
+    chatThreadState.historyMessages = undefined
+    chatThreadState.historyIsError = false
+    chatThreadState.workspaceMembers = [
+      ...Array.from({ length: 6 }, (_, index) => ({
+        userId: `user-${index + 2}`,
+        displayName: `候補${index + 1}`,
+        role: 'member' as const,
+      })),
+      { userId: 'user-8', displayName: '鈴木', role: 'member' },
+    ]
+    localStorage.clear()
+  })
+
+  it('日本語変換の確定後に入力済みの名前で候補を絞り込む', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" isMobile />
+      </QueryClientProvider>,
+    )
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+
+    fireEvent.compositionStart(input)
+    fireEvent.change(input, { target: { value: '@鈴木', selectionStart: 1 } })
+    expect(screen.queryByText('鈴木')).toBeNull()
+
+    input.setSelectionRange(3, 3)
+    fireEvent.compositionEnd(input)
+
+    expect(screen.getByText('鈴木')).toBeInTheDocument()
+    expect(screen.queryByText('候補1')).toBeNull()
+  })
+
+  it('日本語変換中のEnterでは候補を挿入しない', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" isMobile />
+      </QueryClientProvider>,
+    )
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+
+    fireEvent.change(input, { target: { value: '@' } })
+    fireEvent.compositionStart(input)
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229, isComposing: true })
+
+    expect(input.value).toBe('@')
+  })
 })

@@ -613,6 +613,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     else { setMentionQuery(null); setMentionAnchorPos(null) }
   }
 
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLTextAreaElement>) => {
+    setIsComposing(false)
+    detectMention(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length)
+  }
+
   const insertMention = (userId: string, displayName: string) => {
     if (mentionAnchorPos === null) return
     const cursor = (textareaRef.current ?? compactInputRef.current)?.selectionStart ?? draft.length
@@ -629,7 +634,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     })
   }
 
-  const handleKeyDownWithMention = (e: React.KeyboardEvent, fallback: () => void) => {
+  const handleKeyDownWithMention = (e: React.KeyboardEvent<HTMLTextAreaElement>, fallback: () => void) => {
+    if (isImeConfirmingEnter(e, isComposing)) return
     if (mentionCandidates.length > 0) {
       if (e.key === 'Escape') { e.preventDefault(); setMentionQuery(null); return }
       if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIdx(i => (i + 1) % mentionCandidates.length); return }
@@ -821,7 +827,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 value={draft}
                 onChange={e => { setDraft(e.target.value); detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
                 onCompositionStart={() => setIsComposing(true)}
-                onCompositionEnd={() => setIsComposing(false)}
+                onCompositionEnd={handleCompositionEnd}
                 onKeyDown={e => handleKeyDownWithMention(e, () => {
                   if (e.key !== 'Enter' || e.shiftKey) return
                   // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
@@ -908,7 +914,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               value={draft}
               onChange={e => { setDraft(e.target.value); detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
               onCompositionStart={() => setIsComposing(true)}
-              onCompositionEnd={() => setIsComposing(false)}
+              onCompositionEnd={handleCompositionEnd}
               onKeyDown={e => handleKeyDownWithMention(e, () => {
                 if (e.key !== 'Enter' || e.shiftKey) return
                 // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
