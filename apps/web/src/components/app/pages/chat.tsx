@@ -41,6 +41,7 @@ import { usePatchProjectMilestone } from '@/hooks/use-project-milestones'
 import { toast } from '@/lib/toast'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import { useCommand } from '@/lib/command-registry'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import {
   getLastVisitedChatChannelId,
   resolveInitialChatChannelId,
@@ -508,7 +509,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const currentChannelMemberCount = currentGeneral?.memberCount
 
   const { data: currentUser } = useCurrentUser()
-  const canCreateProject = currentUser?.wsRole === 'owner' || currentUser?.wsRole === 'admin'
+  const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const canCreateChildChannel = currentUser != null && currentUser.wsRole !== 'guest'
   // 非公開チャンネルのみ「チャンネル参加者」を表示するためメンバーを取得する
   const { data: channelMemberIds = [] } = useChannelMembers(isPrivate ? channelId : null)
