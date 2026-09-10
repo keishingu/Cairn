@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -22,6 +22,7 @@ const { toastSuccess, toastError, markChannelRead, bookmarkMessage, chatThreadSt
     initialMessageId: null as string | null,
     historyMessages: undefined as Array<Record<string, unknown>> | undefined,
     historyIsError: false,
+    workspaceMembers: [] as Array<{ userId: string; displayName: string; role: 'member' }>,
   },
 }))
 
@@ -54,7 +55,7 @@ vi.mock('@/lib/chat/client', () => ({
   useSendChannelMessage: () => ({ mutate: vi.fn(), isError: false, isSuccess: false, isPending: false, error: null }),
   useToggleBookmark: () => ({ mutate: bookmarkMessage }),
   useToggleMessageReaction: () => ({ mutate: vi.fn() }),
-  useWorkspaceMembers: () => ({ data: [] }),
+  useWorkspaceMembers: () => ({ data: chatThreadState.workspaceMembers }),
 }))
 
 vi.mock('@/hooks/use-ai-nudges', () => ({
@@ -193,6 +194,49 @@ describe('ChatMessage copy action', () => {
     expect(screen.getByRole('checkbox')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '詳細' })).toHaveAttribute('href', 'https://example.com/guide')
   })
+
+  it('プロジェクトロールと属性を表示し、通常メンバーロールは省略する', () => {
+    const props = {
+      messageId: 'message-3',
+      messageType: 'text' as const,
+      senderId: 'user-2',
+      currentUserId: 'user-1',
+      senderName: 'Alice',
+      createdAt: '2026-06-25T12:00:00.000Z',
+      isEdited: false,
+      content: 'hello',
+      reactions: [],
+      attachments: [],
+      replyTo: null,
+      bookmarked: false,
+      onReact: vi.fn(),
+      onEdit: vi.fn(),
+      onDelete: vi.fn(),
+      onCheckboxToggle: vi.fn(),
+      onReply: vi.fn(),
+      onBookmark: vi.fn(),
+      onJumpToMessage: vi.fn(),
+      onCopyLink: vi.fn(),
+      onImageClick: vi.fn(),
+    }
+    const { rerender } = render(
+      <ChatMessage
+        {...props}
+        senderProjectRole="subleader"
+        senderProfileAttributes={[
+          { id: 'attribute-1', name: '3年生', color: 'blue' },
+          { id: 'attribute-2', name: '経済学部', color: 'emerald' },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('サブリーダー')).toBeInTheDocument()
+    expect(screen.getByText('3年生')).toBeInTheDocument()
+    expect(screen.getByText('経済学部')).toBeInTheDocument()
+
+    rerender(<ChatMessage {...props} senderProjectRole="member" senderProfileAttributes={[]} />)
+    expect(screen.queryByText('メンバー')).toBeNull()
+  })
 })
 
 describe('isNearMessageTimelineEnd', () => {
@@ -273,4 +317,45 @@ describe('ChatThreadの初期既読', () => {
     expect(markChannelRead).not.toHaveBeenCalled()
   })
 
+})
+
+describe('ChatThreadのメンション候補', () => {
+  beforeEach(() => {
+    chatThreadState.initialMessageId = null
+    chatThreadState.historyMessages = undefined
+    chatThreadState.historyIsError = false
+    chatThreadState.workspaceMembers = [
+      ...Array.from({ length: 6 }, (_, index) => ({
+        userId: `user-${index + 2}`,
+        displayName: `候補${index + 1}`,
+        role: 'member' as const,
+      })),
+      { userId: 'user-8', displayName: '鈴木', role: 'member' },
+    ]
+    localStorage.clear()
+  })
+
+  it('日本語変換中は候補を選ばず、確定後に入力済みの名前で絞り込む', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" isMobile />
+      </QueryClientProvider>,
+    )
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+
+    fireEvent.change(input, { target: { value: '@' } })
+    fireEvent.compositionStart(input)
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229, isComposing: true })
+    expect(input.value).toBe('@')
+
+    fireEvent.change(input, { target: { value: '@鈴木', selectionStart: 1 } })
+    expect(screen.queryByText('鈴木')).toBeNull()
+
+    input.setSelectionRange(3, 3)
+    fireEvent.compositionEnd(input)
+
+    expect(screen.getByText('鈴木')).toBeInTheDocument()
+    expect(screen.queryByText('候補1')).toBeNull()
+  })
 })

@@ -62,4 +62,22 @@ describe('Markdownコンテンツ', () => {
     expect(container.querySelector('pre code.language-typescript')).toHaveTextContent('const answer = 42')
     expect(screen.queryByRole('img', { name: 'Mermaid図' })).not.toBeInTheDocument()
   })
+
+  it('表を罫線とセル余白つきで表示する', () => {
+    render(<MarkdownContent content={'| ロール | 作成 |\n|:---|---:|\n| owner | ○ |'} />)
+
+    const table = screen.getByRole('table')
+    expect(table).toHaveStyle({ borderCollapse: 'collapse' })
+    expect(table.parentElement).toHaveStyle({ overflowX: 'auto' })
+    expect(screen.getByRole('columnheader', { name: 'ロール' })).toHaveStyle({
+      border: '1px solid var(--border-2)',
+      padding: '6px 10px',
+    })
+    expect(screen.getByRole('cell', { name: 'owner' })).toHaveStyle({
+      border: '1px solid var(--border-2)',
+      padding: '6px 10px',
+    })
+    expect(screen.getByRole('columnheader', { name: '作成' })).toHaveStyle({ textAlign: 'right' })
+    expect(screen.getByRole('cell', { name: '○' })).toHaveStyle({ textAlign: 'right' })
+  })
 })

@@ -7,7 +7,8 @@ import type { TaskDto } from '@/app/api/tasks/route'
 import { useProjectTasks, useCreateTask } from '@/hooks/use-project-tasks'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import { TaskEditDialog } from '../../task-edit-dialog'
-import { TaskAssigneeField } from '../../task-assignee-field'
+import { TaskDialog } from '../../task-dialog'
+import { TaskFormFields } from '../../task-form-fields'
 import { RowActionMenu } from '../../row-action-menu'
 
 // ─── AddTaskModal ─────────────────────────────────────────────────
@@ -36,131 +37,32 @@ const AddTaskModal = ({ project, onClose }: AddTaskModalProps) => {
     })
   }
 
-  const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) onClose()
-  }
-
-  const fieldLabel: React.CSSProperties = {
-    fontSize: 12, fontWeight: 600, color: 'var(--text-3)',
-    display: 'block', marginBottom: 6,
-  }
-  const fieldInput: React.CSSProperties = {
-    width: '100%', padding: '9px 12px', borderRadius: 8,
-    border: '1.5px solid var(--border-2)', background: 'var(--bg)',
-    color: 'var(--text)', fontSize: 14, fontFamily: 'inherit',
-    boxSizing: 'border-box', outline: 'none',
-  }
-
   return (
-    <div
-      onClick={handleBackdrop}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 200,
-        background: 'rgba(0,0,0,0.4)',
-        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-        padding: 0,
-      }}
+    <TaskDialog
+      title="タスクを追加"
+      subtitle={project.title}
+      onClose={onClose}
+      onSubmit={handleSubmit}
+      submitLabel="追加"
+      submittingLabel="追加中..."
+      isSubmitting={mutation.isPending}
+      submitDisabled={!title.trim()}
+      disableClose={mutation.isPending}
+      {...(mutation.isError ? { errorMessage: 'タスクの作成に失敗しました。もう一度お試しください。' } : {})}
     >
-      <div style={{
-        background: 'var(--card)', borderRadius: '12px 12px 0 0',
-        width: '100%', maxWidth: 520,
-        boxShadow: '0 -8px 40px rgba(0,0,0,0.2)',
-        animation: 'fadeSlideIn .15s ease',
-        paddingBottom: 'env(safe-area-inset-bottom)',
-      }}>
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '16px 20px', borderBottom: '1px solid var(--border)',
-        }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>タスクを追加</span>
-          <button
-            onClick={onClose}
-            style={{
-              width: 28, height: 28, borderRadius: 6, border: 'none',
-              background: 'transparent', color: 'var(--text-3)', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <Icon name="close" size={15} />
-          </button>
-        </div>
-
-        {/* Project context */}
-        <div style={{ padding: '10px 20px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Icon name="folder" size={12} color="var(--text-3)" />
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{project.title}</span>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} style={{ padding: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={fieldLabel}>
-              タイトル <span style={{ color: 'var(--red)' }}>*</span>
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="タスク名を入力..."
-              required
-              // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus
-              style={fieldInput}
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <label style={fieldLabel}>優先度</label>
-              <select
-                value={priority}
-                onChange={e => setPriority(e.target.value as TaskDto['priority'])}
-                style={fieldInput}
-              >
-                <option value="high">高</option>
-                <option value="medium">中</option>
-                <option value="low">低</option>
-              </select>
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={fieldLabel}>期限日</label>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={e => setDueDate(e.target.value)}
-                style={fieldInput}
-              />
-            </div>
-          </div>
-
-          <TaskAssigneeField value={assigneeId} onChange={setAssigneeId} projectId={project.id} />
-
-          {mutation.isError && (
-            <div style={{
-              fontSize: 12.5, color: 'var(--red-text)', background: 'var(--red-soft)',
-              padding: '8px 12px', borderRadius: 6,
-            }}>
-              タスクの作成に失敗しました。もう一度お試しください。
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 8, paddingTop: 2 }}>
-            <button type="button" onClick={onClose} className="btn" style={{ flex: 1, padding: '10px' }}>
-              キャンセル
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={!title.trim() || mutation.isPending}
-              style={{ flex: 2, padding: '10px' }}
-            >
-              {mutation.isPending ? '追加中...' : '追加'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      <TaskFormFields
+        title={title}
+        onTitleChange={setTitle}
+        priority={priority}
+        onPriorityChange={setPriority}
+        dueDate={dueDate}
+        onDueDateChange={setDueDate}
+        assigneeId={assigneeId}
+        onAssigneeChange={setAssigneeId}
+        assigneeProjectId={project.id}
+        titlePlaceholder="タスク名を入力..."
+      />
+    </TaskDialog>
   )
 }
 

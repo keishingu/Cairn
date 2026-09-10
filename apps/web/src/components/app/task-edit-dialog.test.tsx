@@ -47,6 +47,10 @@ describe('TaskEditDialog', () => {
     renderDialog('edit')
 
     expect(screen.getByRole('heading', { name: 'タスクを編集' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'タイトル *' })).toHaveValue(task.title)
+    expect(screen.getByRole('combobox', { name: '優先度' })).toHaveValue('medium')
+    expect(screen.getByLabelText('期限日')).toHaveAttribute('type', 'date')
+    expect(screen.getByRole('button', { name: '閉じる' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'タスクを削除しますか？' })).toBeNull()
   })
 

@@ -4,12 +4,13 @@
 'use client'
 
 import React from 'react'
-import type { AttachmentDto, MessageType } from '@cairn/shared'
+import type { AttachmentDto, MessageType, ProfileAttributeDto, ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
 import { Avatar } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
+import { ProfileAttributeBadges } from './profile-attribute-badges'
 import { RowActionMenu } from './row-action-menu'
 import { EmojiPicker } from './emoji-picker'
 import { Icon } from './primitives'
@@ -131,7 +132,14 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
+const PROJECT_ROLE_LABEL: Record<Exclude<ProjectMemberRole, 'member'>, string> = {
+  leader: 'リーダー',
+  subleader: 'サブリーダー',
+  reviewer: 'レビュワー',
+  observer: 'オブザーバー',
+}
+
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -139,6 +147,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   senderName: string
   senderAvatarUrl?: string | null
   senderEmail?: string | null
+  senderProfileAttributes?: ProfileAttributeDto[]
+  senderProjectRole?: ProjectMemberRole | null
   createdAt: string
   isEdited: boolean
   content: string
@@ -175,6 +185,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const emojiOnly = isEmojiOnly(content)
   const isOwn = currentUserId === senderId
   const canCopy = content.length > 0
+  const visibleProjectRole = senderProjectRole && senderProjectRole !== 'member'
+    ? PROJECT_ROLE_LABEL[senderProjectRole]
+    : null
 
   const startEdit = () => {
     setEditDraft(content)
@@ -301,11 +314,22 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
         <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
+        <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
           <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
+          {visibleProjectRole && (
+            <span style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--violet-soft)', color: 'var(--violet-text)', fontSize: 10, fontWeight: 700 }}>
+              {visibleProjectRole}
+            </span>
+          )}
+          {!isMobile && <ProfileAttributeBadges attributes={senderProfileAttributes} compact />}
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
           {isEdited && <span style={{ fontSize: 10, color: 'var(--text-4)', fontStyle: 'italic' }}>編集済み</span>}
         </div>
+        {isMobile && senderProfileAttributes.length > 0 && (
+          <span style={{ display: 'block', marginBottom: 4 }}>
+            <ProfileAttributeBadges attributes={senderProfileAttributes} compact />
+          </span>
+        )}
         {replyTo && (
           <button
             onClick={() => !replyTo.isDeleted && onJumpToMessage(replyTo.id)}
@@ -589,6 +613,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     else { setMentionQuery(null); setMentionAnchorPos(null) }
   }
 
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLTextAreaElement>) => {
+    setIsComposing(false)
+    detectMention(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length)
+  }
+
   const insertMention = (userId: string, displayName: string) => {
     if (mentionAnchorPos === null) return
     const cursor = (textareaRef.current ?? compactInputRef.current)?.selectionStart ?? draft.length
@@ -605,7 +634,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     })
   }
 
-  const handleKeyDownWithMention = (e: React.KeyboardEvent, fallback: () => void) => {
+  const handleKeyDownWithMention = (e: React.KeyboardEvent<HTMLTextAreaElement>, fallback: () => void) => {
+    if (isImeConfirmingEnter(e, isComposing)) return
     if (mentionCandidates.length > 0) {
       if (e.key === 'Escape') { e.preventDefault(); setMentionQuery(null); return }
       if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIdx(i => (i + 1) % mentionCandidates.length); return }
@@ -797,7 +827,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 value={draft}
                 onChange={e => { setDraft(e.target.value); detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
                 onCompositionStart={() => setIsComposing(true)}
-                onCompositionEnd={() => setIsComposing(false)}
+                onCompositionEnd={handleCompositionEnd}
                 onKeyDown={e => handleKeyDownWithMention(e, () => {
                   if (e.key !== 'Enter' || e.shiftKey) return
                   // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
@@ -884,7 +914,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               value={draft}
               onChange={e => { setDraft(e.target.value); detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
               onCompositionStart={() => setIsComposing(true)}
-              onCompositionEnd={() => setIsComposing(false)}
+              onCompositionEnd={handleCompositionEnd}
               onKeyDown={e => handleKeyDownWithMention(e, () => {
                 if (e.key !== 'Enter' || e.shiftKey) return
                 // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
@@ -1841,6 +1871,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               senderName={item.message.senderName}
               senderAvatarUrl={item.message.senderAvatarUrl}
               senderEmail={emailByUserId.get(item.message.senderId) ?? null}
+              senderProfileAttributes={item.message.senderProfileAttributes ?? []}
+              senderProjectRole={item.message.senderProjectRole ?? null}
               createdAt={item.message.createdAt}
               isEdited={item.message.isEdited}
               content={item.message.content}

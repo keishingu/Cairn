@@ -11,6 +11,7 @@ import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { hasBlockBetween } from '@/lib/safety/blocks'
 import { unsafeMessageError } from '@/lib/safety/message-filter'
 import { hasTaskChannelSchema, insertLegacyTasks } from '@/lib/tasks/schema-readiness'
+import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
 import type { MessageDto } from './dto'
 
 type PostMessageInput = {
@@ -38,9 +39,15 @@ export async function postMessage({
 }: PostMessageArgs) {
   try {
     const { db } = await import('@cairn/db')
-    const { messages, profiles, messageAttachments, files, channels, channelMembers, tasks, workspaceMembers } =
+    const { messages, profiles, messageAttachments, files, channels, channelMembers, tasks, workspaceMembers, projectMembers } =
       await import('@cairn/db')
     const { eq, and, isNull, inArray, sql } = await import('drizzle-orm')
+
+    const [channelForSafety] = await db
+      .select({ type: channels.type, projectId: channels.projectId })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1)
 
     // モバイルのオフラインキューは最初の送信から同じ UUID を使い続ける。
     // 応答が端末へ届く前に回線が切れて再送されても、既存行を返して二重投稿を防ぐ。
@@ -70,6 +77,7 @@ export async function postMessage({
               profiles.displayName,
             ),
             avatarUrl: workspaceMembers.avatarUrl,
+            projectRole: projectMembers.role,
           })
           .from(profiles)
           .leftJoin(
@@ -79,8 +87,18 @@ export async function postMessage({
               eq(workspaceMembers.workspaceId, workspaceId),
             ),
           )
+          .leftJoin(
+            projectMembers,
+            and(
+              eq(projectMembers.userId, profiles.id),
+              channelForSafety?.projectId
+                ? eq(projectMembers.projectId, channelForSafety.projectId)
+                : isNull(projectMembers.projectId),
+            ),
+          )
           .where(eq(profiles.id, existing.senderId))
 
+        const profileAttributes = await getProfileAttributesByUserIds(workspaceId, [existing.senderId])
         return NextResponse.json({
           id: existing.id,
           content: existing.content,
@@ -88,6 +106,8 @@ export async function postMessage({
           senderId: existing.senderId,
           senderName: existingProfile?.displayName ?? '不明',
           senderAvatarUrl: existingProfile?.avatarUrl ?? null,
+          senderProfileAttributes: profileAttributes.get(existing.senderId) ?? [],
+          senderProjectRole: existingProfile?.projectRole ?? null,
           createdAt: existing.createdAt.toISOString(),
           isEdited: false,
           reactions: [],
@@ -125,11 +145,6 @@ export async function postMessage({
     if (safetyError) return NextResponse.json({ error: safetyError }, { status: 422 })
 
     // DM はチャンネル作成後にもブロック関係が変わりうるため、投稿ごとに再検証する。
-    const [channelForSafety] = await db
-      .select({ type: channels.type })
-      .from(channels)
-      .where(eq(channels.id, channelId))
-      .limit(1)
     if (channelForSafety?.type === 'dm') {
       const participants = await db.select({ userId: channelMembers.userId })
         .from(channelMembers)
@@ -246,6 +261,7 @@ export async function postMessage({
       .select({
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
+        projectRole: projectMembers.role,
       })
       .from(profiles)
       .leftJoin(
@@ -255,9 +271,19 @@ export async function postMessage({
           eq(workspaceMembers.workspaceId, workspaceId),
         ),
       )
+      .leftJoin(
+        projectMembers,
+        and(
+          eq(projectMembers.userId, profiles.id),
+          channelForSafety?.projectId
+            ? eq(projectMembers.projectId, channelForSafety.projectId)
+            : isNull(projectMembers.projectId),
+        ),
+      )
       .where(eq(profiles.id, inserted.senderId))
 
     const senderName = profile?.displayName ?? '不明'
+    const profileAttributes = await getProfileAttributesByUserIds(workspaceId, [inserted.senderId])
 
     inngest
       .send({
@@ -284,6 +310,8 @@ export async function postMessage({
         senderId: inserted.senderId,
         senderName,
         senderAvatarUrl: profile?.avatarUrl ?? null,
+        senderProfileAttributes: profileAttributes.get(inserted.senderId) ?? [],
+        senderProjectRole: profile?.projectRole ?? null,
         createdAt: inserted.createdAt.toISOString(),
         isEdited: false,
         reactions: [],

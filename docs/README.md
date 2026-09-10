@@ -17,12 +17,13 @@
 |---|---|---|
 | API ルートの追加・変更 | `api-conventions.md` | — |
 | フロントエンド・UI 実装 | `frontend-guidelines.md` | `ui-consistency-checklist.md`（統一の進捗） |
+| プロフィール属性・チャット上のメンバー表示 | `profile-attributes-design.md`（現行仕様） | `user-deactivation-design.md`（非活性メンバーの扱い） |
 | 通知・未読・Push・Realtime | `notification-design.md`（現行仕様） | `notification-ux-redesign.md`（Phase 設計・Realtime 方針の根拠）、`07_notifications_and_unread.md` |
 | モバイル（Expo） | CLAUDE.md「決定済みの技術判断」、`mobile-internal-distribution.md` | `08_expo_roadmap.md`、`mobile-webview-auth-handoff.md`（WebView 認証） |
 | キーボードショートカット | `keyboard-shortcuts.md` | — |
 | デプロイ・リリース・本番設定 | `production-deployment.md` | `resend-email-provider.md`（Supabase Auth の Resend SMTP 配送） |
 | 課金（Phase 1 実装済み） | `billing-implementation-design.md`（現行の実装・運用） | `pricing-plan-design.md`（プラン意図）、`billing-minigame-design.md`（Phase 3 の石積みミニゲーム）、`prototypes/stone-stacking-sandbox.html`（触感検証モック） |
-| マイルストーン（未実装・設計のみ） | `milestone-design.md`（差分分析・実装計画） | `07_notifications_and_unread.md`（エンティティ=チャンネル思想） |
+| マイルストーン（実装済み・残課題あり） | `milestone-design.md` 冒頭（実装状況・残課題） | 同文書 §1〜8（設計時の記録）、`07_notifications_and_unread.md`（エンティティ=チャンネル思想） |
 | `/ai` 調査ワークベンチ・AIメンバー | `10_ai_member_design.md`（3つのAIサーフェスと責務境界） | `ai-self-improvement-loop.md`、`scheduled-jobs-design.md`（ユーザー定義cron。未実装） |
 | Cairn自体の使い方に関する`/ai`の回答（プロダクトヘルプ） | `product-help/README.md`（静的注入方式・更新ルール） | — |
 | AI常駐PMO・プライベートナッジ（Phase 1/2 実装済み） | `ai-pmo-design.md` | `ai-era-pm-strategy.md`（戦略背景）、`10_ai_member_design.md`（`/ai`・AIメンバーとの関係） |
@@ -34,7 +35,8 @@
 | ファイル | 内容 | 最終更新 |
 |---|---|---|
 | [`api-conventions.md`](./api-conventions.md) | API ルート実装規約・認証・サインアップフロー | 2026-07-03 |
-| [`frontend-guidelines.md`](./frontend-guidelines.md) | コンポーネント設計・Domain Hook パターン・UIディレクトリ構成 | 2026-06-10 |
+| [`frontend-guidelines.md`](./frontend-guidelines.md) | page / container / 表示の責務・Domain Hook の適用範囲・既存実装の移行 Issue・UIディレクトリ構成 | 2026-09-07 |
+| [`profile-attributes-design.md`](./profile-attributes-design.md) | プロジェクト横断のプロフィール属性マスター、色、管理権限、チャット表示の現行仕様（実装済み） | 2026-09-01 |
 | [`notification-design.md`](./notification-design.md) | 通知・未読の現行仕様 | 2026-07-03 |
 | [`notification-ux-redesign.md`](./notification-ux-redesign.md) | 通知・未読・Push の再設計。**Phase 1〜3 実装済み**（現行 Realtime 方針 = Broadcast from Database はここの Phase 2）。Phase 4〜5 は構想 | 2026-07-03 |
 | [`mobile-webview-auth-handoff.md`](./mobile-webview-auth-handoff.md) | モバイル WebView 認証のワンタイムトークンハンドオフ（実装済み） | 2026-07-03 |
@@ -45,7 +47,7 @@
 | [`ai-pmo-design.md`](./ai-pmo-design.md) | AI常駐PMOの現行仕様（Phase 1/2 実装済み、feature flag + workspace設定で段階ロールアウト） | 2026-08-05 |
 | [`mcp-server-design.md`](./mcp-server-design.md) | リモート MCP + PAT / OAuth の現行仕様（stdio/npm 版は後続） | 2026-08-27 |
 | [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) | 定期ジョブ（cron・自然言語で定義）+ アプリ内投票機能の設計（構想段階） | 2026-06-25 |
-| [`milestone-design.md`](./milestone-design.md) | マイルストーン機能の実装設計（現実装との差分分析・DB/API/UI 設計・フェーズ計画。実装未着手） | 2026-07-09 |
+| [`milestone-design.md`](./milestone-design.md) | 冒頭は DB・API・Web・Expo の実装状況と残課題の現行リファレンス。§1〜8 は設計時の記録 | 2026-09-07 |
 | [`production-deployment.md`](./production-deployment.md) | 本番環境構成・残タスク・一般公開に向けた設定 | 2026-08-22 |
 | [`resend-email-provider.md`](./resend-email-provider.md) | Supabase Auth の認証メールを Resend のカスタム SMTP で配送する設定・検証・運用 | 2026-08-22 |
 | [`pricing-plan-design.md`](./pricing-plan-design.md) | 料金プラン設計（Free / Solo / Team / Expedition、ケルン消費モデル。Team / Expedition は未実装） | 2026-07-24 |

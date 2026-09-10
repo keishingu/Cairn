@@ -3,6 +3,8 @@
 山岳部の山行計画を起点とした、プロジェクト管理・チャット・カレンダー・ファイル管理・ギャラリー・AIアシスタントを統合したコラボレーションアプリケーション。
 
 プロダクト仕様は [`docs/`](./docs) を参照。
+フロントエンドの責務分離と Domain Hook の適用範囲は [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md) を参照。
+UIの統一ルールとデザインSkillでの参照先は [`.interface-design/system.md`](.interface-design/system.md) を参照。
 
 ---
 
@@ -15,7 +17,9 @@
 - [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started) (`brew install supabase/tap/supabase`)
 - Docker（Supabase CLI が内部で使用）
 
-### セットアップ手順
+### 初回セットアップ
+
+以下はリポジトリルートで実行する。取得済みのマイグレーションを使うため、初回起動時に SQL を生成し直す必要はない。
 
 ```bash
 # 1. 依存関係インストール
@@ -27,15 +31,16 @@ supabase start
 # 3. 環境変数をコピー（値はそのまま使える）
 cp apps/web/.env.local.example apps/web/.env.local
 
-# 4. DB マイグレーションを適用
-cd packages/db && pnpm db:generate && cd ../..
-supabase db reset
+# 4. 未適用の DB マイグレーションを適用
+supabase migration up --local --include-all
 
 # 5. 開発サーバー起動
 pnpm dev
 ```
 
 ブラウザで http://localhost:3128 を開く。
+
+既存環境での pull・ブランチ切り替え後も、Supabase を起動して `supabase migration up --local --include-all` で差分を適用する。環境変数ファイルを再コピーしたり、DB を reset したりする必要はない。DB の再構築が必要な場合は下記の「DBマイグレーション」を参照。
 
 > **初回のみ**: `/auth/signup` でアカウントを作成する。ローカル Supabase ではメール確認が不要なため、登録直後にダッシュボードへ遷移する。
 
@@ -157,17 +162,32 @@ pnpm format     # コードフォーマット
 
 ### DBマイグレーション
 
-```bash
-cd packages/db
-pnpm db:generate  # Drizzle スキーマからマイグレーションSQL生成 (supabase/migrations/ に出力)
-pnpm db:studio    # Drizzle Studio 起動
-```
+以下はリポジトリルートで実行する。
 
-マイグレーションをローカル DB に適用する場合：
+**通常の更新（取得済み SQL の適用）**:
 
 ```bash
-supabase db reset  # マイグレーションを最初から適用（データはリセットされる）
+supabase start
+supabase migration up --local --include-all  # 未適用のマイグレーションのみ適用
 ```
+
+DB 全体を作り直さず差分を適用する。`--include-all` は、並行開発でマージ順とタイムスタンプ順が前後しても、履歴にないマイグレーションを適用対象に含めるために指定する（[既存のマイグレーションCI](.github/workflows/migrate.yml)と同じ方針）。SQL 自体にデータ削除・カラム削除が含まれる場合の影響は別途確認する。
+
+**スキーマを変更する場合のみ SQL を生成**:
+
+```bash
+pnpm --filter @cairn/db db:generate  # supabase/migrations/ に出力
+# 生成された SQL を確認してから適用
+supabase migration up --local --include-all
+```
+
+生成設定は [`packages/db/drizzle.config.ts`](packages/db/drizzle.config.ts)。ファイル名の timestamp を維持し、変更内容が分かる英語の snake_case 名にする（詳細は [`CLAUDE.md`](CLAUDE.md)）。Drizzle Studio は `pnpm --filter @cairn/db db:studio` で起動できる。
+
+**初回の検証・CIなど、データを破棄して再構築する場合のみ**:
+
+`supabase db reset --local` はローカル DB を再作成して全マイグレーションを適用し直す。既存データとマイグレーションに残していない変更は失われる。通常更新には使わず、破棄してよい環境でのみ実行する。初回起動にも必須ではない。
+
+コマンドの仕様: [migration up](https://supabase.com/docs/reference/cli/supabase-migration-up)、[db reset](https://supabase.com/docs/reference/cli/supabase-db-reset)。
 
 ---
 
@@ -177,8 +197,7 @@ supabase db reset  # マイグレーションを最初から適用（データ�
 cairn/
   apps/
     web/          # Next.js 15 (メインWebアプリ + リモートMCP /api/mcp)
-    desktop/
-      electron/   # Electron デスクトップアプリ (リモートシェル)
+    desktop/      # Electron デスクトップアプリ (リモートシェル)
   packages/
     core/         # ドメイン / ユースケース / ポート定義
     db/           # Drizzle ORM スキーマ・クライアント
@@ -280,7 +299,7 @@ node scripts/generate-icons.mjs
 
 ## Electron デスクトップアプリ
 
-`apps/desktop/electron/` に、リモートの Next.js デプロイ先 URL を読み込むだけの薄い Electron シェルがある。
+[`apps/desktop/`](apps/desktop/) に、リモートの Next.js デプロイ先 URL を読み込むだけの薄い Electron シェルがある。
 ローカルに静的ファイルはバンドルせず、常にネット経由で `apps/web` のデプロイ先に接続する（オフライン非対応）。
 
 Chromium ベースのため `PushManager` / Web Push API をフルサポートしており、既存の Web Push 通知機能（VAPID + Service Worker）をそのまま利用できる。
@@ -294,27 +313,28 @@ Chromium ベースのため `PushManager` / Web Push API をフルサポート�
 
 ### コマンド
 
+リポジトリルートで実行する。root の [`package.json`](package.json) から [`apps/desktop/package.json`](apps/desktop/package.json) の scripts を呼び出す。
+
 ```bash
 # 開発起動（dev URL を読み込み、DevTools を自動オープン）
-pnpm desktop:electron:dev
+pnpm desktop:dev
 
 # ビルド
-pnpm desktop:electron:build:prod   # prod URL + emerald-dark アイコン
-pnpm desktop:electron:build:dev    # dev URL + blue-light アイコン
+pnpm desktop:build:prod   # prod URL + emerald-dark アイコン
+pnpm desktop:build:dev    # dev URL + blue-light アイコン
 ```
 
 ### アイコンの再生成
 
-`apps/web/public/` のソース PNG から `.icns` / `.ico` / `.png` 一式を `apps/desktop/electron/resources/icons/{prod,dev}/` に生成する。
+[`apps/desktop/scripts/generate-icons.mjs`](apps/desktop/scripts/generate-icons.mjs) が `apps/web/public/` のソース PNG から `.icns` / `.ico` / `.png` 一式を `apps/desktop/resources/icons/{prod,dev}/` に生成する。リポジトリルートで次を実行する。
 
 ```bash
-cd apps/desktop/electron
-pnpm generate-icons
+pnpm --filter @cairn/desktop generate-icons
 ```
 
 ### Web Push の動作確認
 
-1. `pnpm desktop:electron:dev` でアプリを起動
+1. `pnpm desktop:dev` でアプリを起動
 2. DevTools のコンソールで `'serviceWorker' in navigator && 'PushManager' in window` が `true` になることを確認
 3. 通知パネル（ベルアイコン）の ON/OFF トグルを操作し、ブラウザの通知許可ダイアログが表示されることを確認
 

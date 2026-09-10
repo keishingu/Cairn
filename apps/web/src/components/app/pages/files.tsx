@@ -360,6 +360,7 @@ export const PageFiles = ({
     DEFAULT_FILE_FILTER_CONDITIONS,
   )
   const [activeSavedFilterId, setActiveSavedFilterId] = React.useState<string | null>(null)
+  const [filterDeleteTarget, setFilterDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
   const [sectionOverride, setSectionOverride] = React.useState<Record<string, boolean>>({})
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
@@ -618,11 +619,8 @@ export const PageFiles = ({
   }
 
   const handleDeleteSavedFilter = (filterId: string) => {
-    deleteSavedFilter.mutate(filterId, {
-      onSuccess: () => {
-        if (activeSavedFilterId === filterId) setActiveSavedFilterId(null)
-      },
-    })
+    const filter = savedFilters.find(item => item.id === filterId)
+    if (filter) setFilterDeleteTarget(filter)
   }
 
   return (
@@ -755,6 +753,18 @@ export const PageFiles = ({
           </>
         )}
       </div>
+
+      <ConfirmDialog
+        open={filterDeleteTarget !== null}
+        title="保存済みフィルターを削除"
+        message={`「${filterDeleteTarget?.name}」を削除しますか？ファイルは削除されません。この操作は取り消せません。`}
+        onConfirm={async () => {
+          if (!filterDeleteTarget) return
+          await deleteSavedFilter.mutateAsync(filterDeleteTarget.id)
+          if (activeSavedFilterId === filterDeleteTarget.id) setActiveSavedFilterId(null)
+        }}
+        onClose={() => setFilterDeleteTarget(null)}
+      />
 
       <ConfirmDialog
         open={deleteTarget !== null}

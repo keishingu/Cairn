@@ -119,7 +119,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
   <div className="chat-sidebar-item" style={{ position: 'relative' }}>
     <button onClick={onClick} style={{
       display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-      padding: mobile ? `11px ${action ? 72 : 16}px 11px 16px` : `6px ${action ? 38 : 10}px 6px 10px`,
+      padding: mobile ? `11px ${action ? 52 : 16}px 11px 16px` : `6px ${action ? 38 : 10}px 6px 10px`,
       borderRadius: mobile ? 0 : 6,
       borderBottom: mobile ? '1px solid var(--divider)' : 'none',
       border: mobile ? undefined : 'none',
@@ -164,13 +164,12 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       {memberCount != null && !mobile && memberCount > 0 && (
         <span style={{ fontSize: 10.5, color: 'var(--text-4)', fontWeight: 500, flexShrink: 0 }}>{memberCount}名</span>
       )}
-      {mobile && <Icon name="chevRight" size={16} color="var(--text-4)"/>}
     </button>
     {action && (
       <div
         className="chat-sidebar-item-action"
         data-always-visible={mobile || undefined}
-        style={{ position: 'absolute', top: '50%', right: mobile ? 40 : 5, transform: 'translateY(-50%)', display: 'flex', zIndex: 1 }}
+        style={{ position: 'absolute', top: '50%', right: mobile ? 8 : 5, transform: 'translateY(-50%)', display: 'flex', zIndex: 1 }}
       >
         {action}
       </div>

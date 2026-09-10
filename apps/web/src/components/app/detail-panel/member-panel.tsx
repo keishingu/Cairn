@@ -7,6 +7,12 @@ import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { toast } from '@/lib/toast'
+import { ProfileAttributeBadges } from '../profile-attribute-badges'
+import {
+  useProfileAttributes,
+  useUpdateMemberProfileAttributes,
+} from '@/hooks/use-profile-attributes'
 
 const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'オーナー',
@@ -183,9 +189,22 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
   })
   const viewerRole = allMembers.find(m => m.userId === me?.id)?.role ?? null
-  const canChangeRole = !isMobile && (viewerRole === 'owner' || (viewerRole === 'admin' && currentRole !== 'owner'))
+  const canEditAttributes =
+    member.membershipStatus === 'active' && (viewerRole === 'owner' || viewerRole === 'admin')
+  // ゲスト↔通常ロールは API が拒否するため UI からも除外する（PC / モバイル共通）
+  const canChangeRole =
+    currentRole !== 'guest' &&
+    (viewerRole === 'owner' || (viewerRole === 'admin' && currentRole !== 'owner'))
   const allowedRoles: WorkspaceMemberDto['role'][] =
-    viewerRole === 'owner' ? ['owner', 'admin', 'member', 'guest'] : ['admin', 'member', 'guest']
+    viewerRole === 'owner' ? ['owner', 'admin', 'member'] : ['admin', 'member']
+  // 唯一の active owner を降格すると API が 422 になるため、選択肢から外す
+  const activeOwnerCount = allMembers.filter(
+    m => m.role === 'owner' && m.membershipStatus === 'active',
+  ).length
+  const selectableRoles =
+    currentRole === 'owner' && activeOwnerCount <= 1
+      ? allowedRoles.filter(role => role === 'owner')
+      : allowedRoles
 
   const roleMutation = useMutation({
     mutationFn: (newRole: WorkspaceMemberDto['role']) =>
@@ -194,7 +213,10 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: newRole }),
       }).then(async r => {
-        if (!r.ok) { const e = await r.json() as { error?: string }; throw e }
+        if (!r.ok) {
+          const e = await r.json() as { error?: string }
+          throw new Error(e.error ?? 'ロールの変更に失敗しました')
+        }
         return r.json() as Promise<{ userId: string; role: WorkspaceMemberDto['role'] }>
       }),
     onSuccess: () => {
@@ -207,11 +229,122 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     const prev = currentRole
     setCurrentRole(newRole)
     setShowRoleMenu(false)
-    roleMutation.mutate(newRole, { onError: () => setCurrentRole(prev) })
+    roleMutation.mutate(newRole, {
+      onError: (err) => {
+        setCurrentRole(prev)
+        toast.error(err instanceof Error ? err.message : 'ロールの変更に失敗しました')
+      },
+    })
   }
   // ---- /ロール変更 ----
 
+  const [profileAttributes, setProfileAttributes] = React.useState(member.profileAttributes)
+  const [draftAttributeIds, setDraftAttributeIds] = React.useState(
+    member.profileAttributes.map(attribute => attribute.id),
+  )
+  const [attributeError, setAttributeError] = React.useState<string | null>(null)
+  const [editingAttributes, setEditingAttributes] = React.useState(false)
+  React.useEffect(() => {
+    setProfileAttributes(member.profileAttributes)
+    setDraftAttributeIds(member.profileAttributes.map(attribute => attribute.id))
+    setEditingAttributes(false)
+  }, [member.userId, member.profileAttributes])
+
+  const {
+    data: attributeOptions = [],
+    isLoading: attributeOptionsLoading,
+    error: attributeOptionsError,
+  } = useProfileAttributes(editingAttributes)
+
+  const attributeMutation = useUpdateMemberProfileAttributes(member.userId)
+
+  const toggleAttribute = (attributeId: string) => {
+    setDraftAttributeIds(current =>
+      current.includes(attributeId)
+        ? current.filter(id => id !== attributeId)
+        : [...current, attributeId],
+    )
+    setAttributeError(null)
+  }
+
+  const handleSaveAttributes = () => {
+    attributeMutation.mutate(draftAttributeIds, {
+      onSuccess: attributes => {
+        setProfileAttributes(attributes)
+        setDraftAttributeIds(attributes.map(attribute => attribute.id))
+        setEditingAttributes(false)
+        setAttributeError(null)
+        toast.success('属性を保存しました')
+      },
+      onError: error => setAttributeError(
+        error instanceof Error ? error.message : '属性の保存に失敗しました',
+      ),
+    })
+  }
+
   const rs = WS_ROLE_STYLE[currentRole]
+
+  const roleBadge = canChangeRole ? (
+    <div ref={dropdownRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setShowRoleMenu(v => !v)}
+        disabled={roleMutation.isPending}
+        aria-haspopup="listbox"
+        aria-expanded={showRoleMenu}
+        aria-label="ワークスペース権限を変更"
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          fontSize: isMobile ? 11 : 10.5, fontWeight: 700,
+          color: rs.c, background: rs.bg,
+          padding: isMobile ? '2px 6px 2px 8px' : '2px 6px 2px 8px', borderRadius: 4,
+          border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+          opacity: roleMutation.isPending ? 0.6 : 1,
+        }}
+      >
+        {WS_ROLE_LABEL[currentRole]}
+        <Icon name="chevDown" size={isMobile ? 10 : 9}/>
+      </button>
+      {showRoleMenu && (
+        <div
+          role="listbox"
+          aria-label="ワークスペース権限"
+          style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0,
+            background: 'var(--card)', border: '1px solid var(--border)',
+            borderRadius: 8, boxShadow: 'var(--shadow-lg)',
+            zIndex: 100, overflow: 'hidden', minWidth: isMobile ? 128 : 110,
+          }}
+        >
+          {selectableRoles.map(role => (
+            <button
+              key={role}
+              type="button"
+              role="option"
+              aria-selected={currentRole === role}
+              onClick={() => handleRoleChange(role)}
+              style={{
+                display: 'block', width: '100%',
+                padding: isMobile ? '10px 14px' : '7px 12px', border: 'none',
+                background: currentRole === role ? 'var(--card-2)' : 'transparent',
+                color: currentRole === role ? 'var(--text)' : 'var(--text-2)',
+                fontSize: isMobile ? 14 : 12.5, fontWeight: currentRole === role ? 600 : 500,
+                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+              }}
+              onMouseEnter={e => { if (currentRole !== role) (e.currentTarget.style.background = 'var(--card-hover)') }}
+              onMouseLeave={e => { if (currentRole !== role) (e.currentTarget.style.background = 'transparent') }}
+            >
+              {WS_ROLE_LABEL[role]}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  ) : (
+    <span style={{ fontSize: isMobile ? 11 : 10.5, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
+      {WS_ROLE_LABEL[currentRole]}
+    </span>
+  )
 
   const { data: projects = [], isLoading } = useQuery<MemberProjectDto[]>({
     queryKey: ['member-projects', member.userId],
@@ -289,9 +422,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
-                  {WS_ROLE_LABEL[currentRole]}
-                </span>
+                {roleBadge}
                 <span style={{ fontSize: 12, color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                   <Icon name="clock" size={11}/> {formatJoinedAt(member.joinedAt)}
                 </span>
@@ -331,56 +462,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              {canChangeRole ? (
-                <div ref={dropdownRef} style={{ position: 'relative' }}>
-                  <button
-                    onClick={() => setShowRoleMenu(v => !v)}
-                    disabled={roleMutation.isPending}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      fontSize: 10.5, fontWeight: 700,
-                      color: rs.c, background: rs.bg,
-                      padding: '2px 6px 2px 8px', borderRadius: 4,
-                      border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                      opacity: roleMutation.isPending ? 0.6 : 1,
-                    }}
-                  >
-                    {WS_ROLE_LABEL[currentRole]}
-                    <Icon name="chevDown" size={9}/>
-                  </button>
-                  {showRoleMenu && (
-                    <div style={{
-                      position: 'absolute', top: 'calc(100% + 4px)', left: 0,
-                      background: 'var(--card)', border: '1px solid var(--border)',
-                      borderRadius: 8, boxShadow: 'var(--shadow-lg)',
-                      zIndex: 100, overflow: 'hidden', minWidth: 110,
-                    }}>
-                      {allowedRoles.map(role => (
-                        <button
-                          key={role}
-                          onClick={() => handleRoleChange(role)}
-                          style={{
-                            display: 'block', width: '100%',
-                            padding: '7px 12px', border: 'none',
-                            background: currentRole === role ? 'var(--card-2)' : 'transparent',
-                            color: currentRole === role ? 'var(--text)' : 'var(--text-2)',
-                            fontSize: 12.5, fontWeight: currentRole === role ? 600 : 500,
-                            cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                          }}
-                          onMouseEnter={e => { if (currentRole !== role) (e.currentTarget.style.background = 'var(--card-hover)') }}
-                          onMouseLeave={e => { if (currentRole !== role) (e.currentTarget.style.background = 'transparent') }}
-                        >
-                          {WS_ROLE_LABEL[role]}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
-                  {WS_ROLE_LABEL[currentRole]}
-                </span>
-              )}
+              {roleBadge}
               <span style={{ fontSize: 11, color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                 <Icon name="clock" size={10}/>
                 {formatJoinedAt(member.joinedAt)}
@@ -402,6 +484,87 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
           </button>
         </div>
       )}
+
+      <div style={{ padding: isMobile ? '12px 16px' : '10px 16px', borderBottom: '1px solid var(--divider)', background: isMobile ? 'var(--card)' : undefined }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: profileAttributes.length > 0 || editingAttributes ? 8 : 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', letterSpacing: '0.06em' }}>属性</span>
+          {canEditAttributes && !editingAttributes && (
+            <button
+              type="button"
+              onClick={() => { setDraftAttributeIds(profileAttributes.map(attribute => attribute.id)); setEditingAttributes(true); setAttributeError(null) }}
+              style={{ border: 'none', background: 'transparent', color: 'var(--accent)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', padding: 2, fontFamily: 'inherit' }}
+            >
+              編集
+            </button>
+          )}
+        </div>
+        {editingAttributes ? (
+          <div>
+            {attributeOptionsLoading ? (
+              <div style={{ color: 'var(--text-4)', fontSize: 12 }}>読み込み中…</div>
+            ) : attributeOptionsError ? (
+              <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5 }}>属性一覧を取得できませんでした</div>
+            ) : attributeOptions.length === 0 ? (
+              <div style={{ color: 'var(--text-4)', fontSize: 12 }}>設定画面で属性を作成してください。</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {attributeOptions.map(attribute => {
+                  const checked = draftAttributeIds.includes(attribute.id)
+                  const disabled = !checked && draftAttributeIds.length >= 5
+                  return (
+                    <label
+                      key={attribute.id}
+                      style={{
+                        minHeight: 36,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '4px 6px',
+                        borderRadius: 6,
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        opacity: disabled ? 0.5 : 1,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={() => toggleAttribute(attribute.id)}
+                      />
+                      <ProfileAttributeBadges attributes={[attribute]} />
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+            <div style={{ marginTop: 6, color: 'var(--text-4)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>{draftAttributeIds.length}/5件</div>
+            {attributeError && <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5, marginTop: 6 }}>{attributeError}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 10 }}>
+              <button
+                type="button"
+                onClick={() => { setDraftAttributeIds(profileAttributes.map(attribute => attribute.id)); setEditingAttributes(false); setAttributeError(null) }}
+                className="btn btn-ghost"
+                style={{ height: 30, padding: '0 10px', fontSize: 12 }}
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAttributes}
+                disabled={attributeMutation.isPending || attributeOptionsLoading || !!attributeOptionsError}
+                className="btn btn-primary"
+                style={{ height: 30, padding: '0 12px', fontSize: 12 }}
+              >
+                {attributeMutation.isPending ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+        ) : profileAttributes.length > 0 ? (
+          <ProfileAttributeBadges attributes={profileAttributes} />
+        ) : (
+          <span style={{ fontSize: 12, color: 'var(--text-4)' }}>未設定</span>
+        )}
+      </div>
 
       {/* Stats row */}
       <div style={{

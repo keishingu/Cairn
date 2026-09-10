@@ -691,7 +691,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
           className="btn btn-ghost"
           style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5, ...(canEdit ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
         >
-          <Icon name={project.archived ? 'refresh' : 'close'} size={11}/>
+          <Icon name={project.archived ? 'refresh' : 'archive'} size={13}/>
           {archivePatch.isPending ? '処理中…' : project.archived ? 'アーカイブを解除する' : 'アーカイブする'}
         </button>
       </div>

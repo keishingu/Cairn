@@ -49,60 +49,69 @@ export const TaskFormFields = ({
   assigneeChannelIsPrivate,
   currentAssignee,
   titleNote,
-}: TaskFormFieldsProps) => (
-  <>
-    <div>
-      <label style={labelStyle}>
-        タイトル <span style={{ color: 'var(--red)' }}>*</span>
-      </label>
-      <input
-        type="text"
-        value={title}
-        onChange={e => onTitleChange(e.target.value)}
-        placeholder={titlePlaceholder}
-        required
-        // eslint-disable-next-line jsx-a11y/no-autofocus
-        autoFocus
-        style={fieldInputStyle(false)}
-      />
-      {titleNote}
-    </div>
-
-    {afterTitle}
-
-    {onAssigneeChange && (
-      <TaskAssigneeField
-        value={assigneeId ?? null}
-        onChange={onAssigneeChange}
-        projectId={assigneeProjectId ?? null}
-        channelId={assigneeChannelId ?? null}
-        channelIsPrivate={assigneeChannelIsPrivate ?? false}
-        currentAssignee={currentAssignee ?? null}
-      />
-    )}
-
-    <div style={{ display: 'flex', gap: 12 }}>
-      <div style={{ flex: 1 }}>
-        <label style={labelStyle}>優先度</label>
-        <select
-          value={priority}
-          onChange={e => onPriorityChange(e.target.value as TaskDto['priority'])}
-          style={fieldInputStyle(false)}
-        >
-          <option value="high">高</option>
-          <option value="medium">中</option>
-          <option value="low">低</option>
-        </select>
-      </div>
-      <div style={{ flex: 1 }}>
-        <label style={labelStyle}>期限日</label>
+}: TaskFormFieldsProps) => {
+  const id = React.useId()
+  return (
+    <>
+      <div>
+        <label htmlFor={`${id}-title`} style={labelStyle}>
+          タイトル <span style={{ color: 'var(--red)' }}>*</span>
+        </label>
         <input
-          type="date"
-          value={dueDate}
-          onChange={e => onDueDateChange(e.target.value)}
+          id={`${id}-title`}
+          className="form-control"
+          type="text"
+          value={title}
+          onChange={e => onTitleChange(e.target.value)}
+          placeholder={titlePlaceholder}
+          required
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus
           style={fieldInputStyle(false)}
         />
+        {titleNote}
       </div>
-    </div>
-  </>
-)
+
+      {afterTitle}
+
+      {onAssigneeChange && (
+        <TaskAssigneeField
+          value={assigneeId ?? null}
+          onChange={onAssigneeChange}
+          projectId={assigneeProjectId ?? null}
+          channelId={assigneeChannelId ?? null}
+          channelIsPrivate={assigneeChannelIsPrivate ?? false}
+          currentAssignee={currentAssignee ?? null}
+        />
+      )}
+
+      <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <label htmlFor={`${id}-priority`} style={labelStyle}>優先度</label>
+          <select
+            id={`${id}-priority`}
+            className="form-control"
+            value={priority}
+            onChange={e => onPriorityChange(e.target.value as TaskDto['priority'])}
+            style={fieldInputStyle(false)}
+          >
+            <option value="high">高</option>
+            <option value="medium">中</option>
+            <option value="low">低</option>
+          </select>
+        </div>
+        <div style={{ flex: 1 }}>
+          <label htmlFor={`${id}-due`} style={labelStyle}>期限日</label>
+          <input
+            id={`${id}-due`}
+            className="form-control"
+            type="date"
+            value={dueDate}
+            onChange={e => onDueDateChange(e.target.value)}
+            style={fieldInputStyle(false)}
+          />
+        </div>
+      </div>
+    </>
+  )
+}

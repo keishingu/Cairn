@@ -242,7 +242,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
         style={{
           borderBottom: '1px solid var(--border)',
           flexShrink: 0,
-          padding: isMobile ? '10px 16px' : '0 16px 0 0',
+          ...(isMobile ? { padding: '10px 16px' } : {}),
         }}
         left={
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 0, opacity: isSearching ? 0.4 : 1, pointerEvents: isSearching ? 'none' : undefined, transition: 'opacity .15s' }}>
@@ -254,7 +254,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
                 cursor: 'pointer', fontFamily: 'inherit',
               } : {
-                padding: '10px 14px', border: 'none', background: 'transparent',
+                height: 34, padding: '0 14px', border: 'none', background: 'transparent',
                 color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
                 fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
                 cursor: 'pointer', fontFamily: 'inherit',
@@ -270,7 +270,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
           </div>
         }
         right={!isMobile ? (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 0' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <SegmentedControl
               options={[
                 { id: 'grid',  label: 'カード',   icon: <Icon name="kanban" size={12}/> },

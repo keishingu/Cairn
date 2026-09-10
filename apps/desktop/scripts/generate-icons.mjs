@@ -3,7 +3,7 @@ import path from 'node:path'
 import iconGen from 'icon-gen'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const root = path.resolve(__dirname, '../../../..')
+const root = path.resolve(__dirname, '../../..')
 
 const targets = [
   {

@@ -48,6 +48,7 @@ const STUB_MEMBER: WorkspaceMemberDto = {
   avatarUrl: null,
   role: 'member',
   membershipStatus: 'active',
+  profileAttributes: [{ id: 'attribute-1', name: '3年生', color: 'blue' }],
   joinedAt: '2026-01-01',
   projectCount: 3,
 }
@@ -132,6 +133,7 @@ describe('PageMembers — アーカイブ導線（admin）', () => {
     avatarUrl: null,
     role: 'member',
     membershipStatus: 'inactive',
+    profileAttributes: [],
     joinedAt: '2025-04-01',
     projectCount: 0,
   }

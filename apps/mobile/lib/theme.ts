@@ -1,4 +1,4 @@
-import type { AccentId } from '@cairn/shared'
+import type { AccentId, ProfileAttributeColor } from '@cairn/shared'
 
 type BasePalette = {
   bg: string
@@ -21,7 +21,11 @@ type AccentPalette = {
   onAccent: string
 }
 
-export type ThemePalette = BasePalette & AccentPalette
+type ProfileAttributePalette = Record<ProfileAttributeColor, { background: string; text: string }>
+
+export type ThemePalette = BasePalette & AccentPalette & {
+  profileAttributeColors: ProfileAttributePalette
+}
 export type ResolvedTheme = 'light' | 'dark'
 
 const BASE: Record<ResolvedTheme, BasePalette> = {
@@ -120,8 +124,31 @@ const ACCENTS: Record<AccentId, Record<ResolvedTheme, AccentPalette>> = {
   },
 }
 
+const PROFILE_ATTRIBUTE_COLORS: Record<ResolvedTheme, ProfileAttributePalette> = {
+  light: {
+    slate: { background: '#F1F5F9', text: '#64748B' },
+    blue: { background: '#DBEAFE', text: '#1D4ED8' },
+    emerald: { background: '#D1FAE5', text: '#047857' },
+    amber: { background: '#FEF3C7', text: '#B45309' },
+    violet: { background: '#EDE9FE', text: '#6D28D9' },
+    rose: { background: '#FFE4E6', text: '#BE123C' },
+  },
+  dark: {
+    slate: { background: '#1A2233', text: '#9CA3AF' },
+    blue: { background: 'rgba(59, 130, 246, 0.16)', text: '#93C5FD' },
+    emerald: { background: 'rgba(16, 185, 129, 0.16)', text: '#34D399' },
+    amber: { background: 'rgba(245, 158, 11, 0.16)', text: '#FBBF24' },
+    violet: { background: 'rgba(139, 92, 246, 0.18)', text: '#C4B5FD' },
+    rose: { background: 'rgba(244, 63, 94, 0.18)', text: '#FDA4AF' },
+  },
+}
+
 export function createThemePalette(theme: ResolvedTheme, accentId: AccentId): ThemePalette {
-  return { ...BASE[theme], ...ACCENTS[accentId][theme] }
+  return {
+    ...BASE[theme],
+    ...ACCENTS[accentId][theme],
+    profileAttributeColors: PROFILE_ATTRIBUTE_COLORS[theme],
+  }
 }
 
 export const THEME: Record<ResolvedTheme, ThemePalette> = {

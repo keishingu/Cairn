@@ -2181,7 +2181,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
 
   // ── PC layout ──────────────────────────────────────────────────
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px 24px', overflow: 'hidden' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '12px 24px 20px', overflow: 'hidden' }}>
       {showCreate && createDates && (
         <CreateProjectModal
           onClose={closeCreate}
@@ -2195,7 +2195,8 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
       )}
       {/* Toolbar */}
       <PageToolbar
-        style={{ marginBottom: 14 }}
+        inset
+        style={{ marginBottom: 20 }}
         left={
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button
@@ -2207,10 +2208,10 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               今日
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goPrev}>
+              <button className="btn btn-ghost" aria-label="前の期間" style={{ width: 34, padding: 0, justifyContent: 'center' }} onClick={goPrev}>
                 <Icon name="chevLeft" size={15} />
               </button>
-              <button className="btn btn-ghost" style={{ width: 32, padding: 0, justifyContent: 'center', height: 32 }} onClick={goNext}>
+              <button className="btn btn-ghost" aria-label="次の期間" style={{ width: 34, padding: 0, justifyContent: 'center' }} onClick={goNext}>
                 <Icon name="chevRight" size={15} />
               </button>
             </div>
@@ -2281,8 +2282,10 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
                 />
               )}
             </div>
-            <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => { const t = formatISO(new Date()); openCreate(t, t) }}>
-              <Icon name="plus" size={13} strokeWidth={2.4} /> 新規{projectLabel}
+            <button className="btn btn-primary" disabled={!canCreateProject}
+              title={canCreateProject ? undefined : `${projectLabel}の作成には管理者以上の権限が必要です`}
+              onClick={() => { const t = formatISO(new Date()); openCreate(t, t) }}>
+              <Icon name="plus" size={13} /> 新規{projectLabel}
             </button>
           </>
         }
