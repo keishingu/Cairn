@@ -191,6 +191,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
       }
     : {
         width: 420, flexShrink: 0,
+        height: '100%',
         background: 'var(--card)',
         borderLeft: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column',
