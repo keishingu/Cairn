@@ -42,8 +42,32 @@ export const clampTranslate = (
 }
 
 /**
+ * 基準の transform で startPoint にあった画像上の点が、
+ * 倍率変更後に endPoint へ来るような transform を求める。
+ * 指の下の点がずれないようにするための共通計算。
+ */
+const anchorTransform = (
+  base: Transform,
+  nextScale: number,
+  startPoint: { x: number; y: number },
+  endPoint: { x: number; y: number },
+  center: { x: number; y: number },
+  size: { width: number; height: number },
+): Transform => {
+  const scale = clampScale(nextScale)
+  // 画像ローカル座標（中心からの距離、等倍換算）
+  const localX = (startPoint.x - center.x - base.tx) / base.scale
+  const localY = (startPoint.y - center.y - base.ty) / base.scale
+  return clampTranslate({
+    scale,
+    tx: endPoint.x - center.x - scale * localX,
+    ty: endPoint.y - center.y - scale * localY,
+  }, size)
+}
+
+/**
  * 指定した画面座標の点を固定したまま倍率を変える。
- * ピンチの中心点・ダブルタップ位置がずれないようにするために使う。
+ * ダブルタップ位置がずれないようにするために使う。
  */
 export const zoomAt = (
   current: Transform,
@@ -51,16 +75,36 @@ export const zoomAt = (
   point: { x: number; y: number },
   center: { x: number; y: number },
   size: { width: number; height: number },
+): Transform => anchorTransform(current, nextScale, point, point, center, size)
+
+/** ピンチ開始時点の状態。ジェスチャ中はここを基準に計算する */
+export interface PinchStart {
+  transform: Transform
+  distance: number
+  midpoint: { x: number; y: number }
+}
+
+/**
+ * ピンチ中の transform。倍率も移動量も「開始時点」を基準に求めることで、
+ * 2本指の中心が動く場合（片方の指だけ動かす・2本指のまま平行移動する）でも
+ * 指の下の点が固定されるようにする。
+ */
+export const pinchTransform = (
+  start: PinchStart,
+  distance: number,
+  midpoint: { x: number; y: number },
+  center: { x: number; y: number },
+  size: { width: number; height: number },
 ): Transform => {
-  const scale = clampScale(nextScale)
-  // 画像ローカル座標（中心からの距離、等倍換算）
-  const localX = (point.x - center.x - current.tx) / current.scale
-  const localY = (point.y - center.y - current.ty) / current.scale
-  return clampTranslate({
-    scale,
-    tx: point.x - center.x - scale * localX,
-    ty: point.y - center.y - scale * localY,
-  }, size)
+  if (start.distance <= 0) return start.transform
+  return anchorTransform(
+    start.transform,
+    start.transform.scale * (distance / start.distance),
+    start.midpoint,
+    midpoint,
+    center,
+    size,
+  )
 }
 
 /** 等倍なら拡大、拡大中なら等倍へ戻すトグル */

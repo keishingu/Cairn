@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest'
 import {
   clampScale,
   clampTranslate,
+  pinchTransform,
   resolveSwipe,
   toggleZoom,
   zoomAt,
@@ -61,6 +62,35 @@ describe('zoomAt', () => {
 
   test('上限を超えるピンチは上限倍率で止まる', () => {
     expect(zoomAt(IDENTITY_TRANSFORM, 99, CENTER, CENTER, SIZE).scale).toBe(MAX_SCALE)
+  })
+})
+
+describe('pinchTransform', () => {
+  const start = { transform: IDENTITY_TRANSFORM, distance: 100, midpoint: CENTER }
+
+  test('指間距離の比率で倍率が決まる', () => {
+    expect(pinchTransform(start, 200, CENTER, CENTER, SIZE).scale).toBe(2)
+  })
+
+  test('距離を変えずに2本指を動かすと平行移動になる', () => {
+    const zoomed = { transform: { scale: 2, tx: 0, ty: 0 }, distance: 100, midpoint: CENTER }
+    const moved = { x: CENTER.x - 30, y: CENTER.y + 10 }
+    expect(pinchTransform(zoomed, 100, moved, CENTER, SIZE)).toEqual({ scale: 2, tx: -30, ty: 10 })
+  })
+
+  test('中心が動く非対称なピンチでも開始時に触れた点が指に追従する', () => {
+    // 開始時の中心は画像中心から (20, 0) の位置。拡大しつつ中心が右へ 50 動く
+    const asymmetric = { transform: IDENTITY_TRANSFORM, distance: 100, midpoint: { x: CENTER.x + 20, y: CENTER.y } }
+    const moved = { x: CENTER.x + 70, y: CENTER.y }
+    const next = pinchTransform(asymmetric, 150, moved, CENTER, SIZE)
+    expect(next.scale).toBeCloseTo(1.5)
+    // 画像ローカル座標 20 の点が、移動後の中心点と同じ画面位置に来る
+    expect(next.tx + next.scale * 20).toBeCloseTo(moved.x - CENTER.x)
+  })
+
+  test('開始時の指間距離が0なら倍率を変えない', () => {
+    const degenerate = { transform: { scale: 2, tx: 5, ty: 5 }, distance: 0, midpoint: CENTER }
+    expect(pinchTransform(degenerate, 120, CENTER, CENTER, SIZE)).toEqual(degenerate.transform)
   })
 })
 

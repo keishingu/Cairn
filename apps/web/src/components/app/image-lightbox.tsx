@@ -7,11 +7,12 @@ import React from 'react'
 import { Icon } from './primitives'
 import {
   clampTranslate,
+  pinchTransform,
   resolveSwipe,
   toggleZoom,
-  zoomAt,
   IDENTITY_TRANSFORM,
   MIN_SCALE,
+  type PinchStart,
   type Transform,
 } from './image-lightbox-zoom'
 
@@ -49,13 +50,11 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
   const imgRef = React.useRef<HTMLImageElement | null>(null)
   /** 追跡中のポインタ（ピンチ判定のため複数持つ） */
   const pointersRef = React.useRef(new Map<number, { x: number; y: number }>())
-  /** ピンチ開始時の指間距離と倍率 */
-  const pinchRef = React.useRef<{ distance: number; scale: number } | null>(null)
+  /** ピンチ開始時の transform・指間距離・中心点 */
+  const pinchRef = React.useRef<PinchStart | null>(null)
   /** 1本指ドラッグの直前位置と開始位置 */
   const dragRef = React.useRef<{ lastX: number; lastY: number; startX: number; startY: number } | null>(null)
   const lastTapRef = React.useRef<{ time: number; x: number; y: number } | null>(null)
-  /** 直近の入力デバイス。左右タップゾーンはマウスのときだけ使う */
-  const pointerTypeRef = React.useRef<string>('mouse')
   /** ピンチ直後に誤ってスワイプ・タップ判定しないためのフラグ */
   const gestureConsumedRef = React.useRef(false)
 
@@ -98,14 +97,21 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
   }
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    pointerTypeRef.current = e.pointerType
+    // マウスは左右のクリックゾーンで画像送りする。ここで pointer capture を取ると
+    // 続く pointerup と click がステージへ向き、ゾーンの onClick が発火しなくなる
+    if (e.pointerType === 'mouse') return
+
     e.currentTarget.setPointerCapture(e.pointerId)
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
     if (pointersRef.current.size === 2) {
       const [a, b] = Array.from(pointersRef.current.values())
       if (!a || !b) return
-      pinchRef.current = { distance: Math.hypot(a.x - b.x, a.y - b.y), scale: transform.scale }
+      pinchRef.current = {
+        transform,
+        distance: Math.hypot(a.x - b.x, a.y - b.y),
+        midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      }
       dragRef.current = null
       gestureConsumedRef.current = true
     } else if (pointersRef.current.size === 1) {
@@ -122,11 +128,10 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
     const pinch = pinchRef.current
     if (pinch && pointersRef.current.size >= 2) {
       const [a, b] = Array.from(pointersRef.current.values())
-      if (!a || !b || pinch.distance <= 0) return
+      if (!a || !b) return
       const distance = Math.hypot(a.x - b.x, a.y - b.y)
-      const nextScale = pinch.scale * (distance / pinch.distance)
       const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-      setTransform(prev => zoomAt(prev, nextScale, midpoint, getCenter(), getSize()))
+      setTransform(pinchTransform(pinch, distance, midpoint, getCenter(), getSize()))
       return
     }
 
@@ -148,7 +153,18 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
     pointersRef.current.delete(e.pointerId)
 
     if (pointersRef.current.size < 2) pinchRef.current = null
-    if (pointersRef.current.size === 0) dragRef.current = null
+    if (pointersRef.current.size === 0) {
+      dragRef.current = null
+    } else if (pointersRef.current.size === 1 && !dragRef.current) {
+      // ピンチから1本指へ戻ったとき、残った指の現在位置を起点にしてパンを続ける
+      const [remaining] = Array.from(pointersRef.current.values())
+      if (remaining) {
+        dragRef.current = {
+          lastX: remaining.x, lastY: remaining.y,
+          startX: remaining.x, startY: remaining.y,
+        }
+      }
+    }
 
     if (cancelled || !drag || !wasSinglePointer) return
 
@@ -158,12 +174,9 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
     if (gestureConsumedRef.current) return
 
     if (moved > TAP_SLOP) {
-      // タッチの等倍スワイプだけ画像送りにする（マウスは左右のクリックゾーンを使う）
-      if (e.pointerType !== 'mouse') {
-        const swipe = resolveSwipe(transform.scale, delta)
-        if (swipe === 'prev') goPrev()
-        else if (swipe === 'next') goNext()
-      }
+      const swipe = resolveSwipe(transform.scale, delta)
+      if (swipe === 'prev') goPrev()
+      else if (swipe === 'next') goNext()
       return
     }
 
@@ -180,7 +193,6 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
 
   if (!item) return null
 
-  // 拡大中はブラウザの戻る等に取られないよう自前でジェスチャを扱う
   const navZonesEnabled = !isZoomed
 
   return (
@@ -220,18 +232,18 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
             WebkitUserSelect: 'none',
           }}
         />
-        {/* 左タップゾーン（前へ）。拡大中とタッチ操作では無効にする */}
+        {/* 左クリックゾーン（前へ）。マウス用。拡大中は無効にする */}
         <div
-          onClick={e => { e.stopPropagation(); if (pointerTypeRef.current === 'mouse') goPrev() }}
+          onClick={e => { e.stopPropagation(); goPrev() }}
           style={{
             position: 'absolute', left: 0, top: 0, bottom: 0, width: '40%',
             cursor: index > 0 ? 'w-resize' : 'default',
             pointerEvents: navZonesEnabled ? 'auto' : 'none',
           }}
         />
-        {/* 右タップゾーン（次へ） */}
+        {/* 右クリックゾーン（次へ） */}
         <div
-          onClick={e => { e.stopPropagation(); if (pointerTypeRef.current === 'mouse') goNext() }}
+          onClick={e => { e.stopPropagation(); goNext() }}
           style={{
             position: 'absolute', right: 0, top: 0, bottom: 0, width: '40%',
             cursor: index < images.length - 1 ? 'e-resize' : 'default',
