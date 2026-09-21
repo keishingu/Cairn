@@ -207,4 +207,35 @@ describe('RealtimeProvider', () => {
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tasks'] })
   })
+
+  it('Unauthorized のチャンネル購読は破棄して再JOINしない', async () => {
+    workspaceChannels.push({ id: 'private-1' })
+    renderProvider()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const topic = channelRecords.find(record => record.topic === 'channel:private-1')
+    act(() => {
+      topic?.callback?.('CHANNEL_ERROR', {
+        message: 'Unauthorized: You do not have permissions to read from this Channel topic: channel:private-1',
+      })
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const removed = mockCreateClient.mock.results.some(result => {
+      const client = result.value as { removeChannel?: { mock?: { calls: unknown[] } } }
+      return (client.removeChannel?.mock?.calls.length ?? 0) > 0
+    })
+    expect(removed).toBe(true)
+  })
 })

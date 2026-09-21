@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { visibleWorkspaceChannels } from '@/lib/chat/workspace-channel-visibility'
 
 export interface WorkspaceChannelDto {
   id: string
@@ -35,22 +36,24 @@ export async function GET() {
       .where(and(eq(channels.workspaceId, ctx.workspaceId), eq(channels.type, 'workspace')))
       .orderBy(channels.createdAt)
 
-    // ワークスペースチャンネルはWS全体向け。ゲストには自分が参加しているチャンネルのみに絞り、
-    // 参加していないチャンネルの存在やメンバー構成が漏れないようにする。
-    const callerRole = ctx.role
-    let channelRows = allChannelRows
-    if (callerRole === 'guest') {
-      if (allChannelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
-      const joined = await db
-        .select({ channelId: channelMembers.channelId })
-        .from(channelMembers)
-        .where(and(
-          eq(channelMembers.userId, ctx.userId),
-          inArray(channelMembers.channelId, allChannelRows.map(c => c.id)),
-        ))
-      const joinedIds = new Set(joined.map(r => r.channelId))
-      channelRows = allChannelRows.filter(c => joinedIds.has(c.id))
-    }
+    // ゲストは参加チャンネルのみ。member 以上でも非公開は channel_members の自分の行があるものだけ。
+    // 未参加の非公開チャンネルを返すと Realtime が Unauthorized JOIN を繰り返し、ダッシュボードが赤くなる。
+    if (allChannelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
+    const needsMembership = ctx.role === 'guest' || allChannelRows.some(channel => channel.isPrivate)
+    const joined = needsMembership
+      ? await db
+          .select({ channelId: channelMembers.channelId })
+          .from(channelMembers)
+          .where(and(
+            eq(channelMembers.userId, ctx.userId),
+            inArray(channelMembers.channelId, allChannelRows.map(c => c.id)),
+          ))
+      : []
+    const channelRows = visibleWorkspaceChannels(
+      allChannelRows,
+      new Set(joined.map(row => row.channelId)),
+      ctx.role,
+    )
 
     if (channelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
 

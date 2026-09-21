@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useMe } from '../hooks/use-account'
 import { useProjectChannels } from '../hooks/use-projects'
 import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channels'
-import { shouldRetryRealtime } from '../lib/mobile-chat-state'
+import { isRealtimeUnauthorized, shouldRetryRealtime } from '../lib/mobile-chat-state'
 import { supabase } from '../lib/supabase'
 
 function tableOf(payload: unknown): string | undefined {
@@ -63,7 +63,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         if (status === 'SUBSCRIBED') {
           setAuthenticated(true)
           invalidateChannelLists(queryClient)
-        } else if (shouldRetryRealtime(status)) {
+        } else if (shouldRetryRealtime(status, error)) {
           setAuthenticated(false)
           console.warn(
             '[Realtime] ユーザートピックを再接続します:',
@@ -106,7 +106,16 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         })
       channel.subscribe((status, error) => {
         if (cancelled) return
-        if (shouldRetryRealtime(status)) {
+        if (isRealtimeUnauthorized(error)) {
+          console.warn(
+            `[Realtime] channel:${channelId} の購読を取り下げます:`,
+            status,
+            error?.message ?? error,
+          )
+          void supabase.removeChannel(channel)
+          return
+        }
+        if (shouldRetryRealtime(status, error)) {
           console.warn(
             `[Realtime] channel:${channelId} を再接続します:`,
             status,

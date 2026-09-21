@@ -14,6 +14,7 @@ import {
   useWorkspaceChannels,
   useWorkspaceDms,
 } from '@/lib/chat/client'
+import { isRealtimeUnauthorized } from '@/lib/realtime-unauthorized'
 import { RealtimeIndicator } from './realtime-indicator'
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected'
@@ -225,6 +226,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       ch.subscribe((subStatus, err) => {
         if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
           console.error(`[Realtime] channel:${id} subscription failed:`, subStatus, err?.message ?? err)
+          // 未参加の非公開チャンネルは何回 JOIN しても直らない。ライブラリの再 JOIN を止める。
+          if (isRealtimeUnauthorized(err)) {
+            void supabase.removeChannel(ch)
+            current.delete(id)
+          }
         }
       })
       current.set(id, ch)
