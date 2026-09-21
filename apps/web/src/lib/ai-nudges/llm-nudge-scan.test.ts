@@ -167,25 +167,25 @@ describe('Phase 2のJev判定入力', () => {
     }
   })
 
-  it('確率0.9以上の分類だけを候補へ変換する', () => {
+  it('確率0.7以上の分類だけを候補へ変換する', () => {
     const batch = buildPhaseTwoJevScreenBatches(channelInput(2))[0]!
     const candidates = extractPhaseTwoCandidatesFromJev(batch, {
       candidate_0: {
         type: 'choice',
         choice: 'unanswered_ask',
-        probabilities: { ignore: 0.03, unanswered_ask: 0.95, llm_risk: 0.02 },
+        probabilities: { ignore: 0.2, unanswered_ask: 0.7, llm_risk: 0.1 },
       },
       candidate_1: {
         type: 'choice',
         choice: 'llm_risk',
-        probabilities: { ignore: 0.11, unanswered_ask: 0.01, llm_risk: 0.88 },
+        probabilities: { ignore: 0.3, unanswered_ask: 0.01, llm_risk: 0.69 },
       },
     })
     expect(candidates).toEqual([
       expect.objectContaining({
         detector: 'unanswered_ask',
         sourceMessageId: 'message-0',
-        screenConfidence: 0.95,
+        screenConfidence: 0.7,
       }),
     ])
   })
