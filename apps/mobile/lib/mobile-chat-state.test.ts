@@ -13,13 +13,22 @@ describe('モバイルチャット状態', () => {
     },
   )
 
-  it('Unauthorized ではアプリ側でRealtime購読を作り直さない', () => {
+  it('topic 権限拒否ではアプリ側でRealtime購読を作り直さない', () => {
     expect(shouldRetryRealtime('CHANNEL_ERROR', {
       message: 'Unauthorized: You do not have permissions to read from this Channel topic: channel:1',
     })).toBe(false)
     expect(shouldRetryRealtime('TIMED_OUT', {
       message: 'Unauthorized: You do not have permissions to read from this Channel topic: channel:1',
     })).toBe(false)
+  })
+
+  it('Unauthorized でも JWT 期限切れは topic 権限拒否と区別する', () => {
+    expect(shouldRetryRealtime('CHANNEL_ERROR', {
+      message: 'Unauthorized: Token has expired',
+    })).toBe(false)
+    expect(shouldRetryRealtime('TIMED_OUT', {
+      message: 'Unauthorized: Token has expired',
+    })).toBe(true)
   })
 
   it('失敗した添付が一件でも残っていれば送信を止める', () => {

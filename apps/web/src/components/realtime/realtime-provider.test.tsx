@@ -238,4 +238,38 @@ describe('RealtimeProvider', () => {
     })
     expect(removed).toBe(true)
   })
+
+  it('JWT 期限切れの Unauthorized ではチャンネル購読を破棄しない', async () => {
+    workspaceChannels.push({ id: 'channel-1' })
+    renderProvider()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    mockCreateClient.mock.results.forEach(result => {
+      const client = result.value as { removeChannel?: { mockClear?: () => void } }
+      client.removeChannel?.mockClear?.()
+    })
+
+    const topic = channelRecords.find(record => record.topic === 'channel:channel-1')
+    act(() => {
+      topic?.callback?.('CHANNEL_ERROR', { message: 'Unauthorized: Token has expired' })
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const removed = mockCreateClient.mock.results.some(result => {
+      const client = result.value as { removeChannel?: { mock?: { calls: unknown[] } } }
+      return (client.removeChannel?.mock?.calls.length ?? 0) > 0
+    })
+    expect(removed).toBe(false)
+  })
 })

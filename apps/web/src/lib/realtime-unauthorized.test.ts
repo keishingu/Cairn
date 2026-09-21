@@ -10,6 +10,7 @@ describe('isRealtimeUnauthorized', () => {
 
   it('それ以外の失敗は Unauthorized にしない', () => {
     expect(isRealtimeUnauthorized({ message: 'boom' })).toBe(false)
+    expect(isRealtimeUnauthorized({ message: 'Unauthorized: Token has expired' })).toBe(false)
     expect(isRealtimeUnauthorized(undefined)).toBe(false)
   })
 })
