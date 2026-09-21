@@ -27,7 +27,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { data: dms = [] } = useWorkspaceDms()
   const [authenticated, setAuthenticated] = React.useState(false)
   const [retryNonce, setRetryNonce] = React.useState(0)
-  const [channelRetryNonce, setChannelRetryNonce] = React.useState(0)
 
   const channelIds = React.useMemo(() => {
     const ids = new Set<string>()
@@ -93,7 +92,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!authenticated) return
     let cancelled = false
-    let retryTimer: ReturnType<typeof setTimeout> | null = null
     const subscriptions = channelIds.map((channelId) => {
       const channel = supabase
         .channel(`channel:${channelId}`, { config: { private: true } })
@@ -113,19 +111,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             error?.message ?? error,
           )
           void supabase.removeChannel(channel)
-          return
-        }
-        // CLOSED は使わない。権限拒否の removeChannel も CLOSED を飛ばし、
-        // それをリトライすると未参加チャンネルへ再 JOIN する。
-        if (status === 'TIMED_OUT') {
-          console.warn(
-            `[Realtime] channel:${channelId} を再接続します:`,
-            status,
-            error?.message ?? error,
-          )
-          if (!retryTimer) {
-            retryTimer = setTimeout(() => setChannelRetryNonce((value) => value + 1), 5_000)
-          }
         }
       })
       return channel
@@ -133,10 +118,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       cancelled = true
-      if (retryTimer) clearTimeout(retryTimer)
       for (const channel of subscriptions) void supabase.removeChannel(channel)
     }
-  }, [authenticated, channelIds, channelRetryNonce, queryClient])
+  }, [authenticated, channelIds, queryClient])
 
   return <>{children}</>
 }
