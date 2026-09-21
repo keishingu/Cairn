@@ -50,4 +50,22 @@ describe('Jev判定履歴', () => {
       outcome: 'ignore',
     })
   })
+
+  it('質問ごとの採用ラベルで回答済みと未解決を区別する', () => {
+    const probabilities = { open: 0.4, answered: 0.6 }
+    expect(
+      summarizeJevDecision(
+        { type: 'choice', choice: 'answered', probabilities },
+        0,
+        ['open'],
+      ),
+    ).toMatchObject({ selectedLabel: 'answered', outcome: 'ignore' })
+    expect(
+      summarizeJevDecision(
+        { type: 'choice', choice: 'open', probabilities: { open: 0.6, answered: 0.4 } },
+        0,
+        ['open'],
+      ),
+    ).toMatchObject({ selectedLabel: 'open', outcome: 'passed' })
+  })
 })

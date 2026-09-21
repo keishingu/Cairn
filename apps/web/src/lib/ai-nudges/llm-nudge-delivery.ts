@@ -20,7 +20,6 @@ import {
   isUnansweredAskEligible,
   isQuietHoursInJst,
   nextJstDeliveryTime,
-  passesPhaseTwoConfidence,
   PHASE_TWO_DAILY_LIMIT,
   shouldAdvancePhaseTwoScanCursor,
   shouldResolveDueLlmRiskReminder,
@@ -39,6 +38,17 @@ export function shouldReconcilePhaseTwoRisk(result: {
   fundingBlocked?: boolean
 }): boolean {
   return !result.input.isUnansweredAskRecheck && !result.fundingBlocked
+}
+
+export function selectPhaseTwoDeliveryCandidates(
+  results: Pick<PhaseTwoScanResult, 'candidates'>[],
+): PhaseTwoNudgeCandidate[] {
+  return results
+    .flatMap((result) => result.candidates)
+    .sort((a, b) => {
+      if (a.detector !== b.detector) return a.detector === 'unanswered_ask' ? -1 : 1
+      return b.confidence - a.confidence
+    })
 }
 
 function notificationData(candidate: PhaseTwoNudgeCandidate, nudgeId: string) {
@@ -98,13 +108,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
       deliveriesToday.set(row.userId, (deliveriesToday.get(row.userId) ?? 0) + 1)
     }
 
-    const candidates = enabledResults
-      .flatMap((result) => result.candidates)
-      .filter((candidate) => passesPhaseTwoConfidence(candidate.confidence))
-      .sort((a, b) => {
-        if (a.detector !== b.detector) return a.detector === 'unanswered_ask' ? -1 : 1
-        return b.confidence - a.confidence
-      })
+    const candidates = selectPhaseTwoDeliveryCandidates(enabledResults)
     const proposedTargets = new Set([
       ...candidates.map((candidate) => `${candidate.detector}:${candidate.messageId}:${candidate.userId}`),
       ...enabledResults.flatMap((result) => result.preservedActiveRiskTargets ?? []),

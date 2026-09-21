@@ -10,7 +10,6 @@ import { sendPushToUser } from '@/lib/push/send'
 import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
 import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
-import { passesPhaseTwoConfidence } from '@/lib/ai-nudges/llm-nudge-rules'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // DM は Push を抑制し、メンションはバッジ更新なしの Push に切り替えられる。
@@ -1114,10 +1113,9 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
             fundingBlocked = true
             break
           }
-          // 配信時と同じ信頼度ゲートをここでも適用し、低信頼候補で枠を使い切らない。
-          if (refinement.candidate && passesPhaseTwoConfidence(refinement.candidate.confidence)) {
-            refinedCandidates.push(refinement.candidate)
-          }
+          // 二次判定が返した候補を採用する。confidenceは監査値であり、一次0.70を
+          // 別の共通閾値で再び落とさない。
+          if (refinement.candidate) refinedCandidates.push(refinement.candidate)
         }
         const acceptedCandidates = refinedCandidates
         remainingCandidateBudget.set(input.workspaceId, budget - acceptedCandidates.length)

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@cairn/db', () => ({}))
 
-import { shouldReconcilePhaseTwoRisk } from './llm-nudge-delivery'
+import { selectPhaseTwoDeliveryCandidates, shouldReconcilePhaseTwoRisk } from './llm-nudge-delivery'
 
 describe('Phase 2 リスク照合', () => {
   it('資金不足で未評価の入力は既存リスクの解消判定に使わない', () => {
@@ -16,5 +16,23 @@ describe('Phase 2 リスク照合', () => {
     }
 
     expect(shouldReconcilePhaseTwoRisk(result)).toBe(false)
+  })
+
+  it('二次判定済み候補をconfidenceで再び除外しない', () => {
+    const candidate = {
+      workspaceId: 'workspace-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      projectId: null,
+      messageId: 'message-1',
+      detector: 'unanswered_ask' as const,
+      dedupeKey: 'unanswered_ask:message-1',
+      title: '確認',
+      body: '確認してください',
+      confidence: 0.58,
+      reason: {},
+    }
+
+    expect(selectPhaseTwoDeliveryCandidates([{ candidates: [candidate] }])).toEqual([candidate])
   })
 })

@@ -6,19 +6,12 @@ import {
   isUnansweredAskEligible,
   nextUnansweredAskRecheck,
   nextJstDeliveryTime,
-  passesPhaseTwoConfidence,
   phaseTwoDedupeKey,
   shouldAdvancePhaseTwoScanCursor,
   shouldResolveDueLlmRiskReminder,
 } from './llm-nudge-rules'
 
 describe('Phase 2 AIナッジの決定論的な発話ゲート', () => {
-  test('確信度0.85以上だけを通す', () => {
-    expect(passesPhaseTwoConfidence(0.849)).toBe(false)
-    expect(passesPhaseTwoConfidence(0.85)).toBe(true)
-    expect(passesPhaseTwoConfidence(Number.NaN)).toBe(false)
-  })
-
   test('Phase 1とPhase 2の検知器を別の頻度枠として識別する', () => {
     expect(isPhaseTwoDetector('unanswered_ask')).toBe(true)
     expect(isPhaseTwoDetector('llm_risk')).toBe(true)

@@ -16,6 +16,7 @@ export interface JevDecisionSummary {
 export function summarizeJevDecision(
   answer: JevAnswer | undefined,
   threshold: number,
+  acceptedLabels?: string[],
 ): JevDecisionSummary {
   if (!answer) {
     return { selectedLabel: null, probabilities: {}, selectedProbability: null, outcome: 'invalid' }
@@ -36,16 +37,18 @@ export function summarizeJevDecision(
     }
   }
   const selectedProbability = answer.probabilities[answer.choice] ?? null
+  const accepted = acceptedLabels
+    ? acceptedLabels.includes(answer.choice)
+    : answer.choice !== 'ignore'
   return {
     selectedLabel: answer.choice,
     probabilities: answer.probabilities,
     selectedProbability,
-    outcome:
-      answer.choice === 'ignore'
-        ? 'ignore'
-        : selectedProbability !== null && selectedProbability >= threshold
-          ? 'passed'
-          : 'below_threshold',
+    outcome: !accepted
+      ? 'ignore'
+      : selectedProbability !== null && selectedProbability >= threshold
+        ? 'passed'
+        : 'below_threshold',
   }
 }
 
@@ -55,6 +58,7 @@ interface JevAuditDecision {
   answer: JevAnswer | undefined
   threshold: number
   selectedUserId?: string | null
+  acceptedLabels?: string[]
 }
 
 export async function recordPhaseTwoJevAudit(input: {
@@ -102,7 +106,11 @@ export async function recordPhaseTwoJevAudit(input: {
           stage: input.stage,
           model: 'typesafe-ai/jev',
           threshold: decision.threshold,
-          ...summarizeJevDecision(decision.answer, decision.threshold),
+          ...summarizeJevDecision(
+            decision.answer,
+            decision.threshold,
+            decision.acceptedLabels,
+          ),
           createdAt: new Date().toISOString(),
         },
       })),

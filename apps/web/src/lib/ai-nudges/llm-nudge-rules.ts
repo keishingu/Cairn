@@ -3,7 +3,6 @@
 
 import type { AiNudgeDetector } from '@cairn/db'
 
-export const PHASE_TWO_CONFIDENCE_THRESHOLD = 0.85
 export const PHASE_TWO_DAILY_LIMIT = 3
 export const PHASE_TWO_NEW_MESSAGE_LIMIT = 100
 export const PHASE_TWO_CONTEXT_MESSAGE_LIMIT = 30
@@ -17,10 +16,6 @@ export function isPhaseTwoDetector(detector: AiNudgeDetector): detector is Phase
 
 export function phaseTwoDedupeKey(detector: PhaseTwoDetector, messageId: string): string {
   return `${detector}:${messageId}`
-}
-
-export function passesPhaseTwoConfidence(confidence: number): boolean {
-  return Number.isFinite(confidence) && confidence >= PHASE_TWO_CONFIDENCE_THRESHOLD
 }
 
 export function isUnansweredAskEligible(input: {
