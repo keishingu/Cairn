@@ -11,12 +11,16 @@ export function isRealtimeUnauthorized(error: unknown): boolean {
   return TOPIC_PERMISSION_DENIED.test(errorMessage(error))
 }
 
-export function shouldRetryRealtime(status: string, error?: unknown): boolean {
+export function shouldRetryRealtime(
+  status: string,
+  error?: unknown,
+  removed = false,
+): boolean {
   // CHANNEL_ERROR はソケット瞬断時の通常経路。supabase-js が再 JOIN するので
   // React 側で購読を破棄して作り直さない。JOIN が決まらない TIMED_OUT と、
   // チャンネルが外された CLOSED だけアプリで作り直す。
-  // topic 権限拒否はリトライしても直らない。JWT 期限切れの Unauthorized はここに含めない。
-  if (isRealtimeUnauthorized(error)) return false
+  // topic 権限拒否はリトライしても直らない。意図的な removeChannel の CLOSED も再JOINしない。
+  if (removed || isRealtimeUnauthorized(error)) return false
   return status === 'TIMED_OUT' || status === 'CLOSED'
 }
 
