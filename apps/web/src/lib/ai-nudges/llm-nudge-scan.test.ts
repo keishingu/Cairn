@@ -2,15 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
+import { jevEvaluationRequestByteLength } from '@/lib/ai/jev'
 import {
   blocksPhaseTwoPrimaryCandidate,
   blocksPhaseTwoCandidateRefinement,
   buildPhaseTwoJevScreenBatches,
+  buildPhaseTwoJevRefineRequest,
   extractPhaseTwoCandidatesFromJev,
   hasCreditsForPhaseTwoScan,
   isPhaseTwoFundingBlocked,
   isPhaseTwoPrimaryCandidateEligible,
+  mergePhaseTwoContinuationMessages,
+  PHASE_TWO_JEV_REFINE_REQUEST_BYTE_LIMIT,
   rankPhaseTwoRecipientsForJev,
+  resolvePhaseTwoJevRefinement,
   restrictPhaseTwoRecipientsToFixedRecipient,
   resolvePhaseTwoScanCandidateBudget,
   type PhaseTwoChannelInput,
@@ -36,6 +41,8 @@ function channelInput(messageCount = 18): PhaseTwoChannelInput {
     recheckMessageIds: [],
     scannedThroughMessageId: messages.at(-1)!.id,
     scannedThroughCreatedAt: messages.at(-1)!.createdAt,
+    evaluatedAt: new Date('2026-07-25T12:00:00.000Z').toISOString(),
+    hasUnloadedMessagesAfterScanWindow: false,
     isUnansweredAskRecheck: false,
     advancesCursor: true,
     nextUnansweredAskCheckAt: null,
@@ -220,5 +227,447 @@ describe('Phase 2のJev判定入力', () => {
       },
     ])
     expect(recipients.map((recipient) => recipient.userId)).toEqual(['task', 'mentioned', 'recent'])
+  })
+
+  it('二次判定へ評価時刻までの後続通常投稿と該当者なしを渡す', () => {
+    const input = channelInput(12)
+    input.messages[2]!.content = `${'依頼の前提。'.repeat(50)}この件を確認できますか？`
+    input.messages[10]!.content = `${'回答の前提。'.repeat(180)}対応完了しました。`
+    const request = buildPhaseTwoJevRefineRequest(
+      input,
+      {
+        detector: 'unanswered_ask',
+        sourceMessageId: 'message-2',
+        observation: '回答待ち',
+        screenConfidence: 0.72,
+      },
+      [
+        {
+          userId: 'user-1',
+          displayName: '利用者1',
+          role: 'member',
+          mentionedInSource: true,
+          recentMessageCount: 2,
+          relatedTaskCount: 0,
+          skills: [],
+        },
+      ],
+      new Date('2026-07-24T10:30:00.000Z'),
+    )!
+
+    const state = request.state as {
+      evaluatedAt: string
+      messages: Array<{ id: string; content: string }>
+    }
+    expect(state.evaluatedAt).toBe('2026-07-24T10:30:00.000Z')
+    expect(state.messages.map((message) => message.id)).toContain('message-10')
+    expect(state.messages.map((message) => message.id)).not.toContain('message-11')
+    expect(state.messages.find((message) => message.id === 'message-2')?.content).toContain(
+      'この件を確認できますか？',
+    )
+    expect(state.messages.find((message) => message.id === 'message-10')?.content).toContain(
+      '対応完了しました。',
+    )
+    expect(request.questions['resolution']?.type).toBe('choice')
+    expect(request.questions['recipient']).toMatchObject({
+      type: 'choice',
+      criteria: expect.objectContaining({ recipient_none: expect.any(String) }),
+    })
+    expect(request.questions['recipientEvidence']).toMatchObject({
+      type: 'choice',
+      criteria: expect.objectContaining({ evidence_none: expect.any(String) }),
+    })
+  })
+
+  it('日本語と絵文字が多い後続会話でも二次判定リクエストを24KB以内に収める', () => {
+    const input = channelInput(120)
+    input.evaluatedAt = '2026-08-01T00:00:00.000Z'
+    for (const message of input.messages) message.content = '対応状況😀'.repeat(500)
+    const request = buildPhaseTwoJevRefineRequest(
+      input,
+      {
+        detector: 'unanswered_ask',
+        sourceMessageId: 'message-2',
+        observation: '回答待ち',
+        screenConfidence: 0.72,
+      },
+      Array.from({ length: 30 }, (_, index) => ({
+        userId: `recipient-${index}`,
+        displayName: `担当者${index}`,
+        role: 'member',
+        mentionedInSource: index === 0,
+        recentMessageCount: 1,
+        relatedTaskCount: 0,
+        skills: ['障害対応😀'.repeat(30)],
+      })),
+      new Date(input.evaluatedAt),
+    )
+
+    expect(request).not.toBeNull()
+    expect(jevEvaluationRequestByteLength(request!)).toBeLessThanOrEqual(
+      PHASE_TWO_JEV_REFINE_REQUEST_BYTE_LIMIT,
+    )
+    expect(request!.contextMessages.some((message) => message.id === 'message-2')).toBe(true)
+  })
+
+  it('100件窓より後の通常回答を補完し、候補とカーソルを失わず回答済みにする', () => {
+    const input = channelInput(100)
+    input.messages[0]!.content = 'この障害の対応方針を教えてください。'
+    input.evaluatedAt = '2026-07-29T00:00:00.000Z'
+    input.hasUnloadedMessagesAfterScanWindow = true
+    const continuation = {
+      id: 'message-100',
+      senderId: 'recipient',
+      senderName: '担当者',
+      parentMessageId: null,
+      content: '確認して復旧しました。',
+      createdAt: '2026-07-28T04:00:00.000Z',
+      isNew: false,
+    }
+    const merged = mergePhaseTwoContinuationMessages(input, [
+      {
+        id: 'message-101',
+        senderId: 'other',
+        senderName: '別の担当者',
+        parentMessageId: null,
+        content: '後続です。',
+        createdAt: '2026-07-28T05:00:00.000Z',
+        isNew: false,
+      },
+      continuation,
+      continuation,
+    ])
+    const candidate = {
+      detector: 'unanswered_ask' as const,
+      sourceMessageId: 'message-0',
+      observation: '回答待ち',
+      screenConfidence: 0.72,
+    }
+    const rankedRecipients = [
+      {
+        userId: 'recipient',
+        displayName: '担当者',
+        role: 'member',
+        mentionedInSource: false,
+        recentMessageCount: 1,
+        relatedTaskCount: 0,
+        skills: [],
+      },
+    ]
+    const request = buildPhaseTwoJevRefineRequest(
+      merged,
+      candidate,
+      rankedRecipients,
+      new Date(input.evaluatedAt),
+    )!
+
+    expect(merged.hasUnloadedMessagesAfterScanWindow).toBe(false)
+    expect(merged.scannedThroughMessageId).toBe('message-99')
+    expect(merged.advancesCursor).toBe(true)
+    expect(merged.messages.slice(-2).map((message) => message.id)).toEqual([
+      'message-100',
+      'message-101',
+    ])
+    expect(request.contextMessages.find((message) => message.id === 'message-100')).toMatchObject({
+      id: 'message-100',
+      content: '確認して復旧しました。',
+    })
+    expect(
+      resolvePhaseTwoJevRefinement({
+        candidate,
+        rankedRecipients,
+        recipientEvidence: request.recipientEvidence,
+        answers: {
+          resolution: {
+            type: 'choice',
+            choice: 'answered',
+            probabilities: { answered: 0.9, open: 0.1 },
+          },
+          shouldNotify: { type: 'boolean', probability: 0.1 },
+          recipient: {
+            type: 'choice',
+            choice: 'recipient_none',
+            probabilities: { recipient_none: 0.9 },
+          },
+          recipientEvidence: {
+            type: 'choice',
+            choice: 'evidence_none',
+            probabilities: { evidence_none: 0.9 },
+          },
+        },
+      }),
+    ).toBeNull()
+  })
+
+  it('回答済み・期限切れは通知確率や宛先確率が高くても除外する', () => {
+    const candidate = {
+      detector: 'unanswered_ask' as const,
+      sourceMessageId: 'message-1',
+      observation: '回答待ち',
+      screenConfidence: 0.72,
+    }
+    const rankedRecipients = [
+      {
+        userId: 'recipient',
+        displayName: '受信者',
+        role: 'member',
+        mentionedInSource: true,
+        recentMessageCount: 0,
+        relatedTaskCount: 0,
+        skills: [],
+      },
+    ]
+    const answers = {
+      shouldNotify: { type: 'boolean' as const, probability: 0.99 },
+      recipient: {
+        type: 'choice' as const,
+        choice: 'recipient_0',
+        probabilities: { recipient_0: 0.99, recipient_none: 0.01 },
+      },
+      recipientEvidence: {
+        type: 'choice' as const,
+        choice: 'evidence_direct_0',
+        probabilities: { evidence_direct_0: 0.99, evidence_none: 0.01 },
+      },
+    }
+
+    for (const resolution of ['answered', 'expired'] as const) {
+      expect(
+        resolvePhaseTwoJevRefinement({
+          candidate,
+          rankedRecipients,
+          recipientEvidence: {
+            evidence_direct_0: {
+              messageId: candidate.sourceMessageId,
+              supportedRecipientLabels: ['recipient_0'],
+              description: '対象メッセージ内の明示依頼',
+            },
+          },
+          answers: {
+            ...answers,
+            resolution: {
+              type: 'choice',
+              choice: resolution,
+              probabilities: { open: 0.01, [resolution]: 0.99 },
+            },
+          },
+        }),
+      ).toBeNull()
+    }
+  })
+
+  it('未解決で通知価値があり宛先根拠がある依頼だけ候補へ進める', () => {
+    const decision = resolvePhaseTwoJevRefinement({
+      candidate: {
+        detector: 'unanswered_ask',
+        sourceMessageId: 'message-1',
+        observation: '回答待ち',
+        screenConfidence: 0.7,
+      },
+      rankedRecipients: [
+        {
+          userId: 'recipient',
+          displayName: '受信者',
+          role: 'member',
+          mentionedInSource: true,
+          recentMessageCount: 0,
+          relatedTaskCount: 0,
+          skills: [],
+        },
+      ],
+      recipientEvidence: {
+        evidence_direct_0: {
+          messageId: 'message-1',
+          supportedRecipientLabels: ['recipient_0'],
+          description: '対象メッセージ内の明示依頼',
+        },
+      },
+      answers: {
+        resolution: {
+          type: 'choice',
+          choice: 'open',
+          probabilities: { open: 0.62, insufficient_context: 0.38 },
+        },
+        shouldNotify: { type: 'boolean', probability: 0.58 },
+        recipient: {
+          type: 'choice',
+          choice: 'recipient_0',
+          probabilities: { recipient_0: 0.61, recipient_none: 0.39 },
+        },
+        recipientEvidence: {
+          type: 'choice',
+          choice: 'evidence_direct_0',
+          probabilities: { evidence_direct_0: 0.6, evidence_none: 0.4 },
+        },
+      },
+    })
+
+    expect(decision).toMatchObject({
+      recipient: { userId: 'recipient' },
+      resolutionProbability: 0.62,
+      notifyProbability: 0.58,
+      recipientProbability: 0.61,
+      evidenceProbability: 0.6,
+    })
+  })
+
+  it('メンションやタスクがなくても具体的な過去発言を根拠に適任者を選べる', () => {
+    const input = channelInput(4)
+    input.messages[0]!.senderId = 'recipient'
+    input.messages[0]!.content = '請求フローの運用と障害対応は私が担当しています。'
+    input.messages[1]!.senderId = 'asker'
+    input.messages[1]!.content = '請求処理が止まっています。確認できる方はいますか？'
+    const candidate = {
+      detector: 'unanswered_ask' as const,
+      sourceMessageId: 'message-1',
+      observation: '回答待ち',
+      screenConfidence: 0.74,
+    }
+    const rankedRecipients = [
+      {
+        userId: 'recipient',
+        displayName: '運用担当',
+        role: 'member',
+        mentionedInSource: false,
+        recentMessageCount: 1,
+        relatedTaskCount: 0,
+        skills: ['請求運用'],
+      },
+    ]
+    const request = buildPhaseTwoJevRefineRequest(
+      input,
+      candidate,
+      rankedRecipients,
+      new Date(input.evaluatedAt),
+    )!
+    const evidenceLabel = Object.entries(request.recipientEvidence).find(
+      ([, evidence]) => evidence.messageId === 'message-0',
+    )?.[0]
+    expect(evidenceLabel).toBeDefined()
+
+    expect(
+      resolvePhaseTwoJevRefinement({
+        candidate,
+        rankedRecipients,
+        recipientEvidence: request.recipientEvidence,
+        answers: {
+          resolution: { type: 'choice', choice: 'open', probabilities: { open: 0.8 } },
+          shouldNotify: { type: 'boolean', probability: 0.7 },
+          recipient: {
+            type: 'choice',
+            choice: 'recipient_0',
+            probabilities: { recipient_0: 0.7, recipient_none: 0.3 },
+          },
+          recipientEvidence: {
+            type: 'choice',
+            choice: evidenceLabel!,
+            probabilities: { [evidenceLabel!]: 0.72, evidence_none: 0.28 },
+          },
+        },
+      }),
+    ).toMatchObject({ recipient: { userId: 'recipient' }, evidenceMessageId: 'message-0' })
+  })
+
+  it('会話に登場しない担当者でもプロフィールスキルを宛先根拠にできる', () => {
+    const input = channelInput(2)
+    const request = buildPhaseTwoJevRefineRequest(
+      input,
+      {
+        detector: 'unanswered_ask',
+        sourceMessageId: 'message-1',
+        observation: '回答待ち',
+        screenConfidence: 0.74,
+      },
+      [
+        {
+          userId: 'recipient',
+          displayName: '請求担当',
+          role: 'member',
+          mentionedInSource: false,
+          recentMessageCount: 0,
+          relatedTaskCount: 0,
+          skills: ['請求運用'],
+        },
+      ],
+      new Date(input.evaluatedAt),
+    )!
+
+    expect(request.recipientEvidence['evidence_skill_0']).toMatchObject({
+      messageId: null,
+      supportedRecipientLabels: ['recipient_0'],
+      description: expect.stringContaining('請求運用'),
+    })
+    expect(request.questions['recipientEvidence']).toMatchObject({
+      criteria: expect.objectContaining({
+        evidence_skill_0: expect.stringContaining('請求運用'),
+      }),
+    })
+    expect(request.questions['recipient']).toMatchObject({
+      criteria: expect.objectContaining({ recipient_0: expect.stringContaining('関連スキル=あり') }),
+    })
+  })
+
+  it('根拠のない相対1位やrecipient_noneは通知先にしない', () => {
+    const candidate = {
+      detector: 'llm_risk' as const,
+      sourceMessageId: 'message-1',
+      observation: 'リスク',
+      screenConfidence: 0.8,
+    }
+    const rankedRecipients = [
+      {
+        userId: 'recent',
+        displayName: '最近の発言者',
+        role: 'member',
+        mentionedInSource: false,
+        recentMessageCount: 10,
+        relatedTaskCount: 0,
+        skills: [],
+      },
+    ]
+    const baseAnswers = {
+      resolution: {
+        type: 'choice' as const,
+        choice: 'open',
+        probabilities: { open: 0.99 },
+      },
+      shouldNotify: { type: 'boolean' as const, probability: 0.99 },
+    }
+
+    expect(
+      resolvePhaseTwoJevRefinement({
+        candidate,
+        rankedRecipients,
+        recipientEvidence: {},
+        answers: {
+          ...baseAnswers,
+          recipient: {
+            type: 'choice',
+            choice: 'recipient_0',
+            probabilities: { recipient_0: 0.99, recipient_none: 0.01 },
+          },
+          recipientEvidence: {
+            type: 'choice',
+            choice: 'evidence_none',
+            probabilities: { evidence_none: 0.99 },
+          },
+        },
+      }),
+    ).toBeNull()
+    expect(
+      resolvePhaseTwoJevRefinement({
+        candidate,
+        rankedRecipients,
+        recipientEvidence: {},
+        answers: {
+          ...baseAnswers,
+          recipient: {
+            type: 'choice',
+            choice: 'recipient_none',
+            probabilities: { recipient_0: 0.01, recipient_none: 0.99 },
+          },
+        },
+      }),
+    ).toBeNull()
   })
 })

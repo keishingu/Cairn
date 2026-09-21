@@ -6,31 +6,39 @@ import {
   isUnansweredAskEligible,
   nextUnansweredAskRecheck,
   nextJstDeliveryTime,
-  passesPhaseTwoConfidence,
   phaseTwoDedupeKey,
   shouldAdvancePhaseTwoScanCursor,
   shouldResolveDueLlmRiskReminder,
 } from './llm-nudge-rules'
 
 describe('Phase 2 AIナッジの決定論的な発話ゲート', () => {
-  test('確信度0.85以上だけを通す', () => {
-    expect(passesPhaseTwoConfidence(0.849)).toBe(false)
-    expect(passesPhaseTwoConfidence(0.85)).toBe(true)
-    expect(passesPhaseTwoConfidence(Number.NaN)).toBe(false)
-  })
-
   test('Phase 1とPhase 2の検知器を別の頻度枠として識別する', () => {
     expect(isPhaseTwoDetector('unanswered_ask')).toBe(true)
     expect(isPhaseTwoDetector('llm_risk')).toBe(true)
     expect(isPhaseTwoDetector('task_overdue')).toBe(false)
   })
 
-  test('クレジット不足で候補を落としたチャンネルはカーソルを保持する', () => {
+  test('未配信候補を次回評価する必要があるチャンネルはカーソルを保持する', () => {
     expect(
-      shouldAdvancePhaseTwoScanCursor({ inputAllowsAdvance: true, creditBlocked: true }),
+      shouldAdvancePhaseTwoScanCursor({
+        inputAllowsAdvance: true,
+        creditBlocked: true,
+        deliveryInvalidated: false,
+      }),
     ).toBe(false)
     expect(
-      shouldAdvancePhaseTwoScanCursor({ inputAllowsAdvance: true, creditBlocked: false }),
+      shouldAdvancePhaseTwoScanCursor({
+        inputAllowsAdvance: true,
+        creditBlocked: false,
+        deliveryInvalidated: true,
+      }),
+    ).toBe(false)
+    expect(
+      shouldAdvancePhaseTwoScanCursor({
+        inputAllowsAdvance: true,
+        creditBlocked: false,
+        deliveryInvalidated: false,
+      }),
     ).toBe(true)
   })
 
