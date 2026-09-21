@@ -33,7 +33,6 @@ export const useRealtime = () => React.useContext(RealtimeContext)
 
 // 切断インジケータを出すまでの猶予。瞬断でのちらつきを避ける
 const DEGRADED_DELAY_MS = 10_000
-const RETRY_DELAY_MS = 3_000
 // チャンネル一覧の invalidate をまとめるデバウンス。連続する新着での過剰な再取得を抑える
 const LIST_DEBOUNCE_MS = 800
 
@@ -104,14 +103,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     const supabase = createClient()
     let cancelled = false
     let userChannel: RealtimeChannel | null = null
-    let retryTimer: ReturnType<typeof setTimeout> | null = null
-
-    const clearRetryTimer = () => {
-      if (retryTimer) {
-        clearTimeout(retryTimer)
-        retryTimer = null
-      }
-    }
 
     const removeUserChannel = async (channel: RealtimeChannel) => {
       if (userChannel === channel) {
@@ -150,7 +141,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       currentChannel.subscribe((subStatus, err) => {
         if (cancelled || currentChannel !== userChannel) return
         if (subStatus === 'SUBSCRIBED') {
-          clearRetryTimer()
           // デプロイにRealtimeコードが入っているか・接続できているかを判別できるよう成功も1行出す
           console.info('[Realtime] connected')
           setStatus('connected')
@@ -160,18 +150,20 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
           invalidateChannelLists(queryClient)
-        } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT' || subStatus === 'CLOSED') {
-          // 購読失敗の原因（認可ポリシー・トークン等）を隠さない
+          return
+        }
+
+        // CLOSED / CHANNEL_ERROR はソケット瞬断時の通常ライフサイクル。
+        // ここで removeChannel すると supabase-js の自動再 JOIN を潰し、
+        // 「再接続中…」が誤って出る。再接続はライブラリに任せる。
+        if (subStatus === 'CLOSED' || subStatus === 'CHANNEL_ERROR') {
+          console.warn('[Realtime] subscription interrupted:', subStatus, err?.message ?? err)
+          return
+        }
+
+        if (subStatus === 'TIMED_OUT') {
           console.error('[Realtime] subscription failed:', subStatus, err?.message ?? err)
           setStatus('disconnected')
-          void (async () => {
-            await removeUserChannel(currentChannel)
-            if (cancelled || retryTimer) return
-            retryTimer = setTimeout(() => {
-              retryTimer = null
-              void connectUserChannel()
-            }, RETRY_DELAY_MS)
-          })()
         }
       })
     }
@@ -188,7 +180,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       cancelled = true
-      clearRetryTimer()
       authSub.subscription.unsubscribe()
       if (userChannel) void removeUserChannel(userChannel)
     }

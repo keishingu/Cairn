@@ -103,7 +103,55 @@ describe('RealtimeProvider', () => {
     expect(screen.queryByText('再接続中…')).toBeNull()
   })
 
-  it('購読失敗後に再試行し、復帰したら再接続バナーを消す', async () => {
+  it('CLOSED ではチャンネルを作り直さず再接続バナーも出さない', async () => {
+    renderProvider()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    act(() => {
+      channelRecords[0]?.callback?.('CLOSED')
+    })
+    act(() => {
+      vi.advanceTimersByTime(10_000)
+    })
+
+    expect(channelRecords).toHaveLength(1)
+    expect(screen.queryByText('再接続中…')).toBeNull()
+  })
+
+  it('CHANNEL_ERROR ではチャンネルを作り直さず再接続バナーも出さない', async () => {
+    renderProvider()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    act(() => {
+      channelRecords[0]?.callback?.('CHANNEL_ERROR', { message: 'boom' })
+    })
+    act(() => {
+      vi.advanceTimersByTime(10_000)
+    })
+
+    expect(channelRecords).toHaveLength(1)
+    expect(screen.queryByText('再接続中…')).toBeNull()
+  })
+
+  it('JOIN が TIMED_OUT したあと復帰したら再接続バナーを消す', async () => {
     renderProvider()
 
     await act(async () => {
@@ -113,11 +161,7 @@ describe('RealtimeProvider', () => {
     expect(channelRecords).toHaveLength(1)
 
     act(() => {
-      channelRecords[0]?.callback?.('CHANNEL_ERROR', { message: 'boom' })
-    })
-
-    await act(async () => {
-      await Promise.resolve()
+      channelRecords[0]?.callback?.('TIMED_OUT')
     })
 
     act(() => {
@@ -129,60 +173,16 @@ describe('RealtimeProvider', () => {
       vi.advanceTimersByTime(1)
     })
     expect(screen.getByText('再接続中…')).toBeInTheDocument()
-
-    await act(async () => {
-      vi.advanceTimersByTime(3_000)
-      await Promise.resolve()
-    })
-
-    expect(channelRecords).toHaveLength(2)
+    expect(channelRecords).toHaveLength(1)
 
     act(() => {
-      channelRecords[1]?.callback?.('SUBSCRIBED')
+      channelRecords[0]?.callback?.('SUBSCRIBED')
     })
 
     await act(async () => {
       await Promise.resolve()
     })
     expect(screen.queryByText('再接続中…')).toBeNull()
-  })
-
-  it('古い user channel の CLOSED を再接続後の channel に波及させない', async () => {
-    renderProvider()
-
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    expect(channelRecords).toHaveLength(1)
-    const staleChannel = channelRecords[0]
-
-    act(() => {
-      staleChannel?.callback?.('CHANNEL_ERROR', { message: 'boom' })
-    })
-
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    await act(async () => {
-      vi.advanceTimersByTime(3_000)
-      await Promise.resolve()
-    })
-
-    expect(channelRecords).toHaveLength(2)
-
-    act(() => {
-      staleChannel?.callback?.('CLOSED')
-    })
-
-    await act(async () => {
-      await Promise.resolve()
-      vi.advanceTimersByTime(3_000)
-      await Promise.resolve()
-    })
-
-    expect(channelRecords).toHaveLength(2)
   })
 
   it('チャンネルのtask broadcastでタスクqueryを再取得する', async () => {
