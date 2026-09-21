@@ -154,11 +154,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           return
         }
 
-        // CHANNEL_ERROR はソケット瞬断時の通常ライフサイクル。
-        // ここで removeChannel すると supabase-js の自動再 JOIN を潰し、
-        // 「再接続中…」が誤って出る。再接続はライブラリに任せる。
+        // CHANNEL_ERROR はソケット切断後の通常ライフサイクル。removeChannel すると
+        // supabase-js の自動再 JOIN を潰すので再接続はライブラリに任せる。
+        // ただし status を connected のままにすると、JOIN が TIMED_OUT しない長時間切断で
+        // バナーが出ない。disconnected にして 10 秒後に表示し、SUBSCRIBED で消す。
         if (subStatus === 'CHANNEL_ERROR') {
           console.warn('[Realtime] subscription interrupted:', subStatus, err?.message ?? err)
+          setStatus('disconnected')
           return
         }
 

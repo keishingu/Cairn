@@ -131,7 +131,7 @@ describe('RealtimeProvider', () => {
     expect(screen.queryByText('再接続中…')).toBeNull()
   })
 
-  it('CHANNEL_ERROR ではチャンネルを作り直さず再接続バナーも出さない', async () => {
+  it('CHANNEL_ERROR ではチャンネルを作り直さず、10秒切れたら再接続バナーを出す', async () => {
     renderProvider()
 
     await act(async () => {
@@ -148,9 +148,22 @@ describe('RealtimeProvider', () => {
       channelRecords[0]?.callback?.('CHANNEL_ERROR', { message: 'boom' })
     })
     act(() => {
-      vi.advanceTimersByTime(10_000)
+      vi.advanceTimersByTime(9_999)
     })
+    expect(channelRecords).toHaveLength(1)
+    expect(screen.queryByText('再接続中…')).toBeNull()
 
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(screen.getByText('再接続中…')).toBeInTheDocument()
+
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
     expect(channelRecords).toHaveLength(1)
     expect(screen.queryByText('再接続中…')).toBeNull()
   })
