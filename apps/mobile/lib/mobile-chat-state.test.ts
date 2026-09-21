@@ -17,10 +17,6 @@ describe('モバイルチャット状態', () => {
     expect(shouldRetryRealtime('CLOSED')).toBe(true)
   })
 
-  it('意図的に外したチャンネルの CLOSED では再接続しない', () => {
-    expect(shouldRetryRealtime('CLOSED', undefined, true)).toBe(false)
-  })
-
   it('topic 権限拒否ではアプリ側でRealtime購読を作り直さない', () => {
     expect(shouldRetryRealtime('CHANNEL_ERROR', {
       message: 'Unauthorized: You do not have permissions to read from this Channel topic: channel:1',

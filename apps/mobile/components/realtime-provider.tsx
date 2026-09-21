@@ -94,7 +94,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     if (!authenticated) return
     let cancelled = false
     let retryTimer: ReturnType<typeof setTimeout> | null = null
-    const removedChannelIds = new Set<string>()
     const subscriptions = channelIds.map((channelId) => {
       const channel = supabase
         .channel(`channel:${channelId}`, { config: { private: true } })
@@ -113,11 +112,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             status,
             error?.message ?? error,
           )
-          removedChannelIds.add(channelId)
           void supabase.removeChannel(channel)
           return
         }
-        if (shouldRetryRealtime(status, error, removedChannelIds.has(channelId))) {
+        // CLOSED は使わない。権限拒否の removeChannel も CLOSED を飛ばし、
+        // それをリトライすると未参加チャンネルへ再 JOIN する。
+        if (status === 'TIMED_OUT') {
           console.warn(
             `[Realtime] channel:${channelId} を再接続します:`,
             status,
