@@ -202,6 +202,33 @@ describe('RealtimeProvider', () => {
     expect(screen.queryByText('再接続中…')).toBeNull()
   })
 
+  it('channel_members の broadcast でチャンネル一覧を再取得する', async () => {
+    const { queryClient } = renderProvider()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    invalidate.mockClear()
+
+    act(() => {
+      channelRecords[0]?.broadcastCallback?.({ payload: { table: 'channel_members' } })
+    })
+    act(() => {
+      vi.advanceTimersByTime(800)
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['workspace-channels'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project-channels'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dms'] })
+  })
+
   it('チャンネルのtask broadcastでタスクqueryを再取得する', async () => {
     workspaceChannels.push({ id: 'channel-1' })
     const { queryClient } = renderProvider()

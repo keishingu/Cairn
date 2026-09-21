@@ -52,9 +52,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         .channel(`user:${me.id}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
           const table = tableOf((message as { payload?: unknown }).payload)
-          if (table === 'notifications' || table === 'channel_read_states') {
+          if (table === 'notifications' || table === 'channel_read_states' || table === 'channel_members') {
             invalidateChannelLists(queryClient)
-            void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+            if (table !== 'channel_members') {
+              void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+            }
           }
         })
       userChannel.subscribe((status, error) => {

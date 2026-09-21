@@ -97,7 +97,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     listTimerRef.current = setTimeout(() => invalidateChannelLists(queryClient), LIST_DEBOUNCE_MS)
   }, [queryClient])
 
-  // ─── ユーザートピック（notifications / channel_read_states）────
+  // ─── ユーザートピック（notifications / channel_read_states / channel_members）────
   React.useEffect(() => {
     if (!userId) return
 
@@ -135,6 +135,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             // 他デバイスでの既読を即時反映（バッジ消去 + ベルの既読同期）
             scheduleListInvalidate()
             void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+          } else if (table === 'channel_members') {
+            // 非公開チャンネルの参加は一覧フィルタの正。既読行の有無に依存させない
+            scheduleListInvalidate()
           }
         })
       userChannel = currentChannel
