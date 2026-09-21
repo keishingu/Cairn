@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
+import { jevEvaluationRequestByteLength } from '@/lib/ai/jev'
 import {
   blocksPhaseTwoPrimaryCandidate,
   blocksPhaseTwoCandidateRefinement,
@@ -12,6 +13,7 @@ import {
   isPhaseTwoFundingBlocked,
   isPhaseTwoPrimaryCandidateEligible,
   mergePhaseTwoContinuationMessages,
+  PHASE_TWO_JEV_REFINE_REQUEST_BYTE_LIMIT,
   rankPhaseTwoRecipientsForJev,
   resolvePhaseTwoJevRefinement,
   restrictPhaseTwoRecipientsToFixedRecipient,
@@ -275,6 +277,37 @@ describe('Phase 2のJev判定入力', () => {
       type: 'choice',
       criteria: expect.objectContaining({ evidence_none: expect.any(String) }),
     })
+  })
+
+  it('日本語と絵文字が多い後続会話でも二次判定リクエストを24KB以内に収める', () => {
+    const input = channelInput(120)
+    input.evaluatedAt = '2026-08-01T00:00:00.000Z'
+    for (const message of input.messages) message.content = '対応状況😀'.repeat(500)
+    const request = buildPhaseTwoJevRefineRequest(
+      input,
+      {
+        detector: 'unanswered_ask',
+        sourceMessageId: 'message-2',
+        observation: '回答待ち',
+        screenConfidence: 0.72,
+      },
+      Array.from({ length: 30 }, (_, index) => ({
+        userId: `recipient-${index}`,
+        displayName: `担当者${index}`,
+        role: 'member',
+        mentionedInSource: index === 0,
+        recentMessageCount: 1,
+        relatedTaskCount: 0,
+        skills: ['障害対応😀'.repeat(30)],
+      })),
+      new Date(input.evaluatedAt),
+    )
+
+    expect(request).not.toBeNull()
+    expect(jevEvaluationRequestByteLength(request!)).toBeLessThanOrEqual(
+      PHASE_TWO_JEV_REFINE_REQUEST_BYTE_LIMIT,
+    )
+    expect(request!.contextMessages.some((message) => message.id === 'message-2')).toBe(true)
   })
 
   it('100件窓より後の通常回答を補完し、候補とカーソルを失わず回答済みにする', () => {

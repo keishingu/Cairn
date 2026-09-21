@@ -52,6 +52,11 @@ export interface JevEvaluationResult {
   costUsd: number | null
 }
 
+export interface JevEvaluationInput {
+  state: unknown
+  questions: Record<string, JevQuestion>
+}
+
 export function resolveAiGatewayAuth(
   env: { AI_GATEWAY_API_KEY?: string; VERCEL_OIDC_TOKEN?: string } = process.env as {
     AI_GATEWAY_API_KEY?: string
@@ -76,10 +81,25 @@ function gatewayCostUsd(metadata: Record<string, unknown> | undefined): number |
   return typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? cost : null
 }
 
-export async function evaluateWithJev(input: {
-  state: unknown
-  questions: Record<string, JevQuestion>
-}): Promise<JevEvaluationResult> {
+function jevEvaluationRequestBody(input: JevEvaluationInput) {
+  return {
+    model: JEV_MODEL,
+    state: input.state,
+    questions: input.questions,
+    providerOptions: {
+      gateway: {
+        zeroDataRetention: true,
+        only: ['typesafe-ai'],
+      },
+    },
+  }
+}
+
+export function jevEvaluationRequestByteLength(input: JevEvaluationInput): number {
+  return new TextEncoder().encode(JSON.stringify(jevEvaluationRequestBody(input))).byteLength
+}
+
+export async function evaluateWithJev(input: JevEvaluationInput): Promise<JevEvaluationResult> {
   const auth = resolveAiGatewayAuth()
   const startedAt = performance.now()
   const response = await fetch('https://ai-gateway.vercel.sh/v1/evaluate', {
@@ -88,17 +108,7 @@ export async function evaluateWithJev(input: {
       Authorization: `Bearer ${auth.token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: JEV_MODEL,
-      state: input.state,
-      questions: input.questions,
-      providerOptions: {
-        gateway: {
-          zeroDataRetention: true,
-          only: ['typesafe-ai'],
-        },
-      },
-    }),
+    body: JSON.stringify(jevEvaluationRequestBody(input)),
   })
 
   if (!response.ok) {
