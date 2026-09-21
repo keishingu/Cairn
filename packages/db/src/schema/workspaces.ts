@@ -50,7 +50,7 @@ export const workspaces = pgTable('workspaces', {
   // workspace 単位で明示的に分けることで、LLM の利用開始は owner の opt-in にする。
   aiNudgesPhaseOneEnabled: boolean('ai_nudges_phase_one_enabled').notNull().default(true),
   aiNudgesPhaseTwoEnabled: boolean('ai_nudges_phase_two_enabled').notNull().default(false),
-  // Phase 2 の実際の利用量。月次請求額の推定ではなく、OpenAI が返したトークン数の累計を保持する。
+  // Phase 2 の実際の利用量。月次請求額の推定ではなく、各AIプロバイダーが返したトークン数の累計を保持する。
   aiNudgesPhaseTwoInputTokens: bigint('ai_nudges_phase_two_input_tokens', { mode: 'number' }).notNull().default(0),
   aiNudgesPhaseTwoOutputTokens: bigint('ai_nudges_phase_two_output_tokens', { mode: 'number' }).notNull().default(0),
   aiNudgesPhaseTwoTotalTokens: bigint('ai_nudges_phase_two_total_tokens', { mode: 'number' }).notNull().default(0),

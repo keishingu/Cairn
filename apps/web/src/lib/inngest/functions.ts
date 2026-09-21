@@ -1007,7 +1007,7 @@ export const reconcileAiNudgesHeartbeat = inngest.createFunction(
   },
 )
 
-// Phase 2 の差分巡回。6時間ごとにDM以外の新着チャンネルだけを二段階LLMで評価する。
+// Phase 2 の差分巡回。6時間ごとにDM以外の新着チャンネルだけをJev中心の二段階判定で評価する。
 // 02:00 JST の実行は候補を生成した後、08:00までdurable sleepしてからコード側の
 // 発話ゲートを再評価する。concurrency=1 + 同一関数内FIFOにより、古い遅延runを先に配信する。
 export const scanAiNudgesPhaseTwo = inngest.createFunction(
