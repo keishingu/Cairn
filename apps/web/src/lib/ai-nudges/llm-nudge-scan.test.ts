@@ -440,6 +440,7 @@ describe('Phase 2のJev判定入力', () => {
             evidence_direct_0: {
               messageId: candidate.sourceMessageId,
               supportedRecipientLabels: ['recipient_0'],
+              description: '対象メッセージ内の明示依頼',
             },
           },
           answers: {
@@ -478,6 +479,7 @@ describe('Phase 2のJev判定入力', () => {
         evidence_direct_0: {
           messageId: 'message-1',
           supportedRecipientLabels: ['recipient_0'],
+          description: '対象メッセージ内の明示依頼',
         },
       },
       answers: {
@@ -564,6 +566,45 @@ describe('Phase 2のJev判定入力', () => {
         },
       }),
     ).toMatchObject({ recipient: { userId: 'recipient' }, evidenceMessageId: 'message-0' })
+  })
+
+  it('会話に登場しない担当者でもプロフィールスキルを宛先根拠にできる', () => {
+    const input = channelInput(2)
+    const request = buildPhaseTwoJevRefineRequest(
+      input,
+      {
+        detector: 'unanswered_ask',
+        sourceMessageId: 'message-1',
+        observation: '回答待ち',
+        screenConfidence: 0.74,
+      },
+      [
+        {
+          userId: 'recipient',
+          displayName: '請求担当',
+          role: 'member',
+          mentionedInSource: false,
+          recentMessageCount: 0,
+          relatedTaskCount: 0,
+          skills: ['請求運用'],
+        },
+      ],
+      new Date(input.evaluatedAt),
+    )!
+
+    expect(request.recipientEvidence['evidence_skill_0']).toMatchObject({
+      messageId: null,
+      supportedRecipientLabels: ['recipient_0'],
+      description: expect.stringContaining('請求運用'),
+    })
+    expect(request.questions['recipientEvidence']).toMatchObject({
+      criteria: expect.objectContaining({
+        evidence_skill_0: expect.stringContaining('請求運用'),
+      }),
+    })
+    expect(request.questions['recipient']).toMatchObject({
+      criteria: expect.objectContaining({ recipient_0: expect.stringContaining('関連スキル=あり') }),
+    })
   })
 
   it('根拠のない相対1位やrecipient_noneは通知先にしない', () => {

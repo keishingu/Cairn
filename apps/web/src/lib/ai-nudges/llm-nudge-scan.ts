@@ -1011,6 +1011,7 @@ export function rankPhaseTwoRecipientsForJev(recipients: PhaseTwoRecipient[]): P
 export interface PhaseTwoJevRecipientEvidence {
   messageId: string | null
   supportedRecipientLabels: string[]
+  description: string
 }
 
 export function mergePhaseTwoContinuationMessages(
@@ -1126,11 +1127,11 @@ export function buildPhaseTwoJevRefineRequest(
     const recipientChoices = Object.fromEntries([
       ...selectedRecipients.map((recipient, index) => [
         `recipient_${index}`,
-        `${recipient.displayName} (${recipient.role})。明示依頼=${recipient.mentionedInSource ? 'あり' : 'なし'}、関連タスク担当=${recipient.relatedTaskCount > 0 ? 'あり' : 'なし'}`,
+        `${recipient.displayName} (${recipient.role})。明示依頼=${recipient.mentionedInSource ? 'あり' : 'なし'}、関連タスク担当=${recipient.relatedTaskCount > 0 ? 'あり' : 'なし'}、関連スキル=${recipient.skills.length > 0 ? 'あり' : 'なし'}`,
       ]),
       [
         'recipient_none',
-        '具体的に行動できる本人を、明示依頼・担当・会話上の引受けから特定できない',
+        '具体的に行動できる本人を、明示依頼・担当・会話上の引受け・関連スキルから特定できない',
       ],
     ])
     const recipientEvidence: Record<string, PhaseTwoJevRecipientEvidence> = Object.fromEntries([
@@ -1142,6 +1143,23 @@ export function buildPhaseTwoJevRefineRequest(
                 {
                   messageId: recipient.mentionedInSource ? candidate.sourceMessageId : null,
                   supportedRecipientLabels: [`recipient_${index}`],
+                  description: recipient.mentionedInSource
+                    ? '対象メッセージ内の明示依頼'
+                    : '関連タスクの担当',
+                },
+              ] as const,
+            ]
+          : [],
+      ),
+      ...selectedRecipients.flatMap((recipient, index) =>
+        recipient.skills.length > 0
+          ? [
+              [
+                `evidence_skill_${index}`,
+                {
+                  messageId: null,
+                  supportedRecipientLabels: [`recipient_${index}`],
+                  description: `プロフィールの関連スキル: ${recipient.skills.join('、').slice(0, JEV_REFINE_SKILL_CONTENT_LIMIT)}`,
                 },
               ] as const,
             ]
@@ -1158,7 +1176,11 @@ export function buildPhaseTwoJevRefineRequest(
           ? [
               [
                 `evidence_message_${messageIndex}`,
-                { messageId: message.id, supportedRecipientLabels },
+                {
+                  messageId: message.id,
+                  supportedRecipientLabels,
+                  description: `会話中のメッセージ ${message.id}`,
+                },
               ] as const,
             ]
           : []
@@ -1167,11 +1189,12 @@ export function buildPhaseTwoJevRefineRequest(
     const evidenceChoices = Object.fromEntries([
       ...Object.entries(recipientEvidence).map(([label, evidence]) => [
         label,
-        evidence.messageId
-          ? `会話中のメッセージ ${evidence.messageId}`
-          : '明示された担当根拠',
+        evidence.description,
       ]),
-      ['evidence_none', '適任者を裏付ける具体的な会話・メンション・タスク担当がない'],
+      [
+        'evidence_none',
+        '適任者を裏付ける具体的な会話・メンション・タスク担当・関連スキルがない',
+      ],
     ])
 
     return {
@@ -1220,7 +1243,7 @@ export function buildPhaseTwoJevRefineRequest(
         recipient: {
           type: 'choice',
           instructions:
-            '通知する場合に、明示依頼・担当・会話上の引受けから具体的に行動できる1人を選んでください。権限があるだけ、または相対的に最上位なだけならrecipient_noneを選んでください。',
+            '通知する場合に、明示依頼・担当・会話上の引受け・関連スキルから具体的に行動できる1人を選んでください。権限があるだけ、または相対的に最上位なだけならrecipient_noneを選んでください。',
           criteria: recipientChoices,
         },
         recipientEvidence: {
