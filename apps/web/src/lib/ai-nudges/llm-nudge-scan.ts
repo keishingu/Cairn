@@ -26,6 +26,7 @@ import { evaluateWithJev, JEV_MODEL, type JevAnswer, type JevQuestion } from '@/
 import { extractMentionIds } from '@/lib/chat/mentions'
 import { FAST_MODEL, openai } from '@/lib/ai/client'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
+import { recordPhaseTwoJevAudit } from './jev-audit'
 import { recordPhaseTwoTokenUsage } from './llm-usage'
 import {
   PHASE_TWO_CONTEXT_MESSAGE_LIMIT,
@@ -760,6 +761,18 @@ export async function screenPhaseTwoCandidates(input: PhaseTwoChannelInput): Pro
   for (const batch of buildPhaseTwoJevScreenBatches(input)) {
     const result = await evaluateWithJev(batch)
     await recordPhaseTwoTokenUsage(input.workspaceId, result.usage)
+    await recordPhaseTwoJevAudit({
+      workspaceId: input.workspaceId,
+      channelId: input.channelId,
+      stage: 'screen',
+      evaluation: result,
+      decisions: batch.targets.map((target) => ({
+        questionId: target.questionId,
+        messageId: target.messageId,
+        answer: result.answers[target.questionId],
+        threshold: PHASE_TWO_JEV_SCREEN_THRESHOLD,
+      })),
+    })
     candidates.push(...extractPhaseTwoCandidatesFromJev(batch, result.answers))
   }
   return {
@@ -1031,6 +1044,36 @@ export async function refinePhaseTwoCandidate(
     questions,
   })
   await recordPhaseTwoTokenUsage(input.workspaceId, evaluation.usage)
+  const recipientAnswer = evaluation.answers['recipient']
+  const selectedRecipientIndex =
+    recipientAnswer?.type === 'choice'
+      ? Number.parseInt(recipientAnswer.choice.replace('recipient_', ''), 10)
+      : Number.NaN
+  await recordPhaseTwoJevAudit({
+    workspaceId: input.workspaceId,
+    channelId: input.channelId,
+    stage: 'refine',
+    evaluation,
+    decisions: [
+      {
+        questionId: 'shouldNotify',
+        messageId: candidate.sourceMessageId,
+        answer: evaluation.answers['shouldNotify'],
+        threshold: PHASE_TWO_JEV_REFINE_THRESHOLD,
+      },
+      ...(questions['recipient']
+        ? [
+            {
+              questionId: 'recipient',
+              messageId: candidate.sourceMessageId,
+              answer: recipientAnswer,
+              threshold: PHASE_TWO_JEV_REFINE_THRESHOLD,
+              selectedUserId: rankedRecipients[selectedRecipientIndex]?.userId ?? null,
+            },
+          ]
+        : []),
+    ],
+  })
 
   const notifyAnswer = evaluation.answers['shouldNotify']
   if (

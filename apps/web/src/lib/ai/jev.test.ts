@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { evaluateWithJev, resolveAiGatewayToken } from './jev'
+import { evaluateWithJev, resolveAiGatewayAuth, resolveAiGatewayToken } from './jev'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -18,6 +18,12 @@ describe('Jev評価クライアント', () => {
         VERCEL_OIDC_TOKEN: 'oidc-token',
       }),
     ).toBe('gateway-key')
+    expect(
+      resolveAiGatewayAuth({
+        AI_GATEWAY_API_KEY: 'gateway-key',
+        VERCEL_OIDC_TOKEN: 'oidc-token',
+      }).method,
+    ).toBe('api-key')
   })
 
   it('認証情報がなければ外部APIを呼ばない', () => {
@@ -58,6 +64,9 @@ describe('Jev評価クライアント', () => {
     })
 
     expect(result.usage).toEqual({ inputTokens: 321, outputTokens: 0 })
+    expect(result.authentication).toBe('api-key')
+    expect(result.durationMs).toBeGreaterThanOrEqual(0)
+    expect(result.costUsd).toBeNull()
     expect(result.answers['candidate']).toMatchObject({
       type: 'choice',
       choice: 'unanswered_ask',
