@@ -491,7 +491,10 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           candidate.detector === 'unanswered_ask' &&
           !invalidatedUnansweredAskRechecks.has(candidate.channelId)
         ) {
-          invalidatedUnansweredAskRechecks.set(candidate.channelId, candidate.messageId)
+          invalidatedUnansweredAskRechecks.set(
+            candidate.channelId,
+            scanResult.input.recheckMessageIds[0] ?? candidate.messageId,
+          )
         }
         discarded += 1
         continue
