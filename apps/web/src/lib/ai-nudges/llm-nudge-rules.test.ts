@@ -18,12 +18,27 @@ describe('Phase 2 AIナッジの決定論的な発話ゲート', () => {
     expect(isPhaseTwoDetector('task_overdue')).toBe(false)
   })
 
-  test('クレジット不足で候補を落としたチャンネルはカーソルを保持する', () => {
+  test('未配信候補を次回評価する必要があるチャンネルはカーソルを保持する', () => {
     expect(
-      shouldAdvancePhaseTwoScanCursor({ inputAllowsAdvance: true, creditBlocked: true }),
+      shouldAdvancePhaseTwoScanCursor({
+        inputAllowsAdvance: true,
+        creditBlocked: true,
+        deliveryInvalidated: false,
+      }),
     ).toBe(false)
     expect(
-      shouldAdvancePhaseTwoScanCursor({ inputAllowsAdvance: true, creditBlocked: false }),
+      shouldAdvancePhaseTwoScanCursor({
+        inputAllowsAdvance: true,
+        creditBlocked: false,
+        deliveryInvalidated: true,
+      }),
+    ).toBe(false)
+    expect(
+      shouldAdvancePhaseTwoScanCursor({
+        inputAllowsAdvance: true,
+        creditBlocked: false,
+        deliveryInvalidated: false,
+      }),
     ).toBe(true)
   })
 

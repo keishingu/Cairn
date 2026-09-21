@@ -128,6 +128,8 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
     // その結果、新規候補の課金だけ失敗したチャンネルはカーソルを保持し、
     // 買い増し後に同じ差分を再評価できるようにする。
     const creditBlockedChannelIds = new Set<string>()
+    const deliveryInvalidatedChannelIds = new Set<string>()
+    const invalidatedUnansweredAskRechecks = new Map<string, string>()
 
     // 直接返信はLLMに委ねず、未回答条件が解消した事実として決定論的にresolveする。
     const scannedChannelIds = [...new Set(enabledResults.map((result) => result.input.channelId))]
@@ -476,10 +478,21 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         .where(and(eq(messages.channelId, candidate.channelId), isNull(messages.deletedAt)))
         .orderBy(desc(messages.createdAt))
         .limit(1)
+      if (!scanResult) {
+        discarded += 1
+        continue
+      }
       if (
-        !scanResult ||
         hasPhaseTwoChannelAdvanced(scanResult.input.evaluatedAt, latestMessage?.createdAt ?? null)
       ) {
+        deliveryInvalidatedChannelIds.add(candidate.channelId)
+        if (
+          scanResult.input.isUnansweredAskRecheck &&
+          candidate.detector === 'unanswered_ask' &&
+          !invalidatedUnansweredAskRechecks.has(candidate.channelId)
+        ) {
+          invalidatedUnansweredAskRechecks.set(candidate.channelId, candidate.messageId)
+        }
         discarded += 1
         continue
       }
@@ -680,7 +693,7 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
     }
 
     // LLM処理と配信ゲートが正常終了したチャンネルだけカーソルを進める。
-    // 候補がゲートで破棄された場合も、その差分自体の評価は完了しているため前進させる。
+    // 配信前に会話が進んだ候補は新しい文脈で再評価するため、カーソルを保持する。
     const existingChannelIds =
       scannedChannelIds.length > 0
         ? new Set(
@@ -694,15 +707,21 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         : new Set<string>()
     for (const { input } of enabledResults) {
       if (!existingChannelIds.has(input.channelId)) continue
+      const invalidatedRecheckMessageId = invalidatedUnansweredAskRechecks.get(input.channelId)
       if (
         !shouldAdvancePhaseTwoScanCursor({
           inputAllowsAdvance: input.advancesCursor,
           creditBlocked: creditBlockedChannelIds.has(input.channelId),
+          deliveryInvalidated: deliveryInvalidatedChannelIds.has(input.channelId),
         })
       ) {
-        const nextCheckAt = input.nextUnansweredAskCheckAt
-          ? new Date(input.nextUnansweredAskCheckAt)
-          : null
+        const nextCheckAt = invalidatedRecheckMessageId
+          ? now
+          : input.nextUnansweredAskCheckAt
+            ? new Date(input.nextUnansweredAskCheckAt)
+            : null
+        const nextCheckMessageId =
+          invalidatedRecheckMessageId ?? input.nextUnansweredAskMessageId
         // 同一heartbeatで通常差分が将来の再評価を予約済みなら、再評価側が null で
         // 上書きしない。双方に候補がある場合は、最も早い時刻と対応するメッセージを残す。
         await tx.execute(sql`
@@ -716,11 +735,11 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
               else ${nextCheckAt}
             end,
             next_unanswered_ask_message_id = case
-              when next_unanswered_ask_check_at is null then ${input.nextUnansweredAskMessageId}
-              when next_unanswered_ask_check_at <= ${now} then ${input.nextUnansweredAskMessageId}
+              when next_unanswered_ask_check_at is null then ${nextCheckMessageId}
+              when next_unanswered_ask_check_at <= ${now} then ${nextCheckMessageId}
               when ${nextCheckAt} is null then next_unanswered_ask_message_id
               when next_unanswered_ask_check_at <= ${nextCheckAt} then next_unanswered_ask_message_id
-              else ${input.nextUnansweredAskMessageId}
+              else ${nextCheckMessageId}
             end
           where channel_id = ${input.channelId}
         `)

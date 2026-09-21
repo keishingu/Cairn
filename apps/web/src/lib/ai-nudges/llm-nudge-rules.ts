@@ -72,8 +72,9 @@ export function shouldResolveDueLlmRiskReminder(input: {
 export function shouldAdvancePhaseTwoScanCursor(input: {
   inputAllowsAdvance: boolean
   creditBlocked: boolean
+  deliveryInvalidated: boolean
 }): boolean {
-  return input.inputAllowsAdvance && !input.creditBlocked
+  return input.inputAllowsAdvance && !input.creditBlocked && !input.deliveryInvalidated
 }
 
 export function isQuietHoursInJst(now: Date): boolean {
