@@ -8,6 +8,8 @@ interface ModelUsage {
   promptTokens?: number
   completionTokens?: number
   totalTokens?: number
+  inputTokens?: number
+  outputTokens?: number
 }
 
 export interface PhaseTwoTokenUsage {
@@ -23,8 +25,8 @@ function nonNegativeInteger(value: number | undefined): number {
 // AI SDK v4 の prompt/completion/total を、画面に表示する入力・出力・合計へ正規化する。
 // total がプロバイダーから返らない場合だけ、入力と出力の和を採用する。
 export function normalizePhaseTwoTokenUsage(usage: ModelUsage): PhaseTwoTokenUsage {
-  const inputTokens = nonNegativeInteger(usage.promptTokens)
-  const outputTokens = nonNegativeInteger(usage.completionTokens)
+  const inputTokens = nonNegativeInteger(usage.promptTokens ?? usage.inputTokens)
+  const outputTokens = nonNegativeInteger(usage.completionTokens ?? usage.outputTokens)
   const reportedTotal = nonNegativeInteger(usage.totalTokens)
   return {
     inputTokens,

@@ -1676,7 +1676,7 @@ const SettingsWorkspaceGeneral = () => {
                 <div
                   style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}
                 >
-                  チャットの未回答依頼やリスクをAIで分析します。OpenAIのトークンを消費するため、既定ではオフです。
+                  チャットの未回答依頼やリスクをAIで分析します。AIモデルのトークンを消費するため、既定ではオフです。
                 </div>
                 {isOwner && phaseTwoUsage && (
                   <div
