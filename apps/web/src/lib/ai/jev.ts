@@ -39,6 +39,7 @@ const jevEvaluationSchema = z.object({
       outputTokens: z.number().int().nonnegative().optional(),
     })
     .optional(),
+  providerMetadata: z.record(z.unknown()).optional(),
 })
 
 export type JevAnswer = z.infer<typeof jevEvaluationSchema>['answers'][string]
@@ -46,29 +47,45 @@ export type JevAnswer = z.infer<typeof jevEvaluationSchema>['answers'][string]
 export interface JevEvaluationResult {
   answers: Record<string, JevAnswer>
   usage: { inputTokens: number; outputTokens: number }
+  durationMs: number
+  authentication: 'api-key' | 'oidc'
+  costUsd: number | null
 }
 
-export function resolveAiGatewayToken(
+export function resolveAiGatewayAuth(
   env: { AI_GATEWAY_API_KEY?: string; VERCEL_OIDC_TOKEN?: string } = process.env as {
     AI_GATEWAY_API_KEY?: string
     VERCEL_OIDC_TOKEN?: string
   },
+): { token: string; method: 'api-key' | 'oidc' } {
+  if (env.AI_GATEWAY_API_KEY) return { token: env.AI_GATEWAY_API_KEY, method: 'api-key' }
+  if (env.VERCEL_OIDC_TOKEN) return { token: env.VERCEL_OIDC_TOKEN, method: 'oidc' }
+  throw new Error('AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN is not configured')
+}
+
+export function resolveAiGatewayToken(
+  env?: { AI_GATEWAY_API_KEY?: string; VERCEL_OIDC_TOKEN?: string },
 ): string {
-  const token = env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN
-  if (!token) {
-    throw new Error('AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN is not configured')
-  }
-  return token
+  return resolveAiGatewayAuth(env).token
+}
+
+function gatewayCostUsd(metadata: Record<string, unknown> | undefined): number | null {
+  const gateway = metadata?.['gateway']
+  if (!gateway || typeof gateway !== 'object') return null
+  const cost = (gateway as Record<string, unknown>)['cost']
+  return typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? cost : null
 }
 
 export async function evaluateWithJev(input: {
   state: unknown
   questions: Record<string, JevQuestion>
 }): Promise<JevEvaluationResult> {
+  const auth = resolveAiGatewayAuth()
+  const startedAt = performance.now()
   const response = await fetch('https://ai-gateway.vercel.sh/v1/evaluate', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${resolveAiGatewayToken()}`,
+      Authorization: `Bearer ${auth.token}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -95,5 +112,8 @@ export async function evaluateWithJev(input: {
       inputTokens: result.usage?.inputTokens ?? 0,
       outputTokens: result.usage?.outputTokens ?? 0,
     },
+    durationMs: Math.round(performance.now() - startedAt),
+    authentication: auth.method,
+    costUsd: gatewayCostUsd(result.providerMetadata),
   }
 }
