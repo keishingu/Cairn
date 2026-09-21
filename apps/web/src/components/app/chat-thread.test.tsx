@@ -339,17 +339,24 @@ describe('ChatThreadのメンション候補', () => {
     localStorage.clear()
   })
 
-  it('名前未入力では全候補を表示し、プロジェクトメンバーを先頭にして候補内をスクロールできる', () => {
+  it('全候補をスクロール表示し、プロジェクトメンバー取得後は選択を先頭へ戻す', () => {
     chatThreadState.projectChannels = [{ channelId: 'channel-1', projectId: 'project-1' }]
-    chatThreadState.projectMembers = [{ userId: 'user-8' }]
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    render(
+    const view = render(
       <QueryClientProvider client={queryClient}>
         <ChatThread channelId="channel-1" isMobile />
       </QueryClientProvider>,
     )
 
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '@' } })
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: '@' } })
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    chatThreadState.projectMembers = [{ userId: 'user-8' }]
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" isMobile />
+      </QueryClientProvider>,
+    )
 
     const projectMemberButton = screen.getByText('鈴木').closest('button')!
     const picker = projectMemberButton.parentElement!
@@ -358,6 +365,8 @@ describe('ChatThreadのメンション候補', () => {
       ...Array.from({ length: 6 }, (_, index) => `候補${index + 1}`),
     ])
     expect(picker).toHaveStyle({ maxHeight: '240px', overflowY: 'auto' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(input.value).toBe('@鈴木 ')
   })
 
   it('日本語変換中は候補を選ばず、確定後に入力済みの名前で絞り込む', () => {

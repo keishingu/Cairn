@@ -604,7 +604,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   }, [mentionQuery, mentionMembers])
 
   // 候補が変わったら選択をリセット
-  React.useEffect(() => { setSelectedIdx(0) }, [mentionCandidates.length])
+  React.useEffect(() => { setSelectedIdx(0) }, [mentionCandidates])
 
   const detectMention = (val: string, cursorPos: number) => {
     const before = val.slice(0, cursorPos)
