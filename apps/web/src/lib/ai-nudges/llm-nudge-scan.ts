@@ -134,6 +134,7 @@ const JEV_REFINE_PRECEDING_MESSAGE_LIMIT = 6
 const JEV_REFINE_MESSAGE_CONTENT_LIMIT = 800
 const JEV_REFINE_SOURCE_CONTENT_LIMIT = 4_000
 const JEV_REFINE_SKILL_CONTENT_LIMIT = 120
+const JEV_REFINE_CONTINUATION_EDGE_LIMIT = 50
 const JEV_RECIPIENT_LIMIT = 30
 export const PHASE_TWO_JEV_REFINE_REQUEST_BYTE_LIMIT = 24_000
 // ponytail: ラベル付き実績で校正できるまでは保守的な固定値。十分な実績が集まったら設定値へ移す。
@@ -1018,49 +1019,59 @@ export function mergePhaseTwoContinuationMessages(
 ): PhaseTwoChannelInput {
   if (continuation.length === 0) return { ...input, hasUnloadedMessagesAfterScanWindow: false }
   const existingIds = new Set(input.messages.map((message) => message.id))
+  const continuationIds = new Set<string>()
+  const uniqueContinuation = continuation
+    .filter((message) => {
+      if (existingIds.has(message.id) || continuationIds.has(message.id)) return false
+      continuationIds.add(message.id)
+      return true
+    })
+    .sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() ||
+        a.id.localeCompare(b.id),
+    )
   return {
     ...input,
-    messages: [
-      ...input.messages,
-      ...continuation.filter((message) => !existingIds.has(message.id)),
-    ],
+    messages: [...input.messages, ...uniqueContinuation],
     hasUnloadedMessagesAfterScanWindow: false,
   }
 }
 
-async function loadPhaseTwoCandidateContinuation(
+export async function loadPhaseTwoContinuationContext(
   input: PhaseTwoChannelInput,
 ): Promise<PhaseTwoChannelInput> {
   if (!input.hasUnloadedMessagesAfterScanWindow) return input
   const scannedThrough = new Date(input.scannedThroughCreatedAt)
   const evaluatedAt = new Date(input.evaluatedAt)
-  // ponytail: 候補が少ない二次判定だけ後続を補完する。件数が問題になったらkeyset paginationする。
-  const continuation = await db
-    .select({
-      id: messages.id,
-      senderId: messages.senderId,
-      senderName: profiles.displayName,
-      parentMessageId: messages.parentMessageId,
-      content: messages.content,
-      createdAt: messages.createdAt,
-    })
-    .from(messages)
-    .innerJoin(profiles, eq(messages.senderId, profiles.id))
-    .where(
-      and(
-        eq(messages.channelId, input.channelId),
-        isNull(messages.deletedAt),
-        lte(messages.createdAt, evaluatedAt),
-        or(
-          gt(messages.createdAt, scannedThrough),
-          and(eq(messages.createdAt, scannedThrough), gt(messages.id, input.scannedThroughMessageId)),
-        ),
-      ),
-    )
-    .orderBy(asc(messages.createdAt), asc(messages.id))
+  const continuationWhere = and(
+    eq(messages.channelId, input.channelId),
+    isNull(messages.deletedAt),
+    lte(messages.createdAt, evaluatedAt),
+    or(
+      gt(messages.createdAt, scannedThrough),
+      and(eq(messages.createdAt, scannedThrough), gt(messages.id, input.scannedThroughMessageId)),
+    ),
+  )
+  const loadEdge = (direction: typeof asc) =>
+    db
+      .select({
+        id: messages.id,
+        senderId: messages.senderId,
+        senderName: profiles.displayName,
+        parentMessageId: messages.parentMessageId,
+        content: messages.content,
+        createdAt: messages.createdAt,
+      })
+      .from(messages)
+      .innerJoin(profiles, eq(messages.senderId, profiles.id))
+      .where(continuationWhere)
+      .orderBy(direction(messages.createdAt), direction(messages.id))
+      .limit(JEV_REFINE_CONTINUATION_EDGE_LIMIT)
+  const [firstMessages, lastMessages] = await Promise.all([loadEdge(asc), loadEdge(desc)])
   return mergePhaseTwoContinuationMessages(
     input,
-    continuation.map((message) => ({
+    [...firstMessages, ...lastMessages].map((message) => ({
       ...message,
       createdAt: message.createdAt.toISOString(),
       isNew: false,
@@ -1233,21 +1244,29 @@ export function buildPhaseTwoJevRefineRequest(
     messageContentLimit = Math.max(96, Math.floor(messageContentLimit / 2))
     request = buildRequest()
   }
-  while (exceedsLimit() && selectedMessages.length > 5) {
+  while (exceedsLimit() && selectedMessages.length > 1) {
     const currentSourceIndex = selectedMessages.findIndex(
       (message) => message.id === candidate.sourceMessageId,
     )
-    const requiredIndices = new Set([
-      0,
-      selectedMessages.length - 1,
-      currentSourceIndex - 1,
-      currentSourceIndex,
-      currentSourceIndex + 1,
-    ])
+    const scannedThroughIndex = selectedMessages.findIndex(
+      (message) => message.id === input.scannedThroughMessageId,
+    )
+    const requiredIndices = new Set(
+      [
+        0,
+        selectedMessages.length - 1,
+        currentSourceIndex - 1,
+        currentSourceIndex,
+        currentSourceIndex + 1,
+        scannedThroughIndex,
+        scannedThroughIndex + 1,
+      ].filter((index) => index >= 0 && index < selectedMessages.length),
+    )
     const thinnedMessages = selectedMessages.filter(
       (_, index) => requiredIndices.has(index) || index % 2 === 0,
     )
     const removableIndex = selectedMessages.findIndex((_, index) => !requiredIndices.has(index))
+    if (removableIndex < 0) break
     selectedMessages =
       thinnedMessages.length < selectedMessages.length
         ? thinnedMessages
@@ -1316,11 +1335,8 @@ export async function refinePhaseTwoCandidate(
   if (readiness !== 'enabled') {
     return { candidate: null, fundingBlocked: isPhaseTwoFundingBlocked(readiness) }
   }
-  const refinementInput = await loadPhaseTwoCandidateContinuation(input)
-  const recipients = await listEligibleRecipients(refinementInput, candidate.sourceMessageId)
-  const source = refinementInput.messages.find(
-    (message) => message.id === candidate.sourceMessageId,
-  )
+  const recipients = await listEligibleRecipients(input, candidate.sourceMessageId)
+  const source = input.messages.find((message) => message.id === candidate.sourceMessageId)
   if (!source || recipients.length === 0) return { candidate: null, fundingBlocked: false }
 
   const allowedRecipients =
@@ -1335,7 +1351,7 @@ export async function refinePhaseTwoCandidate(
 
   const rankedRecipients = rankPhaseTwoRecipientsForJev(selectableRecipients)
   const request = buildPhaseTwoJevRefineRequest(
-    refinementInput,
+    input,
     candidate,
     rankedRecipients,
     evaluatedAt,

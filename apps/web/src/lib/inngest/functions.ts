@@ -1082,6 +1082,18 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
         const acceptedBeforeCurrentInput = acceptedCandidatesByWorkspace.get(input.workspaceId) ?? 0
         let attemptedPrimaryCandidates = 0
         let fundingBlocked = false
+        const refinementInput =
+          primaryCandidateFilter.candidates.length > 0
+            ? await step.run(
+                `load-channel-continuation-${channel.channelId}-${scanKind}`,
+                async () => {
+                  const { loadPhaseTwoContinuationContext } = await import(
+                    '@/lib/ai-nudges/llm-nudge-scan'
+                  )
+                  return loadPhaseTwoContinuationContext(input)
+                },
+              )
+            : input
         // false positiveを飛ばしつつ、残りの配信枠が埋まった時点で精査を止める。
         // 未試行候補が残る場合だけカーソルを保持して次回へ回す。
         for (const [index, candidate] of primaryCandidateFilter.candidates.entries()) {
@@ -1106,7 +1118,7 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
             `refine-channel-${channel.channelId}-${scanKind}-${index}`,
             async () => {
               const { refinePhaseTwoCandidate } = await import('@/lib/ai-nudges/llm-nudge-scan')
-              return refinePhaseTwoCandidate(input, candidate)
+              return refinePhaseTwoCandidate(refinementInput, candidate)
             },
           )
           if (refinement.fundingBlocked) {

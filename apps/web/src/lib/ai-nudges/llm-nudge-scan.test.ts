@@ -315,16 +315,27 @@ describe('Phase 2のJev判定入力', () => {
     input.messages[0]!.content = 'この障害の対応方針を教えてください。'
     input.evaluatedAt = '2026-07-29T00:00:00.000Z'
     input.hasUnloadedMessagesAfterScanWindow = true
+    const continuation = {
+      id: 'message-100',
+      senderId: 'recipient',
+      senderName: '担当者',
+      parentMessageId: null,
+      content: '確認して復旧しました。',
+      createdAt: '2026-07-28T04:00:00.000Z',
+      isNew: false,
+    }
     const merged = mergePhaseTwoContinuationMessages(input, [
       {
-        id: 'message-100',
-        senderId: 'recipient',
-        senderName: '担当者',
+        id: 'message-101',
+        senderId: 'other',
+        senderName: '別の担当者',
         parentMessageId: null,
-        content: '確認して復旧しました。',
-        createdAt: '2026-07-28T04:00:00.000Z',
+        content: '後続です。',
+        createdAt: '2026-07-28T05:00:00.000Z',
         isNew: false,
       },
+      continuation,
+      continuation,
     ])
     const candidate = {
       detector: 'unanswered_ask' as const,
@@ -353,7 +364,11 @@ describe('Phase 2のJev判定入力', () => {
     expect(merged.hasUnloadedMessagesAfterScanWindow).toBe(false)
     expect(merged.scannedThroughMessageId).toBe('message-99')
     expect(merged.advancesCursor).toBe(true)
-    expect(request.contextMessages.at(-1)).toMatchObject({
+    expect(merged.messages.slice(-2).map((message) => message.id)).toEqual([
+      'message-100',
+      'message-101',
+    ])
+    expect(request.contextMessages.find((message) => message.id === 'message-100')).toMatchObject({
       id: 'message-100',
       content: '確認して復旧しました。',
     })

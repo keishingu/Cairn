@@ -13,7 +13,7 @@ import {
   type AiNudgeStatus,
 } from '@cairn/db'
 import { BILLING_CONFIG } from '@cairn/core/billing'
-import { and, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm'
 import { consumeCreditsForPassiveBenefit, lockWorkspaceCreditBalances } from '@/lib/billing/credits'
 import { startOfJstDay } from './rules'
 import {
@@ -49,6 +49,13 @@ export function selectPhaseTwoDeliveryCandidates(
       if (a.detector !== b.detector) return a.detector === 'unanswered_ask' ? -1 : 1
       return b.confidence - a.confidence
     })
+}
+
+export function hasPhaseTwoChannelAdvanced(
+  evaluatedAt: string,
+  latestMessageAt: Date | null,
+): boolean {
+  return latestMessageAt !== null && latestMessageAt.getTime() > new Date(evaluatedAt).getTime()
 }
 
 function notificationData(candidate: PhaseTwoNudgeCandidate, nudgeId: string) {
@@ -462,6 +469,21 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
         continue
       }
 
+      const scanResult = enabledResults.find((result) => result.candidates.includes(candidate))
+      const [latestMessage] = await tx
+        .select({ createdAt: messages.createdAt })
+        .from(messages)
+        .where(and(eq(messages.channelId, candidate.channelId), isNull(messages.deletedAt)))
+        .orderBy(desc(messages.createdAt))
+        .limit(1)
+      if (
+        !scanResult ||
+        hasPhaseTwoChannelAdvanced(scanResult.input.evaluatedAt, latestMessage?.createdAt ?? null)
+      ) {
+        discarded += 1
+        continue
+      }
+
       if (candidate.detector === 'unanswered_ask') {
         const [directReply] = await tx
           .select({ id: messages.id })
@@ -481,27 +503,6 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
             now,
           })
         ) {
-          discarded += 1
-          continue
-        }
-      } else {
-        // 静寂時間帯のsleep中に会話が進んだリスクは、古い候補を配信せず次回巡回で再評価する。
-        const scanResult = enabledResults.find((result) => result.candidates.includes(candidate))
-        const scannedThroughAt = scanResult
-          ? new Date(scanResult.input.scannedThroughCreatedAt)
-          : source.createdAt
-        const [newerMessage] = await tx
-          .select({ id: messages.id })
-          .from(messages)
-          .where(
-            and(
-              eq(messages.channelId, candidate.channelId),
-              gt(messages.createdAt, scannedThroughAt),
-              isNull(messages.deletedAt),
-            ),
-          )
-          .limit(1)
-        if (newerMessage) {
           discarded += 1
           continue
         }
