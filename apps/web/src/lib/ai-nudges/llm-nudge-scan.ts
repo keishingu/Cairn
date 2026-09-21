@@ -124,7 +124,7 @@ const JEV_CONTEXT_MESSAGE_LIMIT = 12
 const JEV_MESSAGE_CONTENT_LIMIT = 600
 const JEV_RECIPIENT_LIMIT = 30
 // ponytail: ラベル付き実績で校正できるまでは保守的な固定値。十分な実績が集まったら設定値へ移す。
-export const PHASE_TWO_JEV_SCREEN_THRESHOLD = 0.9
+export const PHASE_TWO_JEV_SCREEN_THRESHOLD = 0.7
 export const PHASE_TWO_JEV_REFINE_THRESHOLD = 0.9
 
 interface JevScreenTarget {
