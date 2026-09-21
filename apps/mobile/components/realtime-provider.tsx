@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useMe } from '../hooks/use-account'
 import { useProjectChannels } from '../hooks/use-projects'
 import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channels'
-import { shouldRetryRealtime } from '../lib/mobile-chat-state'
+import { isRealtimeUnauthorized, shouldRetryRealtime } from '../lib/mobile-chat-state'
 import { supabase } from '../lib/supabase'
 
 function tableOf(payload: unknown): string | undefined {
@@ -27,7 +27,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { data: dms = [] } = useWorkspaceDms()
   const [authenticated, setAuthenticated] = React.useState(false)
   const [retryNonce, setRetryNonce] = React.useState(0)
-  const [channelRetryNonce, setChannelRetryNonce] = React.useState(0)
 
   const channelIds = React.useMemo(() => {
     const ids = new Set<string>()
@@ -53,9 +52,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         .channel(`user:${me.id}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
           const table = tableOf((message as { payload?: unknown }).payload)
-          if (table === 'notifications' || table === 'channel_read_states') {
+          if (table === 'notifications' || table === 'channel_read_states' || table === 'channel_members') {
             invalidateChannelLists(queryClient)
-            void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+            if (table !== 'channel_members') {
+              void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+            }
           }
         })
       userChannel.subscribe((status, error) => {
@@ -63,7 +64,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         if (status === 'SUBSCRIBED') {
           setAuthenticated(true)
           invalidateChannelLists(queryClient)
-        } else if (shouldRetryRealtime(status)) {
+        } else if (shouldRetryRealtime(status, error)) {
           setAuthenticated(false)
           console.warn(
             '[Realtime] ユーザートピックを再接続します:',
@@ -93,7 +94,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!authenticated) return
     let cancelled = false
-    let retryTimer: ReturnType<typeof setTimeout> | null = null
     const subscriptions = channelIds.map((channelId) => {
       const channel = supabase
         .channel(`channel:${channelId}`, { config: { private: true } })
@@ -106,15 +106,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         })
       channel.subscribe((status, error) => {
         if (cancelled) return
-        if (shouldRetryRealtime(status)) {
+        if (isRealtimeUnauthorized(error)) {
           console.warn(
-            `[Realtime] channel:${channelId} を再接続します:`,
+            `[Realtime] channel:${channelId} の購読を取り下げます:`,
             status,
             error?.message ?? error,
           )
-          if (!retryTimer) {
-            retryTimer = setTimeout(() => setChannelRetryNonce((value) => value + 1), 5_000)
-          }
+          void supabase.removeChannel(channel)
         }
       })
       return channel
@@ -122,10 +120,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       cancelled = true
-      if (retryTimer) clearTimeout(retryTimer)
       for (const channel of subscriptions) void supabase.removeChannel(channel)
     }
-  }, [authenticated, channelIds, channelRetryNonce, queryClient])
+  }, [authenticated, channelIds, queryClient])
 
   return <>{children}</>
 }

@@ -141,7 +141,7 @@ CLAUDE.md の方針「ポーリングで実装し、必要に応じて Supabase 
 | トピック | 配信元トリガー | 用途 |
 |---|---|---|
 | `channel:{channelId}` | `messages` INSERT/UPDATE、`message_reactions` 全イベント | チャット本文・リアクションの更新シグナル |
-| `user:{userId}` | `notifications` INSERT、`channel_read_states` INSERT/UPDATE | ベル・インボックス更新、既読のデバイス間同期 |
+| `user:{userId}` | `notifications` INSERT、`channel_read_states` INSERT/UPDATE、`channel_members` INSERT/DELETE | ベル・インボックス更新、既読のデバイス間同期、非公開チャンネルの参加・離脱 |
 
 - メッセージの削除はソフトデリート（`deleted_at`）のため UPDATE トリガーで拾える
 - `message_reactions` は行に `channel_id` がないため、トリガー内で親メッセージから引く
@@ -178,6 +178,7 @@ private channel の join は **`realtime.messages` への RLS（Realtime Authori
 | `channel:{id}` の `message_reactions` | 該当チャンネルの messages クエリを invalidate |
 | `user:{me}` の `notifications` | notifications を invalidate + 一覧 invalidate（未参加チャンネル・新規 DM の活動を回収） |
 | `user:{me}` の `channel_read_states` | チャンネル一覧 + notifications を invalidate → **他デバイス既読の即時同期** |
+| `user:{me}` の `channel_members` | チャンネル一覧を invalidate → **非公開チャンネルの参加・離脱を一覧と購読へ反映** |
 
 - 認証: 購読前に `supabase.realtime.setAuth(accessToken)`。トークンリフレッシュ時に再設定。チャンネルトピックの join は `user:{me}` の接続成功後に行う（認可前 join を防ぐ）
 - **再接続時（`user:{me}` の再 SUBSCRIBED）に対象クエリを一括 invalidate**し、オフライン中の取りこぼしを回収する

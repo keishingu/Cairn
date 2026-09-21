@@ -14,6 +14,7 @@ import {
   useWorkspaceChannels,
   useWorkspaceDms,
 } from '@/lib/chat/client'
+import { isRealtimeUnauthorized } from '@/lib/realtime-unauthorized'
 import { RealtimeIndicator } from './realtime-indicator'
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected'
@@ -33,7 +34,6 @@ export const useRealtime = () => React.useContext(RealtimeContext)
 
 // 切断インジケータを出すまでの猶予。瞬断でのちらつきを避ける
 const DEGRADED_DELAY_MS = 10_000
-const RETRY_DELAY_MS = 3_000
 // チャンネル一覧の invalidate をまとめるデバウンス。連続する新着での過剰な再取得を抑える
 const LIST_DEBOUNCE_MS = 800
 
@@ -97,21 +97,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     listTimerRef.current = setTimeout(() => invalidateChannelLists(queryClient), LIST_DEBOUNCE_MS)
   }, [queryClient])
 
-  // ─── ユーザートピック（notifications / channel_read_states）────
+  // ─── ユーザートピック（notifications / channel_read_states / channel_members）────
   React.useEffect(() => {
     if (!userId) return
 
     const supabase = createClient()
     let cancelled = false
     let userChannel: RealtimeChannel | null = null
-    let retryTimer: ReturnType<typeof setTimeout> | null = null
-
-    const clearRetryTimer = () => {
-      if (retryTimer) {
-        clearTimeout(retryTimer)
-        retryTimer = null
-      }
-    }
 
     const removeUserChannel = async (channel: RealtimeChannel) => {
       if (userChannel === channel) {
@@ -143,6 +135,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             // 他デバイスでの既読を即時反映（バッジ消去 + ベルの既読同期）
             scheduleListInvalidate()
             void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+          } else if (table === 'channel_members') {
+            // 非公開チャンネルの参加は一覧フィルタの正。既読行の有無に依存させない
+            scheduleListInvalidate()
           }
         })
       userChannel = currentChannel
@@ -150,7 +145,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       currentChannel.subscribe((subStatus, err) => {
         if (cancelled || currentChannel !== userChannel) return
         if (subStatus === 'SUBSCRIBED') {
-          clearRetryTimer()
           // デプロイにRealtimeコードが入っているか・接続できているかを判別できるよう成功も1行出す
           console.info('[Realtime] connected')
           setStatus('connected')
@@ -160,18 +154,35 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
           invalidateChannelLists(queryClient)
-        } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT' || subStatus === 'CLOSED') {
-          // 購読失敗の原因（認可ポリシー・トークン等）を隠さない
+          return
+        }
+
+        // CHANNEL_ERROR はソケット切断後の通常ライフサイクル。removeChannel すると
+        // supabase-js の自動再 JOIN を潰すので再接続はライブラリに任せる。
+        // ただし status を connected のままにすると、JOIN が TIMED_OUT しない長時間切断で
+        // バナーが出ない。disconnected にして 10 秒後に表示し、SUBSCRIBED で消す。
+        if (subStatus === 'CHANNEL_ERROR') {
+          console.warn('[Realtime] subscription interrupted:', subStatus, err?.message ?? err)
+          setStatus('disconnected')
+          return
+        }
+
+        // CLOSED は Phoenix がチャンネルを外した終端状態。同じインスタンスは再 JOIN されない。
+        // バナーは出さず、新しい購読だけ作り直す。
+        if (subStatus === 'CLOSED') {
+          console.warn('[Realtime] subscription closed, recreating:', err?.message ?? err)
+          void (async () => {
+            if (cancelled || currentChannel !== userChannel) return
+            await removeUserChannel(currentChannel)
+            if (cancelled) return
+            await connectUserChannel()
+          })()
+          return
+        }
+
+        if (subStatus === 'TIMED_OUT') {
           console.error('[Realtime] subscription failed:', subStatus, err?.message ?? err)
           setStatus('disconnected')
-          void (async () => {
-            await removeUserChannel(currentChannel)
-            if (cancelled || retryTimer) return
-            retryTimer = setTimeout(() => {
-              retryTimer = null
-              void connectUserChannel()
-            }, RETRY_DELAY_MS)
-          })()
         }
       })
     }
@@ -188,7 +199,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       cancelled = true
-      clearRetryTimer()
       authSub.subscription.unsubscribe()
       if (userChannel) void removeUserChannel(userChannel)
     }
@@ -234,6 +244,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       ch.subscribe((subStatus, err) => {
         if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
           console.error(`[Realtime] channel:${id} subscription failed:`, subStatus, err?.message ?? err)
+          // 未参加の非公開チャンネルは何回 JOIN しても直らない。ライブラリの再 JOIN を止める。
+          if (isRealtimeUnauthorized(err)) {
+            void supabase.removeChannel(ch)
+            current.delete(id)
+          }
         }
       })
       current.set(id, ch)

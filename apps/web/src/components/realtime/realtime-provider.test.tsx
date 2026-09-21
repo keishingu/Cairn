@@ -103,7 +103,72 @@ describe('RealtimeProvider', () => {
     expect(screen.queryByText('再接続中…')).toBeNull()
   })
 
-  it('購読失敗後に再試行し、復帰したら再接続バナーを消す', async () => {
+  it('CLOSED ではチャンネルを作り直し再接続バナーは出さない', async () => {
+    renderProvider()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    act(() => {
+      channelRecords[0]?.callback?.('CLOSED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    act(() => {
+      vi.advanceTimersByTime(10_000)
+    })
+
+    expect(channelRecords.length).toBeGreaterThanOrEqual(2)
+    expect(screen.queryByText('再接続中…')).toBeNull()
+  })
+
+  it('CHANNEL_ERROR ではチャンネルを作り直さず、10秒切れたら再接続バナーを出す', async () => {
+    renderProvider()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    act(() => {
+      channelRecords[0]?.callback?.('CHANNEL_ERROR', { message: 'boom' })
+    })
+    act(() => {
+      vi.advanceTimersByTime(9_999)
+    })
+    expect(channelRecords).toHaveLength(1)
+    expect(screen.queryByText('再接続中…')).toBeNull()
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(screen.getByText('再接続中…')).toBeInTheDocument()
+
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(channelRecords).toHaveLength(1)
+    expect(screen.queryByText('再接続中…')).toBeNull()
+  })
+
+  it('JOIN が TIMED_OUT したあと復帰したら再接続バナーを消す', async () => {
     renderProvider()
 
     await act(async () => {
@@ -113,11 +178,7 @@ describe('RealtimeProvider', () => {
     expect(channelRecords).toHaveLength(1)
 
     act(() => {
-      channelRecords[0]?.callback?.('CHANNEL_ERROR', { message: 'boom' })
-    })
-
-    await act(async () => {
-      await Promise.resolve()
+      channelRecords[0]?.callback?.('TIMED_OUT')
     })
 
     act(() => {
@@ -129,16 +190,10 @@ describe('RealtimeProvider', () => {
       vi.advanceTimersByTime(1)
     })
     expect(screen.getByText('再接続中…')).toBeInTheDocument()
-
-    await act(async () => {
-      vi.advanceTimersByTime(3_000)
-      await Promise.resolve()
-    })
-
-    expect(channelRecords).toHaveLength(2)
+    expect(channelRecords).toHaveLength(1)
 
     act(() => {
-      channelRecords[1]?.callback?.('SUBSCRIBED')
+      channelRecords[0]?.callback?.('SUBSCRIBED')
     })
 
     await act(async () => {
@@ -147,42 +202,31 @@ describe('RealtimeProvider', () => {
     expect(screen.queryByText('再接続中…')).toBeNull()
   })
 
-  it('古い user channel の CLOSED を再接続後の channel に波及させない', async () => {
-    renderProvider()
+  it('channel_members の broadcast でチャンネル一覧を再取得する', async () => {
+    const { queryClient } = renderProvider()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
 
     await act(async () => {
       await Promise.resolve()
     })
-
-    expect(channelRecords).toHaveLength(1)
-    const staleChannel = channelRecords[0]
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    invalidate.mockClear()
 
     act(() => {
-      staleChannel?.callback?.('CHANNEL_ERROR', { message: 'boom' })
+      channelRecords[0]?.broadcastCallback?.({ payload: { table: 'channel_members' } })
     })
-
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    await act(async () => {
-      vi.advanceTimersByTime(3_000)
-      await Promise.resolve()
-    })
-
-    expect(channelRecords).toHaveLength(2)
-
     act(() => {
-      staleChannel?.callback?.('CLOSED')
+      vi.advanceTimersByTime(800)
     })
 
-    await act(async () => {
-      await Promise.resolve()
-      vi.advanceTimersByTime(3_000)
-      await Promise.resolve()
-    })
-
-    expect(channelRecords).toHaveLength(2)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['workspace-channels'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project-channels'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dms'] })
   })
 
   it('チャンネルのtask broadcastでタスクqueryを再取得する', async () => {
@@ -206,5 +250,70 @@ describe('RealtimeProvider', () => {
     })
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tasks'] })
+  })
+
+  it('Unauthorized のチャンネル購読は破棄して再JOINしない', async () => {
+    workspaceChannels.push({ id: 'private-1' })
+    renderProvider()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const topic = channelRecords.find(record => record.topic === 'channel:private-1')
+    act(() => {
+      topic?.callback?.('CHANNEL_ERROR', {
+        message: 'Unauthorized: You do not have permissions to read from this Channel topic: channel:private-1',
+      })
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const removed = mockCreateClient.mock.results.some(result => {
+      const client = result.value as { removeChannel?: { mock?: { calls: unknown[] } } }
+      return (client.removeChannel?.mock?.calls.length ?? 0) > 0
+    })
+    expect(removed).toBe(true)
+  })
+
+  it('JWT 期限切れの Unauthorized ではチャンネル購読を破棄しない', async () => {
+    workspaceChannels.push({ id: 'channel-1' })
+    renderProvider()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    mockCreateClient.mock.results.forEach(result => {
+      const client = result.value as { removeChannel?: { mockClear?: () => void } }
+      client.removeChannel?.mockClear?.()
+    })
+
+    const topic = channelRecords.find(record => record.topic === 'channel:channel-1')
+    act(() => {
+      topic?.callback?.('CHANNEL_ERROR', { message: 'Unauthorized: Token has expired' })
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const removed = mockCreateClient.mock.results.some(result => {
+      const client = result.value as { removeChannel?: { mock?: { calls: unknown[] } } }
+      return (client.removeChannel?.mock?.calls.length ?? 0) > 0
+    })
+    expect(removed).toBe(false)
   })
 })
