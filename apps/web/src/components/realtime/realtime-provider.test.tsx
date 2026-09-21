@@ -103,7 +103,7 @@ describe('RealtimeProvider', () => {
     expect(screen.queryByText('再接続中…')).toBeNull()
   })
 
-  it('CLOSED ではチャンネルを作り直さず再接続バナーも出さない', async () => {
+  it('CLOSED ではチャンネルを作り直し再接続バナーは出さない', async () => {
     renderProvider()
 
     await act(async () => {
@@ -119,11 +119,15 @@ describe('RealtimeProvider', () => {
     act(() => {
       channelRecords[0]?.callback?.('CLOSED')
     })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
     act(() => {
       vi.advanceTimersByTime(10_000)
     })
 
-    expect(channelRecords).toHaveLength(1)
+    expect(channelRecords.length).toBeGreaterThanOrEqual(2)
     expect(screen.queryByText('再接続中…')).toBeNull()
   })
 

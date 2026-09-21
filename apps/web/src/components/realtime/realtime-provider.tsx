@@ -154,11 +154,24 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           return
         }
 
-        // CLOSED / CHANNEL_ERROR はソケット瞬断時の通常ライフサイクル。
+        // CHANNEL_ERROR はソケット瞬断時の通常ライフサイクル。
         // ここで removeChannel すると supabase-js の自動再 JOIN を潰し、
         // 「再接続中…」が誤って出る。再接続はライブラリに任せる。
-        if (subStatus === 'CLOSED' || subStatus === 'CHANNEL_ERROR') {
+        if (subStatus === 'CHANNEL_ERROR') {
           console.warn('[Realtime] subscription interrupted:', subStatus, err?.message ?? err)
+          return
+        }
+
+        // CLOSED は Phoenix がチャンネルを外した終端状態。同じインスタンスは再 JOIN されない。
+        // バナーは出さず、新しい購読だけ作り直す。
+        if (subStatus === 'CLOSED') {
+          console.warn('[Realtime] subscription closed, recreating:', err?.message ?? err)
+          void (async () => {
+            if (cancelled || currentChannel !== userChannel) return
+            await removeUserChannel(currentChannel)
+            if (cancelled) return
+            await connectUserChannel()
+          })()
           return
         }
 

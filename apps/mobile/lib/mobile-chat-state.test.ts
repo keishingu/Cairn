@@ -6,12 +6,16 @@ describe('モバイルチャット状態', () => {
     expect(shouldRetryRealtime('TIMED_OUT')).toBe(true)
   })
 
-  it.each(['CHANNEL_ERROR', 'CLOSED', 'SUBSCRIBED'])(
+  it.each(['CHANNEL_ERROR', 'SUBSCRIBED'])(
     '%sではアプリ側でRealtime購読を作り直さない',
     (status) => {
       expect(shouldRetryRealtime(status)).toBe(false)
     },
   )
+
+  it('CLOSED ではアプリ側でRealtime購読を作り直す', () => {
+    expect(shouldRetryRealtime('CLOSED')).toBe(true)
+  })
 
   it('topic 権限拒否ではアプリ側でRealtime購読を作り直さない', () => {
     expect(shouldRetryRealtime('CHANNEL_ERROR', {
