@@ -10,7 +10,6 @@ import { sendPushToUser } from '@/lib/push/send'
 import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
 import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
-import { passesPhaseTwoConfidence } from '@/lib/ai-nudges/llm-nudge-rules'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // DM は Push を抑制し、メンションはバッジ更新なしの Push に切り替えられる。
@@ -376,7 +375,7 @@ export const onMessageCreated = inngest.createFunction(
 
     // ファイル添付通知（送信者以外の全メンバーへ）
     let fileNotifications = 0
-    if (attachmentFileIds.length > 0) {
+    if (attachmentFileIds.length > 0 && members.length > 0) {
       await step.run('create-file-notifications', async () => {
         const { db, notifications, files } = await import('@cairn/db')
         const { eq } = await import('drizzle-orm')
@@ -1007,7 +1006,7 @@ export const reconcileAiNudgesHeartbeat = inngest.createFunction(
   },
 )
 
-// Phase 2 の差分巡回。6時間ごとにDM以外の新着チャンネルだけを二段階LLMで評価する。
+// Phase 2 の差分巡回。6時間ごとにDM以外の新着チャンネルだけをJev中心の二段階判定で評価する。
 // 02:00 JST の実行は候補を生成した後、08:00までdurable sleepしてからコード側の
 // 発話ゲートを再評価する。concurrency=1 + 同一関数内FIFOにより、古い遅延runを先に配信する。
 export const scanAiNudgesPhaseTwo = inngest.createFunction(
@@ -1083,6 +1082,18 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
         const acceptedBeforeCurrentInput = acceptedCandidatesByWorkspace.get(input.workspaceId) ?? 0
         let attemptedPrimaryCandidates = 0
         let fundingBlocked = false
+        const refinementInput =
+          primaryCandidateFilter.candidates.length > 0
+            ? await step.run(
+                `load-channel-continuation-${channel.channelId}-${scanKind}`,
+                async () => {
+                  const { loadPhaseTwoContinuationContext } = await import(
+                    '@/lib/ai-nudges/llm-nudge-scan'
+                  )
+                  return loadPhaseTwoContinuationContext(input)
+                },
+              )
+            : input
         // false positiveを飛ばしつつ、残りの配信枠が埋まった時点で精査を止める。
         // 未試行候補が残る場合だけカーソルを保持して次回へ回す。
         for (const [index, candidate] of primaryCandidateFilter.candidates.entries()) {
@@ -1107,17 +1118,16 @@ export const scanAiNudgesPhaseTwo = inngest.createFunction(
             `refine-channel-${channel.channelId}-${scanKind}-${index}`,
             async () => {
               const { refinePhaseTwoCandidate } = await import('@/lib/ai-nudges/llm-nudge-scan')
-              return refinePhaseTwoCandidate(input, candidate)
+              return refinePhaseTwoCandidate(refinementInput, candidate)
             },
           )
           if (refinement.fundingBlocked) {
             fundingBlocked = true
             break
           }
-          // 配信時と同じ信頼度ゲートをここでも適用し、低信頼候補で枠を使い切らない。
-          if (refinement.candidate && passesPhaseTwoConfidence(refinement.candidate.confidence)) {
-            refinedCandidates.push(refinement.candidate)
-          }
+          // 二次判定が返した候補を採用する。confidenceは監査値であり、一次0.70を
+          // 別の共通閾値で再び落とさない。
+          if (refinement.candidate) refinedCandidates.push(refinement.candidate)
         }
         const acceptedCandidates = refinedCandidates
         remainingCandidateBudget.set(input.workspaceId, budget - acceptedCandidates.length)

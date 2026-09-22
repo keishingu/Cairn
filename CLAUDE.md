@@ -27,7 +27,7 @@ packages/config/   tsconfig / ESLint の共有設定
 - **DB**: Supabase PostgreSQL + Drizzle ORM + pgvector
 - **認証・リアルタイム・ストレージ**: Supabase Auth / Realtime / Storage
 - チャット・通知・未読の同期は **Supabase Realtime（Broadcast from Database）** で配信。DB トリガー + `realtime.broadcast_changes()` → `RealtimeProvider` が該当クエリを invalidate → REST 再取得（ポーリング・フォールバックなし）。**postgres_changes は本プロジェクトの Realtime では動作しないため使用しない**。詳細は [`docs/notification-ux-redesign.md`](docs/notification-ux-redesign.md) の Phase 2
-- **AI**: Vercel AI SDK + OpenAI API (gpt-5 / gpt-5-mini)
+- **AI**: Vercel AI SDK + OpenAI API (gpt-5 / gpt-5-mini)、Vercel AI Gateway + Jev（AI PMO Phase 2 の判定）
 - **非同期ジョブ**: Inngest
 
 ## アーキテクチャ方針
@@ -60,13 +60,13 @@ pnpm dev
 
 ## 決定済みの技術判断
 
-- **DM と AI PMO は環境別 feature flag でリリースを制御する**: `packages/shared/src/config/feature-flags.ts` の `FEATURE_FLAGS` を Web・API・Expo で共有する。`VERCEL_ENV === 'production'` のときだけ `dm` / `aiPmo` を `false`、それ以外では `true` とする。Productionへ公開する際はこの条件を変更して再ビルド・再リリースする。背景は [`docs/telecom-business-filing-research.md`](docs/telecom-business-filing-research.md)
+- **DM と AI PMO は全環境で利用可能**: `packages/shared/src/config/feature-flags.ts` の `FEATURE_FLAGS` を Web・API・Expo で共有する。AI PMOの実際の巡回・配信はワークスペース単位の設定で段階公開する。DMの法令対応経緯は [`docs/telecom-business-filing-research.md`](docs/telecom-business-filing-research.md)
 
 - **Web のプロダクト分析は production 限定の PostHog**: Vercel Production のみに `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` を設定し、環境変数がある場合だけ初期化する。ページビューは History API の変化を自動捕捉し、認証後は Supabase の user ID を distinct ID として `identify`、サインアウト時は `reset` する。Feature Flag は市場投入判断による機能公開制御に使い、インフラ接続の環境差には使わない
 - **認証後の既定画面は `/chats`**: Web のサイドメニュー先頭・モバイル（Web / Expo）の左端タブをチャットとし、通常ログイン、認証済みでの `/` / `/auth/*`、オンボーディング完了、ワークスペース作成・切替、PWA / Electron / Expo の起動先をチャットへ統一する。数字ナビは表示順と揃え、チャットを `1`、プロジェクト一覧・カレンダー・カンバン・マイタスクを `2`〜`5` とする。個別会話の `/chats/[channelId]` は維持する
 - **tsconfig の extends は相対パス**で書く（`../../packages/config/tsconfig/base.json`）
   - Vite/Vitest の `tsconfck` が workspace パッケージ参照を解決できないため
-- **AIモデルは OpenAI**（gpt-5 / gpt-5-mini）。Claude は使用しない
+- **生成AIモデルは OpenAI**（gpt-5 / gpt-5-mini）。AI PMO Phase 2 の分類・発話可否・宛先選定だけは、Vercel AI Gateway の `typesafe-ai/jev` を `/v1/evaluate` で利用する。現行 AI SDK v4 には Evaluation API がないため、この呼び出しだけは HTTP を直接使う。Claude は使用しない
 - **Mobile (Expo) は `apps/mobile/`**: チャット以外は WebView で Web 版を表示する方針。ネイティブ化のロードマップは [`docs/08_expo_roadmap.md`](docs/08_expo_roadmap.md) を参照
   - 開発は expo-dev-client を使う。`pnpm ios` / `pnpm android` でローカルビルド（単体アプリとしてインストール）、2回目以降は `pnpm dev` で Metro 起動のみ
   - App Store / TestFlight は `pnpm build:production:ios` / `pnpm submit:ios:latest` / `pnpm release:testflight:ios` を使う。初回設定、メタデータ、審査アカウント、スクリーンショット、確認項目は [`docs/app-store-submission.md`](docs/app-store-submission.md) を参照

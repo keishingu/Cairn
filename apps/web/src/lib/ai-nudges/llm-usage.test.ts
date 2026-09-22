@@ -13,6 +13,14 @@ describe('Phase 2のトークン使用量の正規化', () => {
     })).toEqual({ inputTokens: 120, outputTokens: 40, totalTokens: 160 })
   })
 
+  it('Jevが返す入力・出力トークン名も記録用に変換する', () => {
+    expect(normalizePhaseTwoTokenUsage({ inputTokens: 321, outputTokens: 0 })).toEqual({
+      inputTokens: 321,
+      outputTokens: 0,
+      totalTokens: 321,
+    })
+  })
+
   it('合計トークンがないプロバイダーでは入力と出力から合計を作る', () => {
     expect(normalizePhaseTwoTokenUsage({ promptTokens: 120, completionTokens: 40 })).toEqual({
       inputTokens: 120,
