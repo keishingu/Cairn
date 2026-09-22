@@ -133,6 +133,24 @@ export const createProjectStatusSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
 })
 
+export const createProjectRoleSchema = z.object({
+  name: z.string().trim().min(1).max(30),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+})
+
+export const patchProjectRoleSchema = z.object({
+  name: z.string().trim().min(1).max(30).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  sortOrder: z.number().int().min(0).optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
+export const assignProjectRoleSchema = z.object({
+  roleId: z.string().uuid(),
+})
+
 const profileAttributeNameSchema = z.string().trim().min(1).max(20)
 export const profileAttributeColorSchema = z.enum(PROFILE_ATTRIBUTE_COLOR_IDS)
 
@@ -170,6 +188,9 @@ export const patchWorkspaceSettingsSchema = z.object({
   { message: 'At least one field is required' },
 )
 export type CreateProjectStatusInput = z.infer<typeof createProjectStatusSchema>
+export type CreateProjectRoleInput = z.infer<typeof createProjectRoleSchema>
+export type PatchProjectRoleInput = z.infer<typeof patchProjectRoleSchema>
+export type AssignProjectRoleInput = z.infer<typeof assignProjectRoleSchema>
 
 export const patchProjectStatusSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),

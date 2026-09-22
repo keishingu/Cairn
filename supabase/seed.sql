@@ -95,6 +95,12 @@ INSERT INTO project_statuses (id, workspace_id, name, color, sort_order) VALUES
   ('20000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000001', '振り返り中', '#F43F5E', '5'),
   ('20000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000001', '完了',       '#6B7280', '6');
 
+-- Project roles
+INSERT INTO project_roles (id, workspace_id, name, color, sort_order, legacy_role) VALUES
+  ('21000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'リーダー',     '#3B82F6', 1, 'leader'),
+  ('21000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'サブリーダー', '#8B5CF6', 2, 'subleader'),
+  ('21000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001', 'メンバー',     '#6B7280', 3, 'member');
+
 -- Projects
 INSERT INTO projects (id, workspace_id, title, description, status_id, start_date, end_date, created_by) VALUES
   ('30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '北アルプス縦走計画', '槍ヶ岳〜穂高連峰を縦走する夏山合宿計画', '20000000-0000-0000-0000-000000000001', '2026-06-12', '2026-06-16', '00000000-0000-0000-0000-000000000001'),
@@ -168,6 +174,13 @@ INSERT INTO project_members (project_id, user_id, role) VALUES
   ('30000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000006', 'member'),
   ('30000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000007', 'member'),
   ('30000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000008', 'member');
+
+UPDATE project_members pm
+SET role_id = pr.id
+FROM projects p, project_roles pr
+WHERE p.id = pm.project_id
+  AND pr.workspace_id = p.workspace_id
+  AND pr.legacy_role = pm.role;
 
 -- Tags
 INSERT INTO tags (id, workspace_id, name, color) VALUES

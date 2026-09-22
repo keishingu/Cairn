@@ -1,9 +1,22 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { bigint, boolean, check, index, integer, jsonb, pgTable, pgView, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import {
+  bigint,
+  boolean,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  pgView,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core'
 import { eq, sql } from 'drizzle-orm'
-import { memberStatusEnum, userStatusEnum, workspaceRoleEnum } from './enums'
+import { memberStatusEnum, projectMemberRoleEnum, userStatusEnum, workspaceRoleEnum } from './enums'
 
 export interface WorkspaceCoverPhoto {
   id: string
@@ -51,10 +64,18 @@ export const workspaces = pgTable('workspaces', {
   aiNudgesPhaseOneEnabled: boolean('ai_nudges_phase_one_enabled').notNull().default(true),
   aiNudgesPhaseTwoEnabled: boolean('ai_nudges_phase_two_enabled').notNull().default(false),
   // Phase 2 の実際の利用量。月次請求額の推定ではなく、各AIプロバイダーが返したトークン数の累計を保持する。
-  aiNudgesPhaseTwoInputTokens: bigint('ai_nudges_phase_two_input_tokens', { mode: 'number' }).notNull().default(0),
-  aiNudgesPhaseTwoOutputTokens: bigint('ai_nudges_phase_two_output_tokens', { mode: 'number' }).notNull().default(0),
-  aiNudgesPhaseTwoTotalTokens: bigint('ai_nudges_phase_two_total_tokens', { mode: 'number' }).notNull().default(0),
-  aiNudgesPhaseTwoRequestCount: bigint('ai_nudges_phase_two_request_count', { mode: 'number' }).notNull().default(0),
+  aiNudgesPhaseTwoInputTokens: bigint('ai_nudges_phase_two_input_tokens', { mode: 'number' })
+    .notNull()
+    .default(0),
+  aiNudgesPhaseTwoOutputTokens: bigint('ai_nudges_phase_two_output_tokens', { mode: 'number' })
+    .notNull()
+    .default(0),
+  aiNudgesPhaseTwoTotalTokens: bigint('ai_nudges_phase_two_total_tokens', { mode: 'number' })
+    .notNull()
+    .default(0),
+  aiNudgesPhaseTwoRequestCount: bigint('ai_nudges_phase_two_request_count', { mode: 'number' })
+    .notNull()
+    .default(0),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => profiles.id),
@@ -180,4 +201,26 @@ export const projectStatuses = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.workspaceId, t.name)],
+)
+
+// プロジェクト内の業務上の役割。legacyRole は段階移行中の旧 enum との互換用で、
+// 表示名や色の共有元はこのテーブルとする。
+export const projectRoles = pgTable(
+  'project_roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    color: text('color').notNull().default('#6B7280'),
+    sortOrder: integer('sort_order').notNull(),
+    legacyRole: projectMemberRoleEnum('legacy_role'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('project_roles_workspace_id_name_unique').on(t.workspaceId, t.name),
+    unique('project_roles_workspace_id_legacy_role_unique').on(t.workspaceId, t.legacyRole),
+  ],
 )

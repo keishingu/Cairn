@@ -14,14 +14,26 @@ export interface ProjectMemberDto {
   email: string | null
   avatarUrl: string | null
   role: 'leader' | 'subleader' | 'member' | 'reviewer' | 'observer'
+  roleId: string | null
+  roleName: string
+  roleColor: string
+  roleSortOrder: number
   attendance: 'attending' | 'tentative' | 'declined'
   addedAt: string
 }
 
-export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+const LEGACY_ROLE_META: Record<
+  ProjectMemberDto['role'],
+  { name: string; color: string; sortOrder: number }
+> = {
+  leader: { name: 'リーダー', color: '#3B82F6', sortOrder: 1 },
+  subleader: { name: 'サブリーダー', color: '#8B5CF6', sortOrder: 2 },
+  member: { name: 'メンバー', color: '#6B7280', sortOrder: 3 },
+  reviewer: { name: 'レビュアー', color: '#10B981', sortOrder: 4 },
+  observer: { name: 'オブザーバー', color: '#F59E0B', sortOrder: 5 },
+}
+
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -29,8 +41,15 @@ export async function GET(
   try {
     const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
-    const { profiles, projectMembers, projects, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const {
+      profiles,
+      projectMembers,
+      projectRoles,
+      projects,
+      workspaceMembers,
+      activeWorkspaceMembers,
+    } = await import('@cairn/db')
+    const { eq, and, asc } = await import('drizzle-orm')
 
     const [project] = await db
       .select({ id: projects.id })
@@ -51,31 +70,61 @@ export async function GET(
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         role: projectMembers.role,
+        roleId: projectMembers.roleId,
+        roleName: projectRoles.name,
+        roleColor: projectRoles.color,
+        roleSortOrder: projectRoles.sortOrder,
         attendance: projectMembers.attendance,
         addedAt: projectMembers.createdAt,
       })
       .from(projectMembers)
-      .innerJoin(activeWorkspaceMembers, and(
-        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
-        eq(activeWorkspaceMembers.userId, projectMembers.userId),
-      ))
+      .innerJoin(
+        activeWorkspaceMembers,
+        and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, projectMembers.userId),
+        ),
+      )
       .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .leftJoin(
+        workspaceMembers,
+        and(
+          eq(workspaceMembers.userId, profiles.id),
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+        ),
+      )
+      .leftJoin(projectRoles, and(
+        eq(projectMembers.roleId, projectRoles.id),
+        eq(projectRoles.workspaceId, ctx.workspaceId),
+      ))
       .where(eq(projectMembers.projectId, projectId))
-      .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
+      .orderBy(
+        asc(projectRoles.sortOrder),
+        workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+      )
 
-    const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
+    const emails = await resolveEmailsByUserId(
+      admin,
+      rows.map((row) => row.userId),
+    )
 
     return NextResponse.json(
-      rows.map(r => ({
-        userId: r.userId,
-        displayName: r.displayName,
-        email: emails.get(r.userId) ?? null,
-        avatarUrl: r.avatarUrl ?? null,
-        role: r.role,
-        attendance: r.attendance,
-        addedAt: r.addedAt.toISOString().slice(0, 10),
-      } satisfies ProjectMemberDto)),
+      rows.map((r) => {
+        const fallback = LEGACY_ROLE_META[r.role]
+        return {
+          userId: r.userId,
+          displayName: r.displayName,
+          email: emails.get(r.userId) ?? null,
+          avatarUrl: r.avatarUrl ?? null,
+          role: r.role,
+          roleId: r.roleId,
+          roleName: r.roleName ?? fallback.name,
+          roleColor: r.roleColor ?? fallback.color,
+          roleSortOrder: r.roleSortOrder ?? fallback.sortOrder,
+          attendance: r.attendance,
+          addedAt: r.addedAt.toISOString().slice(0, 10),
+        } satisfies ProjectMemberDto
+      }),
     )
   } catch (err) {
     console.error('[GET /api/projects/[id]/members]', err)
@@ -83,10 +132,7 @@ export async function GET(
   }
 }
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -98,19 +144,30 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { userId, userIds, role = 'member' } = body as { userId?: string; userIds?: string[]; role?: string }
+  const {
+    userId,
+    userIds,
+    role = 'member',
+    roleId,
+  } = body as { userId?: string; userIds?: string[]; role?: string; roleId?: string }
   if (userIds !== undefined && !Array.isArray(userIds)) {
     return NextResponse.json({ error: 'userIds must be an array' }, { status: 422 })
   }
-  if (userIds?.some(candidate => typeof candidate !== 'string' || candidate.length === 0)) {
-    return NextResponse.json({ error: 'userIds must contain only non-empty strings' }, { status: 422 })
+  if (userIds?.some((candidate) => typeof candidate !== 'string' || candidate.length === 0)) {
+    return NextResponse.json(
+      { error: 'userIds must contain only non-empty strings' },
+      { status: 422 },
+    )
   }
   const normalizedUserIds = [...new Set((userIds ?? (userId ? [userId] : [])).filter(Boolean))]
   if (normalizedUserIds.length === 0) {
     return NextResponse.json({ error: 'userId or userIds is required' }, { status: 422 })
   }
-  if (normalizedUserIds.some(candidate => !z.string().uuid().safeParse(candidate).success)) {
+  if (normalizedUserIds.some((candidate) => !z.string().uuid().safeParse(candidate).success)) {
     return NextResponse.json({ error: 'userId and userIds must be UUIDs' }, { status: 422 })
+  }
+  if (roleId !== undefined && !z.string().uuid().safeParse(roleId).success) {
+    return NextResponse.json({ error: 'roleId must be a UUID' }, { status: 422 })
   }
 
   const validRoles = ['leader', 'subleader', 'member', 'reviewer', 'observer']
@@ -121,7 +178,14 @@ export async function POST(
   try {
     const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
-    const { profiles, projectMembers, projects, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const {
+      profiles,
+      projectMembers,
+      projectRoles,
+      projects,
+      workspaceMembers,
+      activeWorkspaceMembers,
+    } = await import('@cairn/db')
     const { eq, and, inArray } = await import('drizzle-orm')
 
     const [project] = await db
@@ -136,11 +200,37 @@ export async function POST(
     const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
 
+    const [selectedRole] = await db
+      .select({
+        id: projectRoles.id,
+        name: projectRoles.name,
+        color: projectRoles.color,
+        sortOrder: projectRoles.sortOrder,
+        legacyRole: projectRoles.legacyRole,
+      })
+      .from(projectRoles)
+      .where(
+        and(
+          eq(projectRoles.workspaceId, ctx.workspaceId),
+          roleId
+            ? eq(projectRoles.id, roleId)
+            : eq(projectRoles.legacyRole, role as ProjectMemberDto['role']),
+        ),
+      )
+    if (!selectedRole) {
+      return NextResponse.json({ error: 'Role not found' }, { status: 422 })
+    }
+
     // プロジェクトに追加できるのは active メンバーのみ（非活性メンバーは追加不可）
     const wsMembers = await db
       .select({ userId: activeWorkspaceMembers.userId })
       .from(activeWorkspaceMembers)
-      .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), inArray(activeWorkspaceMembers.userId, normalizedUserIds)))
+      .where(
+        and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          inArray(activeWorkspaceMembers.userId, normalizedUserIds),
+        ),
+      )
 
     if (wsMembers.length !== normalizedUserIds.length) {
       return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })
@@ -149,10 +239,11 @@ export async function POST(
     const inserted = await db
       .insert(projectMembers)
       .values(
-        normalizedUserIds.map(targetUserId => ({
+        normalizedUserIds.map((targetUserId) => ({
           projectId,
           userId: targetUserId,
-          role: (role as ProjectMemberDto['role']),
+          role: selectedRole.legacyRole ?? 'member',
+          roleId: selectedRole.id,
           attendance: 'attending' as const,
         })),
       )
@@ -160,6 +251,7 @@ export async function POST(
       .returning({
         userId: projectMembers.userId,
         role: projectMembers.role,
+        roleId: projectMembers.roleId,
         attendance: projectMembers.attendance,
         addedAt: projectMembers.createdAt,
       })
@@ -168,7 +260,7 @@ export async function POST(
       return NextResponse.json({ error: 'Member already exists' }, { status: 409 })
     }
 
-    const insertedUserIds = inserted.map(member => member.userId)
+    const insertedUserIds = inserted.map((member) => member.userId)
     const profileRows = await db
       .select({
         userId: profiles.id,
@@ -176,12 +268,18 @@ export async function POST(
         avatarUrl: workspaceMembers.avatarUrl,
       })
       .from(profiles)
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .leftJoin(
+        workspaceMembers,
+        and(
+          eq(workspaceMembers.userId, profiles.id),
+          eq(workspaceMembers.workspaceId, ctx.workspaceId),
+        ),
+      )
       .where(inArray(profiles.id, insertedUserIds))
 
-    const profileMap = new Map(profileRows.map(profile => [profile.userId, profile]))
+    const profileMap = new Map(profileRows.map((profile) => [profile.userId, profile]))
     const emails = await resolveEmailsByUserId(admin, insertedUserIds)
-    const insertedMembers = inserted.map(member => {
+    const insertedMembers = inserted.map((member) => {
       const profile = profileMap.get(member.userId)
       return {
         userId: member.userId,
@@ -189,6 +287,10 @@ export async function POST(
         email: emails.get(member.userId) ?? null,
         avatarUrl: profile?.avatarUrl ?? null,
         role: member.role,
+        roleId: member.roleId,
+        roleName: selectedRole.name,
+        roleColor: selectedRole.color,
+        roleSortOrder: selectedRole.sortOrder,
         attendance: member.attendance,
         addedAt: member.addedAt.toISOString().slice(0, 10),
       } satisfies ProjectMemberDto
@@ -201,7 +303,10 @@ export async function POST(
         data: { projectId, workspaceId: ctx.workspaceId },
       })
     } catch (eventError) {
-      console.warn('[POST /api/projects/[id]/members] Inngest event send failed (indexing skipped):', eventError)
+      console.warn(
+        '[POST /api/projects/[id]/members] Inngest event send failed (indexing skipped):',
+        eventError,
+      )
     }
 
     return NextResponse.json(
