@@ -375,7 +375,7 @@ export const onMessageCreated = inngest.createFunction(
 
     // ファイル添付通知（送信者以外の全メンバーへ）
     let fileNotifications = 0
-    if (attachmentFileIds.length > 0) {
+    if (attachmentFileIds.length > 0 && members.length > 0) {
       await step.run('create-file-notifications', async () => {
         const { db, notifications, files } = await import('@cairn/db')
         const { eq } = await import('drizzle-orm')
