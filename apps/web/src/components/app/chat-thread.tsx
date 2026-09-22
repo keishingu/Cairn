@@ -600,11 +600,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const mentionCandidates = React.useMemo(() => {
     if (mentionQuery === null || !mentionMembers) return []
     const q = mentionQuery.toLowerCase()
-    return mentionMembers.filter(m => m.displayName.toLowerCase().includes(q)).slice(0, 6)
+    return mentionMembers.filter(m => m.displayName.toLowerCase().includes(q))
   }, [mentionQuery, mentionMembers])
 
   // 候補が変わったら選択をリセット
-  React.useEffect(() => { setSelectedIdx(0) }, [mentionCandidates.length])
+  React.useEffect(() => { setSelectedIdx(0) }, [mentionCandidates])
 
   const detectMention = (val: string, cursorPos: number) => {
     const before = val.slice(0, cursorPos)
@@ -663,9 +663,10 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       ? { position: 'fixed', bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width, zIndex: 200 }
       : { position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, zIndex: 200 }
     return (
-      <div style={{ ...style, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+      <div style={{ ...style, maxHeight: 240, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflowX: 'hidden', overflowY: 'auto', overscrollBehavior: 'contain' }}>
         {mentionCandidates.map((m, i) => (
           <button key={m.userId}
+            ref={i === selectedIdx ? node => node?.scrollIntoView?.({ block: 'nearest' }) : undefined}
             onMouseDown={e => { e.preventDefault(); insertMention(m.userId, m.displayName) }}
             onMouseEnter={() => setSelectedIdx(i)}
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: i === selectedIdx ? 'var(--accent-soft)' : 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
@@ -1419,10 +1420,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     // これによりアクセスできない人へメンション通知が飛ぶのを未然に防ぐ（サーバー側でも防御）。
     if (projectId) {
       const projectMemberIds = new Set(projectMembers.map(m => m.userId))
-      return wsMembers.filter(m =>
-        m.userId !== currentUser?.id &&
-        (m.role !== 'guest' || projectMemberIds.has(m.userId)),
-      )
+      return wsMembers
+        .filter(m =>
+          m.userId !== currentUser?.id &&
+          (m.role !== 'guest' || projectMemberIds.has(m.userId)),
+        )
+        .sort((a, b) => Number(projectMemberIds.has(b.userId)) - Number(projectMemberIds.has(a.userId)))
     }
     return wsMembers.filter(m => m.userId !== currentUser?.id)
   }, [chMemberIds, wsMembers, currentUser?.id, projectId, projectMembers])
