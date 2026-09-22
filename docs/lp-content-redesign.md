@@ -53,7 +53,7 @@ GitHub リンクは維持する。Hero の二次 CTA も実リポジトリへ向
 ### 書いてはいけない
 
 - **未出荷の約束**: 自律エージェント、予定の自動変更、チャンネル内 AI メンバー、Bring Your Own AI、動く `docker compose up`
-- **AI PMO / 監視**: 「誰が遅いか」ダッシュボード、遅れの自動指摘を売りにしない（`FEATURE_FLAGS.aiPmo` は production で `false`。受動ナッジを LP の機能として出さない）
+- **AI PMO / 監視**: 「誰が遅いか」ダッシュボード、遅れの自動指摘を売りにしない（Productionでもワークスペース単位の段階公開中。受動ナッジを LP の機能として出さない）
 - **人数課金**: per-seat / 席課金の暗示も禁止
 - **ケルン課金 UX**: 石積み・風化・Solo プラン名は初回訪問者向け LP に出さない。入口では「会話は無料、大きなファイルと能動 AI だけ有料」まで
 - **競合製品名を主物語にしない**: Backlog / Chatwork / Slack / Notion / LINE を Hero、H1、セクション1–2、まとめ役本文に置かない。検索で見つかるように `<title>` / `meta description` / `og:description` とページ下部 FAQ（`#faq`）に自然な日本語で置く。FAQ は「案件コメント + 仕事チャットが分かれている状態の置き場所」まで。機能比較表や `/vs/` ページは作らない
@@ -105,5 +105,5 @@ GitHub リンクは維持する。Hero の二次 CTA も実リポジトリへ向
 
 - LP コピーの PDCA 運用（実験カード issue・`marketing.policy.yaml`）は PR #282 のスコープ。ペルソナ別 CVR 比較の受け皿として `?p=` は残っているが、**現行コピーはペルソナ切替を使わない**
 - BYO AI・Docker セルフホストが実装されたら、事実として昇格させてよい
-- AI PMO を production で出すまでは、受動 AI を LP の機能として書かない
+- AI PMO の段階公開中は、受動 AI を LP の機能として書かない
 - OGP 画像・canonical・robots・sitemap は整備済み。title / description / FAQ の競合名は検索用であり、Hero のコピー実験とは分けて扱う

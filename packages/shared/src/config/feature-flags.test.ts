@@ -2,16 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { enabledOutsideProduction } from './feature-flags'
+import { FEATURE_FLAGS } from './feature-flags'
 
-describe('環境別feature flag', () => {
-  it('Productionでは無効になる', () => {
-    expect(enabledOutsideProduction('production')).toBe(false)
-  })
-
-  it('Production以外では有効になる', () => {
-    expect(enabledOutsideProduction('preview')).toBe(true)
-    expect(enabledOutsideProduction('development')).toBe(true)
-    expect(enabledOutsideProduction(undefined)).toBe(true)
+describe('feature flag', () => {
+  it('DMとAI PMOを全環境で利用可能にする', () => {
+    expect(FEATURE_FLAGS).toEqual({ dm: true, aiPmo: true })
   })
 })

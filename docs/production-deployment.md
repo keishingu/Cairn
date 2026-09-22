@@ -77,6 +77,7 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
 
 ### 接続・キーの方針
 
+- **Vercel AI Gateway**: Production / Preview は Vercel がデプロイへ自動注入・更新する `VERCEL_OIDC_TOKEN` を使う。固定の `AI_GATEWAY_API_KEY` は設定せず、ローカルやVercel外からの実行が必要な場合だけ環境別に発行する。OIDCトークンは短命のため1Passwordへ保存しない。
 - **PostHog**: Vercel の **Production のみ**に `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` と `NEXT_PUBLIC_POSTHOG_HOST` を設定する。ローカルと Preview には設定せず、SDK を初期化しない。これはデプロイ環境の接続設定として扱い、事業判断による公開制御用の Feature Flag には含めない。
 - **アプリ実行時 `DATABASE_URL`（Vercel）**: Transaction pooler の **Shared Pooler / IPv4**（ホスト `aws-X-ap-northeast-1.pooler.supabase.com:6543`、ユーザー `postgres.<ref>`）。
   - Direct connection（`db.<ref>.supabase.co`）は **IPv6 専用で Vercel(IPv4) から繋がらない**ため使わない。
