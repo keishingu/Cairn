@@ -38,8 +38,8 @@
 | 5 | 細かいところ `#details` | 圏外送信、閲覧中は Push を鳴らさない、下書き保存、ゲスト、アーカイブ、最新版ラベル、マルチデバイス、キーボード、電気通信事業届出 |
 | 6 | 料金 `#pricing` | Free ¥0 / Solo ¥300（1人・月）/ Team ¥3,000（ワークスペース・月、準備中・目安）/ Expedition 要相談 |
 | 7 | AI `#ai` | 出典つき回答（Solo）と MCP（任意）を短く |
-| 8 | FAQ `#faq` | 無料の範囲、無料プランの組み合わせからの移行、Solo の要否、ゲスト、企業導入 |
-| 9 | オープンソース `#open-source` | Apache-2.0 と GitHub の 1 行だけ |
+| 8 | オープンソース `#open-source` | Apache-2.0。中身を確認できる / サービスに縛られない（セルフホストは課金無効・手順は整備中）/ 開発者に直接要望を出せる。GitHub と要望受付ワークスペースへの導線 |
+| 9 | FAQ `#faq` | 無料の範囲、無料で提供できる理由、無料プランの組み合わせからの移行、Solo の要否、ゲスト、企業導入 |
 | 10 | 最終 CTA `#demo` | Hero と同じ見出し。クレジットカード不要 |
 
 
@@ -69,6 +69,7 @@
 | 圏外送信（スマホアプリ） | Expo の送信オフラインキュー |
 | 閲覧中は Push を鳴らさない | 猶予付き既読再確認 |
 | 退会者のアーカイブと発言の保持 | [`user-deactivation-design.md`](./user-deactivation-design.md) |
+| セルフホストでは課金が無効（容量・AI の制限なし、AI は自前の OpenAI キー） | `isBillingEnabled()`（`STRIPE_SECRET_KEY` の有無） |
 | 電気通信事業届出（A-08-24291） | [`telecom-business-filing-research.md`](./telecom-business-filing-research.md) |
 
 ### 書いてはいけない
@@ -84,7 +85,7 @@
 ## 5. CTA とパラメータ規約
 
 - 主要 CTA: 「**無料で始める / Start for free**」→ `/auth/login?utm_source=lp&utm_content=<cta-id>`
-- `data-cta`: `nav` / `hero` / `pricing` / `final` / `footer-product`（フッターアイコン・コミュニティは要望受付ワークスペース招待）
+- `data-cta`: `nav` / `hero` / `pricing` / `final` / `footer-product` / `oss-community`（フッターアイコン・コミュニティは要望受付ワークスペース招待）
 - Expedition の問い合わせは既存の相談窓口へ
 
 

@@ -50,6 +50,7 @@
       <a href="#free"><span data-i="ja">無料の範囲</span><span data-i="en">Free plan</span></a>
       <a href="#compare"><span data-i="ja">比較</span><span data-i="en">Compare</span></a>
       <a href="#pricing"><span data-i="ja">料金</span><span data-i="en">Pricing</span></a>
+      <a href="#open-source"><span data-i="ja">オープンソース</span><span data-i="en">Open source</span></a>
       <a href="#faq">FAQ</a>
     </nav>
     <div class="nav-right">
@@ -517,7 +518,44 @@
     </div>
   </section>
 
-  <!-- ── 8. FAQ (search terms live here) ─────────────────────────── -->
+  <!-- ── 8. open source ──────────────────────────────────────────── -->
+  <section class="section section-tight" id="open-source" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head center reveal">
+        <span class="eyebrow"><span data-i="ja">オープンソース</span><span data-i="en">Open source</span></span>
+        <h2 class="h2" data-i="ja">ソースコードを公開</h2>
+        <h2 class="h2" data-i="en">The source code is public</h2>
+        <p data-i="ja">Cairn は Apache-2.0 ライセンスのオープンソース。開発の履歴も GitHub で公開している。</p>
+        <p data-i="en">Cairn is open source under the Apache-2.0 license. Development happens in public on GitHub.</p>
+      </div>
+      <div class="prob-grid">
+        <article class="prob reveal" data-d="1">
+          <div class="prob-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>
+          <h3 class="h3"><span data-i="ja">中身を確認できる</span><span data-i="en">You can check how it works</span></h3>
+          <p><span data-i="ja">データの保存方法、権限の判定、課金の計算まで、すべてコードで確認できる。</span><span data-i="en">How data is stored, how permissions are checked, how billing is calculated: it’s all in the code.</span></p>
+        </article>
+        <article class="prob reveal" data-d="2" id="self-hosted">
+          <div class="prob-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></div>
+          <h3 class="h3"><span data-i="ja">サービスに縛られない</span><span data-i="en">No lock-in</span></h3>
+          <p><span data-i="ja">自分たちのサーバーで動かすこともできる。その場合は課金の仕組みが無効になり、容量と AI の利用制限もなくなる（AI は自分で用意した OpenAI の API キーで動く）。本番向けのセルフホスト手順は整備中。</span><span data-i="en">You can run it on your own servers. Billing is then disabled, with no storage or AI caps (AI runs on your own OpenAI API key). Production self-hosting docs are in progress.</span></p>
+        </article>
+        <article class="prob reveal" data-d="3">
+          <div class="prob-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg></div>
+          <h3 class="h3"><span data-i="ja">開発者に直接要望を出せる</span><span data-i="en">Talk to the developers</span></h3>
+          <p><span data-i="ja">要望受付用の Cairn ワークスペースと GitHub の Issue で、機能の要望や不具合を受け付けている。</span><span data-i="en">Send feature requests and bug reports in our public Cairn workspace or as GitHub issues.</span></p>
+        </article>
+      </div>
+      <div class="hero-cta reveal" data-d="3">
+        <a class="btn btn-ghost" href="https://github.com/keishingu/Cairn" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
+          <span data-i="ja">GitHub を見る</span><span data-i="en">View on GitHub</span>
+        </a>
+        <a class="btn btn-bare" data-cta="oss-community" href="https://oss-cairn.com/invite/00678365-f1e0-4856-b60e-9208d97d9fbd"><span data-i="ja">要望受付ワークスペースに参加 →</span><span data-i="en">Join the feedback workspace →</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 9. FAQ (search terms live here) ─────────────────────────── -->
   <section class="section section-tight" id="faq" style="padding-top:0">
     <div class="wrap">
       <div class="sec-head center reveal">
@@ -534,6 +572,16 @@
           <p class="faq-a">
             <span data-i="ja">はい。無料プランに期限はありません。メッセージ・履歴・メンバー数の上限もありません。料金がかかるのは、1ファイル 5MB を超えるファイルや 10GB を超える保存、AI を使う場合だけです。</span>
             <span data-i="en">Yes. The free plan has no time limit and no caps on messages, history, or members. You only pay for files over 5 MB, storage beyond 10 GB, or AI.</span>
+          </p>
+        </details>
+        <details class="faq-item reveal" data-d="1">
+          <summary>
+            <span data-i="ja">なぜ無料で提供できるのですか？</span>
+            <span data-i="en">How can it be free?</span>
+          </summary>
+          <p class="faq-a">
+            <span data-i="ja">テキストの保存にかかる費用はごくわずかなため、メッセージや履歴は無料にしています。費用がかかる大きなファイルの保存と AI だけを有料にしています。ソースコードは公開しているので、料金の計算方法も確認できます。</span>
+            <span data-i="en">Storing text costs very little, so messages and history are free. Only large file storage and AI, which do cost money to run, are paid. The source is public, so you can check how pricing is calculated.</span>
           </p>
         </details>
         <details class="faq-item reveal" data-d="1">
@@ -590,6 +638,11 @@
         },
         {
           "@type": "Question",
+          "name": "なぜ無料で提供できるのですか？",
+          "acceptedAnswer": { "@type": "Answer", "text": "テキストの保存にかかる費用はごくわずかなため、メッセージや履歴は無料にしています。費用がかかる大きなファイルの保存と AI だけを有料にしています。ソースコードは公開しているので、料金の計算方法も確認できます。" }
+        },
+        {
+          "@type": "Question",
           "name": "Slack や Backlog の無料プランを組み合わせて使っています。まとめられますか？",
           "acceptedAnswer": { "@type": "Answer", "text": "チャットと、タスク・カレンダーによるプロジェクト管理は Cairn にまとめられます。Cairn ではチャットの履歴が期限なく残り、メンバー数も無制限です。ガントチャート、Wiki、Git 連携が必要な場合は、Backlog との併用をおすすめします。" }
         },
@@ -611,19 +664,6 @@
       ]
     }
     </script>
-  </section>
-
-  <!-- ── 9. open source — one line ───────────────────────────────── -->
-  <section class="section section-tight" id="open-source" style="padding-top:0">
-    <div class="wrap">
-      <div class="oss-line reveal">
-        <p><span data-i="ja">Cairn はオープンソース（Apache-2.0）。ソースコードは GitHub で公開している。</span><span data-i="en">Cairn is open source (Apache-2.0). The code is public on GitHub.</span></p>
-        <a class="btn btn-ghost btn-sm" href="https://github.com/keishingu/Cairn" target="_blank" rel="noopener">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
-          GitHub
-        </a>
-      </div>
-    </div>
   </section>
 
   <!-- ── final cta ───────────────────────────────────────────────── -->
@@ -667,6 +707,7 @@
         <a href="#pricing"><span data-i="ja">料金</span><span data-i="en">Pricing</span></a>
         <a href="#ai">AI</a>
         <a href="#faq">FAQ</a>
+        <a href="#open-source"><span data-i="ja">オープンソース</span><span data-i="en">Open source</span></a>
         <a href="#enterprise">Expedition</a>
         <a data-cta="footer-product" href="/auth/login?utm_source=lp&amp;utm_content=footer-product">Cairn Cloud</a>
       </div>

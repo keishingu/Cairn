@@ -583,10 +583,6 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.03em; line-height: 
 .price-cta { margin-top: auto; }
 .price .check-list + .price-cta { margin-top: 24px; }
 
-/* ── open source line ─────────────────────────────────────────────── */
-.oss-line { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; text-align: center; }
-.oss-line p { margin: 0; font-size: 15px; color: var(--ink-2); }
-
 /* ── responsive ────────────────────────────────────────────────────── */
 @media (max-width: 1000px) {
   .nav-links { display: none; }
