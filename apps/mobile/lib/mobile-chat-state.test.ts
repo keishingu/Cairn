@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
-  extractMentionIdsByName,
   filterProjectMentionMembers,
   findMentionQuery,
   hasFailedUploads,
   insertMention,
   mergeChatMessages,
   nextMessagePageCursor,
+  parseEditableMentions,
+  rebaseMentionSelections,
   resolveInternalAppPath,
   resolveMobileMarkdownLink,
   serializeMentions,
@@ -58,15 +59,28 @@ describe('モバイルチャット状態', () => {
 
     const inserted = insertMention('確認を @山', range!, '山田 太郎')
     expect(inserted).toEqual({ text: '確認を @山田 太郎 ', cursor: 11 })
-    expect(serializeMentions(inserted.text, new Map([['山田 太郎', 'user-1']]))).toBe(
-      '確認を <@user-1> ',
-    )
+    expect(
+      serializeMentions(inserted.text, [
+        { start: 4, end: inserted.cursor - 1, userId: 'user-1', displayName: '山田 太郎' },
+      ]),
+    ).toBe('確認を <@user-1> ')
   })
 
-  it('編集時の旧メンション形式から表示名とIDを復元する', () => {
-    expect(extractMentionIdsByName('確認 <@user-1|山田 太郎>')).toEqual(
-      new Map([['山田 太郎', 'user-1']]),
+  it('同名ユーザーのメンションを出現ごとのIDで保持し、編集にも追従する', () => {
+    const editable = parseEditableMentions('確認 <@user-1|山田 太郎> と <@user-2|山田 太郎>')
+    expect(editable.text).toBe('確認 @山田 太郎 と @山田 太郎')
+    expect(serializeMentions(editable.text, editable.mentions)).toBe(
+      '確認 <@user-1> と <@user-2>',
     )
+
+    const changed = `至急 ${editable.text}`
+    const rebased = rebaseMentionSelections(editable.text, changed, editable.mentions)
+    expect(serializeMentions(changed, rebased)).toBe('至急 確認 <@user-1> と <@user-2>')
+
+    const editedName = changed.replace('@山田 太郎', '@山田')
+    expect(
+      serializeMentions(editedName, rebaseMentionSelections(changed, editedName, rebased)),
+    ).toBe('至急 確認 @山田 と <@user-2>')
   })
 
   it('過去ページと最新ページを重複なく時系列へ結合する', () => {

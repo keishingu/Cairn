@@ -42,25 +42,74 @@ export function insertMention(
   }
 }
 
-export function serializeMentions(text: string, mentionIdsByName: ReadonlyMap<string, string>) {
-  return [...mentionIdsByName.entries()]
-    .sort(([left], [right]) => right.length - left.length)
-    .reduce((result, [displayName, userId]) => {
-      const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      return result.replace(
-        new RegExp(`@${escaped}(?=[\\s、。！？]|$)`, 'g'),
-        `<@${userId}>`,
-      )
+export interface MentionSelection {
+  start: number
+  end: number
+  userId: string
+  displayName: string
+}
+
+export function rebaseMentionSelections(
+  previousText: string,
+  nextText: string,
+  mentions: ReadonlyArray<MentionSelection>,
+) {
+  let editStart = 0
+  while (
+    editStart < previousText.length &&
+    editStart < nextText.length &&
+    previousText[editStart] === nextText[editStart]
+  ) {
+    editStart += 1
+  }
+
+  let previousEnd = previousText.length
+  let nextEnd = nextText.length
+  while (
+    previousEnd > editStart &&
+    nextEnd > editStart &&
+    previousText[previousEnd - 1] === nextText[nextEnd - 1]
+  ) {
+    previousEnd -= 1
+    nextEnd -= 1
+  }
+
+  const delta = nextEnd - previousEnd
+  return mentions.flatMap((mention) => {
+    if (mention.end <= editStart) return [mention]
+    if (mention.start >= previousEnd) {
+      return [{ ...mention, start: mention.start + delta, end: mention.end + delta }]
+    }
+    return []
+  })
+}
+
+export function serializeMentions(text: string, mentions: ReadonlyArray<MentionSelection>) {
+  return [...mentions]
+    .sort((left, right) => right.start - left.start)
+    .reduce((result, mention) => {
+      if (text.slice(mention.start, mention.end) !== `@${mention.displayName}`) return result
+      return `${result.slice(0, mention.start)}<@${mention.userId}>${result.slice(mention.end)}`
     }, text)
 }
 
-export function extractMentionIdsByName(text: string) {
-  const result = new Map<string, string>()
-  for (const match of text.matchAll(/<@([^|>\s]+)\|([^>\n]+)>/g)) {
-    const [, userId, displayName] = match
-    if (userId && displayName) result.set(displayName, userId)
+export function parseEditableMentions(content: string) {
+  let text = ''
+  let cursor = 0
+  const mentions: MentionSelection[] = []
+  for (const match of content.matchAll(/<@([^|>\s]+)(?:\|([^>\n]+))?>/g)) {
+    const index = match.index
+    const [token, userId, hydratedName] = match
+    if (index == null || !token || !userId) continue
+    text += content.slice(cursor, index)
+    const displayName = hydratedName ?? 'メンバー'
+    const start = text.length
+    text += `@${displayName}`
+    mentions.push({ start, end: text.length, userId, displayName })
+    cursor = index + token.length
   }
-  return result
+  text += content.slice(cursor)
+  return { text, mentions }
 }
 
 export function mergeChatMessages<T extends { id: string; createdAt: string }>(

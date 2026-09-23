@@ -43,13 +43,15 @@ import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
 import { apiFetch } from '../../../lib/api-fetch'
 import {
-  extractMentionIdsByName,
   filterProjectMentionMembers,
   findMentionQuery,
   insertMention,
+  parseEditableMentions,
+  rebaseMentionSelections,
   resolveMobileMarkdownLink,
   serializeMentions,
 } from '../../../lib/mobile-chat-state'
+import type { MentionSelection } from '../../../lib/mobile-chat-state'
 import {
   useChannelMembers,
   useProjectMembers,
@@ -466,8 +468,7 @@ export default function ChatThreadScreen() {
   const [actionTarget, setActionTarget] = React.useState<MessageDto | null>(null)
   const [reactionTarget, setReactionTarget] = React.useState<MessageDto | null>(null)
   const [selection, setSelection] = React.useState({ start: 0, end: 0 })
-  // ponytail: 表示名をキーにした最小実装。同名ユーザーを区別する必要が出たら選択範囲ごとのIDを保持する。
-  const mentionIdsByNameRef = React.useRef(new Map<string, string>())
+  const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
   const messages = messagesQuery.data ?? []
   const queuedMessages = offlineQueue.messages.filter((message) => message.channelId === channelId)
   const mentionRange = React.useMemo(
@@ -572,7 +573,7 @@ export default function ChatThreadScreen() {
     setActionTarget(null)
     setReactionTarget(null)
     setSelection({ start: 0, end: 0 })
-    mentionIdsByNameRef.current.clear()
+    mentionSelectionsRef.current = []
     upload.clearUploads()
     lastReadMessageIdRef.current = null
     confirmedFetchedChannelIdRef.current = null
@@ -613,7 +614,7 @@ export default function ChatThreadScreen() {
   }, [channelId, messages, messagesQuery.isFetching, messagesQuery.isError, isFocused, isAppActive])
 
   async function handleSend() {
-    const content = serializeMentions(draft.trim(), mentionIdsByNameRef.current)
+    const content = serializeMentions(draft, mentionSelectionsRef.current).trim()
     if (editingMessage) {
       if (!content || editMessage.isPending) return
       setSendError(null)
@@ -621,7 +622,7 @@ export default function ChatThreadScreen() {
         await editMessage.mutateAsync({ messageId: editingMessage.id, content })
         setDraft('')
         setEditingMessage(null)
-        mentionIdsByNameRef.current.clear()
+        mentionSelectionsRef.current = []
       } catch (error) {
         setSendError(error instanceof Error ? error.message : 'メッセージの編集に失敗しました')
       }
@@ -657,7 +658,7 @@ export default function ChatThreadScreen() {
       if (channelIdRef.current !== sendingChannelId) return
       if (draftRef.current === sendingDraft) {
         setDraft('')
-        mentionIdsByNameRef.current.clear()
+        mentionSelectionsRef.current = []
       }
       setReplyTarget(null)
       upload.clearUploads()
@@ -679,10 +680,10 @@ export default function ChatThreadScreen() {
     setActionTarget(null)
     setReplyTarget(null)
     setEditingMessage(message)
-    mentionIdsByNameRef.current = extractMentionIdsByName(message.content)
-    const editableContent = parseMentions(message.content)
-    setDraft(editableContent)
-    setSelection({ start: editableContent.length, end: editableContent.length })
+    const editable = parseEditableMentions(message.content)
+    mentionSelectionsRef.current = editable.mentions
+    setDraft(editable.text)
+    setSelection({ start: editable.text.length, end: editable.text.length })
   }
 
   const confirmDelete = (message: MessageDto) => {
@@ -756,7 +757,15 @@ export default function ChatThreadScreen() {
   const selectMention = (member: { userId: string; displayName: string }) => {
     if (!mentionRange) return
     const inserted = insertMention(draft, mentionRange, member.displayName)
-    mentionIdsByNameRef.current.set(member.displayName, member.userId)
+    mentionSelectionsRef.current = [
+      ...rebaseMentionSelections(draft, inserted.text, mentionSelectionsRef.current),
+      {
+        start: mentionRange.start,
+        end: mentionRange.start + member.displayName.length + 1,
+        userId: member.userId,
+        displayName: member.displayName,
+      },
+    ].sort((left, right) => left.start - right.start)
     setDraft(inserted.text)
     setSelection({ start: inserted.cursor, end: inserted.cursor })
   }
@@ -1073,7 +1082,7 @@ export default function ChatThreadScreen() {
                   if (editingMessage) setDraft('')
                   setEditingMessage(null)
                   setReplyTarget(null)
-                  mentionIdsByNameRef.current.clear()
+                  mentionSelectionsRef.current = []
                 }}
                 hitSlop={8}
               >
@@ -1219,6 +1228,11 @@ export default function ChatThreadScreen() {
               selection={selection}
               onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
               onChangeText={(value) => {
+                mentionSelectionsRef.current = rebaseMentionSelections(
+                  draft,
+                  value,
+                  mentionSelectionsRef.current,
+                )
                 setDraft(value)
                 if (sendError) setSendError(null)
               }}

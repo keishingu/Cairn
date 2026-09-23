@@ -19,6 +19,10 @@ describe('アプリ内WebViewのパス変換', () => {
     expect(webPath('/projects?open=p1')).toBe('/projects?open=p1&webview=1')
   })
 
+  it('フラグメントより前に webview=1 を追加する', () => {
+    expect(webPath('/projects#details')).toBe('/projects?webview=1#details')
+  })
+
   it('active workspaceがない設定画面でも認証ハンドオフURLを作る', () => {
     expect(mobileHandoffUrl('https://oss-cairn.com', '/settings', 'token')).toBe(
       'https://oss-cairn.com/auth/mobile-handoff?redirect=%2Fsettings%3Fwebview%3D1#th=token',
