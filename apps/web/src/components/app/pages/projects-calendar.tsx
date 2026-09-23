@@ -1207,6 +1207,28 @@ function eventCoversDay(e: { day: number; span: number }, col: number): boolean 
   return col >= e.day && col < e.day + e.span
 }
 
+/** 日付セルの +N は、見えているバー本数ではなくその日の最下段レーンの直下に置く */
+export function mobileOverflowLane(args: {
+  coveringProjectRows: number[]
+  coveringMilestoneRows: number[]
+  maxEventRows: number
+  usedProjectRows: number
+  remainingRows: number
+}): { overflow: number; lane: number } | null {
+  const visibleProjectRows = args.coveringProjectRows.filter(row => row < args.maxEventRows)
+  const visibleMilestoneRows = args.coveringMilestoneRows
+    .filter(row => row < args.remainingRows)
+    .map(row => args.usedProjectRows + row)
+  const overflow =
+    args.coveringProjectRows.length + args.coveringMilestoneRows.length
+    - visibleProjectRows.length - visibleMilestoneRows.length
+  if (overflow <= 0) return null
+  return {
+    overflow,
+    lane: Math.max(-1, ...visibleProjectRows, ...visibleMilestoneRows) + 1,
+  }
+}
+
 const MobileCalendarGrid = ({ year, month, events, milestoneEvents, selectedDate, onSelectDate, onCreateDate, onProjectClick }: MobileCalendarGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const cells = buildCells(year, month)
@@ -1344,25 +1366,28 @@ const MobileCalendarGrid = ({ year, month, events, milestoneEvents, selectedDate
               {row.map((_, col) => {
                 const coveringProjects = weekProjects.filter(e => eventCoversDay(e, col))
                 const coveringMilestones = weekMilestones.filter(e => eventCoversDay(e, col))
-                const visibleCount =
-                  coveringProjects.filter(e => e.row < MOBILE_MAX_EVENT_ROWS).length
-                  + coveringMilestones.filter(e => e.row < remainingRows).length
-                const overflow = coveringProjects.length + coveringMilestones.length - visibleCount
-                if (overflow <= 0) return null
+                const overflowInfo = mobileOverflowLane({
+                  coveringProjectRows: coveringProjects.map(e => e.row),
+                  coveringMilestoneRows: coveringMilestones.map(e => e.row),
+                  maxEventRows: MOBILE_MAX_EVENT_ROWS,
+                  usedProjectRows,
+                  remainingRows,
+                })
+                if (!overflowInfo) return null
                 return (
                   <div
                     key={`o-${col}`}
                     style={{
                       position: 'absolute',
                       left: `calc(${col * colW}% + 1px)`,
-                      top: MOBILE_DATE_AREA + visibleCount * (MOBILE_EVENT_H + MOBILE_EVENT_GAP),
+                      top: MOBILE_DATE_AREA + overflowInfo.lane * (MOBILE_EVENT_H + MOBILE_EVENT_GAP),
                       width: `calc(${colW}% - 2px)`,
                       fontSize: 9, color: 'var(--text-3)',
                       lineHeight: '12px',
                       overflow: 'hidden',
                     }}
                   >
-                    +{overflow}
+                    +{overflowInfo.overflow}
                   </div>
                 )
               })}

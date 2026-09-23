@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, test, expect } from 'vitest'
-import { buildGcalEvents, buildGcalWeekEvents, buildGcalTimedEvents, buildMilestoneEvents, buildMilestoneWeekEvents, formatMilestoneLabel } from './projects-calendar'
+import { buildGcalEvents, buildGcalWeekEvents, buildGcalTimedEvents, buildMilestoneEvents, buildMilestoneWeekEvents, formatMilestoneLabel, mobileOverflowLane } from './projects-calendar'
 import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
 import type { WorkspaceMilestoneDto } from '@/app/api/milestones/route'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -272,5 +272,44 @@ describe('buildGcalTimedEvents', () => {
     expect(ev1.col).not.toBe(ev2.col)
     expect(ev1.cols).toBe(2)
     expect(ev2.cols).toBe(2)
+  })
+})
+
+describe('mobileOverflowLane', () => {
+  test('空きレーンがある日は、見えている本数ではなく最下段の直下に +N を置く', () => {
+    // row 0 は別日の1日予定。この日は row 1,2 が見え、row 3 が溢れる
+    const result = mobileOverflowLane({
+      coveringProjectRows: [1, 2, 3],
+      coveringMilestoneRows: [],
+      maxEventRows: 3,
+      usedProjectRows: 3,
+      remainingRows: 0,
+    })
+
+    expect(result).toEqual({ overflow: 1, lane: 3 })
+  })
+
+  test('レーンが詰まっている日は最終表示レーンの直下に置く', () => {
+    const result = mobileOverflowLane({
+      coveringProjectRows: [0, 1, 2, 3],
+      coveringMilestoneRows: [],
+      maxEventRows: 3,
+      usedProjectRows: 3,
+      remainingRows: 0,
+    })
+
+    expect(result).toEqual({ overflow: 1, lane: 3 })
+  })
+
+  test('溢れがなければ null を返す', () => {
+    const result = mobileOverflowLane({
+      coveringProjectRows: [1, 2],
+      coveringMilestoneRows: [],
+      maxEventRows: 3,
+      usedProjectRows: 3,
+      remainingRows: 0,
+    })
+
+    expect(result).toBeNull()
   })
 })
