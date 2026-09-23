@@ -495,7 +495,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionAttributes, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -513,6 +513,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   isUploading: boolean
   mentionMembers?: { userId: string; displayName: string }[]
   mentionAttributes?: { id: string; name: string }[]
+  /** DM ではグループメンションを展開しないため候補から外す */
+  includeAllMention?: boolean
   /** プロジェクトチャンネルのときだけ @project_members を候補に出す */
   includeProjectMembersMention?: boolean
   mentionNames?: Map<string, string>
@@ -613,7 +615,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     const q = mentionQuery.toLowerCase()
     type MentionPickerItem = { tokenId: string; displayName: string; kind: 'all' | 'project_members' | 'attr' | 'user' }
     const items: MentionPickerItem[] = []
-    if (ALL_MENTION_LABEL.startsWith(q)) {
+    if (includeAllMention && ALL_MENTION_LABEL.startsWith(q)) {
       items.push({ tokenId: ALL_MENTION_ID, displayName: ALL_MENTION_LABEL, kind: 'all' })
     }
     if (includeProjectMembersMention && PROJECT_MEMBERS_MENTION_LABEL.startsWith(q)) {
@@ -638,7 +640,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       }
     }
     return items.slice(0, 6)
-  }, [mentionQuery, mentionMembers, mentionAttributes, includeProjectMembersMention])
+  }, [mentionQuery, mentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention])
 
   // 候補が変わったら選択をリセット
   React.useEffect(() => { setSelectedIdx(0) }, [mentionCandidates.length])
@@ -1123,10 +1125,12 @@ function useMessageTimelineScroll({
 
 // ─── ChatThread ───────────────────────────────────────────────────
 
-export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile, targetMessage, initialUnreadPosition = false }: {
+export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, isMobile, targetMessage, initialUnreadPosition = false }: {
   channelId: string | null
   channelName?: string
   isPrivate?: boolean
+  /** DM ではグループ/属性メンションを展開しないためピッカーから外す */
+  isDm?: boolean
   compact?: boolean
   isMobile?: boolean
   targetMessage?: { id: string } | null
@@ -1150,8 +1154,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [initialPositioned, setInitialPositioned] = React.useState(false)
   const pendingDraftRef = React.useRef('')
   const queryClient = useQueryClient()
-  // displayName → tokenId（userId / all / project_members / attr:uuid）
-  const mentionMapRef = React.useRef<Map<string, string>>(new Map())
+  // 挿入順のリスト。同名ラベルが衝突しても出現順で正しい tokenId に変換できる
+  const mentionInsertionsRef = React.useRef<{ tokenId: string; displayName: string }[]>([])
   // Ref to latest draft state for cleanup-time saves (avoids stale closure)
   const latestDraftRef = React.useRef({ draft: '', pendingAttachments: [] as PendingAttachment[] })
   latestDraftRef.current = { draft, pendingAttachments }
@@ -1191,6 +1195,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       setDraft('')
       setPendingAttachments([])
     }
+    mentionInsertionsRef.current = []
     return () => {
       const { draft: d, pendingAttachments: p } = latestDraftRef.current
       persistDraft(channelId, d, p)
@@ -1205,20 +1210,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   }, [channelId, draft, pendingAttachments, persistDraft])
 
   const onMentionInserted = React.useCallback((tokenId: string, displayName: string) => {
-    mentionMapRef.current.set(displayName, tokenId)
+    mentionInsertionsRef.current.push({ tokenId, displayName })
   }, [])
 
-  // 保存形式は canonical な `<@tokenId>`。表示名は read 時に解決するため本文に焼き込まない
+  // 保存形式は canonical な `<@tokenId>`。表示名は read 時に解決するため本文に焼き込まない。
+  // 同名ラベルは挿入順に「先頭から1件ずつ」置換し、後勝ちの Map 衝突を避ける。
   const transformContent = (text: string): string => {
-    const entries = [...mentionMapRef.current.entries()]
-    if (entries.length === 0) return text
-    // Longest name first to avoid partial replacements
-    entries.sort((a, b) => b[0].length - a[0].length)
+    const insertions = mentionInsertionsRef.current
+    if (insertions.length === 0) return text
     let result = text
-    for (const [displayName, tokenId] of entries) {
+    for (const { tokenId, displayName } of insertions) {
       const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       result = result.replace(
-        new RegExp(`@${escaped}(?=[\\s、。！？]|$)`, 'g'),
+        new RegExp(`@${escaped}(?=[\\s、。！？]|$)`),
         `<@${tokenId}>`,
       )
     }
@@ -1805,7 +1809,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     const rawText = draft.trim()
     if ((!rawText && pendingAttachments.length === 0) || !channelId) return
     const text = transformContent(rawText)
-    mentionMapRef.current.clear()
+    mentionInsertionsRef.current = []
 
     pendingDraftRef.current = text
     setSendError(null)
@@ -1984,8 +1988,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
         mentionMembers={mentionMembers}
-        mentionAttributes={profileAttributes}
-        includeProjectMembersMention={!!projectId}
+        mentionAttributes={isDm ? [] : profileAttributes}
+        includeAllMention={!isDm}
+        includeProjectMembersMention={!isDm && !!projectId}
         mentionNames={mentionNames}
         onMentionInserted={onMentionInserted}
         onCreateTextFile={() => setShowTextFileDialog(true)}
