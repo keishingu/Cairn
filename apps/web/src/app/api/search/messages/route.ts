@@ -4,7 +4,8 @@
 import { NextResponse } from 'next/server'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
+import { hydrateMentions } from '@/lib/chat/mentions'
+import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 
@@ -26,7 +27,7 @@ export async function GET(req: Request) {
   try {
     const { db } = await import('@cairn/db')
     const { channels, channelMembers, messages, profiles, workspaceMembers, projects, projectMembers, milestones } = await import('@cairn/db')
-    const { eq, ne, isNull, and, ilike, or, exists, inArray } = await import('drizzle-orm')
+    const { eq, ne, isNull, and, ilike, or, exists } = await import('drizzle-orm')
     const { desc, sql } = await import('drizzle-orm')
 
     const memberSubquery = db
@@ -83,19 +84,7 @@ export async function GET(req: Request) {
       .limit(50)
 
     // メンションを現在の表示名へ解決（保存値は名前なしの canonical 形式のため）
-    const mentionIds = [...new Set(rows.flatMap(r => extractMentionIds(r.content)))]
-    const nameMap = new Map<string, string>()
-    if (mentionIds.length > 0) {
-      const profileRows = await db
-        .select({ id: profiles.id, displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
-        .from(profiles)
-        .leftJoin(
-          workspaceMembers,
-          and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)),
-        )
-        .where(inArray(profiles.id, mentionIds))
-      for (const p of profileRows) nameMap.set(p.id, p.displayName)
-    }
+    const nameMap = await buildMentionNameMap(ctx.workspaceId, rows.map(r => r.content))
 
     const result: MessageSearchResultDto[] = rows.map(r => ({
       id: r.id,

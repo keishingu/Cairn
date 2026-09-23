@@ -30,6 +30,10 @@ vi.mock('@/lib/push/send', () => ({ sendPushToUser: vi.fn() }))
 
 import './functions'
 
+function stepNames(run: ReturnType<typeof vi.fn>) {
+  return run.mock.calls.map(([name]) => name as string)
+}
+
 describe('onMessageCreated', () => {
   it('添付があっても通知対象メンバーが0人なら空配列をinsertしない', async () => {
     const handler = handlers.get('on-message-created')
@@ -41,7 +45,12 @@ describe('onMessageCreated', () => {
         case 'filter-blocked-members':
         case 'filter-mention-access':
         case 'filter-blocked-mentions':
+        case 'expand-all-mention':
+        case 'expand-project-members-mention':
+        case 'expand-attr-mentions':
           return []
+        case 'resolve-mention-preview-names':
+          return {}
         case 'check-dm':
           return false
         case 'fetch-mentioned-members':
@@ -68,6 +77,56 @@ describe('onMessageCreated', () => {
       }),
     ).resolves.toEqual({ mentionNotifications: 0, fileNotifications: 0 })
 
-    expect(run.mock.calls.map(([name]) => name)).not.toContain('create-file-notifications')
+    expect(stepNames(run)).not.toContain('create-file-notifications')
+  })
+
+  it('@all と @project_members と属性メンションを展開ステップへ渡す', async () => {
+    const handler = handlers.get('on-message-created')
+    expect(handler).toBeDefined()
+
+    const run = vi.fn(async (name: string) => {
+      switch (name) {
+        case 'fetch-members':
+        case 'filter-blocked-members':
+        case 'filter-mention-access':
+        case 'filter-blocked-mentions':
+          return []
+        case 'expand-all-mention':
+          return [{ userId: 'u-all', displayName: '全員候補' }]
+        case 'expand-project-members-mention':
+          return [{ userId: 'u-proj', displayName: 'PJ候補' }]
+        case 'expand-attr-mentions':
+          return [{ userId: 'u-attr', displayName: '属性候補' }]
+        case 'resolve-mention-preview-names':
+          return { all: 'all', project_members: 'project_members', 'attr:attr-1': 'コーチ' }
+        case 'check-dm':
+          return false
+        default:
+          throw new Error(`Unexpected step: ${name}`)
+      }
+    })
+
+    await expect(
+      handler!({
+        event: {
+          data: {
+            messageId: 'message-id',
+            channelId: 'channel-id',
+            workspaceId: 'workspace-id',
+            senderId: 'sender-id',
+            senderName: '送信者',
+            content: '<@all> <@project_members> <@attr:attr-1> 確認',
+            attachmentFileIds: [],
+          },
+        },
+        step: { run, sleep: vi.fn() },
+      }),
+    ).resolves.toEqual({ mentionNotifications: 0, fileNotifications: 0 })
+
+    const names = stepNames(run)
+    expect(names).toContain('expand-all-mention')
+    expect(names).toContain('expand-project-members-mention')
+    expect(names).toContain('expand-attr-mentions')
+    expect(names).not.toContain('fetch-mentioned-members')
   })
 })

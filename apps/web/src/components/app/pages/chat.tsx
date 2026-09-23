@@ -695,7 +695,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         />
         {searchOpen && channelId
           ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-          : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition/>
+          : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition/>
         }
         {showMemberInvite && channelId && (
           <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
@@ -791,7 +791,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                 ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
                 : searchOpen && channelId
                   ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-                  : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition/>
+                  : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition/>
             }
           </main>
 
