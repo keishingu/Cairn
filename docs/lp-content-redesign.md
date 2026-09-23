@@ -35,7 +35,7 @@
 | 2 | 無料の範囲 `#free` | 無制限（メッセージ・履歴 / メンバー・ゲスト / プロジェクト・タスク・カレンダー）、ファイル 10GB（1ファイル 5MB） |
 | 3 | ツールを分けなくていい `#connect` | ☑ がタスクになる / プロジェクトごとにまとまる / カレンダー・カンバンとマイルストーンチャット |
 | 4 | 無料プランの比較 `#compare` | Cairn / 海外製チャット / 国産チャット / 国産プロジェクト管理 の比較表（製品名は伏せる）。日付の注記つき |
-| 5 | 細かいところ `#details` | 圏外送信、閲覧中は Push を鳴らさない、下書き保存、ゲスト、アーカイブ、最新版ラベル、マルチデバイス、キーボード、電気通信事業届出 |
+| 5 | 細かいところ `#details` | 圏外送信、閲覧中は Push を鳴らさない、下書き保存、ゲスト、アーカイブ、最新版ラベル、iPhone アプリとブラウザ（App Store リンク）、キーボード、電気通信事業届出 |
 | 6 | 料金 `#pricing` | Free ¥0 / Solo ¥300（1人・月）/ Team ¥3,000（ワークスペース・月、準備中・目安）/ Expedition 要相談 |
 | 7 | AI `#ai` | 出典つき回答（Solo）と MCP（任意）を短く |
 | 8 | オープンソース `#open-source` | Apache-2.0。中身を確認できる / サービスに縛られない（セルフホストは課金無効・手順は整備中）/ 開発者に直接要望を出せる。GitHub と要望受付ワークスペースへの導線 |
@@ -71,10 +71,12 @@
 | 閲覧中は Push を鳴らさない | 猶予付き既読再確認 |
 | 退会者のアーカイブと発言の保持 | [`user-deactivation-design.md`](./user-deactivation-design.md) |
 | セルフホストでは課金が無効（容量・AI の制限なし、AI は自前の OpenAI キー） | `isBillingEnabled()`（`STRIPE_SECRET_KEY` の有無） |
+| iPhone アプリ（App Store 公開済み） | https://apps.apple.com/jp/app/cairn/id6800673777 |
 | 電気通信事業届出（A-08-24291） | [`telecom-business-filing-research.md`](./telecom-business-filing-research.md) |
 
 ### 書いてはいけない
 
+- **未公開のアプリ**: Android（社内配布のみ）とデスクトップ（Electron、一般配布なし）を「使える」と書かない。一般公開されたら追加する
 - **未出荷の約束**: 自律エージェント、予定の自動変更、BYO AI、動く `docker compose up`、SSO・監査ログ
 - **AI PMO**: ワークスペース単位の段階公開中のため LP の機能として書かない
 - **石・ケルン・風化の用語**: LP では「クレジット」で説明する
@@ -86,7 +88,7 @@
 ## 5. CTA とパラメータ規約
 
 - 主要 CTA: 「**無料で始める / Start for free**」→ `/auth/login?utm_source=lp&utm_content=<cta-id>`
-- `data-cta`: `nav` / `hero` / `pricing` / `final` / `footer-product` / `oss-community`（フッターアイコン・コミュニティは要望受付ワークスペース招待）
+- `data-cta`: `nav` / `hero` / `pricing` / `final` / `footer-product` / `oss-community` / `appstore-hero` / `appstore-details` / `appstore-final` / `appstore-footer`（App Store は外部リンクのため UTM なし）（フッターアイコン・コミュニティは要望受付ワークスペース招待）
 - Expedition の問い合わせは既存の相談窓口へ
 
 
