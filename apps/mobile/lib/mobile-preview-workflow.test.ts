@@ -75,13 +75,13 @@ describe('モバイルプレビューの環境同期', () => {
 })
 
 describe('モバイルプレビューのFIFOキュー', () => {
-  it('開始時刻が早い未完了PRだけを待機対象にする', () => {
+  it('開始時刻が早い未完了Preview実行だけを待機対象にする', () => {
     const earlierRuns = findEarlierActiveRuns(
       [
         {
           id: 30,
           run_number: 30,
-          event: 'pull_request',
+          event: 'issue_comment',
           status: 'in_progress',
           run_started_at: '2026-07-20T03:00:00Z',
         },
@@ -100,6 +100,13 @@ describe('モバイルプレビューのFIFOキュー', () => {
           run_started_at: '2026-07-20T02:00:00Z',
         },
         {
+          id: 25,
+          run_number: 25,
+          event: 'issue_comment',
+          status: 'queued',
+          run_started_at: '2026-07-20T02:30:00Z',
+        },
+        {
           id: 15,
           run_number: 15,
           event: 'push',
@@ -110,7 +117,7 @@ describe('モバイルプレビューのFIFOキュー', () => {
       30,
     )
 
-    expect(earlierRuns.map((run) => run.id)).toEqual([20])
+    expect(earlierRuns.map((run) => run.id)).toEqual([20, 25])
   })
 
   it('同じ開始時刻ではrun IDが小さい実行を先にする', () => {
