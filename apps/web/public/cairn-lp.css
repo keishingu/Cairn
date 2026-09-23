@@ -611,6 +611,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.03em; line-height: 
 @media (max-width: 560px) {
   .wrap { padding: 0 18px; }
   .price-grid { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: 1fr; }
   .display { font-size: 34px; }
   .feat-grid { grid-template-columns: 1fr; }
   .deploy-targets { grid-template-columns: 1fr; }
