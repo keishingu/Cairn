@@ -6,9 +6,11 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -21,6 +23,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ChannelMessagesError,
+  fetchMessagesBefore,
   parseMentions,
   useMarkChannelRead,
   useDeleteMessage,
@@ -32,6 +35,7 @@ import {
 import type { MessageDto } from '../../../hooks/use-messages'
 import type { ThemePalette } from '../../../lib/theme'
 import { useAppAppearance } from '../../../components/appearance-provider'
+import { MobileMarkdown } from '../../../components/mobile-markdown'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
@@ -39,6 +43,19 @@ import { API_BASE_URL } from '../../../lib/env'
 import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
 import { apiFetch } from '../../../lib/api-fetch'
+import {
+  extractMentionIdsByName,
+  findMentionQuery,
+  insertMention,
+  mergeChatMessages,
+  resolveMobileMarkdownLink,
+  serializeMentions,
+} from '../../../lib/mobile-chat-state'
+import {
+  useChannelMembers,
+  useProjectMembers,
+  useWorkspaceMembers,
+} from '../../../hooks/use-chat-channels'
 
 // SDK 54 の legacy download API は安定した進捗不要ダウンロードに使える。
 // 型定義だけ build 配下から参照し、アプリコード側の exactOptionalPropertyTypes の影響を避ける。
@@ -146,6 +163,7 @@ function ChatMessageRow({
   accessToken,
   onToggleReaction,
   onAddReaction,
+  onLinkPress,
   onOpenActions,
 }: {
   message: MessageDto
@@ -153,6 +171,7 @@ function ChatMessageRow({
   accessToken?: string
   onToggleReaction: (messageId: string, emoji: string) => void
   onAddReaction: (message: MessageDto) => void
+  onLinkPress: (url: string) => boolean
   onOpenActions: (message: MessageDto) => void
 }) {
   if (message.messageType === 'system') {
@@ -243,9 +262,7 @@ function ChatMessageRow({
         {message.blocked ? (
           <Text style={[styles.messageText, { color: palette.text3 }]}>ブロックしたユーザーのメッセージ（長押しメニューから表示できます）</Text>
         ) : message.content.length > 0 && (
-          <Text style={[styles.messageText, { color: palette.text2 }]}>
-            {parseMentions(message.content)}
-          </Text>
+          <MobileMarkdown content={message.content} palette={palette} onLinkPress={onLinkPress} />
         )}
 
         {message.attachments.length > 0 && (
@@ -330,12 +347,14 @@ function QueuedMessageRow({
   message,
   palette,
   senderName,
+  onLinkPress,
   onRetry,
   onCancel,
 }: {
   message: QueuedMessage
   palette: Palette
   senderName: string
+  onLinkPress: (url: string) => boolean
   onRetry: () => void
   onCancel: () => void
 }) {
@@ -357,7 +376,7 @@ function QueuedMessageRow({
           <Text style={[styles.senderName, { color: palette.text }]}>{senderName}</Text>
           <Text style={[styles.messageTime, { color: palette.text4 }]}>未送信</Text>
         </View>
-        <Text style={[styles.messageText, { color: palette.text2 }]}>{message.content}</Text>
+        <MobileMarkdown content={message.content} palette={palette} onLinkPress={onLinkPress} />
         <View style={styles.queueStatusRow}>
           <Ionicons
             name={message.status === 'failed' ? 'alert-circle-outline' : 'cloud-upload-outline'}
@@ -416,9 +435,12 @@ function ActionButton({
 }
 
 export default function ChatThreadScreen() {
-  const { channelId, channelName } = useLocalSearchParams<{
+  const { channelId, channelName, channelType, projectId, isPrivate } = useLocalSearchParams<{
     channelId: string
     channelName?: string
+    channelType?: 'project' | 'workspace' | 'dm'
+    projectId?: string
+    isPrivate?: string
   }>()
   const router = useRouter()
   const navigation = useNavigation()
@@ -432,6 +454,9 @@ export default function ChatThreadScreen() {
   const toggleBookmark = useToggleMessageBookmark(channelId ?? '')
   const upload = useAttachmentUpload(channelId ?? '')
   const { data: me } = useMe()
+  const workspaceMembers = useWorkspaceMembers()
+  const channelMembers = useChannelMembers(channelId ?? null, isPrivate === '1')
+  const projectMembers = useProjectMembers(projectId ?? null)
   const session = useSession()
   const offlineQueue = useOfflineMessageQueue()
   const [draft, setDraft] = React.useState('')
@@ -441,8 +466,36 @@ export default function ChatThreadScreen() {
   const [editingMessage, setEditingMessage] = React.useState<MessageDto | null>(null)
   const [actionTarget, setActionTarget] = React.useState<MessageDto | null>(null)
   const [reactionTarget, setReactionTarget] = React.useState<MessageDto | null>(null)
-  const messages = messagesQuery.data ?? []
+  const [olderMessages, setOlderMessages] = React.useState<MessageDto[]>([])
+  const [hasMoreMessages, setHasMoreMessages] = React.useState(true)
+  const [isLoadingOlder, setIsLoadingOlder] = React.useState(false)
+  const loadingOlderRef = React.useRef(false)
+  const [olderMessagesError, setOlderMessagesError] = React.useState<string | null>(null)
+  const [selection, setSelection] = React.useState({ start: 0, end: 0 })
+  // ponytail: 表示名をキーにした最小実装。同名ユーザーを区別する必要が出たら選択範囲ごとのIDを保持する。
+  const mentionIdsByNameRef = React.useRef(new Map<string, string>())
+  const messages = React.useMemo(
+    () => mergeChatMessages(olderMessages, messagesQuery.data ?? []),
+    [messagesQuery.data, olderMessages],
+  )
   const queuedMessages = offlineQueue.messages.filter((message) => message.channelId === channelId)
+  const mentionRange = React.useMemo(
+    () => findMentionQuery(draft, selection.start),
+    [draft, selection.start],
+  )
+  const mentionMembers = React.useMemo(() => {
+    if (channelType === 'dm') return []
+    const candidates = projectId
+      ? (projectMembers.data ?? [])
+      : isPrivate === '1'
+        ? (channelMembers.data ?? [])
+        : (workspaceMembers.data ?? [])
+    const query = mentionRange?.query.toLocaleLowerCase() ?? ''
+    return candidates
+      .filter((member) => member.userId !== me?.id)
+      .filter((member) => member.displayName.toLocaleLowerCase().includes(query))
+      .slice(0, 6)
+  }, [channelMembers.data, channelType, isPrivate, me?.id, mentionRange?.query, projectId, projectMembers.data, workspaceMembers.data])
   // 送信失敗時の catch は非同期に発火するため、常に最新の channelId を参照できるようにする
   const channelIdRef = React.useRef(channelId)
   channelIdRef.current = channelId
@@ -504,6 +557,13 @@ export default function ChatThreadScreen() {
     setEditingMessage(null)
     setActionTarget(null)
     setReactionTarget(null)
+    setOlderMessages([])
+    setHasMoreMessages(true)
+    loadingOlderRef.current = false
+    setIsLoadingOlder(false)
+    setOlderMessagesError(null)
+    setSelection({ start: 0, end: 0 })
+    mentionIdsByNameRef.current.clear()
     upload.clearUploads()
     lastReadMessageIdRef.current = null
     confirmedFetchedChannelIdRef.current = null
@@ -544,7 +604,7 @@ export default function ChatThreadScreen() {
   }, [channelId, messages, messagesQuery.isFetching, messagesQuery.isError, isFocused, isAppActive])
 
   async function handleSend() {
-    const content = draft.trim()
+    const content = serializeMentions(draft.trim(), mentionIdsByNameRef.current)
     if (editingMessage) {
       if (!content || editMessage.isPending) return
       setSendError(null)
@@ -552,6 +612,7 @@ export default function ChatThreadScreen() {
         await editMessage.mutateAsync({ messageId: editingMessage.id, content })
         setDraft('')
         setEditingMessage(null)
+        mentionIdsByNameRef.current.clear()
       } catch (error) {
         setSendError(error instanceof Error ? error.message : 'メッセージの編集に失敗しました')
       }
@@ -585,7 +646,10 @@ export default function ChatThreadScreen() {
         ...(attachmentFileIds.length > 0 ? { attachmentFileIds } : {}),
       })
       if (channelIdRef.current !== sendingChannelId) return
-      if (draftRef.current === sendingDraft) setDraft('')
+      if (draftRef.current === sendingDraft) {
+        setDraft('')
+        mentionIdsByNameRef.current.clear()
+      }
       setReplyTarget(null)
       upload.clearUploads()
     } catch {
@@ -606,7 +670,10 @@ export default function ChatThreadScreen() {
     setActionTarget(null)
     setReplyTarget(null)
     setEditingMessage(message)
-    setDraft(message.content)
+    mentionIdsByNameRef.current = extractMentionIdsByName(message.content)
+    const editableContent = parseMentions(message.content)
+    setDraft(editableContent)
+    setSelection({ start: editableContent.length, end: editableContent.length })
   }
 
   const confirmDelete = (message: MessageDto) => {
@@ -677,6 +744,14 @@ export default function ChatThreadScreen() {
     )
   }
 
+  const selectMention = (member: { userId: string; displayName: string }) => {
+    if (!mentionRange) return
+    const inserted = insertMention(draft, mentionRange, member.displayName)
+    mentionIdsByNameRef.current.set(member.displayName, member.userId)
+    setDraft(inserted.text)
+    setSelection({ start: inserted.cursor, end: inserted.cursor })
+  }
+
   // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。
   // 生のエラーではなく「参加していない」ことを明示する案内を出す
   const isAccessDenied =
@@ -695,6 +770,31 @@ export default function ChatThreadScreen() {
     ...reversedMessages.map((message) => ({ kind: 'server' as const, message })),
   ]
 
+  const loadOlderMessages = async () => {
+    const oldestMessage = messages[0]
+    if (!channelId || !oldestMessage || !hasMoreMessages || loadingOlderRef.current) return
+    const loadingChannelId = channelId
+    loadingOlderRef.current = true
+    setIsLoadingOlder(true)
+    setOlderMessagesError(null)
+    try {
+      const page = await fetchMessagesBefore(loadingChannelId, oldestMessage.id)
+      if (channelIdRef.current !== loadingChannelId) return
+      setOlderMessages((current) => mergeChatMessages(page.messages, current))
+      setHasMoreMessages(page.hasMore)
+    } catch (loadError) {
+      if (channelIdRef.current !== loadingChannelId) return
+      setOlderMessagesError(
+        loadError instanceof Error ? loadError.message : '過去のメッセージを取得できませんでした',
+      )
+    } finally {
+      if (channelIdRef.current === loadingChannelId) {
+        loadingOlderRef.current = false
+        setIsLoadingOlder(false)
+      }
+    }
+  }
+
   const openSearch = () => {
     if (!channelId) return
     router.push({
@@ -704,8 +804,69 @@ export default function ChatThreadScreen() {
         title: 'メッセージ検索',
         returnChannelId: channelId,
         ...(channelName ? { returnChannelName: channelName } : {}),
+        ...(channelType ? { returnChannelType: channelType } : {}),
+        ...(projectId ? { returnProjectId: projectId } : {}),
+        ...(isPrivate ? { returnIsPrivate: isPrivate } : {}),
       },
     })
+  }
+
+  const openInfo = () => {
+    if (!channelId) return
+    router.push({
+      pathname: '/(app)/chat-tools',
+      params: {
+        path: `/chats/${channelId}?nativeAux=1&panel=info`,
+        title: 'チャンネル情報',
+        returnChannelId: channelId,
+        ...(channelName ? { returnChannelName: channelName } : {}),
+        ...(channelType ? { returnChannelType: channelType } : {}),
+        ...(projectId ? { returnProjectId: projectId } : {}),
+        ...(isPrivate ? { returnIsPrivate: isPrivate } : {}),
+      },
+    })
+  }
+
+  const openMarkdownLink = React.useCallback(
+    (url: string) => {
+      const target = resolveMobileMarkdownLink(url, API_BASE_URL)
+      if (!target) {
+        setSendError('このリンクは開けません。')
+        return false
+      }
+      if (target.kind === 'external') {
+        void Linking.openURL(target.url).catch(() => setSendError('リンクを開けませんでした。'))
+        return false
+      }
+      if (!channelId) return false
+      router.push({
+        pathname: '/(app)/chat-tools',
+        params: {
+          path: target.path,
+          title: 'リンク',
+          returnChannelId: channelId,
+          ...(channelName ? { returnChannelName: channelName } : {}),
+          ...(channelType ? { returnChannelType: channelType } : {}),
+          ...(projectId ? { returnProjectId: projectId } : {}),
+          ...(isPrivate ? { returnIsPrivate: isPrivate } : {}),
+        },
+      })
+      return false
+    },
+    [channelId, channelName, channelType, isPrivate, projectId, router],
+  )
+
+  const shareMessage = async (message: MessageDto) => {
+    setActionTarget(null)
+    const body = parseMentions(message.content).trim()
+    const url = `${API_BASE_URL}/chats/${channelId}?m=${message.id}`
+    try {
+      await Share.share({ message: body ? `${body}\n${url}` : url })
+    } catch (shareError) {
+      setSendError(
+        shareError instanceof Error ? shareError.message : 'メッセージを共有できませんでした',
+      )
+    }
   }
 
   return (
@@ -739,6 +900,15 @@ export default function ChatThreadScreen() {
           hitSlop={6}
         >
           <Ionicons name="search-outline" size={19} color={palette.text3} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="チャンネル情報"
+          style={styles.headerButton}
+          onPress={openInfo}
+          hitSlop={6}
+        >
+          <Ionicons name="information-circle-outline" size={20} color={palette.text3} />
         </Pressable>
       </View>
 
@@ -804,6 +974,7 @@ export default function ChatThreadScreen() {
                   message={item.message}
                   palette={palette}
                   senderName={me?.displayName ?? '自分'}
+                  onLinkPress={openMarkdownLink}
                   onRetry={() => offlineQueue.retry(item.message.id)}
                   onCancel={() => offlineQueue.cancel(item.message.id)}
                 />
@@ -813,12 +984,31 @@ export default function ChatThreadScreen() {
                   palette={palette}
                   onToggleReaction={handleToggleReaction}
                   onAddReaction={setReactionTarget}
+                  onLinkPress={openMarkdownLink}
                   onOpenActions={setActionTarget}
                   {...(session?.access_token ? { accessToken: session.access_token } : {})}
                 />
               )
             }
             contentContainerStyle={styles.list}
+            onEndReached={() => void loadOlderMessages()}
+            onEndReachedThreshold={0.25}
+            ListFooterComponent={
+              isLoadingOlder ? (
+                <ActivityIndicator style={styles.olderLoading} size="small" color={palette.accent} />
+              ) : olderMessagesError ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="過去のメッセージを再読み込み"
+                  onPress={() => void loadOlderMessages()}
+                  style={styles.olderError}
+                >
+                  <Text style={[styles.olderErrorText, { color: palette.redText }]}>
+                    {olderMessagesError}　再試行
+                  </Text>
+                </Pressable>
+              ) : null
+            }
             ListEmptyComponent={
               messagesQuery.error ? null : (
                 <Text style={[styles.empty, { color: palette.text4 }]}>
@@ -893,6 +1083,7 @@ export default function ChatThreadScreen() {
                   if (editingMessage) setDraft('')
                   setEditingMessage(null)
                   setReplyTarget(null)
+                  mentionIdsByNameRef.current.clear()
                 }}
                 hitSlop={8}
               >
@@ -941,10 +1132,55 @@ export default function ChatThreadScreen() {
                       ? `${pending.fileName}: ${pending.error}`
                       : pending.fileName}
                   </Text>
-                  <Pressable onPress={() => upload.removeUpload(pending.id)} hitSlop={8}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${pending.fileName}を削除`}
+                    onPress={() => upload.removeUpload(pending.id)}
+                    hitSlop={8}
+                  >
                     <Ionicons name="close" size={16} color={palette.text4} />
                   </Pressable>
                 </View>
+              ))}
+            </View>
+          )}
+          {mentionRange && mentionMembers.length > 0 && (
+            <View
+              style={[
+                styles.mentionSuggestions,
+                { backgroundColor: palette.card, borderColor: palette.border },
+              ]}
+            >
+              {mentionMembers.map((member) => (
+                <Pressable
+                  key={member.userId}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${member.displayName}をメンション`}
+                  onPress={() => selectMention(member)}
+                  style={({ pressed }) => [
+                    styles.mentionSuggestion,
+                    { backgroundColor: pressed ? palette.card2 : palette.card },
+                  ]}
+                >
+                  {member.avatarUrl ? (
+                    <Image source={{ uri: member.avatarUrl }} style={styles.mentionAvatar} />
+                  ) : (
+                    <View
+                      style={[
+                        styles.mentionAvatar,
+                        styles.avatarFallback,
+                        { backgroundColor: palette.accentSoft },
+                      ]}
+                    >
+                      <Text style={[styles.mentionInitial, { color: palette.accentText }]}>
+                        {initials(member.displayName)}
+                      </Text>
+                    </View>
+                  )}
+                  <Text style={[styles.mentionName, { color: palette.text }]} numberOfLines={1}>
+                    {member.displayName}
+                  </Text>
+                </Pressable>
               ))}
             </View>
           )}
@@ -958,11 +1194,13 @@ export default function ChatThreadScreen() {
               accessibilityLabel="メッセージを入力"
               style={[styles.input, { color: palette.text }]}
               value={draft}
+              selection={selection}
+              onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
               onChangeText={(value) => {
                 setDraft(value)
                 if (sendError) setSendError(null)
               }}
-              placeholder="メッセージを入力..."
+              placeholder="メッセージを入力…"
               placeholderTextColor={palette.text4}
               multiline
             />
@@ -1036,6 +1274,12 @@ export default function ChatThreadScreen() {
               setReactionTarget(actionTarget)
               setActionTarget(null)
             }}
+          />
+          <ActionButton
+            icon="share-outline"
+            label="共有"
+            palette={palette}
+            onPress={() => actionTarget && void shareMessage(actionTarget)}
           />
           {actionTarget?.senderId === me?.id && (
             <>
@@ -1198,6 +1442,9 @@ const styles = StyleSheet.create({
   composerArea: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 8 },
   messageListContainer: { flex: 1 },
   messageList: { flex: 1 },
+  olderLoading: { marginVertical: 14 },
+  olderError: { alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
+  olderErrorText: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
   refreshError: {
     minHeight: 42,
     flexDirection: 'row',
@@ -1245,6 +1492,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
   },
   uploadName: { flex: 1, fontSize: 11.5 },
+  mentionSuggestions: {
+    maxHeight: 220,
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginBottom: 7,
+  },
+  mentionSuggestion: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 10,
+  },
+  mentionAvatar: { width: 26, height: 26, borderRadius: 13 },
+  mentionInitial: { fontSize: 10.5, fontWeight: '700' },
+  mentionName: { flex: 1, fontSize: 13, fontWeight: '600' },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',

@@ -78,6 +78,20 @@ export function useMessages(channelId: string | null) {
   })
 }
 
+export async function fetchMessagesBefore(channelId: string, messageId: string) {
+  const res = await apiFetch(
+    `/api/channels/${channelId}/messages?before=${encodeURIComponent(messageId)}`,
+  )
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(data.error ?? `過去のメッセージの取得に失敗しました (${res.status})`)
+  }
+  return {
+    messages: (await res.json()) as MessageDto[],
+    hasMore: res.headers.get('X-Cairn-Has-More') === 'true',
+  }
+}
+
 export function useSendMessage(channelId: string) {
   const qc = useQueryClient()
   return useMutation({

@@ -30,6 +30,14 @@ export interface WorkspaceMemberDto {
   avatarUrl: string | null
 }
 
+export interface ChannelMemberDto {
+  userId: string
+  displayName: string
+  email?: string | null
+  avatarUrl: string | null
+  role?: string
+}
+
 function fetchJson<T>(path: string, errorLabel: string) {
   return async (): Promise<T> => {
     const res = await apiFetch(path)
@@ -60,6 +68,22 @@ export function useWorkspaceMembers() {
   })
 }
 
+export function useChannelMembers(channelId: string | null, enabled: boolean) {
+  return useQuery<ChannelMemberDto[]>({
+    queryKey: ['channel-members', channelId],
+    queryFn: fetchJson(`/api/channels/${channelId}/members`, 'チャンネルメンバー'),
+    enabled: enabled && !!channelId,
+  })
+}
+
+export function useProjectMembers(projectId: string | null) {
+  return useQuery<ChannelMemberDto[]>({
+    queryKey: ['project-members', projectId],
+    queryFn: fetchJson(`/api/projects/${projectId}/members`, 'プロジェクトメンバー'),
+    enabled: !!projectId,
+  })
+}
+
 export function useCreateWorkspaceChannel() {
   const qc = useQueryClient()
   return useMutation({
@@ -79,6 +103,53 @@ export function useCreateWorkspaceChannel() {
         ...(current ?? []),
         channel,
       ])
+    },
+  })
+}
+
+export function useCreateChannelThread() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ channelId, name }: { channelId: string; name: string }) => {
+      const res = await apiFetch(`/api/channels/${channelId}/threads`, {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? 'スレッドの作成に失敗しました')
+      }
+      return res.json() as Promise<{ id: string }>
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['workspace-channels'] })
+    },
+  })
+}
+
+export function usePatchProjectMilestone() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      milestoneId,
+      completed,
+    }: {
+      projectId: string
+      milestoneId: string
+      completed: boolean
+    }) => {
+      const res = await apiFetch(`/api/projects/${projectId}/milestones/${milestoneId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ completed }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? 'マイルストーンの更新に失敗しました')
+      }
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['project-channels'] })
     },
   })
 }

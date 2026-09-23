@@ -334,6 +334,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [detailOpen, setDetailOpen] = React.useState(true)
   const [milestoneProject, setMilestoneProject] = React.useState<{ id: string; title: string } | null>(null)
   const [editingMilestone, setEditingMilestone] = React.useState<ProjectChannelDto | null>(null)
+  const [requestedEditingMilestoneId, setRequestedEditingMilestoneId] = React.useState<string | null>(null)
   const [threadChannel, setThreadChannel] = React.useState<{ id: string; name: string } | null>(null)
   const patchMilestone = usePatchProjectMilestone()
 
@@ -357,6 +358,20 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       case 'bookmarks':
         setBookmarksOpen(true)
         break
+      case 'create-project':
+        setShowCreateProject(true)
+        break
+      case 'create-milestone': {
+        const id = params.get('projectId')
+        const title = params.get('projectTitle')
+        if (id && title) setMilestoneProject({ id, title })
+        break
+      }
+      case 'edit-milestone': {
+        const milestoneId = params.get('milestoneId')
+        if (milestoneId) setRequestedEditingMilestoneId(milestoneId)
+        break
+      }
     }
   }, [pathname])
 
@@ -378,6 +393,15 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const { data: members = [] } = useWorkspaceMembers()
   const { data: dms = [], isFetched: isDmsFetched } = useWorkspaceDms()
   const createDmMutation = useCreateDm()
+
+  React.useEffect(() => {
+    if (!requestedEditingMilestoneId) return
+    const milestone = projectChannels.find(channel => channel.milestoneId === requestedEditingMilestoneId)
+    if (milestone) {
+      setEditingMilestone(milestone)
+      setRequestedEditingMilestoneId(null)
+    }
+  }, [projectChannels, requestedEditingMilestoneId])
 
   const fallbackChannelId = React.useMemo(
     () => (projectChannels.find(c => !c.archived) ?? projectChannels[0] ?? null)?.channelId ?? null,

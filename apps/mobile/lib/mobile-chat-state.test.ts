@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { hasFailedUploads, shouldRetryRealtime } from './mobile-chat-state'
+import {
+  extractMentionIdsByName,
+  findMentionQuery,
+  hasFailedUploads,
+  insertMention,
+  mergeChatMessages,
+  resolveMobileMarkdownLink,
+  serializeMentions,
+  shouldRetryRealtime,
+} from './mobile-chat-state'
 
 describe('モバイルチャット状態', () => {
   it('JOIN が TIMED_OUT したら Realtime 購読を再接続する', () => {
@@ -38,5 +47,51 @@ describe('モバイルチャット状態', () => {
   it('失敗した添付が一件でも残っていれば送信を止める', () => {
     expect(hasFailedUploads([{ status: 'done' }, { status: 'error' }])).toBe(true)
     expect(hasFailedUploads([{ status: 'done' }, { status: 'uploading' }])).toBe(false)
+  })
+
+  it('カーソル直前のメンション候補を置換して canonical 形式へ変換する', () => {
+    const range = findMentionQuery('確認を @山', 6)
+    expect(range).toEqual({ start: 4, end: 6, query: '山' })
+
+    const inserted = insertMention('確認を @山', range!, '山田 太郎')
+    expect(inserted).toEqual({ text: '確認を @山田 太郎 ', cursor: 11 })
+    expect(serializeMentions(inserted.text, new Map([['山田 太郎', 'user-1']]))).toBe(
+      '確認を <@user-1> ',
+    )
+  })
+
+  it('編集時の旧メンション形式から表示名とIDを復元する', () => {
+    expect(extractMentionIdsByName('確認 <@user-1|山田 太郎>')).toEqual(
+      new Map([['山田 太郎', 'user-1']]),
+    )
+  })
+
+  it('過去ページと最新ページを重複なく時系列へ結合する', () => {
+    const old = [
+      { id: '1', createdAt: '2026-01-01T00:00:00Z' },
+      { id: '2', createdAt: '2026-01-02T00:00:00Z' },
+    ]
+    const latest = [
+      { id: '2', createdAt: '2026-01-02T00:00:00Z' },
+      { id: '3', createdAt: '2026-01-03T00:00:00Z' },
+    ]
+    expect(mergeChatMessages(old, latest).map((message) => message.id)).toEqual(['1', '2', '3'])
+  })
+
+  it('MarkdownリンクはCairn内導線と安全な外部URLだけを許可する', () => {
+    const baseUrl = 'https://develop.oss-cairn.com'
+    expect(resolveMobileMarkdownLink('/projects?open=project-1', baseUrl)).toEqual({
+      kind: 'internal',
+      path: '/projects?open=project-1',
+    })
+    expect(
+      resolveMobileMarkdownLink('https://develop.oss-cairn.com/chats/channel-1?m=message-1', baseUrl),
+    ).toEqual({ kind: 'internal', path: '/chats/channel-1?m=message-1' })
+    expect(resolveMobileMarkdownLink('https://example.com/guide', baseUrl)).toEqual({
+      kind: 'external',
+      url: 'https://example.com/guide',
+    })
+    expect(resolveMobileMarkdownLink('javascript:alert(1)', baseUrl)).toBeNull()
+    expect(resolveMobileMarkdownLink('//example.com/guide', baseUrl)).toBeNull()
   })
 })
