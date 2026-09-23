@@ -4,6 +4,7 @@ import {
   findMentionQuery,
   hasFailedUploads,
   insertMention,
+  matchMarkdownMention,
   mergeChatMessages,
   nextMessagePageCursor,
   parseEditableMentions,
@@ -81,6 +82,14 @@ describe('モバイルチャット状態', () => {
     expect(
       serializeMentions(editedName, rebaseMentionSelections(changed, editedName, rebased)),
     ).toBe('至急 確認 @山田 と <@user-2>')
+  })
+
+  it('Markdown構文を含む表示名も一つのメンショントークンとして読む', () => {
+    const token = '<@user-1|A *B* [help](https://example.com)>'
+    expect(matchMarkdownMention(`${token} さん`, 0)).toEqual({
+      length: token.length,
+      text: '@A *B* [help](https://example.com)',
+    })
   })
 
   it('過去ページと最新ページを重複なく時系列へ結合する', () => {

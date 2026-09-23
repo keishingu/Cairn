@@ -112,6 +112,15 @@ export function parseEditableMentions(content: string) {
   return { text, mentions }
 }
 
+export function matchMarkdownMention(source: string, offset: number) {
+  const match = /^<@([^|>\s]+)(?:\|([^>\n]+))?>/.exec(source.slice(offset))
+  if (!match) return null
+  return {
+    length: match[0].length,
+    text: match[2] ? `@${match[2]}` : '@メンバー',
+  }
+}
+
 export function mergeChatMessages<T extends { id: string; createdAt: string }>(
   ...groups: ReadonlyArray<ReadonlyArray<T>>
 ) {

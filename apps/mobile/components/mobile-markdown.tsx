@@ -3,8 +3,8 @@
 
 import React from 'react'
 import { Platform } from 'react-native'
-import Markdown, { MarkdownIt, type RenderRules } from 'react-native-markdown-display'
-import { parseMentions } from '../hooks/use-messages'
+import Markdown, { MarkdownIt, renderRules, type RenderRules } from 'react-native-markdown-display'
+import { matchMarkdownMention } from '../lib/mobile-chat-state'
 import type { ThemePalette } from '../lib/theme'
 
 const markdownParser = MarkdownIt({ breaks: true, linkify: true, typographer: true })
@@ -19,7 +19,25 @@ type MarkdownState = {
   tokens: MarkdownToken[]
 }
 
-markdownParser.core.ruler.after('inline', 'cairn-chat-text', (state: MarkdownState) => {
+type MarkdownInlineState = {
+  src: string
+  pos: number
+  push: (type: string, tag: string, nesting: number) => { content: string }
+}
+
+markdownParser.inline.ruler.before(
+  'autolink',
+  'cairn-mention',
+  (state: MarkdownInlineState, silent: boolean) => {
+    const mention = matchMarkdownMention(state.src, state.pos)
+    if (!mention) return false
+    if (!silent) state.push('cairn_mention', '', 0).content = mention.text
+    state.pos += mention.length
+    return true
+  },
+)
+
+markdownParser.core.ruler.after('inline', 'cairn-task-list', (state: MarkdownState) => {
   let listItemDepth = 0
   for (const token of state.tokens) {
     if (token.type === 'list_item_open') listItemDepth += 1
@@ -28,7 +46,6 @@ markdownParser.core.ruler.after('inline', 'cairn-chat-text', (state: MarkdownSta
 
     for (const child of token.children ?? []) {
       if (child.type !== 'text') continue
-      child.content = parseMentions(child.content)
       if (listItemDepth > 0) {
         child.content = child.content.replace(/^\[([ xX])\]\s+/, (_, checked: string) =>
           checked.trim() ? '☑ ' : '☐ ',
@@ -39,6 +56,7 @@ markdownParser.core.ruler.after('inline', 'cairn-chat-text', (state: MarkdownSta
 })
 
 const rules: RenderRules = {
+  cairn_mention: renderRules['text'],
   // チャット画像は認証付き添付として別UIで描画する。外部URLを自動取得しない。
   image: () => null,
 }
