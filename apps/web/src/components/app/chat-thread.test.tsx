@@ -64,6 +64,7 @@ vi.mock('@/hooks/use-ai-nudges', () => ({
   useAiNudges: () => ({ data: [], isError: false }),
 }))
 vi.mock('@/hooks/use-project-members', () => ({ useProjectMembers: () => ({ data: [] }) }))
+vi.mock('@/hooks/use-profile-attributes', () => ({ useProfileAttributes: () => ({ data: [] }) }))
 vi.mock('@/lib/command-registry', () => ({ useCommand: vi.fn() }))
 
 vi.mock('@/lib/toast', () => ({
@@ -350,12 +351,12 @@ describe('ChatThreadのメンション候補', () => {
     expect(input.value).toBe('@')
 
     fireEvent.change(input, { target: { value: '@鈴木', selectionStart: 1 } })
-    expect(screen.queryByText('鈴木')).toBeNull()
+    expect(screen.queryByRole('button', { name: /@鈴木/ })).toBeNull()
 
     input.setSelectionRange(3, 3)
     fireEvent.compositionEnd(input)
 
-    expect(screen.getByText('鈴木')).toBeInTheDocument()
-    expect(screen.queryByText('候補1')).toBeNull()
+    expect(screen.getByRole('button', { name: /@鈴木/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /@候補1/ })).toBeNull()
   })
 })
