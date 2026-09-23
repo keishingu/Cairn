@@ -25,8 +25,20 @@ const { findEarlierActiveRuns } = require('../../../.github/scripts/mobile-previ
 }
 
 describe('モバイルプレビューの環境同期', () => {
+  it('PR作成時と権限者からの明示コメント時だけ起動する', () => {
+    expect(workflow).toContain('types: [opened]')
+    expect(workflow).toContain('issue_comment:')
+    expect(workflow).toContain("github.event.comment.body == '@eas update'")
+    expect(workflow).toContain('["OWNER","MEMBER","COLLABORATOR"]')
+    expect(workflow).not.toContain('synchronize')
+    expect(workflow).toContain('Resolve trusted PR head')
+    expect(workflow).toContain('Reply with EAS Preview')
+  })
+
   it('PRの接続先をEAS preview環境へ作成または上書きする', () => {
-    expect(workflow).toContain('group: mobile-preview-pr-${{ github.event.pull_request.number }}')
+    expect(workflow).toContain(
+      'group: mobile-preview-pr-${{ github.event.pull_request.number || github.event.issue.number }}',
+    )
     expect(workflow).toContain('cancel-in-progress: true')
     expect(workflow).toContain('--name EXPO_PUBLIC_API_BASE_URL')
     expect(workflow).toContain('--name EXPO_PUBLIC_SUPABASE_URL')
@@ -40,11 +52,11 @@ describe('モバイルプレビューの環境同期', () => {
     expect(workflow).not.toContain('qr-target:')
     expect(mobilePackage.dependencies['expo-dev-client']).toBeDefined()
     expect(workflow).toContain('--environment preview')
-    expect(workflow).toContain('--branch pr-${{ github.event.number }}')
+    expect(workflow).toContain('--branch pr-${{ steps.pr.outputs.number }}')
     expect(workflow).toContain('Publish Internal Distribution EAS Update')
     expect(workflow).toContain('--channel preview')
     expect(workflow).toContain('EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV: preview')
-    expect(workflow).toContain('ref: ${{ github.event.pull_request.head.sha }}')
+    expect(workflow).toContain('ref: ${{ steps.pr.outputs.sha }}')
   })
 
   it('Vercel認証を避けるため初回から固定のdevelop Web APIを利用する', () => {

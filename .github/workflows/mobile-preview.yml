@@ -2,16 +2,19 @@ name: Mobile Preview
 
 on:
   pull_request:
+    types: [opened]
     paths:
       - 'apps/mobile/**'
       - 'packages/shared/**'
       - 'pnpm-lock.yaml'
       - '.github/workflows/mobile-preview.yml'
       - '.github/scripts/mobile-preview-queue.cjs'
+  issue_comment:
+    types: [created]
 
 # 同じ PR の古い実行だけを止める。異なる PR は EAS 同期直前の FIFO ゲートで直列化する。
 concurrency:
-  group: mobile-preview-pr-${{ github.event.pull_request.number }}
+  group: mobile-preview-pr-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: true
 
 jobs:
@@ -19,13 +22,44 @@ jobs:
     name: Publish Mobile EAS Update preview
     runs-on: ubuntu-latest
     environment: Preview
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event.issue.pull_request &&
+       github.event.comment.body == '@eas update' &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     permissions:
       actions: read
       contents: read
+      issues: write
       pull-requests: write
 
     steps:
+      - name: Resolve trusted PR head
+        id: pr
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pullRequest = context.payload.pull_request ?? (
+              await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+              })
+            ).data
+
+            if (pullRequest.state !== 'open') {
+              core.setFailed('Mobile Preview can only be requested for an open pull request.')
+              return
+            }
+            if (pullRequest.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+              core.setFailed('Mobile Preview is disabled for pull requests from forks.')
+              return
+            }
+
+            core.setOutput('sha', pullRequest.head.sha)
+            core.setOutput('number', pullRequest.number)
+
       - name: Check required settings
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -48,7 +82,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ steps.pr.outputs.sha }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -143,6 +177,7 @@ jobs:
             --non-interactive
 
       - name: Publish EAS Update
+        id: eas-preview
         uses: expo/expo-github-action/preview@v8
         env:
           # EAS CLI は --environment preview の値を内部で読み込むが、Action が
@@ -150,7 +185,24 @@ jobs:
           EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV: preview
         with:
           working-directory: apps/mobile
-          command: eas update --auto --branch pr-${{ github.event.number }} --environment preview --non-interactive
+          command: eas update --auto --branch pr-${{ steps.pr.outputs.number }} --environment preview --non-interactive
+
+      # Expo Preview Actionはissue_commentイベントではPRコメントを作成しないため、
+      # 明示更新時だけ最新QRを返信する。
+      - name: Reply with EAS Preview
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v8
+        env:
+          COMMENT_BODY: ${{ steps.eas-preview.outputs.comment }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.PR_NUMBER),
+              body: process.env.COMMENT_BODY,
+            })
 
       # PR固有QRとは別に、Internal Distribution buildが購読するpreviewチャネルへも
       # 同じrevisionを配信する。異なるPRは上のFIFOゲートで直列化され、最後に成功した
@@ -160,6 +212,6 @@ jobs:
         run: |
           eas update \
             --channel preview \
-            --message "PR #${{ github.event.number }} ${{ github.event.pull_request.head.sha }}" \
+            --message "PR #${{ steps.pr.outputs.number }} ${{ steps.pr.outputs.sha }}" \
             --environment preview \
             --non-interactive
