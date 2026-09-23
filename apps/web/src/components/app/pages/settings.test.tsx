@@ -52,6 +52,10 @@ vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({ auth: { signOut: supabaseSignOut } }),
 }))
 
+vi.mock('../login-methods-settings', () => ({
+  LoginMethodsSettings: () => null,
+}))
+
 vi.mock('@/lib/toast', () => ({
   toast: {
     error: toastError,

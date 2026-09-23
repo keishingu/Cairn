@@ -26,6 +26,7 @@ import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import type { AccentId } from '@cairn/shared'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
+import { LoginMethodsSettings } from '../login-methods-settings'
 import { ProfileAttributesSettings } from '../profile-attributes-settings'
 
 const CreditPlacementBoard = dynamic(
@@ -485,6 +486,8 @@ const SettingsAccount = () => {
           </div>
         </div>
       </section>
+
+      <LoginMethodsSettings />
 
       {FEATURE_FLAGS.aiPmo && (
         <section style={{ marginBottom: 24 }}>

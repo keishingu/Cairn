@@ -20,6 +20,12 @@ import {
   ACCOUNT_DELETED_LOGIN_ROUTE,
   finishNativeAccountDeletion,
 } from '../lib/account-deletion-bridge'
+import {
+  LINK_APPLE_IDENTITY_MESSAGE_TYPE,
+  buildAppleIdentityLinkedScript,
+  linkAppleIdentity,
+  type NativeAppleIdentityLinkResult,
+} from '../lib/apple-identity-bridge'
 
 type ShouldStartLoadRequest = Parameters<
   NonNullable<WebViewProps['onShouldStartLoadWithRequest']>
@@ -215,6 +221,21 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
             () => router.replace(ACCOUNT_DELETED_LOGIN_ROUTE),
           ),
         )
+      return
+    }
+    if (msg?.type === LINK_APPLE_IDENTITY_MESSAGE_TYPE) {
+      // 設定 WebView からの Apple 連携。Web OAuth は WebView 外へ出るため、
+      // ネイティブセッションへ ID token で linkIdentity する。
+      void linkAppleIdentity()
+        .catch(
+          (): NativeAppleIdentityLinkResult => ({
+            ok: false,
+            message: 'Apple との連携に失敗しました。しばらくしてからもう一度お試しください。',
+          }),
+        )
+        .then((result) => {
+          webViewRef.current?.injectJavaScript(buildAppleIdentityLinkedScript(result))
+        })
       return
     }
     if (msg?.type === 'open-chats') {

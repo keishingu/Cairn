@@ -117,8 +117,10 @@ jwt_expiry = 3600
 enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
-# Allow/disallow testing manual linking of accounts
-# enable_manual_linking = false
+# Allow/disallow testing manual linking of accounts.
+# 設定画面からの Apple identity 手動連携に必要。Preview / Production は
+# Supabase Dashboard の Auth → Providers で同等の Manual Linking を有効化する。
+enable_manual_linking = true
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
