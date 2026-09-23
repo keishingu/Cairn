@@ -118,6 +118,12 @@ describe('ChatMessage copy action', () => {
       />,
     )
 
+    const reply = screen.getByTitle('返信')
+    const sender = screen.getByText('Alice')
+    const header = sender.parentElement?.parentElement
+    expect(reply.parentElement?.parentElement).toBe(header)
+    expect(header?.contains(screen.getByRole('link'))).toBe(false)
+
     await user.click(screen.getByTitle('操作'))
 
     expect(screen.getByRole('button', { name: 'コピー' })).toBeInTheDocument()

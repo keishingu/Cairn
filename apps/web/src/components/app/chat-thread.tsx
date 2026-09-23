@@ -241,7 +241,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     }
   }
 
-  // ホバーツールバー（モバイルは常時表示、PC はホバー時）。返信・ブックマークは全メッセージ、コピーは内容がある場合、編集/削除は自分のみ
+  // ホバーツールバー（モバイルは名前行の右端に常時表示、PC はホバー時に本文へ重ねる）。
+  // モバイルで本文列の横に置くと、右上の導線のために本文まで狭くなる。
   const handleCopy = React.useCallback(() => {
     void copyMessageContent(content)
   }, [content])
@@ -292,7 +293,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const iconBtnStyle: React.CSSProperties = { border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 3, borderRadius: 6, display: 'inline-flex', alignItems: 'center' }
   const messageActions = !editMode && (isMobile || hovered) && (
     <div style={isMobile
-      ? { flexShrink: 0, alignSelf: 'flex-start', paddingTop: 2, display: 'flex', alignItems: 'center', gap: 2 }
+      ? { flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2 }
       : { position: 'absolute', top: 4, right: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '1px 3px', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 1 }
     }>
       <button onClick={() => onReply(messageId)} title="返信" style={iconBtnStyle}>
@@ -321,16 +322,19 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
         <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
-          {visibleProjectRole && (
-            <span style={{ padding: '1px 6px', borderRadius: 4, background: projectRoleColor ? 'var(--card-2)' : 'var(--violet-soft)', color: projectRoleColor ?? 'var(--violet-text)', fontSize: 10, fontWeight: 700 }}>
-              {visibleProjectRole}
-            </span>
-          )}
-          {!isMobile && <ProfileAttributeBadges attributes={senderProfileAttributes} compact />}
-          <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
-          {isEdited && <span style={{ fontSize: 10, color: 'var(--text-4)', fontStyle: 'italic' }}>編集済み</span>}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 3 }}>
+          <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
+            {visibleProjectRole && (
+              <span style={{ padding: '1px 6px', borderRadius: 4, background: projectRoleColor ? 'var(--card-2)' : 'var(--violet-soft)', color: projectRoleColor ?? 'var(--violet-text)', fontSize: 10, fontWeight: 700 }}>
+                {visibleProjectRole}
+              </span>
+            )}
+            {!isMobile && <ProfileAttributeBadges attributes={senderProfileAttributes} compact />}
+            <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
+            {isEdited && <span style={{ fontSize: 10, color: 'var(--text-4)', fontStyle: 'italic' }}>編集済み</span>}
+          </div>
+          {isMobile && messageActions}
         </div>
         {isMobile && senderProfileAttributes.length > 0 && (
           <span style={{ display: 'block', marginBottom: 4 }}>
@@ -479,7 +483,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
           )}
         </div>
       </div>
-      {messageActions}
+      {!isMobile && messageActions}
 
       <ConfirmDialog
         open={deleteConfirm}
