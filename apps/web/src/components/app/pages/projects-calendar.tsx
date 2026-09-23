@@ -1217,25 +1217,36 @@ export function packMobileMonthBars(
   milestoneEvents: MilestoneDisplayEvent[],
   week: number,
 ): MobilePackedBar[] {
-  const segments: Omit<MobilePackedBar, 'row'>[] = [
+  const items: Array<{
+    day: number
+    span: number
+    kindRank: number
+    build: (row: number) => MobilePackedBar
+  }> = [
     ...events.filter(e => e.week === week).map(e => ({
-      kind: 'project' as const, day: e.day, span: e.span, week: e.week, project: e.project,
+      day: e.day,
+      span: e.span,
+      kindRank: 0,
+      build: (row: number): MobilePackedBar => ({
+        kind: 'project', row, day: e.day, span: e.span, week: e.week, project: e.project,
+      }),
     })),
     ...milestoneEvents.filter(e => e.week === week).map(e => ({
-      kind: 'milestone' as const, day: e.day, span: e.span, week: e.week, milestone: e.milestone, project: e.project,
+      day: e.day,
+      span: e.span,
+      kindRank: 1,
+      build: (row: number): MobilePackedBar => ({
+        kind: 'milestone', row, day: e.day, span: e.span, week: e.week, milestone: e.milestone, project: e.project,
+      }),
     })),
-  ].sort((a, b) => (
-    a.day - b.day
-    || b.span - a.span
-    || (a.kind === b.kind ? 0 : a.kind === 'project' ? -1 : 1)
-  ))
+  ].sort((a, b) => a.day - b.day || b.span - a.span || a.kindRank - b.kindRank)
 
   const occupiedUntil: number[] = []
-  return segments.map(segment => {
+  return items.map(item => {
     let row = 0
-    while ((occupiedUntil[row] ?? -1) >= segment.day) row++
-    occupiedUntil[row] = segment.day + segment.span - 1
-    return { ...segment, row }
+    while ((occupiedUntil[row] ?? -1) >= item.day) row++
+    occupiedUntil[row] = item.day + item.span - 1
+    return item.build(row)
   })
 }
 
