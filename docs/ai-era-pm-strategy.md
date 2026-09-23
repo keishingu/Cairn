@@ -5,7 +5,7 @@
 
 従来のプロジェクト管理ツールは「**人間に記録させる装置**」だった——人がステータスを更新し、タスクを起票し、期限を入力することで、管理者向けのダッシュボードが成立する。その前提が AI 時代に3つの方向で逆転する、という認識と、それぞれに対する Cairn の座取りを合意した記録。
 
-関連: [`ai-pmo-design.md`](./ai-pmo-design.md)（逆転②の実装設計）/ [`10_ai_member_design.md`](./10_ai_member_design.md) / [`09_product_strategy_notes.md`](./09_product_strategy_notes.md)
+関連: [`ai-pmo-design.md`](./ai-pmo-design.md)（逆転②の実装設計）/ [`fde-dashboard-customization-design.md`](./fde-dashboard-customization-design.md)（FDEによるJev選定型ダッシュボード）/ [`10_ai_member_design.md`](./10_ai_member_design.md) / [`09_product_strategy_notes.md`](./09_product_strategy_notes.md)
 
 ---
 
@@ -38,6 +38,8 @@
 
 - 「このツールはチームの側に立つ。管理の側には立たない」——これは機能ではなく**憲法**。目指すのは「良い（優秀な）PMO」である以前に「**善いPMO**」であること: don't be evil
 - 実装設計は [`ai-pmo-design.md`](./ai-pmo-design.md)（PMO常駐 + 本人だけに見えるプライベートナッジ）。同書 §2.3「やらないこと」が憲法の本文にあたる（公開の場での催促の禁止・管理者向け遅延一覧の拒否・自動エスカレーションの禁止）
+
+ここで否定するのは、全員の遅延や活動量を管理者へ固定表示する**監視ダッシュボード**であり、ダッシュボードという画面自体ではない。Jevが「現在も有効か・本人に表示する価値があるか・本人が行動できるか」を判定し、必要なカードだけを本人へ返す個人向けダッシュボードは、この原則と両立する。FDEが顧客固有の判断基準を宣言的なレシピとして定義し、繰り返された部品を共通基盤へ戻す方針は [`fde-dashboard-customization-design.md`](./fde-dashboard-customization-design.md) を正とする。
 
 ---
 
