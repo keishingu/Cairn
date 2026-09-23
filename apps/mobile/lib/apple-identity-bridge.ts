@@ -33,11 +33,16 @@ function mapLinkError(providerLabel: string, error: AuthErrorLike): string {
   const code = error?.code ?? ''
   if (
     code === 'identity_already_exists' ||
-    /already.*(linked|exists|registered)/i.test(message)
+    /already.*(linked|exists|registered)/i.test(message) ||
+    /Identity is already linked/i.test(message)
   ) {
     return `この ${providerLabel} アカウントは別の Cairn アカウントに連携済みです。別のアカウントを使うか、先にそちらの連携を解除してください。`
   }
-  if (/manual.?linking/i.test(message) || /linking.?not.?enabled/i.test(message)) {
+  if (
+    code === 'manual_linking_disabled' ||
+    /manual.?linking/i.test(message) ||
+    /linking.?not.?enabled/i.test(message)
+  ) {
     return `${providerLabel} 連携は現在この環境で無効です。しばらくしてから再度お試しください。`
   }
   return `${providerLabel} との連携に失敗しました。しばらくしてからもう一度お試しください。`

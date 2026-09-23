@@ -178,4 +178,18 @@ describe('LoginMethodsSettings', () => {
     })
     expect(await screen.findByText('Google 連携を解除しました')).toBeInTheDocument()
   })
+
+  it('コールバックからの連携失敗キーを日本語エラーとして表示する', async () => {
+    mocks.searchParamsGet.mockImplementation((key: string) => {
+      if (key === 'loginLinkError') return 'identity_already_exists'
+      if (key === 'loginLinkProvider') return 'apple'
+      return null
+    })
+
+    renderLoginMethods()
+
+    expect(
+      await screen.findByText(/この Apple アカウントは別の Cairn アカウントに連携済み/),
+    ).toBeInTheDocument()
+  })
 })
