@@ -38,8 +38,16 @@ import {
   ChannelMessagesError,
 } from '@/lib/chat/client'
 import { useProjectMembers } from '@/hooks/use-project-members'
+import { useProfileAttributes } from '@/hooks/use-profile-attributes'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
-import { stripMentionsToText } from '@/lib/chat/mentions'
+import {
+  ALL_MENTION_ID,
+  ALL_MENTION_LABEL,
+  PROJECT_MEMBERS_MENTION_ID,
+  PROJECT_MEMBERS_MENTION_LABEL,
+  attributeMentionTokenId,
+  stripMentionsToText,
+} from '@/lib/chat/mentions'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { chatDraftKey } from '@/lib/storage-keys'
@@ -487,7 +495,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionAttributes, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -504,8 +512,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
   mentionMembers?: { userId: string; displayName: string }[]
+  mentionAttributes?: { id: string; name: string }[]
+  /** プロジェクトチャンネルのときだけ @project_members を候補に出す */
+  includeProjectMembersMention?: boolean
   mentionNames?: Map<string, string>
-  onMentionInserted?: (userId: string, displayName: string) => void
+  onMentionInserted?: (tokenId: string, displayName: string) => void
   onCreateTextFile: () => void
   replyTarget: ReplyToDto | null
   onCancelReply: () => void
@@ -598,10 +609,36 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   }, [draft])
 
   const mentionCandidates = React.useMemo(() => {
-    if (mentionQuery === null || !mentionMembers) return []
+    if (mentionQuery === null) return []
     const q = mentionQuery.toLowerCase()
-    return mentionMembers.filter(m => m.displayName.toLowerCase().includes(q)).slice(0, 6)
-  }, [mentionQuery, mentionMembers])
+    type MentionPickerItem = { tokenId: string; displayName: string; kind: 'all' | 'project_members' | 'attr' | 'user' }
+    const items: MentionPickerItem[] = []
+    if (ALL_MENTION_LABEL.startsWith(q)) {
+      items.push({ tokenId: ALL_MENTION_ID, displayName: ALL_MENTION_LABEL, kind: 'all' })
+    }
+    if (includeProjectMembersMention && PROJECT_MEMBERS_MENTION_LABEL.startsWith(q)) {
+      items.push({
+        tokenId: PROJECT_MEMBERS_MENTION_ID,
+        displayName: PROJECT_MEMBERS_MENTION_LABEL,
+        kind: 'project_members',
+      })
+    }
+    for (const attribute of mentionAttributes ?? []) {
+      if (attribute.name.toLowerCase().includes(q)) {
+        items.push({
+          tokenId: attributeMentionTokenId(attribute.id),
+          displayName: attribute.name,
+          kind: 'attr',
+        })
+      }
+    }
+    for (const member of mentionMembers ?? []) {
+      if (member.displayName.toLowerCase().includes(q)) {
+        items.push({ tokenId: member.userId, displayName: member.displayName, kind: 'user' })
+      }
+    }
+    return items.slice(0, 6)
+  }, [mentionQuery, mentionMembers, mentionAttributes, includeProjectMembersMention])
 
   // 候補が変わったら選択をリセット
   React.useEffect(() => { setSelectedIdx(0) }, [mentionCandidates.length])
@@ -618,12 +655,12 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     detectMention(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length)
   }
 
-  const insertMention = (userId: string, displayName: string) => {
+  const insertMention = (tokenId: string, displayName: string) => {
     if (mentionAnchorPos === null) return
     const cursor = (textareaRef.current ?? compactInputRef.current)?.selectionStart ?? draft.length
     const newDraft = `${draft.slice(0, mentionAnchorPos)}@${displayName} ${draft.slice(cursor)}`
     setDraft(newDraft)
-    onMentionInserted?.(userId, displayName)
+    onMentionInserted?.(tokenId, displayName)
     setInsertedMentionNames(prev => { const next = new Set(prev); next.add(displayName); return next })
     setMentionQuery(null)
     setMentionAnchorPos(null)
@@ -643,7 +680,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         const m = mentionCandidates[selectedIdx] ?? mentionCandidates[0]
-        if (m) insertMention(m.userId, m.displayName)
+        if (m) insertMention(m.tokenId, m.displayName)
         return
       }
     } else if (e.key === 'Escape') {
@@ -665,13 +702,20 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     return (
       <div style={{ ...style, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
         {mentionCandidates.map((m, i) => (
-          <button key={m.userId}
-            onMouseDown={e => { e.preventDefault(); insertMention(m.userId, m.displayName) }}
+          <button key={m.tokenId}
+            onMouseDown={e => { e.preventDefault(); insertMention(m.tokenId, m.displayName) }}
             onMouseEnter={() => setSelectedIdx(i)}
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: i === selectedIdx ? 'var(--accent-soft)' : 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
           >
             <Avatar name={m.displayName} size={22}/>
-            <span style={{ fontSize: 13.5, color: i === selectedIdx ? 'var(--accent)' : 'var(--text-2)', fontWeight: 500 }}>{m.displayName}</span>
+            <span style={{ fontSize: 13.5, color: i === selectedIdx ? 'var(--accent)' : 'var(--text-2)', fontWeight: 500 }}>
+              @{m.displayName}
+              {m.kind === 'all' || m.kind === 'project_members' || m.kind === 'attr' ? (
+                <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-4)', fontWeight: 500 }}>
+                  {m.kind === 'all' ? '全員' : m.kind === 'project_members' ? 'プロジェクトメンバー' : '属性'}
+                </span>
+              ) : null}
+            </span>
           </button>
         ))}
       </div>
@@ -1106,7 +1150,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [initialPositioned, setInitialPositioned] = React.useState(false)
   const pendingDraftRef = React.useRef('')
   const queryClient = useQueryClient()
-  // displayName → userId map for structured mention serialization
+  // displayName → tokenId（userId / all / project_members / attr:uuid）
   const mentionMapRef = React.useRef<Map<string, string>>(new Map())
   // Ref to latest draft state for cleanup-time saves (avoids stale closure)
   const latestDraftRef = React.useRef({ draft: '', pendingAttachments: [] as PendingAttachment[] })
@@ -1160,22 +1204,22 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     return () => clearTimeout(timer)
   }, [channelId, draft, pendingAttachments, persistDraft])
 
-  const onMentionInserted = React.useCallback((userId: string, displayName: string) => {
-    mentionMapRef.current.set(displayName, userId)
+  const onMentionInserted = React.useCallback((tokenId: string, displayName: string) => {
+    mentionMapRef.current.set(displayName, tokenId)
   }, [])
 
-  // 保存形式は canonical な `<@userId>`。表示名は read 時に解決するため本文に焼き込まない
+  // 保存形式は canonical な `<@tokenId>`。表示名は read 時に解決するため本文に焼き込まない
   const transformContent = (text: string): string => {
     const entries = [...mentionMapRef.current.entries()]
     if (entries.length === 0) return text
     // Longest name first to avoid partial replacements
     entries.sort((a, b) => b[0].length - a[0].length)
     let result = text
-    for (const [displayName, userId] of entries) {
+    for (const [displayName, tokenId] of entries) {
       const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       result = result.replace(
         new RegExp(`@${escaped}(?=[\\s、。！？]|$)`, 'g'),
-        `<@${userId}>`,
+        `<@${tokenId}>`,
       )
     }
     return result
@@ -1427,13 +1471,20 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     return wsMembers.filter(m => m.userId !== currentUser?.id)
   }, [chMemberIds, wsMembers, currentUser?.id, projectId, projectMembers])
 
-  // userId → 現在の表示名。メンションを描画時に最新名へ解決するため
-  // （保存本文は名前なしの `<@userId>` であり、楽観更新メッセージもこのマップで解決する）
+  const { data: profileAttributes = [] } = useProfileAttributes()
+
+  // tokenId → 現在の表示名。メンションを描画時に最新名へ解決するため
+  // （保存本文は名前なしの `<@tokenId>` であり、楽観更新メッセージもこのマップで解決する）
   const mentionNames = React.useMemo(() => {
     const map = new Map<string, string>()
+    map.set(ALL_MENTION_ID, ALL_MENTION_LABEL)
+    map.set(PROJECT_MEMBERS_MENTION_ID, PROJECT_MEMBERS_MENTION_LABEL)
+    for (const attribute of profileAttributes) {
+      map.set(attributeMentionTokenId(attribute.id), attribute.name)
+    }
     for (const m of wsMembers) map.set(m.userId, m.displayName)
     return map
-  }, [wsMembers])
+  }, [wsMembers, profileAttributes])
   const emailByUserId = React.useMemo(() => {
     const map = new Map<string, string | null>()
     for (const m of wsMembers) map.set(m.userId, m.email ?? null)
@@ -1933,6 +1984,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
         mentionMembers={mentionMembers}
+        mentionAttributes={profileAttributes}
+        includeProjectMembersMention={!!projectId}
         mentionNames={mentionNames}
         onMentionInserted={onMentionInserted}
         onCreateTextFile={() => setShowTextFileDialog(true)}

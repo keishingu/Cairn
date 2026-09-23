@@ -21,12 +21,16 @@ export interface MessageDto {
   blocked?: boolean
 }
 
-// サーバーが read 時に `<@userId|表示名>` へ解決済みのため最新名を表示できる。
-// 名前なしの canonical 形式 `<@userId>` が来た場合も素のトークンを見せないようにする。
+// サーバーが read 時に `<@id|表示名>` へ解決済みのため最新名を表示できる。
+// 名前なしの canonical 形式 `<@id>` が来た場合も素のトークンを見せないようにする。
 export function parseMentions(content: string): string {
-  return content.replace(/<@([^|>\s]+)(?:\|([^>\n]+))?>/g, (_full, _id, name) =>
-    name ? `@${name}` : '@メンバー',
-  )
+  return content.replace(/<@([^|>\s]+)(?:\|([^>\n]+))?>/g, (_full, id: string, name?: string) => {
+    if (name) return `@${name}`
+    if (id === 'all') return '@all'
+    if (id === 'project_members') return '@project_members'
+    if (id.startsWith('attr:')) return '@属性'
+    return '@メンバー'
+  })
 }
 
 // status を保持し、403（アクセス権なし）を通常の取得失敗と区別して

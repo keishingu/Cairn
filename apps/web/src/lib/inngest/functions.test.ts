@@ -41,7 +41,12 @@ describe('onMessageCreated', () => {
         case 'filter-blocked-members':
         case 'filter-mention-access':
         case 'filter-blocked-mentions':
+        case 'expand-all-mention':
+        case 'expand-project-members-mention':
+        case 'expand-attr-mentions':
           return []
+        case 'resolve-mention-preview-names':
+          return {}
         case 'check-dm':
           return false
         case 'fetch-mentioned-members':
