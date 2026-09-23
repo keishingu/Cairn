@@ -21,7 +21,7 @@
 - 通知本文（`notifications.body`）は送信時点の最新名で解決したスナップショット（イベントの記録のため read 時の再解決はしない）。
 - **非活性メンバーには通知しない**（宛先は常に `active_workspace_members`）。
 - **guest** は `requireChannelAccess` と同じ範囲に限定する（通常 workspace は `channel_members`、project は `project_members`、private/DM は `channel_members`）。実装は `filterMentionRecipients`。
-- DM 内の `@all` / `@project_members` / 属性メンションは展開しない（DM は参加者通知で早期 return）。
+- DM 内の `@all` / `@project_members` / 属性メンションは展開しない（DM は参加者通知で早期 return）。Web ピッカーでも DM ではこれらの候補を出さない（個別ユーザー候補のみ）。
 
 ## シナリオ別の通知動作
 
