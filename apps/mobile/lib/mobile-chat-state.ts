@@ -117,7 +117,8 @@ export function matchMarkdownMention(source: string, offset: number) {
   if (!match) return null
   return {
     length: match[0].length,
-    text: match[2] ? `@${match[2]}` : '@メンバー',
+    userId: match[1]!,
+    displayName: match[2],
   }
 }
 

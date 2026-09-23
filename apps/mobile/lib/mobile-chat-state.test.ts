@@ -88,7 +88,8 @@ describe('モバイルチャット状態', () => {
     const token = '<@user-1|A *B* [help](https://example.com)>'
     expect(matchMarkdownMention(`${token} さん`, 0)).toEqual({
       length: token.length,
-      text: '@A *B* [help](https://example.com)',
+      userId: 'user-1',
+      displayName: 'A *B* [help](https://example.com)',
     })
   })
 

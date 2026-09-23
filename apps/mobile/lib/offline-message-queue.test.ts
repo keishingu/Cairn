@@ -26,6 +26,7 @@ describe('オフラインメッセージキュー', () => {
           id: '20000000-0000-4000-8000-000000000001',
           channelId: '10000000-0000-4000-8000-000000000001',
           content: '圏外から送信',
+          mentionNames: { 'user-1': 'A *B*' },
           createdAt: '2026-07-22T00:00:00.000Z',
           attempts: 1,
           status: 'sending',
@@ -33,6 +34,7 @@ describe('オフラインメッセージキュー', () => {
       ]),
     )
     expect(message?.status).toBe('waiting')
+    expect(message?.mentionNames).toEqual({ 'user-1': 'A *B*' })
   })
 
   it('端末保存が完了してからネットワーク送信を開始する', async () => {

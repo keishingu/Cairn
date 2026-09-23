@@ -377,7 +377,12 @@ function QueuedMessageRow({
           <Text style={[styles.senderName, { color: palette.text }]}>{senderName}</Text>
           <Text style={[styles.messageTime, { color: palette.text4 }]}>未送信</Text>
         </View>
-        <MobileMarkdown content={message.content} palette={palette} onLinkPress={onLinkPress} />
+        <MobileMarkdown
+          content={message.content}
+          palette={palette}
+          onLinkPress={onLinkPress}
+          {...(message.mentionNames ? { mentionNames: message.mentionNames } : {})}
+        />
         <View style={styles.queueStatusRow}>
           <Ionicons
             name={message.status === 'failed' ? 'alert-circle-outline' : 'cloud-upload-outline'}
@@ -651,6 +656,13 @@ export default function ChatThreadScreen() {
         id: clientMessageId,
         channelId: sendingChannelId,
         content,
+        ...(mentionSelectionsRef.current.length > 0
+          ? {
+              mentionNames: Object.fromEntries(
+                mentionSelectionsRef.current.map(({ userId, displayName }) => [userId, displayName]),
+              ),
+            }
+          : {}),
         createdAt: new Date().toISOString(),
         ...(parentMessageId ? { parentMessageId } : {}),
         ...(attachmentFileIds.length > 0 ? { attachmentFileIds } : {}),

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react'
-import { Platform } from 'react-native'
-import Markdown, { MarkdownIt, renderRules, type RenderRules } from 'react-native-markdown-display'
+import { Platform, Text } from 'react-native'
+import Markdown, { MarkdownIt, type RenderRules } from 'react-native-markdown-display'
 import { matchMarkdownMention } from '../lib/mobile-chat-state'
 import type { ThemePalette } from '../lib/theme'
 
@@ -22,7 +22,9 @@ type MarkdownState = {
 type MarkdownInlineState = {
   src: string
   pos: number
-  push: (type: string, tag: string, nesting: number) => { content: string }
+  push: (type: string, tag: string, nesting: number) => {
+    meta: { userId: string; displayName?: string } | null
+  }
 }
 
 markdownParser.inline.ruler.before(
@@ -31,7 +33,13 @@ markdownParser.inline.ruler.before(
   (state: MarkdownInlineState, silent: boolean) => {
     const mention = matchMarkdownMention(state.src, state.pos)
     if (!mention) return false
-    if (!silent) state.push('cairn_mention', '', 0).content = mention.text
+    if (!silent) {
+      const token = state.push('cairn_mention', '', 0)
+      token.meta = {
+        userId: mention.userId,
+        ...(mention.displayName ? { displayName: mention.displayName } : {}),
+      }
+    }
     state.pos += mention.length
     return true
   },
@@ -55,21 +63,34 @@ markdownParser.core.ruler.after('inline', 'cairn-task-list', (state: MarkdownSta
   }
 })
 
-const rules: RenderRules = {
-  cairn_mention: renderRules['text'],
-  // チャット画像は認証付き添付として別UIで描画する。外部URLを自動取得しない。
-  image: () => null,
-}
-
 export const MobileMarkdown = React.memo(function MobileMarkdown({
   content,
   palette,
   onLinkPress,
+  mentionNames,
 }: {
   content: string
   palette: ThemePalette
   onLinkPress: (url: string) => boolean
+  mentionNames?: Readonly<Record<string, string>>
 }) {
+  const rules = React.useMemo<RenderRules>(
+    () => ({
+      cairn_mention: (node, _children, _parents, styles, inheritedStyles = {}) => {
+        const mention = (node as typeof node & {
+          sourceMeta: { userId: string; displayName?: string }
+        }).sourceMeta
+        return (
+          <Text key={node.key} style={[inheritedStyles, styles.text]}>
+            @{mentionNames?.[mention.userId] ?? mention.displayName ?? 'メンバー'}
+          </Text>
+        )
+      },
+      // チャット画像は認証付き添付として別UIで描画する。外部URLを自動取得しない。
+      image: () => null,
+    }),
+    [mentionNames],
+  )
   const markdownStyle = React.useMemo(
     () => ({
       body: { color: palette.text2, fontSize: 14, lineHeight: 22 },
