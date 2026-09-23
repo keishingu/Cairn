@@ -39,3 +39,13 @@ describe('apiFetch', () => {
     expect((init.headers as Headers).get('Authorization')).toBe('Bearer fresh-access-token')
   })
 })
+
+describe('apiActionError', () => {
+  it('通信失敗時は未処理の拒否を残さず既定メッセージを返す', async () => {
+    const { apiActionError } = await import('./api-fetch')
+
+    await expect(
+      apiActionError(Promise.reject(new Error('offline')), '操作に失敗しました'),
+    ).resolves.toBe('操作に失敗しました')
+  })
+})

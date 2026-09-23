@@ -59,6 +59,18 @@ PCの一覧・カレンダー・カンバンでは主要作成ボタンの高さ
 アイコンだけのボタンには `aria-label` を付ける。
 保存済みフィルター削除は `ConfirmDialog` で確認し、対象がフィルターであってファイルではないことを示す。キャンセル時は更新せず、失敗時はエラーと再試行できる状態を残す。
 
+## React NativeチャットのMarkdown本文
+
+- メッセージ本文は `MobileMarkdown` を再利用し、React Nativeのネイティブ要素で描画する。本文ごとにWebViewやHTMLレンダラーを追加しない。
+- 本文は14px・行高22px・`palette.text2`を基準にする。見出しはh1が18px/24px、h2が16px/22px、h3が14px/20pxで、いずれも700。サイズ差を増やしすぎず、ウェイトと既存の`palette.text`で階層を作る。
+- 段落下4px、見出し前後2〜8px、リスト上下2px、区切り線上下8pxを基準とし、既存の4pxグリッドから外れる余白を増やさない。
+- 引用は`palette.card2`、左境界3px、角丸4px、左右10px・上下4px。インラインコードは角丸3px、コードブロックは角丸8px・左右10px・上下8pxとし、`palette.card2` / `palette.border`とOS標準の等幅フォントを使う。
+- リンクは`palette.accentText`と下線で本文から判別できるようにする。相対URLと同一originのCairn内リンクは、許可したパスだけを認証済み`AppWebView`で開く。外部の`http` / `https` / `mailto` / `tel`はOSへ渡し、`javascript:`、`data:`、protocol-relative URL、未許可の内部パスは開かない。
+- Markdown画像は外部URLを自動取得せず、既存の認証付き添付UIを使う。送信者が指定したURLへの意図しない通信と、添付権限制御の迂回を防ぐ。
+- タスクリストは`☐` / `☑`の読み取り専用表示とする。編集可能なチェック項目とMermaid図はWeb版の機能であり、ネイティブ対応を追加する場合は操作・アクセシビリティ・OTA互換性を別途設計する。
+- 現行のReact Native 0.81系ではJSのみのレンダラーを使い、`runtimeVersion`やネイティブ依存を変更しない。ネイティブレンダラーへの移行はDevelopment Build更新を伴う別PRに分離する。
+- 変更時はライト/ダークとアクセント色、長文・長いURL・コード・引用・リスト、内部リンクの認証済み遷移、危険なURLの拒否を確認する。
+
 ## 操作性と検証
 
 - 操作はネイティブの `button` と `onClick` を使い、マウス押下だけに依存しない。`RowActionMenu` のEnter／Spaceによる開閉、Escapeで閉じてトリガーへフォーカスを戻す挙動を維持する。
@@ -78,5 +90,8 @@ PCの一覧・カレンダー・カンバンでは主要作成ボタンの高さ
 - `apps/web/src/components/app/pages/page-toolbar.tsx` — `PageToolbar` / `SegmentedControl`。
 - `apps/web/src/components/app/task-dialog.tsx`、`task-form-fields.tsx` — タスクフォームの共通構造（後者も同じディレクトリ）。
 - `apps/web/src/components/app/row-action-menu.tsx`、`confirm-dialog.tsx` — 行操作と確認（後者も同じディレクトリ）。
+- `apps/mobile/components/mobile-markdown.tsx` — ネイティブチャット本文のMarkdown描画と寸法。
+- `apps/mobile/lib/mobile-chat-state.ts` — Markdownリンクの許可範囲と内部／外部遷移の判定。
+- `apps/mobile/app/(app)/chat-tools/index.tsx` — Cairn内リンクを開く認証済みWebView。
 
 現行の部品API・権限・プラットフォーム仕様はコードと `CLAUDE.md` を確認する。文書と実装に差があれば、意図的変更か不整合かを確認してから修正する。

@@ -2,6 +2,7 @@ import React from 'react'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Modal,
@@ -14,7 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useNavigation, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useProjectChannels } from '../../../hooks/use-projects'
@@ -22,6 +23,8 @@ import type { ProjectChannelDto } from '../../../hooks/use-projects'
 import {
   useCreateWorkspaceChannel,
   useCreateWorkspaceDm,
+  useCreateChannelThread,
+  usePatchProjectMilestone,
   useWorkspaceChannels,
   useWorkspaceDms,
   useWorkspaceMembers,
@@ -37,9 +40,10 @@ import { useMe } from '../../../hooks/use-account'
 type ChannelItemProps = {
   channel: ProjectChannelDto
   milestone?: boolean
+  onOpenActions?: () => void
 }
 
-function ChannelItem({ channel, milestone = false }: ChannelItemProps) {
+function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemProps) {
   const router = useRouter()
   const { palette } = useAppAppearance()
   const period = formatChannelPeriod(
@@ -57,6 +61,8 @@ function ChannelItem({ channel, milestone = false }: ChannelItemProps) {
           params: {
             channelId: channel.channelId,
             channelName: milestone ? channel.channelName : channel.projectTitle,
+            channelType: 'project',
+            projectId: channel.projectId,
           },
         })
       }
@@ -94,12 +100,35 @@ function ChannelItem({ channel, milestone = false }: ChannelItemProps) {
           </Text>
         </View>
       )}
-      <Ionicons name="chevron-forward" size={16} color={palette.text4} />
+      {onOpenActions ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${milestone ? channel.channelName : channel.projectTitle}の操作`}
+          hitSlop={8}
+          onPress={(event) => {
+            event.stopPropagation()
+            onOpenActions()
+          }}
+          style={styles.rowAction}
+        >
+          <Ionicons name="ellipsis-horizontal" size={18} color={palette.text4} />
+        </Pressable>
+      ) : (
+        <Ionicons name="chevron-forward" size={16} color={palette.text4} />
+      )}
     </TouchableOpacity>
   )
 }
 
-function WorkspaceChannelItem({ channel, thread = false }: { channel: WorkspaceChannelDto; thread?: boolean }) {
+function WorkspaceChannelItem({
+  channel,
+  thread = false,
+  onOpenActions,
+}: {
+  channel: WorkspaceChannelDto
+  thread?: boolean
+  onOpenActions?: () => void
+}) {
   const router = useRouter()
   const { palette } = useAppAppearance()
   const privateChannel = channel.isPrivate
@@ -109,7 +138,12 @@ function WorkspaceChannelItem({ channel, thread = false }: { channel: WorkspaceC
       onPress={() =>
         router.push({
           pathname: '/chats/[channelId]',
-          params: { channelId: channel.id, channelName: channel.name ?? 'チャンネル' },
+          params: {
+            channelId: channel.id,
+            channelName: channel.name ?? 'チャンネル',
+            channelType: 'workspace',
+            isPrivate: channel.isPrivate ? '1' : '0',
+          },
         })
       }
       activeOpacity={0.7}
@@ -135,7 +169,22 @@ function WorkspaceChannelItem({ channel, thread = false }: { channel: WorkspaceC
         {channel.name ?? '名称未設定チャンネル'}
       </Text>
       {channel.unreadCount > 0 && <UnreadBadge count={channel.unreadCount} palette={palette} />}
-      <Ionicons name="chevron-forward" size={16} color={palette.text4} />
+      {onOpenActions ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${channel.name ?? 'チャンネル'}の操作`}
+          hitSlop={8}
+          onPress={(event) => {
+            event.stopPropagation()
+            onOpenActions()
+          }}
+          style={styles.rowAction}
+        >
+          <Ionicons name="ellipsis-horizontal" size={18} color={palette.text4} />
+        </Pressable>
+      ) : (
+        <Ionicons name="chevron-forward" size={16} color={palette.text4} />
+      )}
     </TouchableOpacity>
   )
 }
@@ -149,7 +198,11 @@ function DirectMessageItem({ channel }: { channel: DmChannelDto }) {
       onPress={() =>
         router.push({
           pathname: '/chats/[channelId]',
-          params: { channelId: channel.id, channelName: channel.participantName },
+          params: {
+            channelId: channel.id,
+            channelName: channel.participantName,
+            channelType: 'dm',
+          },
         })
       }
       activeOpacity={0.7}
@@ -187,36 +240,82 @@ function UnreadBadge({ count, palette }: { count: number; palette: ThemePalette 
   )
 }
 
+type RowActionTarget =
+  | { type: 'project'; channel: ProjectChannelDto; completedCount: number }
+  | { type: 'milestone'; channel: ProjectChannelDto }
+  | { type: 'workspace'; channel: WorkspaceChannelDto }
+
 export default function ChatsScreen() {
   const router = useRouter()
-  const { data: channels, isLoading, error } = useProjectChannels()
+  const navigation = useNavigation()
+  const {
+    data: channels,
+    isLoading,
+    isFetching: isFetchingProjectChannels,
+    error,
+    refetch: refetchProjectChannels,
+  } = useProjectChannels()
   const workspaceChannelsQuery = useWorkspaceChannels()
   const dmsQuery = useWorkspaceDms()
   const membersQuery = useWorkspaceMembers()
   const createChannel = useCreateWorkspaceChannel()
   const createDm = useCreateWorkspaceDm()
-  const { data: me } = useMe()
+  const createThread = useCreateChannelThread()
+  const patchMilestone = usePatchProjectMilestone()
+  const meQuery = useMe()
+  const me = meQuery.data
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
   const { openNotifications } = useNotificationPanel()
-  const [createMode, setCreateMode] = React.useState<'menu' | 'channel' | 'dm' | null>(null)
+  const [createMode, setCreateMode] = React.useState<'menu' | 'channel' | 'dm' | 'thread' | null>(null)
   const [channelName, setChannelName] = React.useState('')
   const [privateChannel, setPrivateChannel] = React.useState(false)
   const [createError, setCreateError] = React.useState<string | null>(null)
+  const [rowActionTarget, setRowActionTarget] = React.useState<RowActionTarget | null>(null)
+  const [threadParent, setThreadParent] = React.useState<WorkspaceChannelDto | null>(null)
+  const [expandedCompletedProjects, setExpandedCompletedProjects] = React.useState<Set<string>>(
+    () => new Set(),
+  )
+  const [showArchivedProjects, setShowArchivedProjects] = React.useState(false)
+  const canCreateAdminResources = me?.wsRole === 'owner' || me?.wsRole === 'admin'
+  const canManageChildChats = me?.wsRole != null && me.wsRole !== 'guest'
+  const canCreateAnyChat = canCreateAdminResources || FEATURE_FLAGS.dm
+
+  React.useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      void Promise.all([
+        refetchProjectChannels(),
+        workspaceChannelsQuery.refetch(),
+        dmsQuery.refetch(),
+      ])
+    })
+    return unsubscribe
+  }, [dmsQuery.refetch, navigation, refetchProjectChannels, workspaceChannelsQuery.refetch])
   // Web の ChannelList と同じく、通常チャンネルの直下に未完了マイルストーンを並べる。
-  const projectGroups = React.useMemo(() => {
+  const { projectGroups, archivedProjects } = React.useMemo(() => {
     const active = (channels ?? []).filter((channel) => !channel.archived)
-    return active
+    return {
+      projectGroups: active
       .filter((channel) => channel.milestoneId === null)
       .map((channel) => ({
         channel,
-        milestones: active.filter(
+        activeMilestones: active.filter(
           (candidate) =>
             candidate.projectId === channel.projectId &&
             candidate.milestoneId !== null &&
             candidate.milestoneCompleted !== true,
         ),
-      }))
+        completedMilestones: active.filter(
+          (candidate) =>
+            candidate.projectId === channel.projectId &&
+            candidate.milestoneId !== null &&
+            candidate.milestoneCompleted === true,
+        ),
+      })),
+      archivedProjects: (channels ?? []).filter(
+        (channel) => channel.archived && channel.milestoneId === null,
+      ),
+    }
   }, [channels])
   const workspaceChannelGroups = React.useMemo(() => {
     const allChannels = workspaceChannelsQuery.data ?? []
@@ -228,7 +327,53 @@ export default function ChatsScreen() {
       }))
   }, [workspaceChannelsQuery.data])
 
-  if (isLoading || workspaceChannelsQuery.isLoading || dmsQuery.isLoading) {
+  const openChatTool = (path: string, title: string) => {
+    router.push({ pathname: '/(app)/chat-tools', params: { path, title } })
+  }
+
+  const openCreateProject = () =>
+    openChatTool('/chats?nativeAux=1&panel=create-project', 'プロジェクトを作成')
+
+  const openCreateMilestone = (channel: ProjectChannelDto) =>
+    openChatTool(
+      `/chats?nativeAux=1&panel=create-milestone&projectId=${encodeURIComponent(channel.projectId)}&projectTitle=${encodeURIComponent(channel.projectTitle)}`,
+      'マイルストーンを作成',
+    )
+
+  const openEditMilestone = (channel: ProjectChannelDto) => {
+    if (!channel.milestoneId) return
+    openChatTool(
+      `/chats?nativeAux=1&panel=edit-milestone&milestoneId=${encodeURIComponent(channel.milestoneId)}`,
+      'マイルストーンを編集',
+    )
+  }
+
+  const toggleCompletedMilestones = (projectId: string) => {
+    setExpandedCompletedProjects((current) => {
+      const next = new Set(current)
+      if (next.has(projectId)) next.delete(projectId)
+      else next.add(projectId)
+      return next
+    })
+    setRowActionTarget(null)
+  }
+
+  const setMilestoneCompleted = (channel: ProjectChannelDto, completed: boolean) => {
+    if (!channel.milestoneId || patchMilestone.isPending) return
+    setRowActionTarget(null)
+    patchMilestone.mutate(
+      { projectId: channel.projectId, milestoneId: channel.milestoneId, completed },
+      {
+        onError: (mutationError) =>
+          Alert.alert(
+            'マイルストーンを更新できませんでした',
+            mutationError instanceof Error ? mutationError.message : '再度お試しください。',
+          ),
+      },
+    )
+  }
+
+  if (isLoading || workspaceChannelsQuery.isLoading || dmsQuery.isLoading || meQuery.isLoading) {
     return (
       <View style={[styles.center, { backgroundColor: palette.bg }]}>
         <ActivityIndicator size="large" color={palette.accent} />
@@ -236,11 +381,37 @@ export default function ChatsScreen() {
     )
   }
 
-  const fetchError = error ?? workspaceChannelsQuery.error ?? dmsQuery.error
+  const fetchError =
+    error ?? workspaceChannelsQuery.error ?? dmsQuery.error ?? (me ? null : meQuery.error)
   if (fetchError) {
+    const isRetrying =
+      isFetchingProjectChannels ||
+      workspaceChannelsQuery.isFetching ||
+      dmsQuery.isFetching ||
+      meQuery.isFetching
     return (
       <View style={[styles.center, { backgroundColor: palette.bg }]}>
         <Text style={[styles.errorText, { color: palette.redText }]}>{fetchError.message}</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="チャット一覧を再読み込み"
+          disabled={isRetrying}
+          onPress={() =>
+            void Promise.all([
+              refetchProjectChannels(),
+              workspaceChannelsQuery.refetch(),
+              dmsQuery.refetch(),
+              meQuery.refetch(),
+            ])
+          }
+          style={[styles.memberRetry, { borderColor: palette.border }]}
+        >
+          {isRetrying ? (
+            <ActivityIndicator size="small" color={palette.accent} />
+          ) : (
+            <Text style={[styles.memberRetryText, { color: palette.accentText }]}>再試行</Text>
+          )}
+        </Pressable>
       </View>
     )
   }
@@ -296,17 +467,19 @@ export default function ChatsScreen() {
           >
             <Ionicons name="search-outline" size={19} color={palette.text3} />
           </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="チャットを作成"
-            style={[styles.headerAction, { backgroundColor: palette.card2 }]}
-            onPress={() => {
-              setCreateError(null)
-              setCreateMode('menu')
-            }}
-          >
-            <Ionicons name="add" size={20} color={palette.accent} />
-          </Pressable>
+          {canCreateAnyChat && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="チャットを作成"
+              style={[styles.headerAction, { backgroundColor: palette.card2 }]}
+              onPress={() => {
+                setCreateError(null)
+                setCreateMode('menu')
+              }}
+            >
+              <Ionicons name="add" size={20} color={palette.accent} />
+            </Pressable>
+          )}
         </View>
       </View>
       <FlatList
@@ -314,10 +487,40 @@ export default function ChatsScreen() {
         keyExtractor={({ channel }) => channel.channelId}
         renderItem={({ item }) => (
           <View>
-            <ChannelItem channel={item.channel} />
-            {item.milestones.map((milestone) => (
-              <ChannelItem key={milestone.channelId} channel={milestone} milestone />
+            <ChannelItem
+              channel={item.channel}
+              {...(canManageChildChats
+                ? {
+                    onOpenActions: () =>
+                      setRowActionTarget({
+                        type: 'project',
+                        channel: item.channel,
+                        completedCount: item.completedMilestones.length,
+                      }),
+                  }
+                : {})}
+            />
+            {item.activeMilestones.map((milestone) => (
+              <ChannelItem
+                key={milestone.channelId}
+                channel={milestone}
+                milestone
+                {...(canManageChildChats
+                  ? { onOpenActions: () => setRowActionTarget({ type: 'milestone', channel: milestone }) }
+                  : {})}
+              />
             ))}
+            {expandedCompletedProjects.has(item.channel.projectId) &&
+              item.completedMilestones.map((milestone) => (
+                <ChannelItem
+                  key={milestone.channelId}
+                  channel={milestone}
+                  milestone
+                  {...(canManageChildChats
+                    ? { onOpenActions: () => setRowActionTarget({ type: 'milestone', channel: milestone }) }
+                    : {})}
+                />
+              ))}
           </View>
         )}
         contentContainerStyle={styles.list}
@@ -328,10 +531,38 @@ export default function ChatsScreen() {
         }
         ListFooterComponent={
           <>
+            {archivedProjects.length > 0 && (
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={showArchivedProjects ? 'アーカイブ済みプロジェクトを閉じる' : 'アーカイブ済みプロジェクトを開く'}
+                  accessibilityState={{ expanded: showArchivedProjects }}
+                  onPress={() => setShowArchivedProjects((current) => !current)}
+                  style={styles.collapsibleHeading}
+                >
+                  <Ionicons
+                    name={showArchivedProjects ? 'chevron-down' : 'chevron-forward'}
+                    size={14}
+                    color={palette.text4}
+                  />
+                  <Text style={[styles.sectionTitleText, { color: palette.text4 }]}>アーカイブ済み</Text>
+                  <Text style={[styles.sectionCount, { color: palette.text4 }]}>{archivedProjects.length}</Text>
+                </Pressable>
+                {showArchivedProjects &&
+                  archivedProjects.map((channel) => (
+                    <ChannelItem key={channel.channelId} channel={channel} />
+                  ))}
+              </>
+            )}
             <Text style={[styles.sectionTitle, { color: palette.text4 }]}>チャンネル</Text>
             {workspaceChannelGroups.map(({ channel, threads }) => (
               <React.Fragment key={channel.id}>
-                <WorkspaceChannelItem channel={channel} />
+                <WorkspaceChannelItem
+                  channel={channel}
+                  {...(canManageChildChats
+                    ? { onOpenActions: () => setRowActionTarget({ type: 'workspace', channel }) }
+                    : {})}
+                />
                 {threads.map((thread) => (
                   <WorkspaceChannelItem key={thread.id} channel={thread} thread />
                 ))}
@@ -391,6 +622,8 @@ export default function ChatsScreen() {
           <View style={styles.createHeader}>
             {createMode !== 'menu' && (
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="作成メニューへ戻る"
                 onPress={() => {
                   setCreateError(null)
                   setCreateMode('menu')
@@ -403,11 +636,18 @@ export default function ChatsScreen() {
             <Text style={[styles.createTitle, { color: palette.text }]}>
               {createMode === 'channel'
                 ? 'チャンネルを作成'
+                : createMode === 'thread'
+                  ? 'スレッドを作成'
                 : createMode === 'dm'
                   ? 'DMを開始'
                   : '新しいチャット'}
             </Text>
-            <Pressable onPress={() => setCreateMode(null)} hitSlop={8}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="作成画面を閉じる"
+              onPress={() => setCreateMode(null)}
+              hitSlop={8}
+            >
               <Ionicons name="close" size={22} color={palette.text3} />
             </Pressable>
           </View>
@@ -418,12 +658,25 @@ export default function ChatsScreen() {
 
           {createMode === 'menu' && (
             <>
-              <CreateMenuButton
-                icon="chatbubbles-outline"
-                label="チャンネルを作成"
-                palette={palette}
-                onPress={() => setCreateMode('channel')}
-              />
+              {canCreateAdminResources && (
+                <>
+                  <CreateMenuButton
+                    icon="folder-open-outline"
+                    label="プロジェクトを作成"
+                    palette={palette}
+                    onPress={() => {
+                      setCreateMode(null)
+                      openCreateProject()
+                    }}
+                  />
+                  <CreateMenuButton
+                    icon="chatbubbles-outline"
+                    label="チャンネルを作成"
+                    palette={palette}
+                    onPress={() => setCreateMode('channel')}
+                  />
+                </>
+              )}
               {FEATURE_FLAGS.dm && (
                 <CreateMenuButton
                   icon="person-add-outline"
@@ -492,6 +745,8 @@ export default function ChatsScreen() {
                           params: {
                             channelId: channel.id,
                             channelName: channel.name ?? 'チャンネル',
+                            channelType: 'workspace',
+                            isPrivate: channel.isPrivate ? '1' : '0',
                           },
                         })
                       },
@@ -504,6 +759,77 @@ export default function ChatsScreen() {
                 }}
               >
                 {createChannel.isPending ? (
+                  <ActivityIndicator size="small" color={palette.onAccent} />
+                ) : (
+                  <Text style={[styles.createSubmitText, { color: palette.onAccent }]}>作成</Text>
+                )}
+              </Pressable>
+            </View>
+          )}
+
+          {createMode === 'thread' && threadParent && (
+            <View style={styles.channelForm}>
+              <Text style={[styles.formContext, { color: palette.text3 }]}>
+                # {threadParent.name}
+              </Text>
+              <TextInput
+                autoFocus
+                value={channelName}
+                maxLength={60}
+                onChangeText={(value) => {
+                  setChannelName(value)
+                  setCreateError(null)
+                }}
+                placeholder="スレッド名"
+                placeholderTextColor={palette.text4}
+                style={[
+                  styles.channelInput,
+                  {
+                    color: palette.text,
+                    backgroundColor: palette.card2,
+                    borderColor: palette.border,
+                  },
+                ]}
+              />
+              <Pressable
+                disabled={!channelName.trim() || createThread.isPending}
+                style={[
+                  styles.createSubmit,
+                  {
+                    backgroundColor: palette.accent,
+                    opacity: !channelName.trim() || createThread.isPending ? 0.45 : 1,
+                  },
+                ]}
+                onPress={() => {
+                  createThread.mutate(
+                    { channelId: threadParent.id, name: channelName.trim() },
+                    {
+                      onSuccess: ({ id }) => {
+                        const name = channelName.trim()
+                        setCreateMode(null)
+                        setThreadParent(null)
+                        setChannelName('')
+                        router.push({
+                          pathname: '/chats/[channelId]',
+                          params: {
+                            channelId: id,
+                            channelName: name,
+                            channelType: 'workspace',
+                            isPrivate: threadParent.isPrivate ? '1' : '0',
+                          },
+                        })
+                      },
+                      onError: (mutationError) =>
+                        setCreateError(
+                          mutationError instanceof Error
+                            ? mutationError.message
+                            : 'スレッドの作成に失敗しました',
+                        ),
+                    },
+                  )
+                }}
+              >
+                {createThread.isPending ? (
                   <ActivityIndicator size="small" color={palette.onAccent} />
                 ) : (
                   <Text style={[styles.createSubmitText, { color: palette.onAccent }]}>作成</Text>
@@ -550,7 +876,11 @@ export default function ChatsScreen() {
                             setCreateMode(null)
                             router.push({
                               pathname: '/chats/[channelId]',
-                              params: { channelId: id, channelName: member.displayName },
+                              params: {
+                                channelId: id,
+                                channelName: member.displayName,
+                                channelType: 'dm',
+                              },
                             })
                           },
                           onError: (error) =>
@@ -593,7 +923,122 @@ export default function ChatsScreen() {
           )}
         </View>
       </Modal>
+
+      <Modal
+        transparent
+        visible={rowActionTarget !== null}
+        animationType="fade"
+        onRequestClose={() => setRowActionTarget(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setRowActionTarget(null)} />
+        <View
+          style={[
+            styles.actionSheet,
+            {
+              backgroundColor: palette.card,
+              borderColor: palette.border,
+              paddingBottom: insets.bottom + 12,
+            },
+          ]}
+        >
+          <View style={[styles.sheetGrip, { backgroundColor: palette.border }]} />
+          {rowActionTarget?.type === 'project' && (
+            <>
+              <ActionSheetButton
+                icon="flag-outline"
+                label="マイルストーンを作成"
+                palette={palette}
+                onPress={() => {
+                  const channel = rowActionTarget.channel
+                  setRowActionTarget(null)
+                  openCreateMilestone(channel)
+                }}
+              />
+              {rowActionTarget.completedCount > 0 && (
+                <ActionSheetButton
+                  icon={
+                    expandedCompletedProjects.has(rowActionTarget.channel.projectId)
+                      ? 'eye-off-outline'
+                      : 'eye-outline'
+                  }
+                  label={`完了済みマイルストーンを${
+                    expandedCompletedProjects.has(rowActionTarget.channel.projectId)
+                      ? '非表示'
+                      : '表示'
+                  }`}
+                  palette={palette}
+                  onPress={() => toggleCompletedMilestones(rowActionTarget.channel.projectId)}
+                />
+              )}
+            </>
+          )}
+          {rowActionTarget?.type === 'milestone' && (
+            <>
+              {rowActionTarget.channel.milestoneCompleted !== true && (
+                <ActionSheetButton
+                  icon="create-outline"
+                  label="編集"
+                  palette={palette}
+                  onPress={() => {
+                    const channel = rowActionTarget.channel
+                    setRowActionTarget(null)
+                    openEditMilestone(channel)
+                  }}
+                />
+              )}
+              <ActionSheetButton
+                icon={rowActionTarget.channel.milestoneCompleted ? 'refresh-outline' : 'checkmark-circle-outline'}
+                label={rowActionTarget.channel.milestoneCompleted ? '未完了にする' : '完了にする'}
+                palette={palette}
+                onPress={() =>
+                  setMilestoneCompleted(
+                    rowActionTarget.channel,
+                    rowActionTarget.channel.milestoneCompleted !== true,
+                  )
+                }
+              />
+            </>
+          )}
+          {rowActionTarget?.type === 'workspace' && (
+            <ActionSheetButton
+              icon="chatbubble-ellipses-outline"
+              label="スレッドを作成"
+              palette={palette}
+              onPress={() => {
+                setThreadParent(rowActionTarget.channel)
+                setRowActionTarget(null)
+                setChannelName('')
+                setCreateError(null)
+                setCreateMode('thread')
+              }}
+            />
+          )}
+        </View>
+      </Modal>
     </View>
+  )
+}
+
+function ActionSheetButton({
+  icon,
+  label,
+  palette,
+  onPress,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name']
+  label: string
+  palette: ThemePalette
+  onPress: () => void
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      style={[styles.actionSheetButton, { borderTopColor: palette.divider }]}
+      onPress={onPress}
+    >
+      <Ionicons name={icon} size={19} color={palette.text2} />
+      <Text style={[styles.actionSheetLabel, { color: palette.text }]}>{label}</Text>
+    </Pressable>
   )
 }
 
@@ -647,6 +1092,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
+  collapsibleHeading: {
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 16,
+  },
+  sectionTitleText: { fontSize: 11, fontWeight: '700', letterSpacing: 1.1 },
+  sectionCount: { fontSize: 11, fontWeight: '600' },
   channelRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -664,6 +1118,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   channelIconText: { fontSize: 18, fontWeight: '600' },
+  rowAction: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
   channelCopy: { flex: 1, minWidth: 0, gap: 2 },
   rowLabel: { flex: 1 },
   channelName: { fontSize: 15, fontWeight: '600' },
@@ -700,6 +1161,7 @@ const styles = StyleSheet.create({
   createHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
   createTitle: { flex: 1, fontSize: 16, fontWeight: '700' },
   createError: { fontSize: 12, marginBottom: 8 },
+  formContext: { fontSize: 12.5, fontWeight: '600' },
   createMenuButton: {
     minHeight: 54,
     flexDirection: 'row',
@@ -754,4 +1216,24 @@ const styles = StyleSheet.create({
   memberCopy: { flex: 1, minWidth: 0 },
   memberName: { fontSize: 14, fontWeight: '600' },
   memberEmail: { fontSize: 11.5, marginTop: 2 },
+  actionSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopWidth: 1,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingTop: 8,
+    paddingHorizontal: 12,
+  },
+  actionSheetButton: {
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 8,
+  },
+  actionSheetLabel: { fontSize: 15, fontWeight: '600' },
 })
