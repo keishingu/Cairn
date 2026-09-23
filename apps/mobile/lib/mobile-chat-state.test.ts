@@ -117,7 +117,10 @@ describe('モバイルチャット状態', () => {
     })
     expect(
       resolveMobileMarkdownLink('https://develop.oss-cairn.com/chats/channel-1?m=message-1', baseUrl),
-    ).toEqual({ kind: 'internal', path: '/chats/channel-1?m=message-1' })
+    ).toEqual({
+      kind: 'internal',
+      path: '/chats/channel-1?m=message-1&nativeAux=1',
+    })
     expect(resolveMobileMarkdownLink('https://example.com/guide', baseUrl)).toEqual({
       kind: 'external',
       url: 'https://example.com/guide',

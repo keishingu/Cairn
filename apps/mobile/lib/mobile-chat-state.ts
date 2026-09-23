@@ -173,6 +173,14 @@ export type MobileMarkdownLink =
   | { kind: 'internal'; path: string }
   | { kind: 'external'; url: string }
 
+function mobileChatToolPath(path: string, appBaseUrl: string) {
+  const parsed = new URL(path, appBaseUrl)
+  if (parsed.pathname === '/chats' || parsed.pathname.startsWith('/chats/')) {
+    parsed.searchParams.set('nativeAux', '1')
+  }
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`
+}
+
 export function resolveMobileMarkdownLink(
   rawUrl: string,
   appBaseUrl: string,
@@ -182,7 +190,7 @@ export function resolveMobileMarkdownLink(
 
   if (value.startsWith('/')) {
     const path = resolveInternalAppPath(value, appBaseUrl)
-    return path ? { kind: 'internal', path } : null
+    return path ? { kind: 'internal', path: mobileChatToolPath(path, appBaseUrl) } : null
   }
 
   try {
@@ -197,7 +205,7 @@ export function resolveMobileMarkdownLink(
         `${parsed.pathname}${parsed.search}${parsed.hash}`,
         appBaseUrl,
       )
-      return path ? { kind: 'internal', path } : null
+      return path ? { kind: 'internal', path: mobileChatToolPath(path, appBaseUrl) } : null
     }
     return { kind: 'external', url: value }
   } catch {
