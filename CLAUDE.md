@@ -92,6 +92,7 @@ pnpm dev
 - **WebView 認証はワンタイムトークンハンドオフ方式**: ネイティブ（Expo）の `refresh_token` を WebView に渡して `setSession()` するのは禁止。同一 refresh_token を 2 クライアントが共有すると rotation と衝突してセッションが突然失効する。ネイティブは `POST /api/auth/webview-handoff` で本人の使い捨て magiclink（`hashed_token`）を発行させ、WebView 側は `verifyOtp` で独立したセッションを確立する。詳細は [`docs/mobile-webview-auth-handoff.md`](docs/mobile-webview-auth-handoff.md)
 - **認証メールは Supabase Auth が生成し、Resend のカスタム SMTP で配送する**: 送信専用サブドメインは `mail.oss-cairn.com`。アプリ側に Resend SDK やメール送信ロジックを実装せず、ローカルは Mailpit、Preview / Production は環境別の Resend API キーを Supabase SMTP password にだけ設定する。招待は引き続きリンク共有（30日有効）。設定・検証・ローテーションは [`docs/resend-email-provider.md`](docs/resend-email-provider.md)
 - **権限モデルはワークスペースロールのみで決定する**（プロジェクトロールは業務上の役割であり、システム権限に影響させない）
+  - プロジェクトロールの表示名・色・並び順はワークスペース単位の `project_roles` が共有元。初期値は「リーダー」「サブリーダー」「メンバー」で、`legacy_role = 'member'` の行を新規参加時のデフォルトとする。`project_members.role` はローリングデプロイ互換用に残し、新コードは `role_id` を優先する
   - `owner`: WS設定（名前・ロゴ等）変更 + admin の全権限
   - `admin`: メンバー管理・招待、プロジェクト作成・削除、ゲスト招待リンク発行 + member の全権限
   - `member`: プロジェクト編集・メンバー追加削除、日常操作（チャット・タスク・ファイル等）

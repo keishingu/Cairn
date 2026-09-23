@@ -80,7 +80,19 @@ vi.mock('@cairn/db', () => ({
     profileAttributes: 'workspaceMembers.profileAttributes',
   },
   channels: { id: 'channels.id', projectId: 'channels.projectId' },
-  projectMembers: { userId: 'projectMembers.userId', projectId: 'projectMembers.projectId', role: 'projectMembers.role' },
+  projectMembers: {
+    userId: 'projectMembers.userId',
+    projectId: 'projectMembers.projectId',
+    role: 'projectMembers.role',
+    roleId: 'projectMembers.roleId',
+  },
+  projectRoles: {
+    id: 'projectRoles.id',
+    workspaceId: 'projectRoles.workspaceId',
+    name: 'projectRoles.name',
+    color: 'projectRoles.color',
+    legacyRole: 'projectRoles.legacyRole',
+  },
   messageReactions: {
     messageId: 'messageReactions.messageId',
     emoji: 'messageReactions.emoji',
@@ -222,6 +234,9 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
           { id: 'attribute-2', name: '経済学部', color: 'emerald' },
         ],
         senderProjectRole: 'subleader',
+        senderProjectRoleName: null,
+        senderProjectRoleColor: null,
+        senderProjectRoleLegacy: null,
         reactions: [
           {
             emoji: '👍',
@@ -230,6 +245,44 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
             userNames: ['Kei', 'Aki'],
           },
         ],
+      }),
+    ])
+  })
+
+  it('GET は設定済みのプロジェクト役割名と色を返す', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockSelectResults(
+      [
+        {
+          id: 'msg-1',
+          content: 'hello',
+          senderId: 'user-2',
+          senderName: 'Sender',
+          senderAvatarUrl: null,
+          senderProjectRole: 'member',
+          senderProjectRoleName: 'デザイナー',
+          senderProjectRoleColor: '#EC4899',
+          senderProjectRoleLegacy: null,
+          createdAt: new Date('2026-06-24T01:00:00.000Z'),
+          updatedAt: new Date('2026-06-24T01:00:00.000Z'),
+        },
+      ],
+      [],
+      [],
+      [],
+      [],
+    )
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/'), ctxRouteParams())
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([
+      expect.objectContaining({
+        senderProjectRole: 'member',
+        senderProjectRoleName: 'デザイナー',
+        senderProjectRoleColor: '#EC4899',
+        senderProjectRoleLegacy: null,
       }),
     ])
   })

@@ -61,6 +61,13 @@ vi.mock('@cairn/db', () => ({
     color: 'ps.color',
     sortOrder: 'ps.sortOrder',
   },
+  projectRoles: {
+    workspaceId: 'pr.workspaceId',
+    name: 'pr.name',
+    color: 'pr.color',
+    sortOrder: 'pr.sortOrder',
+    legacyRole: 'pr.legacyRole',
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({ eq: vi.fn(() => 'eq-result') }))
@@ -183,6 +190,7 @@ describe('POST /api/auth/setup', () => {
       .mockReturnValueOnce(insertChainReturning([{ id: 'new-ws-id-999' }])) // workspaces
       .mockReturnValueOnce(insertChainPlain())                               // channels
       .mockReturnValueOnce(insertChainPlain())                               // projectStatuses
+      .mockReturnValueOnce(insertChainPlain())                               // projectRoles
       .mockReturnValueOnce(insertChainPlain())                               // workspaceMembers
 
     const { POST } = await import('./route')
@@ -199,8 +207,8 @@ describe('POST /api/auth/setup', () => {
     expect(body.ok).toBe(true)
     expect(body.needsWorkspace).toBe(false)
     expect(body.workspaceId).toBe('new-ws-id-999')
-    // insert が4回呼ばれること（workspaces / channels / projectStatuses / workspaceMembers）
-    expect(mockDb.insert).toHaveBeenCalledTimes(4)
+    // insert が5回呼ばれること（workspaces / channels / projectStatuses / projectRoles / workspaceMembers）
+    expect(mockDb.insert).toHaveBeenCalledTimes(5)
   })
 
   it('workspaceName あり・プロフィール未作成 → プロフィールも同時に作成する', async () => {
@@ -211,6 +219,7 @@ describe('POST /api/auth/setup', () => {
       .mockReturnValueOnce(insertChainReturning([{ id: 'ws-new-777' }]))    // workspaces
       .mockReturnValueOnce(insertChainPlain())                               // channels
       .mockReturnValueOnce(insertChainPlain())                               // projectStatuses
+      .mockReturnValueOnce(insertChainPlain())                               // projectRoles
       .mockReturnValueOnce(insertChainPlain())                               // workspaceMembers
 
     const { POST } = await import('./route')
@@ -223,7 +232,7 @@ describe('POST /api/auth/setup', () => {
     )
 
     expect(res.status).toBe(200)
-    // profiles も含めて insert が5回（profiles / workspaces / channels / projectStatuses / workspaceMembers）
-    expect(mockDb.insert).toHaveBeenCalledTimes(5)
+    // profiles も含めて insert が6回（profiles / workspaces / channels / projectStatuses / projectRoles / workspaceMembers）
+    expect(mockDb.insert).toHaveBeenCalledTimes(6)
   })
 })

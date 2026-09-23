@@ -39,7 +39,7 @@ export async function postMessage({
 }: PostMessageArgs) {
   try {
     const { db } = await import('@cairn/db')
-    const { messages, profiles, messageAttachments, files, channels, channelMembers, tasks, workspaceMembers, projectMembers } =
+    const { messages, profiles, messageAttachments, files, channels, channelMembers, tasks, workspaceMembers, projectMembers, projectRoles } =
       await import('@cairn/db')
     const { eq, and, isNull, inArray, sql } = await import('drizzle-orm')
 
@@ -78,6 +78,9 @@ export async function postMessage({
             ),
             avatarUrl: workspaceMembers.avatarUrl,
             projectRole: projectMembers.role,
+            projectRoleName: projectRoles.name,
+            projectRoleColor: projectRoles.color,
+            projectRoleLegacy: projectRoles.legacyRole,
           })
           .from(profiles)
           .leftJoin(
@@ -96,6 +99,13 @@ export async function postMessage({
                 : isNull(projectMembers.projectId),
             ),
           )
+          .leftJoin(
+            projectRoles,
+            and(
+              eq(projectMembers.roleId, projectRoles.id),
+              eq(projectRoles.workspaceId, workspaceId),
+            ),
+          )
           .where(eq(profiles.id, existing.senderId))
 
         const profileAttributes = await getProfileAttributesByUserIds(workspaceId, [existing.senderId])
@@ -108,6 +118,9 @@ export async function postMessage({
           senderAvatarUrl: existingProfile?.avatarUrl ?? null,
           senderProfileAttributes: profileAttributes.get(existing.senderId) ?? [],
           senderProjectRole: existingProfile?.projectRole ?? null,
+          senderProjectRoleName: existingProfile?.projectRoleName ?? null,
+          senderProjectRoleColor: existingProfile?.projectRoleColor ?? null,
+          senderProjectRoleLegacy: existingProfile?.projectRoleLegacy ?? null,
           createdAt: existing.createdAt.toISOString(),
           isEdited: false,
           reactions: [],
@@ -262,6 +275,9 @@ export async function postMessage({
         displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         projectRole: projectMembers.role,
+        projectRoleName: projectRoles.name,
+        projectRoleColor: projectRoles.color,
+        projectRoleLegacy: projectRoles.legacyRole,
       })
       .from(profiles)
       .leftJoin(
@@ -278,6 +294,13 @@ export async function postMessage({
           channelForSafety?.projectId
             ? eq(projectMembers.projectId, channelForSafety.projectId)
             : isNull(projectMembers.projectId),
+        ),
+      )
+      .leftJoin(
+        projectRoles,
+        and(
+          eq(projectMembers.roleId, projectRoles.id),
+          eq(projectRoles.workspaceId, workspaceId),
         ),
       )
       .where(eq(profiles.id, inserted.senderId))
@@ -312,6 +335,9 @@ export async function postMessage({
         senderAvatarUrl: profile?.avatarUrl ?? null,
         senderProfileAttributes: profileAttributes.get(inserted.senderId) ?? [],
         senderProjectRole: profile?.projectRole ?? null,
+        senderProjectRoleName: profile?.projectRoleName ?? null,
+        senderProjectRoleColor: profile?.projectRoleColor ?? null,
+        senderProjectRoleLegacy: profile?.projectRoleLegacy ?? null,
         createdAt: inserted.createdAt.toISOString(),
         isEdited: false,
         reactions: [],

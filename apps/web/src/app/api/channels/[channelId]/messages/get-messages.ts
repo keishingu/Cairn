@@ -44,6 +44,7 @@ export async function getMessages({
       workspaceMembers,
       channels,
       projectMembers,
+      projectRoles,
     } = await import('@cairn/db')
     const { eq, isNull, inArray, and, lte, lt, gt, or, desc, asc } = await import('drizzle-orm')
 
@@ -56,6 +57,9 @@ export async function getMessages({
       senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
       senderAvatarUrl: workspaceMembers.avatarUrl,
       senderProjectRole: projectMembers.role,
+      senderProjectRoleName: projectRoles.name,
+      senderProjectRoleColor: projectRoles.color,
+      senderProjectRoleLegacy: projectRoles.legacyRole,
       createdAt: messages.createdAt,
       updatedAt: messages.updatedAt,
     }
@@ -69,6 +73,9 @@ export async function getMessages({
       senderName: string
       senderAvatarUrl: string | null
       senderProjectRole: ProjectMemberRole | null
+      senderProjectRoleName: string | null
+      senderProjectRoleColor: string | null
+      senderProjectRoleLegacy: ProjectMemberRole | null
       createdAt: Date
       updatedAt: Date
     }>
@@ -112,6 +119,13 @@ export async function getMessages({
               eq(projectMembers.projectId, channels.projectId),
             ),
           )
+          .leftJoin(
+            projectRoles,
+            and(
+              eq(projectMembers.roleId, projectRoles.id),
+              eq(projectRoles.workspaceId, workspaceId),
+            ),
+          )
           .where(
             and(
               eq(messages.channelId, channelId),
@@ -141,6 +155,13 @@ export async function getMessages({
             and(
               eq(projectMembers.userId, messages.senderId),
               eq(projectMembers.projectId, channels.projectId),
+            ),
+          )
+          .leftJoin(
+            projectRoles,
+            and(
+              eq(projectMembers.roleId, projectRoles.id),
+              eq(projectRoles.workspaceId, workspaceId),
             ),
           )
           .where(
@@ -192,6 +213,13 @@ export async function getMessages({
           and(
             eq(projectMembers.userId, messages.senderId),
             eq(projectMembers.projectId, channels.projectId),
+          ),
+        )
+        .leftJoin(
+          projectRoles,
+          and(
+            eq(projectMembers.roleId, projectRoles.id),
+            eq(projectRoles.workspaceId, workspaceId),
           ),
         )
         .where(and(
@@ -361,6 +389,9 @@ export async function getMessages({
       senderAvatarUrl: row.senderAvatarUrl ?? null,
       senderProfileAttributes: profileAttributes.get(row.senderId) ?? [],
       senderProjectRole: row.senderProjectRole ?? null,
+      senderProjectRoleName: row.senderProjectRoleName ?? null,
+      senderProjectRoleColor: row.senderProjectRoleColor ?? null,
+      senderProjectRoleLegacy: row.senderProjectRoleLegacy ?? null,
       createdAt: row.createdAt.toISOString(),
       isEdited: row.updatedAt.getTime() > row.createdAt.getTime(),
       reactions: reactionMap.get(row.id) ?? [],

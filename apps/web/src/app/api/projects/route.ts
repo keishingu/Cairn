@@ -201,7 +201,7 @@ export async function POST(req: Request) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, channels, projectStatuses, projectMembers, workspaceMembers, activeWorkspaceMembers, profiles } = await import('@cairn/db')
+    const { projects, channels, projectRoles, projectStatuses, projectMembers, workspaceMembers, activeWorkspaceMembers, profiles } = await import('@cairn/db')
     const { eq, and, inArray } = await import('drizzle-orm')
     const selectedMemberIds = [...new Set(parsed.data.memberUserIds ?? [])]
 
@@ -263,11 +263,17 @@ export async function POST(req: Request) {
     let memberNames: string[] = []
     let memberAvatarUrls: (string | null)[] = []
     if (selectedMemberIds.length > 0) {
+      const [defaultRole] = await db
+        .select({ id: projectRoles.id })
+        .from(projectRoles)
+        .where(and(eq(projectRoles.workspaceId, ctx.workspaceId), eq(projectRoles.legacyRole, 'member')))
+
       await db.insert(projectMembers).values(
         selectedMemberIds.map(userId => ({
           projectId: inserted.id,
           userId,
           role: 'member' as const,
+          roleId: defaultRole?.id ?? null,
           attendance: 'attending' as const,
         })),
       )

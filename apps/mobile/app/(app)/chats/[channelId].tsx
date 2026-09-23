@@ -35,6 +35,7 @@ import { useAppAppearance } from '../../../components/appearance-provider'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
+import { chatProjectRoleLabel } from '@cairn/shared'
 import { API_BASE_URL } from '../../../lib/env'
 import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
@@ -47,13 +48,6 @@ const FileSystem = require('expo-file-system/legacy') as typeof FileSystemTypes
 
 type Palette = ThemePalette
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
-
-const PROJECT_ROLE_LABEL = {
-  leader: 'リーダー',
-  subleader: 'サブリーダー',
-  reviewer: 'レビュワー',
-  observer: 'オブザーバー',
-} as const
 
 function formatTime(value: string) {
   const source = new Date(value)
@@ -155,6 +149,13 @@ function ChatMessageRow({
   onAddReaction: (message: MessageDto) => void
   onOpenActions: (message: MessageDto) => void
 }) {
+  const projectRoleLabelText = chatProjectRoleLabel({
+    legacyRole: message.senderProjectRole,
+    roleName: message.senderProjectRoleName,
+    configuredLegacyRole: message.senderProjectRoleLegacy,
+  })
+  const projectRoleColor = message.senderProjectRoleName ? message.senderProjectRoleColor : null
+
   if (message.messageType === 'system') {
     return (
       <View style={styles.systemRow}>
@@ -193,9 +194,12 @@ function ChatMessageRow({
           <Text style={[styles.senderName, { color: palette.text }]}>
             {message.senderName}
           </Text>
-          {message.senderProjectRole && message.senderProjectRole !== 'member' && (
-            <Text style={[styles.projectRole, { backgroundColor: palette.accentSoft, color: palette.accentText }]}>
-              {PROJECT_ROLE_LABEL[message.senderProjectRole]}
+          {projectRoleLabelText && (
+            <Text style={[styles.projectRole, {
+              backgroundColor: projectRoleColor ? palette.card2 : palette.accentSoft,
+              color: projectRoleColor ?? palette.accentText,
+            }]}>
+              {projectRoleLabelText}
             </Text>
           )}
           <Text style={[styles.messageTime, { color: palette.text4 }]}>

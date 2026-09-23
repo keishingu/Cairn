@@ -50,7 +50,7 @@ const {
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({ requireRole: mockRequireRole }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
-vi.mock('@/lib/supabase/service', async importOriginal => {
+vi.mock('@/lib/supabase/service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/supabase/service')>()
   return { ...actual, createServiceRoleClient: mockCreateServiceRoleClient }
 })
@@ -60,12 +60,27 @@ vi.mock('@cairn/db', () => ({
   projectMembers: {
     userId: 'pm.userId',
     role: 'pm.role',
+    roleId: 'pm.roleId',
     attendance: 'pm.attendance',
     createdAt: 'pm.createdAt',
     projectId: 'pm.projectId',
   },
+  projectRoles: {
+    id: 'prr.id',
+    workspaceId: 'prr.workspaceId',
+    name: 'prr.name',
+    color: 'prr.color',
+    sortOrder: 'prr.sortOrder',
+    legacyRole: 'prr.legacyRole',
+  },
   projects: { id: 'p.id', workspaceId: 'p.workspaceId' },
-  workspaceMembers: { id: 'wm.id', userId: 'wm.userId', workspaceId: 'wm.workspaceId', displayName: 'wm.displayName', avatarUrl: 'wm.avatarUrl' },
+  workspaceMembers: {
+    id: 'wm.id',
+    userId: 'wm.userId',
+    workspaceId: 'wm.workspaceId',
+    displayName: 'wm.displayName',
+    avatarUrl: 'wm.avatarUrl',
+  },
   activeWorkspaceMembers: { id: 'awm.id', userId: 'awm.userId', workspaceId: 'awm.workspaceId' },
 }))
 vi.mock('drizzle-orm', () => ({
@@ -100,11 +115,24 @@ describe('POST /api/projects/[id]/members', () => {
 
     mockDb.select
       .mockReturnValueOnce(chain([{ id: PROJECT_ID }]))
+      .mockReturnValueOnce(
+        chain([
+          {
+            id: 'role-member',
+            name: 'メンバー',
+            color: '#6B7280',
+            sortOrder: 3,
+            legacyRole: 'member',
+          },
+        ]),
+      )
       .mockReturnValueOnce(chain([{ userId: USER_A }, { userId: USER_B }]))
-      .mockReturnValueOnce(chain([
-        { userId: USER_A, displayName: 'Alice', avatarUrl: null },
-        { userId: USER_B, displayName: 'Bob', avatarUrl: 'https://example.com/b.png' },
-      ]))
+      .mockReturnValueOnce(
+        chain([
+          { userId: USER_A, displayName: 'Alice', avatarUrl: null },
+          { userId: USER_B, displayName: 'Bob', avatarUrl: 'https://example.com/b.png' },
+        ]),
+      )
 
     let insertedValues: unknown[] = []
     mockDb.insert.mockReturnValue({
@@ -113,8 +141,20 @@ describe('POST /api/projects/[id]/members', () => {
         return {
           onConflictDoNothing: vi.fn().mockReturnValue({
             returning: vi.fn().mockResolvedValue([
-              { userId: USER_A, role: 'member', attendance: 'attending', addedAt: new Date('2026-06-24T00:00:00Z') },
-              { userId: USER_B, role: 'member', attendance: 'attending', addedAt: new Date('2026-06-24T00:00:00Z') },
+              {
+                userId: USER_A,
+                role: 'member',
+                roleId: 'role-member',
+                attendance: 'attending',
+                addedAt: new Date('2026-06-24T00:00:00Z'),
+              },
+              {
+                userId: USER_B,
+                role: 'member',
+                roleId: 'role-member',
+                attendance: 'attending',
+                addedAt: new Date('2026-06-24T00:00:00Z'),
+              },
             ]),
           }),
         }
@@ -133,10 +173,34 @@ describe('POST /api/projects/[id]/members', () => {
 
     expect(res.status).toBe(201)
     expect(insertedValues).toHaveLength(2)
-    const body = await res.json() as Array<{ userId: string; displayName: string }>
+    const body = (await res.json()) as Array<{ userId: string; displayName: string }>
     expect(body).toEqual([
-      { userId: USER_A, displayName: 'Alice', email: 'alice@example.com', avatarUrl: null, role: 'member', attendance: 'attending', addedAt: '2026-06-24' },
-      { userId: USER_B, displayName: 'Bob', email: 'bob@example.com', avatarUrl: 'https://example.com/b.png', role: 'member', attendance: 'attending', addedAt: '2026-06-24' },
+      {
+        userId: USER_A,
+        displayName: 'Alice',
+        email: 'alice@example.com',
+        avatarUrl: null,
+        role: 'member',
+        roleId: 'role-member',
+        roleName: 'メンバー',
+        roleColor: '#6B7280',
+        roleSortOrder: 3,
+        attendance: 'attending',
+        addedAt: '2026-06-24',
+      },
+      {
+        userId: USER_B,
+        displayName: 'Bob',
+        email: 'bob@example.com',
+        avatarUrl: 'https://example.com/b.png',
+        role: 'member',
+        roleId: 'role-member',
+        roleName: 'メンバー',
+        roleColor: '#6B7280',
+        roleSortOrder: 3,
+        attendance: 'attending',
+        addedAt: '2026-06-24',
+      },
     ])
     expect(mockInngestSend).toHaveBeenCalledWith({
       name: 'project/upserted',
@@ -148,18 +212,40 @@ describe('POST /api/projects/[id]/members', () => {
   })
 
   it('単一 userId でも従来どおり追加できる', async () => {
-    mockGetUserById.mockResolvedValueOnce({ data: { user: { email: 'alice@example.com' } }, error: null })
+    mockGetUserById.mockResolvedValueOnce({
+      data: { user: { email: 'alice@example.com' } },
+      error: null,
+    })
     mockDb.select
       .mockReturnValueOnce(chain([{ id: PROJECT_ID }]))
+      .mockReturnValueOnce(
+        chain([
+          {
+            id: 'role-leader',
+            name: 'リーダー',
+            color: '#3B82F6',
+            sortOrder: 1,
+            legacyRole: 'leader',
+          },
+        ]),
+      )
       .mockReturnValueOnce(chain([{ userId: USER_A }]))
       .mockReturnValueOnce(chain([{ userId: USER_A, displayName: 'Alice', avatarUrl: null }]))
 
     mockDb.insert.mockReturnValue({
       values: vi.fn().mockReturnValue({
         onConflictDoNothing: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([
-            { userId: USER_A, role: 'leader', attendance: 'attending', addedAt: new Date('2026-06-24T00:00:00Z') },
-          ]),
+          returning: vi
+            .fn()
+            .mockResolvedValue([
+              {
+                userId: USER_A,
+                role: 'leader',
+                roleId: 'role-leader',
+                attendance: 'attending',
+                addedAt: new Date('2026-06-24T00:00:00Z'),
+              },
+            ]),
         }),
       }),
     })
@@ -175,7 +261,7 @@ describe('POST /api/projects/[id]/members', () => {
     )
 
     expect(res.status).toBe(201)
-    const body = await res.json() as { userId: string; role: string; email: string | null }
+    const body = (await res.json()) as { userId: string; role: string; email: string | null }
     expect(body.userId).toBe(USER_A)
     expect(body.role).toBe('leader')
     expect(body.email).toBe('alice@example.com')
