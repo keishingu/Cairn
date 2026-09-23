@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { projectRoleLabel } from '@cairn/shared'
 import { Icon, Avatar, StatusChip, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
@@ -26,14 +27,6 @@ const WS_ROLE_STYLE: Record<WorkspaceMemberDto['role'], { c: string; bg: string 
   admin:  { c: 'var(--violet-text)', bg: 'var(--violet-soft)' },
   member: { c: 'var(--text-3)',       bg: 'var(--card-2)' },
   guest:  { c: 'var(--text-4)',       bg: 'var(--card-2)' },
-}
-
-const PROJECT_ROLE_LABEL: Record<string, string> = {
-  leader:    'リーダー',
-  subleader: 'サブリーダー',
-  member:    'メンバー',
-  reviewer:  'レビュワー',
-  observer:  'オブザーバー',
 }
 
 const PROJECT_ROLE_STYLE: { [key: string]: { c: string; bg: string } } = {
@@ -66,7 +59,10 @@ interface ProjectRowProps {
 }
 
 const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
-  const rs = PROJECT_ROLE_STYLE[project.role] ?? { c: 'var(--text-3)', bg: 'var(--card-2)' }
+  const fallback = PROJECT_ROLE_STYLE[project.role] ?? { c: 'var(--text-3)', bg: 'var(--card-2)' }
+  const roleLabel = projectRoleLabel({ legacyRole: project.role, roleName: project.roleName })
+  const roleColor = project.roleColor ?? fallback.c
+  const roleBackground = project.roleColor ? 'var(--card-2)' : fallback.bg
 
   if (isMobile) {
     return (
@@ -98,8 +94,8 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
             </span>
           </div>
         </div>
-        <span style={{ fontSize: 11, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 7px', borderRadius: 4, flexShrink: 0 }}>
-          {PROJECT_ROLE_LABEL[project.role] ?? project.role}
+        <span style={{ fontSize: 11, fontWeight: 700, color: roleColor, background: roleBackground, padding: '2px 7px', borderRadius: 4, flexShrink: 0 }}>
+          {roleLabel}
         </span>
         <Icon name="chevRight" size={14} color="var(--text-4)"/>
       </button>
@@ -145,10 +141,10 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
       </div>
       <span style={{
         fontSize: 10.5, fontWeight: 700, flexShrink: 0,
-        color: rs.c, background: rs.bg,
+        color: roleColor, background: roleBackground,
         padding: '2px 7px', borderRadius: 4,
       }}>
-        {PROJECT_ROLE_LABEL[project.role] ?? project.role}
+        {roleLabel}
       </span>
       <Icon name="chevRight" size={12} color="var(--text-4)"/>
     </div>

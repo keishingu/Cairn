@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import type { AttachmentDto, MessageType, ProfileAttributeDto, ProjectMemberRole } from '@cairn/shared'
+import { chatProjectRoleLabel, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
@@ -132,14 +132,7 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const PROJECT_ROLE_LABEL: Record<Exclude<ProjectMemberRole, 'member'>, string> = {
-  leader: 'リーダー',
-  subleader: 'サブリーダー',
-  reviewer: 'レビュワー',
-  observer: 'オブザーバー',
-}
-
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -149,6 +142,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   senderEmail?: string | null
   senderProfileAttributes?: ProfileAttributeDto[]
   senderProjectRole?: ProjectMemberRole | null
+  senderProjectRoleName?: string | null
+  senderProjectRoleColor?: string | null
+  senderProjectRoleLegacy?: ProjectMemberRole | null
   createdAt: string
   isEdited: boolean
   content: string
@@ -185,9 +181,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const emojiOnly = isEmojiOnly(content)
   const isOwn = currentUserId === senderId
   const canCopy = content.length > 0
-  const visibleProjectRole = senderProjectRole && senderProjectRole !== 'member'
-    ? PROJECT_ROLE_LABEL[senderProjectRole]
-    : null
+  const visibleProjectRole = chatProjectRoleLabel({
+    legacyRole: senderProjectRole,
+    roleName: senderProjectRoleName,
+    configuredLegacyRole: senderProjectRoleLegacy,
+  })
+  const projectRoleColor = senderProjectRoleName ? senderProjectRoleColor : null
 
   const startEdit = () => {
     setEditDraft(content)
@@ -317,7 +316,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
         <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
           <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
           {visibleProjectRole && (
-            <span style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--violet-soft)', color: 'var(--violet-text)', fontSize: 10, fontWeight: 700 }}>
+            <span style={{ padding: '1px 6px', borderRadius: 4, background: projectRoleColor ? 'var(--card-2)' : 'var(--violet-soft)', color: projectRoleColor ?? 'var(--violet-text)', fontSize: 10, fontWeight: 700 }}>
               {visibleProjectRole}
             </span>
           )}
@@ -1873,6 +1872,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               senderEmail={emailByUserId.get(item.message.senderId) ?? null}
               senderProfileAttributes={item.message.senderProfileAttributes ?? []}
               senderProjectRole={item.message.senderProjectRole ?? null}
+              senderProjectRoleName={item.message.senderProjectRoleName ?? null}
+              senderProjectRoleColor={item.message.senderProjectRoleColor ?? null}
+              senderProjectRoleLegacy={item.message.senderProjectRoleLegacy ?? null}
               createdAt={item.message.createdAt}
               isEdited={item.message.isEdited}
               content={item.message.content}

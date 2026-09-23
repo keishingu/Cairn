@@ -11,6 +11,9 @@ export interface MessageDto {
   senderAvatarUrl: string | null
   senderProfileAttributes?: ProfileAttributeDto[]
   senderProjectRole?: ProjectMemberRole | null
+  senderProjectRoleName?: string | null
+  senderProjectRoleColor?: string | null
+  senderProjectRoleLegacy?: ProjectMemberRole | null
   createdAt: string
   isEdited: boolean
   reactions: { emoji: string; count: number; mine: boolean; userNames: string[] }[]

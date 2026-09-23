@@ -236,6 +236,41 @@ describe('ChatMessage copy action', () => {
 
     rerender(<ChatMessage {...props} senderProjectRole="member" senderProfileAttributes={[]} />)
     expect(screen.queryByText('メンバー')).toBeNull()
+
+    rerender(
+      <ChatMessage
+        {...props}
+        senderProjectRole="member"
+        senderProjectRoleName="デザイナー"
+        senderProjectRoleColor="#EC4899"
+        senderProjectRoleLegacy={null}
+        senderProfileAttributes={[]}
+      />,
+    )
+    expect(screen.getByText('デザイナー')).toBeInTheDocument()
+
+    rerender(
+      <ChatMessage
+        {...props}
+        senderProjectRole="leader"
+        senderProjectRoleName="主宰"
+        senderProjectRoleLegacy="leader"
+        senderProfileAttributes={[]}
+      />,
+    )
+    expect(screen.getByText('主宰')).toBeInTheDocument()
+    expect(screen.queryByText('リーダー')).toBeNull()
+
+    rerender(
+      <ChatMessage
+        {...props}
+        senderProjectRole="member"
+        senderProjectRoleName="メンバー"
+        senderProjectRoleLegacy="member"
+        senderProfileAttributes={[]}
+      />,
+    )
+    expect(screen.queryByText('メンバー')).toBeNull()
   })
 })
 

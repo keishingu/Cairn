@@ -239,3 +239,48 @@ describe('MemberDetailPanel — 属性編集', () => {
     expect(screen.queryByRole('button', { name: '編集' })).toBeNull()
   })
 })
+
+describe('MemberDetailPanel — プロジェクト役割', () => {
+  beforeEach(() => {
+    __resetToastsForTest()
+  })
+
+  it('旧 enum が member でも設定した役割名を表示する', async () => {
+    mockApis([ADMIN, TARGET], ADMIN.userId)
+    fetchWithAuth.mockImplementation((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url.includes('/projects')) {
+        return Promise.resolve(jsonResponse([{
+          projectId: 'project-1',
+          title: '文化祭',
+          statusName: '進行中',
+          statusColor: '#3B82F6',
+          role: 'member',
+          roleName: 'デザイナー',
+          roleColor: '#EC4899',
+          startDate: null,
+          endDate: null,
+          memberCount: 2,
+          coverPhotoIdx: 1,
+          archived: false,
+        }]))
+      }
+      if (typeof url === 'string' && url === '/api/me') {
+        return Promise.resolve(jsonResponse({ id: ADMIN.userId }))
+      }
+      if (typeof url === 'string' && url === '/api/workspaces/members') {
+        return Promise.resolve(jsonResponse([ADMIN, TARGET]))
+      }
+      if (typeof url === 'string' && url === '/api/workspaces/profile-attributes') {
+        return Promise.resolve(jsonResponse(TARGET.profileAttributes))
+      }
+      if (init?.method === 'PATCH') {
+        return Promise.resolve(jsonResponse({ userId: TARGET.userId, role: 'member' }))
+      }
+      return Promise.resolve(jsonResponse([]))
+    })
+    renderPanel(TARGET)
+
+    expect(await screen.findByText('デザイナー')).toBeInTheDocument()
+    expect(screen.queryByText('リーダー')).toBeNull()
+  })
+})
