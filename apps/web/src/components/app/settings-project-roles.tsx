@@ -323,6 +323,10 @@ export const SettingsProjectRoles = () => {
                   fontSize: 12.5,
                   fontWeight: 600,
                   cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
                 }}
               >
                 <Icon name="plus" size={13} /> 役割を追加

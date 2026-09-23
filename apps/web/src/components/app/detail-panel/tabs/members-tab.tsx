@@ -123,6 +123,7 @@ const MemberRow = ({
               background: 'var(--card)',
               color: 'var(--text)',
               fontFamily: 'inherit',
+              fontSize: 13,
             }}
           >
             {roles.map((role) => (
