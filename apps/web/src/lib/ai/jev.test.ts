@@ -11,23 +11,33 @@ afterEach(() => {
 })
 
 describe('Jev評価クライアント', () => {
-  it('ローカル用キーをVercel OIDCより優先する', () => {
+  it('ローカル用キーをVercel OIDCより優先する', async () => {
+    const getOidcToken = vi.fn().mockResolvedValue('oidc-token')
+
     expect(
-      resolveAiGatewayToken({
-        AI_GATEWAY_API_KEY: 'gateway-key',
-        VERCEL_OIDC_TOKEN: 'oidc-token',
-      }),
+      await resolveAiGatewayToken({ AI_GATEWAY_API_KEY: 'gateway-key' }, getOidcToken),
     ).toBe('gateway-key')
     expect(
-      resolveAiGatewayAuth({
-        AI_GATEWAY_API_KEY: 'gateway-key',
-        VERCEL_OIDC_TOKEN: 'oidc-token',
-      }).method,
+      (await resolveAiGatewayAuth({ AI_GATEWAY_API_KEY: 'gateway-key' }, getOidcToken)).method,
     ).toBe('api-key')
+    expect(getOidcToken).not.toHaveBeenCalled()
   })
 
-  it('認証情報がなければ外部APIを呼ばない', () => {
-    expect(() => resolveAiGatewayToken({})).toThrow(
+  it('環境変数がなくてもリクエストコンテキストのOIDCを使う', async () => {
+    const getOidcToken = vi.fn().mockResolvedValue('request-context-token')
+
+    await expect(resolveAiGatewayAuth({}, getOidcToken)).resolves.toEqual({
+      token: 'request-context-token',
+      method: 'oidc',
+    })
+  })
+
+  it('認証情報がなければ外部APIを呼ばない', async () => {
+    await expect(
+      resolveAiGatewayToken({}, async () => {
+        throw new Error('missing token')
+      }),
+    ).rejects.toThrow(
       'AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN is not configured',
     )
   })
