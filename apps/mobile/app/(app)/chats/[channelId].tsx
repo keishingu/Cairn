@@ -496,6 +496,20 @@ export default function ChatThreadScreen() {
     projectMembers.data,
     workspaceMembers.data,
   ])
+  const mentionMembersError =
+    channelType === 'dm'
+      ? null
+      : isPrivate === '1'
+        ? channelMembers.error
+        : workspaceMembers.error ?? (projectId ? projectMembers.error : null)
+  const isFetchingMentionMembers =
+    channelMembers.isFetching || workspaceMembers.isFetching || projectMembers.isFetching
+
+  const retryMentionMembers = () => {
+    if (isPrivate === '1') return channelMembers.refetch()
+    if (projectId) return Promise.all([workspaceMembers.refetch(), projectMembers.refetch()])
+    return workspaceMembers.refetch()
+  }
   // 送信失敗時の catch は非同期に発火するため、常に最新の channelId を参照できるようにする
   const channelIdRef = React.useRef(channelId)
   channelIdRef.current = channelId
@@ -1120,7 +1134,39 @@ export default function ChatThreadScreen() {
               ))}
             </View>
           )}
-          {mentionRange && mentionMembers.length > 0 && (
+          {mentionRange && mentionMembersError && (
+            <View
+              accessibilityRole="alert"
+              style={[
+                styles.refreshError,
+                {
+                  backgroundColor: palette.card2,
+                  borderColor: palette.redText,
+                  borderWidth: 1,
+                  borderRadius: 10,
+                  marginBottom: 7,
+                },
+              ]}
+            >
+              <Text style={[styles.refreshErrorText, { color: palette.redText }]} numberOfLines={2}>
+                {mentionMembersError.message}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="メンション候補を再読み込み"
+                disabled={isFetchingMentionMembers}
+                onPress={() => void retryMentionMembers()}
+                hitSlop={6}
+              >
+                {isFetchingMentionMembers ? (
+                  <ActivityIndicator size="small" color={palette.redText} />
+                ) : (
+                  <Text style={[styles.refreshErrorAction, { color: palette.redText }]}>再試行</Text>
+                )}
+              </Pressable>
+            </View>
+          )}
+          {mentionRange && !mentionMembersError && mentionMembers.length > 0 && (
             <View
               style={[
                 styles.mentionSuggestions,

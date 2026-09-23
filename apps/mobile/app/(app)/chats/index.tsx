@@ -248,7 +248,13 @@ type RowActionTarget =
 export default function ChatsScreen() {
   const router = useRouter()
   const navigation = useNavigation()
-  const { data: channels, isLoading, error, refetch: refetchProjectChannels } = useProjectChannels()
+  const {
+    data: channels,
+    isLoading,
+    isFetching: isFetchingProjectChannels,
+    error,
+    refetch: refetchProjectChannels,
+  } = useProjectChannels()
   const workspaceChannelsQuery = useWorkspaceChannels()
   const dmsQuery = useWorkspaceDms()
   const membersQuery = useWorkspaceMembers()
@@ -256,7 +262,8 @@ export default function ChatsScreen() {
   const createDm = useCreateWorkspaceDm()
   const createThread = useCreateChannelThread()
   const patchMilestone = usePatchProjectMilestone()
-  const { data: me } = useMe()
+  const meQuery = useMe()
+  const me = meQuery.data
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
   const { openNotifications } = useNotificationPanel()
@@ -366,7 +373,7 @@ export default function ChatsScreen() {
     )
   }
 
-  if (isLoading || workspaceChannelsQuery.isLoading || dmsQuery.isLoading) {
+  if (isLoading || workspaceChannelsQuery.isLoading || dmsQuery.isLoading || meQuery.isLoading) {
     return (
       <View style={[styles.center, { backgroundColor: palette.bg }]}>
         <ActivityIndicator size="large" color={palette.accent} />
@@ -374,11 +381,37 @@ export default function ChatsScreen() {
     )
   }
 
-  const fetchError = error ?? workspaceChannelsQuery.error ?? dmsQuery.error
+  const fetchError =
+    error ?? workspaceChannelsQuery.error ?? dmsQuery.error ?? (me ? null : meQuery.error)
   if (fetchError) {
+    const isRetrying =
+      isFetchingProjectChannels ||
+      workspaceChannelsQuery.isFetching ||
+      dmsQuery.isFetching ||
+      meQuery.isFetching
     return (
       <View style={[styles.center, { backgroundColor: palette.bg }]}>
         <Text style={[styles.errorText, { color: palette.redText }]}>{fetchError.message}</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="チャット一覧を再読み込み"
+          disabled={isRetrying}
+          onPress={() =>
+            void Promise.all([
+              refetchProjectChannels(),
+              workspaceChannelsQuery.refetch(),
+              dmsQuery.refetch(),
+              meQuery.refetch(),
+            ])
+          }
+          style={[styles.memberRetry, { borderColor: palette.border }]}
+        >
+          {isRetrying ? (
+            <ActivityIndicator size="small" color={palette.accent} />
+          ) : (
+            <Text style={[styles.memberRetryText, { color: palette.accentText }]}>再試行</Text>
+          )}
+        </Pressable>
       </View>
     )
   }
