@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, test, expect } from 'vitest'
-import { buildGcalEvents, buildGcalWeekEvents, buildGcalTimedEvents, buildMilestoneEvents, buildMilestoneWeekEvents, formatMilestoneLabel } from './projects-calendar'
+import { buildGcalEvents, buildGcalWeekEvents, buildGcalTimedEvents, buildMilestoneEvents, buildMilestoneWeekEvents, formatMilestoneLabel, mobileOverflowLane, packMobileMonthBars } from './projects-calendar'
 import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
 import type { WorkspaceMilestoneDto } from '@/app/api/milestones/route'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -272,5 +272,45 @@ describe('buildGcalTimedEvents', () => {
     expect(ev1.col).not.toBe(ev2.col)
     expect(ev1.cols).toBe(2)
     expect(ev2.cols).toBe(2)
+  })
+})
+
+describe('mobileOverflowLane', () => {
+  test('空きレーンがある日は、見えている本数ではなく最下段の直下に +N を置く', () => {
+    // row 0 は別日の1日予定。この日は row 1,2 が見え、row 3 が溢れる
+    expect(mobileOverflowLane([1, 2, 3], 3)).toEqual({ overflow: 1, lane: 3 })
+  })
+
+  test('レーンが詰まっている日は最終表示レーンの直下に置く', () => {
+    expect(mobileOverflowLane([0, 1, 2, 3], 3)).toEqual({ overflow: 1, lane: 3 })
+  })
+
+  test('溢れがなければ null を返す', () => {
+    expect(mobileOverflowLane([1, 2], 3)).toBeNull()
+  })
+})
+
+describe('packMobileMonthBars', () => {
+  test('同じ週の別日にプロジェクトが3行あっても、空いている日のマイルストーンは残す', () => {
+    const mondayProjects = [0, 1, 2].map(row => ({
+      project: { ...PROJECT, id: `p-${row}`, title: `予定${row}` },
+      week: 0,
+      day: 1,
+      span: 1,
+      row,
+    }))
+    const fridayMilestone = {
+      milestone: makeMilestone({ id: 'ms-friday', startDate: '2026-06-12', endDate: '2026-06-12' }),
+      project: PROJECT,
+      week: 0,
+      day: 5,
+      span: 1,
+      row: 0,
+    }
+
+    const packed = packMobileMonthBars(mondayProjects, [fridayMilestone], 0)
+    const milestoneBar = packed.find(e => e.kind === 'milestone')
+
+    expect(milestoneBar).toMatchObject({ kind: 'milestone', day: 5, row: 0 })
   })
 })
