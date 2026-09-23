@@ -25,8 +25,21 @@ const { findEarlierActiveRuns } = require('../../../.github/scripts/mobile-previ
 }
 
 describe('モバイルプレビューの環境同期', () => {
+  it('PR作成時と権限者からの明示コメント時だけ起動する', () => {
+    expect(workflow).toContain('types: [opened]')
+    expect(workflow).toContain('issue_comment:')
+    expect(workflow).toContain("github.event.comment.body == '@eas update'")
+    expect(workflow).toContain('["OWNER","MEMBER","COLLABORATOR"]')
+    expect(workflow).not.toContain('synchronize')
+    expect(workflow).toContain('Resolve trusted PR head')
+    expect(workflow).toContain('Reply with EAS Preview')
+  })
+
   it('PRの接続先をEAS preview環境へ作成または上書きする', () => {
-    expect(workflow).toContain('group: mobile-preview-pr-${{ github.event.pull_request.number }}')
+    expect(workflow).toContain(
+      '    concurrency:\n      group: mobile-preview-pr-${{ github.event.pull_request.number || github.event.issue.number }}',
+    )
+    expect(workflow).not.toContain('\nconcurrency:\n')
     expect(workflow).toContain('cancel-in-progress: true')
     expect(workflow).toContain('--name EXPO_PUBLIC_API_BASE_URL')
     expect(workflow).toContain('--name EXPO_PUBLIC_SUPABASE_URL')
@@ -40,11 +53,11 @@ describe('モバイルプレビューの環境同期', () => {
     expect(workflow).not.toContain('qr-target:')
     expect(mobilePackage.dependencies['expo-dev-client']).toBeDefined()
     expect(workflow).toContain('--environment preview')
-    expect(workflow).toContain('--branch pr-${{ github.event.number }}')
+    expect(workflow).toContain('--branch pr-${{ steps.pr.outputs.number }}')
     expect(workflow).toContain('Publish Internal Distribution EAS Update')
     expect(workflow).toContain('--channel preview')
     expect(workflow).toContain('EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV: preview')
-    expect(workflow).toContain('ref: ${{ github.event.pull_request.head.sha }}')
+    expect(workflow).toContain('ref: ${{ steps.pr.outputs.sha }}')
   })
 
   it('Vercel認証を避けるため初回から固定のdevelop Web APIを利用する', () => {
@@ -58,18 +71,21 @@ describe('モバイルプレビューの環境同期', () => {
     expect(workflow).toContain('actions: read')
     expect(workflow).toContain('Wait for earlier Mobile Preview runs')
     expect(workflow).toContain('findEarlierActiveRuns')
+    expect(workflow).toContain('ref: ${{ github.workflow_sha }}')
+    expect(workflow).toContain('path: trusted-mobile-preview')
+    expect(workflow).toContain('trusted-mobile-preview/.github/scripts/mobile-preview-queue.cjs')
     expect(workflow).not.toContain('group: mobile-preview-eas-environment')
   })
 })
 
 describe('モバイルプレビューのFIFOキュー', () => {
-  it('開始時刻が早い未完了PRだけを待機対象にする', () => {
+  it('開始時刻が早い未完了Preview実行だけを待機対象にする', () => {
     const earlierRuns = findEarlierActiveRuns(
       [
         {
           id: 30,
           run_number: 30,
-          event: 'pull_request',
+          event: 'issue_comment',
           status: 'in_progress',
           run_started_at: '2026-07-20T03:00:00Z',
         },
@@ -88,6 +104,13 @@ describe('モバイルプレビューのFIFOキュー', () => {
           run_started_at: '2026-07-20T02:00:00Z',
         },
         {
+          id: 25,
+          run_number: 25,
+          event: 'issue_comment',
+          status: 'queued',
+          run_started_at: '2026-07-20T02:30:00Z',
+        },
+        {
           id: 15,
           run_number: 15,
           event: 'push',
@@ -98,7 +121,7 @@ describe('モバイルプレビューのFIFOキュー', () => {
       30,
     )
 
-    expect(earlierRuns.map((run) => run.id)).toEqual([20])
+    expect(earlierRuns.map((run) => run.id)).toEqual([20, 25])
   })
 
   it('同じ開始時刻ではrun IDが小さい実行を先にする', () => {

@@ -6,7 +6,11 @@ function startedAt(run) {
 
 function findEarlierActiveRuns(runs, currentRunId) {
   const activeRuns = runs
-    .filter((run) => run.event === 'pull_request' && run.status !== 'completed')
+    .filter(
+      (run) =>
+        (run.event === 'pull_request' || run.event === 'issue_comment') &&
+        run.status !== 'completed',
+    )
     .sort((left, right) => startedAt(left) - startedAt(right) || left.id - right.id)
   const currentIndex = activeRuns.findIndex((run) => String(run.id) === String(currentRunId))
 
