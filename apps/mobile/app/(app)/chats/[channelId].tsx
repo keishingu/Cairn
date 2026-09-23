@@ -41,7 +41,7 @@ import { useSession } from '../../../lib/session-context'
 import { API_BASE_URL } from '../../../lib/env'
 import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
-import { apiFetch } from '../../../lib/api-fetch'
+import { apiActionError, apiFetch } from '../../../lib/api-fetch'
 import {
   filterProjectMentionMembers,
   findMentionQuery,
@@ -715,9 +715,12 @@ export default function ChatThreadScreen() {
 
   const report = async (message: MessageDto, reason: 'harassment' | 'discriminatory' | 'sexual' | 'violence' | 'spam' | 'other', details?: string) => {
     setActionTarget(null)
-    const res = await apiFetch(`/api/messages/${message.id}/report`, { method: 'POST', body: JSON.stringify({ reason, ...(details ? { details } : {}) }) })
-    if (res.ok) Alert.alert('報告しました', '運営者が内容を確認します。')
-    else setSendError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? '報告に失敗しました')
+    const error = await apiActionError(
+      apiFetch(`/api/messages/${message.id}/report`, { method: 'POST', body: JSON.stringify({ reason, ...(details ? { details } : {}) }) }),
+      '報告に失敗しました',
+    )
+    if (error) setSendError(error)
+    else Alert.alert('報告しました', '運営者が内容を確認します。')
   }
   const reportMenu = (message: MessageDto) => Alert.alert('報告理由', '理由を選択してください', [
     { text: '嫌がらせ・いじめ', onPress: () => void report(message, 'harassment') },
@@ -730,9 +733,12 @@ export default function ChatThreadScreen() {
   ])
   const blockUser = async (message: MessageDto) => {
     setActionTarget(null)
-    const res = await apiFetch('/api/me/blocks', { method: 'POST', body: JSON.stringify({ userId: message.senderId }) })
-    if (res.ok) { await messagesQuery.refetch(); Alert.alert('ブロックしました') }
-    else setSendError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'ブロックに失敗しました')
+    const error = await apiActionError(
+      apiFetch('/api/me/blocks', { method: 'POST', body: JSON.stringify({ userId: message.senderId }) }),
+      'ブロックに失敗しました',
+    )
+    if (error) setSendError(error)
+    else { await messagesQuery.refetch(); Alert.alert('ブロックしました') }
   }
 
   const canSubmit = editingMessage

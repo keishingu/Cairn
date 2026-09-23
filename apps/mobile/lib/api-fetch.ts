@@ -20,3 +20,17 @@ export async function apiFetch(
   }
   return fetch(`${API_BASE}${path}`, { ...init, headers })
 }
+
+export async function apiActionError(
+  request: Promise<Response>,
+  fallback: string,
+): Promise<string | null> {
+  try {
+    const response = await request
+    if (response.ok) return null
+    const data = (await response.json().catch(() => ({}))) as { error?: string }
+    return data.error ?? fallback
+  } catch {
+    return fallback
+  }
+}
