@@ -144,7 +144,7 @@
         ACCENTS.map(function (c) { return '<button data-v="' + c + '" style="background:' + c + '"></button>'; }).join('') +
       '</div></div>' +
     '</div>' +
-    '<div class="cl-foot"><a href="#top">Cairn — Comments become chat.</a></div>';
+    '<div class="cl-foot"><a href="#top">Cairn — Chat and project management, free.</a></div>';
   document.body.appendChild(panel);
 
   function paint() {
